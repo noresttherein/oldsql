@@ -1,0 +1,16 @@
+akka {
+  loglevel = DEBUG
+  event-handlers = ["akka.event.slf4j.Slf4jEventHandler"]
+}
+
+service {
+  host = "localhost"
+  port = 4242
+}
+
+database {
+//  url = "jdbc:postgresql://localhost:6543/adpilot"
+  url = "jdbc:postgresql://10.32.3.96:5432/adpilot"
+  user = "adpilot"
+  password = "adpilot"
+}
