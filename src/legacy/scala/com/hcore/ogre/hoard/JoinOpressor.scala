@@ -5,7 +5,7 @@ package com.hcore.ogre.hoard
 
 import com.hcore.ogre.mapping.{AnyMapping, Mapping}
 import com.hcore.ogre.model.Restriction
-import com.hcore.ogre.model.Restriction.{Restrictive, Opressor}
+import com.hcore.ogre.model.Restriction.{Restrictive, Restrainer}
 import com.hcore.ogre.morsels.necromancy.PropertyChain
 import com.hcore.ogre.morsels.necromancy.PropertyChain.===>
 import com.hcore.ogre.sql.RowSource.TableFormula
@@ -20,7 +20,7 @@ import scala.collection.Set
 
 class JoinOpressor[S<:RowSource Join FK, FK<:Mapping[K], E, K](
 		join :S, references :TableFormula[S, _]=>PropertyChain[E, _])
-	extends Opressor[K, E]
+	extends Restrainer[K, E]
 {
 	override def apply(key: K): Restriction[E] =
 		RestrictionBuilder(join.substitute(key).filter) match {
@@ -32,7 +32,7 @@ class JoinOpressor[S<:RowSource Join FK, FK<:Mapping[K], E, K](
 
 	override def from(restriction: Restriction[_ <: E]): Option[K] = ???
 
-	override def in: Opressor[Set[K], E] = ???
+	override def in: Restrainer[Set[K], E] = ???
 
 	override def like(value: E): Restriction[E] = ???
 

@@ -322,13 +322,13 @@ object SetComponent {
 		val value = placeholders(pick)((component.selectForm && component.writeForm(mode).asInstanceOf[SQLWriteForm[C#ResultType]]).asOpt)
 
 		if (component.sqlName.isEmpty)
-			throw new IllegalArgumentException(s"Can't set ${component.introString} to a single parameter $mode on table ${left.table} - no sqlName for the left side of ($left:=$value)")
+			throw new IllegalArgumentException(s"Can't set ${component.introString} to a one parameter $mode on table ${left.table} - no sqlName for the left side of ($left:=$value)")
 
 		val form = {
 			val column = left.path.end
 			val columnForm = column.writeForm(mode)
 			if (columnForm.writtenColumns!=1)
-				throw new IllegalArgumentException(s"Can't set ${component.introString} to a single parameter $mode on table ${left.table} ($left:=$value)")
+				throw new IllegalArgumentException(s"Can't set ${component.introString} to a one parameter $mode on table ${left.table} ($left:=$value)")
 			columnForm.iflatMap{ p :P => pick(p).asInstanceOf[Option[column.ResultType]] }
 		}
 	}

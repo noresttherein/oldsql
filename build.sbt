@@ -15,7 +15,6 @@ testOptions in Test ++= Seq(Tests.Filter(s => !s.endsWith("Props")))
 
 
 resolvers ++= Seq(
-	"Spray repository" at "http://repo.spray.io",
 	"Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases/",
 	"Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
 )
@@ -24,17 +23,8 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
 	"org.postgresql" % "postgresql" % "9.2-1004-jdbc41",
-	"joda-time" % "joda-time" % "2.8.1",
-
-	"com.typesafe.play" %% "play-json" % "2.3.7",	
-	"com.typesafe.slick" %% "slick" % "2.1.0",
-	"com.typesafe.akka" %% "akka-actor" % "2.3.6",
-	"com.typesafe.akka" %% "akka-slf4j" % "2.3.6",
-	"io.spray" %% "spray-can" % "1.3.1",
-	"io.spray" %% "spray-http" % "1.3.1",
-	"io.spray" %% "spray-httpx" % "1.3.1",
-	"io.spray" %% "spray-json" % "1.3.1",
-	"io.spray" %% "spray-routing" % "1.3.1",
+	"net.bytebuddy" % "byte-buddy" % "1.10.8",
+	"cglib" % "cglib-nodep" % "3.3.0",
 	"org.scala-lang" % "scala-library" % "2.11.12",
 	"org.scala-lang" % "scala-reflect" % "2.11.12",
 	"org.scalatest" %% "scalatest" % "2.2.4" % "test",
@@ -44,12 +34,12 @@ libraryDependencies ++= Seq(
 
 
 scalacOptions ++= Seq(
-	//	"-Ylog-classpath",
-	//	"-Xlog-implicits",
+//	"-Ylog-classpath",
+	"-Xlog-implicits",
 	"-Xexperimental",
 	"-feature",
 	"-deprecation",
-	"-language:postfixOps",
+//	"-language:postfixOps",
 	"-language:implicitConversions",
 	"-language:higherKinds",
 	"-language:reflectiveCalls",
