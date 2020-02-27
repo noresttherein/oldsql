@@ -14,6 +14,9 @@ import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}
 import scala.reflect.{classTag, ClassTag}
 import scala.reflect.runtime.universe
 
+
+
+
 /** Arbitrary term of type `V` which can be used to create `Restraint`s on type `T`.
   * May represent both values known statically (literals) and expressions being functions of `T`,
   * where `T` is some constrained entity. Instances of this type are typically tested with a predicate
@@ -623,7 +626,7 @@ object Restrictive {
 	                                                  (implicit val composite :C ComposedOf E)
 		extends Restrictive[T, C]
 	{
-		override def apply(whole :T) :C = composite.composition(values.map(_(whole)))
+		override def apply(whole :T) :C = composite.composer(values.map(_(whole)))
 
 		override def compose[X, S <: T](nest :Restrictive[X, S]) :Restrictive[X, C] =
 			new CollectionRestrictive[X, C, E](values.map(_.compose(nest)))
@@ -672,7 +675,7 @@ object Restrictive {
 	                                            (implicit val composite :C ComposedOf E)
 		extends Restrictive[T, Int]
 	{
-		override def apply(whole :T) :Int = composite.decomposition(collection(whole)).size
+		override def apply(whole :T) :Int = composite.decomposer(collection(whole)).size
 
 		override def compose[X, S <: T](nest :Restrictive[X, S]) :Restrictive[X, Int] =
 			new SizeRestrictive(collection compose nest)

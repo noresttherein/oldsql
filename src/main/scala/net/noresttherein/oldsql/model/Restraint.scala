@@ -709,11 +709,11 @@ object Restraint {
 		  * @tparam E the element type - the type of the expression which membership is tested.
 		  */
 		def apply[T, C, E](member :Restrictive[T, E], values :C)(implicit composite :C ComposedOf E) :Restraint[T] = {
-			val decomposed = composite.decomposition(values)
+			val decomposed = composite.decomposer(values)
 			decomposed.size match {
 //				case 0 => False
 //				case 1 => Equality(member, decomposed.head)
-				case _ => new MembershipTest[T, C, E](member, Collection(decomposed.map(Literal(_))))(composite.decomposition)
+				case _ => new MembershipTest[T, C, E](member, Collection(decomposed.map(Literal(_))))(composite.decomposer)
 			}
 		}
 
@@ -725,7 +725,7 @@ object Restraint {
 		  */
 		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, E], Restrictive[T, C], C DecomposableTo E) forSome { type E; type C }] =
 			restraint match {
-				case m :MembershipTest[T, c, e] => Some((m.member, m.values, m.decomposition))
+				case m :MembershipTest[T, c, e] => Some((m.member, m.values, m.decomposer))
 //				case Equality(left, right) => Some((left, right, DecomposableTo.Subclass()))
 				case _ => None
 			}
@@ -733,10 +733,10 @@ object Restraint {
 
 
 		private case class MembershipTest[-T, C, E](member :Restrictive[T, E], values :Restrictive[T, C])
-		                                           (implicit val decomposition :C DecomposableTo E)
+		                                           (implicit val decomposer :C DecomposableTo E)
 			extends Restraint[T]
 		{
-			override def apply(t :T) :Boolean = decomposition(values(t)).toSet(member(t))
+			override def apply(t :T) :Boolean = decomposer(values(t)).toSet(member(t))
 
 			override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 				MembershipTest(member compose nest, values compose nest)
@@ -759,7 +759,7 @@ object Restraint {
 					items.collect[K, Set[K]] { case Literal(v) => v.asInstanceOf[K] }(breakOut) providing (_.size == items.size)
 
 				case Membership(Term, Literal(items), deco) =>
-					//todo: wrong! may be Iterable[Set[K]] after decomposition
+					//todo: wrong! may be Iterable[Set[K]] after decomposer
 					Some(deco.asInstanceOf[DecomposableTo[Any, Any]].apply(items).toSet.asInstanceOf[Set[K]])
 
 				case False => Some(Set())
@@ -790,14 +790,14 @@ object Restraint {
 		/** The restraint for individual collection elements.*/
 		def condition :Restraint[E]
 		/** Decomposes the collection `T` into individual `E` values. */
-		def decompose :DecomposableTo[T, E]
+		def decomposer :DecomposableTo[T, E]
 	}
 
 
 	object ExistentialRestraint {
 
 		def unapply[T](restriction: Restraint[T]): Option[(Restraint[E], C DecomposableTo E) forSome {type E; type C >: T}] =
-			restriction.ifSubclass[ExistentialRestraint[T, Any]] { e => (e.condition, e.decompose) }
+			restriction.ifSubclass[ExistentialRestraint[T, Any]] { e => (e.condition, e.decomposer) }
 
 
 		abstract class AbstractExistentialRestraint[-T, E]
@@ -805,7 +805,7 @@ object Restraint {
 		{
 			protected def name :String
 
-			override def toString :String = s"$name[$decompose]{$condition}"
+			override def toString :String = s"$name[$decomposer]{$condition}"
 
 
 			override def canEqual(that :Any) :Boolean = that.getClass == getClass
@@ -813,7 +813,7 @@ object Restraint {
 			override def equals(that: Any) :Boolean = that match {
 				case e: ExistentialRestraint[_, _] =>
 					(e eq this) || canEqual(e) && e.canEqual(this) && condition == e.condition &&
-						decompose.compatibleWith(e.decompose)
+						decomposer.compatibleWith(e.decomposer)
 				case _ => false
 			}
 
@@ -824,10 +824,10 @@ object Restraint {
 
 
 
-	private class ForAll[T, E](val condition :Restraint[E])(implicit val decompose :T DecomposableTo E)
+	private class ForAll[-T, E](val condition :Restraint[E])(implicit val decomposer :T DecomposableTo E)
 		extends AbstractExistentialRestraint[T, E]
 	{
-		override def apply(t :T) :Boolean = decompose(t) forall condition
+		override def apply(t :T) :Boolean = decomposer(t) forall condition
 
 		override def name = "ForAll"
 	}
@@ -837,22 +837,22 @@ object Restraint {
 	  * elements of a collection, being either the whole result set, a literal (inlined) sequence, or an embedded select.
 	  */
 	object ForAll {
-		def apply[T, E](condition :Restraint[E])(implicit composition :T ComposedOf E) :ExistentialRestraint[T, E] =
-			new ForAll[T, E](condition)(composition.decomposition)
+		def apply[T, E](condition :Restraint[E])(implicit composite :T ComposedOf E) :ExistentialRestraint[T, E] =
+			new ForAll[T, E](condition)(composite.decomposer)
 
 		def unapply[T](restraint :Restraint[T]) :Option[(Restraint[E], T DecomposableTo E) forSome { type E }] =
 			restraint match {
-				case all :ForAll[T, e] => Some((all.condition, all.decompose))
+				case all :ForAll[T, e] => Some((all.condition, all.decomposer))
 				case _ => None
 			}
 	}
 
 
 
-	private class Exists[T, E](val condition :Restraint[E])(implicit val decompose :T DecomposableTo E)
+	private class Exists[-T, E](val condition :Restraint[E])(implicit val decomposer :T DecomposableTo E)
 		extends AbstractExistentialRestraint[T, E]
 	{
-		override def apply(t :T) :Boolean = decompose(t) exists condition
+		override def apply(t :T) :Boolean = decomposer(t) exists condition
 
 		override def name = "Exists"
 	}
@@ -862,13 +862,13 @@ object Restraint {
 	  * a literal (inlined) sequence, or an embedded select.
 	  */
 	object Exists {
-		def apply[T, E](condition :Restraint[E])(implicit composition :T ComposedOf E) :ExistentialRestraint[T, E] =
-			new Exists(condition)(composition.decomposition)
+		def apply[T, E](condition :Restraint[E])(implicit composite :T ComposedOf E) :ExistentialRestraint[T, E] =
+			new Exists(condition)(composite.decomposer)
 
 		def unapply[T](restraint :Restraint[T]) :Option[(Restraint[E], T DecomposableTo E) forSome { type E }] =
 			restraint match {
 				case exists :Exists[T, e] =>
-					Some((exists.condition, exists.decompose))
+					Some((exists.condition, exists.decomposer))
 				case _ => None
 			}
 	}
@@ -876,9 +876,9 @@ object Restraint {
 
 
 	private class Where[T, E](val condition :Restraint[E], val as :T ComposedOf E) extends AbstractExistentialRestraint[T, E] {
-		override def decompose :DecomposableTo[T, E] = as.decomposition
+		override def decomposer :DecomposableTo[T, E] = as.decomposer
 
-		override def apply(result :T) :Boolean = as.decomposition(result).forall(condition)
+		override def apply(result :T) :Boolean = as.decomposer(result).forall(condition)
 
 		override def name = "Where"
 	}
@@ -911,7 +911,7 @@ object Restraint {
 			if (option != DecomposableTo.Optional())
 				None
 			else restraint match {
-				case Exists(condition, deco) if deco compatibleWith option.decomposition =>
+				case Exists(condition, deco) if deco compatibleWith option.decomposer =>
 					Some(condition.asInstanceOf[Restraint[E]])
 				case _ => None
 			}

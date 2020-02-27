@@ -46,7 +46,7 @@ object MappedKin {
 	case class CompositeMapper[XS, X, Y, YS](element :KinMapper[X, Y])(implicit source :XS ComposedOf X, target :YS ComposedOf Y)
 		extends KinMapper[XS, YS]
 	{
-		def apply(xs :XS) :YS = target.composition(source.decomposition(xs).map(element))
+		def apply(xs :XS) :YS = target.composer(source.decomposer(xs).map(element))
 
 		override def toString = s"_.map(_.$element)"
 	}
@@ -82,7 +82,7 @@ object MappedKin {
 	//
 	//		def wrap(ref :Kin[E]) = ref.map(mapper)
 	//
-	//		override def as[Y](implicit composition: ComposedOf[Y, F]): KinFactory[K, F, Y] = ???
+	//		override def as[Y](implicit composer: ComposedOf[Y, F]): KinFactory[K, F, Y] = ???
 	//
 	//		override def equivalencyToken: Any = ???
 	//	}

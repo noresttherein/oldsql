@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.model
 
+import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Present, Unknown}
 import net.noresttherein.oldsql.model.MappedKin.{KinMapper, PropertyMapper}
 import net.noresttherein.oldsql.model.Restraint.{Restrainer, True, Where}
@@ -34,7 +35,11 @@ import scala.collection.generic.CanBuildFrom
   */
 abstract class Kin[+T] extends Serializable {
 //todo: flatten Kin[Option[T]] by making a distinction between not loaded and not existing.
-	def toOpt :Option[T]
+//	type Item
+//
+//	def composer :T ComposableFrom Item
+//	def decompose :(_<:T) DecomposableTo Item = ???
+//	def decompose :Iterable[Item]
 
 	def isEmpty :Boolean = toOpt.isEmpty
 
@@ -47,6 +52,7 @@ abstract class Kin[+T] extends Serializable {
 	@inline final def isPresent :Boolean = !isEmpty
 
 
+	def toOpt :Option[T]
 
 	def get :T = toOpt.get
 
@@ -175,7 +181,7 @@ object Kin {
 	/** Create a `Kin[T]` in a two step process - the first step (this one) returns a `KinComposer` containing
 	  * all information required to compute the target value. In a second step, a call on the returned instance
 	  * will specify the expected result type for the found values (single value, `Seq`, `Set`, etc).
-	  * Implicit conversion exists converting a KinComposer[T] to a Kin[T].
+	  * Implicit conversion exists converting a `KinComposer[T]` to a `Kin[T]`.
 	  *
 	  * Example: `Kin[Hero](Equality(_.id, id)).single`.
 	  *
@@ -289,13 +295,13 @@ object Kin {
 		/** Create a present instance based on a (assumed complete) collection of elements.
 		  * Equivalent to `present(composition.attempt(_))`.
 		  */
-		def forItems(items :Iterable[E]) :Option[R] = result.composition.attempt(items).map(present)
+		def forItems(items :Iterable[E]) :Option[R] = result.composer.attempt(items).map(present)
 
 		/** Create a present instance based on a (assumed complete) collection of elements and the key pointing to them.
 		  * Equivalent to `apply(key, composition(items))`.
 		  */
 		def forItems(key :K, items :Iterable[E]) :Option[R] =
-			result.composition.attempt(items).map(x => create(key, Some(x)))
+			result.composer.attempt(items).map(x => create(key, Some(x)))
 
 		/** Create an absent instance referencing all entities of type `E` with the specific value as the key,
 		  * as understood by this factory.
@@ -366,7 +372,7 @@ object Kin {
 
 
 
-	trait HigherKindKinFactory[K, E, X, R[T]<:Kin[T]] extends GenericKinFactory[K, E, X, R[X]] {
+	trait HigherKindKinFactory[K, E, X, +R[T] <: Kin[T]] extends GenericKinFactory[K, E, X, R[X]] {
 
 		override def as[Y](implicit composition: ComposedOf[Y, E]): HigherKindKinFactory[K, E, Y, R]
 
@@ -376,11 +382,11 @@ object Kin {
 
 
 
-	trait BaseKinFactory[K, E, X] extends KinFactory[K, E, X] {
-		override def delayed(key: K, value: => X): Kin[X] = Lazy(value)
-
-		override def present(value: X): Kin[X] = Present(value)
-	}
+//	trait BaseKinFactory[K, E, X] extends KinFactory[K, E, X] {
+//		override def delayed(key: K, value: => X): Kin[X] { type Item = E } = Lazy(value)
+//
+//		override def present(value: X): Kin[X] { type Item = E } = Present(value)
+//	}
 
 
 
@@ -501,7 +507,7 @@ object Kin {
 	  */
 	object Absent {
 		/** Creates an absent instance. */
-		@inline def apply() :Kin[Nothing] = Unknown
+		@inline def apply[T, E] :Kin[T] { type Item = E } = Unknown.asInstanceOf[Kin[T] { type Item = E }]
 
 		/** Checks if kin.toOpt.isEmpty */
 		@inline def unapply[T](kin :Kin[T]) :Boolean = kin.isEmpty
@@ -558,7 +564,7 @@ object Kin {
 	  *  make a distinction between no such value existing (the latter) and it being simply missing from this instance.
 	  *  @see [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]]
 	  */
-	class KinOpt[+T] private[Kin] (kin :Kin[Option[T]]) extends Kin[T] {
+	class OptKin[+T] private[Kin] (kin :Kin[Option[T]]) extends Kin[T] {
 		override def toOpt :Option[T] = kin.toOpt.flatten
 
 		override def get :T = kin.get.get
@@ -575,30 +581,40 @@ object Kin {
 			}
 	}
 
-	object KinOpt {
-		def apply[T](value :T) :KinOpt[T] = new KinOpt(Present(Some(value)))
+	object OptKin {
+		def apply[T](value :T) :OptKin[T] = new OptKin(Present(Some(value)))
 
-		def apply[T]() :KinOpt[T] = new KinOpt(Unknown)
+		def apply[T]() :OptKin[T] = new OptKin(Unknown)
 
-//		def unapply
+//		def apply[T](restraint :Restraint[T]) :OptKin[T] =
 	}
 
+
+
+	/** A factory and matcher for a special type of absent `Kin`: those which specify that the value is not merely
+	  * absent in this instance, but does not exist at all.
+	  */
 	object Nonexistent {
-		def apply[T]() :KinOpt[T] = instance
+		def apply[T]() :OptKin[T] = instance
 
 		def unapply(kin :Kin[_]) :Boolean = kin match {
-			case opt :KinOpt[_] => opt.isNaught
+			case opt :OptKin[_] => opt.isNaught
 			case Present(None) => true
 			case _ => false
 		}
 
-		private[this] final val instance = new KinOpt[Nothing](None)
+		private[this] final val instance = new OptKin[Nothing](None)
 	}
 
 
 
 	private case class RestrainedKin[T](restraint :Restraint[T], toOpt :Option[T]=None) extends Kin[T] {
 		override def isEmpty :Boolean = toOpt.isEmpty
+
+		override def get :T = toOpt match {
+			case None => throw new NoSuchElementException(this + ".get")
+			case Some(item) => item
+		}
 
 		private def name :String = restraint match {
 			case True => "All[1]"
@@ -624,9 +640,21 @@ object Kin {
 	object All {
 		/** Create a composer as the first step of Kin creation. Returned composer can be asked to produce
 		  * a `Kin` exporting values of the given type as a desired composite type (for example, a collection or option).
-		  * Example: `All[E].as[Seq[E]]`.
+		  * Example: `All.of[E].in[Seq]`.
+		  * @see [[net.noresttherein.oldsql.model.Kin.All.apply[T] apply[T] ]]
 		  */
-		def apply[T] :KinComposer[T] = composer.asInstanceOf[KinComposer[T]]
+		def of[T] :KinComposer[T] = composer.asInstanceOf[KinComposer[T]]
+
+		/** Create an 'All' kin as `Kin[X]` - exact interpretation will depend on the client code
+		  * and may not always make sense, i.e. `All[Int]()` doesn't mean 'all integers', but 'all of an integer'.
+		  * Generally, `All[''Entity'']()` will mean 'there should be exactly one ''Entity'', and `All[Seq[Entity]]()`
+		  * 'all entities in a sequence'. It is shorter to write than `All.of[X].one` or `All.of[X].as[Seq[X]]`.
+		  */
+		@inline def apply[T] :AllKinAs[T] = new AllKinAs[T] {}
+
+		/** Create a `Kin` referencing all available values of `E`, returned as `T`. */
+		def apply[T, E]()(implicit composite :T ComposedOf E) :Kin[T] =
+			RestrainedKin[T](Where[T, E](True))
 
 		/** Was this Kin explicitly created as 'All' by this object? */
 		def unapply[T](kin :Kin[T]) :Boolean = kin match {
@@ -634,21 +662,15 @@ object Kin {
 			case _ => false
 		}
 
-		/** Create an 'All' kin as `Kin[X]` - exact interpretation will depend on the client code
-		  * and may not always make sense, i.e. `All.as[Int]` doesn't mean 'all integers', but 'all of an integer'.
-		  * Generally, `All.as[''Entity'']` will mean 'there should be exactly one ''Entity'', and `All.as[Seq[Entity]]`
-		  * 'all entities in a sequence'. It is shorter to write than `All[X].as[X]` or `All[X].as[Seq[X]]`.
-		  */
-		def as[X](implicit expand :X ComposedOf _) :Kin[X] =
-			if (expand == ComposedOf.itself)
-				new RestrainedKin[X](True)
-			else
-				new RestrainedKin[X](Where(True)(expand.asInstanceOf[X ComposedOf Any]))
 
+
+		trait AllKinAs[T] extends Any {
+			@inline def apply[E]()(implicit composite :T ComposedOf E) :Kin[T] = All[T, E]()
+		}
 
 		private val composer = new KinComposer[Any] {
-			override def one: Kin[Any] = Single(Restraint.True)
-			override def as[C](implicit expand: C ComposedOf Any): Kin[C] = All.as[C]
+			override def one: Kin[Any] = Single[Any](Restraint.True)
+			override def as[C](implicit expand: C ComposedOf Any): Kin[C] = All[C, Any]()
 		}
 	}
 
@@ -693,16 +715,16 @@ object Kin {
 		  */
 		def unapply[C, T](kin :Kin[C])(implicit composition :C ComposedOf T) :Option[Restraint[_<:T]] =
 			kin match {
-				case RestrainedKin(Where(restraint, as), _) if as == composition => Some(restraint)
+				case RestrainedKin(Where(restraint, as), _) if as.composer == composition.composer => Some(restraint)
 				case _ => None
 			}
 
 
 		private class RestrainedComposer[T](restraint :Restraint[T]) extends KinComposer[T] {
-			override def one: Kin[T] = new RestrainedKin[T](Where(restraint))
+			override def one: Kin[T] = new RestrainedKin[T](restraint)
 
 			override def as[C](implicit composition: C ComposedOf T): Kin[C] =
-				new RestrainedKin[C](Where(restraint))
+				new RestrainedKin[C](Where(restraint)) //todo:
 		}
 
 	}
@@ -710,6 +732,7 @@ object Kin {
 
 
 
+	/** A factory and extractor for `Kin` referencing single entities (''to-one'' relationships). */
 	object Single {
 		def apply[K, T](restrainer :Restrainer[T, K]) :KinFactory[K, T, T] =
 			new RestrainedKinFactory[K, T, T](restrainer)
@@ -751,6 +774,10 @@ object Kin {
 
 
 		class LazyKin[T](resolve : ()=>Option[T]) extends Kin[T] {
+//			type Item = T
+//			override def composer :T ComposableFrom T = ComposableFrom.itself
+//			override def decompose :Iterable[T] = toOpt.toIterable
+
 			override def isEmpty :Boolean = toOpt.isEmpty
 
 			@volatile

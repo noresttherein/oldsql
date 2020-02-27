@@ -25,8 +25,9 @@ import net.noresttherein.oldsql.slang._
   *           of results or their values.
   */
 trait CompositeKin[+T, E] extends Kin[T] {
-	def composition :ComposableFrom[T, E]
-	def decomposition :DecomposableTo[_<:T, E]
+//	type Item = E
+	def composer :ComposableFrom[T, E]
+	def decomposer :DecomposableTo[_<:T, E]
 	def decompose :Option[Iterable[E]]
 
 	def items :ComposedOf[_<:T, E]
@@ -63,9 +64,10 @@ object CompositeKin {
 
 	trait AbstractCompositeKin[T, E] extends CompositeKin[T, E] {
 		def items :T ComposedOf E
-		def composition :T ComposableFrom E = items.composition
-		def decomposition :T DecomposableTo E = items.decomposition
+		def composer :T ComposableFrom E = items.composer
+		def decomposer :T DecomposableTo E = items.decomposer
 		def decompose :Option[Iterable[E]] = toOpt.map(items(_))
+//		def decompose = items(get)
 
 		def mapItems[X, XS](map :KinMapper[E, X])(implicit as :XS ComposedOf X) :Kin[XS] =
 			this.map(CompositeMapper[T, E, X, XS](map)(items, as))
@@ -133,7 +135,7 @@ object CompositeKin {
 		override lazy val toOpt :Option[T] =
 			key.toOpt.map(links(_)).flatMap { references =>
 				val values = references.flatMap(_.toOpt)
-				values.size == references.size ifTrue composition(values.flatMap(targets(_))) 
+				values.size == references.size ifTrue composer(values.flatMap(targets(_)))
 			}
 
 		override def toString :String = key.toString
@@ -162,14 +164,14 @@ object CompositeKin {
 
 		/** Creates a present `FlattenedKin` instance out of the actual content collection. */
 		def apply[T, E](values :T)(implicit compose :T ComposedOf E) :FlattenedKin[T, Seq[Kin[E]], E, E] =
-			new KinLinks[T, Seq[Kin[E]], E, E](Present(compose.decomposition(values).map(Present(_))(breakOut)))
+			new KinLinks[T, Seq[Kin[E]], E, E](Present(compose.decomposer(values).map(Present(_))(breakOut)))
 
 
 
 		def unapply[T, E](kin :Kin[T])(implicit composition :T ComposedOf E)
 				:Option[(Kin[KC], KC DecomposableTo Kin[C], C DecomposableTo E) forSome { type KC; type C }] =
 			kin match {
-				case r :FlattenedKin[_, _, _, _] if r.decomposition compatibleWith composition.decomposition =>
+				case r :FlattenedKin[_, _, _, _] if r.decomposer compatibleWith composition.decomposer =>
 					val cast = r.asInstanceOf[FlattenedKin[T, Any, Any, E]]
 					Some(cast.key, cast.links, cast.targets)
 				case _ => None
@@ -209,12 +211,12 @@ object CompositeKin {
 	class FlattenedKinFactory[HK, HC, TK, TC, E, T](
 			head :KinFactory[HK, Kin[TC], HC],
 			tail :KinFactory[TK, E, TC])(implicit val result :T ComposedOf E)
-		extends GenericKinFactory[Kin[HC], E, T, Kin[T]]
+		extends KinFactory[Kin[HC], E, T]
 	{ factory =>
 		override def present(value: T): Kin[T] = Present(value)
 
 		override def absent(key: Kin[HC]): Kin[T] =
-			FlattenedKin[T, HC, TC, E](key, head.result.decomposition, tail.result.decomposition)
+			FlattenedKin[T, HC, TC, E](key, head.result.decomposer, tail.result.decomposer)
 
 		override def keyFor(item: E): Option[Kin[HC]] =
 			tail.keyFor(item).map(tail.absent).flatMap(head.keyFor).map(head.absent)
@@ -223,7 +225,7 @@ object CompositeKin {
 			ref match {
 				case FlattenedKin(khc @ head(_, _), _, _) =>
 					Some(khc)
-				case Present(result.decomposition(values)) =>
+				case Present(result.decomposer(values)) =>
 					tail.forItems(values).flatMap(tailValue => head.forItems(Seq(tailValue))) orElse {
 						val tailValues = values.map(Seq(_)).map(tail.forItems)
 						tailValues.collect{ case Some(v) => v }.providing(_.size == tailValues.size).flatMap(head.forItems)
@@ -234,8 +236,8 @@ object CompositeKin {
 		override def delayed(keyRef: Kin[HC], value: => T): Kin[T] =
 			new LazyKin[T](()=>Some(value)) with AbstractCompositeKin[T, E] with FlattenedKin[T, HC, TC, E] {
 				override def items = factory.result
-				override def links = head.result.decomposition
-				override def targets = tail.result.decomposition
+				override def links = head.result.decomposer
+				override def targets = tail.result.decomposer
 				override def key = keyRef
 
 			}
