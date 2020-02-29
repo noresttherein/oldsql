@@ -68,7 +68,7 @@ sealed trait PropertyChain[-S, +T] {
 
 
 sealed trait ObjectProperty[-S, +T] extends PropertyChain[S, T] {
-	//todo: should include, not extend PropertyChain, as inequality between them may lead to bugs
+	//todo: should include, not extend PropertyPath, as inequality between them may lead to bugs
 
 	val fun :S=>T
 

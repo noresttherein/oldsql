@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.Restraint.{BooleanRestraint, False, True}
 import net.noresttherein.oldsql.model.Restrictive.{Collection, Literal, TranslableTerm}
-import net.noresttherein.oldsql.morsels.PropertyChain
+import net.noresttherein.oldsql.morsels.PropertyPath
 
 import scala.reflect.runtime.universe.TypeTag
 
@@ -22,14 +22,14 @@ sealed abstract class StandardFallbackImplicits {
   * [[net.noresttherein.oldsql.model.implicits implicits]], so, as a companion object of a super type, its declarations
   * are considered when searching for implicit values related to these types. At the same time, it is possible
   * to import everything wholesale explicitly and this will include also conversions from unrelated classes such
-  * as functions or [[net.noresttherein.oldsql.morsels.PropertyChain PropertyChain]], which would not be found
+  * as functions or [[net.noresttherein.oldsql.morsels.PropertyPath PropertyPath]], which would not be found
   * when searching for a implicit conversion forced by a call to a method not present on the converted object.
   */
 object implicits extends StandardFallbackImplicits {
 	implicit def booleanRestraint[T](term :Restrictive[T, Boolean]) :Restraint[T] =
 		new BooleanRestraint[T](term)
 
-	implicit def booleanRestraint[T](property :PropertyChain[T, Boolean]) :Restraint[T] =
+	implicit def booleanRestraint[T](property :PropertyPath[T, Boolean]) :Restraint[T] =
 		new BooleanRestraint[T](Restrictive.Property(property))
 
 	implicit def booleanRestraint[T :TypeTag](property :T => Boolean) :Restraint[T] =
@@ -41,7 +41,7 @@ object implicits extends StandardFallbackImplicits {
 
 
 
-	@inline implicit def propertyRestrictive[T, V](property :PropertyChain[T, V]) :Restrictive[T, V] =
+	@inline implicit def propertyRestrictive[T, V](property :PropertyPath[T, V]) :Restrictive[T, V] =
 		Restrictive.Property(property)
 
 	@inline implicit def functionRestrictive[T :TypeTag, V](property :T=>V) :Restrictive[T, V] =

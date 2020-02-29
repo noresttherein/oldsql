@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False
 import net.noresttherein.oldsql.model.Restraint.ExistentialRestraint.AbstractExistentialRestraint
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, MappedRestrainer, NestedRestrainer}
 import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Property, Self}
-import net.noresttherein.oldsql.morsels.PropertyChain
+import net.noresttherein.oldsql.morsels.PropertyPath
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.SaferCasts._
 
@@ -217,12 +217,12 @@ object Restraint {
 		def self(implicit tag :TypeTag[T]) :Restrainer[T, T] = Equality[T]()
 
 		/** Constrain the value of the given property of T */
-		def Property[P](property :PropertyChain[T, P]) :Restrainer[T, P] =
+		def Property[P](property :PropertyPath[T, P]) :Restrainer[T, P] =
 			Restraint.Property(property)
 
 		/** Constrain the value of the given property of T */
 		def Property[P](property :T=>P)(implicit tag :TypeTag[T]) :Restrainer[T, P] =
-			Restraint.Property(PropertyChain(property))
+			Restraint.Property(PropertyPath(property))
 	}
 
 
@@ -237,12 +237,12 @@ object Restraint {
 
 
 	/** A Restrainer constraining the value of the given property of T */
-	@inline def Property[T, P](property :PropertyChain[T, P]) :Restrainer[T, P] =
+	@inline def Property[T, P](property :PropertyPath[T, P]) :Restrainer[T, P] =
 		Equality(property)
 
 	/** A Restrainer constraining the value of the given property of T */
 	@inline def Property[T :TypeTag, P](property :T=>P) :Restrainer[T, P] =
-		Equality(PropertyChain(property))
+		Equality(PropertyPath(property))
 
 
 

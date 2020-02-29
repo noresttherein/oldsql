@@ -28,9 +28,9 @@ import SaferCasts._
   * This has two important bonuses: first, it has a printable name/toString listing the names
   * of called methods (so property.name will return "department.director.favoritePony" in our example),
   * but all instances representing the same property chain will be equal, regardless of the implementation
-  * of the function used to create it (so PropertyChain[Company](_.department.director.favoritePony),
-  * PropertyChain((_:Company).department andThen _.favoritePony),
-  * PropertyChain[Company]{ x => val brony = x.department.director; brony.favoritePony } will all be equal).
+  * of the function used to create it (so PropertyPath[Company](_.department.director.favoritePony),
+  * PropertyPath((_:Company).department andThen _.favoritePony),
+  * PropertyPath[Company]{ x => val brony = x.department.director; brony.favoritePony } will all be equal).
   * This makes it an easy handle for identifying and indexing properties of objects without resorting to traditional
   * use of Strings whenever the methods to be called are not statically known.
   *
@@ -38,9 +38,9 @@ import SaferCasts._
   * considered equal to the overriden property in the super class - this may or may not be desirable;
   * on one hand, we would expect that since both calls will return the same value for the same argument,
   * they should be equal; on another, static result type may be different and, depending on the actual
-  * implementation of the function used to create the instance, invoking a PropertyChain[S, Int] on a value
+  * implementation of the function used to create the instance, invoking a PropertyPath[S, Int] on a value
   * of T>:S may throw a ClassCastException (or other), even if underlying property is declared/first defined in class T,
-  * while an equal PropertyChain[T, Int] / PropertyChain[T, Any] may not. If this might be an issue, check
+  * while an equal PropertyPath[T, Int] / PropertyPath[T, Any] may not. If this might be an issue, check
   * definedFor property which returns reflected static type of the argument of the function used to create this instance.
   * Do not assume that it is safe to cast a property chain to a given argument type because it equals an instance
   * which static type would guarantee a safe call on this type. Instead, use them as keys - given a 'safe' instance computed beforehand
@@ -88,7 +88,7 @@ sealed abstract class PropertyChain[-X, +Y] private[PropertyChain] (
 	  */
 	def prefixOf[XX <: X, Z](property :PropertyChain[XX, Z]) :Boolean
 
-	/** If this instance equals prefix andThen suffix for some PropertyChain suffix, return this suffix */
+	/** If this instance equals prefix andThen suffix for some PropertyPath suffix, return this suffix */
 	def drop[XX <: X, Z](property :PropertyChain[XX, Z]) :Option[PropertyChain[Z, Y]]
 
 	/** Is this a single property accessor representing a single method call?*/
@@ -109,7 +109,7 @@ sealed abstract class PropertyChain[-X, +Y] private[PropertyChain] (
 
 /** Reflection mechanism, which, given a function X=>Y, investigates what methods are called on X the argument to return value Y.
   * It is intended to create identifiers for class properties (zero argument methods), including chained properties of the form
-  * <code>(_:Company).department.director.favouritePony</code>. When given a function of this form, a PropertyChain
+  * <code>(_:Company).department.director.favouritePony</code>. When given a function of this form, a PropertyPath
   * can be created which will list all methods called and provide a String representation of the call as it would
   * appear in the code (i.e. "department.director.favouritePony". PropertyChains of matching types can be concatenated
   * or 'subtracted' in a type safe manner to represent adding or removing property calls to and from the ends of the chain,
@@ -135,10 +135,10 @@ sealed abstract class PropertyChain[-X, +Y] private[PropertyChain] (
   *
   */
 object PropertyChain {
-	/** Shortcut for optional infix notation for PropertyChain: val property :X===>Y */
+	/** Shortcut for optional infix notation for PropertyPath: val property :X===>Y */
 	type ===>[-X, +Y] = PropertyChain[X, Y]
 
-	/** PropertyChain enriched by a copy function which clones the argument and substitutes the value of the property for
+	/** PropertyPath enriched by a copy function which clones the argument and substitutes the value of the property for
 	  * the one given. This doesn't represent a mutable property (var).
 	  */
 	sealed trait UpdatableProperty[X, Y] extends PropertyChain[X, Y] {
@@ -161,7 +161,7 @@ object PropertyChain {
 
 
 	/** Automatic reflection didn't work? Try using this stand-in instead. It will equal (symetrically) any
-	  * other PropertyChain, reflected or manually created, based solely on the name.
+	  * other PropertyPath, reflected or manually created, based solely on the name.
 	  * Be warned that drop function will always return None, as without reflection we have no means of
 	  * decomposing the associated function into the dropped prefix and suffix functions.
 	  */
@@ -209,7 +209,7 @@ object PropertyChain {
 	}
 
 
-	/** Base class for the reflected, proper instances of the PropertyChain */
+	/** Base class for the reflected, proper instances of the PropertyPath */
 	sealed abstract class ReflectedPropertyChain[-X, +Y] private[PropertyChain] (
 			argType :Type, private[PropertyChain] val method :PropertyCall, fun :X=>Y
 		) extends PropertyChain[X, Y](argType, fun) 
@@ -225,7 +225,7 @@ object PropertyChain {
 
 
 
-	/** PropertyChain consisting of a single property call */
+	/** PropertyPath consisting of a single property call */
 	sealed class SingleProperty[-S, +T] private[PropertyChain] (tpe :Type, method :PropertyCall, _property :S=>T)
 		extends ReflectedPropertyChain[S, T](tpe, method, _property)
 	{

@@ -227,11 +227,11 @@ object Reference {
 
 //		def map[Y](mapper :ReferenceMapper[E, Y]) :ReferenceFactory[K, Y, Y]
 //		/** Return a factory for references referencing a given property of X. */
-//		def property[X](property :PropertyChain[X, X]) :ReferenceFactory[K, X, X]
+//		def property[X](property :PropertyPath[X, X]) :ReferenceFactory[K, X, X]
 //
 //		/** Return a factory for references referencing a given property of X. */
 //		def property[X](property :X=>X)(implicit tag :TypeTag[X]) :ReferenceFactory[K, X, X] =
-//			this.property(PropertyChain(property))
+//			this.property(PropertyPath(property))
 
 		/** Return a factory creating references for type Y, where Y is another composite type for referenced entity E. */
 		def as[Y](implicit composition :Y ComposedOf E) :ReferenceFactory[K, E, Y]

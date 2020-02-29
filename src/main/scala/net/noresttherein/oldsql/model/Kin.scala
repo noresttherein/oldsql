@@ -4,9 +4,10 @@ import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo
 import net.noresttherein.oldsql.model.Kin.{Present, Unknown}
 import net.noresttherein.oldsql.model.MappedKin.{KinMapper, PropertyMapper}
 import net.noresttherein.oldsql.model.Restraint.{Restrainer, True, Where}
-import net.noresttherein.oldsql.morsels.PropertyChain
+import net.noresttherein.oldsql.morsels.PropertyPath
 
 import scala.collection.generic.CanBuildFrom
+
 
 
 /** A value of type T or an identification of such a value. A kin can be either `Present` -
@@ -34,7 +35,6 @@ import scala.collection.generic.CanBuildFrom
   * @tparam T type of the associated value.
   */
 abstract class Kin[+T] extends Serializable {
-//todo: flatten Kin[Option[T]] by making a distinction between not loaded and not existing.
 //	type Item
 //
 //	def composer :T ComposableFrom Item
@@ -68,7 +68,7 @@ abstract class Kin[+T] extends Serializable {
 	
 	def map[X](fun :KinMapper[T, X]) :Kin[X] = MappedKin(this, fun)
 
-	def map[X](property :PropertyChain[T, X]) :Kin[X] = map(PropertyMapper(property))
+	def map[X](property :PropertyPath[T, X]) :Kin[X] = map(PropertyMapper(property))
 	
 //	@inline final def map[O](f: T => O): Kin[O] =
 //		if (isEmpty) Unknown else Present(f(this.get))
@@ -169,7 +169,7 @@ object Kin {
 	}
 
 
-
+	/** Converts the option to a present or absent kin based on whether it is defined or empty. */
 	@inline final def some_?[T](value :Option[T]) : Kin[T] =
 		if (value.isEmpty) Unknown else Present(value.get)
 
@@ -339,11 +339,11 @@ object Kin {
 
 //		def map[Y](mapper :KinMapper[E, Y]) :KinFactory[K, Y, Y]
 //		/** Return a factory for Kins referencing a given property of X. */
-//		def property[X](property :PropertyChain[X, X]) :KinFactory[K, X, X]
+//		def property[X](property :PropertyPath[X, X]) :KinFactory[K, X, X]
 //
 //		/** Return a factory for Kins referencing a given property of X. */
 //		def property[X](property :X=>X)(implicit tag :TypeTag[X]) :KinFactory[K, X, X] =
-//			this.property(PropertyChain(property))
+//			this.property(PropertyPath(property))
 
 		/** Return a factory creating `Kin` for type `Y`, where `Y` is another composite type for the target entity `E`. */
 		def as[Y](implicit composition :Y ComposedOf E) :KinFactory[K, E, Y]
@@ -369,96 +369,6 @@ object Kin {
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[GenericKinFactory[_, _, _, _]]
 
 	}
-
-
-
-	trait HigherKindKinFactory[K, E, X, +R[T] <: Kin[T]] extends GenericKinFactory[K, E, X, R[X]] {
-
-		override def as[Y](implicit composition: ComposedOf[Y, E]): HigherKindKinFactory[K, E, Y, R]
-
-		override def in[Y[V]](implicit composition: ComposedOf[Y[E], E]): HigherKindKinFactory[K, E, Y[E], R] =
-			as[Y[E]]
-	}
-
-
-
-//	trait BaseKinFactory[K, E, X] extends KinFactory[K, E, X] {
-//		override def delayed(key: K, value: => X): Kin[X] { type Item = E } = Lazy(value)
-//
-//		override def present(value: X): Kin[X] { type Item = E } = Present(value)
-//	}
-
-
-
-	private class RestrainedKinFactory[K, E, X](private val Restrainer :Restrainer[E, K])(implicit val result :X ComposedOf E)
-		extends HigherKindKinFactory[K, E, X, Kin]
-	{
-
-		override def delayed(key :K, value: => X): Kin[X] = Lazy(value)
-
-		override def present(value: X): Kin[X] = Present(value)
-
-		override def absent(key: K): Kin[X] = AllWhere(Restrainer(key)).as[X](result)
-
-		override def keyFor(item: E): Option[K] = Restrainer.from(item)
-
-		override def keyOf[F >: Kin[X] <: Kin[X]](ref: F): Option[K] = ref match {
-			case AllWhere(Restrainer(key)) => Some(key)
-			case result.Present(values) =>
-				if (values.isEmpty) None
-				else Restrainer.from(values.head).filter(v => values.tail.forall(v == _))
-			case _ => None
-		}
-
-
-		override def as[Y](implicit composition: ComposedOf[Y, E]): RestrainedKinFactory[K, E, Y] =
-			new RestrainedKinFactory[K, E, Y](Restrainer)(composition)
-
-		override def in[Y[V]](implicit composition: Y[E] ComposedOf E) :RestrainedKinFactory[K, E, Y[E]] = as[Y[E]]
-
-
-		def equivalencyToken :Any = Restrainer
-
-
-		override def canEqual(that: Any): Boolean = that.isInstanceOf[RestrainedKinFactory[_,_,_]]
-
-		override def equals(that :Any) :Boolean = that match {
-			case c:RestrainedKinFactory[_, _, _] =>
-				(this eq c) || c.canEqual(this) && c.Restrainer == Restrainer && c.result == result
-			case _ => false
-		}
-
-		override def hashCode :Int = Restrainer.hashCode * 31 + result.hashCode
-
-		override def toString = s"$result($Restrainer)"
-	}
-
-
-
-	/** Implementation delegating all calls to another Kin factory - useful as a base class for extending functionality. */
-	case class KinFactoryProxy[K, E, X, +R<:Kin[X]](protected val target :GenericKinFactory[K, E, X, R])
-		extends GenericKinFactory[K, E, X, R]
-	{
-		override def result: ComposedOf[X, E] = target.result
-
-		override def absent(key: K): R = target.absent(key)
-
-		override def delayed(key: K, value: => X): R = target.delayed(key, value)
-
-		override def equivalencyToken: Any = target.equivalencyToken
-
-		override def keyFor(item: E): Option[K] = target.keyFor(item)
-
-		override def keyOf[F >: R <: Kin[X]](kin: F): Option[K] = target.keyOf(kin)
-
-		override def present(value: X): R = target.present(value)
-
-		override def as[Y](implicit composition: ComposedOf[Y, E]): KinFactory[K, E, Y] = target.as[Y]
-	}
-
-
-
-
 
 
 
@@ -488,7 +398,7 @@ object Kin {
 
 		override def map[X](fun :KinMapper[T, X]) :Kin[X] = Present(fun(get))
 
-		override def map[X](property :PropertyChain[T, X]) :Kin[X] = Present(property(get))
+		override def map[X](property :PropertyPath[T, X]) :Kin[X] = Present(property(get))
 
 		override def equals(that :Any) :Boolean = that match {
 			case x :AnyRef if x eq this => true
@@ -546,7 +456,7 @@ object Kin {
 		override def toOpt :Option[Nothing] = None
 
 		override def map[X](fun :KinMapper[Nothing, X]) :Kin[X] = this
-		override def map[X](property :PropertyChain[Nothing, X]) :Kin[X] = this
+		override def map[X](property :PropertyPath[Nothing, X]) :Kin[X] = this
 
 		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
 
@@ -586,7 +496,6 @@ object Kin {
 
 		def apply[T]() :OptKin[T] = new OptKin(Unknown)
 
-//		def apply[T](restraint :Restraint[T]) :OptKin[T] =
 	}
 
 
@@ -608,27 +517,6 @@ object Kin {
 
 
 
-	private case class RestrainedKin[T](restraint :Restraint[T], toOpt :Option[T]=None) extends Kin[T] {
-		override def isEmpty :Boolean = toOpt.isEmpty
-
-		override def get :T = toOpt match {
-			case None => throw new NoSuchElementException(this + ".get")
-			case Some(item) => item
-		}
-
-		private def name :String = restraint match {
-			case True => "All[1]"
-			case Where(True, as) => "All[" + as.arity + "]"
-			case Where(_, _) => restraint.toString
-			case _ if toOpt.isEmpty => "Absent{" + restraint + "}"
-			case _ => "Present{" + restraint + "}"
-		}
-
-		override def toString :String = toOpt match {
-			case None => name
-			case Some(x) => s"$name($x)"
-		}
-	}
 
 
 
@@ -654,11 +542,13 @@ object Kin {
 
 		/** Create a `Kin` referencing all available values of `E`, returned as `T`. */
 		def apply[T, E]()(implicit composite :T ComposedOf E) :Kin[T] =
-			RestrainedKin[T](Where[T, E](True))
+			RestrainedKin[T, E](True)
+
+
 
 		/** Was this Kin explicitly created as 'All' by this object? */
 		def unapply[T](kin :Kin[T]) :Boolean = kin match {
-			case RestrainedKin(True | Where(True, _), _) => true
+			case RestrainedKin(True, _) => true
 			case _ => false
 		}
 
@@ -669,7 +559,7 @@ object Kin {
 		}
 
 		private val composer = new KinComposer[Any] {
-			override def one: Kin[Any] = Single[Any](Restraint.True)
+			override def one: Kin[Any] = All[Any, Any]()
 			override def as[C](implicit expand: C ComposedOf Any): Kin[C] = All[C, Any]()
 		}
 	}
@@ -691,7 +581,6 @@ object Kin {
 		def apply[K, T](restrainer :Restrainer[T, K]) :KinFactory[K, T, T] =
 			new RestrainedKinFactory[K, T, T](restrainer)
 
-
 		/** Create a composer allowing to create `Kin` containing values of `T` - for example `Kin[T]`,
 		  * `Kin[Option[T]]`, `Kin[Seq[T]]` and so on.
 		  * @param restraint specification of how to look for the value (for example, a query filter with parameters)
@@ -699,6 +588,7 @@ object Kin {
 		  * @return a factory of Kins with values being various collections of T
 		  */
 		def apply[T](restraint :Restraint[T]) :KinComposer[T] = new RestrainedComposer(restraint)
+
 
 
 		/** Check if the given `Kin` is a restrained `Kin` created by this instance and return the `Restraint` held by it.
@@ -715,16 +605,17 @@ object Kin {
 		  */
 		def unapply[C, T](kin :Kin[C])(implicit composition :C ComposedOf T) :Option[Restraint[_<:T]] =
 			kin match {
-				case RestrainedKin(Where(restraint, as), _) if as.composer == composition.composer => Some(restraint)
+				case r :RestrainedKin[C, e] if r.as.decomposer == composition.decomposer =>
+					Some(r.where)
 				case _ => None
 			}
 
 
 		private class RestrainedComposer[T](restraint :Restraint[T]) extends KinComposer[T] {
-			override def one: Kin[T] = new RestrainedKin[T](restraint)
+			override def one: Kin[T] = new RestrainedKin[T, T](restraint)
 
 			override def as[C](implicit composition: C ComposedOf T): Kin[C] =
-				new RestrainedKin[C](Where(restraint)) //todo:
+				new RestrainedKin[C, T](restraint)
 		}
 
 	}
@@ -737,16 +628,107 @@ object Kin {
 		def apply[K, T](restrainer :Restrainer[T, K]) :KinFactory[K, T, T] =
 			new RestrainedKinFactory[K, T, T](restrainer)
 
-		def apply[T](Restraint :Restraint[T]) :Kin[T] = AllWhere(Restraint)
+		def apply[T](restraint :Restraint[T]) :Kin[T] = AllWhere(restraint)
 
 		def apply[T](value :T) :Kin[T] = Present[T](value)
 
 		def unapply[T](Kin :Kin[T]) :Option[Restraint[_<:T]] = Kin match {
-			case AllWhere(restraint) => Some(restraint)
+			case AllWhere(restraint) => Some(restraint) //this will check if Kin uses ComposedOf.itself
 			case _ => None
 		}
 
 	}
+
+
+
+
+
+
+	private case class RestrainedKin[T, E](where :Restraint[E], toOpt :Option[T]=None)
+	                                      (implicit val as :T ComposedOf E)
+		extends Kin[T]
+	{
+		override def isEmpty :Boolean = toOpt.isEmpty
+
+		override def get :T = toOpt match {
+			case None => throw new NoSuchElementException(this + ".get")
+			case Some(item) => item
+		}
+
+
+		private def name :String = where match {
+			case True => "All[" + as.arity + "]"
+//			case Where(True, as) => "All[" + as.arity + "]"
+//			case Where(_, _) => restraint.toString
+			case _ if toOpt.isEmpty => "Absent{" + where + "}"
+			case _ => "Present{" + where + "}"
+		}
+
+		override def toString :String = toOpt match {
+			case None => name
+			case Some(x) => s"$name($x)"
+		}
+	}
+
+
+	trait HigherKindKinFactory[K, E, X, +R[T] <: Kin[T]] extends GenericKinFactory[K, E, X, R[X]] {
+
+		override def as[Y](implicit composition: ComposedOf[Y, E]): HigherKindKinFactory[K, E, Y, R]
+
+		override def in[Y[V]](implicit composition: ComposedOf[Y[E], E]): HigherKindKinFactory[K, E, Y[E], R] =
+			as[Y[E]]
+	}
+
+//	trait BaseKinFactory[K, E, X] extends KinFactory[K, E, X] {
+//		override def delayed(key: K, value: => X): Kin[X] { type Item = E } = Lazy(value)
+//
+//		override def present(value: X): Kin[X] { type Item = E } = Present(value)
+//	}
+
+	private class RestrainedKinFactory[K, E, X](private val Restrainer :Restrainer[E, K])(implicit val result :X ComposedOf E)
+		extends HigherKindKinFactory[K, E, X, Kin]
+	{
+
+		override def delayed(key :K, value: => X): Kin[X] = Lazy(value)
+
+		override def present(value: X): Kin[X] = Present(value)
+
+		override def absent(key: K): Kin[X] = AllWhere(Restrainer(key)).as[X](result)
+
+		override def keyFor(item: E): Option[K] = Restrainer.from(item)
+
+		override def keyOf[F >: Kin[X] <: Kin[X]](ref: F): Option[K] = ref match {
+			case AllWhere(Restrainer(key)) => Some(key)
+			case result.Present(values) =>
+				if (values.isEmpty) None
+				else Restrainer.from(values.head).filter(v => values.tail.forall(v == _))
+			case _ => None
+		}
+
+
+		override def as[Y](implicit composition: ComposedOf[Y, E]): RestrainedKinFactory[K, E, Y] =
+			new RestrainedKinFactory[K, E, Y](Restrainer)(composition)
+
+		override def in[Y[V]](implicit composition: Y[E] ComposedOf E) :RestrainedKinFactory[K, E, Y[E]] = as[Y[E]]
+
+
+		def equivalencyToken :Any = Restrainer
+
+
+		override def canEqual(that: Any): Boolean = that.isInstanceOf[RestrainedKinFactory[_,_,_]]
+
+		override def equals(that :Any) :Boolean = that match {
+			case c:RestrainedKinFactory[_, _, _] =>
+				(this eq c) || c.canEqual(this) && c.Restrainer == Restrainer && c.result == result
+			case _ => false
+		}
+
+		override def hashCode :Int = Restrainer.hashCode * 31 + result.hashCode
+
+		override def toString = s"$result($Restrainer)"
+	}
+
+
 
 
 
@@ -842,6 +824,32 @@ object Kin {
 		}
 
 	}
+
+
+
+
+	/** Implementation delegating all calls to another Kin factory - useful as a base class for extending functionality. */
+	case class KinFactoryProxy[K, E, X, +R<:Kin[X]](protected val target :GenericKinFactory[K, E, X, R])
+		extends GenericKinFactory[K, E, X, R]
+	{
+		override def result: ComposedOf[X, E] = target.result
+
+		override def absent(key: K): R = target.absent(key)
+
+		override def delayed(key: K, value: => X): R = target.delayed(key, value)
+
+		override def equivalencyToken: Any = target.equivalencyToken
+
+		override def keyFor(item: E): Option[K] = target.keyFor(item)
+
+		override def keyOf[F >: R <: Kin[X]](kin: F): Option[K] = target.keyOf(kin)
+
+		override def present(value: X): R = target.present(value)
+
+		override def as[Y](implicit composition: ComposedOf[Y, E]): KinFactory[K, E, Y] = target.as[Y]
+	}
+
+
 	
 }
 

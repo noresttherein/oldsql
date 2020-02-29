@@ -16,7 +16,7 @@ trait PropertiesMapping[E, PK] extends Mapping[E] {
 	table :EntityMapping[E, PK] =>
 
 	protected implicit val typeTag :TypeTag[E]
-//	type AnyProperty[X] = PropertyChain[X, Any]
+//	type AnyProperty[X] = PropertyPath[X, Any]
 
 	class PropertyComponent[T] private[PropertiesMapping] (val component :Component[T], val property :PropertyChain[E, T]) {
 		def owner :table.type = table

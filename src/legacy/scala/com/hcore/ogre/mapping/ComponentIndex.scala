@@ -90,7 +90,7 @@ object ComponentIndex {
 					path.surepick.flatMap(PropertyChain.maybe(_)).map(_ -> path)
 				else
 					path.surepick.map(PropertyChain(_) -> path)
-			}.toMap[PropertyChain[X, Any], TypedComponentPath[M, M#Component[Any], Any]] //.asInstanceOf[Iterable[(PropertyChain[X, Any], TypedPath[M, M#Component[Any], Any])]].toMap //[PropertyChain[X, _], TypedPath[M, _<:M#Component[_], _]]
+			}.toMap[PropertyChain[X, Any], TypedComponentPath[M, M#Component[Any], Any]] //.asInstanceOf[Iterable[(PropertyPath[X, Any], TypedPath[M, M#Component[Any], Any])]].toMap //[PropertyPath[X, _], TypedPath[M, _<:M#Component[_], _]]
 
 		private val reverseIndex = index.map { case (property, path) => (path, property) }.toMap[MappingPath[_, _], PropertyChain[X, Any]]
 

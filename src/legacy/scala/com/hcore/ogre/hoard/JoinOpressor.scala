@@ -6,8 +6,8 @@ package com.hcore.ogre.hoard
 import com.hcore.ogre.mapping.{AnyMapping, Mapping}
 import com.hcore.ogre.model.Restriction
 import com.hcore.ogre.model.Restriction.{Restrictive, Restrainer}
-import com.hcore.ogre.morsels.necromancy.PropertyChain
-import com.hcore.ogre.morsels.necromancy.PropertyChain.===>
+import com.hcore.ogre.morsels.necromancy.PropertyPath
+import com.hcore.ogre.morsels.necromancy.PropertyPath.===>
 import com.hcore.ogre.sql.RowSource.TableFormula
 import com.hcore.ogre.sql.SQLFormula.SelectFormula.{SelectAsRow, SelectAsRows}
 import com.hcore.ogre.sql.SQLFormula._
@@ -19,7 +19,7 @@ import scala.collection.Set
 
 
 class JoinOpressor[S<:RowSource Join FK, FK<:Mapping[K], E, K](
-		join :S, references :TableFormula[S, _]=>PropertyChain[E, _])
+		join :S, references :TableFormula[S, _]=>PropertyPath[E, _])
 	extends Restrainer[K, E]
 {
 	override def apply(key: K): Restriction[E] =
@@ -131,7 +131,7 @@ class JoinOpressor[S<:RowSource Join FK, FK<:Mapping[K], E, K](
 		override def rows[H](e: SelectAsRows[S, H]) = error(e, e)
 	}
 
-	private def propertyResult[X](property :PropertyChain[E, X]) = RestrictiveExpression(Restrictive.Property(property))
+	private def propertyResult[X](property :PropertyPath[E, X]) = RestrictiveExpression(Restrictive.Property(property))
 	private def literalResult[X](value :X) = RestrictiveExpression(Restrictive.Literal(value))
 	private def result(restriction :Restriction[E]) = RestrictionExpression(restriction)
 	
@@ -146,7 +146,7 @@ class JoinOpressor[S<:RowSource Join FK, FK<:Mapping[K], E, K](
 
 
 object JoinOpressor {
-	def Restriction[S<:RowSource Join FK, FK<:Mapping[K], E, K](join :S, references :TableFormula[S, _]=>PropertyChain[E, _]) :Restriction[E] =
+	def Restriction[S<:RowSource Join FK, FK<:Mapping[K], E, K](join :S, references :TableFormula[S, _]=>PropertyPath[E, _]) :Restriction[E] =
 		???
 	
 

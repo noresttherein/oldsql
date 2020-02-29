@@ -106,7 +106,7 @@ object Restriction {
 
 		implicit def literalSeq[T, V](literals :Iterable[V]) :Iterable[Restrictive[T, V]] = literals.map(Literal[T, V](_))
 //		@inline
-//		implicit def apply[T, V](property :PropertyChain[T, V]) :Constrainee[T, V] = Property(property)
+//		implicit def apply[T, V](property :PropertyPath[T, V]) :Constrainee[T, V] = Property(property)
 //		@inline
 //		implicit def apply[T :TypeTag, V](property :T=>V) :Constrainee[T, V] = Property(property)
 //		@inline
@@ -331,7 +331,7 @@ object Restriction {
 
 
 //	private class TypeRestriction[-T :TypeTag] extends Restriction[T] {
-//		override def expand[X](property: PropertyChain[X, T]): Restriction[X] = new TypeRestriction
+//		override def expand[X](property: PropertyPath[X, T]): Restriction[X] = new TypeRestriction
 //	}
 
 
@@ -607,7 +607,7 @@ object Restriction {
 			property === property(value)
 
 		def apply[E :TypeTag, P](value :E, property :E=>P) :Restriction[E] =
-//			apply(value, PropertyChain(property))
+//			apply(value, PropertyPath(property))
 			property === property(value)
 
 

@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.MappedKin.KinMapper
-import net.noresttherein.oldsql.morsels.PropertyChain
+import net.noresttherein.oldsql.morsels.PropertyPath
 import net.noresttherein.oldsql.slang.SaferCasts._
 
 
@@ -37,7 +37,7 @@ object MappedKin {
 
 
 
-	case class PropertyMapper[-X, +Y](property :PropertyChain[X, Y]) extends KinMapper[X, Y] {
+	case class PropertyMapper[-X, +Y](property :PropertyPath[X, Y]) extends KinMapper[X, Y] {
 		def apply(x :X) :Y = property(x)
 		override def toString :String = "_."+property
 	}

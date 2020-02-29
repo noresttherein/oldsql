@@ -17,7 +17,7 @@ import extensions._
 import SaferCasts._
 
 
-/** Maps a function representing a property of a mapped entity class (or a PropertyChain for such a function) into a mapping path representing that property.
+/** Maps a function representing a property of a mapped entity class (or a PropertyPath for such a function) into a mapping path representing that property.
   * The path might represent both a component/column of a mapped table, which can be used in a filter or explicitly selected in case
   * of columns which are not included in the select header by default, or another table/component, in which case it will contain link elements
   * representing the required joins/additional selects.
@@ -36,8 +36,8 @@ trait Pathfinder[+X, -Y] {
 	}
 
 	/** Try to find a path represented by this property. Be warned that implementation might not support this method if it
-	  * requires a PropertyChain and one cannot be created due to lack of type information for the argument. For this reason, prefer
-	  * get(PropertyChain[X,Y]) if possible, or use it as a fallback.
+	  * requires a PropertyPath and one cannot be created due to lack of type information for the argument. For this reason, prefer
+	  * get(PropertyPath[X,Y]) if possible, or use it as a fallback.
 	  * Will generally return None on failure, but situations recognized as programming errors might result in throwing an exception.
 	  * @param fun a function returning a value of a property we want to find the mapping for, for example _.favouriteHat or _.favouritePub.address.street
 	  */

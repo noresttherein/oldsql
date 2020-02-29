@@ -301,7 +301,7 @@ object ComposedOf {
 			override def toString = "Custom"
 		}
 
-//		case class PropertyOf[P, E](private val property :PropertyChain[E, P]) extends ComposableFrom[P, E] {
+//		case class PropertyOf[P, E](private val property :PropertyPath[E, P]) extends ComposableFrom[P, E] {
 //			def arity = Arity._1
 //
 //			def attempt(items :Iterable[E]) = property(items.head).providing(items.size==1)

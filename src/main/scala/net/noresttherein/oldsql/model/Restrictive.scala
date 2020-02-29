@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.model.Restraint.Comparison.{GT, GTE, LT, LTE, Or
 import net.noresttherein.oldsql.model.Restraint.{Comparison, Equality, Exists, False, ForAll, IsNull, Membership, Restrainer, StringLike, True}
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, Collection, ComposedRestrictive, Literal, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
 import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{ArithmeticSupport, DIV, MINUS, MULT, Operator, PLUS, REM}
-import net.noresttherein.oldsql.morsels.PropertyChain
+import net.noresttherein.oldsql.morsels.PropertyPath
 import net.noresttherein.oldsql.slang._
 
 import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}
@@ -272,15 +272,15 @@ object Restrictive {
 	object Property {
 
 		/** A constrainable expression representing a property with value type V of type T specified by the given reflected property. */
-		@inline def apply[T, V](property :PropertyChain[T, V]) :Restrictive[T, V] = new PropertyRestrictive[T, V](property)
+		@inline def apply[T, V](property :PropertyPath[T, V]) :Restrictive[T, V] = new PropertyRestrictive[T, V](property)
 
 		/** A constrainable expression representing a property with value type V of type T specified by the given function.
 		  * @param property a function returning some property of T, for example `_.address.street`.
 		  */
-		@inline def apply[T :TypeTag, V](property :T=>V) :Restrictive[T, V] = apply(PropertyChain(property))
+		@inline def apply[T :TypeTag, V](property :T=>V) :Restrictive[T, V] = apply(PropertyPath(property))
 
 		/** Check if the given expression represents a property of T (is an instance created by this factory). */
-		def unapply[T, V](restrictive :Restrictive[T, V]) :Option[PropertyChain[T, V]] = restrictive match {
+		def unapply[T, V](restrictive :Restrictive[T, V]) :Option[PropertyPath[T, V]] = restrictive match {
 			case  property :PropertyRestrictive[T, V] => Some(property.property)
 			case _ => None
 		}
@@ -570,7 +570,7 @@ object Restrictive {
 
 
 
-	private case class PropertyRestrictive[-T, V](property :PropertyChain[T, V]) extends Restrictive[T, V] {
+	private case class PropertyRestrictive[-T, V](property :PropertyPath[T, V]) extends Restrictive[T, V] {
 
 		override def apply(whole :T) :V = property(whole)
 

@@ -416,7 +416,7 @@ object ForeignKeyReferenceMapping {
 	def KeyReferenceFactory[K, E :TypeTag, M<:Mapping[E]](targetKey :ComponentPath[M, _<:Mapping[K]]) :MappingReferenceFactory[K, E, E, M] =
 		targetKey.surepick.flatMap(PropertyChain.maybe[E, K](_)) match {
 			case Some(property) => MappingReferenceFactory[K, E, E, M](targetKey.start, property ==?)
-			case None => throw new IllegalArgumentException(s"Couldn't create a PropertyChain for target key $targetKey.")
+			case None => throw new IllegalArgumentException(s"Couldn't create a PropertyPath for target key $targetKey.")
 		}
 
 
