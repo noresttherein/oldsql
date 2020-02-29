@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo
 import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False, NestedRestraint, Not, True}
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, MappedRestrainer, NestedRestrainer}
 import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Property, Self}
+import net.noresttherein.oldsql.model.types.OrderingSupport
 import net.noresttherein.oldsql.morsels.PropertyPath
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.SaferCasts._
@@ -459,7 +460,7 @@ object Restraint {
 
 
 
-	private class Comparison[-T, V](val left :Restrictive[T, V], val relation :Relation, val right :Restrictive[T, V])
+	private[model] class Comparison[-T, V](val left :Restrictive[T, V], val relation :Relation, val right :Restrictive[T, V])
 	                               (implicit val ordering :OrderingSupport[V])
 		extends Restraint[T]
 	{
@@ -560,32 +561,6 @@ object Restraint {
 		final val GTE = new Relation(">=", -1, true)
 		/** The `==` relation. */
 		final val EQ = new Relation("=", 0)
-
-
-		/** Type class for types which magnitude can be compared in SQL, not only in scala.
-		  * Implicit values are provided for all standard numeric types and `String`.
-		  */ //todo: this is just a stub
-		trait OrderingSupport[V] extends Ordering[V] with Serializable
-
-		object OrderingSupport {
-			@inline def apply[T :OrderingSupport] :OrderingSupport[T] = implicitly[OrderingSupport[T]]
-
-			def unapply[T](restraint :Restraint[T]) :Option[OrderingSupport[_]] = restraint match {
-				case cmp :Comparison[T, _] => Some(cmp.ordering)
-				case _ => None
-			}
-
-			//todo: stub
-			implicit def numericOrdering[T :Numeric] :OrderingSupport[T] = {
-				(x :T, y :T) => implicitly[Numeric[T]].compare(x, y)
-			}
-
-			//todo: case sensitive/insensitive
-			implicit object OfString extends OrderingSupport[String] {
-				override def compare(x :String, y :String) :Int = x compare y
-			}
-		}
-
 
 
 		private class ComparisonRestrainer[-T, K](val Term :Restrictive[T, K], Cmp :Relation)

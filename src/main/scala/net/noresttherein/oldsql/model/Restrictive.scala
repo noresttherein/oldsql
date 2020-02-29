@@ -3,10 +3,11 @@ package net.noresttherein.oldsql.model
 import java.{lang => j}
 
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, DecomposableTo, ExtractAs}
-import net.noresttherein.oldsql.model.Restraint.Comparison.{GT, GTE, LT, LTE, OrderingSupport}
+import net.noresttherein.oldsql.model.Restraint.Comparison.{GT, GTE, LT, LTE}
 import net.noresttherein.oldsql.model.Restraint.{Comparison, Equality, Exists, False, ForAll, IsNull, Membership, Restrainer, StringLike, True}
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, Collection, ComposedRestrictive, Literal, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
-import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{ArithmeticSupport, DIV, MINUS, MULT, Operator, PLUS, REM}
+import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{DIV, MINUS, MULT, Operator, PLUS, REM}
+import net.noresttherein.oldsql.model.types.{ArithmeticSupport, OrderingSupport}
 import net.noresttherein.oldsql.morsels.PropertyPath
 import net.noresttherein.oldsql.slang._
 
@@ -422,49 +423,6 @@ object Restrictive {
 
 
 
-		//todo: temporary stub
-		trait ArithmeticSupport[T] extends Serializable {
-			def plus(x :T, y :T) :T
-			def minus(x :T, y :T) :T
-			def times(x :T, y :T) :T
-			def div(x :T, y :T) :T
-			def rem(x :T, y :T) :T
-
-			def negate(x :T) :T
-		}
-
-		object ArithmeticSupport {
-			def apply[N :ArithmeticSupport] :ArithmeticSupport[N] = implicitly[ArithmeticSupport[N]]
-
-			def unapply[T, N](restrictive :Restrictive[T, N]) :Option[ArithmeticSupport[N]] = restrictive match {
-				case op :ArithmeticRestrictive[T, N] => Some(op.arithmetic)
-				case neg :NegatedRestrictive[T, N] => Some(neg.arithmetic)
-				case _ => None
-			}
-
-
-			implicit def integralArithmetic[T :Integral] :ArithmeticSupport[T] = new ArithmeticSupport[T] {
-				private[this] val numeric = implicitly[Integral[T]]
-				override def div(x :T, y :T) = numeric.quot(x, y)
-				override def rem(x :T, y :T) = numeric.rem(x, y)
-				override def plus(x :T, y :T) = numeric.plus(x, y)
-				override def minus(x :T, y :T) = numeric.minus(x, y)
-				override def times(x :T, y :T) = numeric.times(x, y)
-				override def negate(x :T) = numeric.negate(x)
-			}
-
-			implicit def fractionalArithmetic[T :Fractional] :ArithmeticSupport[T] = new ArithmeticSupport[T] {
-				private[this] val numeric = implicitly[Fractional[T]]
-				override def div(x :T, y :T) = numeric.div(x, y)
-				override def rem(x :T, y :T) = //todo: there is so much wrong about it, but its only a stub
-					numeric.minus(numeric.div(x, y), numeric.fromInt((numeric.toLong(x) / numeric.toLong(y)).toInt))
-				override def plus(x :T, y :T) = numeric.plus(x, y)
-				override def minus(x :T, y :T) = numeric.minus(x, y)
-				override def times(x :T, y :T) = numeric.times(x, y)
-				override def negate(x :T) = numeric.negate(x)
-			}
-
-		}
 
 	}
 
@@ -640,7 +598,7 @@ object Restrictive {
 
 
 
-	private case class ArithmeticRestrictive[-T, N](left :Restrictive[T, N], op :Operator, right :Restrictive[T, N])
+	private[model] case class ArithmeticRestrictive[-T, N](left :Restrictive[T, N], op :Operator, right :Restrictive[T, N])
 	                                               (implicit val arithmetic :ArithmeticSupport[N])
 		extends Restrictive[T, N]
 	{
@@ -656,7 +614,7 @@ object Restrictive {
 
 
 
-	private case class NegatedRestrictive[-T, N](term :Restrictive[T, N])(implicit val arithmetic :ArithmeticSupport[N])
+	private[model] case class NegatedRestrictive[-T, N](term :Restrictive[T, N])(implicit val arithmetic :ArithmeticSupport[N])
 		extends Restrictive[T, N]
 	{
 		override def apply(whole :T) :N = arithmetic.negate(term(whole))

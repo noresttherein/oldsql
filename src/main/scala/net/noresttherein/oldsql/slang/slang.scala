@@ -8,6 +8,46 @@ package object slang {
 	}
 
 
+
+	/** An implicit conversion extending Int with a method 'repeat' which executes a block the given number of times. */
+	private[oldsql] implicit class repeat(val count :Int) extends AnyVal {
+		/** Execute the given block the number of times specified by 'this' argument. */
+		def times(block : =>Unit): Unit =
+			for (i<- 0 until count) block
+
+	}
+
+
+
+	private[oldsql] implicit class UnqualifiedClassName[T](val value :T) extends AnyVal {
+		def unqualifiedClassName :String = {
+			val qualified = value.getClass.getName
+			val i = qualified.lastIndexOf('.')
+			qualified.substring(i + 1, if (qualified.last != '$') qualified.length else qualified.length-1)
+		}
+
+		def innerClassName :String = {
+			val qualified = value.getClass.getName
+			val len = qualified.length
+			val unqualified = qualified.lastIndexOf('.') + 1
+			val anon = qualified.indexOf("$anon", unqualified)
+			val end =
+				if (anon >= 0) anon
+				else {
+					var i = len - 1
+					while (i > unqualified && qualified(i) == '$')
+						i -= 1
+					i
+				}
+			val innermost = qualified.lastIndexOf('$', end - 1)
+			if (innermost < 0) qualified.substring(unqualified, end)
+			else qualified.substring(innermost + 1, end)
+		}
+	}
+
+
+
+
 	/** Implicit conversion to a lazy value of type T which can be lifted to an Option[T] by one of its methods. */
 	private[oldsql] implicit class ProvidingAndUnless[T](expr: =>T) {
 
@@ -59,5 +99,20 @@ package object slang {
 
 		def otherwiseTry[T](expr : =>Option[T]) :Option[T] = if (!condition) expr else None
 	}
-	
+
+
+
+	private[oldsql] implicit class OptionGuardExtension[T](opt : =>Option[T]) {
+		def orNoneIf(expr :Boolean) :Option[T] =
+			if (expr) None else opt
+
+		def orNoneUnless(expr :Boolean) :Option[T] =
+			if (expr) opt else None
+
+		def mapOrElse[X](expr : T=>X, default : =>X) :X = opt match {
+			case Some(t) => expr(t)
+			case none => default
+		}
+	}
+
 }
