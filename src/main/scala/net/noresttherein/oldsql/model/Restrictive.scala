@@ -160,11 +160,11 @@ trait Restrictive[-T, V] extends (T=>V) with TranslableTerm[T, V] with implicits
 	  * or an embedded select, contains an element satisfying the given predicate.
 	  */
 	def exists[E](predicate :Restraint[E])(implicit items :V CollectionOf E) :Restraint[T] =
-		Exists(predicate).derive(this)
+		Exists(this, predicate)
 
 	/** Checks if the given predicate holds for all elements of this collection. */
 	def forall[E](predicate :Restraint[E])(implicit items :V CollectionOf E) :Restraint[T] =
-		ForAll(predicate).derive(this)
+		ForAll(this, predicate)
 
 	/** An expression returning the size of this collection: a 'select count(*)' if this term is an embedded select
 	  * or a precomputed value if this term is an inlined collection.

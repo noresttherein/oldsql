@@ -520,6 +520,8 @@ object ComposedOf {
 
 		def unapply(composite :C) = Some(apply(composite))
 
+		def first(composite :C) :E
+
 		def composeWith[W<:C, T>:E](composition :ComposableFrom[W, T]) :W ComposedOf T =
 			new ComposedOf.Hybrid(composition, this)
 
@@ -645,6 +647,8 @@ object ComposedOf {
 		case class Custom[C, E](decompose :C=>Iterable[E], arity :Arity = Arity._0_n) extends DecomposableTo[C, E] {
 			override def apply(composite: C): Iterable[E] = decompose(composite)
 
+			override def first(composite :C) :E = decompose(composite).head
+
 			override def toString :String = arity.toString
 		}
 
@@ -654,18 +658,26 @@ object ComposedOf {
 			def arity = Arity._1
 
 			override def apply(composite: Any): Iterable[Any] = Seq(composite)
+			override def first(composite :Any) :Any = composite
+
 			override def toString = "One" //">:"
 		}
 
 		private case object Opt extends ExtractAs[Option[Any], Any] {
 			def arity = Arity._0_1
+
 			override def apply(composite :Option[Any]) :Iterable[Any] = composite.toSeq
+			override def first(composite :Option[Any]) :Any = composite.get
+
 			override def toString = "Option"
 		}
 
 		private case object Iter extends ExtractAs[Iterable[Any], Any] {
 			def arity = Arity._0_n
+
 			override def apply(composite: Iterable[Any]): Iterable[Any] = composite
+			override def first(composite :Iterable[Any]) :Any = composite.head
+
 			override def toString = "Iterable"
 		}
 

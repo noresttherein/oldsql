@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.model
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Present, Unknown}
 import net.noresttherein.oldsql.model.MappedKin.{KinMapper, PropertyMapper}
-import net.noresttherein.oldsql.model.Restraint.{Restrainer, True, Where}
+import net.noresttherein.oldsql.model.Restraint.{Restrainer, True}
 import net.noresttherein.oldsql.morsels.PropertyPath
 
 import scala.collection.generic.CanBuildFrom
@@ -25,7 +25,7 @@ import scala.collection.generic.CanBuildFrom
   * They can also serve as actual search filters - queries are after all only a filter specification on a table.
   *
   * As a kin is immutable (at least in the interface - implementations may use mutable state as long as the client
-  * will never see different results for the same call on the Kin), it is covariant in regards to the value type -
+  * will never see different results for the same call on the `Kin`), it is covariant in regards to the value type -
   * a `Kin[A]` is intuitively a `Kin[B]` for `B>:A`. Their dual nature of value-or-specification-of-a-value has
   * however a hidden contravariant element to it in the latter form: in the most trivial example, a `Kin` specifying
   * 'all instances of the given type' can be interpreted differently when viewed as a `Kin` to a super type - larger
@@ -33,6 +33,11 @@ import scala.collection.generic.CanBuildFrom
   * externally in an explicit way, but it is something to be aware of.
   *
   * @tparam T type of the associated value.
+  * @see [[net.noresttherein.oldsql.model.Kin.Present Present]]
+  * @see [[net.noresttherein.oldsql.model.Kin.Absent Absent]]
+  * @see [[net.noresttherein.oldsql.model.Kin.Unknown Unknown]]
+  * @see [[net.noresttherein.oldsql.model.Kin.OptKin OptKin]]
+  * @see [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]]
   */
 abstract class Kin[+T] extends Serializable {
 //	type Item
@@ -64,6 +69,17 @@ abstract class Kin[+T] extends Serializable {
 	
 	@inline final def orNull[U >: T](implicit ev: Null <:< U): U = this getOrElse ev(null)
 
+
+	/** Returns the first element of the contents, in the sense and order appropriate to its type.
+	  *   - For collections, this is the `this.get.head` element;
+	  *   - For `Option`, it is equivalent to `this.get.get`;
+	  *   - For non-composite types, it is simply `this.get`;
+	  *  The primary purpose of this method is use as part of lambda functions used as descriptors
+	  *  specifying which relationships should be fetched together with a queried entity, providing a clearer
+	  *  view and a uniform access to the related entity's properties.
+	  *  @throws NoSuchElementException if this kin is empty
+	  */
+	def fetch[E](implicit composite :T DecomposableTo E) :E = composite.first(get)
 
 	
 	def map[X](fun :KinMapper[T, X]) :Kin[X] = MappedKin(this, fun)
@@ -595,9 +611,10 @@ object Kin {
 		  * Even if this `Kin` was in fact created by this object, a check is performed if the composition used to
 		  * create it is the same as the one passed implicitly, to assert that the element type parameter for the `Restraint`
 		  * stored in this `Kin` is actually compatible with the one specified implicitly. If they are not, this method
-		  * will not match. The check is performed using the compatibility comparison method for ComposedOf, so it is not 100% bullet proof.
-		  * Note that the domain for the returned `Restrained` is a subtype of `T` rather than `T`, as due to `Kin`
-		  * being covariant, it is possible that `C` is a supertype of the type provided when the instance was created.
+		  * will not match. The check is performed using the compatibility comparison method for `ComposedOf`,
+		  * so it is not 100% bullet proof. Note that the domain for the returned `Restrained` is a subtype of `T`
+		  * rather than `T`, as due to `Kin` being covariant, it is possible that `C` is a supertype of the type
+		  * provided when the instance was created.
 		  *
 		  * @param kin `Kin` to match.
 		  * @param composition specification on what type `T` type `C` should be decomposed to and how.
