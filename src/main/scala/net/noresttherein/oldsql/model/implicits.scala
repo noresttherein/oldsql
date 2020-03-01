@@ -48,6 +48,9 @@ object implicits extends StandardFallbackImplicits {
 		Restrictive.Property(property)
 
 
+	@inline implicit def literalTermCollection[V](collection :Iterable[V]) :Iterable[TranslableTerm[Any, V]] =
+		collection.map(Literal.apply)
+
 	@inline implicit def collectionRestrictive[T, V](collection :Iterable[Restrictive[T, V]]) :Restrictive[T, Iterable[V]] =
 		Collection(collection)
 

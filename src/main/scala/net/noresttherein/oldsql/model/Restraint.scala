@@ -2,10 +2,10 @@ package net.noresttherein.oldsql.model
 
 import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}
 import scala.collection.{breakOut, Iterable}
-import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
+import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, ComposableFrom, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False, NestedRestraint, Not, True}
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, MappedRestrainer, NestedRestrainer}
-import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Property, Self}
+import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Property, Self, TranslableTerm}
 import net.noresttherein.oldsql.model.types.OrderingSupport
 import net.noresttherein.oldsql.morsels.PropertyPath
 import net.noresttherein.oldsql.slang._
@@ -44,6 +44,10 @@ trait Restraint[-T] extends (T => Boolean) with implicits with Serializable {
 		case _ => Conjunction(Seq(this, other))
 	}
 
+	def &&[S <: T](other :TranslableTerm[S, Boolean]) :Restraint[S] = this && other()
+
+
+
 	/** Create a restriction satisfied if and only if any of this and the given argument are satisfied. */
 	def ||[S<:T](other :Restraint[S]) :Restraint[S] = other match {
 		case True => True
@@ -51,6 +55,11 @@ trait Restraint[-T] extends (T => Boolean) with implicits with Serializable {
 		case Disjunction(restrictions) => Disjunction(other +: restrictions)
 		case _ => Disjunction(Seq(this, other))
 	}
+
+	def ||[S <: T](other :TranslableTerm[S, Boolean]) :Restraint[S] = this || other()
+
+
+
 
 	/** An alias for `&&` which may be used to force an implicit conversion from objects which do declare a `&&` method. */
 	final def and[S<:T](other :Restraint[S]) :Restraint[S] = this && other
@@ -204,6 +213,7 @@ object Restraint {
 		}
 
 	}
+
 
 
 
@@ -440,7 +450,7 @@ object Restraint {
 
 		private class EqualityRestrainer[-T, K](val Term :Restrictive[T, K]) extends AbstractTermRestrainer[T, K] {
 
-			override def apply(key :K) :Restraint[T] = Equality(Term, Literal(key))
+			override def apply(key :K) :Restraint[T] = Equality[T, K](Term, Literal(key))
 
 			override def from[X <: T](restraint :Restraint[X]) :Option[K] = restraint match {
 				case Equality(Term, Literal(v)) => Some(v.asInstanceOf[K])
@@ -602,8 +612,8 @@ object Restraint {
 		  *                '?' and '*' special characters are used to match a single and any number of any characters,
 		  *                respectively, with `\` working as a string expression.
 		  */
-		def apply[T](matched :Restrictive[T, String], pattern :String) :Restraint[T] =
-			new Like(matched, pattern)
+		def apply[T](matched :TranslableTerm[T, String], pattern :String) :Restraint[T] =
+			new Like(matched(), pattern)
 
 
 		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, String], String)] = restraint match {
@@ -660,21 +670,22 @@ object Restraint {
 
 
 		/** Create a `Restraint` testing if the left expression is part of the collection of the right expression. */
-		def apply[T, C, E](member :Restrictive[T, E], collection :Restrictive[T, C])
-		                  (implicit deco :C DecomposableTo E) :Restraint[T] =
-			new MembershipTest(member, collection)
+		def apply[T, C, E](member :TranslableTerm[T, E], collection :Restrictive[T, C])
+		                  (implicit deco :C ExtractAs E) :Restraint[T] =
+			new MembershipTest(member(), collection)
 
 
 		/** Create a `Restraint` representing membership test for the value specified by the first argument
 		  * and the collection of terms given by the second argument.
 		  */
-		def apply[T, E](member :Restrictive[T, E], values :Iterable[Restrictive[T, E]]) :Restraint[T] = values.size match {
+		def apply[T, E](member :Restrictive[T, E], values :Iterable[TranslableTerm[T, E]]) :Restraint[T] = values.size match {
 //			case 0 => False
 //			case 1 => Equality(member, values.head)
-			case _ => new MembershipTest[T, Iterable[E], E](member, Collection(values))
+			case _ => new MembershipTest[T, Iterable[E], E](member, Collection(values.map(_())))
 		}
 
 
+/*
 		/** Create a `Restraint` representing membership test for the value specified by the first argument
 		  * and the collection of terms given by the second argument. Passed value set is decomposed using
 		  * an implicit `composite` information before creating the restraint into a sequence.
@@ -682,14 +693,17 @@ object Restraint {
 		  * @tparam C a collection of literal values of type `E`.
 		  * @tparam E the element type - the type of the expression which membership is tested.
 		  */
-		def apply[T, C, E](member :Restrictive[T, E], values :C)(implicit composite :C ComposedOf E) :Restraint[T] = {
+		def apply[T, C, E](member :Restrictive[T, E], values :C)(implicit composite :C CollectionOf E) :Restraint[T] = {
 			val decomposed = composite.decomposer(values)
 			decomposed.size match {
 //				case 0 => False
 //				case 1 => Equality(member, decomposed.head)
-				case _ => new MembershipTest[T, C, E](member, Collection(decomposed.map(Literal(_))))(composite.decomposer)
+				case _ =>
+					val collection = Collection[T, C, E](decomposed.map(Literal(_)))
+					new MembershipTest[T, C, E](member, collection)(composite.decomposer)
 			}
 		}
+*/
 
 
 
@@ -807,9 +821,16 @@ object Restraint {
 	  * elements of a collection, being either the whole result set, a literal (inlined) sequence, or an embedded select.
 	  */
 	object ForAll {
+		/** Creates a `Restraint` which tests if the given condition holds for all elements of the collection `C`
+		  * of elements `E` which can be derived from a value of `T`, as defined by the given restrictive.
+		  */
 		def apply[T, C, E](collection :Restrictive[T, C], condition :Restraint[E])(implicit composite :C ComposedOf E) :Restraint[T] =
 			new ForAll[T, C, E](collection, condition)(composite.decomposer)
 
+		/** Creates a `Restraint` which tests if the given condition is satisfied by all elements of 'this'
+		  * collection `T` of elements `E`, as defined by an identity function on `T`. This is useful only when
+		  * composed afterwards with a `Restrictive` producing the collection `T` from some root entity.
+		  */
 		def apply[T :TypeTag, E](condition :Restraint[E])(implicit composite :T ComposedOf E) :Restraint[T] =
 			new ForAll[T, T, E](Self(), condition)(composite.decomposer)
 
@@ -839,9 +860,16 @@ object Restraint {
 	  * a literal (inlined) sequence, or an embedded select.
 	  */
 	object Exists {
+		/** Creates `Restraint` which tests if the given collection `C` of elements `E`, which can be derived
+		  * from a value of `T`, contains an element satisfying the condition given as a `Restraint`.
+		  */
 		def apply[T, C, E](collection :Restrictive[T, C], condition :Restraint[E])(implicit composite :C ComposedOf E) :Restraint[T] =
 			new Exists(collection, condition)(composite.decomposer)
 
+		/** Creates an expression testing if 'this' expression described by an identity term on `T`, which is of
+		  * a composite type `T`, contains an element satisfying the given `Restraint`. This is only useful
+		  * when composed later with a `Restrictive` producing the value of `T` from some root entity.
+		  */
 		def apply[T :TypeTag, E](condition :Restraint[E])(implicit composite :T ComposedOf E) :Restraint[T] =
 			new Exists(Self(), condition)(composite.decomposer)
 

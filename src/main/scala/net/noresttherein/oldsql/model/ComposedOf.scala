@@ -23,8 +23,8 @@ trait ComposedOf[C, E] {
 //		if (composition.arity == decomposition.arity) composition.arity
 //		else throw new UnsupportedOperationException(s"ComposedOf.arity: composition arity (${composition.arity}) is different than decomposition arity (${decomposition.arity}) in $this. Most probabaly a bug.")
 
-	val composer :C ComposableFrom E
-	val decomposer :C DecomposableTo E
+	implicit val composer :C ComposableFrom E
+	implicit val decomposer :C DecomposableTo E
 
 	def apply(items: Iterable[E]): C = composer(items)
 
@@ -157,8 +157,8 @@ object ComposedOf {
 	  * `C ComposedOf E`.
 	  */
 	trait CollectionOf[C, E] extends ComposedOf[C, E] {
-		override val composer :C ConstructFrom E
-		override val decomposer :C ExtractAs E
+		override implicit val composer :C ConstructFrom E
+		override implicit val decomposer :C ExtractAs E
 
 		override def toString :String = composer.toString
 	}

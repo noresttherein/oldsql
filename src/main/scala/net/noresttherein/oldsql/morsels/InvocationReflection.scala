@@ -183,11 +183,11 @@ private[morsels] object InvocationReflection {
 					.defineConstructor(PUBLIC).intercept(
 					invoke(best).onSuper.`with`(best.getParameterTypes.map(createInstance):_*)
 				)
-			}
+			}   //todo: simply copy the constructor signatures so we can try several argument combinations and calls.
 		builder //todo: discover cycles in constructors
 			.method(not(isConstructor[MethodDescription]())).intercept(to(new MethodInterceptor()))
 			.defineMethod(TypeMethodName, classOf[AnyRef], PUBLIC).intercept(FixedValue.value(tpe))
-			.defineField(TraceFieldName, classOf[Trace], PUBLIC)
+			.defineField(TraceFieldName, classOf[Trace], PUBLIC) //todo: my own loader and INJECTION strategy
 			.make().load(clazz.getClassLoader, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT).getLoaded
 	}
 
@@ -205,10 +205,10 @@ private[morsels] object InvocationReflection {
 	private def createInstance(clazz :Class[_]) :AnyRef = {
 		val preset = dummyValue(clazz)
 		if (preset != null) //first try values for common classes like Option, String, Int, etc.
-			preset
+			preset //todo: mark for the future if we failed to provide a result.
 		else if (clazz.isInterface) //todo: abstract methods!!!
-			     new ByteBuddy().subclass(clazz).name(clazz.getName + MockClassNameSuffix)
-				     .make().load(getClass.getClassLoader).getLoaded
+			new ByteBuddy().subclass(clazz).name(clazz.getName + MockClassNameSuffix)
+				.make().load(getClass.getClassLoader).getLoaded
 		else if ((clazz.getModifiers & ABSTRACT) != 0)
 			     instrumentedInstance(clazz)
 		else { //the class is not abstract, so we'll just try all constructors to see if one works

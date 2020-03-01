@@ -5,7 +5,7 @@ import java.{lang => j}
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.Comparison.{GT, GTE, LT, LTE}
 import net.noresttherein.oldsql.model.Restraint.{Comparison, Equality, Exists, False, ForAll, IsNull, Membership, Restrainer, StringLike, True}
-import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, Collection, ComposedRestrictive, Literal, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
+import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, Collection, ComposedRestrictive, ConcatRestrictive, Literal, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
 import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{DIV, MINUS, MULT, Operator, PLUS, REM}
 import net.noresttherein.oldsql.model.types.{ArithmeticSupport, OrderingSupport}
 import net.noresttherein.oldsql.morsels.PropertyPath
@@ -24,7 +24,7 @@ import scala.reflect.runtime.universe
   * or compared with other instances to produce Boolean conditions.
   * @see [[net.noresttherein.oldsql.model.Restraint.Restrainer Restrainer]]
   */
-trait Restrictive[-T, V] extends (T=>V) with TranslableTerm[T, V] with implicits with Serializable {
+sealed trait Restrictive[-T, V] extends (T=>V) with TranslableTerm[T, V] with Serializable with implicits {
 	//todo: this being  a function conflicts with an implicit conversion providing 'apply(Int)' to String.
 
 	/** Retrieve the value of part `V` described by this instance from the outer type `T`.*/
@@ -44,7 +44,7 @@ trait Restrictive[-T, V] extends (T=>V) with TranslableTerm[T, V] with implicits
 	def ifInstanceOf[S :ClassTag, O](subclass :Restrictive[S, O]) :Restrictive[T, Option[O]] =
 		new SubclassRestrictive(this, implicitly[ClassTag[S]].runtimeClass, subclass)
 
-	//todo: make the first parameter of the tuple accept literals.
+
 	/** Create a 'switch' expression comparing the value of this term with the given sequence of guard values
 	  * and selecting the branch for the matching guard or the default result in case of no match.
 	  * This transaltes into a 'DECODE'-like expression in SQL.
@@ -73,6 +73,13 @@ trait Restrictive[-T, V] extends (T=>V) with TranslableTerm[T, V] with implicits
 
 	def %[S<:T](other :TranslableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
 		new ArithmeticRestrictive(this, REM, other())
+
+
+
+	/** Concatenates this expression, which must be of type `String`, with another `String` expression. */
+	def concat[S <: T](other :Restrictive[S, String])(implicit string :Restrictive[S, V]<:<Restrictive[S, String]) :Restrictive[S, String] =
+		new ConcatRestrictive(string(this), other())
+
 
 
 	/** Create a `Restrainer` testing if this term is less then the value of the key supplied as its parameter. */
@@ -150,7 +157,7 @@ trait Restrictive[-T, V] extends (T=>V) with TranslableTerm[T, V] with implicits
 	/** Create a restriction testing if the value of this expression is a member of the given collection.
 	  * Equivalent to `Membership(this, collection)`.
 	  */
-	def in[S<:T](collection :Iterable[Restrictive[S, V]]) :Restraint[S] = Membership(this, collection)
+	def in[S<:T](collection :Iterable[TranslableTerm[S, V]]) :Restraint[S] = Membership(this, collection)
 
 //	/** Create a `Restriction` checking if this value is a member of the given collection of literals. */
 //	def in[C](collection :C)(implicit decomposition :C ExtractAs V) :Restraint[T] =
@@ -190,69 +197,14 @@ object Restrictive {
 	@inline def apply[T :TypeTag] :Restrictive[T, T] = Self[T]()
 
 
-	
-	abstract class <%<[S, T] extends (S=>T)
-
-	abstract class =%=[S, T] extends (S<%<T) {
-		def apply(left :S) :T = right(left)
-		def right(left :S) :T
-		def left(right :T) :S
-	}
-
-	object <%< {
-//		@inline implicit final def symmetrical[S, T](implicit equiv: S=%=T) :T=%=S = adapt(equiv.left, equiv.right)
-
-		implicit final val (byteUnoxing, byteBoxing) = adapt((_:j.Byte).byteValue, j.Byte.valueOf :Byte=>j.Byte)
-		implicit final val (shortUnboxing, shortBoxing) = adapt((_ :j.Short).shortValue, j.Short.valueOf :Short=>j.Short)
-		implicit final val (intUnboxing, intBoxing) = adapt((_ :j.Integer).intValue, j.Integer.valueOf :Int=>j.Integer)
-		implicit final val (longUnboxing, longBoxing) = adapt((_ :j.Long).longValue, j.Long.valueOf :Long=>j.Long)
-		implicit final val (floatUnboxing, floatBoxing) = adapt((_ :j.Float).floatValue, j.Float.valueOf :Float=>j.Float)
-		implicit final val (doubleUnboxing, doubleBoxing) = adapt((_ :j.Double).doubleValue, j.Double.valueOf :Double=>j.Double)
-		implicit final val (charUnboxing, charBoxing) = adapt((_ :j.Character).charValue, j.Character.valueOf :Char=>j.Character)
-		implicit final val (booleanUnboxing, booleanBoxing) = adapt((_ :j.Boolean).booleanValue, j.Boolean.valueOf :Boolean=>j.Boolean)
-
-		implicit final def nullToOption[X >: Null] :X=%=Option[X] = nullBoxing.asInstanceOf[X=%=Option[X]]
-		implicit final def optionToNull[X >: Null] :Option[X]=%=X = nullUnboxing.asInstanceOf[Option[X]=%=X]
-		private[this] final val (nullUnboxing, nullBoxing) = adapt((_ :Option[Null]).orNull, Option.apply :Null=>Option[Null])
-
-		implicit final val byte2Short = adapt((_ :Byte).toShort)
-		implicit final val byte2Int = adapt((_ :Byte).toInt)
-		implicit final val byte2Long = adapt((_ :Byte).toLong)
-		implicit final val byte2Float = adapt((_ :Byte).toFloat)
-		implicit final val byte2Double = adapt((_ :Byte).toDouble)
-		implicit final val short2Int = adapt((_ :Short).toInt)
-		implicit final val short2Long = adapt((_ :Short).toLong)
-		implicit final val short2Float = adapt((_ :Short).toFloat)
-		implicit final val short2Double = adapt((_ :Short).toDouble)
-		implicit final val int2Long = adapt((_ :Int).toLong)
-		implicit final val int2Float = adapt((_ :Int).toFloat)
-		implicit final val int2Double = adapt((_ :Int).toDouble)
-		implicit final val long2Float = adapt((_ :Long).toFloat)
-		implicit final val long2Double = adapt((_ :Long).toDouble)
-		implicit final val float2Double = adapt((_ :Float).toDouble)
-
-		@inline private def adapt[S, T](right :S=>T, left :T=>S) :(S=%=T, T=%=S) =
-			(new adapt(right, left), new adapt(left, right))
-
-		private class adapt[S, T](r :S=>T, l :T=>S) extends (S =%= T) {
-			override def right(left :S) :T = r(left)
-			override def left(right :T) :S = l(right)
-		}
-		
-		@inline private def adapt[S, T](cast :S=>T) :S<%<T = { s :S => cast(s) }
-	}
-	
-
-
-
-
 
 	/**  A type serving as a common umbrella for `Restrictive[T, V]` and arbitrary literal values.
+	  *  It's a super type of `Restrictive[T, V]` and an implicit value exists for any value `V`.
 	  *  The name does not mean that it contains information about its mapping to SQL, or even that it can be done.
 	  *  Instead, the responsibility for ensuring this is carried by methods accepting it as an argument.
 	  *  Without mapping information only standard types like `String` and numbers can be freely used
 	  *  as SQL expressions, prohibiting creation of other literal expressions in most scenarios.
-	  *  However, when a `Restrictive[T, V]` is being compared with another value, a it already carries the mapping
+	  *  However, when a `Restrictive[T, V]` is being compared with another value, as it already carries the mapping
 	  *  information (or serves as a witness to its existence) which can be used to translate the scala value of the same
 	  *  type into an SQL literal. Accepting values of this type instead of `Restrictive` as a method parameter
 	  *  allows both `Restrictive` instances and arbitrary literals lifted to this type by an implicit conversion.
@@ -260,8 +212,8 @@ object Restrictive {
 	  *  without the need for handling both cases individually by the method, and without creating an extra object
 	  *  as extending types are mandated to implement `Restrictive[V, T]`.
 	  */
-	sealed trait TranslableTerm[-T, V] { this :Restrictive[T, V] =>
-		@inline final private[Restrictive] def apply() :Restrictive[T, V] = this
+	sealed trait TranslableTerm[-T, V] extends implicits { this :Restrictive[T, V] =>
+		@inline final private[model] def apply() :Restrictive[T, V] = this
 	}
 
 
@@ -374,8 +326,8 @@ object Restrictive {
 		def apply[T, N :ArithmeticSupport](left :Restrictive[T, N], op :Operator, right :TranslableTerm[T, N]) :Restrictive[T, N] =
 			new ArithmeticRestrictive(left, op, right())
 
-		def apply[T, N :ArithmeticSupport](left :TranslableTerm[T, N], op :Operator, right :Restrictive[T, N]) :Restrictive[T, N] =
-			new ArithmeticRestrictive(left(), op, right)
+		def apply[T, N :ArithmeticSupport](left :N, op :Operator, right :Restrictive[T, N]) :Restrictive[T, N] =
+			new ArithmeticRestrictive(Literal(left), op, right)
 
 
 
@@ -422,8 +374,23 @@ object Restrictive {
 		}
 
 
+	}
 
 
+
+	/** Concatenates two string terms and matches such expressions. */
+	object Concat {
+		def apply[T](left :Restrictive[T, String], right :TranslableTerm[T, String]) :Restrictive[T, String] =
+			new ConcatRestrictive[T](left, right())
+
+		def apply[T](left :String, right :Restrictive[T, String]) :Restrictive[T, String] =
+			new ConcatRestrictive[T](Literal(left), right)
+
+		def unapply[T, V](term :Restrictive[T, V]) :Option[(Restrictive[T, String], Restrictive[T, String])] =
+			term match {
+				case concat :ConcatRestrictive[T] => Some((concat.left, concat.right))
+				case _ => None
+			}
 	}
 
 
@@ -521,7 +488,7 @@ object Restrictive {
 		override def compose[W, S <: X](nest :Restrictive[W, S]) :Restrictive[W, Z] =
 			new ComposedRestrictive(first compose nest, second)
 
-		override def definedFor :Type = first.definedFor
+		override def definedFor :Type = commonType(first, second)
 
 		override def toString :String = first.toString + " ~> " + second
 	}
@@ -574,7 +541,6 @@ object Restrictive {
 
 		override def compose[X, S<:T](nest :Restrictive[X, S]) :Restrictive[X, V] = nest.asInstanceOf[Restrictive[X, V]]
 
-
 		override def toString = "self"
 	}
 
@@ -584,13 +550,18 @@ object Restrictive {
 	                                                  (implicit val composite :C ComposedOf E)
 		extends Restrictive[T, C]
 	{
+		if (values.isEmpty)
+			throw new IllegalArgumentException("Can't create an empty collection expression")
+
 		override def apply(whole :T) :C = composite.composer(values.map(_(whole)))
 
 		override def compose[X, S <: T](nest :Restrictive[X, S]) :Restrictive[X, C] =
 			new CollectionRestrictive[X, C, E](values.map(_.compose(nest)))
 
-		//todo: this will fail at some later time if items are empty; check if we really need this method
-		override def definedFor :Type = values.head.definedFor
+		//<:< is not a complete ordering, but all these types have the lower bound in `T` so we hope one of them is `T`.
+		override val definedFor :Type = values.map(_.definedFor).reduce {
+			(t1 :Type, t2 :Type) => if (t1 <:< t2) t1 else t2
+		}
 
 
 		override def toString :String = values.mkString(composite + "(", ", ", ")")
@@ -607,7 +578,7 @@ object Restrictive {
 		override def compose[X, S <: T](nest :Restrictive[X, S]) :Restrictive[X, N] =
 			new ArithmeticRestrictive(left compose nest, op, right compose nest)
 
-		override def definedFor :Type = left.definedFor
+		override def definedFor :Type = commonType(left, right)
 
 		override def toString :String = "(" + left + " " + op + " " + right + ")"
 	}
@@ -625,6 +596,21 @@ object Restrictive {
 		override def definedFor :Type = term.definedFor
 
 		override def toString :String = "-" + term
+	}
+
+
+
+	private case class ConcatRestrictive[-T](left :Restrictive[T, String], right :Restrictive[T, String])
+		extends Restrictive[T, String]
+	{
+		override def apply(whole :T) :String = left(whole) + right(whole)
+
+		override def compose[X, S <: T](nest :Restrictive[X, S]) :Restrictive[X, String] =
+			new ConcatRestrictive[X](left compose nest, right compose nest)
+
+		override def definedFor :Type = commonType(left, right)
+
+		override def toString :String = left.toString + " + " + right
 	}
 
 
@@ -656,7 +642,7 @@ object Restrictive {
 //		override def compose[X, S <: T](nest :Restrictive[X, S]) :Restrictive[X, O] =
 //			new IfElseRestrictive(condition derive nest, ifTrue compose nest, ifFalse compose nest)
 
-		override def definedFor :Type = ifTrue.definedFor
+		override def definedFor :Type = commonType(ifTrue, ifFalse)
 
 		override def toString :String = "if (" +condition + ") {" + ifTrue + "} else {" + ifFalse + "}"
 	}
@@ -673,7 +659,12 @@ object Restrictive {
 			cases collectFirst { case (guard, opt) if guard(whole) == switch => opt(whole) } getOrElse default(whole)
 		}
 
-		override def definedFor :Type = term.definedFor
+		override val definedFor :Type = {
+			def min(t1 :Type, t2 :Type) = if (t1 <:< t2) t1 else t2
+			min((term.definedFor /: cases.map {
+				case (guard, branch) => commonType(guard, branch)
+			})(min), default.definedFor)
+		}
 
 		override def compose[Z, S <: X](nest :Restrictive[Z, S]) :Restrictive[Z, O] =
 			new SwitchRestrictive(
@@ -701,6 +692,11 @@ object Restrictive {
 		override def toString :String = s"($term).cast[${subclass.getName}]{ $conditional }"
 	}
 
+
+
+
+	private def commonType[T](t1 :Restrictive[T, _], t2 :Restrictive[T, _]) :Type =
+		if (t1.definedFor <:< t2.definedFor) t1.definedFor else t2.definedFor
 
 }
 

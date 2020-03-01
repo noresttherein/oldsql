@@ -30,17 +30,17 @@ import scala.reflect.runtime.universe._
   * of `T>:S` may throw a  `ClassCastException` (or other), even if the underlying property is declared/first defined
   * in class `T`, while an equal `PropertyPath[T, Int]` / `PropertyPath[T, Any]` may not.
   * This decision was made as it was designed to facilitate the creation of property mappings where such coalescence
-  * is performed, rather than a generic reflection mechanism. If this might be an issue, check the `definedFor` property
-  * which returns reflected static type of the argument of the function used to create this instance.
+  * is performed, rather than be a generic reflection mechanism. If this might be an issue, check the `definedFor`
+  * property which returns reflected static type of the argument of the function used to create this instance.
   * Do not assume that it is safe to cast a property chain to a given argument type because it equals an instance
-  * which static type would guarantee a safe call on this type. Instead, use them as keys - given a 'safe' instance computed beforehand
-  * based on a function which is known to properly represent the property in question, compare it with the passed function/property chain,
-  * and if they are equal, always use 'yours' rather then the given one.
+  * which static type would guarantee a safe call on this type. Instead, use them as keys - given a 'safe' instance
+  * computed beforehand based on a function which is known to properly represent the property in question, compare it
+  * with the passed function/property path, and if they are equal, always use 'yours' rather then the given one.
   *
-  * @param definedFor Static argument type (X) used to create this instance. It might be different than X in place of usage
-  *                   and is not necessarily the type of the class where the property was declared
-  * @param fun function returning the value of the property which was used to create this instance
-  * @tparam X type of accepted argument (property owner)
+  * @param definedFor Static argument type (`X`) used to create this instance. It might be different than `X` in place
+  *                   of usage and is not necessarily the type of the class where the property was declared.
+  * @param fun function returning the value of the property which was used to create this instance.
+  * @tparam X type of accepted argument (property owner).
   * @tparam Y return type of the property.
   * @author Marcin Mościcki
   */
@@ -125,19 +125,21 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
   *
   * This is implemented using runtime code generation, by recursive deep mocking of the argument type and all
   * returned values on a best effort basis. It is an impossibility to provide a generic, robust solution to this
-  * problem which will work in every case; any meaningful validation performed in the constructors will always foil it
+  * problem which would work in every case; any meaningful validation performed in the constructors will always foil it
   * and the extent to which this implementation goes in order to be able to call constructors of instrumented classes
   * may prove to be an issue in the case of large, complex graphs and constructors performing additional logic apart
   * from storing the state. In particular, known limitations and potential issues are:
   *
   *   - all classes which properties are reflected on the path must be not final, be public and have
-  *     a public or protected constructor.
+  *     a public or protected constructor;
+  *   - classes taken  as constructor arguments by the reflected classes must be instantiable through a public
+  *     constructor or instrumentable themselves;
   *   - the constructor should perform minimal validation, in particular no domain-specific validation.
   *     Implementation will try its best to provide non-null and not-mocked arguments as well as try several
   *     super constructors before giving up;
   *   - cycles between constructors can cause exceptions;
-  *   - the constructor's shouldn't allocate large structures or claim resources, or leaks (or at least bottlenecks)
-  *     can occur.
+  *   - the constructor's shouldn't allocate large structures or claim resources, otherwise leaks
+  *     (or at least bottlenecks) can occur.
   *   - reliance on a large number of varying injected arguments can lead to potentially creating huge graphs of
   *     mock classes and instances in an attempt to trace the call;
   *   - the methods called need to be idempotent, reflecting only the state of the entity and represent
