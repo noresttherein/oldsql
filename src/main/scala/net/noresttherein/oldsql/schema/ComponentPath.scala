@@ -1,19 +1,11 @@
-package com.hcore.ogre.mapping
+package net.noresttherein.oldsql.schema
 
-import com.hcore.ogre.mapping.ComponentPath.MappedComponent.TypedMappedComponent
-import com.hcore.ogre.mapping.ComponentPath._
-import com.hcore.ogre.mapping.MappingMorphism.{ComponentMorphism, ValueMorphism}
-import com.hcore.ogre.mapping.Mapping.{ColumnFilter, ComponentCompatibleMapping, CompatibleMapping}
-import com.hcore.ogre.mapping.MappingPath._
-import com.hcore.ogre.mapping.support.MappedMapping
-import com.hcore.ogre.mapping.support.MappedMapping.MappedAs
-import com.hcore.ogre.slang.SaferCasts
-import com.hcore.ogre.slang.options.extensions
-
-
-//implicits
-import extensions._
-import SaferCasts._
+import net.noresttherein.oldsql.schema.ComponentPath.{\**\, ConcatComponentPath, DirectComponent, TypedComponentPath}
+import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, TypedMapping}
+import net.noresttherein.oldsql.schema.MappingPath.{\~\, ConcatPath, DirectPath, FullyTypedPath, MappingLink, TypedConcatPath, TypedDirectPath, TypedMappingLink, TypedPath}
+import net.noresttherein.oldsql.schema.support.MappedMapping.MappedAs
+import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.slang.SaferCasts._
 
 
 /** Represents mapping Y as a part of mapping X. Y may be X, X#Component[_], a component further down the tree,
@@ -30,45 +22,45 @@ import SaferCasts._
   */
 sealed trait ComponentPath[X<:AnyMapping, Y<:AnyMapping] extends MappingPath[X, Y] {
 
-	def pick :X#ResultType => Option[Y#ResultType] //= this.apply
-	def surepick :Option[X#ResultType => Y#ResultType]
+	def pick :X#Subject => Option[Y#Subject] //= this.apply
+	def surepick :Option[X#Subject => Y#Subject]
 
 	def optional = surepick.isEmpty
 
 
 	def lift[Q](subcomponent :Y#Component[Q]) :Option[X#Component[Q]]
 
-	def lift :Option[X#Component[Y#ResultType]] = direct.map(_.end :X#Component[Y#ResultType])
+	def lift :Option[X#Component[Y#Subject]] = direct.map(_.end :X#Component[Y#Subject])
 
-	def lift[Q](subcomponent :Y=>Y#Component[Q]) :Option[X#Component[Q]] = lift(subcomponent(end))
+	def lift[Q](subcomponent :Y => Y#Component[Q]) :Option[X#Component[Q]] = lift(subcomponent(end))
 
 	def lift(columns :ColumnFilter) :Seq[X#Component[_]] = end.columns.flatMap(col => lift(col) :Option[X#Component[_]])
 
 
-	def direct :Option[DirectComponent[X, _<:X#Component[Y#ResultType], Y#ResultType]]
+	def direct :Option[DirectComponent[X, _<:X#Component[Y#Subject], Y#Subject]]
 
 	override def asComponentPath = Some(this)
 
-	def apply(value :X#ResultType) :Option[Y#ResultType] = pick(value)
+	def apply(value :X#Subject) :Option[Y#Subject] = pick(value)
 
-	def unapply(root :X#ResultType) :Option[Y#ResultType] = pick(root)
+	def unapply(root :X#Subject) :Option[Y#Subject] = pick(root)
 
 
 
+/*
 	abstract class PathMorphism extends MappingMorphism[X, Y] {
 		def source = start
 		def target = end
 	}
 
 	def morphism :MappingMorphism[X, Y]
+*/
 
 
 
+	def apply()(implicit value :ComponentValues[X]) :Y#Subject = value(this)
 
-
-	def apply()(implicit value :ComponentValues[X]) :Y#ResultType = value(this)
-
-	def get(implicit value :ComponentValues[X]) :Option[Y#ResultType] = value.get(this)
+	def get(implicit value :ComponentValues[X]) :Option[Y#Subject] = value.get(this)
 
 
 
@@ -77,16 +69,16 @@ sealed trait ComponentPath[X<:AnyMapping, Y<:AnyMapping] extends MappingPath[X, 
 
 
 	override def prefixesDesc :Seq[ComponentPath[X, _<:AnyMapping]] = prefixes.reverse
-	
+
 	def prefixes :Seq[ComponentPath[X, _<:AnyMapping]]
 
 	def suffixes :Seq[ComponentPath[_<:AnyMapping, Y]]
 
-	override def suffixesDesc = suffixes.reverse
+	override def suffixesDesc :Seq[ComponentPath[_ <: AnyMapping, Y]] = suffixes.reverse
 
-	def splits :Seq[(ConcatComponentPath[X, AnyMapping, Y])]
+	def splits :Seq[ConcatComponentPath[X, AnyMapping, Y]]
 
-	def splitsReversed :Seq[(ConcatComponentPath[X, AnyMapping, Y])]
+	def splitsReversed :Seq[ConcatComponentPath[X, AnyMapping, Y]]
 
 
 	override def drop[M <: AnyMapping](other: MappingPath[_ <: AnyMapping, M]): Option[ComponentPath[M, Y]]
@@ -116,7 +108,7 @@ sealed trait ComponentPath[X<:AnyMapping, Y<:AnyMapping] extends MappingPath[X, 
 
 	def ++ [Z<:AnyMapping](path :ComponentPath[Y, Z]) :ComponentPath[X, Z] =
 		(this ++ path.asInstanceOf[TypedComponentPath[Y, Mapping[Any], Any]]).asInstanceOf[X \**\ Z]
-	
+
 	def ++ [Z<:Mapping[V], V](path :TypedComponentPath[Y, Z, V]) :TypedComponentPath[X, Z, V]
 
 
@@ -127,7 +119,7 @@ sealed trait ComponentPath[X<:AnyMapping, Y<:AnyMapping] extends MappingPath[X, 
 	def concat[M<:AnyMapping, C<:AnyMapping](suffix :ComponentPath[M, C]) :Option[ComponentPath[X, C]] =
 		(this ++ suffix.asInstanceOf[Y \**\ C]).providing(suffix.start==end)
 
-	def map[V](map: (Y#ResultType) => V)(unmap: (V) => Y#ResultType): TypedComponentPath[X, Y MappedAs V, V]
+	def map[V](map: Y#Subject => V)(unmap: V => Y#Subject): TypedComponentPath[X, Y MappedAs V, V]
 
 	override def unchecked :ComponentPath[AnyMapping, AnyMapping] = this.asInstanceOf[AnyMapping\**\AnyMapping]
 
@@ -167,7 +159,7 @@ object ComponentPath {
 	def unapply[X<:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[ComponentPath[X, Y]] =
 		path.asSubclass[X\**\Y]
 
-	
+
 
 
 
@@ -175,8 +167,8 @@ object ComponentPath {
 		def apply[T](mapping :Mapping[T]) :TypedComponentPath[mapping.type, mapping.type, T] =
 			new SelfPath[mapping.type, T](mapping)
 
-		
-		
+
+
 		def typed[T, M<:Mapping[T]](mapping :M) :TypedComponentPath[M, M, T] =
 			new SelfPath[M, T](mapping)
 
@@ -192,18 +184,20 @@ object ComponentPath {
 
 	object DirectComponent {
 
+/*
 		def apply[T, U](mapping :Mapping[T])(component :mapping.Component[U])(
-				pick :ValueMorphism[T, U], lift :ComponentMorphism[component.Component, mapping.Component]) :TypedComponentPath[mapping.type, component.type, U] =
+			pick :ValueMorphism[T, U], lift :ComponentMorphism[component.Component, mapping.Component]) :TypedComponentPath[mapping.type, component.type, U] =
 			apply[mapping.type, component.type, U](MappingMorphism[mapping.type, component.type](mapping, component, pick, lift))
 
 		def apply[M<:AnyMapping, C<:M#Component[T], T](morph :MappingMorphism[M, C]) :TypedComponentPath[M, C, T] =
 			new DirectComponent[M, C, T] with MorphismPath[M, C] {
 				val morphism = morph
 			}
+*/
 
-		def unapply[X<:AnyMapping, Y<:AnyMapping](path :ComponentPath[X, Y]) :Option[X#Component[Y#ResultType]] =
+		def unapply[X<:AnyMapping, Y<:AnyMapping](path :ComponentPath[X, Y]) :Option[X#Component[Y#Subject]] =
 			path match {
-				case p :DirectComponent[_, _, _] => Some(p.end.asInstanceOf[X#Component[Y#ResultType]]) //Some(p.asInstanceOf[ComponentPath[X, Y with X#Component[_]]])
+				case p :DirectComponent[_, _, _] => Some(p.end.asInstanceOf[X#Component[Y#Subject]]) //Some(p.asInstanceOf[ComponentPath[X, Y with X#Component[_]]])
 				case _ => None
 			}
 
@@ -234,15 +228,16 @@ object ComponentPath {
 	trait MappedComponent[X<:AnyMapping, Y<:AnyMapping] extends MappingLink[X, Y] with ComponentPath[X, Y] with DirectPath[X, Y]
 
 	object MappedComponent {
+/*
 		def apply[X<:AnyMapping, Y<:AnyMapping](morphism :MappingMorphism[X, Y]) :MappedComponent[X, Y] = {
 			val target = morphism.target
-			new TypedMappedComponent[X, target.type, target.ResultType](morphism.asInstanceOf[MappingMorphism[X, target.type]]).asInstanceOf[MappedComponent[X, Y]]
+			new TypedMappedComponent[X, target.type, target.Subject](morphism.asInstanceOf[MappingMorphism[X, target.type]]).asInstanceOf[MappedComponent[X, Y]]
 		}
 
 		def unapply[X<:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[ComponentPath[X, Y]] =
 			path.asSubclass[MappedComponent[X, Y]]
 
-		class TypedMappedComponent[X<:AnyMapping, Y<:AnyMapping{ type ResultType=V }, V](val morphism :MappingMorphism[X, Y])
+		class TypedMappedComponent[X<:AnyMapping, Y<:AnyMapping{ type Subject=V }, V](val morphism :MappingMorphism[X, Y])
 			extends MappedComponent[X, Y] with TypedDirectPath[X, Y, V] with TypedComponentPath[X, Y, V] with TypedMappingLink[X, Y, V] with MorphismPath[X, Y]
 		{
 			override def direct: Option[DirectComponent[X, _ <: X#Component[V], V]] = None
@@ -257,19 +252,20 @@ object ComponentPath {
 
 
 
-//			override def toString = s"\\$start~$end"
+			//			override def toString = s"\\$start~$end"
 			override def tailString = "~"+end
 
 			override def canEqual(that :Any) = that.isInstanceOf[MappedComponent[_, _]]
 		}
+*/
 	}
 
 
 	/** A subtype of ComponentPath that should be used wherever possible, as it greatly improves working with type inference and
 	  * allows for implicit resolution based on the target mapped type T.
 	  */
-	trait TypedComponentPath[X<:AnyMapping, Y <:AnyMapping{ type ResultType=T }, T] extends ComponentPath[X, Y] with TypedPath[X, Y, T] {
-		override def surepick :Option[X#ResultType =>Y#ResultType]
+	trait TypedComponentPath[X<:AnyMapping, Y <: TypedMapping[T], T] extends ComponentPath[X, Y] with TypedPath[X, Y, T] {
+		override def surepick :Option[X#Subject => T]
 
 		override def apply()(implicit value: ComponentValues[X]): T = super.apply()
 
@@ -283,10 +279,10 @@ object ComponentPath {
 		override def asComponentPath = Some(this)
 
 
-		override def map[V](map: T => V)(unmap: V => T): TypedComponentPath[X, MappedAs[Y, V], V] = {
+		override def map[V](map: T => V)(unmap: V => T): TypedComponentPath[X, MappedAs[Y, V], V] = ??? /*{
 			val mapped = MappedMapping(end, map, unmap)
 			this ++ new TypedMappedComponent[Y, Y MappedAs V, V](mapped.reverseMorphism.asInstanceOf[MappingMorphism[Y, Y MappedAs V]])
-		}
+		}*/
 
 
 		override def drop[M <: AnyMapping](other: MappingPath[_ <: AnyMapping, M]): Option[TypedComponentPath[M, Y, T]]
@@ -313,7 +309,7 @@ object ComponentPath {
 		}
 
 
-		override def ++ [Z<:AnyMapping { type ResultType=V }, V](path :TypedComponentPath[Y, Z, V]) :TypedComponentPath[X, Z, V] = path match {
+		override def ++ [Z<:AnyMapping { type Subject=V }, V](path :TypedComponentPath[Y, Z, V]) :TypedComponentPath[X, Z, V] = path match {
 			case _ if path.start!=end =>
 				throw new IllegalArgumentException(s"$this: can't append $path as it starts at a different mapping")
 			case SelfPath(_) => this.asInstanceOf[TypedComponentPath[X, Z, V]]
@@ -325,7 +321,7 @@ object ComponentPath {
 			case _ => super[ComponentPath].++(path)
 		}
 
-		override def ++[Z <: AnyMapping {type ResultType = V}, V](path: TypedPath[Y, Z, V]): TypedPath[X, Z, V] = super.++(path)
+		override def ++[Z <: AnyMapping {type Subject = V}, V](path: TypedPath[Y, Z, V]): TypedPath[X, Z, V] = super.++(path)
 
 		override def ++:[W<:AnyMapping](prefix :ComponentPath[W, X]) :TypedComponentPath[W, Y, T] = prefix match {
 			case _ if prefix.end!=start =>
@@ -341,8 +337,8 @@ object ComponentPath {
 
 
 
-		override protected def typedConcat[R <: AnyMapping, Q <: AnyMapping {type ResultType = V}, V](
-				prefix: R \~\ (_<:AnyMapping), suffix: TypedPath[_<:AnyMapping, Q, V]): TypedConcatPath[R, _, _, Q, V] =
+		override protected def typedConcat[R <: AnyMapping, Q <: AnyMapping {type Subject = V}, V](
+			                                                                                             prefix: R \~\ (_<:AnyMapping), suffix: TypedPath[_<:AnyMapping, Q, V]): TypedConcatPath[R, _, _, Q, V] =
 			(prefix, suffix) match {
 				case (p:TypedComponentPath[_, _, _], q:TypedComponentPath[_, _, _]) =>
 					typedConcat(p.asInstanceOf[R \**\ AnyMapping], q.asInstanceOf[TypedComponentPath[AnyMapping, Q, V]])
@@ -350,8 +346,8 @@ object ComponentPath {
 					super.typedConcat(prefix, suffix)
 			}
 
-		protected def typedConcat[R<:AnyMapping, Q<:AnyMapping { type ResultType=V }, V](
-					prefix :R \**\ (_<:AnyMapping), suffix :TypedComponentPath[_<:AnyMapping, Q, V]) :TypedConcatCompPath[R, _, _, Q, V] =
+		protected def typedConcat[R<:AnyMapping, Q<:AnyMapping { type Subject=V }, V](
+			                                                                                prefix :R \**\ (_<:AnyMapping), suffix :TypedComponentPath[_<:AnyMapping, Q, V]) :TypedConcatCompPath[R, _, _, Q, V] =
 			new TypedConcatCompPath[R, Mapping[Any], Any, Q, V](
 				prefix.asInstanceOf[TypedComponentPath[R, Mapping[Any], Any]],
 				suffix.asInstanceOf[TypedComponentPath[Mapping[Any], Q, V]])
@@ -382,7 +378,7 @@ object ComponentPath {
 
 
 
-	sealed trait FullyTypedComponentPath[X <: AnyMapping { type ResultType=S }, S, Y <: AnyMapping { type ResultType=T }, T]
+	sealed trait FullyTypedComponentPath[X <: TypedMapping[S], S, Y <: TypedMapping[T], T]
 		extends TypedComponentPath[X, Y, T] with FullyTypedPath[X, S, Y, T]
 	{
 		override val pick :S=>Option[T]
@@ -391,6 +387,7 @@ object ComponentPath {
 		override def unapply(root :S) :Option[T] = pick(root)
 	}
 
+/*
 
 	trait MorphismPath[X<:AnyMapping, Y<:AnyMapping] extends ComponentPath[X, Y] {
 		override def optional: Boolean = !morphism.value.isHomomorphism
@@ -404,47 +401,50 @@ object ComponentPath {
 		override def lift[Q](subcomponent: Y#Component[Q]): Option[X#Component[Q]] =
 			morphism.components(subcomponent)
 	}
-	
+
+*/
 
 
 	class SelfPath[M<:Mapping[T], T] private[ComponentPath] (mapping :M) extends FullyTypedComponentPath[M, T, M, T] {
 		def length=0
-		def start = mapping
-		def end = mapping
+		def start :M = mapping
+		def end :M = mapping
 
 		override val pick = Some(_:T)
-		override def surepick = Some(identity[T] _)
+		override def surepick = Some(identity[T])
 
 		override def lift[Q](subcomponent: M#Component[Q]): Option[M#Component[Q]] = Some(subcomponent)
 
 		override def optional: Boolean = false
 
+/*
 		object morphism extends PathMorphism {
 			val value = ValueMorphism.identity[T]
 			val components = ComponentMorphism.identity[M#Component]
 		}
+*/
 
 
-		override def mappings = Seq(start)
+		override def mappings :Seq[M] = Seq(start)
 
 		override def walk(values: ComponentValues[M]): ComponentValues[M] = values
 
 
-		
+
 		override def prefixes: Seq[ComponentPath[M, _ <: AnyMapping]] = Seq()
-		
-		override def prefixesDesc = Seq()
 
-		override def suffixes = Seq()
+		override def prefixesDesc :Seq[Nothing] = Seq()
 
-		override def suffixesDesc = Seq()
+		override def suffixes :Seq[Nothing] = Seq()
 
-		override def splits = Seq()
+		override def suffixesDesc :Seq[Nothing] = Seq()
 
-		override def splitsReversed = Seq()
+		override def splits :Seq[Nothing] = Seq()
+
+		override def splitsReversed :Seq[Nothing] = Seq()
 
 
-		override def startsWith(other: MappingPath[_ <: AnyMapping, _ <: AnyMapping]): Boolean = this==other
+		override def startsWith(other: MappingPath[_ <: AnyMapping, _ <: AnyMapping]): Boolean = this == other
 
 
 		override def drop[N <: AnyMapping](other: MappingPath[_ <: AnyMapping, N]): Option[TypedComponentPath[N, M, T]] =
@@ -454,9 +454,9 @@ object ComponentPath {
 		override def splitWhere(fun: (MappingPath[_, _]) => Boolean): (SelfPath[M, T], SelfPath[M, T]) =
 			(this, this)
 
-		override def ++[Z <: AnyMapping {type ResultType = V}, V](path: TypedPath[M, Z, V]): TypedPath[M, Z, V] = path
+		override def ++[Z <: AnyMapping {type Subject = V}, V](path: TypedPath[M, Z, V]): TypedPath[M, Z, V] = path
 
-		override def ++[Z <: AnyMapping {type ResultType = V}, V](path: TypedComponentPath[M, Z, V]): TypedComponentPath[M, Z, V] = path
+		override def ++[Z <: AnyMapping {type Subject = V}, V](path: TypedComponentPath[M, Z, V]): TypedComponentPath[M, Z, V] = path
 
 
 		override def ++:[W <: AnyMapping](prefix: MappingPath[W, M]): TypedPath[W, M, T] = prefix.asInstanceOf[TypedPath[W, M, T]]
@@ -476,18 +476,18 @@ object ComponentPath {
 
 
 
-		override def direct = None
+		override def direct :Option[Nothing] = None
 
 
 
-		override def canEqual(that :Any) = that.isInstanceOf[SelfPath[_, _]]
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[SelfPath[_, _]]
 
-		override def equals(that :Any) = that match {
+		override def equals(that :Any) :Boolean = that match {
 			case other :SelfPath[_, _] => (other eq this) || other.end==this.end
 			case _ => false
 		}
 
-		override def hashCode = end.hashCode
+		override def hashCode :Int = end.hashCode
 
 
 		override def tailString = "" //s"\\$end"
@@ -517,36 +517,27 @@ object ComponentPath {
 			super.splitWhere(fun).asInstanceOf[(X\**\AnyMapping, TypedComponentPath[AnyMapping, Y, T])]
 
 
-		override def canEqual(that :Any) = that.isInstanceOf[DirectComponent[_, _, _]]
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[DirectComponent[_, _, _]]
 
-//		override def equals(that :Any) = that match {
-//			case d :DirectComponent[_, _, _] =>
-//				(this eq d) || d.canEqual(this) && start==d.start && end==d.end
-//			case _ => false
-//		}
-//
-//		override def hashCode = (start, end).hashCode
-//
-		override def tailString = super[TypedDirectPath].tailString
+
+		override def tailString :String = super[TypedDirectPath].tailString
 	}
 
 
-//	class MappedComponentPath[X<:AnyMapping, Y<:AnyMapping{ type ResultType=V }, V] extends TypedComponentPath[X, Y, V] {
-//
-//	}
-	
 
-	sealed trait ConcatComponentPath[X<:AnyMapping, Y<:AnyMapping, Z<:AnyMapping] 
+
+	sealed trait ConcatComponentPath[X<:AnyMapping, Y<:AnyMapping, Z<:AnyMapping]
 		extends ConcatPath[X, Y, Z] with ComponentPath[X, Z]
 
-	private[ComponentPath] class TypedConcatCompPath[X <: AnyMapping, Y<:AnyMapping{ type ResultType=W }, W, Z<:AnyMapping{ type ResultType=V}, V] private[schema] (
-            override val prefix :TypedComponentPath[X, Y, W], override val suffix :TypedComponentPath[Y, Z, V]
-		) extends TypedConcatPath[X, Y, W, Z, V](prefix, suffix) with ConcatComponentPath[X, Y, Z] with TypedComponentPath[X, Z, V]
+	private[ComponentPath] class TypedConcatCompPath[X <: AnyMapping, Y<:TypedMapping[W], W, Z<:TypedMapping[V], V] private[schema]
+			(override val prefix :TypedComponentPath[X, Y, W], override val suffix :TypedComponentPath[Y, Z, V])
+		extends TypedConcatPath[X, Y, W, Z, V](prefix, suffix)
+		   with ConcatComponentPath[X, Y, Z] with TypedComponentPath[X, Z, V]
 	{
 
-		override val pick = morphism.value.function //prefix.pick(_).flatMap(suffix.pick)
-		override def surepick = for (f <- prefix.surepick; g <- suffix.surepick) yield (f andThen g)
-		override def optional = surepick.isEmpty
+//		override val pick = morphism.value.function //prefix.pick(_).flatMap(suffix.pick)
+		override def surepick :Option[X#Subject => V] = for (f <- prefix.surepick; g <- suffix.surepick) yield f andThen g
+		override def optional :Boolean = surepick.isEmpty
 
 		override def lift[T](subcomponent: Z#Component[T]): Option[X#Component[T]] =
 			suffix.lift(subcomponent).flatMap(prefix.lift(_))
@@ -570,10 +561,10 @@ object ComponentPath {
 
 
 
-		override def splits =
+		override def splits :Stream[ConcatComponentPath[X, AnyMapping, Z]] =
 			super[TypedConcatPath].splits.asInstanceOf[Stream[(ConcatComponentPath[X, AnyMapping, Z])]]
 
-		override def splitsReversed =
+		override def splitsReversed :Stream[ConcatComponentPath[X, AnyMapping, Z]] =
 			super[TypedConcatPath].splitsReversed.asInstanceOf[Stream[(ConcatComponentPath[X, AnyMapping, Z])]]
 
 
@@ -584,30 +575,32 @@ object ComponentPath {
 		override def splitWhere(fun: (MappingPath[_, _]) => Boolean): (ComponentPath[X, M], TypedComponentPath[M, Z, V]) forSome {type M <: AnyMapping} =
 			super.splitWhere(fun).asInstanceOf[(X\**\AnyMapping, TypedComponentPath[AnyMapping, Z, V])]
 
+/*
 		object morphism extends PathMorphism {
 			override def value = prefix.morphism.value andThen suffix.morphism.value//ValueMorphism(pick)
 			override def components = prefix.morphism.components compose suffix.morphism.components//ComponentMorphism.between[Z, X](lift(_))
 		}
+*/
 
 
 
 		override def walk(values: ComponentValues[X]): ComponentValues[Z] =
 			suffix.walk(prefix.walk(values))
 
-		
-		override lazy val direct: Option[DirectComponent[X, _ <: X#Component[Z#ResultType], Z#ResultType]] = {
+
+		override lazy val direct: Option[DirectComponent[X, _ <: X#Component[Z#Subject], Z#Subject]] = {
 			suffix.direct.flatMap { directSecond =>
-				prefix.lift(directSecond.end :Y#Component[Z#ResultType]).map { lifted =>
+				prefix.lift(directSecond.end :Y#Component[Z#Subject]).map { lifted =>
 					val root = start
-					(root \\ lifted.asInstanceOf[root.Component[Z#ResultType]]).asInstanceOf[DirectComponent[X, X#Component[Z#ResultType], Z#ResultType]]
+					(root \\ lifted.asInstanceOf[root.Component[Z#Subject]]).asInstanceOf[DirectComponent[X, X#Component[Z#Subject], Z#Subject]]
 				}
 			}
 		}
 
 
-		override def toString = super[TypedConcatPath].toString
+		override def toString :String = super[TypedConcatPath].toString
 
-		override def tailString = super[TypedConcatPath].tailString
+		override def tailString :String = super[TypedConcatPath].tailString
 
 
 		override def canEqual(other: Any): Boolean = other.isInstanceOf[TypedConcatCompPath[_, _, _, _, _]]
@@ -621,40 +614,41 @@ object ComponentPath {
 
 
 
-/*
-	case class SymLinkComponentPath[X<:AnyMapping, Z<:Mapping[T], T, Y<:Mapping[V], V](target :TypedComponentPath[X, Z, T], targetMorphism :MappingMorphism[Z, Y])
-		extends TypedMappingLink[X, Y, V] with TypedComponentPath[X, Y, V]  with TypedDirectPath[X, Y, V] with MorphismPath[X, Y]
-	{ link =>
-//		override def start = target.start
+	/*
+		case class SymLinkComponentPath[X<:AnyMapping, Z<:Mapping[T], T, Y<:Mapping[V], V](target :TypedComponentPath[X, Z, T], targetMorphism :MappingMorphism[Z, Y])
+			extends TypedMappingLink[X, Y, V] with TypedComponentPath[X, Y, V]  with TypedDirectPath[X, Y, V] with MorphismPath[X, Y]
+		{ link =>
+	//		override def start = target.start
 
-//		override def pick = morphism.value.function //target.morphism andTh
-//		override def surepick = morphism.value.ifHomomorphism(_.map)
+	//		override def pick = morphism.value.function //target.morphism andTh
+	//		override def surepick = morphism.value.ifHomomorphism(_.map)
 
-//		override def lift[Q](subcomponent: Y#Component[Q]): Option[X#Component[Q]] = target.lift(subcomponent)
+	//		override def lift[Q](subcomponent: Y#Component[Q]): Option[X#Component[Q]] = target.lift(subcomponent)
 
-		val morphism = target.morphism andThen targetMorphism
+			val morphism = target.morphism andThen targetMorphism
 
-		override def direct: Option[DirectComponent[X, _ <: X#Component[V], V]] = None
+			override def direct: Option[DirectComponent[X, _ <: X#Component[V], V]] = None
 
-//		override def morphism: ComponentValuesMorphism[X, Y] = new PathMorphism {
-//			override val value: ValueMorphism[X#ResultType, V] = link.target.morphism.value andThen valueMorphism
-//			override def components: ComponentMorphism[Y#Component, X#Component] = link.target.morphism.components
-//		}
+	//		override def morphism: ComponentValuesMorphism[X, Y] = new PathMorphism {
+	//			override val value: ValueMorphism[X#Subject, V] = link.target.morphism.value andThen valueMorphism
+	//			override def components: ComponentMorphism[Y#Component, X#Component] = link.target.morphism.components
+	//		}
 
-		override def drop[M <: AnyMapping](other: MappingPath[_ <: AnyMapping, M]): Option[TypedComponentPath[M, Y, V]] =
-			super.drop(other).asInstanceOf[Option[TypedComponentPath[M, Y, V]]]
+			override def drop[M <: AnyMapping](other: MappingPath[_ <: AnyMapping, M]): Option[TypedComponentPath[M, Y, V]] =
+				super.drop(other).asInstanceOf[Option[TypedComponentPath[M, Y, V]]]
 
-		override def splitWhere(fun: (MappingPath[_, _]) => Boolean): (ComponentPath[X, M], TypedComponentPath[M, Y, V]) forSome {type M <: AnyMapping} =
-			super.splitWhere(fun).asInstanceOf[(ComponentPath[X, AnyMapping], TypedComponentPath[AnyMapping, Y, V])]
-
-
-		override def walk(values: ComponentValues[X]): ComponentValues[Y] =
-			target.walk(values).morph(targetMorphism)
+			override def splitWhere(fun: (MappingPath[_, _]) => Boolean): (ComponentPath[X, M], TypedComponentPath[M, Y, V]) forSome {type M <: AnyMapping} =
+				super.splitWhere(fun).asInstanceOf[(ComponentPath[X, AnyMapping], TypedComponentPath[AnyMapping, Y, V])]
 
 
-		override def tailString = end.toString + " => " + target.tailString
-	}
-*/
+			override def walk(values: ComponentValues[X]): ComponentValues[Y] =
+				target.walk(values).morph(targetMorphism)
 
-	
+
+			override def tailString = end.toString + " => " + target.tailString
+		}
+	*/
+
+
 }
+

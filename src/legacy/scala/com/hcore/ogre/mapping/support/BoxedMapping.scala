@@ -14,7 +14,7 @@ abstract class BoxedMapping[V, T, M<:Mapping[T]] extends MappingMorphismAdapter[
 	override def columns: Seq[Component[_]] = ???
 
 	/** All columns which can be part of an sql filter (don't have NoQuery flag set) */
-	override def querable: Seq[Component[_]] = ???
+	override def queryable: Seq[Component[_]] = ???
 
 	/** All columns which can be listed in the select clause of an sql */
 	override def selectable: Seq[Component[_]] = ???

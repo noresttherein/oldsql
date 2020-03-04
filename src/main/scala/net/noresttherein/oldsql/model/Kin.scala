@@ -72,6 +72,7 @@ abstract class Kin[+T] extends Serializable {
 
 	/** Returns the first element of the contents, in the sense and order appropriate to its type.
 	  *   - For collections, this is the `this.get.head` element;
+	  *   - For maps, it is a pair `k->v` made from the tuple `this.get.head` (see [[net.noresttherein.oldsql.model.-> ->]];
 	  *   - For `Option`, it is equivalent to `this.get.get`;
 	  *   - For non-composite types, it is simply `this.get`;
 	  *  The primary purpose of this method is use as part of lambda functions used as descriptors

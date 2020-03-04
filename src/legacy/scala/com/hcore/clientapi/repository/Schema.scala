@@ -23,7 +23,7 @@ class Schema(config :DBConfig, name :Option[String]=Schema.DefaultSchemaName) ex
 //	import ForeignKeyType._
 
 
-	abstract class IdTable[E<:HasId](implicit val typeTag :TypeTag[E]) extends Table[E, Option[Id]] with StaticMapping[E] {
+	abstract class IdTable[E<:Ha3sId](implicit val typeTag :TypeTag[E]) extends Table[E, Option[Id]] with StaticMapping[E] {
 		def schemaName = Schema.this.name
 
 		val id = column("id", _.id, AutoGen) //autoins("id", _.id)

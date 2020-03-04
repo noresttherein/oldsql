@@ -83,7 +83,7 @@ sealed trait AnyMapping { mapping => //this :Mapping[_] =>
 	def InsertParameters :SetParameter[ResultType]
 	/** Slick positional parameter setter for all updatable columns, in that order */
 	def UpdateParameters :SetParameter[ResultType]
-	/** Slick positional parameter setter for all querable columns, in that order */
+	/** Slick positional parameter setter for all queryable columns, in that order */
 	def QueryParameters :SetParameter[ResultType]
 
 	def selectForm(components :Seq[Component[_]]) :SQLReadForm[ResultType]
@@ -496,11 +496,11 @@ object Mapping {
 				extension.providing(extension.is(this))
 		}
 		
-//		trait MappingModifierInspector[O[T]<:MappingExtension[T]] extends MappingModifierType {
-//			abstract override def test[T](option :MappingExtension[T]) :Option[O[T]] //= //option.is(this)
+//		trait MappingModifierInspector[O[T]<:Buff[T]] extends MappingModifierType {
+//			abstract override def test[T](option :Buff[T]) :Option[O[T]] //= //option.is(this)
 //
-//			override def test[T](options :Seq[MappingExtension[T]]) :Option[O[T]] =
-//				options.map(test(_ :MappingExtension[T]) :Option[O[T]]).collectFirst{ case Some(x) => x }
+//			override def test[T](options :Seq[Buff[T]]) :Option[O[T]] =
+//				options.map(test(_ :Buff[T]) :Option[O[T]]).collectFirst{ case Some(x) => x }
 //
 //			override def test[T](mapping :Mapping[T]) :Option[O[T]] = test(mapping.modifiers)
 //			

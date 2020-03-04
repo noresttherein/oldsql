@@ -1,34 +1,26 @@
-package com.hcore.ogre.mapping
+package net.noresttherein.oldsql.schema
+
+import net.noresttherein.oldsql.schema.MappingPath.{\~\, ConcatPath, TypedPath}
+import net.noresttherein.oldsql.schema.support.MappedMapping
+import net.noresttherein.oldsql.schema.support.MappedMapping.MappedAs
+import net.noresttherein.oldsql.schema.ComponentPath.SelfPath
+import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.slang.SaferCasts._
 
 
-import com.hcore.ogre.mapping.ComponentPath.MappedComponent.TypedMappedComponent
-import com.hcore.ogre.mapping.ComponentPath.{TypedComponentPath, MappedComponent, MorphismPath, SelfPath}
-import com.hcore.ogre.mapping.Mapping.ComponentCompatibleMapping
-import com.hcore.ogre.mapping.MappingMorphism.ValueMorphism
-import com.hcore.ogre.mapping.MappingPath._
-import com.hcore.ogre.mapping.support.MappedMapping
-import com.hcore.ogre.mapping.support.MappedMapping.MappedAs
-import com.hcore.ogre.slang.SaferCasts
-import com.hcore.ogre.slang.options.extensions
 
-
-//implicits
-import extensions._
-import SaferCasts._
-
-
-/** Representation of the facto that value of mapping Y can be reached from the value of mapping X. 
-  * It might mean that Y#ResultType is physically a part of X#ResultType (for example, a property, 
-  * property of a property, etc), or is in some sense associated with with value X#ResultType, like in the case
-  * of relationships and possible join definitions. Paths can be concatenated and thus form a sequence of mappings, 
-  * or a sequence of direct paths, where the end meapping of each is the start mapping of nest. 
+/** Representation of the fact that value of mapping Y can be reached from the value of mapping X.
+  * It might mean that Y#Subject is physically a part of X#Subject (for example, a property,
+  * property of a property, etc), or is in some sense associated with with value X#Subject, like in the case
+  * of relationships and possible join definitions. Paths can be concatenated and thus form a sequence of mappings,
+  * or a sequence of direct paths, where the end mapping of each is the start mapping of nest.
   * The nature of the link between the mappings is defined by concrete subclasses. The main implementation is
-  * ComponentPath and derived classes, which state that the end mapping is direct (in case of DirectComponent path) 
+  * ComponentPath and derived classes, which state that the end mapping is direct (in case of DirectComponent path)
   * or indirect (in case of concatenated component paths) component of the start mapping, and thus takes part in its assembly.
-  * 
   */
 trait MappingPath[X<:AnyMapping, Y<:AnyMapping] {
-	type ValueType = Y#ResultType
+	type ValueType = Y#Subject
 
 	def length :Int
 
@@ -36,16 +28,11 @@ trait MappingPath[X<:AnyMapping, Y<:AnyMapping] {
 	def end :Y
 
 
-	def pick :X#ResultType => Option[Y#ResultType] //= this.apply
-//	def surepick :Option[X#ResultType => Y#ResultType]
+	def pick :X#Subject => Option[Y#Subject] //= this.apply
+//	def surepick :Option[X#Subject => Y#Subject]
 
 	def optional :Boolean
 
-//	def apply(value :X#ResultType) :Option[Y#ResultType] = pick(value)
-
-//	def unapply(root :X#ResultType) :Option[Y#ResultType] = pick(root)
-
-//	def map[V](map :Y#ResultType => V, unmap :V=>Y#ResultType) :MappingPath[X, MappingSubstitute[V, ]] =
 
 	def mappings :Seq[AnyMapping]
 
@@ -57,22 +44,22 @@ trait MappingPath[X<:AnyMapping, Y<:AnyMapping] {
 
 	def suffixesDesc :Seq[MappingPath[_<:AnyMapping, Y]] = suffixes.reverse
 
-	def splits :Seq[(ConcatPath[X, AnyMapping, Y])]
+	def splits :Seq[ConcatPath[X, AnyMapping, Y]]
 
-	def splitsReversed :Seq[(ConcatPath[X, AnyMapping, Y])]
+	def splitsReversed :Seq[ConcatPath[X, AnyMapping, Y]]
 
 
 	def startsWith(other :MappingPath[_<:AnyMapping, _<:AnyMapping]) :Boolean
 
 	def drop[M<:AnyMapping](other :MappingPath[_<:AnyMapping, M]) :Option[MappingPath[M, Y]]
 
-	def splitWhere(fun :MappingPath[_, _]=>Boolean) :(MappingPath[X, M], MappingPath[M, Y]) forSome { type M<:AnyMapping }
+	def splitWhere(fun :MappingPath[_, _] => Boolean) :(MappingPath[X, M], MappingPath[M, Y]) forSome { type M <: AnyMapping }
 
 
 	def apply[C<:Y#AnyComponent](subcomponent :Y=>C) :MappingPath[X, C] = this \ subcomponent
 
 
-	def \: (mapping :AnyMapping)(implicit ev : X<:<mapping.Component[_]) :MappingPath[mapping.type, Y]
+	def \: (mapping :AnyMapping)(implicit ev : X <:< mapping.Component[_]) :MappingPath[mapping.type, Y]
 
 
 	def :\ [Q](subcomponent :Y#Component[Q]) :TypedPath[X, subcomponent.type, Q]
@@ -85,10 +72,10 @@ trait MappingPath[X<:AnyMapping, Y<:AnyMapping] {
 
 
 	def :+ [C<:Y#AnyComponent](subcomponent :C) :MappingPath[X, C] =
-		(this :\ subcomponent.asInstanceOf[Y#Component[Any]]).asInstanceOf[X\~\C]
+		(this :\ subcomponent.asInstanceOf[Y#Component[Any]]).asInstanceOf[X \~\ C]
 
-	def +: [M<:AnyMapping](mapping :M)(implicit ev :X<:<M#Component[_]) :MappingPath[M, Y] =
-		((mapping :mapping.type) \: this)(ev.asInstanceOf[X<:<mapping.Component[Any]]).asInstanceOf[M\~\Y]
+	def +: [M<:AnyMapping](mapping :M)(implicit ev :X <:< M#Component[_]) :MappingPath[M, Y] =
+		((mapping :mapping.type) \: this)(ev.asInstanceOf[X <:< mapping.Component[Any]]).asInstanceOf[M\~\Y]
 
 
 
@@ -114,7 +101,7 @@ trait MappingPath[X<:AnyMapping, Y<:AnyMapping] {
 
 	def asComponentPath :Option[ComponentPath[X, Y]] = None
 
-	def map[V](map :Y#ResultType=>V)(unmap :V=>Y#ResultType) :TypedPath[X, Y MappedAs V, V]
+	def map[V](map :Y#Subject => V)(unmap :V => Y#Subject) :TypedPath[X, Y MappedAs V, V]
 
 
 
@@ -122,7 +109,9 @@ trait MappingPath[X<:AnyMapping, Y<:AnyMapping] {
 
 	def unchecked :MappingPath[AnyMapping, AnyMapping] = this.asInstanceOf[AnyMapping\~\AnyMapping]
 
-	def cast[X1<:AnyMapping, Y1<:AnyMapping] = this.asInstanceOf[X1\~\Y1]
+	def cast[X1<:AnyMapping, Y1<:AnyMapping] :X1 \~\ Y1 = this.asInstanceOf[X1\~\Y1]
+
+
 
 	override def toString = s"\\$start$tailString"
 
@@ -143,17 +132,19 @@ object MappingPath {
 
 
 	object SplitFirst {
-		def unapply[X <:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[(DirectPath[X, AnyMapping], MappingPath[AnyMapping, Y])] = //forSome { type M <:AnyMapping }] =
+		def unapply[X <:AnyMapping, Y<:AnyMapping](path :X \~\ Y) :Option[(DirectPath[X, AnyMapping], AnyMapping \~\ Y)] =
 			path match {
-				case d:DirectPath[_, _] => Some(d.asInstanceOf[DirectPath[X, AnyMapping]], ComponentPath.self(d.end).asInstanceOf[AnyMapping\~\Y])
+				case d:DirectPath[_, _] =>
+					Some(d.asInstanceOf[DirectPath[X, AnyMapping]], ComponentPath.self(d.end).asInstanceOf[AnyMapping\~\Y])
 				case _ => Indirect.unapply(path)
 			}
 	}
 
 	object Indirect {
-		def unapply[X<:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[(DirectPath[X, AnyMapping], MappingPath[AnyMapping, Y])] = // forSome { type M <:AnyMapping }] =
+		def unapply[X<:AnyMapping, Y<:AnyMapping](path :X \~\ Y) :Option[(DirectPath[X, AnyMapping], AnyMapping\~\Y)] = // forSome { type M <:AnyMapping }] =
 			path.ifSubclass[TypedConcatPath[X, AnyMapping, _, Y, _]] { concat =>
-				(concat.descending.prefix.asInstanceOf[DirectPath[X, AnyMapping]], concat.descending.suffix.asInstanceOf[AnyMapping \~\ Y])
+				(concat.descending.prefix.asInstanceOf[DirectPath[X, AnyMapping]],
+					concat.descending.suffix.asInstanceOf[AnyMapping \~\ Y])
 			}
 
 	}
@@ -164,54 +155,40 @@ object MappingPath {
 	/** A subtype of MappingPath that should be used wherever possible, as it greatly improves working with type inference and
 	  * allows for implicit resolution based on the target mapped type T.
 	  */
-	trait TypedPath[X<:AnyMapping, Y <:AnyMapping{ type ResultType=T }, T] extends MappingPath[X, Y] {
+	trait TypedPath[X<:AnyMapping, Y <:TypedMapping[T], T] extends MappingPath[X, Y] {
 
-		override def pick :X#ResultType => Option[T]
-//		override def surepick :Option[X#ResultType =>Y#ResultType]
-
-//		override def apply(value :X#ResultType) :Option[T] = pick(value)
-
-//		override def unapply(root :X#ResultType) :Option[T] = pick(root)
+		override def pick :X#Subject => Option[T]
 
 
-		override def map[V](map: T => V)(unmap: V => T): TypedPath[X, MappedAs[Y, V], V] = {
+		override def map[V](map: T => V)(unmap: V => T): TypedPath[X, MappedAs[Y, V], V] = ???/* {
 			val mapped = MappedMapping(end, map, unmap)
-			this ++ new TypedMappedComponent[Y, Y MappedAs V, V](mapped.reverseMorphism.asInstanceOf[MappingMorphism[Y, Y MappedAs V]])
-		}
+			this ++ new TypedMappedComponent[Y, Y MappedAs V, V](
+				mapped.reverseMorphism.asInstanceOf[MappingMorphism[Y, Y MappedAs V]]
+			)
+		}*/
 
 		override def drop[M <: AnyMapping](other: MappingPath[_ <: AnyMapping, M]): Option[TypedPath[M, Y, T]]
 
 
-		override def splitWhere(fun: (MappingPath[_, _]) => Boolean): (MappingPath[X, M], TypedPath[M, Y, T]) forSome { type M<:AnyMapping }
+		override def splitWhere(fun: MappingPath[_, _] => Boolean): (MappingPath[X, M], TypedPath[M, Y, T]) forSome { type M<:AnyMapping }
 
-		def \: (mapping :AnyMapping)(implicit ev : X<:<mapping.Component[_]) :TypedPath[mapping.type, Y, T] =
-//			new TypedConcatPath[mapping.type, X, Y, T]((mapping \\ start).asInstanceOf[mapping.type \~\ X], this)
-			typedConcat((mapping \\ start), this)
+		def \: (mapping :AnyMapping)(implicit ev : X<:<mapping.Component[_]) :TypedPath[mapping.type, Y, T] = ???
+//			typedConcat(mapping \\ start, this)
 
 
-		def :\ [Q](subcomponent :Y#Component[Q]) :TypedPath[X, subcomponent.type, Q] = {
+		def :\ [Q](subcomponent :Y#Component[Q]) :TypedPath[X, subcomponent.type, Q] = ??? /*{
 			val mapping = end
 			val tail = (mapping \\ subcomponent.asInstanceOf[mapping.Component[Q]]).asInstanceOf[TypedPath[Y, subcomponent.type, Q]]
-//			new TypedConcatPath[X, Y, subcomponent.type, Q](this, tail)
+			//			new TypedConcatPath[X, Y, subcomponent.type, Q](this, tail)
 			typedConcat(this, tail)
-		}
+		}*/
 
 
-		def \ [C<:Y#AnyComponent](subcomponent :Y=>C) :MappingPath[X, C] = {
-			val first = end
-			val next = subcomponent(end).asInstanceOf[first.Component[Any]]
-			val tail = (first \\ next).asInstanceOf[TypedPath[Y, next.type, Any]]
-//			new TypedConcatPath[X, Y, next.type, Any](this, tail).asInstanceOf[X \~\ C]
-			typedConcat(this, tail).asInstanceOf[X \~\ C]
-		}
-
-
-
-		def ++ [Z<:AnyMapping { type ResultType=V }, V](path :TypedPath[Y, Z, V]) :TypedPath[X, Z, V] = path match {
+		def ++ [Z<:TypedMapping[V], V](path :TypedPath[Y, Z, V]) :TypedPath[X, Z, V] = path match {
 			case _ if path.start!=end =>
 				throw new IllegalArgumentException(s"$this: can't append $path as it starts at a different mapping")
 			case SelfPath(_) => this.asInstanceOf[TypedPath[X, Z, V]]
-			case _ => typedConcat(this, path) //new TypedConcatPath[X, Y, Z, V](this, path)
+			case _ => typedConcat(this, path)
 		}
 
 
@@ -223,27 +200,33 @@ object MappingPath {
 			case _ => typedConcat(prefix, this) //new TypedConcatPath[W, X, Y, T](prefix, this)
 		}
 
-		
-		protected def typedConcat[R<:AnyMapping, Q<:AnyMapping { type ResultType=V }, V](
-				prefix :R \~\ (_<:AnyMapping), suffix :TypedPath[_<:AnyMapping, Q, V]) :TypedConcatPath[R, _, _, Q, V] =
+
+
+		protected def typedConcat[R<:AnyMapping, Q<:TypedMapping[V], V]
+		                         (prefix :R \~\ (_<:AnyMapping), suffix :TypedPath[_<:AnyMapping, Q, V]) :TypedConcatPath[R, _, _, Q, V] =
 			new TypedConcatPath(prefix.asInstanceOf[TypedPath[R, Mapping[Any], Any]], suffix.asInstanceOf[TypedPath[Mapping[Any], Q, V]])
+
 
 		protected def concat[R<:AnyMapping, S<:AnyMapping, Q<:AnyMapping](prefix :R \~\ S, suffix :S \~\ Q) :ConcatPath[R, S, Q] =
 			typedConcat(prefix.asInstanceOf[TypedPath[R, Mapping[Any], Any]], suffix.asInstanceOf[TypedPath[Mapping[Any], Mapping[Any], Any]]).asInstanceOf[ConcatPath[R, S, Q]]
-		
+
+		def \ [C<:Y#AnyComponent](subcomponent :Y=>C) :MappingPath[X, C] = {
+			val first = end
+			val next = subcomponent(end).asInstanceOf[first.Component[Any]]
+			val tail = (first \\ next).asInstanceOf[TypedPath[Y, next.type, Any]]
+			//			new TypedConcatPath[X, Y, next.type, Any](this, tail).asInstanceOf[X \~\ C]
+			typedConcat(this, tail).asInstanceOf[X \~\ C]
+		}
+
 
 	}
-	
-	
-	trait FullyTypedPath[X<:AnyMapping{ type ResultType=S }, S, Y<:AnyMapping{ type ResultType=T }, T]
+
+
+	trait FullyTypedPath[X <: TypedMapping[S], S, Y <: TypedMapping[T], T]
 		extends TypedPath[X, Y, T]
 	{
 		override def pick :S=>Option[T]
 
-//		override def apply(value :S) :Option[T] = pick(value)
-
-//		override def unapply(root :S) :Option[T] = pick(root)
-		
 	}
 
 
@@ -259,12 +242,12 @@ object MappingPath {
 	}
 
 
-	trait TypedDirectPath[X<:AnyMapping, Y<:AnyMapping{ type ResultType=V }, V]
+	trait TypedDirectPath[X<:AnyMapping, Y<:TypedMapping[V], V]
 		extends DirectPath[X, Y] with TypedPath[X, Y, V]
 	{
 		def length = 1
 
-		override def mappings = Seq(start, end)
+		override def mappings :Seq[AnyMapping] = Seq(start, end)
 
 		override def prefixes :Seq[this.type] = Seq(this)
 
@@ -293,23 +276,23 @@ object MappingPath {
 
 
 		override def splitWhere(fun: (MappingPath[_, _]) => Boolean): (MappingPath[X, M], TypedPath[M, Y, V]) forSome { type M<:AnyMapping } =
-			if (fun(this)) (this.asInstanceOf[X\~\AnyMapping], SelfPath(end.asMapping).asInstanceOf[TypedPath[AnyMapping, Y, V]])
+			if (fun(this)) (this.asInstanceOf[X\~\AnyMapping], SelfPath(end.asComponent).asInstanceOf[TypedPath[AnyMapping, Y, V]])
 			else (ComponentPath.self(start).asInstanceOf[X\~\AnyMapping], this.asInstanceOf[TypedPath[AnyMapping, Y, V]])
 
 
 		override def canEqual(that: Any): Boolean = that.isInstanceOf[DirectPath[_, _]]
 
-		override def equals(that :Any) = that match {
+		override def equals(that :Any) :Boolean = that match {
 			case d :DirectPath[_, _] => (this eq d) || (d.canEqual(this) && canEqual(that) && d.start==start && d.end==end)
 			case _ => false
 		}
 
-		override def hashCode = (start, end).hashCode
+		override def hashCode :Int = (start, end).hashCode
 
-		override def tailString = "\\"+end.toString
+		override def tailString :String = "\\"+end.toString
 
 	}
-	
+
 	/** A path being a concatenation of two (of which any  can be a concatenation itself) paths X\~\Y and Y\~\Z. */
 	trait ConcatPath[X<:AnyMapping, Y<:AnyMapping, Z<:AnyMapping] extends MappingPath[X, Z] {
 		def prefix :MappingPath[X, Y]
@@ -324,22 +307,22 @@ object MappingPath {
 
 
 
-	private[schema] class TypedConcatPath[X <: AnyMapping, Y<:AnyMapping{ type ResultType=W }, W, Z<:AnyMapping{ type ResultType=V }, V] private[schema] (
-			 val prefix :TypedPath[X, Y, W], val suffix :TypedPath[Y, Z, V]
-		 ) extends ConcatPath[X, Y, Z] with TypedPath[X, Z, V]
+	private[schema] class TypedConcatPath[X <: AnyMapping, Y <: TypedMapping[W], W, Z <: TypedMapping[V], V] private[schema]
+			(val prefix :TypedPath[X, Y, W], val suffix :TypedPath[Y, Z, V])
+		extends ConcatPath[X, Y, Z] with TypedPath[X, Z, V]
 	{
-		val length = prefix.length + suffix.length
-		val start = prefix.start
-		val end = suffix.end
+		val length :Int = prefix.length + suffix.length
+		val start :X = prefix.start
+		val end :Z = suffix.end
 
-		override val pick = prefix.pick(_:X#ResultType).flatMap(suffix.pick)
-//		override def surepick = for (f <- prefix.surepick; g <- suffix.surepick) yield (f andThen g)
+		override val pick :X#Subject => Option[V] = prefix.pick(_ :X#Subject).flatMap(suffix.pick)
+		//		override def surepick = for (f <- prefix.surepick; g <- suffix.surepick) yield (f andThen g)
 
 
 		override def optional: Boolean = prefix.optional || suffix.optional
 
 
-		override def mappings = descending.start +: descending.suffix.mappings
+		override def mappings :Seq[AnyMapping] = descending.start +: descending.suffix.mappings
 
 		override def prefixes: Seq[MappingPath[X, _ <: AnyMapping]] =
 			prefix.prefixes.toStream ++ suffix.prefixes.toStream.map(suffix => prefix ++ suffix)
@@ -355,12 +338,12 @@ object MappingPath {
 		override def suffixesDesc :Seq[MappingPath[_<:AnyMapping, Z]] =
 			prefix.suffixesDesc.toStream.map(s => s ++ suffix) ++ suffix.suffixesDesc
 
-		override def splits =
+		override def splits :Stream[ConcatPath[X, AnyMapping, Z]] =
 			prefix.splits.toStream.map(split => concat(split.prefix, concat(split.suffix, suffix))) ++
 				(this.asInstanceOf[ConcatPath[X, AnyMapping, Z]] +:
 					suffix.splits.toStream.map(split => concat(concat(prefix, split.prefix), split.suffix)))
 
-		override def splitsReversed =
+		override def splitsReversed :Stream[ConcatPath[X, AnyMapping, Z]] =
 			suffix.splitsReversed.toStream.map(split => concat(concat(prefix, split.prefix), split.suffix)) ++
 				(this.asInstanceOf[ConcatPath[X, AnyMapping, Z]] +:
 					prefix.splitsReversed.toStream.map(split => concat(split.prefix, concat(split.suffix, suffix))))
@@ -368,7 +351,7 @@ object MappingPath {
 
 
 
-		def startsWith(other :MappingPath[_<:AnyMapping, _<:AnyMapping]) = other match {
+		def startsWith(other :MappingPath[_<:AnyMapping, _<:AnyMapping]) :Boolean = other match {
 			case SelfPath(mapping) => mapping==descending.start
 			case direct :DirectPath[_, _] => descending.prefix==direct
 			case concat :ConcatPath[_, _, _] =>
@@ -451,9 +434,9 @@ object MappingPath {
 		override def hashCode: Int = (ascending.prefix, ascending.suffix).hashCode
 
 
-		override def toString = prefix.toString + suffix.tailString
+		override def toString :String = prefix.toString + suffix.tailString
 
-		override def tailString = prefix.tailString + suffix.tailString
+		override def tailString :String = prefix.tailString + suffix.tailString
 
 	}
 
@@ -495,9 +478,10 @@ object MappingPath {
 //	}
 
 
-	trait TypedMappingLink[X<:AnyMapping, Y<:AnyMapping{ type ResultType=T }, T] extends TypedPath[X, Y, T] with MappingLink[X, Y]
+	trait TypedMappingLink[X <: AnyMapping, Y <: TypedMapping[T], T] extends TypedPath[X, Y, T] with MappingLink[X, Y]
 
 
 
 
 }
+

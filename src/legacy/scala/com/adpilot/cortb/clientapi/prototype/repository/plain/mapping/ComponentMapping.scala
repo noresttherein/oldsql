@@ -22,7 +22,7 @@ object ComponentMapping {
 
 		lazy val columns = adaptColumns(_.columns)
 		lazy val selectable = adaptColumns(_.selectable)
-		lazy val querable = adaptColumns(_.querable)
+		lazy val queryable = adaptColumns(_.queryable)
 		lazy val updatable = adaptColumns(_.updatable)
 		lazy val insertable = adaptColumns(_.insertable)
 		lazy val generated = adaptColumns(_.generated)

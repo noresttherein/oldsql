@@ -47,7 +47,7 @@ trait ColumnMapping[T] extends Mapping[T] with SetParameter[T] { column =>
 	final def insertable :Seq[Component[T]] = Seq(self)
 	final def generated :Seq[Component[T]] = Seq(self)
 //
-//	final def querable :Seq[Component[T]] = selfUnless(NoQuery)
+//	final def queryable :Seq[Component[T]] = selfUnless(NoQuery)
 //	final def selectable :Seq[Component[T]] = selfUnless(NoSelect)
 //	final def updatable :Seq[Component[T]] = selfUnless(NoUpdate)
 //	final def insertable :Seq[Component[T]] = selfUnless(NoInsert)
@@ -140,7 +140,7 @@ object ColumnMapping {
 		def self: Component[T] = this
 
 //		override val selectable = super.selectable
-//		override val querable = super.querable
+//		override val queryable = super.queryable
 //		override val updatable = super.updatable
 //		override val insertable = super.insertable
 //		override val generated = super.generated

@@ -122,7 +122,7 @@ trait EntityMapping[E, PK] extends TableMapping[E] with MappingWithPK[E, PK] { m
 
 
 
-	protected[mapping] def joinSelectStatement(whereCondition :Option[String], refs :(E=>One[Any])*) :(String, GetResult[E]) = {
+	private[schema] def joinSelectStatement(whereCondition :Option[String], refs :(E=>One[Any])*) :(String, GetResult[E]) = {
 		val root = JoinByFK(this)
 		val mock = joinMock(root)
 
