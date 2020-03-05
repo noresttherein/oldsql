@@ -1,8 +1,8 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.ComponentPath.TypedComponentPath
+import net.noresttherein.oldsql.schema.ComponentPath.{\:\, TypedComponentPath}
 import net.noresttherein.oldsql.schema.ComponentValues.StickyComponentValues
-import net.noresttherein.oldsql.schema.Mapping.CompatibleMapping
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, SingletonComponent, SingletonMapping, TypedMapping, TypedSingleton}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
@@ -49,7 +49,7 @@ import net.noresttherein.oldsql.slang._
   * @tparam M type of the target mapping defining the components for which this instance contains values.
   *           In non-abstract cases the singleton type of the mapping object used for assembly
   */
-trait ComponentValues[M<:AnyMapping] {
+trait ComponentValues[M <: SingletonMapping] {
 
 	/** Compute the value for the root mapping, either using a predefined value or delegating to the mapping's assembly
 	  * method. It is not the top-level function - use either `mapping.apply()` or no-argument `apply()` on dedicated
@@ -88,7 +88,7 @@ trait ComponentValues[M<:AnyMapping] {
 	  *                  (see class description).
 	  * @throws NoSuchElementException if no value could be provided, be it preset, assembled or default.
 	  */
-	def apply[T](component :M#Component[T]) :T
+	def apply[T](component :Component[M#Owner, T]) :T
 
 	/** Return the value for the given component or None if it can't be obtained in any way (predefined, assembly or
 	  * default). Should be equivalent to component.optionally(this :\ component), rather than return a value directly
@@ -97,7 +97,7 @@ trait ComponentValues[M<:AnyMapping] {
 	  *                   the values of top-level components, and use the corresponding method accepting a path for
 	  *                   subcomponents (see class description).
 	  */
-	def get[T](component :M#Component[T]) :Option[T]
+	def get[T](component :Component[M#Owner, T]) :Option[T]
 
 	/** Return ComponentValues for the given component of the associated mapping. Returned object will delegate all
 	  * calls to this instance (or the parent instance of this mapping), first mapping the component arguments of
@@ -108,7 +108,7 @@ trait ComponentValues[M<:AnyMapping] {
 	  *                   values of top-level components, and use the corresponding method accepting a path for
 	  *                   subcomponents (see class description).
 	  */
-	def values[C<:M#Component[T], T](component :C) :ComponentValues[C]
+	def values[C <: SingletonComponent[M#Owner, T], T](component :C) :ComponentValues[C]
 
 
 	/** Return ComponentValues for the given component of the associated mapping. Returned object will delegate all
@@ -120,7 +120,7 @@ trait ComponentValues[M<:AnyMapping] {
 	  *                   values of top-level components, and use the corresponding method accepting a path for
 	  *                   subcomponents (see class description).
 	  */
-	def :\[T](component :M#Component[T]) :ComponentValues[component.type] = values[component.type, T](component)
+	def :\[T](component :Component[M#Owner, T]) :ComponentValues[component.type] = values[component.type, T](component)
 
 
 	/** Return the value for a given subcomponent of the associated mapping specified by the given path.
@@ -130,7 +130,7 @@ trait ComponentValues[M<:AnyMapping] {
 	  * x is the result value of the mapping process of this instance. In particular, there might not be any value
 	  * for the target component in the input set, but some component on the path might provide a default one.
 	  */
-	def apply[C<:AnyMapping](path :ComponentPath[M, C]) :C#Subject
+	def apply[C <: SingletonMapping](path :M \:\ C) :C#Subject
 
 	/** Return the value for a given subcomponent of the associated mapping specified by the given path or None
 	  * if it couldn't be obtained in any way.
@@ -140,7 +140,7 @@ trait ComponentValues[M<:AnyMapping] {
 	  * x is the result value of the mapping process of this instance. In particular, there might not be any value
 	  * for the target component in the input set, but some component on the path might provide a default one.
 	  */
-	def get[C<:AnyMapping](path :ComponentPath[M, C]) :Option[C#Subject]
+	def get[C <: SingletonMapping](path :M \:\ C) :Option[C#Subject]
 
 	/** Return ComponentValues instance associated with the end mapping of the given path, which will serve as a proxy
 	  * to this instance (or this instance parent values). This is the generic version of '\' method designed for easier
@@ -149,13 +149,13 @@ trait ComponentValues[M<:AnyMapping] {
 	  * the proxing process to the given path instance, which will recursively adapt the instance by one step of the path
 	  * at a time.
 	  */
-	def values[C<:AnyMapping](path :ComponentPath[M, C]) :ComponentValues[C]
+	def values[C <: SingletonMapping](path :M \:\ C) :ComponentValues[C]
 
 
 	/** Return ComponentValues instance associated with the given direct component of this mapping.
 	  * It is a handy implementation shortcut and will always be equivalent to calling values(path) and values(path.end).
 	  */
-	def direct[C<:M#Component[T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C]
+	def direct[C <: SingletonComponent[M#Owner, T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C]
 
 
 	/** Return ComponentValues instance for the given subcomponent of this mapping. Return values will in most cases
@@ -163,19 +163,17 @@ trait ComponentValues[M<:AnyMapping] {
 	  * The standard solution will delegate to the path argument the process of adapting arguments to those accepted by this instance,
 	  * either directly or one-step at a time.
 	  */
-	def \[C<:AnyMapping](path :ComponentPath[M, C]) :ComponentValues[C] = values(path)
+	def \[C <: SingletonMapping](path :M \:\ C) :ComponentValues[C] = values(path)
 
 
 
 	/** A specialized version of apply(path :ComponentPath[M, C]) to make type inference easier, as scalac has problems with member types. */
-	@inline
-	final def apply[C<:AnyMapping{ type Subject=T }, T](path :TypedComponentPath[M, C, T]) :T =
-		apply[C](path :ComponentPath[M, C]) :C#Subject
+	@inline final def apply[C <: TypedSingleton[T], T](path :TypedComponentPath[M, C, T]) :T =
+		apply[C](path :M \:\ C) //:C#Subject
 
 	/** A specialized version of get(path :ComponentPath[M, C]) to make type inference easier, as scalac has problems with member types. */
-	@inline
-	final def get[C<:AnyMapping{ type Subject=T }, T](path :TypedComponentPath[M, C, T]) :Option[T] =
-		get[C](path :ComponentPath[M, C]) :Option[C#Subject]
+	@inline final def get[C <: TypedSingleton[T], T](path :TypedComponentPath[M, C, T]) :Option[T] =
+		get[C](path :M \:\ C) //:Option[C#Subject]
 
 
 	/** Adapt this instance for use with another mapping, which shares components with the one associated with this instance.
@@ -184,7 +182,7 @@ trait ComponentValues[M<:AnyMapping] {
 	  * @tparam C
 	  * @return
 	  */
-	def identical[C<:CompatibleMapping[M]](mapping :C) :ComponentValues[C]
+	def identical[C <: CompatibleMapping[M] with Singleton](mapping :C) :ComponentValues[C]
 
 
 /*
@@ -199,10 +197,10 @@ trait ComponentValues[M<:AnyMapping] {
 
 
 	/** Create ComponentValues which will fallback to the given instance when no value for a particular component can
-	  * be obtained in any way. The values in this instance will always have precedence, even if they are defind at a lower level.
+	  * be obtained in any way. The values in this instance will always have precedence, even if they are defined at a lower level.
 	  * For example, if this instance contains a value for a single column, and the argument contains a predefined value for the whole mapping,
 	  * the result of the mapping will still be assembled from lower-level components so that the value of the column defined here
-	  * is used, deassembling the values for other components from the argument.
+	  * is used, disassembling the values for other components from the argument.
 	  * @param values
 	  * @return
 	  */
@@ -216,7 +214,7 @@ trait ComponentValues[M<:AnyMapping] {
 	  * @param mapping
 	  * @return
 	  */
-	def stickTo[X<:AnyMapping](mapping :M) :ComponentValues[X] =
+	def stickTo[X <: SingletonMapping](mapping :M) :ComponentValues[X] =
 		new StickyComponentValues[M](mapping, this).crosscast[X]
 
 
@@ -234,21 +232,21 @@ trait ComponentValues[M<:AnyMapping] {
 	  * @tparam X
 	  * @return
 	  */
-	def stick[X<:AnyMapping](path :ComponentPath[M, X]) :ComponentValues[M] =
+	def stick[X <: SingletonMapping](path :M \:\ X) :ComponentValues[M] =
 		values(path).stickTo[M](path.end) orElse this
 
 	/** A safer casting method which allows casting this instance, invariant regarding to the mapping type, to a higher mapping type.
 	  * Generally used to cast from a singleton-typed instance to the generic type instance.
 	  */
-	@inline final def upcast[X>:M <:AnyMapping] :ComponentValues[X] = this.asInstanceOf[ComponentValues[X]]
+	@inline final def upcast[X >: M <: SingletonMapping] :ComponentValues[X] = this.asInstanceOf[ComponentValues[X]]
 
 	/** A safer casting method requiring the associated mapping type to be a subtype of the type parameter; used to cast
 	  * a generic instance into one parameterised with singleton type of the target mapping.
 	  */
-	@inline final def downcast[X<:M] :ComponentValues[X] = this.asInstanceOf[ComponentValues[X]]
+	@inline final def downcast[X <: M] :ComponentValues[X] = this.asInstanceOf[ComponentValues[X]]
 
 	/** Shortcut for casting the type parameter to a different type reserved for the implementations */
-	@inline final private[ComponentValues] def crosscast[X<:AnyMapping] :ComponentValues[X] =
+	@inline final private[ComponentValues] def crosscast[X <: SingletonMapping] :ComponentValues[X] =
 		this.asInstanceOf[ComponentValues[X]]
 
 
@@ -276,7 +274,7 @@ trait ComponentValues[M<:AnyMapping] {
   *
   */
 object ComponentValues {
-	type TypedValues[M<:Mapping[T], T] = ComponentValues[M]
+	type TypedValues[M <: TypedSingleton[T], T] = ComponentValues[M]
 
 
 	/** Returns ComponentValues using the given function as the source of values for components. Please note that you can supply a Map
@@ -284,7 +282,7 @@ object ComponentValues {
 	  * @param mapping mapping used for assembly process
 	  * @param values factory of values for components, should always return the value of the type correct for the component argument!
 	  */
-	@inline def apply[M<:AnyMapping](mapping :M, values :M#Component[_]=>Option[_]) :ComponentValues[M] =
+	@inline def apply[M <: SingletonMapping](mapping :M, values :AnyComponent[M#Owner]=>Option[_]) :ComponentValues[M] =
 		generic[M](mapping)(values)
 
 
@@ -292,14 +290,14 @@ object ComponentValues {
 	  * This is the generic version of the method, use the ComponentValuesFactory to get the singleton-typed one by calling
 	  * ComponentValues(mapping)(..) instead.
 	  */
-	@inline def Empty[M<:AnyMapping] :ComponentValues[M] = empty.crosscast[M]
+	@inline def Empty[M <: SingletonMapping] :ComponentValues[M] = empty.crosscast[M]
 
 	/** An empty instance, returning always None or throwing NoSuchElementException.
 	  * This is the generic version of the method, use the ComponentValuesFactory to get the singleton-typed one by calling
 	  * ComponentValues(mapping)(..) instead.
 	  * @param source a description of the original source which created this instance for more helpfull message in thrown exceptions
 	  */
-	@inline def Empty[M<:AnyMapping](source : =>String) :ComponentValues[M] = new EmptyValues[M](source)
+	@inline def Empty[M <: SingletonMapping](source : =>String) :ComponentValues[M] = new EmptyValues[M](source)
 
 	/** Create ComponentValues for the given mapping and its value. All values returned by this instance will use the path
 	  * to the requested component to pick (disassemble) the value from the given argument. Please not that, as the mapping process
@@ -308,14 +306,14 @@ object ComponentValues {
 	  * @param mapping associated mapping
 	  * @param value result, top-level value.
 	  */
-	@inline def Predefined[M<:AnyMapping](mapping :M, value :M#Subject) :DedicatedMappingValue[M] =
+	@inline def Predefined[M <: SingletonMapping](mapping :M, value :M#Subject) :DedicatedMappingValue[M] =
 		new ExplicitMappingValue[M](mapping, value)
 
 	/** Similar to Predefined[M](mapping, value), but the value is not computed until actually needed. The expression will be evaluated at most once.
 	  * This is the generic version of the method, use the ComponentValuesFactory to get the singleton-typed one by calling
 	  * ComponentValues(mapping)(..) instead.
 	  */
-	@inline def Lazy[M<:AnyMapping](mapping :M, value : =>M#Subject) :DedicatedMappingValue[M] =
+	@inline def Lazy[M <: SingletonMapping](mapping :M, value : =>M#Subject) :DedicatedMappingValue[M] =
 		new LazyPredefinedMappingValue[M](mapping, value)
 
 
@@ -325,7 +323,7 @@ object ComponentValues {
 	  * This is the generic version of the method, use the ComponentValuesFactory to get the singleton-typed one by calling
 	  * ComponentValues(mapping)(..) instead.
 	  */
-	@inline def Fallback[M<:AnyMapping](mapping :M, value : =>Option[M#Subject]) :ComponentValues[M] =
+	@inline def Fallback[M <: SingletonMapping](mapping :M, value : =>Option[M#Subject]) :ComponentValues[M] =
 		new LazyMappingValue[M](mapping, value)
 
 
@@ -343,7 +341,7 @@ object ComponentValues {
 	  * @tparam M
 	  * @return
 	  */
-	@inline def generic[M<:AnyMapping](mapping :M) :ComponentValuesFactory[M] =
+	@inline def generic[M <: SingletonMapping](mapping :M) :ComponentValuesFactory[M] =
 		new ComponentValuesFactory[M](mapping)
 
 
@@ -355,7 +353,7 @@ object ComponentValues {
 	  * @param mapping associated mapping
 	  * @tparam M static type parameter of returned ComponentValues instances.
 	  */
-	final class ComponentValuesFactory[M<:AnyMapping](val mapping :M) extends AnyVal {
+	final class ComponentValuesFactory[M <: SingletonMapping](val mapping :M) extends AnyVal {
 
 		/** Returns ComponentValues based on a predefined mapping result. The values for all components will be obtained
 		  * by deassembling (picking) their value from the argument based on the function specified by the path to the given component.
@@ -373,7 +371,7 @@ object ComponentValues {
 		  * @param value input for values of the given components.
 		  * @param components list of comonents which should be used as sources in the assembly process.
 		  */
-		@inline def apply(value :M#Subject, components :Seq[M#Component[_]]) :ComponentValues[M] =
+		@inline def apply(value :M#Subject, components :Seq[AnyComponent[M#Owner]]) :ComponentValues[M] =
 			new SelectedDisassembledComponentValues[M](mapping, value, components)
 
 		/** Returns ComponentValues using the given function as the source of values for components. Please note that you can supply a Map
@@ -381,7 +379,7 @@ object ComponentValues {
 		  * @param values factory of values for components, should always return the value of the type correct for the component argument!
 		  * @return
 		  */
-		def apply(values :M#Component[_]=>Option[_]) :ComponentValues[M] =
+		def apply(values :AnyComponent[M#Owner]=>Option[_]) :ComponentValues[M] =
 			new CustomComponentValues[M](mapping, values)
 
 		/** Create ComponentValues for the given mapping and its value. All values returned by this instance will use the path
@@ -428,7 +426,7 @@ object ComponentValues {
 	  * for components of the associated mapping instead casting themselves for performance reasons if it would be sufficient,
 	  * and it is the main reason while the new methods defined here are not present in the parent trait.
 	  */
-	trait DedicatedMappingValue[M<:AnyMapping] extends ComponentValues[M] {
+	trait DedicatedMappingValue[M <: SingletonMapping] extends ComponentValues[M] {
 		/** Mapping instance for these values. */
 		val mapping :M
 
@@ -458,22 +456,22 @@ object ComponentValues {
 		override def getValue(root: M): Option[M#Subject] = root.optionally(downcast[root.type])
 
 
-		def map[T](fun :M#Subject=>T) :Option[T] = get.map(fun)
+//		def map[T](fun :M#Subject=>T) :Option[T] = get.map(fun)
+//
+//		def flatMap[T](fun :M#Subject=>Option[T]) :Option[T] = get.flatMap(fun)
 
-		def flatMap[T](fun :M#Subject=>Option[T]) :Option[T] = get.flatMap(fun)
 
 
-
-		@inline final protected def pathTo[T](component :M#Component[T]) :TypedComponentPath[M, component.type, T] =
+		@inline final protected def pathTo[T](component :Component[M#Owner, T]) :TypedComponentPath[M, component.type, T] =
 			(mapping \\ mine(component)).asInstanceOf[TypedComponentPath[M, component.type, T]]
 
-		@inline final protected def pathOf[C<:M#Component[T], T](component :C) :TypedComponentPath[M, C, T] =
+		@inline final protected def pathOf[C <: SingletonComponent[M#Owner, T], T](component :C) :TypedComponentPath[M, C, T] =
 			(mapping \\ mine(component)).asInstanceOf[TypedComponentPath[M, C, T]]
 
-		@inline final protected def mine[T](component :M#Component[T]) :mapping.Component[T] =
+		@inline final protected def mine[T](component :Component[M#Owner, T]) :mapping.Component[T] =
 			component.asInstanceOf[mapping.Component[T]]
 
-		@inline final protected def typed[T](component :M#Component[_]) :M#Component[T] =
+		@inline final protected def cast[T](component :M#AnyComponent) :M#Component[T] =
 			component.asInstanceOf[M#Component[T]]
 
 		@inline final protected def selftyped :DedicatedMappingValue[mapping.type] =
@@ -487,30 +485,31 @@ object ComponentValues {
 
 
 	/** Skeleton implementation of most methods by delegating to values() methods, which are left for the implementations. */
-	trait AbstractComponentValues[M<:AnyMapping] extends ComponentValues[M] {
+	trait AbstractComponentValues[M <: SingletonMapping] extends ComponentValues[M] {
 
-		override def apply[T](component: M#Component[T]): T =
+		override def apply[T](component: Component[M#Owner, T]): T =
 			get(component) getOrElse {
 				throw new NoSuchElementException(s"$this: $component")
 			}
 
 
-		override def get[T](component: M#Component[T]): Option[T] =
+		override def get[T](component: Component[M#Owner, T]): Option[T] =
 			(this :\ component).getValue(component)
 
 
 
-		override def apply[C <: AnyMapping](path: ComponentPath[M, C]): C#Subject =
+		override def apply[C <: SingletonMapping](path: M \:\ C): C#Subject =
 			get(path) getOrElse {
 				throw new NoSuchElementException(s"$this :$path")
 			}
 
 
-		override def get[C <: AnyMapping](path: ComponentPath[M, C]): Option[C#Subject] =
+		override def get[C <: SingletonMapping](path: M \:\ C): Option[C#Subject] =
 			(this \ path).getValue(path.end)
 
 
-		override def orElse(values: ComponentValues[M]): ComponentValues[M] = new FallbackComponentValues[M](this, values)
+		override def orElse(values: ComponentValues[M]): ComponentValues[M] =
+			new FallbackComponentValues[M](this, values)
 
 //		override def morph[C<:AnyMapping](morphism: MappingMorphism[M, C]): ComponentValues[C] =
 //			new MorphedValues[M, C](this, morphism)
@@ -520,15 +519,18 @@ object ComponentValues {
 	/** Base class for 'sticky' proxies, which will always wrap transformed backing ComponentValues in a proxy
 	  * via factory method implemented by subclasses.
 	  */
-	abstract class ComponentValuesProxy[M<:AnyMapping](val mapping :M, values :ComponentValues[M])
+	abstract class ComponentValuesProxy[M <: SingletonMapping](val mapping :M, values :ComponentValues[M])
 		extends AbstractComponentValues[M] with DedicatedMappingValue[M]
 	{
-		override def result(root: M): Option[M#Subject] = values.result(root)
+		override def result(root: M): Option[M#Subject] =
+			if (root eq mapping) values.result(root)
+			else
+				throw new IllegalArgumentException(s"Passed mapping $root is different than the dedicated mapping $mapping.")
 
 		override private[schema] def predefined(root: M): Option[M#Subject] = values.predefined(root)
 
 
-		override def values[C <: M#Component[T], T](component: C): ComponentValues[C] =
+		override def values[C <: SingletonComponent[M#Owner, T], T](component: C): ComponentValues[C] =
 			direct(pathOf[C, T](component))
 
 /*
@@ -555,24 +557,25 @@ object ComponentValues {
 
 
 
-	private class FallbackComponentValues[M<:AnyMapping](overrides :ComponentValues[M], fallback :ComponentValues[M])
+	private class FallbackComponentValues[M <: SingletonMapping]
+	                                     (overrides :ComponentValues[M], fallback :ComponentValues[M])
 		extends AbstractComponentValues[M]
 	{
 		override def predefined(root: M): Option[M#Subject] = overrides.predefined(root)
 
 		override def result(root: M): Option[M#Subject] =
-			overrides.predefined(root) orElse root.assemble(this.crosscast[root.type]) orElse fallback.predefined(root)
+			overrides.predefined(root) orElse root.assemble(this.downcast[root.type]) orElse fallback.predefined(root)
 
-		override def values[C <: M#Component[T], T](component: C): ComponentValues[C] =
+		override def values[C <: SingletonComponent[M#Owner, T], T](component: C): ComponentValues[C] =
 			new FallbackComponentValues[C](overrides.values[C, T](component), fallback.values[C, T](component))
 
-		override def values[C <: AnyMapping](path: ComponentPath[M, C]): ComponentValues[C] =
+		override def values[C <: SingletonMapping](path: M \:\ C): ComponentValues[C] =
 			new FallbackComponentValues[C](overrides.values(path), fallback.values(path))
 
-		override def direct[C<:M#Component[T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C] =
+		override def direct[C <: SingletonComponent[M#Owner, T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C] =
 			new FallbackComponentValues[C](overrides.direct(path), fallback.direct(path))
 
-		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] = {
+		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] = {
 			val _1 = overrides.identical[C](mapping)
 			val _2 = fallback.identical[C](mapping)
 			if ((_1 eq overrides) && (_2 eq fallback)) crosscast[C]
@@ -640,7 +643,7 @@ object ComponentValues {
 
 
 
-	trait PredefinedMappingValue[M<:AnyMapping]
+	trait PredefinedMappingValue[M <: SingletonMapping]
 		extends DedicatedMappingValue[M] with AbstractComponentValues[M]
 	{
 		def value :M#Subject
@@ -649,13 +652,13 @@ object ComponentValues {
 
 		final def result(root :M) = Some(value)
 
-		override def values[C <: M#Component[T], T](component: C): ComponentValues[C] =
+		override def values[C <: SingletonComponent[M#Owner, T], T](component: C): ComponentValues[C] =
 			values(pathOf[C, T](component))
 
-		override def values[C <: AnyMapping](path: ComponentPath[M, C]): ComponentValues[C] =
+		override def values[C <: SingletonMapping](path: M \:\ C): ComponentValues[C] =
 			path.pick(value).map { v => Predefined[C](path.end, v) } getOrElse Empty[C]
 
-		override def direct[C<:M#Component[T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C] =
+		override def direct[C <: SingletonComponent[M#Owner, T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C] =
 			values(path)
 
 //		override def morph[C<:AnyMapping](morphism: MappingMorphism[M, C]): ComponentValues[C] =
@@ -667,20 +670,20 @@ object ComponentValues {
 
 
 
-	class ExplicitMappingValue[M<:AnyMapping](val mapping :M, val value :M#Subject)
+	class ExplicitMappingValue[M <: SingletonMapping](val mapping :M, val value :M#Subject)
 		extends PredefinedMappingValue[M]
 	{
-		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
 			new ExplicitMappingValue[C](mapping, value)
 	}
 
 
-	class LazyPredefinedMappingValue[M<:AnyMapping](val mapping :M, expr : =>M#Subject)
+	class LazyPredefinedMappingValue[M <: SingletonMapping](val mapping :M, expr : =>M#Subject)
 		extends PredefinedMappingValue[M]
 	{
 		lazy val value :M#Subject = expr
 
-		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
 			new LazyPredefinedMappingValue[C](mapping, value)
 
 //		override def morph[C<:AnyMapping](morphism: MappingMorphism[M, C]): ComponentValues[C] =
@@ -691,7 +694,7 @@ object ComponentValues {
 	}
 
 
-	class LazyMappingValue[M<:AnyMapping](val mapping :M, expr : =>Option[M#Subject])
+	class LazyMappingValue[M <: SingletonMapping](val mapping :M, expr : =>Option[M#Subject])
 		extends DedicatedMappingValue[M] with AbstractComponentValues[M]
 	{
 		private[this] lazy val value = expr
@@ -699,16 +702,16 @@ object ComponentValues {
 		override def result(root: M): Option[M#Subject] = value
 		override private[schema] def predefined(root: M): Option[M#Subject] = value
 
-		override def values[C <: M#Component[T], T](component: C): ComponentValues[C] =
+		override def values[C <: SingletonComponent[M#Owner, T], T](component: C): ComponentValues[C] =
 			values(pathOf[C, T](component))
 
-		override def values[C <: AnyMapping](path: ComponentPath[M, C]): ComponentValues[C] =
+		override def values[C <: SingletonMapping](path: M \:\ C): ComponentValues[C] =
 			new LazyMappingValue[C](path.end, value.flatMap(path.pick))
 
-		override def direct[C <: M#Component[T], T](path: TypedComponentPath[M, C, T]): ComponentValues[C] =
+		override def direct[C <: SingletonComponent[M#Owner, T], T](path: TypedComponentPath[M, C, T]): ComponentValues[C] =
 			values(path)
 
-		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
 			new LazyMappingValue[C](mapping, value)
 
 //		override def morph[C <: AnyMapping](morphism: MappingMorphism[M, C]): ComponentValues[C] =
@@ -720,40 +723,40 @@ object ComponentValues {
 
 
 
-	trait PresetComponentValues[M<:AnyMapping] extends AbstractComponentValues[M] {
+	trait PresetComponentValues[M <: SingletonMapping] extends AbstractComponentValues[M] {
 		override private[schema] def predefined(root: M): Option[M#Subject] =
 			preset(root).flatMap(_.predefined(root))
 
 		override def result(root: M): Option[M#Subject] =
 			preset(root).flatMap(_.result(root))
 
-		override def values[C <: M#Component[T], T](component: C): ComponentValues[C] =
+		override def values[C <: SingletonComponent[M#Owner, T], T](component: C): ComponentValues[C] =
 			preset(component) getOrElse crosscast[C]
 
-		override def values[C <: AnyMapping](path: ComponentPath[M, C]): ComponentValues[C] =
+		override def values[C <: SingletonMapping](path: ComponentPath[M, C]): ComponentValues[C] =
 			path.walk(this)
 
-		override def direct[C <: M#Component[T], T](path: TypedComponentPath[M, C, T]): ComponentValues[C] =
+		override def direct[C <: SingletonComponent[M#Owner, T], T](path: TypedComponentPath[M, C, T]): ComponentValues[C] =
 			preset(path.end) getOrElse crosscast[C]
 
-		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
 			preset(mapping) getOrElse crosscast[C]
 
 
 //		override def morph[C <: AnyMapping](morphism: MappingMorphism[M, C]): ComponentValues[C] =
 //			preset(morphism.target) getOrElse crosscast[C]
 
-		protected def preset[C<:AnyMapping](component :C) :Option[ComponentValues[C]]
+		protected def preset[C <: SingletonMapping](component :C) :Option[ComponentValues[C]]
 
 	}
 
 
-	class StickyComponentValues[M<:AnyMapping] private[ComponentValues] (values :Map[AnyMapping, ComponentValues[_]])
+	class StickyComponentValues[M <: SingletonMapping] private[ComponentValues] (values :Map[AnyMapping, ComponentValues[_]])
 		extends PresetComponentValues[M]
 	{
 		def this(mapping :M, values :ComponentValues[M]) = this(Map(mapping->values))
 
-		override protected def preset[C <: AnyMapping](component: C): Option[ComponentValues[C]] =
+		override protected def preset[C <: SingletonMapping](component: C): Option[ComponentValues[C]] =
 			values.get(component).asInstanceOf[Option[ComponentValues[C]]]
 
 		override def toString :String = values.toStream.map(v => v._1+"->"+v._2).mkString("${", ",", "}")
@@ -763,25 +766,25 @@ object ComponentValues {
 
 
 
-	trait SelectedComponentValues[M<:AnyMapping] extends AbstractComponentValues[M] with DedicatedMappingValue[M] {
+	trait SelectedComponentValues[M <: SingletonMapping] extends AbstractComponentValues[M] with DedicatedMappingValue[M] {
 		override private[schema] def predefined(root: M): Option[M#Subject] = None
 
 		override def result(root: M): Option[M#Subject] =
 			root.assemble(crosscast[root.type])
 
-		override def values[C <: M#Component[T], T](component: C): ComponentValues[C] = ???
+		override def values[C <: SingletonComponent[M#Owner, T], T](component: C): ComponentValues[C] = ???
 //			defined[T](component).map(Predefined[C](component, _)) getOrElse {
 //				morph[C](pathOf[C, T](component).morphism)
 //			}
 
-		override def values[C <: AnyMapping](path: ComponentPath[M, C]): ComponentValues[C] = path.walk(this)
+		override def values[C <: SingletonMapping](path: ComponentPath[M, C]): ComponentValues[C] = path.walk(this)
 
-		override def direct[C<:M#Component[T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C] = ???
+		override def direct[C <: SingletonComponent[M#Owner, T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C] = ???
 //			defined(path.end).map(Predefined[C](path.end, _)) getOrElse {
 //				morph[C](path.morphism)
 //			}
 
-		protected def defined[T](component :M#Component[T]) :Option[T]
+		protected def defined[T](component :Component[M#Owner, T]) :Option[T]
 
 	}
 
@@ -791,14 +794,15 @@ object ComponentValues {
 
 
 
-	class SelectedDisassembledComponentValues[M<:AnyMapping](val mapping :M, value :M#Subject, components :Seq[M#Component[_]])
+	class SelectedDisassembledComponentValues[M <: SingletonMapping]
+	                                         (val mapping :M, value :M#Subject, components :Seq[AnyComponent[M#Owner]])
 		extends SelectedComponentValues[M]
 	{
-		override protected def defined[T](component: M#Component[T]): Option[T] =
+		override protected def defined[T](component: Component[M#Owner, T]): Option[T] =
 			pathTo(component).pick(value).orNoneUnless(components.contains(component))
 
 
-		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
 			new SelectedDisassembledComponentValues[C](mapping, value, components)
 
 		override def toString :String =
@@ -806,13 +810,13 @@ object ComponentValues {
 	}
 
 
-	class CustomComponentValues[M<:AnyMapping](val mapping :M, vals :M#Component[_]=>Option[_])
+	class CustomComponentValues[M <: SingletonMapping](val mapping :M, vals :AnyComponent[M#Owner]=>Option[_])
 		extends SelectedComponentValues[M]
 	{
-		override protected def defined[T](component: M#Component[T]): Option[T] =
+		override protected def defined[T](component: Component[M#Owner, T]): Option[T] =
 			vals(component).crosstyped[T]
 
-		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
 			new CustomComponentValues[C](mapping, vals)
 
 		override def toString = s"[$mapping]{<fun>}"
@@ -823,7 +827,7 @@ object ComponentValues {
 
 
 
-	private[schema] class EmptyValues[M<:AnyMapping](source : =>String) extends ComponentValues[M] {
+	private[schema] class EmptyValues[M <: SingletonMapping](source : =>String) extends ComponentValues[M] {
 		def this() = this("Empty")
 
 
@@ -832,25 +836,25 @@ object ComponentValues {
 		override def result(root: M): Option[M#Subject] = None
 
 
-		override def apply[T](component: M#Component[T]): T =
+		override def apply[T](component: Component[M#Owner, T]): T =
 			throw new NoSuchElementException(s"$source: $component")
 
-		override def get[T](component: M#Component[T]): Option[T] = None
+		override def get[T](component: Component[M#Owner, T]): Option[T] = None
 
-		override def values[C <: M#Component[T], T](component: C): ComponentValues[C] = crosscast[C]
+		override def values[C <: SingletonComponent[M#Owner, T], T](component: C): ComponentValues[C] = crosscast[C]
 
 
-		override def apply[C <: AnyMapping](path: ComponentPath[M, C]): C#Subject =
+		override def apply[C <: SingletonMapping](path: M \:\ C): C#Subject =
 			throw new NoSuchElementException(s"$source: $path")
 
-		override def get[C <: AnyMapping](path: ComponentPath[M, C]): Option[C#Subject] =
+		override def get[C <: SingletonMapping](path: M \:\ C): Option[C#Subject] =
 			None
 
-		override def values[C <: AnyMapping](path: ComponentPath[M, C]): ComponentValues[C] =
+		override def values[C <: SingletonMapping](path: M \:\ C): ComponentValues[C] =
 			crosscast[C]
 
 
-		override def direct[C<:M#Component[T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C] =
+		override def direct[C <: SingletonComponent[M#Owner, T], T](path :TypedComponentPath[M, C, T]) :ComponentValues[C] =
 			crosscast[C]
 
 
@@ -858,7 +862,7 @@ object ComponentValues {
 
 
 
-		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] = crosscast[C]
+		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] = crosscast[C]
 
 
 //		override def morph[C<:AnyMapping](morphism: MappingMorphism[M, C]): ComponentValues[C] = crosscast[C]
