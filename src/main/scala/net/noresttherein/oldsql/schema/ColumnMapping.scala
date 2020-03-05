@@ -7,8 +7,8 @@ import net.noresttherein.oldsql.schema.Mapping.Buff.BuffType
 import scala.util.Try
 
 
-trait ColumnMapping[T, O<:AnyMapping] extends SubMapping[T, O] { column =>
-	type Component[X] <: ColumnMapping[X, O]
+trait ColumnMapping[O<:AnyMapping, T] extends SubMapping[O, T] { column =>
+//	type Component[X] <: ColumnMapping[X, O]
 
 	def self :Component[T]
 
@@ -64,15 +64,15 @@ trait ColumnMapping[T, O<:AnyMapping] extends SubMapping[T, O] { column =>
 	//		DirectComponent(this :this.type)(component)(ValueMorphism.identity[T].asInstanceOf[ValueMorphism[T, X]], ComponentMorphism.homomorphism(_ => self))
 
 
-	def withOptions(opts :Seq[Buff[T]]) :ColumnMapping[T, O] = ColumnMapping(name, opts:_*)(form)
+	def withOptions(opts :Seq[Buff[T]]) :ColumnMapping[O, T] = ColumnMapping(name, opts:_*)(form)
 
-	def renamed(name :String) :ColumnMapping[T, O] = ColumnMapping(name, buffs:_*)(form)
+	def renamed(name :String) :ColumnMapping[O, T] = ColumnMapping(name, buffs:_*)(form)
 
-	override def prefixed(prefix :String) :ColumnMapping[T, O] = ColumnMapping(prefix+name, buffs:_*)(form)
+	override def prefixed(prefix :String) :ColumnMapping[O, T] = ColumnMapping(prefix+name, buffs:_*)(form)
 
-	def prefixed(prefix :Option[String]) :ColumnMapping[T, O] = prefix.map(prefixed) getOrElse this
+	def prefixed(prefix :Option[String]) :ColumnMapping[O, T] = prefix.map(prefixed) getOrElse this
 
-	override def qualified(prefix :String) :ColumnMapping[T, O] =
+	override def qualified(prefix :String) :ColumnMapping[O, T] =
 		prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
 
 
@@ -85,19 +85,22 @@ trait ColumnMapping[T, O<:AnyMapping] extends SubMapping[T, O] { column =>
 
 
 
+
+
+
 object ColumnMapping {
 
-	def apply[T :SQLForm, O <: AnyMapping](name :String, opts :Buff[T]*) :ColumnMapping[T, O] =
+	def apply[O <: AnyMapping, T :SQLForm](name :String, opts :Buff[T]*) :ColumnMapping[O, T] =
 		new BaseColumn(name, opts)
 
-	def adapt[T, O <: AnyMapping](mapping :TypedMapping[T]) :Option[ColumnMapping[T, O]] = mapping match {
-		case c :ColumnMapping[_, _] => Some(c.asInstanceOf[ColumnMapping[T, O]])
-		case _ => Try(new ColumnView[T, O](mapping.asComponent)).toOption
+	def adapt[O <: AnyMapping, T](mapping :TypedMapping[T]) :Option[ColumnMapping[O, T]] = mapping match {
+		case c :ColumnMapping[_, _] => Some(c.asInstanceOf[ColumnMapping[O, T]])
+		case _ => Try(new ColumnView[O, T](mapping.asComponent)).toOption
 	}
 
 
 
-	def apply[T, O <: AnyMapping](mapping :Mapping[T]) :ColumnMapping[T, O] = new ColumnView[T, O](mapping)
+	def apply[O <: AnyMapping, T](mapping :Mapping[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
 
 
 	//	def unapply[T](mapping :Mapping[T]) :Option[ColumnMapping[T]] = mapping.asSubclass[ColumnMapping[T]]
@@ -105,28 +108,28 @@ object ColumnMapping {
 
 
 
-	class BaseColumn[T, O <: AnyMapping](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :SQLForm[T])
-		extends ColumnMapping[T, O]
+	class BaseColumn[O <: AnyMapping, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :SQLForm[T])
+		extends ColumnMapping[O, T]
 	{
 
-		type Component[X] = ColumnMapping[X, O]
+//		type Component[X] = ColumnMapping[X, O]
 
 		def self: Component[T] = this
 
 	}
 
-	trait ColumnSubstitute[T, S, O <: AnyMapping] extends ColumnMapping[T, O] {
-		override type Component[X] = ColumnMapping[X, O]
+	trait ColumnSubstitute[O <: AnyMapping, S, T] extends ColumnMapping[O, T] {
+//		override type Component[X] = ColumnMapping[X, O]
 
 		override def self: Component[T] = this
 
-		val adaptee :ColumnMapping[T, O]
+		val adaptee :ColumnMapping[O, T]
 
 		override def name: String = adaptee.name
 
 	}
 
-	trait ColumnImpostor[T, O <: AnyMapping] extends ColumnSubstitute[T, T, O] {
+	trait ColumnImpostor[O <: AnyMapping, T] extends ColumnSubstitute[O, T, T] {
 		override def form: SQLForm[T] = adaptee.form
 
 		override def buffs :Seq[Buff[T]] = adaptee.buffs
@@ -135,8 +138,9 @@ object ColumnMapping {
 			(values :\ adaptee).result(adaptee)
 	}
 
-	class ColumnOverride[T, O <: AnyMapping](val adaptee :ColumnMapping[T, O], nameOverride :Option[String]=None, buffsOverride :Option[Seq[Buff[T]]]=None)
-		extends ColumnImpostor[T, O]
+	class ColumnOverride[O <: AnyMapping, T]
+			(val adaptee :ColumnMapping[O, T], nameOverride :Option[String]=None, buffsOverride :Option[Seq[Buff[T]]]=None)
+		extends ColumnImpostor[O, T]
 	{
 		override val buffs :Seq[Buff[T]] = buffsOverride getOrElse adaptee.buffs
 		override val name :String = nameOverride getOrElse adaptee.name
@@ -145,8 +149,8 @@ object ColumnMapping {
 
 
 
-	class ColumnView[T, O <: AnyMapping](val adaptee :Mapping[T]) extends ColumnMapping[T, O] {
-		type Component[X] = ColumnMapping[X, O]
+	class ColumnView[O <: AnyMapping, T](val adaptee :Mapping[T]) extends ColumnMapping[O, T] {
+//		type Component[X] = ColumnMapping[X, O]
 
 		if (adaptee.columns.size!=1 || adaptee.selectForm.readColumns!=1 || adaptee.insertForm.writtenColumns!=1 || adaptee.updateForm.writtenColumns!=1)
 			throw new IllegalArgumentException(s"Expected a column, got multiple column mapping :$adaptee{${adaptee.columns}}")

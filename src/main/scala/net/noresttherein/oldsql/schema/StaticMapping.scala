@@ -38,8 +38,8 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.
 	  * This registering is delayed, as in most cases properties listing its subcomponents will not be initialized before 
 	  * its constructor is over, so instead it adds itself only to a 'waiting list', which is processed and its contents
-	  * appropriately registered within the parent mapping once either this instance `include()` method is called, parent
-	  * mapping explicitly requests initializing all waiting lists via one of its 'init' methods, or any of the parent
+	  * appropriately registered within the parent mapping once either this instance's `include()` method is called, parent
+	  * mapping explicitly requests initializing all waiting lists via its 'initialize()' method, or any of the parent
 	  * mapping component accessor methods are called. If for any reason this component is not fully initialized before
 	  * one of that happens, and exception will be thrown during its initialization. For this reasons, all components
 	  * should be created eagerly whenever possible - be very cautious with declaring members of this type as lazy val
@@ -47,7 +47,7 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 	  * the parent mapping - no other call is needed.
 	  * @tparam T value type of this component
 	  */
-	trait Component[T]  extends SubMapping[T, Owner] { self =>
+	trait ComponentMapping[T]  extends SubMapping[Owner, T] { self =>
 
 		def opt(implicit values :composite.Values) :Option[T] =
 			values.get(this)
@@ -67,11 +67,15 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 		/** Register itself and all its subcomponents within the parent mapping. This method will be called only once. */
 		private[StaticMapping] def init() : TypedComponentPath[composite.type, this.type, T] = composite.synchronized {
 			initComponents += this
+			if (!isSymLink(this)) {
+				subcomponents.filterNot(isSymLink(_)).foreach { initSubcomponents += _ }
+				columns.filterNot(isSymLink(_)).foreach(composite.include(_)) //todo: column prefix!
+			}
 			Path(???)
 		}
 
 
-		private[StaticMapping] def Path(lift :Component[_]=>Option[composite.Component[_]]) :TypedComponentPath[composite.type, self.type, T] = ???
+		private[StaticMapping] def Path(lift :Component[_]=>Option[composite.ComponentMapping[_]]) :TypedComponentPath[composite.type, self.type, T] = ???
 //			DirectComponent(composite :composite.type)(self :self.type)(
 //				surepick.map(ValueMorphism.homomorphism(_)) getOrElse ValueMorphism(pick), ComponentMorphism[Component, composite.Component](lift))
 
@@ -89,31 +93,35 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 
 
 
-	object Component {
+/*
+	object ComponentMapping {
 
-		implicit def valueOf[T](component :composite.Component[T])(implicit values :Values) :T =
+		implicit def valueOf[T](component :composite.ComponentMapping[T])(implicit values :Values) :T =
 			values(component)
 
 	}
+*/
 
-	trait MandatoryComponent[T] extends Component[T] {
+	/** Base trait for components which have a value for all instances of `T`. */
+	trait MandatoryComponent[T] extends ComponentMapping[T] {
 		final override protected[StaticMapping] def pick :S => Some[T] = (e :S) => Some(selector(e))
 		final override protected[StaticMapping] def surepick = Some(selector)
 
 		protected def selector :S=>T
 	}
 
-	trait OptionalComponent[T] extends Component[T] {
+	/** Base trait for components which might not have a value for all instances of `T` (such as properties declared
+	  * by some subclass of `T`.
+	  */
+	trait OptionalComponent[T] extends ComponentMapping[T] {
 		final override protected[StaticMapping] def surepick :None.type = None
 		def pick :S => Option[T]
 	}
 
-
 	/** Convenience base component class which initializes accessor fields based on the constructor argument getter. */
-	abstract class BaseComponent[T](value :S=>T) extends Component[T] {
+	abstract class BaseComponent[T](value :S=>T) extends ComponentMapping[T] {
 		override protected[StaticMapping] val surepick = Some(value)
 		override protected[StaticMapping] val pick :S => Some[T] = (e :S) => Some(value(e))
-
 	}
 
 	/** Convenience base class for creating components of this instance which themselves contain statically enumerated
@@ -126,15 +134,11 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 	  *                     the proxy seen as `this.Column[_]` will.
 	  * @tparam T value type of this component
 	  */
-	abstract class StaticComponent[T](value :S=>T, override final val columnPrefix :String="") extends BaseComponent[T](value) with StaticMapping[T] {
+	abstract class StaticComponent[T](value :S=>T, override final val columnPrefix :String="")
+		extends BaseComponent[T](value) with StaticMapping[T]
+	{
 		override def toString :String = sqlName orElse (columnPrefix.length > 0).ifTrue(columnPrefix) getOrElse super.toString
 	}
-
-	//	trait VirtualComponent[T, S] extends Component[T] with MappingSubstitute[T, S, Component[S]] {
-	//		val target :composite.Component[S]
-	//
-	//
-	//	}
 
 
 /*
@@ -160,42 +164,20 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 
 
 
-	/** Base trait for all column components of this mapping. In general, there should be little need to descend your classes directly from it,
-	  * as column functionality is limited and constructor methods provided within StaticMapping should be sufficient. As with the base Component
-	  * trait, simple creation of this instance schedules its registration within the parent mapping on the appropriate column lists, depending on
-	  * declared column options. This trait encompasses both direct and indirect (proxies for instances declared within subcomponents of the parent mapping,
-	  * rather than at the top level) and doesn't register itself under direct compoments list, unlike the base Component[_] trait! For direct instances,
-	  * use DirectColumn.
-	  *
-	  * @tparam T value type of this component
+
+	/** Base trait for column components declared directly under this mapping. In general, there should be little need
+	  * to descend your classes directly from it, as column functionality is limited and constructor methods provided
+	  * within `StaticMapping` should be sufficient. As with the base `ComponentMapping` trait, simple creation of
+	  * this instance schedules its registration within the parent mapping on the appropriate column lists, depending on
+	  * declared column options (buffs).
+	  * @tparam T value type of this column.
 	  */
-	trait Column[T] extends ColumnMapping[T, Owner] with Component[T] {
-		override private[StaticMapping] def init() =  {
-			composite.include(this)
-			Path(_ => Some(this))
-		}
-	}
-
-
-
-	object Column {
-		implicit def valueOf[T](column :composite.Column[T])(implicit values :Values) :T =
-			values(column)
-	}
-
-
-	trait DirectColumn[T] extends Column[T] {
-		override private[StaticMapping] def init() = composite.synchronized {
-			val path = super.init()
-			initComponents += this
-			path
-		}
-	}
+	trait Column[T] extends ColumnMapping[Owner, T] with ComponentMapping[T]
 
 
 
 	private class ColumnComponent[T :SQLForm](value :S=>T, name :String, options :Seq[Buff[T]])
-		extends BaseColumn[T, Owner](columnPrefix + name, options) with DirectColumn[T]
+		extends BaseColumn[Owner, T](columnPrefix + name, options) with Column[T]
 	{
 		val surepick = Some(value)
 		val pick = (e :S) => Some(value(e))
@@ -204,16 +186,16 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 
 	private class ColumnCopy[T](val pick :S=>Option[T], val surepick :Option[S=>T], name :String, options :Seq[Buff[T]])
 	                           (implicit sqlForm :SQLForm[T])
-		extends BaseColumn[T, Owner](columnPrefix + name, options) with DirectColumn[T]
+		extends BaseColumn[Owner, T](columnPrefix + name, options) with Column[T]
 	{
-		def this(column :ColumnMapping[T, _], value :S=>T, name :Option[String], options :Seq[Buff[T]]) =
+		def this(column :ColumnMapping[_, T], value :S=>T, name :Option[String], options :Seq[Buff[T]]) =
 			this((e:S) => Some(value(e)), Some(value), name getOrElse column.name, options)(column.form)
 	}
 
 
 
 
-	implicit def valueOf[T](component :Component[T])(implicit values :Values) :T = values(component)
+	implicit def valueOf[T](component :ComponentMapping[T])(implicit values :Values) :T = values(component)
 
 
 /*
@@ -233,6 +215,89 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 
 
 
+	class ColumnCopist[T](source :ColumnMapping[_, T], name :Option[String], options :Seq[Buff[T]]) {
+		def this(source :ColumnMapping[_, T]) = this(source, None, source.buffs)
+
+		def apply(pick :S=>T) :Column[T] =
+			source match {
+				case c :StaticMapping[_]#Column[_] if c.belongsTo(composite) => c.asInstanceOf[Column[T]]
+				case _ => initPreceding(new ColumnCopy[T](source, pick, name, options))
+			}
+
+		def prefixed(prefix :Option[String]) :ColumnCopist[T] =
+			new ColumnCopist(source, prefix.map(_ + (name getOrElse source.name)), options)
+
+		def prefixed(prefix :String) :ColumnCopist[T] = prefixed(Some(prefix))
+
+		def named(name :String) :ColumnCopist[T] =
+			new ColumnCopist(source, Some(name), options)
+
+		def set(options :Buff[T]*) :ColumnCopist[T] =
+			new ColumnCopist(source, name, options)
+
+		def add(options :Buff[T]*) :ColumnCopist[T] =
+			new ColumnCopist(source, name, options ++: this.options)
+
+		def remove(options :Buff[T]*) :ColumnCopist[T] =
+			new ColumnCopist(source, name, this.options.filterNot(options.contains) )
+	}
+
+
+
+
+
+	protected def column[T](col :ColumnMapping[_, T]) :ColumnCopist[T] =
+		new ColumnCopist(col)
+
+	protected def column[T](col :ColumnMapping[_, T], name :String) :ColumnCopist[T] =
+		new ColumnCopist[T](col, Some(name), col.buffs)
+
+	protected def column[T](col :ColumnMapping[_, T], options :Seq[Buff[T]]) :ColumnCopist[T] =
+		new ColumnCopist(col, None, options)
+
+	protected def column[T](col :ColumnMapping[_, T], name :String, options :Seq[Buff[T]]) :ColumnCopist[T] =
+		new ColumnCopist(col, Some(name), options)
+
+
+
+
+	protected def column[T](name :String, pick :S=>T, options :Buff[T]*)
+	                       (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
+		initPreceding(new ColumnComponent[T](pick, name, options))
+
+	protected def column[T](pick :S=>T, options :Buff[T]*)(implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
+		column[T](PropertyPath.nameOf(pick), pick, options:_*)
+
+
+
+
+
+	protected def autoins[T](name :String, pick :S=>Option[T], options :Buff[T]*)
+	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
+		column[T](name, pick(_:S).get, AutoGen +: options:_*)
+
+	protected def autoins[T](pick :S=>Option[T], options :Buff[T]*)
+	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
+		column[T](PropertyPath.nameOf(pick), pick(_:S).get, options :_*)
+
+
+//	protected def foreignKey[T :SQLForm]()
+/*
+	def symLink[T](component :Component[T]) :SymLinkComponent[component.type, T] =
+		symLink(component.path)
+
+	def symLink[M<:Mapping[T], T](path :TypedComponentPath[this.type, M, T]) :SymLinkComponent[M, T] =
+		new SymLinkComponent[M, T](path)
+
+
+
+
+	protected def embed[T](value :S=>T, mapping :Mapping[T]) :EmbeddedComponent[T, mapping.type] =
+	//		initialize(new EmbeddedComponent[T, mapping.type](value, mapping))
+		new EmbeddedComponent[T, mapping.type](value, mapping)
+*/
+
+
 
 	override def assemble(values: Values): Option[S] =
 		try {
@@ -243,18 +308,17 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 
 	protected def construct(implicit res :Values) :S
 
-
 	protected def isDefined(values :Values) :Boolean = true
 
 
 
+	//todo: changing the columnPrefix
+	/** Prefix added to given names to all created instances of this.Column[_]. Defaults to "", subclasses may override. */
+	protected def columnPrefix :String = ""
 
-	private def delayInit(c :Component[_]) :Unit = synchronized {
-		if (isInitialized)
-			throw new IllegalStateException(s"Cannot initialize mapping component $c on $this: components have already been exported.")
-		else
-			delayedInits += c
-	}
+	override val buffs :Seq[Buff[S]] = Seq()
+
+
 
 	private def include[T](column :Component[T]) :Component[T] = synchronized {
 		if (isInitialized)
@@ -272,6 +336,33 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 		column
 	}
 
+
+
+	private def delayInit(c :ComponentMapping[_]) :Unit = synchronized {
+		if (isInitialized)
+			throw new IllegalStateException(s"Cannot initialize mapping component $c on $this: components have already been exported.")
+		else
+			delayedInits += c
+	}
+
+	protected final def initPreceding() :Unit = synchronized {
+		delayedInits.foreach(_.include())
+		delayedInits.clear()
+	}
+
+	@inline protected final def initPreceding[T](value :T) :T = { initPreceding(); value }
+
+	/** Keeps components which have been created, but not initialized (their columns and components have not been
+	  * enlisted with this instance). Modified only under synchronization lock of this instance, its contents
+	  * are flushed either when initialization occurs (a call to `initialize()`, either explicit or due to accessing
+	  * a column or component list of this instance), or when a new component (typically a column) is created
+	  * and needs to be initialized, in order to preserve relative order of declarations in the column/component
+	  * lists.
+	  */
+	private[this] val delayedInits = new ListBuffer[ComponentMapping[_]]
+
+
+
 	protected final def isInitialized :Boolean = initComponents.isInitialized
 
 	protected final def initialize() :Unit =
@@ -288,19 +379,13 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 				initInsertable.initialize()
 				initGenerated.initialize()
 
-				//todo: make subcomponents type compatible with components
-//				for (c <- components; if !isSymLink(c); sub <- c.subcomponents; if !isSymLink(sub))
-//					initSubcomponents += sub
+				//				for (c <- components; if !isSymLink(c); sub <- c.subcomponents; if !isSymLink(sub))
+				//					initSubcomponents += sub
 				initSubcomponents.initialize()
 			}
 		}
 
-	protected final def initialize[T](value :T) :T = { initialize(); value }
 
-	protected final def initializeBefore[T](block: =>T) :T = { initialize(); block }
-
-
-	private[this] val delayedInits = new ListBuffer[Component[_]]
 
 	/** A sequence which works as a mutable buffer during initialization, but once it is completed requires
 	  * no synchronization. All appends must be synchronized with the enclosing class's lock, immediately
@@ -325,7 +410,7 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 			if (isInitialized)
 				throw new IllegalStateException(s"Can't enlist component $comp for $composite: the list of components has been already exported.")
 			else
-                uninitialized += comp
+				uninitialized += comp
 
 		def isInitialized :Boolean = initialized != null
 
@@ -389,101 +474,6 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 
 
 
-
-
-
-	/** Prefix added to given names to all created instances of this.Column[_]. Defaults to "", subclasses may override. */
-	protected def columnPrefix :String = ""
-
-	override val buffs :Seq[Buff[S]] = Seq()
-
-
-
-
-
-
-
-	class ColumnCopist[T](source :ColumnMapping[T, _], name :Option[String], options :Seq[Buff[T]]) {
-		def this(source :ColumnMapping[T, _]) = this(source, None, source.buffs)
-
-		def apply(pick :S=>T) :Column[T] =
-			source match {
-				case c :StaticMapping[_]#Column[_] if c.belongsTo(composite) => c.asInstanceOf[Column[T]]
-				case _ => initialize(new ColumnCopy[T](source, pick, name, options))
-			}
-
-		def prefixed(prefix :Option[String]) :ColumnCopist[T] =
-			new ColumnCopist(source, prefix.map(_ + (name getOrElse source.name)), options)
-
-		def prefixed(prefix :String) :ColumnCopist[T] = prefixed(Some(prefix))
-
-		def named(name :String) :ColumnCopist[T] =
-			new ColumnCopist(source, Some(name), options)
-
-		def set(options :Buff[T]*) :ColumnCopist[T] =
-			new ColumnCopist(source, name, options)
-
-		def add(options :Buff[T]*) :ColumnCopist[T] =
-			new ColumnCopist(source, name, options ++: this.options)
-
-		def remove(options :Buff[T]*) :ColumnCopist[T] =
-			new ColumnCopist(source, name, this.options.filterNot(options.contains) )
-	}
-
-
-
-
-
-	protected def column[T](col :ColumnMapping[T, _]) :ColumnCopist[T] =
-		new ColumnCopist(col)
-
-	protected def column[T](col :ColumnMapping[T, _], name :String) :ColumnCopist[T] =
-		new ColumnCopist(col, Some(name), col.buffs)
-
-	protected def column[T](col :ColumnMapping[T, _], options :Seq[Buff[T]]) :ColumnCopist[T] =
-		new ColumnCopist(col, None, options)
-
-	protected def column[T](col :ColumnMapping[T, _], name :String, options :Seq[Buff[T]]) :ColumnCopist[T] =
-		new ColumnCopist(col, Some(name), options)
-
-
-
-
-	protected def column[T](name :String, pick :S=>T, options :Buff[T]*)
-	                       (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
-		initialize(new ColumnComponent[T](pick, name, options))
-
-	protected def column[T](pick :S=>T, options :Buff[T]*)(implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
-		column[T](PropertyPath.nameOf(pick), pick, options:_*)
-
-
-
-
-
-	protected def autoins[T](name :String, pick :S=>Option[T], options :Buff[T]*)
-	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
-		column[T](name, pick(_:S).get, AutoGen +: options:_*)
-
-	protected def autoins[T](pick :S=>Option[T], options :Buff[T]*)
-	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
-		column[T](PropertyPath.nameOf(pick), pick(_:S).get, options :_*)
-
-
-//	protected def foreignKey[T :SQLForm]()
-/*
-	def symLink[T](component :Component[T]) :SymLinkComponent[component.type, T] =
-		symLink(component.path)
-
-	def symLink[M<:Mapping[T], T](path :TypedComponentPath[this.type, M, T]) :SymLinkComponent[M, T] =
-		new SymLinkComponent[M, T](path)
-
-
-
-
-	protected def embed[T](value :S=>T, mapping :Mapping[T]) :EmbeddedComponent[T, mapping.type] =
-	//		initialize(new EmbeddedComponent[T, mapping.type](value, mapping))
-		new EmbeddedComponent[T, mapping.type](value, mapping)
-*/
 }
 
 
@@ -491,7 +481,7 @@ trait StaticMapping[S] extends Mapping[S] { composite =>
 
 
 
-trait StaticComponent[S, O <: AnyMapping] extends StaticMapping[S] with SubMapping[S, O]
+trait StaticComponent[O <: AnyMapping, S] extends StaticMapping[S] with SubMapping[O, S]
 
 
 

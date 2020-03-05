@@ -92,6 +92,10 @@ object SQLForm extends JDBCTypes {
 		new CombinedForm[T](read, write)
 
 
+	implicit def optionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
+	implicit def tuple2Form[T1 :SQLForm, T2 :SQLForm] :SQLForm[(T1, T2)] = new Tuple2Form[T1, T2]
+
+
 
 	class NullValue[+T](val value :T) {
 		override def toString :String = value + ":Null"
@@ -124,6 +128,7 @@ object SQLForm extends JDBCTypes {
 
 	trait NullableForm[T >: Null] extends SQLForm[T] {
 		def nullValue :Null = null
+		override def nullLiteral :String = "null"
 	}
 
 
@@ -264,6 +269,43 @@ object SQLForm extends JDBCTypes {
 
 
 
+
+
+
+
+
+	class OptionForm[T](implicit form :SQLForm[T]) extends SQLForm[Option[T]] {
+		override def readColumns :Int = form.readColumns
+		override def writtenColumns :Int = form.writtenColumns
+
+		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = Some(form.opt(position)(res))
+		override def apply(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
+
+		override def literal(value :Option[T]) :String = value match {
+			case Some(x) => form.literal(x)
+			case _ => form.nullLiteral
+		}
+		override def inlineLiteral(value :Option[T]) :String = value match {
+			case Some(x) => form.inlineLiteral(x)
+			case _ => form.inlineNullLiteral
+		}
+
+		override def nullValue :Option[T] = None
+
+		override def nullLiteral :String = form.nullLiteral
+		override def inlineNullLiteral :String = form.inlineNullLiteral
+
+		private def some :SQLForm[T] = form
+
+		override def equals(that :Any) :Boolean = that match {
+			case opt :OptionForm[_] => opt.some == form
+			case _ => false
+		}
+
+		override def hashCode :Int = form.hashCode
+
+		override def toString :String = "Option[" + form + "]"
+	}
 
 
 	class Tuple2Form[L, R](implicit val _1 :SQLForm[L], implicit val _2 :SQLForm[R])

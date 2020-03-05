@@ -39,7 +39,7 @@ sealed trait AnyMapping { mapping =>
 
 
 	type AnyComponent = Component[_]
-	type Component[T] <: SubMapping[T, Owner]
+	type Component[T] = Mapping.Component[Owner, T] //<: SubMapping[T, Owner]
 
 
 	def buffs :Seq[Buff[Subject]]
@@ -143,15 +143,15 @@ sealed trait AnyMapping { mapping =>
 
 	implicit def \\ [X](component :Component[X]) :TypedComponentPath[this.type, component.type, X]
 
-	def qualified(prefix :String) :SubMapping[Subject, Owner] /*=
+	def qualified(prefix :String) :Component[Subject] /*=
 		Mapping.prefixOption(prefix).map(new QualifiedMapping[Subject](this, _)) getOrElse this*/
 
-	def prefixed(prefix :String) :SubMapping[Subject, Owner] /*=
+	def prefixed(prefix :String) :Component[Subject] /*=
 		Mapping.prefixOption(prefix).map(new PrefixedMapping[Subject, this.type](this, _)) getOrElse this*/
 
 
 	def map[X](there :Subject=>X, back :X=>Subject) :this.type MappedAs X =
-		MappedMapping[X, Subject, this.type](this, there, back)
+		MappedMapping[this.type, Subject, X](this, there, back)
 
 
 	override def toString :String = sqlName getOrElse this.unqualifiedClassName
@@ -184,9 +184,6 @@ trait Mapping[S] extends AnyMapping { self =>
 	def readForm(filter :ColumnFilter) :SQLReadForm[S] = filter.read(this)
 
 
-	//	def columnDefinition :Option[ColumnDefinition[E]] = None
-
-
 
 	override def apply(values: Values): S =
 		optionally(values) getOrElse {
@@ -213,7 +210,7 @@ trait Mapping[S] extends AnyMapping { self =>
 
 
 
-trait SubMapping[S, O <: AnyMapping] extends Mapping[S] {
+trait SubMapping[O <: AnyMapping, S] extends Mapping[S] {
 	type Owner = O
 //	type Component[X] = SubMapping[X, O]
 
@@ -236,19 +233,23 @@ trait RootMapping[S] extends Mapping[S] {
 
 
 object Mapping {
-	type TypedMapping[S] = AnyMapping { type Subject=S }
+	type TypedMapping[S] = AnyMapping { type Subject = S }
 //	type Component[S, O] = AnyMapping { type Subject=S; type Parent=O }
 //	type AnyComponent[O] = AnyMapping { type Parent=O }
-	type AnyComponent[O <: AnyMapping] = Component[_, O]
-	type Component[S, O <: AnyMapping] = SubMapping[S, O]
+	type AnyComponent[O <: AnyMapping] = Component[O, _]
+	type Component[O <: AnyMapping, S] = Mapping[S] { type Owner = O }//AnyMapping { type Subject = S; type Owner = O }
+
+	type SingletonMapping = AnyMapping with Singleton
+	type TypedSingleton[S] = AnyMapping with Singleton { type Subject = S }
+	type SingletonComponent[O <: AnyMapping, S] = Mapping[S] with Singleton { type Owner = O } //AnyMapping with Singleton { type Subject = S; type Owner = O }
 
 
 	type ComponentCompatibleMapping[M <: AnyMapping] = AnyMapping {
-		type Component[X] = SubMapping[X, M]
-		//		type Column[X] = M#Column[X]
+		type Component[X] = Mapping.Component[M#Owner, X]
 	}
 
 	type CompatibleMapping[M <: AnyMapping] = AnyMapping {
+		type Owner = M#Owner
 		type Subject = M#Subject
 		type Component[X] = M#Component[X] //SubMapping[X, M]
 	}
@@ -269,11 +270,13 @@ object Mapping {
 		def apply[M<:AnyMapping, T](mapping :M, column :M#Component[T]) :Boolean
 
 		def read[E](mapping :Mapping[E]) :SQLReadForm[E] =
-			MappingReadForm(mapping :mapping.type)(apply(mapping), read(_))
+			MappingReadForm(mapping :mapping.type)(apply(mapping :mapping.type), read(_))
 
 		def write[E](mapping :Mapping[E]) :SQLWriteForm[E] =
-			MappingWriteForm(mapping :mapping.type)(apply(mapping), write(_))
+			MappingWriteForm(mapping :mapping.type)(apply(mapping :mapping.type), write(_))
 	}
+
+
 
 	object ColumnFilter {
 		class WithBuff(buff :BuffType) extends ColumnFilter {
@@ -321,10 +324,10 @@ object Mapping {
 
 
 
-	/** An optional annotation/modifier for a component mapping, especially columns.
+	/** An optional annotation/modifier for component mappings, especially columns.
 	  * Modifies the way the annotated component is mapped, in particular it is used to include or exclude
 	  * certain columns from select/insert/update statements.
-	  * @tparam T the value type of the annotated component
+	  * @tparam T the value type of the annotated component.
 	  */
 	trait Buff[+T] {
 
@@ -422,16 +425,17 @@ object Mapping {
 		case object ExplicitQuery extends ComboFlag(OptionalInsert, NoInsertByDefault)
 
 
+
 		/** A mapping buff marking a given component as a sym link to another component under the root mapping.
 		  * The value for this component is set as the value of the component at the end of the path and is never
 		  * written to the database, leaving that responsibility to the linked component.
 		  */
-		case class SymLink[X<:AnyMapping, Y<:Mapping[T], T, V] private (target :TypedComponentPath[X, Y, T], value :T=>V)
+		case class SymLink[X <: SingletonMapping, Y <: TypedSingleton[T], T, V] private (target :TypedComponentPath[X, Y, T], value :T=>V)
 			extends Buff[V]
 		{
 			override def map[O](there: V => O): Buff[O] = new SymLink(target, value andThen there)
 
-			def startingWith[M<:AnyMapping](mapping :M) :Option[SymLink[M, Y, T, V]] =
+			def startingWith[M <: SingletonMapping](mapping :M) :Option[SymLink[M, Y, T, V]] =
 				this.asInstanceOf[SymLink[M, Y, T, V]].providing(target.start==mapping)
 
 
@@ -439,7 +443,7 @@ object Mapping {
 		}
 
 		object SymLink extends BuffType {
-			def apply[X<:AnyMapping, Y<:Mapping[T], T](path :TypedComponentPath[X, Y, T]) :SymLink[X, Y, T, T] =
+			def apply[X<:SingletonMapping, Y <: TypedSingleton[T], T](path :TypedComponentPath[X, Y, T]) :SymLink[X, Y, T, T] =
 				new SymLink(path, identity[T])
 
 			def apply[T](mapping :AnyMapping)(target :mapping.Component[T]) :SymLink[mapping.type, target.type, T, T] =
@@ -448,17 +452,21 @@ object Mapping {
 			override def test[T](buff: Buff[T]): Option[SymLink[_<:AnyMapping, _<:AnyMapping, _, T]] =
 				buff.asSubclass[SymLink[_<:AnyMapping, _<:AnyMapping, _, T]]
 
-			def startsWith[M<:AnyMapping, T](mapping :M)(component :mapping.Component[T]) :Option[SymLink[M, _<:Mapping[X], X, T] forSome { type X }]  =
+			def startsWith[M <: SingletonMapping, T](mapping :M)(component :mapping.Component[T]) :Option[SymLink[M, _ <: TypedSingleton[X], X, T] forSome { type X }]  =
 				component.buffs.toStream.flatMap(startsWith(mapping, _)).headOption //.asInstanceOf[SymLink[M, Mapping[Any], Any, T]]
 
-			def startsWith[M<:AnyMapping, T](mapping :M, buff :Buff[T]) :Option[SymLink[M, _<:Mapping[X], X, T] forSome { type X }] =
+			def startsWith[M <: SingletonMapping, T](mapping :M, buff :Buff[T]) :Option[SymLink[M, _ <: TypedSingleton[X], X, T] forSome { type X }] =
 				buff match {
 					case sl :SymLink[_,_,_,_] if sl.target.start == mapping =>
-						Some(sl.asInstanceOf[SymLink[M, Mapping[Any], Any, T]])
+						Some(sl.asInstanceOf[SymLink[M, TypedSingleton[Any], Any, T]])
 					case _ => None
 				}
 
 		}
+
+
+
+
 
 
 		/** A 'class for classes' being subtypes of `Buff`. Serves as a factory and matcher for a type
@@ -577,6 +585,7 @@ object Mapping {
 				option.providing(option.is(this))
 		}
 
+		/** A `BuffFlag` which implies other flags (is equivalent to having them declared alongside it). */
 		class ComboFlag(implied :BuffType*) extends ComboBuffType(implied:_*) with FlagBuff {
 			override def implies(other :BuffType) :Boolean = super[ComboBuffType].implies(other)
 		}
@@ -596,10 +605,10 @@ object Mapping {
 
 
 
-	trait MappingReadForm[M<:AnyMapping] extends SQLReadForm[M#Subject] {
+	trait MappingReadForm[M <: SingletonMapping] extends SQLReadForm[M#Subject] {
 		val mapping :M
 
-		def columns :Seq[M#Component[_]]
+		def columns :Seq[AnyComponent[M#Owner]]
 
 		def apply(values :ComponentValues[M]) :M#Subject
 
@@ -609,7 +618,8 @@ object Mapping {
 	}
 
 
-	class ColumnsReadForm[M<:Mapping[E], E](val mapping :M, read :M#Component[_]=>SQLReadForm[_], val columns :Seq[M#Component[_]])
+	class ColumnsReadForm[M <: Mapping[E] with Singleton, E]
+			(val mapping :M, read :AnyComponent[M#Owner]=>SQLReadForm[_], val columns :Seq[AnyComponent[M#Owner]])
 		extends MappingReadForm[M]
 	{
 		override def apply(values: ComponentValues[M]): E = values.value(mapping)
@@ -654,10 +664,9 @@ object Mapping {
 
 
 
-	class MappingWriteForm[M<:AnyMapping](mapping :M, write :M#Component[_]=>SQLWriteForm[_], components :Seq[M#Component[_]])
+	class MappingWriteForm[M <: SingletonMapping](mapping :M, write :AnyComponent[M#Owner]=>SQLWriteForm[_], components :Seq[AnyComponent[M#Owner]])
 		extends SQLWriteForm[M#Subject]
 	{
-
 
 		override def literal(value: M#Subject, inline :Boolean): String = {
 			val literals = components.map { c =>
