@@ -1,86 +1,125 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.ComponentPath.{DirectComponent, TypedComponentPath}
-import net.noresttherein.oldsql.schema.Mapping.{prefixOption, Buff, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.Buff.BuffType
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Mapping.{Selector, TypedMapping}
+import net.noresttherein.oldsql.slang._
 
 import scala.util.Try
 
 
-trait ColumnMapping[O<:AnyMapping, T] extends SubMapping[O, T] { column =>
-//	type Component[X] <: ColumnMapping[X, O]
 
-	def self :Component[T]
+trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 
 	override def sqlName = Some(name)
 
 	def name :String
 
 	final def components :Seq[Nothing] = Seq()
-	final def subcomponents :Seq[Component[T]] = Seq()
+	final def subcomponents :Seq[Component[S]] = Seq()
 
-	final def columns :Seq[Component[T]] = Seq(self)
-	final def queryable :Seq[Component[T]] = Seq(self)
-	final def selectable :Seq[Component[T]] = Seq(self)
-	final def updatable :Seq[Component[T]] = Seq(self)
-	final def insertable :Seq[Component[T]] = Seq(self)
-	final def generated :Seq[Component[T]] = Seq(self)
-//
-//	final def queryable :Seq[Component[T]] = selfUnless(NoQuery)
-//	final def selectable :Seq[Component[T]] = selfUnless(NoSelect)
-//	final def updatable :Seq[Component[T]] = selfUnless(NoUpdate)
-//	final def insertable :Seq[Component[T]] = selfUnless(NoInsert)
-//	final def generated :Seq[Component[T]] = self.providing(AutoGen.enabled(modifiers)).toSeq
+	final def columns :Seq[Component[S]] = Seq(this)
+//	final def selectable :Seq[Component[S]] = Seq(this)
+//	final def queryable :Seq[Component[S]] = Seq(this)
+//	final def updatable :Seq[Component[S]] = Seq(this)
+//	final def insertable :Seq[Component[S]] = Seq(this)
+//	final def generated :Seq[Component[S]] = Seq(this)
 
-	protected def selfUnless(buff :BuffType) :Seq[Component[T]] =
-		if (buff.enabled(buffs)) Seq() else Seq(self)
+	final def selectable :Seq[Component[S]] = selfUnless(NoSelect)
+	final def queryable :Seq[Component[S]] = selfUnless(NoQuery)
+	final def updatable :Seq[Component[S]] = selfUnless(NoUpdate)
+	final def autoUpdated :Seq[Component[S]] = if (AutoUpdate.enabled(buffs)) Seq(this) else Seq.empty
+ 	final def insertable :Seq[Component[S]] = selfUnless(NoInsert)
+	final def autoInserted :Seq[Component[S]] = if (AutoInsert.enabled(buffs)) Seq(this) else Seq.empty
 
-	def form :SQLForm[T]
-	override def selectForm :SQLForm[T] = form
-	override def queryForm :SQLForm[T] = form
-	override def updateForm :SQLForm[T] = form
-	override def insertForm :SQLForm[T] = form
+	protected def selfUnless(buff :BuffType) :Seq[Component[S]] =
+		if (buff.enabled(buffs)) Seq.empty else Seq(this)
 
 
 
-	override def assemble(values: Values): Option[T] = None
-
-
-/*
-	protected object morphism extends ValueIdentityMorphism[this.type, Component[T], T] {
-		def source = column
-		def target = self
-		override def components =
-			ComponentMorphism.homomorphism[Component[T]#Component, Component](_ => self)
+	def form :SQLForm[S]
+	
+	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
+		case Some(ConstantBuff(x)) => SQLReadForm.const(x) 
+		case Some(buff) => SQLReadForm.eval(buff.value)
+		case _ =>
+			val audits = SelectAudit.Audit(buffs)
+			val read = 
+				if (audits.isEmpty) form
+				else form.map(audits.reduce(_ andThen _), form.nullValue)
+			OptionalSelect.test(buffs) match {
+				case Some(ConstantBuff(x)) => read orElse SQLReadForm.const(x)
+				case Some(buff) => read orElse SQLReadForm.eval(buff.value)
+				case _ => read
+			}
 	}
-	protected val path = ComponentPath.DirectComponent[this.type, Component[T], T](morphism)
-*/
+	
+	override def queryForm :SQLWriteForm[S] = ExtraQuery.test(buffs) match {
+		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
+		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
+		case _ =>
+			val audits = QueryAudit.Audit(buffs)
+			if (audits.isEmpty) form
+			else form.imap(audits.reduce(_ andThen _))
+	}
+	
+	override def updateForm :SQLWriteForm[S] = ExtraUpdate.test(buffs) match {
+		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
+		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
+		case _ =>
+			val audits = UpdateAudit.Audit(buffs) 
+			if (audits.isEmpty) form
+			else form.imap(audits.reduce(_ andThen _))
+	}
 
-	override implicit def \\[X](component: Component[X]) :TypedComponentPath[this.type, component.type, X] = ???
-//		if (component == self)
-//			path.asInstanceOf[TypedComponentPath[this.type, component.type, X]]
-//		else
-//			throw new IllegalArgumentException(s"Can't lift unexpected component $component of column $this. The only component should be $self.")
-	//		DirectComponent(this :this.type)(component)(ValueMorphism.identity[T].asInstanceOf[ValueMorphism[T, X]], ComponentMorphism.homomorphism(_ => self))
+	override def insertForm :SQLWriteForm[S] = ExtraInsert.test(buffs) match {
+		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
+		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
+		case _ =>
+			val audits = InsertAudit.Audit(buffs)
+			if (audits.isEmpty) form
+			else form.imap(audits.reduce(_ andThen _))
+	}
 
 
-	def withOptions(opts :Seq[Buff[T]]) :ColumnMapping[O, T] = ColumnMapping(name, opts:_*)(form)
 
-	def renamed(name :String) :ColumnMapping[O, T] = ColumnMapping(name, buffs:_*)(form)
+	override def lift[T](component :Component[T]) :Component[T] = component
 
-	override def prefixed(prefix :String) :ColumnMapping[O, T] = ColumnMapping(prefix+name, buffs:_*)(form)
+	override def apply[T](component :Component[T]) :Selector[this.type, O, S, T] =
+		if (component == this)
+			new Selector[this.type, O, S, S] {
+				override def pick = Some(_:S)
+				override def surepick = Some(identity[S])
+				override val lifted = column
+			}.asInstanceOf[Selector[this.type, O, S, T]]
+		else
+			throw new IllegalArgumentException(
+				s"Mapping $component is not a subcomponent of column $column. The only subcomponent of a column is the column itself."
+			)
 
-	def prefixed(prefix :Option[String]) :ColumnMapping[O, T] = prefix.map(prefixed) getOrElse this
 
-	override def qualified(prefix :String) :ColumnMapping[O, T] =
+
+	override def assemble(values: Values): Option[S] = None
+
+	override def optionally(values :Values) :Option[S] = values.result(this)
+
+
+	def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[O, S] = ColumnMapping(name, opts:_*)(form)
+
+	def renamed(name :String) :ColumnMapping[O, S] = ColumnMapping(name, buffs:_*)(form)
+
+	override def prefixed(prefix :String) :ColumnMapping[O, S] = ColumnMapping(prefix + name, buffs:_*)(form)
+
+	def prefixed(prefix :Option[String]) :ColumnMapping[O, S] = prefix.map(prefixed) getOrElse this
+
+	override def qualified(prefix :String) :ColumnMapping[O, S] =
 		prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
 
 
 
 
-	override def toString :String = name //s"$name[$columnType]"
+	override def toString :String = name + "[" + form + "]"
 
-	override def introString :String = name
+	override def introString :String = buffs.mkString(toString + "(", ", ", ")")
 }
 
 
@@ -91,7 +130,7 @@ trait ColumnMapping[O<:AnyMapping, T] extends SubMapping[O, T] { column =>
 object ColumnMapping {
 
 	def apply[O <: AnyMapping, T :SQLForm](name :String, opts :Buff[T]*) :ColumnMapping[O, T] =
-		new BaseColumn(name, opts)
+		new StandardColumn(name, opts)
 
 	def adapt[O <: AnyMapping, T](mapping :TypedMapping[T]) :Option[ColumnMapping[O, T]] = mapping match {
 		case c :ColumnMapping[_, _] => Some(c.asInstanceOf[ColumnMapping[O, T]])
@@ -103,30 +142,20 @@ object ColumnMapping {
 	def apply[O <: AnyMapping, T](mapping :Mapping[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
 
 
-	//	def unapply[T](mapping :Mapping[T]) :Option[ColumnMapping[T]] = mapping.asSubclass[ColumnMapping[T]]
 
 
 
 
-	class BaseColumn[O <: AnyMapping, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :SQLForm[T])
+
+
+	class StandardColumn[O <: AnyMapping, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :SQLForm[T])
 		extends ColumnMapping[O, T]
-	{
 
-//		type Component[X] = ColumnMapping[X, O]
-
-		def self: Component[T] = this
-
-	}
 
 	trait ColumnSubstitute[O <: AnyMapping, S, T] extends ColumnMapping[O, T] {
-//		override type Component[X] = ColumnMapping[X, O]
-
-		override def self: Component[T] = this
-
 		val adaptee :ColumnMapping[O, T]
 
 		override def name: String = adaptee.name
-
 	}
 
 	trait ColumnImpostor[O <: AnyMapping, T] extends ColumnSubstitute[O, T, T] {
@@ -134,8 +163,8 @@ object ColumnMapping {
 
 		override def buffs :Seq[Buff[T]] = adaptee.buffs
 
-		override def assemble(values: Values): Option[T] =
-			(values :\ adaptee).result(adaptee)
+//		override def assemble(values: Values): Option[T] =
+//			(values :\ adaptee).result(adaptee)
 	}
 
 	class ColumnOverride[O <: AnyMapping, T]
@@ -150,20 +179,19 @@ object ColumnMapping {
 
 
 	class ColumnView[O <: AnyMapping, T](val adaptee :Mapping[T]) extends ColumnMapping[O, T] {
-//		type Component[X] = ColumnMapping[X, O]
 
 		if (adaptee.columns.size!=1 || adaptee.selectForm.readColumns!=1 || adaptee.insertForm.writtenColumns!=1 || adaptee.updateForm.writtenColumns!=1)
-			throw new IllegalArgumentException(s"Expected a column, got multiple column mapping :$adaptee{${adaptee.columns}}")
+			throw new IllegalArgumentException(s"Expected a column, got a multiple column mapping :$adaptee{${adaptee.columns}}")
 
 		override val name :String = adaptee.sqlName getOrElse {
-			throw new IllegalArgumentException(s"Expected a column, got mapping without sqlName :$adaptee{${adaptee.columns}}")
+			throw new IllegalArgumentException(s"Expected a column, got a mapping without an sqlName :$adaptee{${adaptee.columns}}")
 		}
 
 
-		override val form = SQLForm.combine(adaptee.selectForm, adaptee.insertForm)
-
-		override def self: Component[T] = this
-
+		override val form = SQLForm.combine(
+			adaptee.selectForm,
+			adaptee.insertForm unless(_.writtenColumns == 0) getOrElse adaptee.updateForm
+		)
 	}
 
 

@@ -1,11 +1,10 @@
 package net.noresttherein.oldsql.schema
 
-import java.sql.ResultSet
+import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.schema.SQLForm.{MappedSQLForm, Tuple2Form}
 import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, MappedSQLReadForm, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, MappedSQLWriteForm, SeqWriteForm}
-
+import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, EmptyWriteForm, MappedSQLWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 
 
@@ -142,18 +141,14 @@ object SQLForm extends JDBCTypes {
 
 
 
-	abstract class AbstractEmptyForm[T] extends SQLForm[T] {
+	abstract class AbstractEmptyForm[T] extends SQLForm[T] with EmptyWriteForm[T] {
 		override def apply(position: Int)(res: ResultSet): T = nullValue
 
 		def apply(column :String)(res :ResultSet) :T = nullValue
 
 		override def opt(position :Int)(rs :ResultSet) :Option[T] = None
 
-		override def writtenColumns: Int = 0
-
 		override def readColumns = 0
-
-		override def toString = "EMPTY"
 	}
 
 
@@ -163,7 +158,7 @@ object SQLForm extends JDBCTypes {
 
 	object EmptyForm {
 		def apply[T](nullExpr : =>T) :EmptyForm[T] = new EmptyForm[T](nullExpr)
-		def unapply[T](sqlType :SQLForm[T]) = sqlType.isInstanceOf[EmptyForm[_]]
+		def unapply[T](sqlType :SQLForm[T]) :Boolean = sqlType.isInstanceOf[EmptyForm[_]]
 	}
 
 
@@ -204,6 +199,12 @@ object SQLForm extends JDBCTypes {
 
 
 	case class CombinedForm[T](read :SQLReadForm[T], write :SQLWriteForm[T]) extends SQLForm[T] {
+
+		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
+			write.set(position)(statement, value)
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+			write.setNull(position)(statement)
 
 		override def opt(position: Int)(res: ResultSet): Option[T] = read.opt(position)(res)
 
@@ -278,6 +279,13 @@ object SQLForm extends JDBCTypes {
 		override def readColumns :Int = form.readColumns
 		override def writtenColumns :Int = form.writtenColumns
 
+
+		override def set(position :Int)(statement :PreparedStatement, value :Option[T]) :Unit = value match {
+			case Some(x) => form.set(position)(statement, x)
+			case _ => form.setNull(position)(statement)
+		}
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit = form.setNull(position)(statement)
+
 		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = Some(form.opt(position)(res))
 		override def apply(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
 
@@ -306,6 +314,7 @@ object SQLForm extends JDBCTypes {
 
 		override def toString :String = "Option[" + form + "]"
 	}
+
 
 
 	class Tuple2Form[L, R](implicit val _1 :SQLForm[L], implicit val _2 :SQLForm[R])

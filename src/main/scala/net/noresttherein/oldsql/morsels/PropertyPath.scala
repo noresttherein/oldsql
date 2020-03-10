@@ -130,7 +130,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
   * may prove to be an issue in the case of large, complex graphs and constructors performing additional logic apart
   * from storing the state. In particular, known limitations and potential issues are:
   *
-  *   - all classes which properties are reflected on the path must be not final, be public and have
+  *   - all classes which properties are reflected on the path must be not final, be public to JVM and have
   *     a public or protected constructor;
   *   - classes taken  as constructor arguments by the reflected classes must be instantiable through a public
   *     constructor or instrumentable themselves;
@@ -149,7 +149,11 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
   *   - no support for abstract types defined in outside scopes (generic classes are handled correctly as long as their
   *     type arguments are fully instantiated when seen/followed from type `X`);
   *
-  * While these conditions severely limits its application, it shouldn't be a problem for a typical business domain
+  * Note that `private[..]` and `protected[..]` modifiers explicitly specifying a scope are public from the point
+  * of view of the JVM, so they can be safely used to limit application's access to a class/method/constructor
+  * without impacting this class.
+  *
+  * While these conditions severely limit its application, it shouldn't be a problem for a typical business domain
   * model for which it is intended as a replacement of traditional `String` literals.
   */
 object PropertyPath {

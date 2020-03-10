@@ -1,8 +1,5 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.schema.{AnyMapping, ComponentPath, ComponentValues, Mapping}
-import net.noresttherein.oldsql.schema.ComponentPath.{DirectComponent, TypedComponentPath}
-import net.noresttherein.oldsql.schema.Mapping.Buff.SymLink
 
 
 

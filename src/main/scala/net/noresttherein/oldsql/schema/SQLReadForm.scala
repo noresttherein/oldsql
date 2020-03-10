@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql.ResultSet
 
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{MappedSQLReadForm, Tuple2ReadForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackAtomicReadForm, FallbackReadForm, MappedSQLReadForm, Tuple2ReadForm}
 import net.noresttherein.oldsql.slang._
 
 
@@ -33,6 +33,15 @@ trait SQLReadForm[+T] {
 
 
 
+	def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] =
+		if (readColumns != fallback.readColumns && fallback.readColumns != 0)
+			throw new IllegalArgumentException(
+				s"$this orElse $fallback: different number of read columns ($readColumns vs ${fallback.readColumns})."
+			)
+		else
+			new FallbackReadForm(this, fallback)
+
+
 
 	def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] = new Tuple2ReadForm()(this, other)
 
@@ -52,11 +61,11 @@ trait SQLReadForm[+T] {
 
 
 trait AtomicReadForm[+T] extends SQLReadForm[T] with BaseAtomicForm {
-	def readColumns = 1
+	override def readColumns = 1
 
-	def apply(column :String)(res :ResultSet) :T
+	def apply(column :String)(res :ResultSet) :T = apply(res.findColumn(column))(res)
 
-	def opt(position :Int)(res :ResultSet) :Option[T] = Option(apply(position)(res)).filterNot(_ => res.wasNull)
+	override def opt(position :Int)(res :ResultSet) :Option[T] = Option(apply(position)(res)).filterNot(_ => res.wasNull)
 	def opt(column :String)(res :ResultSet) :Option[T] = Option(apply(column)(res)).filterNot(_ => res.wasNull)
 
 
@@ -75,6 +84,21 @@ trait AtomicReadForm[+T] extends SQLReadForm[T] with BaseAtomicForm {
 	override def flatMap[X](fun :T=>Option[X], nullValue :X) :AtomicReadForm[X] =
 		MappedSQLReadForm.atom(fun, nullValue)(this)
 
+
+
+	override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
+		case atom :AtomicReadForm[S] => this orElse atom
+		case _ => super.orElse(fallback)
+	}
+
+	def orElse[S >: T](fallback :AtomicReadForm[S]) :AtomicReadForm[S] =
+		if (fallback.sqlType != sqlType)
+			throw new IllegalArgumentException(s"$this orElse $fallback: different sqlType ($sqlType vs ${fallback.sqlType}).")
+		else
+			new FallbackAtomicReadForm[S](this, fallback)
+
+
+
 	override def compatible(other: SQLReadForm[_]): Boolean = other match {
 		case a :AtomicReadForm[_] => a.sqlType == sqlType
 		case _ => false
@@ -91,11 +115,21 @@ object SQLReadForm {
 
 	def atom[T :AtomicReadForm] :AtomicReadForm[T] = implicitly[AtomicReadForm[T]]
 
-	def const[T :NullValue](value :Option[T]) :SQLReadForm[T] = ConstReadForm(value)
 
-	def const[T](value :Option[T], nullValue :T) :SQLReadForm[T] = ConstReadForm(value)(NullValue(nullValue))
 
-	def const[T](value :T) :SQLReadForm[T] = ConstReadForm(Some(value))(NullValue(value))
+	def const[T :NullValue](value :Option[T]) :SQLReadForm[T] = new ConstReadForm(value)
+
+	def const[T](value :Option[T], nullValue :T) :SQLReadForm[T] = new ConstReadForm(value)(NullValue(nullValue))
+
+	def const[T](value :T) :SQLReadForm[T] = new ConstReadForm(Some(value))(NullValue(value))
+
+	def eval[T :NullValue](value : =>Option[T]) :SQLReadForm[T] = new EvalReadForm(value)
+
+	def eval[T](value: =>Option[T], nullValue :T) :SQLReadForm[T] = new EvalReadForm(value)(NullValue(nullValue))
+
+	def eval[T](value: =>T) :SQLReadForm[T] = new EvalReadForm(Some(value))(NullValue(value))
+
+
 
 	def seq[T](forms :Seq[SQLReadForm[T]]) :SQLReadForm[Seq[T]] = new SeqReadFormImpl[T](forms)
 
@@ -119,6 +153,18 @@ object SQLReadForm {
 		override def nullValue: T = NullValue.Null[T]
 
 		override def toString :String = "<" + value
+	}
+
+
+
+	private class EvalReadForm[+T :NullValue](value: =>Option[T]) extends SQLReadForm[T] {
+		override def opt(position: Int)(res: ResultSet): Option[T] = value
+
+		override def readColumns: Int = 0
+
+		override def nullValue: T = NullValue.Null[T]
+
+		override def toString :String = "<=?"
 	}
 
 
@@ -160,14 +206,51 @@ object SQLReadForm {
 				override def sqlType: Int = source.sqlType
 				override def readColumns :Int = 1
 
-				override def apply(column: String)(res: ResultSet): T =
-					source.opt(column)(res).flatMap(map) getOrElse nullValue
-
 				override def opt(position: Int)(res: ResultSet): Option[T] =
 					super[MappedSQLReadForm].opt(position)(res)
 
 			}
 	}
+
+
+
+	private[schema] class FallbackReadForm[T](first :SQLReadForm[T], second :SQLReadForm[T]) extends SQLReadForm[T] {
+		override def opt(position :Int)(res :ResultSet) :Option[T] =
+			first.opt(position)(res) orElse second.opt(position)(res)
+
+		override def nullValue :T = first.nullValue
+
+		override def readColumns :Int = first.readColumns
+
+		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] =
+			if (readColumns != fallback.readColumns && fallback.readColumns != 0)
+				throw new IllegalArgumentException(
+					s"($this) orElse $fallback: different number of read columns ($readColumns vs ${fallback.readColumns})."
+				)
+			else
+				new FallbackReadForm(first, second orElse fallback)
+	}
+
+	private[schema] class FallbackAtomicReadForm[T](first :AtomicReadForm[T], second :AtomicReadForm[T])
+		extends FallbackReadForm[T](first, second) with AtomicReadForm[T]
+	{
+		override val sqlType :Int = first.sqlType
+
+		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
+			case atom :AtomicReadForm[S] => orElse(atom)
+			case _ => super.orElse(fallback)
+		}
+
+		override def orElse[S >: T](fallback :AtomicReadForm[S]) :AtomicReadForm[S] =
+			if (sqlType != fallback.sqlType)
+				throw new IllegalArgumentException(
+					s"($this) orElse $fallback: different sqlType ($sqlType vs ${fallback.sqlType})."
+				)
+			else new FallbackAtomicReadForm(first, second orElse fallback)
+	}
+
+
+
 
 
 

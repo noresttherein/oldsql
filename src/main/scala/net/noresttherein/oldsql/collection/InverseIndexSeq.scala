@@ -1,15 +1,28 @@
 package net.noresttherein.oldsql.collection
 
-import scala.collection.{AbstractSeq, AbstractSet}
+import net.noresttherein.oldsql.collection.InverseIndexSeq.Indexed
+
+import scala.collection.{AbstractSeq, AbstractSet, GenTraversableOnce}
+import scala.collection.generic.CanBuildFrom
+import scala.collection.mutable.Builder
 import scala.reflect.ClassTag
 
 
 
 /** A sequence providing O(1) indexOf(T), lastIndexOf(T) and contains(T) implementation.
-  * The indexed property is not sticky relative to collection operations, i.e. any map, flatMap, filter, etc. calls will not return an InverseIndexSeq.
-  * @tparam T element type
+  * The indexed property is sticky only in regards to the `newBuilder` method used for homomorphic sequences.
+  * This means that while `filter`, `take` and similar will result an `InverseIndexSeq[T]`,
+  * `map`, `flatMap`, and other calls will result in some default sequence type, which currently is an `IndexedSeq`.
+  * This class is used for the column lists exported by mappings in order to quickly find the column mapping for
+  * a given column result in a `ResultSet`.
+  *
+  * @tparam T element type.
   */
 trait InverseIndexSeq[+T] extends Seq[T] {
+	protected[this] override def newBuilder :Builder[T, Seq[T]] =
+		List.newBuilder[T].mapResult(new Indexed(_))
+
+	override def genericBuilder[B] :Builder[B, Seq[B]] = IndexedSeq.newBuilder[B]
 
 }
 
@@ -26,7 +39,7 @@ object InverseIndexSeq {
 	  */
 	def apply[T](elems :Seq[T]) :InverseIndexSeq[T] = elems match {
 		case _:InverseIndexSeq[_] => elems.asInstanceOf[InverseIndexSeq[T]]
-		case _ => new IndexedSeq[T](elems)
+		case _ => new Indexed[T](elems)
 	}
 
 
@@ -56,7 +69,7 @@ object InverseIndexSeq {
 	  * @param backing contents of this collection
 	  * @tparam T element type
 	  */
-	private class IndexedSeq[+T] private[InverseIndexSeq] (backing :Seq[T]) extends AbstractSeq[T] with InverseIndexSeq[T] {
+	private class Indexed[+T] private[InverseIndexSeq] (backing :Seq[T]) extends AbstractSeq[T] with InverseIndexSeq[T] {
 		private[this] val index :Map[Any, Int] = backing.view.zipWithIndex.reverse.toMap
 		private[this] lazy val lastIndex :Map[Any, Int] = backing.view.zipWithIndex.toMap
 
@@ -76,6 +89,62 @@ object InverseIndexSeq {
 		override def contains[A1 >: T](elem: A1): Boolean = index.contains(elem)
 
 		override def toSet[B >: T]: Set[B] = index.keySet.asInstanceOf[Set[B]]
+
+
+
+/*
+		override def +:[B >: T, That](elem :B)(implicit bf :CanBuildFrom[Seq[T], B, That]) :That =
+			if (bf == Seq.canBuildFrom && contains(elem))
+				this.asInstanceOf[That]
+			else if (bf == Seq.canBuildFrom && backing.isInstanceOf[List[_]]) {
+				new Indexed(elem :: backing.toList).asInstanceOf[That]
+			} else {
+				val builder = bf(this)
+				if (!contains(elem))
+					builder += elem
+				builder ++= this
+				builder.result()
+			}
+
+		override def :+[B >: T, That](elem :B)(implicit bf :CanBuildFrom[Seq[T], B, That]) :That =
+			if (bf == Seq.canBuildFrom && contains(elem))
+				this.asInstanceOf[That]
+			else {
+				val builder = bf(this)
+				builder ++= this
+				if (!contains(elem))
+					builder += elem
+				builder.result()
+			}
+
+		override def ++[B >: T, That](that :GenTraversableOnce[B])(implicit bf :CanBuildFrom[Seq[T], B, That]) :That = {
+			val builder = bf(this)
+			builder ++= this
+			that foreach { b => if (!contains(b)) builder += b }
+			builder.result()
+		}
+
+		override def ++:[B >: T, That](that :TraversableOnce[B])(implicit bf :CanBuildFrom[Seq[T], B, That]) :That = {
+			val builder = bf(this)
+			that foreach { b => if (!contains(b)) builder += b }
+			builder ++= this
+			builder.result()
+		}
+
+		override def ++:[B >: T, That](that :Traversable[B])(implicit bf :CanBuildFrom[Seq[T], B, That]) :That =
+			if (bf == Seq.canBuildFrom && that.forall(contains))
+				this.asInstanceOf[That]
+			else if (bf == Seq.canBuildFrom && backing.isInstanceOf[List[_]]) {
+				new Indexed(that.toList ::: backing.toList).asInstanceOf[That]
+			} else {
+				val builder = bf(this)
+				that foreach { b => if (!contains(b)) builder += b }
+				builder ++= this
+				builder.result()
+			}
+*/
+
+
 
 	}
 

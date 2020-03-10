@@ -1,15 +1,42 @@
 package net.noresttherein.oldsql.schema
 
+import java.sql.PreparedStatement
+
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{MappedSQLWriteForm, Tuple2WriteForm}
 import net.noresttherein.oldsql.slang._
 
 trait SQLWriteForm[-T] {
 
+	def set(position :Int)(statement :PreparedStatement, value :T) :Unit
+
+	def setNull(position :Int)(statement :PreparedStatement) :Unit
+
+
+
+//	def literal(value :Option[T]) :String = value match {
+//		case Some(x) => literal(x)
+//		case _ => nullLiteral
+//	}
+
 	def literal(value :T) :String
+
 	def nullLiteral :String
 
+
+//	def inlineLiteral(value :Option[T]) :String = value match {
+//		case Some(x) => inlineLiteral(x)
+//		case _ => inlineNullLiteral
+//	}
+
 	def inlineLiteral(value :T) :String
+
 	def inlineNullLiteral :String
+
+
+//	def literal(value :Option[T], inline :Boolean) :String =
+//		if (inline) inlineLiteral(value)
+//		else literal(value)
 
 	def literal(value :T, inline :Boolean) :String =
 		if (inline) inlineLiteral(value)
@@ -22,9 +49,15 @@ trait SQLWriteForm[-T] {
 
 	def writtenColumns :Int
 
-	def imap[X](fun :X=>T) :SQLWriteForm[X] = MappedSQLWriteForm((x:X) => Some(fun(x)))(this)
+
+
+	def imap[X](fun :X=>T) :SQLWriteForm[X] = MappedSQLWriteForm((x :X) => Some(fun(x)))(this)
 
 	def iflatMap[X](fun :X=>Option[T]) :SQLWriteForm[X]  = MappedSQLWriteForm(fun)(this)
+
+
+
+//	def getOrElse[S](other :)
 
 	def asOpt :SQLWriteForm[Option[T]] = SQLWriteForm.OptionWriteType(this)
 
@@ -48,7 +81,10 @@ trait SQLWriteForm[-T] {
 
 
 trait AtomicWriteForm[-T] extends SQLWriteForm[T] with BaseAtomicForm {
-	def writtenColumns = 1
+	override def writtenColumns = 1
+
+	override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+		statement.setNull(position, sqlType)
 
 	override def literal(value: T): String = if (value == null) "null" else value.toString
 	override def nullLiteral: String = "null"
@@ -78,7 +114,20 @@ object SQLWriteForm {
 
 	def atom[T :AtomicWriteForm] :AtomicWriteForm[T] = implicitly[AtomicWriteForm[T]]
 
-	def const[T :SQLWriteForm](value :T) :SQLWriteForm[Any] = ConstWriteForm(SQLWriteForm[T], value)
+
+
+	def const[T :SQLWriteForm](value :T) :SQLWriteForm[Any] = ConstWriteForm(value, SQLWriteForm[T])
+
+	def eval[T :SQLWriteForm](value: =>Option[T], orElse :T) :SQLWriteForm[Any] =
+		new EvalWriteForm[T](value)(SQLWriteForm[T], NullValue(orElse))
+
+	def eval[T :SQLWriteForm :NullValue](value: =>Option[T]) :SQLWriteForm[Any] =
+		new EvalWriteForm[T](value)
+
+	def eval[T :SQLWriteForm](value: =>T) :SQLWriteForm[Any] =
+		new EvalWriteForm[T](Some(value))(SQLWriteForm[T], NullValue(value))
+
+
 
 	def chain[T](forms :Seq[SQLWriteForm[T]]) :SQLWriteForm[T] = forms match {
 		case Seq() => empty
@@ -112,6 +161,8 @@ object SQLWriteForm {
 
 
 	trait EmptyWriteForm[-T] extends SQLWriteForm[T] {
+		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = ()
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit = ()
 		override def inlineLiteral(value: T): String = ""
 		override def inlineNullLiteral: String = ""
 		override def literal(value: T): String = ""
@@ -122,7 +173,13 @@ object SQLWriteForm {
 
 
 
-	case class ConstWriteForm[T](form :SQLWriteForm[T], value :T) extends SQLWriteForm[Any] {
+	case class ConstWriteForm[T](value :T, form :SQLWriteForm[T]) extends SQLWriteForm[Any] {
+
+		override def set(position :Int)(statement :PreparedStatement, ignore :Any) :Unit =
+			form.set(position)(statement, value)
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+			form.set(position)(statement, value)
 
 		override def literal(ignored: Any): String = form.literal(value)
 
@@ -142,12 +199,51 @@ object SQLWriteForm {
 
 
 
+	private class EvalWriteForm[T](value: =>Option[T])(implicit form :SQLWriteForm[T], orElse :NullValue[T])
+		extends SQLWriteForm[Any]
+	{
+
+		override def set(position :Int)(statement :PreparedStatement, ignore :Any) :Unit =
+			setNull(position)(statement)
+
+		@inline final override def setNull(position :Int)(statement :PreparedStatement) :Unit = value match {
+			case Some(x) => form.set(position)(statement, x)
+			case _ => form.set(position)(statement, orElse.value) //form.setNull(position)(statement)
+		}
+
+		override def literal(ignored: Any): String = nullLiteral
+
+		@inline final override def nullLiteral: String = value match {
+			case Some(x) => form.literal(x)
+			case _ => form.literal(orElse.value) //form.nullLiteral
+		}
+		override def inlineLiteral(ignored: Any): String = inlineNullLiteral
+
+		@inline final override def inlineNullLiteral: String = value match {
+			case Some(x) => form.inlineLiteral(x)
+			case _ => form.inlineNullLiteral
+		}
+
+
+		override def writtenColumns: Int = form.writtenColumns
+
+		override def toString = s"$form=?>"
+	}
+
+
 
 	trait MappedSQLWriteForm[-T, S]
 		extends SQLWriteForm[T]
 	{
 		val source :SQLWriteForm[S]
 		val unmap :T=>Option[S]
+
+		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = unmap(value) match {
+			case Some(s) => source.set(position)(statement, s)
+			case _ => source.setNull(position)(statement)
+		}
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit = source.setNull(position)(statement)
 
 		override def literal(value: T): String = unmap(value).mapOrElse(source.literal, source.nullLiteral)
 
@@ -190,12 +286,24 @@ object SQLWriteForm {
 
 	trait CompositeWriteForm[-T] extends SQLWriteForm[T] {
 		protected def forms :Seq[SQLWriteForm[_]]
+
 		def writtenColumns :Int = (0 /: forms)(_ + _.writtenColumns)
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit = {
+			var i = position
+			forms foreach { form => form.setNull(i)(statement); i += form.writtenColumns }
+		}
 	}
 
 
 	trait ProxySQLWriteForm[-T] extends SQLWriteForm[T] {
 		protected def form :SQLWriteForm[T]
+
+		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
+			form.set(position)(statement, value)
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+			form.setNull(position)(statement)
 
 		override def literal(value: T): String = form.literal(value)
 
@@ -217,6 +325,11 @@ object SQLWriteForm {
 
 
 	case class WriteFormChain[-T](forms :Seq[SQLWriteForm[T]]) extends SQLWriteForm[T] with CompositeWriteForm[T] {
+
+		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = {
+			var i = position
+			forms foreach { form => form.set(i)(statement, value); i += form.writtenColumns }
+		}
 
 		override def literal(value: T): String =
 			forms.map(_.literal(value)).mkString("(", ", ", ")")
@@ -241,6 +354,12 @@ object SQLWriteForm {
 
 	trait SeqWriteForm[-T] extends SQLWriteForm[Seq[T]] with CompositeWriteForm[Seq[T]] {
 		protected def forms :Seq[SQLWriteForm[T]]
+
+		override def set(position :Int)(statement :PreparedStatement, value :Seq[T]) :Unit = {
+			val iter = value.iterator
+			var i = position
+			forms foreach { form => form.set(i)(statement, iter.next()); i += form.writtenColumns }
+		}
 
 		override def literal(value: Seq[T]): String =
 			if (value.size!=forms.size)
@@ -283,6 +402,16 @@ object SQLWriteForm {
 	trait AbstractTuple2WriteForm[-L, -R] extends SQLWriteForm[(L, R)] {
 		val _1 :SQLWriteForm[L]
 		val _2 :SQLWriteForm[R]
+
+		override def set(position :Int)(statement :PreparedStatement, value :(L, R)) :Unit = {
+			_1.set(position)(statement, value._1)
+			_2.set(position + _1.writtenColumns)(statement, value._2)
+		}
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit = {
+			_1.setNull(position)(statement)
+			_2.setNull(position + _1.writtenColumns)(statement)
+		}
 
 		override def literal(value: (L, R)): String = s"(${_1.literal(value._1)}, ${_2.literal(value._2)})"
 

@@ -10,7 +10,7 @@ package object slang {
 
 
 	/** An implicit conversion extending Int with a method 'repeat' which executes a block the given number of times. */
-	private[oldsql] implicit class repeat(val count :Int) extends AnyVal {
+	private[oldsql] implicit class repeat(private val count :Int) extends AnyVal {
 		/** Execute the given block the number of times specified by 'this' argument. */
 		def times(block : =>Unit): Unit =
 			for (i<- 0 until count) block
@@ -19,7 +19,7 @@ package object slang {
 
 
 
-	private[oldsql] implicit class UnqualifiedClassName[T](val value :T) extends AnyVal {
+	private[oldsql] implicit class UnqualifiedClassName[T](private val value :T) extends AnyVal {
 		def unqualifiedClassName :String = {
 			val qualified = value.getClass.getName
 			val i = qualified.lastIndexOf('.')
@@ -90,7 +90,7 @@ package object slang {
 
 
 
-	private[oldsql] implicit class IfTrueAndIfFalse(val condition :Boolean) extends AnyVal {
+	private[oldsql] implicit class IfTrueAndIfFalse(private val condition :Boolean) extends AnyVal {
 		def ifTrue[T](expr: =>T) :Option[T] = if (condition) Some(expr) else None
 
 		def ifFalse[T](expr: =>T) :Option[T] = if (!condition) Some(expr) else None
