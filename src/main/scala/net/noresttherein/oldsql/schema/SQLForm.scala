@@ -45,30 +45,29 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 
 
-trait BaseAtomicForm /*extends BaseSQLForm*/ {
-	//	def columnCount = 1
+trait BaseColumnForm {
 	def sqlType :Int
 }
 
 
-trait AtomicForm[T] extends SQLForm[T] with AtomicReadForm[T] with AtomicWriteForm[T] {
+trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteForm[T] {
 
-	override def as[X](map :T=>X)(unmap :X=>T) :AtomicForm[X] =
-		MappedSQLForm.atom[X, T](t=>Option(map(t)), x=>Option(unmap(x)), map(nullValue))(this)
+	override def as[X](map :T=>X)(unmap :X=>T) :ColumnForm[X] =
+		MappedSQLForm.column[X, T](t=>Option(map(t)), x=>Option(unmap(x)), map(nullValue))(this)
 
-	override def as[X](map :T=>X, nullValue :X)(unmap :X=>T) :AtomicForm[X] =
-		MappedSQLForm.atom[X, T](t=>Option(map(t)), x=>Option(unmap(x)), nullValue)(this)
+	override def as[X](map :T=>X, nullValue :X)(unmap :X=>T) :ColumnForm[X] =
+		MappedSQLForm.column[X, T](t=>Option(map(t)), x=>Option(unmap(x)), nullValue)(this)
 
-	override def asOpt[X>:Null](map :T=>Option[X])(unmap :X=>Option[T]) :AtomicForm[X] =
-		MappedSQLForm.atom[X, T](map, unmap, null)(this)
+	override def asOpt[X>:Null](map :T=>Option[X])(unmap :X=>Option[T]) :ColumnForm[X] =
+		MappedSQLForm.column[X, T](map, unmap, null)(this)
 
-	override def asOpt[X](map :T=>Option[X], nullValue :X)(unmap :X=>Option[T]) :AtomicForm[X] =
-		MappedSQLForm.atom[X, T](map, unmap, nullValue)(this)
+	override def asOpt[X](map :T=>Option[X], nullValue :X)(unmap :X=>Option[T]) :ColumnForm[X] =
+		MappedSQLForm.column[X, T](map, unmap, nullValue)(this)
 
 
 
 	override def compatible(other: SQLForm[_]): Boolean = other match {
-		case a:AtomicForm[_] => a.sqlType == sqlType
+		case a:ColumnForm[_] => a.sqlType == sqlType
 		case _ => false
 	}
 }
@@ -228,8 +227,8 @@ object SQLForm extends JDBCTypes {
 	object MappedSQLForm {
 
 		def apply[T, S :SQLForm](map :S=>Option[T], unmap :T=>Option[S], nullValue :T) :MappedSQLForm[T, S] = SQLForm[S] match {
-			case t :AtomicForm[_] =>
-				atom(map, unmap, nullValue)(t.asInstanceOf[AtomicForm[S]])
+			case t :ColumnForm[_] =>
+				column(map, unmap, nullValue)(t.asInstanceOf[ColumnForm[S]])
 			case t :RecordForm[_] =>
 				new MappedSQLForm[T, S](map, unmap, nullValue) with RecordForm[T]
 			case _ =>
@@ -237,8 +236,8 @@ object SQLForm extends JDBCTypes {
 
 		}
 
-		def atom[T, S :AtomicForm](map :S=>Option[T], unmap :T=>Option[S], nullValue :T) :MappedAtomicForm[T, S] =
-			new MappedAtomicForm(map, unmap, nullValue)
+		def column[T, S :ColumnForm](map :S=>Option[T], unmap :T=>Option[S], nullValue :T) :MappedColumnForm[T, S] =
+			new MappedColumnForm(map, unmap, nullValue)
 
 	}
 
@@ -252,8 +251,8 @@ object SQLForm extends JDBCTypes {
 
 
 
-	class MappedAtomicForm[T, S](map :S=>Option[T], unmap :T=>Option[S], nullValue :T)(implicit override val source :AtomicForm[S])
-		extends MappedSQLForm[T, S](map, unmap, nullValue) with AtomicForm[T]
+	class MappedColumnForm[T, S](map :S=>Option[T], unmap :T=>Option[S], nullValue :T)(implicit override val source :ColumnForm[S])
+		extends MappedSQLForm[T, S](map, unmap, nullValue) with ColumnForm[T]
 	{
 		override def sqlType: Int = source.sqlType
 

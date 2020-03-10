@@ -6,6 +6,11 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{MappedSQLWriteForm, Tuple2WriteForm}
 import net.noresttherein.oldsql.slang._
 
+
+
+
+
+
 trait SQLWriteForm[-T] {
 
 	def set(position :Int)(statement :PreparedStatement, value :T) :Unit
@@ -77,10 +82,7 @@ trait SQLWriteForm[-T] {
 
 
 
-
-
-
-trait AtomicWriteForm[-T] extends SQLWriteForm[T] with BaseAtomicForm {
+trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 	override def writtenColumns = 1
 
 	override def setNull(position :Int)(statement :PreparedStatement) :Unit =
@@ -92,12 +94,12 @@ trait AtomicWriteForm[-T] extends SQLWriteForm[T] with BaseAtomicForm {
 	override def inlineLiteral(value: T): String = literal(value)
 	override def inlineNullLiteral: String = nullLiteral
 
-	override def imap[X](fun :X=>T) :AtomicWriteForm[X] = MappedSQLWriteForm.atom((x:X) => Some(fun(x)))(this)
+	override def imap[X](fun :X=>T) :ColumnWriteForm[X] = MappedSQLWriteForm.column((x:X) => Some(fun(x)))(this)
 
-	override def iflatMap[X](fun :X=>Option[T]) :AtomicWriteForm[X]  = MappedSQLWriteForm.atom(fun)(this)
+	override def iflatMap[X](fun :X=>Option[T]) :ColumnWriteForm[X]  = MappedSQLWriteForm.column(fun)(this)
 
 	override def compatible(other: SQLWriteForm[_]): Boolean = other match {
-		case a :AtomicWriteForm[_] => a.sqlType == sqlType
+		case a :ColumnWriteForm[_] => a.sqlType == sqlType
 		case _ => false
 	}
 
@@ -108,11 +110,10 @@ trait AtomicWriteForm[-T] extends SQLWriteForm[T] with BaseAtomicForm {
 
 
 
-
 object SQLWriteForm {
 	def apply[T :SQLWriteForm] :SQLWriteForm[T] = implicitly[SQLWriteForm[T]]
 
-	def atom[T :AtomicWriteForm] :AtomicWriteForm[T] = implicitly[AtomicWriteForm[T]]
+	def column[T :ColumnWriteForm] :ColumnWriteForm[T] = implicitly[ColumnWriteForm[T]]
 
 
 
@@ -264,8 +265,8 @@ object SQLWriteForm {
 	object MappedSQLWriteForm {
 		def apply[T, S :SQLWriteForm](map :T=>Option[S]) :MappedSQLWriteForm[T, S] =
 			implicitly[SQLWriteForm[S]] match {
-				case a :AtomicWriteForm[_] =>
-					atom(map)(a.asInstanceOf[AtomicWriteForm[S]])
+				case a :ColumnWriteForm[_] =>
+					column(map)(a.asInstanceOf[ColumnWriteForm[S]])
 				case f =>
 					new MappedSQLWriteForm[T, S] {
 						val source = f
@@ -273,9 +274,9 @@ object SQLWriteForm {
 					}
 			}
 
-		def atom[T, S :AtomicWriteForm](map :T=>Option[S]) :MappedSQLWriteForm[T, S] with AtomicWriteForm[T] =
-			new MappedSQLWriteForm[T, S] with AtomicWriteForm[T] {
-				val source = implicitly[AtomicWriteForm[S]]
+		def column[T, S :ColumnWriteForm](map :T=>Option[S]) :MappedSQLWriteForm[T, S] with ColumnWriteForm[T] =
+			new MappedSQLWriteForm[T, S] with ColumnWriteForm[T] {
+				val source = implicitly[ColumnWriteForm[S]]
 				val unmap = map
 				override def sqlType: Int = source.sqlType
 				override def writtenColumns = 1

@@ -46,13 +46,13 @@ trait JDBCTypes extends SQLTypes {
 
 	implicit def OptionType[T :SQLForm] :SQLForm[Option[T]] = SQLForm[T].asOpt(t=>Some(Option(t)), None)(o => o)
 
-	implicit def OptionAtomicType[T :AtomicForm] :AtomicForm[Option[T]] =
-		implicitly[AtomicForm[T]].asOpt(t=>Some(Option(t)), None)(o => o)
+	implicit def OptionColumnType[T :ColumnForm] :ColumnForm[Option[T]] =
+		implicitly[ColumnForm[T]].asOpt(t=>Some(Option(t)), None)(o => o)
 
 	implicit def SomeType[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].as(Some(_))(_.get)
 
-	implicit def SomeAtomicType[T :AtomicForm] :AtomicForm[Some[T]] =
-		implicitly[AtomicForm[T]].as(Some(_))(_.get)
+	implicit def SomeColumnType[T :ColumnForm] :ColumnForm[Some[T]] =
+		implicitly[ColumnForm[T]].as(Some(_))(_.get)
 
 
 
@@ -68,7 +68,7 @@ trait JDBCTypes extends SQLTypes {
 	val BasicLiteralTypes = Seq(BigDecimalForm, BooleanForm, ByteForm, DateForm, DoubleForm, FloatForm, IntForm, LongForm, ShortForm, StringForm, TimeForm, TimestampForm, URLForm)
 
 
-	implicit case object SQLArrayForm extends JDBCForm[sql.Array](ARRAY) with AtomicForm[sql.Array]
+	implicit case object SQLArrayForm extends JDBCForm[sql.Array](ARRAY) with ColumnForm[sql.Array]
 		                                 with NullableForm[sql.Array] with NonLiteralForm[sql.Array]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :sql.Array) :Unit =
@@ -79,7 +79,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "ARRAY"
 	}
 
-	case object ASCIIStreamForm extends JDBCForm[InputStream](LONGVARCHAR) with AtomicForm[InputStream]
+	case object ASCIIStreamForm extends JDBCForm[InputStream](LONGVARCHAR) with ColumnForm[InputStream]
 		                           with NullableForm[InputStream] with NonLiteralForm[InputStream]
 	{
 
@@ -92,7 +92,7 @@ trait JDBCTypes extends SQLTypes {
 	}
 
 	implicit case object BigDecimalForm extends JDBCForm[BigDecimal](DECIMAL)
-		                                   with AtomicForm[BigDecimal] with NullableForm[BigDecimal]
+		                                   with ColumnForm[BigDecimal] with NullableForm[BigDecimal]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :BigDecimal) :Unit =
 			statement.setBigDecimal(position, value.bigDecimal)
@@ -103,7 +103,7 @@ trait JDBCTypes extends SQLTypes {
 	}
 
 	implicit case object JavaBigDecimalForm extends JDBCForm[JBigDecimal](DECIMAL)
-		with AtomicForm[JBigDecimal] with NullableForm[JBigDecimal]
+		with ColumnForm[JBigDecimal] with NullableForm[JBigDecimal]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :JBigDecimal) :Unit =
 			statement.setBigDecimal(position, value)
@@ -113,7 +113,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JDECIMAL"
 	}
 
-	case object BinaryStreamForm extends JDBCForm[InputStream](LONGVARBINARY) with AtomicForm[InputStream]
+	case object BinaryStreamForm extends JDBCForm[InputStream](LONGVARBINARY) with ColumnForm[InputStream]
 		                            with NullableForm[InputStream] with NonLiteralForm[InputStream]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :InputStream) :Unit =
@@ -124,7 +124,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "LONGVARBINARY"
 	}
 
-	implicit case object BlobForm extends JDBCForm[Blob](BLOB) with AtomicForm[Blob]
+	implicit case object BlobForm extends JDBCForm[Blob](BLOB) with ColumnForm[Blob]
 		                             with NullableForm[Blob] with NonLiteralForm[Blob]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :Blob) :Unit =
@@ -135,7 +135,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "BLOB"
 	}
 
-	implicit case object BooleanForm extends JDBCForm[Boolean](BOOLEAN) with AtomicForm[Boolean] {
+	implicit case object BooleanForm extends JDBCForm[Boolean](BOOLEAN) with ColumnForm[Boolean] {
 		override def set(position :Int)(statement :PreparedStatement, value :Boolean) :Unit =
 			statement.setBoolean(position, value)
 
@@ -146,7 +146,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "BOOLEAN"
 	}
 
-	case object JavaBooleanForm extends JDBCForm[JBoolean](BOOLEAN) with AtomicForm[JBoolean] with NullableForm[JBoolean] {
+	case object JavaBooleanForm extends JDBCForm[JBoolean](BOOLEAN) with ColumnForm[JBoolean] with NullableForm[JBoolean] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :JBoolean) :Unit =
 			statement.setBoolean(position, value)
@@ -157,7 +157,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JBOOLEAN"
 	}
 
-	implicit case object ByteForm extends JDBCForm[Byte](TINYINT) with AtomicForm[Byte] {
+	implicit case object ByteForm extends JDBCForm[Byte](TINYINT) with ColumnForm[Byte] {
 		override def set(position :Int)(statement :PreparedStatement, value :Byte) :Unit =
 			statement.setByte(position, value)
 
@@ -169,7 +169,7 @@ trait JDBCTypes extends SQLTypes {
 	}
 
 	implicit case object JavaByteForm extends JDBCForm[JByte](TINYINT)
-		                                 with AtomicForm[JByte] with NullableForm[JByte]
+		                                 with ColumnForm[JByte] with NullableForm[JByte]
 	{
 
 		override def set(position :Int)(statement :PreparedStatement, value :JByte) :Unit =
@@ -181,7 +181,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JBYTE"
 	}
 
-	implicit case object BytesForm extends JDBCForm[Array[Byte]](BINARY) with AtomicForm[Array[Byte]]
+	implicit case object BytesForm extends JDBCForm[Array[Byte]](BINARY) with ColumnForm[Array[Byte]]
 		                              with NullableForm[Array[Byte]] with NonLiteralForm[Array[Byte]]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :Array[Byte]) :Unit =
@@ -192,7 +192,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "BINARY"
 	}
 
-	implicit case object CharacterStreamForm extends JDBCForm[Reader](LONGVARCHAR) with AtomicForm[Reader]
+	implicit case object CharacterStreamForm extends JDBCForm[Reader](LONGVARCHAR) with ColumnForm[Reader]
 		                                        with NullableForm[Reader] with NonLiteralForm[Reader]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :Reader) :Unit =
@@ -203,7 +203,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "LONGVARCHAR"
 	}
 
-	implicit case object ClobForm extends JDBCForm[Clob](CLOB) with AtomicForm[Clob]
+	implicit case object ClobForm extends JDBCForm[Clob](CLOB) with ColumnForm[Clob]
 		                             with NullableForm[Clob] with NonLiteralForm[Clob]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :Clob) :Unit =
@@ -214,7 +214,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "CLOB"
 	}
 
-	implicit case object DateForm extends JDBCForm[sql.Date](DATE) with NullableForm[sql.Date] with AtomicForm[sql.Date] {
+	implicit case object DateForm extends JDBCForm[sql.Date](DATE) with NullableForm[sql.Date] with ColumnForm[sql.Date] {
 		override def set(position :Int)(statement :PreparedStatement, value :Date) :Unit =
 			statement.setDate(position, value)
 
@@ -227,7 +227,7 @@ trait JDBCTypes extends SQLTypes {
 		private[this] val format = DateTimeFormatter.ofPattern("'uuuu-MM-dd'")
 	}
 
-	implicit case object DoubleForm extends JDBCForm[Double](DOUBLE) with AtomicForm[Double] {
+	implicit case object DoubleForm extends JDBCForm[Double](DOUBLE) with ColumnForm[Double] {
 		override def set(position :Int)(statement :PreparedStatement, value :Double) :Unit =
 			statement.setDouble(position, value)
 
@@ -238,7 +238,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "DOUBLE"
 	}
 
-	implicit case object JavaDoubleForm extends JDBCForm[JDouble](DOUBLE) with AtomicForm[JDouble]
+	implicit case object JavaDoubleForm extends JDBCForm[JDouble](DOUBLE) with ColumnForm[JDouble]
 		                                   with NullableForm[JDouble]
 	{
 
@@ -251,7 +251,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JDOUBLE"
 	}
 
-	implicit case object FloatForm extends JDBCForm[Float](FLOAT) with AtomicForm[Float] {
+	implicit case object FloatForm extends JDBCForm[Float](FLOAT) with ColumnForm[Float] {
 		override def set(position :Int)(statement :PreparedStatement, value :Float) :Unit =
 			statement.setFloat(position, value)
 
@@ -262,7 +262,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "FLOAT"
 	}
 
-	implicit case object JavaFloatForm extends JDBCForm[JFloat](FLOAT) with AtomicForm[JFloat]
+	implicit case object JavaFloatForm extends JDBCForm[JFloat](FLOAT) with ColumnForm[JFloat]
 		                                  with NullableForm[JFloat]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :JFloat) :Unit =
@@ -274,7 +274,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JFLOAT"
 	}
 
-	implicit case object IntForm extends JDBCForm[Int](INTEGER) with AtomicForm[Int] {
+	implicit case object IntForm extends JDBCForm[Int](INTEGER) with ColumnForm[Int] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Int) :Unit =
 			statement.setInt(position, value)
@@ -286,7 +286,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "INT"
 	}
 
-	implicit case object JavaIntForm extends JDBCForm[JInt](INTEGER) with AtomicForm[JInt] with NullableForm[JInt] {
+	implicit case object JavaIntForm extends JDBCForm[JInt](INTEGER) with ColumnForm[JInt] with NullableForm[JInt] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :JInt) :Unit =
 			statement.setInt(position, value)
@@ -297,7 +297,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JINT"
 	}
 
-	implicit case object LongForm extends JDBCForm[Long](BIGINT) with AtomicForm[Long] {
+	implicit case object LongForm extends JDBCForm[Long](BIGINT) with ColumnForm[Long] {
 		override def set(position :Int)(statement :PreparedStatement, value :Long) :Unit =
 			statement.setLong(position, value)
 
@@ -308,7 +308,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "BIGINT"
 	}
 
-	implicit case object JavaLongForm extends JDBCForm[JLong](BIGINT) with AtomicForm[JLong] with NullableForm[JLong] {
+	implicit case object JavaLongForm extends JDBCForm[JLong](BIGINT) with ColumnForm[JLong] with NullableForm[JLong] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :JLong) :Unit =
 			statement.setLong(position, value)
@@ -319,7 +319,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JLONG"
 	}
 
-	case object NCharacterStreamForm extends JDBCForm[Reader](LONGNVARCHAR) with AtomicForm[Reader]
+	case object NCharacterStreamForm extends JDBCForm[Reader](LONGNVARCHAR) with ColumnForm[Reader]
 		                                with NullableForm[Reader] with NonLiteralForm[Reader]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :Reader) :Unit =
@@ -330,7 +330,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "LONGNVARCHAR"
 	}
 
-	implicit case object NClobForm extends JDBCForm[NClob](NCLOB) with AtomicForm[NClob]
+	implicit case object NClobForm extends JDBCForm[NClob](NCLOB) with ColumnForm[NClob]
 		                              with NullableForm[NClob] with NonLiteralForm[NClob]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :NClob) :Unit =
@@ -340,7 +340,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "NCLOB"
 	}
 
-	case object NStringForm extends JDBCForm[String](NVARCHAR) with AtomicForm[String] with NullableForm[String] {
+	case object NStringForm extends JDBCForm[String](NVARCHAR) with ColumnForm[String] with NullableForm[String] {
 		override def set(position :Int)(statement :PreparedStatement, value :String) :Unit =
 			statement.setNString(position, value)
 
@@ -353,7 +353,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "NVARCHAR"
 	}
 
-	implicit case object RefForm extends JDBCForm[Ref](REF) with AtomicForm[Ref]
+	implicit case object RefForm extends JDBCForm[Ref](REF) with ColumnForm[Ref]
 		with NullableForm[Ref] with NonLiteralForm[Ref]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :Ref) :Unit =
@@ -364,7 +364,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "REF"
 	}
 
-	implicit case object ShortForm extends JDBCForm[Short](SMALLINT) with AtomicForm[Short] {
+	implicit case object ShortForm extends JDBCForm[Short](SMALLINT) with ColumnForm[Short] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Short) :Unit =
 			statement.setShort(position, value)
@@ -376,7 +376,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "SMALLINT"
 	}
 
-	implicit case object JavaShortForm extends JDBCForm[JShort](SMALLINT) with AtomicForm[JShort]
+	implicit case object JavaShortForm extends JDBCForm[JShort](SMALLINT) with ColumnForm[JShort]
 		                                  with NullableForm[JShort]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :JShort) :Unit =
@@ -389,7 +389,7 @@ trait JDBCTypes extends SQLTypes {
 	}
 
 
-	implicit case object SQLXMLForm extends JDBCForm[SQLXML](Types.SQLXML) with AtomicForm[SQLXML]
+	implicit case object SQLXMLForm extends JDBCForm[SQLXML](Types.SQLXML) with ColumnForm[SQLXML]
 		                               with NullableForm[SQLXML] with NonLiteralForm[SQLXML]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :SQLXML) :Unit =
@@ -400,7 +400,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "SQLXML"
 	}
 
-	implicit case object StringForm extends JDBCForm[String](VARCHAR) with AtomicForm[String] with NullableForm[String] {
+	implicit case object StringForm extends JDBCForm[String](VARCHAR) with ColumnForm[String] with NullableForm[String] {
 		override def set(position :Int)(statement :PreparedStatement, value :String) :Unit =
 			statement.setString(position, value)
 
@@ -413,7 +413,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "VARCHAR"
 	}
 
-	implicit case object TimestampForm extends JDBCForm[sql.Timestamp](TIMESTAMP) with AtomicForm[sql.Timestamp]
+	implicit case object TimestampForm extends JDBCForm[sql.Timestamp](TIMESTAMP) with ColumnForm[sql.Timestamp]
 		                                  with NullableForm[sql.Timestamp] with NonLiteralForm[sql.Timestamp]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :Timestamp) :Unit =
@@ -424,7 +424,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "TIMESTAMP"
 	}
 
-	implicit case object TimeForm extends JDBCForm[sql.Time](TIME) with AtomicForm[sql.Time]
+	implicit case object TimeForm extends JDBCForm[sql.Time](TIME) with ColumnForm[sql.Time]
 		                             with NullableForm[sql.Time] with NonLiteralForm[sql.Time]
 	{
 		override def set(position :Int)(statement :PreparedStatement, value :Time) :Unit =
@@ -438,7 +438,7 @@ trait JDBCTypes extends SQLTypes {
 	}
 
 
-	implicit case object URLForm extends JDBCForm[URL](NVARCHAR) with AtomicForm[URL] with NullableForm[URL] {
+	implicit case object URLForm extends JDBCForm[URL](NVARCHAR) with ColumnForm[URL] with NullableForm[URL] {
 		override def set(position :Int)(statement :PreparedStatement, value :URL) :Unit =
 			statement.setURL(position, value)
 
@@ -447,7 +447,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "URL"
 	}
 
-	class NullForm[T>:Null] extends JDBCForm[T](NULL) with AtomicForm[T] with NullableForm[T] {
+	class NullForm[T>:Null] extends JDBCForm[T](NULL) with ColumnForm[T] with NullableForm[T] {
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
 			statement.setNull(position, NULL)
 

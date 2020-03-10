@@ -3,8 +3,12 @@ package net.noresttherein.oldsql.schema
 import java.sql.ResultSet
 
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackAtomicReadForm, FallbackReadForm, MappedSQLReadForm, Tuple2ReadForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackColumnReadForm, FallbackReadForm, MappedSQLReadForm, Tuple2ReadForm}
 import net.noresttherein.oldsql.slang._
+
+
+
+
 
 
 trait SQLReadForm[+T] {
@@ -59,48 +63,48 @@ trait SQLReadForm[+T] {
 
 
 
-
-trait AtomicReadForm[+T] extends SQLReadForm[T] with BaseAtomicForm {
+trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 	override def readColumns = 1
 
 	def apply(column :String)(res :ResultSet) :T = apply(res.findColumn(column))(res)
 
 	override def opt(position :Int)(res :ResultSet) :Option[T] = Option(apply(position)(res)).filterNot(_ => res.wasNull)
+
 	def opt(column :String)(res :ResultSet) :Option[T] = Option(apply(column)(res)).filterNot(_ => res.wasNull)
 
 
-	override def nullMap[X :NullValue](fun :T=>X) :AtomicReadForm[X] =
+	override def nullMap[X :NullValue](fun :T=>X) :ColumnReadForm[X] =
 		map(fun, NullValue.Null[X])
 
-	override def map[X](fun :T=>X) :AtomicReadForm[X] =
-		MappedSQLReadForm.atom((t :T) => Some(fun(t)), fun(this.nullValue))(this)
+	override def map[X](fun :T=>X) :ColumnReadForm[X] =
+		MappedSQLReadForm.column((t :T) => Some(fun(t)), fun(this.nullValue))(this)
 
-	override def map[X](fun :T=>X, nullValue :X) :AtomicReadForm[X] =
-		MappedSQLReadForm.atom((t:T) => Some(fun(t)), nullValue)(this)
+	override def map[X](fun :T=>X, nullValue :X) :ColumnReadForm[X] =
+		MappedSQLReadForm.column((t:T) => Some(fun(t)), nullValue)(this)
 
-	override def flatMap[X :NullValue](fun :T=>Option[X]) :AtomicReadForm[X] =
+	override def flatMap[X :NullValue](fun :T=>Option[X]) :ColumnReadForm[X] =
 		flatMap(fun, NullValue.Null[X])
 
-	override def flatMap[X](fun :T=>Option[X], nullValue :X) :AtomicReadForm[X] =
-		MappedSQLReadForm.atom(fun, nullValue)(this)
+	override def flatMap[X](fun :T=>Option[X], nullValue :X) :ColumnReadForm[X] =
+		MappedSQLReadForm.column(fun, nullValue)(this)
 
 
 
 	override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
-		case atom :AtomicReadForm[S] => this orElse atom
+		case atom :ColumnReadForm[S] => this orElse atom
 		case _ => super.orElse(fallback)
 	}
 
-	def orElse[S >: T](fallback :AtomicReadForm[S]) :AtomicReadForm[S] =
+	def orElse[S >: T](fallback :ColumnReadForm[S]) :ColumnReadForm[S] =
 		if (fallback.sqlType != sqlType)
 			throw new IllegalArgumentException(s"$this orElse $fallback: different sqlType ($sqlType vs ${fallback.sqlType}).")
 		else
-			new FallbackAtomicReadForm[S](this, fallback)
+			new FallbackColumnReadForm[S](this, fallback)
 
 
 
 	override def compatible(other: SQLReadForm[_]): Boolean = other match {
-		case a :AtomicReadForm[_] => a.sqlType == sqlType
+		case a :ColumnReadForm[_] => a.sqlType == sqlType
 		case _ => false
 	}
 
@@ -113,7 +117,7 @@ trait AtomicReadForm[+T] extends SQLReadForm[T] with BaseAtomicForm {
 object SQLReadForm {
 	def apply[T :SQLReadForm] :SQLReadForm[T] = implicitly[SQLReadForm[T]]
 
-	def atom[T :AtomicReadForm] :AtomicReadForm[T] = implicitly[AtomicReadForm[T]]
+	def column[T :ColumnReadForm] :ColumnReadForm[T] = implicitly[ColumnReadForm[T]]
 
 
 
@@ -190,19 +194,19 @@ object SQLReadForm {
 
 		def apply[T, S :SQLReadForm](map :S=>Option[T], nullValue : =>T) :MappedSQLReadForm[T, S] =
 			implicitly[SQLReadForm[S]] match {
-				case a :AtomicReadForm[_] =>
-					atom(map, nullValue)(a.asInstanceOf[AtomicReadForm[S]])
+				case a :ColumnReadForm[_] =>
+					column(map, nullValue)(a.asInstanceOf[ColumnReadForm[S]])
 				case _ =>
 					new MappedSQLReadForm[T, S](map, nullValue)
 			}
 
 
-		def atom[T :NullValue, S :AtomicReadForm](map :S=>Option[T]) :MappedSQLReadForm[T, S] with AtomicReadForm[T] =
-			atom(map, NullValue.Null[T])
+		def column[T :NullValue, S :ColumnReadForm](map :S=>Option[T]) :MappedSQLReadForm[T, S] with ColumnReadForm[T] =
+			column(map, NullValue.Null[T])
 
-		def atom[T, S :AtomicReadForm](map :S=>Option[T], nullValue : =>T) :MappedSQLReadForm[T, S] with AtomicReadForm[T] =
-			new MappedSQLReadForm[T, S](map, nullValue) with AtomicReadForm[T] {
-				override val source = implicitly[AtomicReadForm[S]]
+		def column[T, S :ColumnReadForm](map :S=>Option[T], nullValue : =>T) :MappedSQLReadForm[T, S] with ColumnReadForm[T] =
+			new MappedSQLReadForm[T, S](map, nullValue) with ColumnReadForm[T] {
+				override val source = implicitly[ColumnReadForm[S]]
 				override def sqlType: Int = source.sqlType
 				override def readColumns :Int = 1
 
@@ -231,22 +235,22 @@ object SQLReadForm {
 				new FallbackReadForm(first, second orElse fallback)
 	}
 
-	private[schema] class FallbackAtomicReadForm[T](first :AtomicReadForm[T], second :AtomicReadForm[T])
-		extends FallbackReadForm[T](first, second) with AtomicReadForm[T]
+	private[schema] class FallbackColumnReadForm[T](first :ColumnReadForm[T], second :ColumnReadForm[T])
+		extends FallbackReadForm[T](first, second) with ColumnReadForm[T]
 	{
 		override val sqlType :Int = first.sqlType
 
 		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
-			case atom :AtomicReadForm[S] => orElse(atom)
+			case atom :ColumnReadForm[S] => orElse(atom)
 			case _ => super.orElse(fallback)
 		}
 
-		override def orElse[S >: T](fallback :AtomicReadForm[S]) :AtomicReadForm[S] =
+		override def orElse[S >: T](fallback :ColumnReadForm[S]) :ColumnReadForm[S] =
 			if (sqlType != fallback.sqlType)
 				throw new IllegalArgumentException(
 					s"($this) orElse $fallback: different sqlType ($sqlType vs ${fallback.sqlType})."
 				)
-			else new FallbackAtomicReadForm(first, second orElse fallback)
+			else new FallbackColumnReadForm(first, second orElse fallback)
 	}
 
 
