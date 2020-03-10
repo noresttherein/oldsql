@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.schema.support
 
+import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, ComponentSelector, Selector, SingletonComponent}
 import net.noresttherein.oldsql.schema.{AnyMapping, Buff, ComponentValues, Mapping, SQLReadForm, SQLWriteForm, SubMapping}
 
@@ -53,22 +54,24 @@ object ComponentProxy {
 			if (component eq adaptee) component
 			else adaptee.lift(component)
 
-		override def components :Seq[Component[_]] = adaptee.components
-		override def subcomponents :Seq[Component[_]] = adaptee.subcomponents
-		override def columns :Seq[Component[_]] = adaptee.columns
+		override def components :Unique[Component[_]] = adaptee.components
+		override def subcomponents :Unique[Component[_]] = adaptee.subcomponents
+		override def columns :Unique[Component[_]] = adaptee.columns
 
-		override def selectable :Seq[Component[_]] = adaptee.selectable
-		override def queryable :Seq[Component[_]] = adaptee.queryable
-		override def updatable :Seq[Component[_]] = adaptee.updatable
-		override def autoUpdated :Seq[Component[_]] = adaptee.autoUpdated
-		override def insertable :Seq[Component[_]] = adaptee.insertable
-		override def autoInserted :Seq[Component[_]] = adaptee.autoInserted
-		override def selectForm(components :Seq[Component[_]]) :SQLReadForm[S] = adaptee.selectForm(components)
+		override def selectable :Unique[Component[_]] = adaptee.selectable
+		override def queryable :Unique[Component[_]] = adaptee.queryable
+		override def updatable :Unique[Component[_]] = adaptee.updatable
+		override def autoUpdated :Unique[Component[_]] = adaptee.autoUpdated
+		override def insertable :Unique[Component[_]] = adaptee.insertable
+		override def autoInserted :Unique[Component[_]] = adaptee.autoInserted
+
+		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = adaptee.selectForm(components)
 
 		override def selectForm :SQLReadForm[S] = adaptee.selectForm
 		override def queryForm :SQLWriteForm[S] = adaptee.queryForm
 		override def updateForm :SQLWriteForm[S] = adaptee.updateForm
 		override def insertForm :SQLWriteForm[S] = adaptee.insertForm
+
 //		override def writeForm(filter :Mapping.ColumnFilter) :SQLWriteForm[S] = adaptee.writeForm(filter)
 //		override def readForm(filter :Mapping.ColumnFilter) :SQLReadForm[S] = adaptee.readForm(filter)
 
@@ -104,16 +107,16 @@ object ComponentProxy {
 
 		protected def dealias[T](lifted :Component[T]) :Component[T]
 
-		override def components :Seq[Component[_]] = adaptee.components.map(alias(_))
-		override def subcomponents :Seq[Component[_]] = adaptee.subcomponents.map(alias(_))
+		override def components :Unique[Component[_]] = adaptee.components.map(alias(_))
+		override def subcomponents :Unique[Component[_]] = adaptee.subcomponents.map(alias(_))
 
-		override def columns :Seq[Component[_]] = adaptee.columns.map(alias(_))
-		override def selectable :Seq[Component[_]] = adaptee.selectable.map(alias(_))
-		override def queryable :Seq[Component[_]] = adaptee.queryable.map(alias(_))
-		override def updatable :Seq[Component[_]] = adaptee.updatable.map(alias(_))
-		override def autoUpdated :Seq[Component[_]] = adaptee.autoUpdated.map(alias(_))
-		override def insertable :Seq[Component[_]] = adaptee.insertable.map(alias(_))
-		override def autoInserted :Seq[Component[_]] = adaptee.autoInserted.map(alias(_))
+		override def columns :Unique[Component[_]] = adaptee.columns.map(alias(_))
+		override def selectable :Unique[Component[_]] = adaptee.selectable.map(alias(_))
+		override def queryable :Unique[Component[_]] = adaptee.queryable.map(alias(_))
+		override def updatable :Unique[Component[_]] = adaptee.updatable.map(alias(_))
+		override def autoUpdated :Unique[Component[_]] = adaptee.autoUpdated.map(alias(_))
+		override def insertable :Unique[Component[_]] = adaptee.insertable.map(alias(_))
+		override def autoInserted :Unique[Component[_]] = adaptee.autoInserted.map(alias(_))
 
 		override def valueOf[T](component :Component[T], subject :S) :Option[T] =
 			if (component eq adaptee) Some(subject.asInstanceOf[T])
@@ -155,17 +158,17 @@ object ComponentProxy {
 		)
 
 
-		override val components :Seq[Component[_]] = adaptee.components.map(lift(_, lifts, dealias))
+		override val components :Unique[Component[_]] = adaptee.components.map(lift(_, lifts, dealias))
 
-		override val subcomponents :Seq[Component[_]] = adaptee.subcomponents.map(lift(_, lifts, dealias))
-		override val columns :Seq[Component[_]] = adaptee.columns.map(lift(_, lifts, dealias))
+		override val subcomponents :Unique[Component[_]] = adaptee.subcomponents.map(lift(_, lifts, dealias))
+		override val columns :Unique[Component[_]] = adaptee.columns.map(lift(_, lifts, dealias))
 
-		override val selectable :Seq[Component[_]] = adaptee.selectable.map(lift(_, lifts, dealias))
-		override val queryable :Seq[Component[_]] = adaptee.queryable.map(lift(_, lifts, dealias))
-		override val updatable :Seq[Component[_]] = adaptee.updatable.map(lift(_, lifts, dealias))
-		override val autoUpdated :Seq[Component[_]] = adaptee.autoUpdated.map(lift(_, lifts, dealias))
-		override val insertable :Seq[Component[_]] = adaptee.insertable.map(lift(_, lifts, dealias))
-		override val autoInserted :Seq[Component[_]] = adaptee.autoInserted.map(lift(_, lifts, dealias))
+		override val selectable :Unique[Component[_]] = adaptee.selectable.map(lift(_, lifts, dealias))
+		override val queryable :Unique[Component[_]] = adaptee.queryable.map(lift(_, lifts, dealias))
+		override val updatable :Unique[Component[_]] = adaptee.updatable.map(lift(_, lifts, dealias))
+		override val autoUpdated :Unique[Component[_]] = adaptee.autoUpdated.map(lift(_, lifts, dealias))
+		override val insertable :Unique[Component[_]] = adaptee.insertable.map(lift(_, lifts, dealias))
+		override val autoInserted :Unique[Component[_]] = adaptee.autoInserted.map(lift(_, lifts, dealias))
 
 		lifts.put(adaptee, Selector[M, O, S, S](adaptee, identity[S] _))
 		dealias.put(adaptee, adaptee)
@@ -186,9 +189,6 @@ object ComponentProxy {
 			}).asInstanceOf[Component[T]]
 
 		override def lift[T](component :Component[T]) :Component[T] = apply(component).lifted
-//			lifted.getOrElse(component,
-//				throw new IllegalArgumentException(s"$component is not a component of $this.")
-//			).lifted.asInstanceOf[Component[T]]
 
 		override def apply[T](component :Component[T]) :Selector[this.type, O, S, T] =
 			lifted.getOrElse(component,

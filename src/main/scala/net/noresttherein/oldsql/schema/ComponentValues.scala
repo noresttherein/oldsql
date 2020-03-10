@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.schema
 
+import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
 import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, Selector, SingletonComponent, SingletonMapping, TypedMapping, TypedSingleton}
 import net.noresttherein.oldsql.schema.Mapping.ComponentSelector
@@ -312,7 +313,7 @@ object ComponentValues {
 		  * @param value input for values of the given components.
 		  * @param components list of components which should be used as sources in the assembly process.
 		  */
-		def apply(value :M#Subject, components :Seq[AnyComponent[M#Owner]]) :ComponentValues[M] =
+		def apply(value :M#Subject, components :Unique[AnyComponent[M#Owner]]) :ComponentValues[M] =
 			new SelectedDisassembledComponentValues[M](value, components)
 
 		/** Returns ComponentValues using the given function as the source of values for components. Please note that
@@ -628,7 +629,7 @@ object ComponentValues {
 
 
 	private class SelectedDisassembledComponentValues[M <: SingletonMapping]
-	                                         (value :M#Subject, components :Seq[AnyComponent[M#Owner]])
+	                                         (value :M#Subject, components :Unique[AnyComponent[M#Owner]])
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](selector: ComponentSelector[M, T]): Option[T] =

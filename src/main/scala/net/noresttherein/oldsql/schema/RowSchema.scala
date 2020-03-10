@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.collection.InverseIndexSeq
-import net.noresttherein.oldsql.collection.InverseIndexSeq.implicitIndexing
+import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.morsels.PropertyPath
 import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, NoInsert, NoQuery, NoSelect, NoUpdate, Unmapped}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteFor
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.slang._
 
-import scala.collection.{mutable, AbstractSeq, IndexedSeqOptimized}
+import scala.collection.AbstractSeq
 import scala.collection.mutable.{Builder, ListBuffer}
 import scala.reflect.runtime.universe.TypeTag
 
@@ -549,13 +549,13 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 	  * in any change of state.
 	  */
 	private[this] class LateInitComponents(private[this] var uninitialized :Builder[ComponentMapping[_], List[ComponentMapping[_]]])
-		extends AbstractSeq[ComponentMapping[_]] with InverseIndexSeq[ComponentMapping[_]]
+		extends AbstractSeq[ComponentMapping[_]] 
 	{
 		def this() = this(List.newBuilder)
 
 		@volatile
-		private[this] var initialized :InverseIndexSeq[ComponentMapping[_]] = _
-		private[this] var cached :InverseIndexSeq[ComponentMapping[_]] = _
+		private[this] var initialized :Unique[ComponentMapping[_]] = _
+		private[this] var cached :Unique[ComponentMapping[_]] = _
 
 		def +=(comp :ComponentMapping[_]) :Unit =
 			if (isInitialized)
@@ -568,12 +568,12 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 		def isInitialized :Boolean = initialized != null
 
 		def initialize() :Unit = {
-			cached = uninitialized.result.indexed
+			cached = uninitialized.result.unique
 			initialized = cached
 			uninitialized = null
 		}
 
-		private def items :InverseIndexSeq[ComponentMapping[_]] =
+		def items :Unique[ComponentMapping[_]] =
 			if (cached != null)
 				cached
 			else if (initialized != null) {
@@ -612,15 +612,15 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 	private[this] final val initAutoInsert = new LateInitComponents
 	private[this] final val initSubcomponents = new LateInitComponents
 
-	final override def components :Seq[Component[_]] = initComponents
-	final override def columns :Seq[Component[_]] = initColumns
-	final override def selectable :Seq[Component[_]] = initSelectable
-	final override def queryable :Seq[Component[_]] = initQueryable
-	final override def updatable :Seq[Component[_]] = initUpdatable
-	final override def autoUpdated :Seq[Component[_]] = initAutoUpdate
-	final override def insertable :Seq[Component[_]] = initInsertable
-	final override def autoInserted :Seq[Component[_]] = initAutoInsert
-	final override def subcomponents :Seq[Component[_]] = initSubcomponents
+	final override def components :Unique[Component[_]] = initComponents.items
+	final override def subcomponents :Unique[Component[_]] = initSubcomponents.items
+	final override def columns :Unique[Component[_]] = initColumns.items
+	final override def selectable :Unique[Component[_]] = initSelectable.items
+	final override def queryable :Unique[Component[_]] = initQueryable.items
+	final override def updatable :Unique[Component[_]] = initUpdatable.items
+	final override def autoUpdated :Unique[Component[_]] = initAutoUpdate.items
+	final override def insertable :Unique[Component[_]] = initInsertable.items
+	final override def autoInserted :Unique[Component[_]] = initAutoInsert.items
 
 	final override val selectForm = MappingReadForm.defaultSelect(this)
 	final override val queryForm = MappingWriteForm.defaultQuery(this)
@@ -638,12 +638,5 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 trait RowSubSchema[O <: AnyMapping, S] extends RowSchema[S] with SubMapping[O, S]
 
 
-
-
-
-
-object RowSchema {
-
-}
 
 

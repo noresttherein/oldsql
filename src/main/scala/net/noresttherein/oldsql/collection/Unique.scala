@@ -62,7 +62,14 @@ object Unique extends TraversableFactory[Unique] {
 
 	def newBuilder[T] :Builder[T, Unique[T]] = new UniqueBuilder[T]()
 
+	override def empty[E] :Unique[E] = reusableEmpty
 
+	private[this] val reusableEmpty = new IndexedUnique[Nothing](IndexedSeq.empty, Map.empty)
+
+
+
+	implicit def canBuildFrom[T] :CanBuildFrom[Unique[_], T, Unique[T]] =
+		ReusableCBF.asInstanceOf[CanBuildFrom[Unique[_], T, Unique[T]]]
 
 	implicit def uniqueToSeq[T](unique :Unique[T]) :Seq[T] = unique.toSeq
 

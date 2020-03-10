@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.schema
 
+import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.Mapping.{Selector, TypedMapping}
 import net.noresttherein.oldsql.slang._
@@ -14,25 +15,25 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 
 	def name :String
 
-	final def components :Seq[Nothing] = Seq()
-	final def subcomponents :Seq[Component[S]] = Seq()
+	final def components :Unique[Nothing] = Unique.empty
+	final def subcomponents :Unique[Component[S]] = Unique.empty
 
-	final def columns :Seq[Component[S]] = Seq(this)
+	final def columns :Unique[Component[S]] = Unique(this)
 //	final def selectable :Seq[Component[S]] = Seq(this)
 //	final def queryable :Seq[Component[S]] = Seq(this)
 //	final def updatable :Seq[Component[S]] = Seq(this)
 //	final def insertable :Seq[Component[S]] = Seq(this)
 //	final def generated :Seq[Component[S]] = Seq(this)
 
-	final def selectable :Seq[Component[S]] = selfUnless(NoSelect)
-	final def queryable :Seq[Component[S]] = selfUnless(NoQuery)
-	final def updatable :Seq[Component[S]] = selfUnless(NoUpdate)
-	final def autoUpdated :Seq[Component[S]] = if (AutoUpdate.enabled(buffs)) Seq(this) else Seq.empty
- 	final def insertable :Seq[Component[S]] = selfUnless(NoInsert)
-	final def autoInserted :Seq[Component[S]] = if (AutoInsert.enabled(buffs)) Seq(this) else Seq.empty
+	final def selectable :Unique[Component[S]] = selfUnless(NoSelect)
+	final def queryable :Unique[Component[S]] = selfUnless(NoQuery)
+	final def updatable :Unique[Component[S]] = selfUnless(NoUpdate)
+	final def autoUpdated :Unique[Component[S]] = if (AutoUpdate.enabled(buffs)) Unique(this) else Unique.empty
+ 	final def insertable :Unique[Component[S]] = selfUnless(NoInsert)
+	final def autoInserted :Unique[Component[S]] = if (AutoInsert.enabled(buffs)) Unique(this) else Unique.empty
 
-	protected def selfUnless(buff :BuffType) :Seq[Component[S]] =
-		if (buff.enabled(buffs)) Seq.empty else Seq(this)
+	protected def selfUnless(buff :BuffType) :Unique[Component[S]] =
+		if (buff.enabled(buffs)) Unique.empty else Unique(this)
 
 
 
