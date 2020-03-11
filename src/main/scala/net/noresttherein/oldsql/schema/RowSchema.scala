@@ -106,11 +106,15 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 					if (buffs == null)
 						throw new IllegalStateException(s"$this.buffs is null: overrides with a val must happen before any component declarations!")
 
-					val subbuffs = selector.surepick.mapOrElse(pick => buffs.map(_.map(pick)), buffs.map(
-						buff => buff.map((t: T) => selector.pick(t) getOrElse {
-							throw new IllegalArgumentException(s"Can't apply buff $buff for subcomponent $subcomponent of $composite/$self: no value for $t.")
-						})
-					)) ++: subcomponent.buffs
+					val subbuffs = selector.surepick.mapOrElse(pick => buffs.map(_.map(pick)),
+						buffs.map(
+							buff => buff.map((t: T) => selector.get(t) getOrElse {
+								throw new IllegalArgumentException(
+									s"Can't apply buff $buff for subcomponent $subcomponent of $composite/$self: no value for $t."
+								)
+							})
+						)
+					) ++: subcomponent.buffs
 
 					val lifted = subcomponent match {
 						case column :ColumnMapping[Owner, U] =>
@@ -132,7 +136,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 		  * must have a value for the value associated with that buff or an exception will be thrown - either
 		  * when accessing/initializing the buff list or when the value for the buff is actually needed.
 		  */
-		protected final def inheritedBuffs :Seq[Buff[T]] = transitBuffs(extractor.optional, toString)
+		protected final def inheritedBuffs :Seq[Buff[T]] = conveyBuffs(extractor, toString)
 
 		/** The column prefix prepended to all columns at the behest of the enclosing `RowSchema` or an empty string. */
 		protected final def inheritedPrefix :String = testedPrefix
@@ -264,8 +268,8 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 	/** A column for which a value exists in all instances of `S`. It doesn't mean that it is mandatory in any particular
 	  * SQL statement. It automatically inherits the enclosing mapping's `columnPrefix` and buffs.
 	  */
-	private class MandatoryColumn[T :SQLForm](value :S=>T, name :String, opts :Seq[Buff[T]])
-		extends StandardColumn[Owner, T](testedPrefix + name, transitBuffs(s => Some(value(s)), testedPrefix + name) ++: opts)
+	private class MandatoryColumn[T :SQLForm](value :S => T, name :String, opts :Seq[Buff[T]])
+		extends StandardColumn[Owner, T](testedPrefix + name, opts ++ conveyBuffs(value, testedPrefix + name))
 		   with ComponentMapping[T]
 	{
 		override val extractor :RequisiteExtractor[S, T] = Extractor.requisite(value)
@@ -291,8 +295,8 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 	/** A builder adapting a given column template to a column of this `RowSchema`. */
-	class ColumnCopist[T](template :ColumnMapping[_, T], name :Option[String], buffs :Seq[Buff[T]]) {
-		def this(source :ColumnMapping[_, T]) = this(source, None, source.buffs)
+	class ColumnCopist[T] private[RowSchema] (template :ColumnMapping[_, T], name :Option[String], buffs :Seq[Buff[T]]) {
+		private[RowSchema] def this(source :ColumnMapping[_, T]) = this(source, None, source.buffs)
 
 		template match {
 			case self :RowSchema[_]#ComponentMapping[_] if self.belongsTo(composite) =>
@@ -360,7 +364,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 	protected def optcolumn[T](name :String, pick :S => Option[T], buffs :Buff[T]*)
 	                          (implicit form :SQLForm[T]) :Column[T] =
-		initPreceding(new ColumnComponent(pick, None, testedPrefix + name, transitBuffs(pick) ++: buffs))
+		initPreceding(new ColumnComponent(pick, None, testedPrefix + name, buffs ++ conveyBuffs(pick, testedPrefix + name)))
 
 	protected def optcolumn[T](pick :S => Option[T], buffs :Buff[T]*)(implicit form :SQLForm[T], subject :TypeTag[S]) :Column[T] =
 		optcolumn[T](PropertyPath.nameOf(pick), pick, buffs: _*)
@@ -368,17 +372,17 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 	protected def unmapped[T :SQLForm](name :String, buffs :Buff[T]*) :Column[T] =
-		initPreceding(new ColumnComponent[T](_ => None, None, name, Unmapped +: buffs))
+		initPreceding(new ColumnComponent[T](_ => None, None, name, Unmapped[T] +: buffs))
 
 
 
 	protected def autoins[T](name :String, pick :S => Option[T], options :Buff[T]*)
 	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
-		column[T](name, pick(_:S).get, AutoInsert +: options:_*)
+		column[T](name, pick(_:S).get, AutoInsert[T] +: options :_*)
 
 	protected def autoins[T](pick :S => Option[T], options :Buff[T]*)
 	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
-		column[T](PropertyPath.nameOf(pick), pick(_:S).get, AutoInsert +: options :_*)
+		autoins[T](PropertyPath.nameOf(pick), pick, options :_*)
 
 
 //	protected def foreignKey[T :SQLForm]()
@@ -469,25 +473,21 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 
-	private def safeTransitBuffs[T](pick :S => T) :Seq[Buff[T]] =
+
+	protected def conveyBuffs[T](extractor :Extractor[S, T], component :String = "") :Seq[Buff[T]] =
 		if (buffs == null)
 			throw new IllegalStateException(s"$this.buffs is null: overrides must happen before any component declarations.")
 		else
-			buffs.map(_.map(pick))
-
-	private def transitBuffs[T](pick :S => Option[T], component :String = "") :Seq[Buff[T]] =
-		if (buffs == null)
-			throw new IllegalStateException(s"$this.buffs is null: overrides must happen before any component declarations.")
-		else
-			buffs.map(buff => buff.map{ subject => pick(subject) getOrElse {
-				throw new IllegalArgumentException(
-					s"Can't apply buff $buff of $this to subcomponent '$component': selector function returned no value for $subject."
-				)
-			}})
-
-
-
-
+	        extractor.requisite.map(pick => buffs.map(_.map(pick))) getOrElse {
+		        val pick = extractor.optional
+		        buffs.map { buff =>
+			        buff.map{ s => pick(s) getOrElse {
+				        throw new IllegalArgumentException(
+					        s"Can't apply buff $buff of $this to subcomponent '$component': selector function returned no value for $s."
+				        )
+			        }}
+		        }
+	        }
 
 
 	private def include[T](column :ComponentMapping[T]) :ComponentMapping[T] = synchronized {

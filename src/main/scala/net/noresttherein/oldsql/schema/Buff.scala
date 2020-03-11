@@ -13,38 +13,46 @@ import scala.reflect.ClassTag
 
 /** An optional annotation/modifier for component mappings, especially columns.
   * Modifies the way the annotated component is mapped, in particular it is used to include or exclude
-  * certain columns from select/insert/update statements.
+  * certain columns from select/insert/update statements. Each `Buff` is associated with a single `BuffType`, which
+  * serves as a factory, matcher and a virtual 'class'. These factories can be used to test if a component is
+  * annotated with a buff of a particular type and retrieve its information, if present.
+  * See [[net.noresttherein.oldsql.schema.Buff.BuffType BuffType]] for more information.
+  * @see [[net.noresttherein.oldsql.schema.Buff.FlagBuff FlagBuff]]
+  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuff ValuedBuff]]
+  * @see [[net.noresttherein.oldsql.schema.Buff.AuditBuff AuditBuff]]
   * @tparam T the value type of the annotated component.
   */
-trait Buff[+T] {
+trait Buff[T] {
 
 	/** Does this buff belong to the buff group defined by `group`, carrying information defined by the group?
 	  * this will be true if this buff was created by this group or if the group which created this buff
 	  * has strictly narrower meaning than the passed argument, effectively implying the latter.
+	  * This method delegates the test to this buff type's [[net.noresttherein.oldsql.schema.Buff.BuffType#implies implies]].
 	  */
-	def is(group :BuffType) :Boolean = factory.implies(group)
+	def is(group :BuffType) :Boolean = buffType.implies(group)
 
 	/** Adapts this buff for a new component type. For flag buffs, this is an identity operation; for buffs
-	  * with values it creates a new buff of the same type carrying the mapped value.
+	  * with values it creates a new buff of the same type carrying the mapped value. Certain buffs, in particular
+	  * audit buffs, do not support this operation and will throw an `UnsupportedOperationException`.
 	  */
 	def map[X](there :T=>X) :Buff[X]
 
 
 
 	/** The type of this buff, i.e. the factory that created this instance. */
-	def factory :BuffType
+	def buffType :BuffType
 
 
 	def canEqual(that :Any) :Boolean = that.getClass == this.getClass
 
 	override def equals(that :Any) :Boolean = that match {
-		case o:Buff[_] => (this eq o) || o.canEqual(this) && factory == o.factory
+		case o :Buff[_] => (this eq o) || o.canEqual(this) && buffType == o.buffType
 		case _ => false
 	}
 
 	override def hashCode :Int = getClass.hashCode
 
-	override def toString :String = factory.toString
+	override def toString :String = buffType.toString
 }
 
 
@@ -122,7 +130,7 @@ object Buff {
 
 //	/** A buff marking that a given column/component can be omitted from the the parameter list of the where
 //	  * clause of an update statement. It is still included by default and needs to be excluded explicitly. */
-//	case object OptionalQuery extends FlagBuff
+//	case object OptionalQuery extends FlagBuffType
 //
 //	/** A buff marking that a given column/component can be omitted from the parameter list of the where clause
 //	  * of an update statement and needs to be included explicitly. It implies `OptionalQuery` and `NoQueryByDefault`. */
@@ -134,12 +142,12 @@ object Buff {
 	case object ExtraQuery extends ComboBuffType(NoSelect, NoQuery) with GeneratedBuffType
 
 	/** Marks that a column/component ''must'' be included as part of the where clause of any update statement. */
-	case object ForcedQuery extends FlagBuff
+	case object ForcedQuery extends FlagBuffType
 
 
 	/** A buff marking that a given column/component can be omitted from the insert statement.
 	  * It is still included by default and needs to be excluded explicitly. */
-	case object OptionalInsert extends FlagBuff
+	case object OptionalInsert extends FlagBuffType
 
 	/** A buff marking that a given column/component is not inserted by default into the underlying table
 	  * and needs to be included explicitly. It implies `OptionalInsert` and `NoInsertByDefault`. */
@@ -153,7 +161,7 @@ object Buff {
 
 	/** A buff marking that a given column/component can be omitted from the update statement.
 	  * It is still included by default and needs to be excluded explicitly. */
-	case object OptionalUpdate extends FlagBuff
+	case object OptionalUpdate extends FlagBuffType
 
 	/** A buff marking that a given column/component is not included by default in the update statements
 	  * and needs to be included explicitly. It implies `OptionalUpdate` and `NoUpdateByDefault`. */
@@ -172,37 +180,37 @@ object Buff {
 	case object ExplicitWrite extends ComboFlag(ExplicitInsert, ExplicitUpdate, OptionalWrite)
 
 	/** Marks a column/component as having its value set by this buff rather than a property of the entity
-	  * at every write to the database. Implies `ExtraInsert` and `ExtraUpdate`. */
-	case object ExtraWrite extends ComboBuffType(ExtraInsert, ExtraUpdate) with GeneratedBuffType
+	  * at every write to the database. Implies `ReadOnly`, `ExtraInsert` and `ExtraUpdate`. */
+	case object ExtraWrite extends ComboBuffType(ReadOnly, ExtraInsert, ExtraUpdate) with GeneratedBuffType
 
 
 
 	/** Any value returned from the select (or assembled from such values) of a column/component annotated
 	  * with this buff type must be mapped with the function included in the buff. This buff is independent
 	  * from buffs specifying whether and when a component can be included in a select header. */
-	case object SelectAudit extends SubstituteBuffType
+	case object SelectAudit extends AuditBuffType
 
-	case object QueryAudit extends SubstituteBuffType
+	case object QueryAudit extends AuditBuffType
 
 	/** All values of columns/components annotated with this buff type must be mapped with the function
 	  * included in the buff before inserting the entity declaring it. This does not include update statements
 	  * and is independent of any buffs specifying if the column/component can be inserted at all. */
-	case object InsertAudit extends SubstituteBuffType
+	case object InsertAudit extends AuditBuffType
 
 	/** All values of columns/components annotated with this buff type must be mapped with the function
 	  * included in the buff before updating the entity declaring it. This does not include insert statements
 	  * and is independent of any buffs specifying if the column/component can be updated at all. */
-	case object UpdateAudit extends SubstituteBuffType
+	case object UpdateAudit extends AuditBuffType
 
 	/** All values of columns/components annotated with this buff type must be mapped with the function
 	  * included in the buff before inserting or updating the entity declaring it.
 	  * This is independent of any buffs specifying if the column/component can be inserted at all. */
-	case object WriteAudit extends ComboBuffType(UpdateAudit, InsertAudit) with SubstituteBuffType
+	case object WriteAudit extends ComboBuffType(UpdateAudit, InsertAudit) with AuditBuffType
 
 
 
 	/** A flag signifying that mapped values can be null. */
-	case object Nullable extends FlagBuff //todo:
+	case object Nullable extends FlagBuffType
 
 
 
@@ -284,11 +292,11 @@ object Buff {
 		def apply[T :Temporal]() :GeneratedBuff[T] = apply(implicitly[Temporal[T]].now())
 	}
 
-	/** Marks a column/component as carrying a 'version' stamp used to implement optimistic locking. The value of
+	/** Marks a column/component as carrying a 'version' stamp used to implement optimistic locking. The value
 	  * carried by the entity is automatically increased/modified during the update, but the old value is used
 	  * as part of the 'where' clause to prevent overwriting a concurrent update.
 	  */
-	case object Version extends ComboBuffType(ReadOnly, ExtraInsert, UpdateAudit, ForcedQuery) with ManagedBuffType {
+	case object Version extends ComboBuffType(ExtraWrite, UpdateAudit, ForcedQuery) with ManagedBuffType {
 		def apply[T]()(implicit int :Integral[T]) :ManagedBuff[T] =
 			apply(int.fromInt(0), int.plus(_, int.fromInt(1)))
 
@@ -301,8 +309,47 @@ object Buff {
 
 
 
-	/** A 'class for classes' being subtypes of `Buff`. Serves as a factory and matcher for a type of `Buff`,
-	  * a witness grouping related buffs and providing information about implication relations between various buffs.
+	/** A 'class for classes' being subtypes of `Buff`. It implicitly defines the information carried by the buffs of
+	  * this type and indicates their purpose or application conditions. It can be used both as a factory and matcher,
+	  * testing buff instances, collections, and mappings for the presence of an associated buff. This is an abstract
+	  * base class and as such declares no `apply/unapply` methods, leaving it to subclasses which define them
+	  * in terms of the information carried by their buffs. Whenever several matching buffs are present on a list
+	  * or in a mapping, the buff type will always pick the first one. Similarly, if a subtype extracts ''all''
+	  * matching buffs from a list or a component, it will do so preserving their order.
+	  *
+	  * Note that buffs can be attached also to non-column components. The exact behavior in that case is completely
+	  * dependent on the mapping class; by default the subcomponents of the mapping inherit the buffs defined
+	  * in the enclosing mappings, with inherited buffs following the buffs declared locally.
+	  *
+	  * Instances of this class form a subtype relation of sorts, meaning certain buffs created by some factories
+	  * are recognized as 'belonging' also to other buff types. This is implemented through the
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType#implies implies]] method. If a `BuffType` `A` implies
+	  * a `BuffType` `B`, then `B.enabled(a)` and `a is B` will be true for every buff `a` created by the buff type `A`.
+	  * If the actual `Buff` class, defining what information is carried by a buff, used by the type `A`
+	  * is a subclass of the class of buffs produces by the type `B` (which should be the case for all such pairs),
+	  * then also any extractor methods defined by the type `B` will pick up the data from buffs `A`.
+	  * This means that, for example, any `BuffType` can safely imply any instance of `FlagBuffType` and any additional
+	  * information carried by the buff being tested is ignored for the purpose of the check.
+	  * On the other hand, creating a `FlagBuffType` which implies `ValuedBuffType` would be an application error:
+	  * while the valued type would recognize a buff created by the flag buff type in question in its
+	  * `enabled`/`disabled` methods, the `test` and `unapply` methods would yield `None`, as the buff does not conform
+	  * to the expected type. For the convenience of implementation, there are `ComboBuffType` and `ComboFlag`
+	  * classes which accept a list of implied buff types as constructor arguments.
+	  *
+	  * Certain buff types are ''abstract'', meaning they can't be used to create new instances, but serve only
+	  * as a grouping of more specific buff types which imply it. This is analogous to a common abstract base class.
+	  * In particular, certain buff types serve only to indicate ''when'' the buff should be applied, without any
+	  * information about its purpose. For example, creating a [[net.noresttherein.oldsql.schema.Buff.AuditBuffType]]
+	  * which implies the [[net.noresttherein.oldsql.schema.Buff.UpdateAudit]] will map all updated values with the
+	  * function provided by the buff before they are written to the database.
+	  *
+	  * See [[net.noresttherein.oldsql.schema.Buff$ Buff]] for the full list of predefined buff types.
+	  *
+	  * @see [[net.noresttherein.oldsql.schema.Buff.FlagBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.GeneratedBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.AuditBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuffType]]
 	  */
 	trait BuffType { factory =>
 		def implies(other :BuffType) :Boolean = other == this
@@ -318,11 +365,11 @@ object Buff {
 			@inline def unapply(mapping :AnyMapping) :Boolean = disabled(mapping)
 		}
 
-		def enabled(buff :Buff[_]) :Boolean = buff is this //test(buff).isDefined
+		def enabled(buff :Buff[_]) :Boolean = buff is this
 		def enabled(buffs :Seq[Buff[_]]) :Boolean = buffs.exists(enabled)
 		def enabled(column :AnyMapping) :Boolean = enabled(column.buffs)
 
-		def disabled(buff :Buff[_]) :Boolean = !(buff is this) //test(buff).isEmpty
+		def disabled(buff :Buff[_]) :Boolean = !(buff is this)
 		def disabled(buffs :Seq[Buff[_]]) :Boolean = buffs.forall(disabled)
 		def disabled(column :AnyMapping) :Boolean = disabled(column.buffs)
 
@@ -338,7 +385,7 @@ object Buff {
 
 
 
-	
+
 	/** A scaffolding base trait for buff types which use a `Buff` subclass rather then the `Buff` class itself. */
 	sealed trait DedicatedBuffType[+B[T] <: Buff[T]] extends BuffType {
 		private[this] val Class :ClassTag[B[Any]] = classTag.asInstanceOf[ClassTag[B[Any]]]
@@ -367,7 +414,7 @@ object Buff {
 
 
 	/** A `Buff` type which doesn't have any `Buff` instances, but is instead implied by other buff types. */
-	class AbstractBuffType extends BuffType
+	class AbstractBuffType extends FlagBuffType
 
 	/** A `Buff` type which doesn't have any `Buff` instances and won't match any of them. */
 	object AbstractBuff extends AbstractBuffType {
@@ -377,6 +424,9 @@ object Buff {
 
 
 
+	private class FlagBuff[T](val buffType :FlagBuffType) extends Buff[T] {
+		override def map[X](there :T => X) :FlagBuff[X] = this.asInstanceOf[FlagBuff[X]]
+	}
 
 
 
@@ -384,37 +434,26 @@ object Buff {
 	  * instead as a switch checked at certain points to modify the behaviour of the annotated component,
 	  * such as including an extra column in the update.
 	  */
-	trait FlagBuff extends Buff[Nothing] with BuffType {
-		override def factory :BuffType = this
+	trait FlagBuffType extends BuffType {
+		private[this] val buff = new FlagBuff[Nothing](this)
 
-		override def map[X](there: Nothing => X): FlagBuff = this
-
-		override def is(buff :BuffType) :Boolean = implies(buff)
+		def apply[T] :Buff[T] = buff.asInstanceOf[Buff[T]]
 
 		@inline final def unapply[T](buff :Buff[T]) :Boolean = enabled(buff)
 		@inline final def unapply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
 		@inline final def unapply[T](component :Mapping[T]) :Boolean = enabled(component)
 
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[FlagBuff]
-
-		override def equals(that :Any) :Boolean = that match {
-			case ref :AnyRef => ref eq this
-			case _ => false
-		}
-
-		override def hashCode :Int = System.identityHashCode(this)
-
 	}
 
 
 
-	object BuffFlag {
+	object FlagBuffType {
 		/** Creates a new, unique type of component flag using the given name as the identifier. */
-		def apply(name :String) :FlagBuff = new NamedFlag(name)
+		def apply(name :String) :FlagBuffType = new NamedFlag(name)
 
-		private class NamedFlag(override val toString :String) extends FlagBuff {
+		implicit def flag[T](buff :FlagBuffType) :Buff[T] = buff[T]
 
-			override def canEqual(that :Any) :Boolean = that.isInstanceOf[NamedFlag]
+		private class NamedFlag(override val toString :String) extends FlagBuffType {
 
 			override def equals(that :Any) :Boolean = that match {
 				case flag :NamedFlag => (flag eq this) || flag.toString == toString
@@ -423,6 +462,7 @@ object Buff {
 
 			override def hashCode :Int = toString.hashCode
 		}
+
 	}
 
 
@@ -435,14 +475,14 @@ object Buff {
 		override def implies(other: BuffType): Boolean =
 			other == this || implied.exists(_.implies(other))
 
-		override def test[T](option: Buff[T]): Option[Buff[T]] =
-			option.providing(option.is(this))
+		override def test[T](buff: Buff[T]): Option[Buff[T]] =
+			buff.is(this) ifTrue buff
 	}
 
 
 
-	/** A `BuffFlag` which implies other flags (is equivalent to having them declared alongside it). */
-	class ComboFlag(implied :BuffType*) extends ComboBuffType(implied:_*) with FlagBuff {
+	/** A `FlagBuffType` which implies other flags (is equivalent to having them declared alongside it). */
+	class ComboFlag(implied :FlagBuffType*) extends ComboBuffType(implied:_*) with FlagBuffType {
 		override def implies(other :BuffType) :Boolean = super[ComboBuffType].implies(other)
 	}
 
@@ -455,13 +495,14 @@ object Buff {
 	  * by an entity or read from the database, but the exact handling depends on the buff type.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuffType]]
 	  */
-	trait ValuedBuff[+T] extends Buff[T] {
+	trait ValuedBuff[T] extends Buff[T] {
 		override def map[X](there :T => X) :ValuedBuff[X]
 
 		def value :T
 
-		def factory :ValuedBuffType
+		def buffType :ValuedBuffType
 	}
+
 
 
 	object ValuedBuff {
@@ -528,29 +569,29 @@ object Buff {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuffType]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType]]
 	  */
-	class ConstantBuff[+T](val factory :ConstantBuffType, val value :T) extends ValuedBuff[T] {
+	class ConstantBuff[T](val buffType :ConstantBuffType, val value :T) extends ValuedBuff[T] {
 
-		override def map[X](there: T => X): ConstantBuff[X] = factory(there(value))
+		override def map[X](there: T => X): ConstantBuff[X] = buffType(there(value))
 
 		override def equals(that: Any): Boolean = that match {
-			case o :ConstantBuff[_] => (o eq this) || o.canEqual(this) && o.value==value && o.factory == factory
+			case o :ConstantBuff[_] => (o eq this) || o.canEqual(this) && o.value==value && o.buffType == buffType
 			case _ => false
 		}
 
 
-		override def toString = s"$factory: $value"
+		override def toString = s"$buffType: $value"
 	}
-	
+
 	object ConstantBuff {
 		def unapply[T](buff :Buff[T]) :Option[T] = buff match {
 			case const :ConstantBuff[T] => Some(const.value)
 			case _ => None
 		}
-		
+
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
 			buffs collectFirst { case const :ConstantBuff[T] => const.value }
-		
-		@inline def unapply[T](column :TypedMapping[T]) :Option[T] = unapply(column.buffs) 
+
+		@inline def unapply[T](column :TypedMapping[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -571,10 +612,10 @@ object Buff {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuffType]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.GeneratedBuffType]]
 	  */
-	class GeneratedBuff[+T](val factory :GeneratedBuffType, generator: =>T) extends ValuedBuff[T] {
+	class GeneratedBuff[T](val buffType :GeneratedBuffType, generator: =>T) extends ValuedBuff[T] {
 		def value :T = generator
 
-		override def map[X](there :T => X) :GeneratedBuff[X] = factory(there(generator))
+		override def map[X](there :T => X) :GeneratedBuff[X] = buffType(there(generator))
 
 		override def equals(that :Any) :Boolean = that match {
 			case ref :AnyRef if ref eq this => true
@@ -583,7 +624,7 @@ object Buff {
 
 		override def hashCode :Int = System.identityHashCode(this)
 
-		override def toString :String = "=>" + factory
+		override def toString :String = "=>" + buffType
 	}
 
 
@@ -600,7 +641,7 @@ object Buff {
 	}
 
 
-	
+
 	/** A column/component `Buff` type which carries a by-name value. This value is used instead of the value
 	  * present in the entity or the database in SQL statements. Which statements are affected depends on which
 	  * of the predefined `ExtraSelect`, `ExtraQuery`, `ExtraInsert`, `ExtraUpdate` buffs is implied by the
@@ -619,21 +660,21 @@ object Buff {
 	/** A column/component `Buff` carrying a function `T=>T` which is used to modify the value read or written
 	  * to the database. Which operations are actually affected depends on the buff type.
 	  */
-	class SubstituteBuff[T](val factory :SubstituteBuffType, val substitute :T => T) extends Buff[T] {
+	class AuditBuff[T](val buffType :AuditBuffType, val substitute :T => T) extends Buff[T] {
 		override def map[X](there :T => X) :Nothing =
-			throw new UnsupportedOperationException(this +".map: SubstituteBuff can't be mapped unidirectionally.")
+			throw new UnsupportedOperationException(this +".map: AuditBuff can't be mapped unidirectionally.")
 
-		def map[X](there :T => X, back :X => T) :SubstituteBuff[X] =
-			new SubstituteBuff[X](factory, back andThen substitute andThen there)
+		def map[X](there :T => X, back :X => T) :AuditBuff[X] =
+			new AuditBuff[X](buffType, back andThen substitute andThen there)
 
 		override def equals(that :Any) :Boolean = that match {
-			case sub :SubstituteBuff[_] => (sub eq this) || sub.factory == factory && sub.substitute == substitute
+			case sub :AuditBuff[_] => (sub eq this) || sub.buffType == buffType && sub.substitute == substitute
 			case _ => false
 		}
 
-		override def hashCode :Int = factory.hashCode * 31 + substitute.hashCode
+		override def hashCode :Int = buffType.hashCode * 31 + substitute.hashCode
 
-		override def toString :String = factory + "(" + substitute + ")"
+		override def toString :String = buffType + "(" + substitute + ")"
 	}
 
 
@@ -646,26 +687,26 @@ object Buff {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.InsertAudit]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.UpdateAudit]]
 	  */
-	trait SubstituteBuffType extends DedicatedBuffType[SubstituteBuff] { self =>
-		protected[this] override  def classTag :ClassTag[_] = implicitly[ClassTag[SubstituteBuff[Any]]]
+	trait AuditBuffType extends DedicatedBuffType[AuditBuff] { self =>
+		protected[this] override  def classTag :ClassTag[_] = implicitly[ClassTag[AuditBuff[Any]]]
 
 
-		protected def apply[T](map :T => T) :SubstituteBuff[T] = new SubstituteBuff(this, map)
+		protected def apply[T](map :T => T) :AuditBuff[T] = new AuditBuff(this, map)
 
 		object Audit {
 			@inline def apply[T](buff :Buff[T]) :Option[T=>T] = unapply(buff)
 			@inline def apply[T](buffs :Seq[Buff[T]]) :Seq[T=>T] = unapply(buffs)
 			@inline def apply[T](buffs :TypedMapping[T]) :Seq[T=>T] = unapply(buffs)
-			
+
 			def unapply[T](buff :Buff[T]) :Option[T=>T] = buff match {
-				case sub :SubstituteBuff[T] if sub is self => Some(sub.substitute)
+				case sub :AuditBuff[T] if sub is self => Some(sub.substitute)
 				case _ => None
 			}
-			
+
 			def unapply[T](buffs :Seq[Buff[T]]) :Seq[T => T] =
-				buffs collect { case sub :SubstituteBuff[T] if sub is self => sub.substitute }
-			
-			def unapply[T](column :TypedMapping[T]) :Seq[T => T] = unapply(column.buffs) 
+				buffs collect { case sub :AuditBuff[T] if sub is self => sub.substitute }
+
+			def unapply[T](column :TypedMapping[T]) :Seq[T => T] = unapply(column.buffs)
 		}
 	}
 
@@ -673,14 +714,14 @@ object Buff {
 
 
 
-	/** A `ManagedBuff` is a combination of a `ValuedBuff` and `SubstituteBuff`, carrying both a by-name value
+	/** A `ManagedBuff` is a combination of a `ValuedBuff` and `AuditBuff`, carrying both a by-name value
 	  * and inspection/scanning function. When each of these is used depends, as always, on the associated buff type.
 	  * This choice is made by implying one of the predefined 'audit' buff types: `SelectAudit`, `QueryAudit`,
 	  * `InsertAudit` and `UpdateAudit`.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuffType]]
 	  */
-	class ManagedBuff[T](override val factory :ManagedBuffType, init: =>T, update :T => T)
-		extends SubstituteBuff[T](factory, update) with ValuedBuff[T]
+	class ManagedBuff[T](override val buffType :ManagedBuffType, init: =>T, update :T => T)
+		extends AuditBuff[T](buffType, update) with ValuedBuff[T]
 	{
 		override def value :T = init
 
@@ -688,7 +729,7 @@ object Buff {
 			throw new UnsupportedOperationException(this +".map: ManagedBuff can't be mapped unidirectionally.")
 
 		override def map[X](there :T => X, back :X => T) :ManagedBuff[X] =
-			new ManagedBuff(factory, there(init), back andThen substitute andThen there)
+			new ManagedBuff(buffType, there(init), back andThen substitute andThen there)
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef => this eq self
@@ -697,12 +738,12 @@ object Buff {
 
 		override def hashCode :Int = System.identityHashCode(this)
 
-		override def toString :String = factory + "(?, " + substitute + ")"
+		override def toString :String = buffType + "(?, " + substitute + ")"
 	}
 
 
 
-	/** A `ManagedBuffType` is a combination of a `ValuedBuffType` and `SubstituteBuffType`, with the intention
+	/** A `ManagedBuffType` is a combination of a `ValuedBuffType` and `AuditBuffType`, with the intention
 	  * of using one for some types of SQL statements and the other for other types. Most typically this means
 	  * using a generated value for insert and a modified value for update statements, but any combination
 	  * is possible as long as the sets of affected statements are disjoint. This selection is made, as with
@@ -710,10 +751,10 @@ object Buff {
 	  * `SelectAudit`, `QueryAudit`, `InsertAudit`, `UpdateAudit`.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuff]]
 	  */
-	trait ManagedBuffType extends ValuedBuffType with SubstituteBuffType with DedicatedBuffType[ManagedBuff] {
+	trait ManagedBuffType extends ValuedBuffType with AuditBuffType with DedicatedBuffType[ManagedBuff] {
 		protected[this] override def classTag :ClassTag[_] = implicitly[ClassTag[ManagedBuff[Any]]]
 
-		override protected def apply[T](map :T => T) :SubstituteBuff[T] =
+		override protected def apply[T](map :T => T) :AuditBuff[T] =
 			throw new UnsupportedOperationException(
 				this + ".apply(" + map + "): ManagedBuffType requires an initial value; use the two-argument constructor."
 			)

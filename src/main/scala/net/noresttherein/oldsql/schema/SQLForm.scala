@@ -19,16 +19,16 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	//	def columnCount :Int
 
 
-	def as[X](map :T=>X)(unmap :X=>T) :SQLForm[X] =
-		MappedSQLForm[X, T](t=>Option(map(t)), x=>Option(unmap(x)), map(nullValue))(this)
+	def as[X](map :T => X)(unmap :X => T) :SQLForm[X] =
+		MappedSQLForm[X, T](t => Option(map(t)), x => Option(unmap(x)), map(nullValue))(this)
 
-	def as[X](map :T=>X, nullValue :X)(unmap :X=>T) :SQLForm[X] =
+	def as[X](map :T => X, nullValue :X)(unmap :X => T) :SQLForm[X] =
 		MappedSQLForm[X, T](t=>Option(map(t)), x=>Option(unmap(x)), nullValue)(this)
 
-	def asOpt[X>:Null](map :T=>Option[X])(unmap :X=>Option[T]) :SQLForm[X] =
+	def asOpt[X >: Null](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
 		MappedSQLForm[X, T](map, unmap, null)(this)
 
-	def asOpt[X](map :T=>Option[X], nullValue :X)(unmap :X=>Option[T]) :SQLForm[X] =
+	def asOpt[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :SQLForm[X] =
 		MappedSQLForm[X, T](map, unmap, nullValue)(this)
 
 	override def asOpt :SQLForm[Option[T]] = SQLForm.OptionType(this)
@@ -52,22 +52,22 @@ trait BaseColumnForm {
 
 trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteForm[T] {
 
-	override def as[X](map :T=>X)(unmap :X=>T) :ColumnForm[X] =
-		MappedSQLForm.column[X, T](t=>Option(map(t)), x=>Option(unmap(x)), map(nullValue))(this)
+	override def as[X](map :T => X)(unmap :X => T) :ColumnForm[X] =
+		MappedSQLForm.column[X, T](t => Option(map(t)), x => Option(unmap(x)), map(nullValue))(this)
 
-	override def as[X](map :T=>X, nullValue :X)(unmap :X=>T) :ColumnForm[X] =
-		MappedSQLForm.column[X, T](t=>Option(map(t)), x=>Option(unmap(x)), nullValue)(this)
+	override def as[X](map :T => X, nullValue :X)(unmap :X => T) :ColumnForm[X] =
+		MappedSQLForm.column[X, T](t => Option(map(t)), x => Option(unmap(x)), nullValue)(this)
 
-	override def asOpt[X>:Null](map :T=>Option[X])(unmap :X=>Option[T]) :ColumnForm[X] =
+	override def asOpt[X >: Null](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
 		MappedSQLForm.column[X, T](map, unmap, null)(this)
 
-	override def asOpt[X](map :T=>Option[X], nullValue :X)(unmap :X=>Option[T]) :ColumnForm[X] =
+	override def asOpt[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :ColumnForm[X] =
 		MappedSQLForm.column[X, T](map, unmap, nullValue)(this)
 
 
 
 	override def compatible(other: SQLForm[_]): Boolean = other match {
-		case a:ColumnForm[_] => a.sqlType == sqlType
+		case a :ColumnForm[_] => a.sqlType == sqlType
 		case _ => false
 	}
 }
@@ -88,6 +88,17 @@ object SQLForm extends JDBCTypes {
 
 	def combine[T](read :SQLReadForm[T], write :SQLWriteForm[T]) :SQLForm[T] =
 		new CombinedForm[T](read, write)
+
+	def combine[T](read :ColumnReadForm[T], write :ColumnWriteForm[T]) :ColumnForm[T] =
+		if (read.sqlType != write.sqlType)
+			throw new IllegalArgumentException(
+				s"Can't combine column forms $read and $write with different underlying sql types: ${read.sqlType} != ${write.sqlType}."
+			)
+		else
+			new CombinedForm[T](read, write) with ColumnForm[T] {
+				override val sqlType = read.asInstanceOf[ColumnReadForm[T]].sqlType
+			}
+
 
 
 	implicit def optionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
@@ -243,7 +254,7 @@ object SQLForm extends JDBCTypes {
 
 
 
-	class MappedSQLForm[T, S](map :S=>Option[T], val unmap :T=>Option[S], nullValue :T)(implicit override val source :SQLForm[S])
+	class MappedSQLForm[T, S](map :S => Option[T], val unmap :T => Option[S], nullValue :T)(implicit override val source :SQLForm[S])
 		extends MappedSQLReadForm[T, S](map, nullValue) with MappedSQLWriteForm[T, S] with SQLForm[T]
 	{
 		override def toString = s"<=$source=>"
@@ -251,15 +262,16 @@ object SQLForm extends JDBCTypes {
 
 
 
-	class MappedColumnForm[T, S](map :S=>Option[T], unmap :T=>Option[S], nullValue :T)(implicit override val source :ColumnForm[S])
-		extends MappedSQLForm[T, S](map, unmap, nullValue) with ColumnForm[T]
+	class MappedColumnForm[T, S](read :S => Option[T], write :T => Option[S], nullValue :T)(implicit override val source :ColumnForm[S])
+		extends MappedSQLForm[T, S](read, write, nullValue) with ColumnForm[T]
 	{
 		override def sqlType: Int = source.sqlType
 
 		override def apply(column: String)(res: ResultSet): T =
 			source.opt(column)(res).flatMap(map) getOrElse this.nullValue
 
-		override def opt(position: Int)(res: ResultSet): Option[T] = super[MappedSQLForm].opt(position)(res)
+		override def opt(position: Int)(res: ResultSet): Option[T] =
+			source.opt(position)(res).flatMap(map)
 
 		override def writtenColumns :Int = source.writtenColumns
 		override def readColumns :Int = source.readColumns

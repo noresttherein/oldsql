@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.Mapping.{Selector, TypedMapping}
 import net.noresttherein.oldsql.slang._
 
@@ -44,14 +44,28 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 		case Some(buff) => SQLReadForm.eval(buff.value)
 		case _ =>
 			val audits = SelectAudit.Audit(buffs)
-			val read = 
-				if (audits.isEmpty) form
-				else form.map(audits.reduce(_ andThen _), form.nullValue)
+			val read =
+//				if (Nullable.enabled(buffs))
+					if (audits.isEmpty) form
+					else form.map(audits.reduce(_ andThen _), form.nullValue)
+/*
+				else {
+					val notNull =  { s :S =>
+						if (s == null)
+							throw new NullPointerException("Read a null value for non-nullable column " + sqlName +
+								". Flag the column with Buff.Nullable to explicitly allow nulls.")
+						s
+					}
+					if (audits.isEmpty) form map notNull
+					else form.map((audits :\ notNull)(_ andThen _))
+				}
+*/
 			OptionalSelect.test(buffs) match {
 				case Some(ConstantBuff(x)) => read orElse SQLReadForm.const(x)
 				case Some(buff) => read orElse SQLReadForm.eval(buff.value)
 				case _ => read
 			}
+
 	}
 	
 	override def queryForm :SQLWriteForm[S] = ExtraQuery.test(buffs) match {
@@ -60,7 +74,7 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 		case _ =>
 			val audits = QueryAudit.Audit(buffs)
 			if (audits.isEmpty) form
-			else form.imap(audits.reduce(_ andThen _))
+			else form.unmap(audits.reduce(_ andThen _))
 	}
 	
 	override def updateForm :SQLWriteForm[S] = ExtraUpdate.test(buffs) match {
@@ -69,7 +83,7 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 		case _ =>
 			val audits = UpdateAudit.Audit(buffs) 
 			if (audits.isEmpty) form
-			else form.imap(audits.reduce(_ andThen _))
+			else form.unmap(audits.reduce(_ andThen _))
 	}
 
 	override def insertForm :SQLWriteForm[S] = ExtraInsert.test(buffs) match {
@@ -78,7 +92,7 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 		case _ =>
 			val audits = InsertAudit.Audit(buffs)
 			if (audits.isEmpty) form
-			else form.imap(audits.reduce(_ andThen _))
+			else form.unmap(audits.reduce(_ andThen _))
 	}
 
 
@@ -97,7 +111,21 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 
 	override def assemble(values: Values): Option[S] = None
 
-	override def optionally(values :Values) :Option[S] = values.result(this)
+	override def optionally(values :Values) :Option[S] =
+		if (isNullable)
+			values.result(this)
+		else
+			values.result(this) match {
+				case Some(null) =>
+					throw new NullPointerException("Read a null value for a non-nullable column " + sqlName +
+						". Flag the column with Buff.Nullable to explicitly allow nulls.")
+				case res => res
+			}
+
+
+
+	protected def isNullable :Boolean = Nullable.enabled(buffs)
+
 
 
 	def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[O, S] = ColumnMapping(name, opts:_*)(form)
@@ -117,6 +145,7 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 	override def toString :String = name + "[" + form + "]"
 
 	override def introString :String = buffs.mkString(toString + "(", ", ", ")")
+
 }
 
 
@@ -147,6 +176,9 @@ object ColumnMapping {
 
 	class StandardColumn[O <: AnyMapping, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :SQLForm[T])
 		extends ColumnMapping[O, T]
+	{
+		override val isNullable :Boolean = super.isNullable
+	}
 
 
 	trait ColumnSubstitute[O <: AnyMapping, S, T] extends ColumnMapping[O, T] {
@@ -170,12 +202,13 @@ object ColumnMapping {
 	{
 		override val buffs :Seq[Buff[T]] = buffsOverride getOrElse adaptee.buffs
 		override val name :String = nameOverride getOrElse adaptee.name
+		override val isNullable = super.isNullable
 	}
 
 
 
 
-	class ColumnView[O <: AnyMapping, T](val adaptee :Mapping[T]) extends ColumnMapping[O, T] {
+	class ColumnView[O <: AnyMapping, T](private val adaptee :Mapping[T]) extends ColumnMapping[O, T] {
 
 		if (adaptee.columns.size!=1 || adaptee.selectForm.readColumns!=1 || adaptee.insertForm.writtenColumns!=1 || adaptee.updateForm.writtenColumns!=1)
 			throw new IllegalArgumentException(s"Expected a column, got a multiple column mapping :$adaptee{${adaptee.columns}}")
@@ -189,6 +222,18 @@ object ColumnMapping {
 			adaptee.selectForm,
 			adaptee.insertForm unless(_.writtenColumns == 0) getOrElse adaptee.updateForm
 		)
+
+		override def buffs = adaptee.buffs
+
+		override val isNullable = super.isNullable
+
+
+		override def equals(other: Any): Boolean = other match {
+			case that: ColumnView[_, _] => adaptee == that.adaptee
+			case _ => false
+		}
+
+		override def hashCode(): Int = adaptee.hashCode
 	}
 
 

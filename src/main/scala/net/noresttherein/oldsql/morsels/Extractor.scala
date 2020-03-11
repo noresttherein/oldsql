@@ -69,6 +69,15 @@ object Extractor {
 
 
 
+	implicit def functionExtractor[X, Y](f :X => Option[Y]) :Extractor[X, Y] = apply(f)
+
+	implicit def requisiteExtractor[X, Y](f :X => Y) :RequisiteExtractor[X, Y] = requisite(f)
+
+
+
+
+
+
 	trait RequisiteExtractor[-X, +Y] extends Extractor[X, Y] {
 		def extractor :X => Y = get
 		override def optional :X => Some[Y] = (x :X) => Some(get(x))

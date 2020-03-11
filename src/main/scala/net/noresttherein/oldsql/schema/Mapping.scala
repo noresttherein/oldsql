@@ -175,8 +175,7 @@ sealed trait AnyMapping { mapping =>
 	  * type `Subject` itself can be an `Option` type, used to signify either or both of these cases.
 	  * @see [[net.noresttherein.oldsql.schema.AnyMapping.assemble assemble]]
 	  */
-	def optionally(values: Values): Option[Subject] //=
-//		values.result(this) orElse OptionalSelect.Value[Subject](this)
+	def optionally(values: Values): Option[Subject]
 
 	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
 	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or

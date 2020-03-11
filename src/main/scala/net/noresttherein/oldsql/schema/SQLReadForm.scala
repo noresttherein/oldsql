@@ -21,17 +21,17 @@ trait SQLReadForm[+T] {
 	def readColumns :Int
 
 
-	def nullMap[X :NullValue](fun :T=>X) :SQLReadForm[X] = map(fun, NullValue.Null[X])
+	def nullMap[X :NullValue](fun :T => X) :SQLReadForm[X] = map(fun, NullValue.Null[X])
 
-	def map[X](fun :T=>X, nullValue :X) :SQLReadForm[X] = MappedSQLReadForm((t:T) => Some(fun(t)), nullValue)(this)
+	def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] = MappedSQLReadForm((t :T) => Some(fun(t)), nullValue)(this)
 
-	def map[X](fun :T=>X) :SQLReadForm[X] = MappedSQLReadForm((t :T) => Some(fun(t)), fun(nullValue))(this)
+	def map[X](fun :T => X) :SQLReadForm[X] = MappedSQLReadForm((t :T) => Some(fun(t)), fun(nullValue))(this)
 
 
 
-	def flatMap[X :NullValue](fun :T=>Option[X]) :SQLReadForm[X] = flatMap(fun, NullValue.Null[X])
+	def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] = flatMap(fun, NullValue.Null[X])
 
-	def flatMap[X](fun :T=>Option[X], nullValue :X) :SQLReadForm[X] = MappedSQLReadForm(fun, nullValue)(this)
+	def flatMap[X](fun :T => Option[X], nullValue :X) :SQLReadForm[X] = MappedSQLReadForm(fun, nullValue)(this)
 
 	def asOpt :SQLReadForm[Option[T]] = SQLReadForm.OptionReadType(this)
 
@@ -73,19 +73,19 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 	def opt(column :String)(res :ResultSet) :Option[T] = Option(apply(column)(res)).filterNot(_ => res.wasNull)
 
 
-	override def nullMap[X :NullValue](fun :T=>X) :ColumnReadForm[X] =
+	override def nullMap[X :NullValue](fun :T => X) :ColumnReadForm[X] =
 		map(fun, NullValue.Null[X])
 
-	override def map[X](fun :T=>X) :ColumnReadForm[X] =
+	override def map[X](fun :T => X) :ColumnReadForm[X] =
 		MappedSQLReadForm.column((t :T) => Some(fun(t)), fun(this.nullValue))(this)
 
-	override def map[X](fun :T=>X, nullValue :X) :ColumnReadForm[X] =
-		MappedSQLReadForm.column((t:T) => Some(fun(t)), nullValue)(this)
+	override def map[X](fun :T => X, nullValue :X) :ColumnReadForm[X] =
+		MappedSQLReadForm.column((t :T) => Some(fun(t)), nullValue)(this)
 
-	override def flatMap[X :NullValue](fun :T=>Option[X]) :ColumnReadForm[X] =
+	override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] =
 		flatMap(fun, NullValue.Null[X])
 
-	override def flatMap[X](fun :T=>Option[X], nullValue :X) :ColumnReadForm[X] =
+	override def flatMap[X](fun :T => Option[X], nullValue :X) :ColumnReadForm[X] =
 		MappedSQLReadForm.column(fun, nullValue)(this)
 
 

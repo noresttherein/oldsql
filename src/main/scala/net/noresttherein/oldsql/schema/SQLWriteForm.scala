@@ -56,9 +56,9 @@ trait SQLWriteForm[-T] {
 
 
 
-	def imap[X](fun :X=>T) :SQLWriteForm[X] = MappedSQLWriteForm((x :X) => Some(fun(x)))(this)
+	def unmap[X](fun :X => T) :SQLWriteForm[X] = MappedSQLWriteForm((x :X) => Some(fun(x)))(this)
 
-	def iflatMap[X](fun :X=>Option[T]) :SQLWriteForm[X]  = MappedSQLWriteForm(fun)(this)
+	def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X]  = MappedSQLWriteForm(fun)(this)
 
 
 
@@ -94,9 +94,15 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 	override def inlineLiteral(value: T): String = literal(value)
 	override def inlineNullLiteral: String = nullLiteral
 
-	override def imap[X](fun :X=>T) :ColumnWriteForm[X] = MappedSQLWriteForm.column((x:X) => Some(fun(x)))(this)
 
-	override def iflatMap[X](fun :X=>Option[T]) :ColumnWriteForm[X]  = MappedSQLWriteForm.column(fun)(this)
+
+	override def unmap[X](fun :X => T) :ColumnWriteForm[X] =
+		MappedSQLWriteForm.column((x :X) => Some(fun(x)))(this)
+
+	override def flatUnmap[X](fun :X => Option[T]) :ColumnWriteForm[X]  =
+		MappedSQLWriteForm.column(fun)(this)
+
+
 
 	override def compatible(other: SQLWriteForm[_]): Boolean = other match {
 		case a :ColumnWriteForm[_] => a.sqlType == sqlType
@@ -150,10 +156,10 @@ object SQLWriteForm {
 	implicit def fromImplicitForm[T :SQLForm] :SQLWriteForm[T] = SQLForm[T]
 
 	implicit def OptionWriteType[T :SQLWriteForm] :SQLWriteForm[Option[T]] =
-		SQLWriteForm[T].iflatMap(identity[Option[T]])
+		SQLWriteForm[T].flatUnmap(identity[Option[T]])
 
 	implicit def SomeType[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
-		SQLWriteForm[T].imap(_.get)
+		SQLWriteForm[T].unmap(_.get)
 
 
 
@@ -345,7 +351,7 @@ object SQLWriteForm {
 
 		override val writtenColumns :Int = super.writtenColumns
 
-		override def toString :String = forms.mkString("(","&",")>")
+		override def toString :String = forms.mkString("(", "&", ")>")
 	}
 
 
