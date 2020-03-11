@@ -2,9 +2,11 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{PreparedStatement, ResultSet}
 
+import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.SQLForm.{MappedSQLForm, Tuple2Form}
-import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, MappedSQLReadForm, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, EmptyWriteForm, MappedSQLWriteForm, SeqWriteForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, ChainReadForm, MappedSQLReadForm, SeqReadForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, ChainWriteForm, EmptyWriteForm, MappedSQLWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 
 
@@ -101,8 +103,13 @@ object SQLForm extends JDBCTypes {
 
 
 
-	implicit def optionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
-	implicit def tuple2Form[T1 :SQLForm, T2 :SQLForm] :SQLForm[(T1, T2)] = new Tuple2Form[T1, T2]
+	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
+	implicit def Tuple2Form[T1 :SQLForm, T2 :SQLForm] :SQLForm[(T1, T2)] = new Tuple2Form[T1, T2]
+
+	implicit def ChainForm[T <: Chain, H](implicit t :SQLForm[T], h :SQLForm[H]) :SQLForm[T ~ H] =
+		new ChainForm(t, h)
+	implicit val EmptyChainForm :SQLForm[@~] = new EmptyForm(@~)
+
 
 
 
@@ -254,7 +261,8 @@ object SQLForm extends JDBCTypes {
 
 
 
-	class MappedSQLForm[T, S](map :S => Option[T], val unmap :T => Option[S], nullValue :T)(implicit override val source :SQLForm[S])
+	class MappedSQLForm[T, S](map :S => Option[T], val unmap :T => Option[S], nullValue :T)
+	                         (implicit override val source :SQLForm[S])
 		extends MappedSQLReadForm[T, S](map, nullValue) with MappedSQLWriteForm[T, S] with SQLForm[T]
 	{
 		override def toString = s"<=$source=>"
@@ -262,7 +270,8 @@ object SQLForm extends JDBCTypes {
 
 
 
-	class MappedColumnForm[T, S](read :S => Option[T], write :T => Option[S], nullValue :T)(implicit override val source :ColumnForm[S])
+	class MappedColumnForm[T, S](read :S => Option[T], write :T => Option[S], nullValue :T)
+	                            (implicit override val source :ColumnForm[S])
 		extends MappedSQLForm[T, S](read, write, nullValue) with ColumnForm[T]
 	{
 		override def sqlType: Int = source.sqlType
@@ -328,7 +337,7 @@ object SQLForm extends JDBCTypes {
 
 
 
-	class Tuple2Form[L, R](implicit val _1 :SQLForm[L], implicit val _2 :SQLForm[R])
+	private class Tuple2Form[L, R](implicit val _1 :SQLForm[L], implicit val _2 :SQLForm[R])
 		extends AbstractTuple2ReadForm[L, R] with AbstractTuple2WriteForm[L, R] with SQLForm[(L, R)]
 	{
 		override def equals(that :Any) :Boolean = that match {
@@ -343,8 +352,18 @@ object SQLForm extends JDBCTypes {
 
 
 
-	case class SeqForm[T](forms :Seq[SQLForm[T]]) extends SQLForm[Seq[T]] with SeqWriteForm[T] with SeqReadForm[T] {
+	private case class SeqForm[T](forms :Seq[SQLForm[T]]) extends SQLForm[Seq[T]] with SeqWriteForm[T] with SeqReadForm[T] {
 		override def toString :String = forms.mkString("Seq(",",",")")
+	}
+
+
+
+	private class ChainForm[T <: Chain, H](override val tail :SQLForm[T], override val head :SQLForm[H])
+		extends ChainWriteForm(tail, head) with ChainReadForm[T, H] with SQLForm[T ~ H]
+	{
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ChainForm[_, _]]
+
+		override def toString :String = super[ChainWriteForm].toString
 	}
 
 

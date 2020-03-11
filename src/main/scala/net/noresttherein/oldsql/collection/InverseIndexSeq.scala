@@ -18,7 +18,7 @@ import scala.reflect.ClassTag
   *
   * @tparam T element type.
   */
-trait InverseIndexSeq[+T] extends Seq[T] {
+trait InverseIndexSeq[+T] extends Seq[T] with Serializable {
 	protected[this] override def newBuilder :Builder[T, Seq[T]] =
 		List.newBuilder[T].mapResult(new Indexed(_))
 

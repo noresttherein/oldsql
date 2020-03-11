@@ -17,7 +17,7 @@ import scala.collection.generic.{CanBuildFrom, GenericCompanion, GenericTraversa
   * @tparam T element type.
   */
 trait Unique[+T] extends collection.immutable.Iterable[T] with IterableLike[T, Unique[T]]
-                    with GenericTraversableTemplate[T, Unique]
+                    with GenericTraversableTemplate[T, Unique] with Serializable
 { unique =>
 
 	protected[this] override def newBuilder :Builder[T, Unique[T]] = Unique.newBuilder

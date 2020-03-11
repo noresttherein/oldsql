@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
+import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{MappedSQLWriteForm, Tuple2WriteForm}
 import net.noresttherein.oldsql.slang._
@@ -64,7 +66,7 @@ trait SQLWriteForm[-T] {
 
 //	def getOrElse[S](other :)
 
-	def asOpt :SQLWriteForm[Option[T]] = SQLWriteForm.OptionWriteType(this)
+	def asOpt :SQLWriteForm[Option[T]] = SQLWriteForm.OptionWriteForm(this)
 
 	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = new Tuple2WriteForm()(this, other)
 
@@ -153,14 +155,16 @@ object SQLWriteForm {
 
 
 
-	implicit def fromImplicitForm[T :SQLForm] :SQLWriteForm[T] = SQLForm[T]
-
-	implicit def OptionWriteType[T :SQLWriteForm] :SQLWriteForm[Option[T]] =
+	implicit def OptionWriteForm[T :SQLWriteForm] :SQLWriteForm[Option[T]] =
 		SQLWriteForm[T].flatUnmap(identity[Option[T]])
 
-	implicit def SomeType[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
+	implicit def SomeTypeForm[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
 		SQLWriteForm[T].unmap(_.get)
 
+	implicit def ChainWriteForm[T <: Chain, H](implicit t :SQLWriteForm[T], h :SQLWriteForm[H]) :SQLWriteForm[T ~ H] =
+		new ChainWriteForm(t, h)
+
+	implicit val EmptyChainWriteForm :SQLWriteForm[@~] = empty
 
 
 
@@ -331,7 +335,7 @@ object SQLWriteForm {
 
 
 
-	case class WriteFormChain[-T](forms :Seq[SQLWriteForm[T]]) extends SQLWriteForm[T] with CompositeWriteForm[T] {
+	private case class WriteFormChain[-T](forms :Seq[SQLWriteForm[T]]) extends SQLWriteForm[T] with CompositeWriteForm[T] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = {
 			var i = position
@@ -359,7 +363,7 @@ object SQLWriteForm {
 
 
 
-	trait SeqWriteForm[-T] extends SQLWriteForm[Seq[T]] with CompositeWriteForm[Seq[T]] {
+	private[schema] trait SeqWriteForm[-T] extends SQLWriteForm[Seq[T]] with CompositeWriteForm[Seq[T]] {
 		protected def forms :Seq[SQLWriteForm[T]]
 
 		override def set(position :Int)(statement :PreparedStatement, value :Seq[T]) :Unit = {
@@ -396,7 +400,6 @@ object SQLWriteForm {
 		override def toString :String = forms.mkString("Seq(",",",")>")
 	}
 
-
 	private case class SeqWriteFormImpl[-T](forms :Seq[SQLWriteForm[T]]) extends SeqWriteForm[T] {
 		override val writtenColumns :Int = super.writtenColumns
 		override def toString :String = super.toString
@@ -406,7 +409,7 @@ object SQLWriteForm {
 
 
 
-	trait AbstractTuple2WriteForm[-L, -R] extends SQLWriteForm[(L, R)] {
+	private[schema] trait AbstractTuple2WriteForm[-L, -R] extends SQLWriteForm[(L, R)] {
 		val _1 :SQLWriteForm[L]
 		val _2 :SQLWriteForm[R]
 
@@ -434,8 +437,73 @@ object SQLWriteForm {
 		override def toString = s"v(${_1},${_2})"
 	}
 
-	class Tuple2WriteForm[-L, -R](implicit val _1 :SQLWriteForm[L], val _2 :SQLWriteForm[R]) extends AbstractTuple2WriteForm[L, R]
 
+
+	private[schema] class Tuple2WriteForm[-L, -R](implicit val _1 :SQLWriteForm[L], val _2 :SQLWriteForm[R]) extends AbstractTuple2WriteForm[L, R]
+
+
+
+	private[schema] case class ChainWriteForm[-T <: Chain, -H](tail :SQLWriteForm[T], head :SQLWriteForm[H])
+		extends SQLWriteForm[T ~ H]
+	{
+		override val writtenColumns :Int = tail.writtenColumns + head.writtenColumns
+
+
+		override def set(position :Int)(statement :PreparedStatement, value :T ~ H) :Unit =
+			if (value == null)
+				setNull(position)(statement)
+			else {
+				tail.set(position)(statement, value.tail)
+				head.set(position + tail.writtenColumns)(statement, value.head)
+			}
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit = {
+			tail.setNull(position)(statement)
+			head.setNull(position + tail.writtenColumns)(statement)
+		}
+
+
+		override def literal(value :T ~ H, inline :Boolean) :String = {
+			def rec(chain :Chain, form :SQLWriteForm[_], res :StringBuilder = new StringBuilder) :StringBuilder =
+				(chain, form) match {
+					case (t ~ h, f :ChainWriteForm[_, _]) =>
+						rec(t, f.tail, res) ++= ", "
+						if (f.head.isInstanceOf[ChainWriteForm[_, _]])
+							res ++= "(" ++= f.head.asInstanceOf[SQLWriteForm[Any]].literal(h) ++= ")"
+						else
+							res ++= f.head.asInstanceOf[SQLWriteForm[Any]].literal(h)
+					case (null, f :ChainWriteForm[_, _]) =>
+						rec(null, f.tail, res) ++= ", "
+					case _ =>
+						res
+				}
+			if (inline)
+				rec(value, this).toString
+			else
+	            (rec(value, this, new StringBuilder("(")) ++= ")").toString
+		}
+
+		override def nullLiteral(inline :Boolean) :String = literal(null, inline)
+		override def literal(value :T ~ H) :String = literal(value, false)
+		override def inlineLiteral(value :T ~ H) :String = literal(value, true)
+		override def nullLiteral :String = literal(null, false)
+		override def inlineNullLiteral :String = literal(null, true)
+
+
+
+		override def toString :String =  {
+			def rec(form :SQLWriteForm[_], res :StringBuilder = new StringBuilder) :StringBuilder = form match {
+				case chain :ChainWriteForm[_, _] =>
+					rec(chain.tail, res) ++= "~"
+					chain.head match {
+						case _ :ChainWriteForm[_, _] => rec(chain.head, res ++= "(") ++= ")"
+						case _ => res append chain.head
+					}
+				case  _ => res ++= "@~"
+			}
+			rec(this).toString
+		}
+	}
 
 
 

@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.ResultSet
 
+import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackColumnReadForm, FallbackReadForm, MappedSQLReadForm, Tuple2ReadForm}
 import net.noresttherein.oldsql.slang._
@@ -33,7 +35,7 @@ trait SQLReadForm[+T] {
 
 	def flatMap[X](fun :T => Option[X], nullValue :X) :SQLReadForm[X] = MappedSQLReadForm(fun, nullValue)(this)
 
-	def asOpt :SQLReadForm[Option[T]] = SQLReadForm.OptionReadType(this)
+	def asOpt :SQLReadForm[Option[T]] = SQLReadForm.OptionReadForm(this)
 
 
 
@@ -139,13 +141,19 @@ object SQLReadForm {
 
 
 
-	implicit def fromImplicitForm[T :SQLForm] :SQLReadForm[T] = SQLForm[T]
-
-	implicit def OptionReadType[T :SQLReadForm] :SQLReadForm[Option[T]] =
+	implicit def OptionReadForm[T :SQLReadForm] :SQLReadForm[Option[T]] =
 		SQLReadForm[T].map(Option(_), None)
 
-	implicit def SomeType[T :SQLReadForm] :SQLReadForm[Some[T]] =
+	implicit def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
 		SQLReadForm[T].map(Some(_))
+
+	implicit def ChainReadForm[T <: Chain, H](implicit t :SQLReadForm[T], h :SQLReadForm[H]) :SQLReadForm[T ~ H] =
+		new ChainReadForm[T, H] {
+			override protected[this] val tail = t
+			override protected[this] val head = h
+		}
+
+	implicit val EmptyChainReadForm :SQLReadForm[@~] = const(@~)
 
 
 
@@ -235,6 +243,8 @@ object SQLReadForm {
 				new FallbackReadForm(first, second orElse fallback)
 	}
 
+
+
 	private[schema] class FallbackColumnReadForm[T](first :ColumnReadForm[T], second :ColumnReadForm[T])
 		extends FallbackReadForm[T](first, second) with ColumnReadForm[T]
 	{
@@ -266,7 +276,7 @@ object SQLReadForm {
 
 
 
-	trait SeqReadForm[+T] extends SQLReadForm[Seq[T]] with CompositeReadForm[Seq[T]] {
+	private[schema] trait SeqReadForm[+T] extends SQLReadForm[Seq[T]] with CompositeReadForm[Seq[T]] {
 		protected def forms :Seq[SQLReadForm[T]]
 
 		override def opt(position: Int)(res: ResultSet): Option[Seq[T]] = {
@@ -307,7 +317,7 @@ object SQLReadForm {
 
 
 
-	trait AbstractTuple2ReadForm[L, R] extends SQLReadForm[(L, R)] {
+	private[schema] trait AbstractTuple2ReadForm[L, R] extends SQLReadForm[(L, R)] {
 		val _1  :SQLReadForm[L]
 		val _2  :SQLReadForm[R]
 
@@ -324,7 +334,27 @@ object SQLReadForm {
 		override def toString = s"<(${_1},${_2})"
 	}
 
-	class Tuple2ReadForm[L, R](implicit val _1  :SQLReadForm[L], val _2 :SQLReadForm[R]) extends AbstractTuple2ReadForm[L, R]
+	private[schema] class Tuple2ReadForm[L, R](implicit val _1  :SQLReadForm[L], val _2 :SQLReadForm[R]) extends AbstractTuple2ReadForm[L, R]
+
+
+
+	private[schema] trait ChainReadForm[+T <: Chain, +H] extends SQLReadForm[T ~ H] {
+		protected[this] val tail :SQLReadForm[T]
+		protected[this] val head :SQLReadForm[H]
+
+		override def opt(position :Int)(res :ResultSet) :Option[T ~ H] =
+			for (t <- tail.opt(position)(res); h <- head.opt(position + tail.readColumns)(res)) yield t ~ h
+
+		override def nullValue :T ~ H = tail.nullValue ~ head.nullValue
+
+		override val readColumns :Int = tail.readColumns + head.readColumns
+
+		override def toString :String = head match {
+			case _ :ChainReadForm[_, _] => tail.toString + "~(" + head + ")"
+			case _ => tail.toString + "~" + head
+		}
+	}
+
 
 
 
