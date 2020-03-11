@@ -1,4 +1,4 @@
-package net.noresttherein.oldsql.morsels
+package net.noresttherein.oldsql.model
 
 import java.{lang => j}
 import java.lang.reflect.Method
@@ -14,7 +14,7 @@ import net.bytebuddy.implementation.bind.annotation.{Origin, RuntimeType, This}
 import net.bytebuddy.implementation.FixedValue
 import net.bytebuddy.implementation.MethodCall.invoke
 import net.bytebuddy.matcher.ElementMatchers.{isConstructor, not}
-import net.noresttherein.oldsql.morsels.PropertyPath.{PropertyReflectionException}
+import net.noresttherein.oldsql.model.PropertyPath.PropertyReflectionException
 
 import scala.annotation.tailrec
 import scala.reflect.runtime.universe.{runtimeMirror, typeOf, Symbol, TermName, Type, TypeTag}
@@ -24,10 +24,12 @@ import scala.collection.mutable
 
 
 
-private[morsels] object InvocationReflection {
 
 
-	private[morsels] case class Trace(val owner :Any, val method :Method, val returns :Type) {
+private[model] object InvocationReflection {
+
+
+	private[model] case class Trace(owner :Any, method :Method, returns :Type) {
 		override def toString :String = s"$owner.$method :$returns"
 	}
 
@@ -65,7 +67,7 @@ private[morsels] object InvocationReflection {
 					else
 						throw new PropertyReflectionException(s"Value returned by the function ($res) is not the value returned by the last method call.")
 				else
-	                retrace(next, trace.returns, result += trace)
+					retrace(next, trace.returns, result += trace)
 			}
 
 			val traceField = root.getClass.getField(TraceFieldName)
@@ -207,8 +209,8 @@ private[morsels] object InvocationReflection {
 		if (preset != null) //first try values for common classes like Option, String, Int, etc.
 			preset //todo: mark for the future if we failed to provide a result.
 		else if (clazz.isInterface) //todo: abstract methods!!!
-			new ByteBuddy().subclass(clazz).name(clazz.getName + MockClassNameSuffix)
-				.make().load(getClass.getClassLoader).getLoaded
+			     new ByteBuddy().subclass(clazz).name(clazz.getName + MockClassNameSuffix)
+				     .make().load(getClass.getClassLoader).getLoaded
 		else if ((clazz.getModifiers & ABSTRACT) != 0)
 			     instrumentedInstance(clazz)
 		else { //the class is not abstract, so we'll just try all constructors to see if one works
@@ -340,3 +342,4 @@ private[morsels] object InvocationReflection {
 	@inline private[this] final val ByteBuddy = new ByteBuddy
 
 }
+

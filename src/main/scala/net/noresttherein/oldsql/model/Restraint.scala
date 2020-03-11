@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, MappedRestrainer, NestedRestrainer}
 import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Property, Self, TranslableTerm}
 import net.noresttherein.oldsql.model.types.OrderingSupport
-import net.noresttherein.oldsql.morsels.PropertyPath
+import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.SaferCasts._
 

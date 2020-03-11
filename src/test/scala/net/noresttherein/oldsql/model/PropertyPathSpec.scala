@@ -1,7 +1,6 @@
-package net.noresttherein.oldsql.morsels
+package net.noresttherein.oldsql.model
 
-
-import net.noresttherein.oldsql.morsels.PropertyPath.HackedPropertyPath
+import net.noresttherein.oldsql.model.PropertyPath.HackedPropertyPath
 import org.scalatest.{FlatSpec, Matchers}
 
 class PropertyPathSpec extends FlatSpec with Matchers {

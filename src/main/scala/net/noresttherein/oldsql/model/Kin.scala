@@ -4,7 +4,6 @@ import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo
 import net.noresttherein.oldsql.model.Kin.{Present, Unknown}
 import net.noresttherein.oldsql.model.MappedKin.{KinMapper, PropertyMapper}
 import net.noresttherein.oldsql.model.Restraint.{Restrainer, True}
-import net.noresttherein.oldsql.morsels.PropertyPath
 
 import scala.collection.generic.CanBuildFrom
 

@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.model.Restraint.{Comparison, Equality, Exists, F
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, Collection, ComposedRestrictive, ConcatRestrictive, Literal, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
 import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{DIV, MINUS, MULT, Operator, PLUS, REM}
 import net.noresttherein.oldsql.model.types.{ArithmeticSupport, OrderingSupport}
-import net.noresttherein.oldsql.morsels.PropertyPath
+import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.slang._
 
 import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}

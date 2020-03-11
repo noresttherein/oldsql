@@ -1,13 +1,17 @@
-package net.noresttherein.oldsql.morsels
+package net.noresttherein.oldsql.model
 
 import java.lang.reflect.{Method, Modifier}
-import net.noresttherein.oldsql.morsels.InvocationReflection.Trace
-import net.noresttherein.oldsql.morsels.PropertyPath.UpdatableProperty
+import net.noresttherein.oldsql.model.InvocationReflection.Trace
+import net.noresttherein.oldsql.model.PropertyPath.UpdatableProperty
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe._
+
+
+
+
 
 
 /** A chain of zero-argument method calls starting from type `X` and returning a value of type `Y`,
@@ -70,7 +74,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
 	/** Return an instance representing chained call of properties in this instance, followed by invoking the calls
 	  * specified by suffix on the return value.
 	  */
-	def andThen[YY>:Y, Z](suffix :YY=>Z)(implicit tag :TypeTag[YY]) :PropertyPath[X, Z] = this andThen PropertyPath(suffix)
+	def andThen[YY >: Y, Z](suffix :YY=>Z)(implicit tag :TypeTag[YY]) :PropertyPath[X, Z] = this andThen PropertyPath(suffix)
 
 	/** Return an instance representing chained property call of properties specified by prefix, followed by this chain. */
 	def compose[Z :TypeTag](prefix :Z=>X) :PropertyPath[Z, Y] = PropertyPath(prefix) andThen this
@@ -158,7 +162,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
   */
 object PropertyPath {
 	/** Shortcut for optional infix notation for PropertyPath: val property :X===>Y. */
-	type ===>[-X, +Y] = PropertyPath[X, Y]
+	type ==>[-X, +Y] = PropertyPath[X, Y]
 
 
 
@@ -429,7 +433,7 @@ object PropertyPath {
 
 
 	private class ChainedProperty[-S, +T]
-			(tpe :Type, _method :PropertyCall, _property :S=>T, private final val tail :ReflectedPropertyPath[_, T])
+	(tpe :Type, _method :PropertyCall, _property :S=>T, private final val tail :ReflectedPropertyPath[_, T])
 		extends ReflectedPropertyPath[S, T](tpe, _method, _property)
 	{
 		private[PropertyPath] def this(tpe :Type, method :PropertyCall, tail :ReflectedPropertyPath[Any, T]) =
@@ -559,3 +563,5 @@ object PropertyPath {
 
 
 }
+
+

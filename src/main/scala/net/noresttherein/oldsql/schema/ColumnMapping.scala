@@ -87,11 +87,7 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 
 	override def apply[T](component :Component[T]) :Selector[this.type, O, S, T] =
 		if (component == this)
-			new Selector[this.type, O, S, S] {
-				override def pick = Some(_:S)
-				override def surepick = Some(identity[S])
-				override val lifted = column
-			}.asInstanceOf[Selector[this.type, O, S, T]]
+			Selector.ident[this.type, O, S](this).asInstanceOf[Selector[this.type, O, S, T]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $component is not a subcomponent of column $column. The only subcomponent of a column is the column itself."

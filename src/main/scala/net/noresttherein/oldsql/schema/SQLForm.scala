@@ -157,7 +157,7 @@ object SQLForm extends JDBCTypes {
 
 	object EmptyForm {
 		def apply[T](nullExpr : =>T) :EmptyForm[T] = new EmptyForm[T](nullExpr)
-		def unapply[T](sqlType :SQLForm[T]) :Boolean = sqlType.isInstanceOf[EmptyForm[_]]
+		def unapply[T](form :SQLForm[T]) :Boolean = form.isInstanceOf[EmptyForm[_]]
 	}
 
 
@@ -185,9 +185,9 @@ object SQLForm extends JDBCTypes {
 
 	object Unknown {
 		def apply[T]() :UnknownForm[T] = unknown.asInstanceOf[UnknownForm[T]]
-		def apply[T](tpe :SQLForm[T]) :Boolean = tpe.isInstanceOf[UnknownForm[_]]
+		def apply[T](form :SQLForm[T]) :Boolean = form.isInstanceOf[UnknownForm[_]]
 
-		def unapply[T](tpe :SQLForm[T]) :Boolean = apply(tpe)
+		def unapply[T](form :SQLForm[T]) :Boolean = apply(form)
 
 		private val unknown = new UnknownForm[Any]
 	}

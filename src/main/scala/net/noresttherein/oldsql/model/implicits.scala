@@ -2,7 +2,6 @@ package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.Restraint.{BooleanRestraint, False, True}
 import net.noresttherein.oldsql.model.Restrictive.{Collection, Literal, TranslableTerm}
-import net.noresttherein.oldsql.morsels.PropertyPath
 
 import scala.reflect.runtime.universe.TypeTag
 
@@ -22,7 +21,7 @@ sealed abstract class StandardFallbackImplicits {
   * [[net.noresttherein.oldsql.model.implicits implicits]], so, as a companion object of a super type, its declarations
   * are considered when searching for implicit values related to these types. At the same time, it is possible
   * to import everything wholesale explicitly and this will include also conversions from unrelated classes such
-  * as functions or [[net.noresttherein.oldsql.morsels.PropertyPath PropertyPath]], which would not be found
+  * as functions or [[net.noresttherein.oldsql.model.PropertyPath PropertyPath]], which would not be found
   * when searching for a implicit conversion forced by a call to a method not present on the converted object.
   */
 object implicits extends StandardFallbackImplicits {

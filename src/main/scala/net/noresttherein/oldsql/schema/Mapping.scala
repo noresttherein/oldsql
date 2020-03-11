@@ -4,6 +4,8 @@ import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor
 import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, MappingReadForm, MappingWriteForm, Selector}
 import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 import net.noresttherein.oldsql.schema.support.{MappedMapping, PrefixedMapping}
@@ -80,8 +82,6 @@ sealed trait AnyMapping { mapping =>
 	  */
 	def subcomponents :Unique[Component[_]]
 
-	@deprecated
-	def columnsFor(filter :ColumnFilter) :Unique[AnyComponent]
 
 	/** All direct and transitive columns declared within this mapping. This will include columns which are read-only,
 	  * write-only and so on. */
@@ -239,8 +239,6 @@ trait Mapping[S] extends AnyMapping { self =>
 	override def asComponent :this.type = this
 
 
-	override def columnsFor(filter :ColumnFilter) :Unique[AnyComponent] = filter(this :this.type)
-
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 		MappingReadForm.select(this :this.type, components)
 
@@ -326,6 +324,7 @@ object Mapping {
 	sealed trait ComponentSelector[M <: SingletonMapping, T] {
 		def pick :M#Subject => Option[T]
 		def surepick :Option[M#Subject => T]
+		def extractor :Extractor[M#Subject, T]
 
 		def apply(whole :M#Subject) :T
 
@@ -355,6 +354,8 @@ object Mapping {
 		def pick :S => Option[T]
 		def surepick :Option[S => T]
 
+		def extractor :Extractor[S, T] = surepick.map(Extractor.requisite[S, T]) getOrElse Extractor(pick)
+
 		def apply(whole :S) :T = get(whole) getOrElse {
 			throw new NoSuchElementException(s"No value for $lifted in $whole.")
 		}
@@ -377,17 +378,29 @@ object Mapping {
 		         (component :Component[O, T], pick :S => Option[T], surepick :Option[S=>T]) :Selector[M, O, S, T] =
 			new CustomSelector(component, pick, surepick)
 
-
 		def apply[M <: SingletonMapping { type Owner = O; type Subject = S }, O <: AnyMapping, S, T]
+		         (component :Component[O, T])(extractor :Extractor[S, T]) :Selector[M, O, S, T] =
+			extractor match {
+				case requisite :RequisiteExtractor[S, T] => new RequisiteSelector(component, requisite)
+				case _ => new ExtractorSelector(component, extractor)
+			}
+
+		@inline def apply[O <: AnyMapping, S, T](mapping :Component[O, S], component :Component[O, T])
+		                                        (extractor :Extractor[S, T]) :Selector[mapping.type, O, S, T] =
+			apply[mapping.type, O, S, T](component)(extractor)
+
+
+
+		def req[M <: SingletonMapping { type Owner = O; type Subject = S }, O <: AnyMapping, S, T]
 		         (component :Component[O, T], requisite :S => T) :Selector[M, O, S, T] =
-			new RequisiteSelector[M, O, S, T](component, requisite)
+			new RequisiteSelector[M, O, S, T](component, Extractor.requisite(requisite))
 
-		def apply[O <: AnyMapping, S, T](mapping :Component[O, S], component :Component[O, T])(requisite :S => T) :Selector[mapping.type, O, S, T] =
-			new RequisiteSelector[mapping.type, O, S, T](component, requisite)
+		def req[O <: AnyMapping, S, T](mapping :Component[O, S], component :Component[O, T])(requisite :S => T) :Selector[mapping.type, O, S, T] =
+			new RequisiteSelector[mapping.type, O, S, T](component, Extractor.requisite(requisite))
 
 
 
-		def opt[M <: SingletonMapping{ type Owner = O; type Subject = S }, O <: AnyMapping, S, T]
+		def opt[M <: SingletonMapping { type Owner = O; type Subject = S }, O <: AnyMapping, S, T]
 		       (component :Component[O, T], selector :S => Option[T]) :Selector[M, O, S, T] =
 			new OptionalSelector[M, O, S, T](component, selector)
 
@@ -396,32 +409,57 @@ object Mapping {
 
 
 
+		def ident[M <: SingletonMapping { type Owner = O; type Subject = S }, O <: AnyMapping, S]
+		         (component :Component[O, S]) :Selector[M, O, S, S] =
+			new RequisiteSelector[M, O, S, S](component, Extractor.ident[S]) {
+				override def apply(whole :S) :S = whole
+				override def get(whole :S) :Option[S] = Some(whole)
+			}
+
+		def ident[O <: AnyMapping, S](mapping :Component[O, S], component :Component[O, S]) :Selector[mapping.type, O, S, S] =
+			ident[mapping.type, O, S](component)
+
+
+
 		def unapply[O <: AnyMapping, T, S](selector :Selector[_ <: SingletonMapping { type Owner = O; type Subject = S }, O, S, T])
 				:Option[(S=>Option[T], Option[S=>T], Component[O, T])] =
 			Some(selector.pick, selector.surepick, selector.lifted)
 
 
-		class RequisiteSelector[M <: SingletonMapping { type Owner = O; type Subject = S }, O <: AnyMapping, S, T]
-		                       (val lifted :Component[O, T], val extractor :S => T)
+
+		private class ExtractorSelector[M <: SingletonMapping { type Owner = O; type Subject = S }, O <: AnyMapping, S, T]
+		                               (val lifted :Component[O, T], extract :Extractor[S, T])
 			extends Selector[M, O, S, T]
 		{
-			val pick = (s :S) => Some(extractor(s))
-			val surepick = Some(extractor)
+			override def extractor :Extractor[S, T] = extract
+			override def pick :S => Option[T] = extract.optional
+			override def surepick :Option[S => T] = extract.requisite
 
-			override def apply(whole :S) :T = extractor(whole)
+			override def get(whole :S) :Option[T] = extract(whole)
 		}
 
-		class OptionalSelector[M <: SingletonMapping { type Owner = O; type Subject = S}, O <: AnyMapping, S, T]
-		                      (val lifted :Component[O, T], val pick :S => Option[T])
+		private class RequisiteSelector[M <: SingletonMapping { type Owner = O; type Subject = S }, O <: AnyMapping, S, T]
+		                               (lifted :Component[O, T], extract :RequisiteExtractor[S, T])
+			extends ExtractorSelector[M, O, S, T](lifted, extract)
+		{
+			override def extractor :RequisiteExtractor[S, T] = extract
+			override def apply(whole :S) :T = extractor.get(whole)
+		}
+
+		private class OptionalSelector[M <: SingletonMapping { type Owner = O; type Subject = S}, O <: AnyMapping, S, T]
+		                              (val lifted :Component[O, T], val pick :S => Option[T])
 			extends Selector[M, O, S, T]
 		{
-			override def surepick = None
+			override def surepick :Option[Nothing] = None
 		}
 
 		private class CustomSelector[M <: SingletonMapping { type Owner = O; type Subject = S }, O <: AnyMapping, S, T]
 		                            (val lifted :Component[O, T], val pick :S => Option[T], val surepick :Option[S => T])
 			extends Selector[M, O, S, T]
 	}
+
+
+
 
 
 

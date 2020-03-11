@@ -16,7 +16,7 @@ testOptions in Test ++= Seq(Tests.Filter(s => !s.endsWith("Props")))
 
 resolvers ++= Seq(
 	"Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases/",
-	"Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
+	"Local Maven Repository" at "file://" + Path.userHome.absolutePath + "/.m2/repository"
 )
 
 
@@ -24,7 +24,7 @@ resolvers ++= Seq(
 libraryDependencies ++= Seq(
 	"org.postgresql" % "postgresql" % "9.2-1004-jdbc41",
 	"net.bytebuddy" % "byte-buddy" % "1.10.8",
-	"cglib" % "cglib-nodep" % "3.3.0",
+//	"cglib" % "cglib-nodep" % "3.3.0",
 	"org.scala-lang" % "scala-library" % "2.11.12",
 	"org.scala-lang" % "scala-reflect" % "2.11.12",
 	"org.scalatest" %% "scalatest" % "2.2.4" % "test",
@@ -35,7 +35,7 @@ libraryDependencies ++= Seq(
 
 scalacOptions ++= Seq(
 //	"-Ylog-classpath",
-	"-Xlog-implicits",
+//	"-Xlog-implicits",
 	"-Xexperimental",
 	"-feature",
 	"-deprecation",

@@ -1,7 +1,6 @@
 package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.MappedKin.KinMapper
-import net.noresttherein.oldsql.morsels.PropertyPath
 import net.noresttherein.oldsql.slang.SaferCasts._
 
 

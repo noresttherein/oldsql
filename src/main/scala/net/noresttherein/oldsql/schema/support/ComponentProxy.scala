@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, ComponentSelector, Selector, SingletonComponent}
 import net.noresttherein.oldsql.schema.{AnyMapping, Buff, ComponentValues, Mapping, SQLReadForm, SQLWriteForm, SubMapping}
 
@@ -11,7 +13,7 @@ import scala.collection.mutable
   * @author Marcin Mościcki
   */
 trait ComponentProxy[O <: AnyMapping, S] extends SubMapping[O, S] {
-	protected val adaptee :Component[S]
+	protected val adaptee :Mapping[S]
 
 	override def buffs :Seq[Buff[S]] = adaptee.buffs
 
@@ -42,13 +44,14 @@ object ComponentProxy {
 
 
 	trait ShallowProxy[O <: AnyMapping, S] extends ComponentProxy[O, S] {
+		protected override val adaptee :Component[S]
 
 		override def apply[T](component :Component[T]) :Selector[this.type, O, S, T] =
 			(if (component eq adaptee)
-				 Selector(this, adaptee)(identity[S])
+				 Selector.ident(this, adaptee)
 			 else
 				 adaptee(component)
-				).asInstanceOf[Selector[this.type, O, S, T]]
+			).asInstanceOf[Selector[this.type, O, S, T]]
 
 		override def lift[T](component :Component[T]) :Component[T] =
 			if (component eq adaptee) component
@@ -91,23 +94,23 @@ object ComponentProxy {
 
 		override def apply[T](component :Component[T]) :Selector[this.type, O, S, T] =
 			if (component eq adaptee)
-				Selector(this, adaptee)(identity[S]).asInstanceOf[Selector[this.type, O, S, T]]
-			else {
-				val Selector(adaptpick, adaptsurepick, _) = adaptee(dealias(component))
-				Selector[this.type, O, S, T](lift(component), adaptpick, adaptsurepick)
-			}
+				Selector[this.type, O, S, T](component)(Extractor.ident[S].asInstanceOf[S =?> T])
+			else
+				Selector[this.type, O, S, T](lift(component))(adaptee.apply(dealias(component)).extractor)
 
 		override def lift[T](component :Component[T]) :Component[T] =
-			if (component eq adaptee) component
-			else adapt(adaptee.lift(component))
+			if (component eq adaptee)
+				component
+			else
+				adapt(adaptee.lift(dealias(component)))
 
-		protected def adapt[T](component :Component[T]) :Component[T]
+		protected def adapt[T](component :adaptee.Component[T]) :Component[T]
 
-		private[this] def alias[T](component :Component[T]) :Component[T] = adapt(adaptee.lift(component))
+		private[this] def alias[T](component :adaptee.Component[T]) :Component[T] = adapt(adaptee.lift(component))
 
-		protected def dealias[T](lifted :Component[T]) :Component[T]
+		protected def dealias[T](lifted :Component[T]) :adaptee.Component[T]
 
-		override def components :Unique[Component[_]] = adaptee.components.map(alias(_))
+		override def components :Unique[Component[_]] = Unique(adapt(adaptee)) //adaptee.components.map(alias(_))
 		override def subcomponents :Unique[Component[_]] = adaptee.subcomponents.map(alias(_))
 
 		override def columns :Unique[Component[_]] = adaptee.columns.map(alias(_))
@@ -134,7 +137,7 @@ object ComponentProxy {
 
 
 
-		override def assemble(values :Values) :Option[S] = apply(adaptee).get(values)
+		override def assemble(values :Values) :Option[S] = apply(adapt(adaptee)).get(values)
 
 
 
@@ -145,20 +148,20 @@ object ComponentProxy {
 
 
 
-	abstract class EagerDeepProxy[M <: SingletonComponent[O, S], O <: AnyMapping, S] private
+	abstract class EagerDeepProxy[M <: Mapping[S] with Singleton, O <: AnyMapping, S] private
 			(protected val adaptee :M,
-			 lifts :mutable.Map[Mapping.AnyComponent[O], ComponentSelector[M, _]],
-			 dealias :mutable.Map[Mapping.AnyComponent[O], Mapping.AnyComponent[O]])
+			 lifts :mutable.Map[AnyMapping, ComponentSelector[_, _]],
+			 dealias :mutable.Map[Mapping.AnyComponent[O], AnyMapping])
 		extends DeepProxy[O, S]
 	{
 		def this(adaptee :M) = this(
 			adaptee,
-			mutable.Map[Mapping.AnyComponent[O], ComponentSelector[M, _]](),
-			mutable.Map[Mapping.AnyComponent[O], Mapping.AnyComponent[O]]()
+			mutable.Map[AnyMapping, ComponentSelector[_, _]](),
+			mutable.Map[Mapping.AnyComponent[O], AnyMapping]()
 		)
 
 
-		override val components :Unique[Component[_]] = adaptee.components.map(lift(_, lifts, dealias))
+		override val components :Unique[Component[_]] = Unique(lift(adaptee, lifts, dealias)) //adaptee.components.map(lift(_, lifts, dealias))
 
 		override val subcomponents :Unique[Component[_]] = adaptee.subcomponents.map(lift(_, lifts, dealias))
 		override val columns :Unique[Component[_]] = adaptee.columns.map(lift(_, lifts, dealias))
@@ -170,23 +173,28 @@ object ComponentProxy {
 		override val insertable :Unique[Component[_]] = adaptee.insertable.map(lift(_, lifts, dealias))
 		override val autoInserted :Unique[Component[_]] = adaptee.autoInserted.map(lift(_, lifts, dealias))
 
-		lifts.put(adaptee, Selector[M, O, S, S](adaptee, identity[S] _))
-		dealias.put(adaptee, adaptee)
+		{
+			val adapted = adapt[S](adaptee)
+			lifts.put(adapted, Selector.ident[this.type, O, S](adapted))
+			dealias.put(adapted, adaptee)
+		}
 		private[this] val lifted = lifts.toMap
 		private[this] val originals = dealias.toMap
 
-		protected def lift[T](component :Component[T],
-		                      lifts :mutable.Map[AnyComponent, ComponentSelector[M, _]],
-		                      dealias :mutable.Map[AnyComponent, AnyComponent]) :Component[T] =
+		protected def lift[T](component :adaptee.Component[T],
+		                      lifts :mutable.Map[AnyMapping, ComponentSelector[_, _]],
+		                      dealias :mutable.Map[AnyComponent, AnyMapping]) :Component[T] =
 			lifts.getOrElse(component, {
-				val base = adaptee(component)
+				val base :Selector[adaptee.type, adaptee.Owner, S, T] =
+					if (adaptee eq component) Selector.ident[adaptee.type, adaptee.Owner, S](adaptee).asInstanceOf[Selector[adaptee.type, adaptee.Owner, S, T]]
+					else adaptee.apply(component)
 				val lifted = adapt(base.lifted)
-				val selector = Selector[M, O, S, T](lifted, base.pick, base.surepick)
+				val selector = Selector[this.type, O, S, T](lifted)(base.extractor)
 				lifts.put(component, selector)
 				lifts.put(base.lifted, selector)
 				dealias.put(lifted, base.lifted)
-				lifted
-			}).asInstanceOf[Component[T]]
+				selector
+			}).lifted.asInstanceOf[Component[T]]
 
 		override def lift[T](component :Component[T]) :Component[T] = apply(component).lifted
 
@@ -195,8 +203,8 @@ object ComponentProxy {
 				throw new IllegalArgumentException(s"$component is not a component of $this.")
 			).asInstanceOf[Selector[this.type, O, S, T]]
 
-		protected override def dealias[T](component :Component[T]) :Component[T] =
-			originals.getOrElse(component, component).asInstanceOf[Component[T]]
+		protected override def dealias[T](component :Component[T]) :adaptee.Component[T] =
+			originals.getOrElse(component, component).asInstanceOf[adaptee.Component[T]]
 
 
 	}

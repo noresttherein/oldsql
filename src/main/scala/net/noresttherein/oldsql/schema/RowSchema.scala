@@ -2,7 +2,9 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
-import net.noresttherein.oldsql.morsels.PropertyPath
+import net.noresttherein.oldsql.model.PropertyPath
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor
 import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, NoInsert, NoQuery, NoSelect, NoUpdate, Unmapped}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm, Selector}
@@ -47,18 +49,36 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 	  * the parent mapping - no other call is needed.
 	  * @tparam T value type of this component
 	  */
-	trait ComponentMapping[T]  extends SubMapping[Owner, T] with Selector[composite.type, Owner, S, T] { self =>
+	trait ComponentMapping[T]  extends SubMapping[Owner, T] { self =>
 
-		def opt(implicit values :composite.Values) :Option[T] =
-			values.get(this)
+		def opt(implicit values :composite.Values) :Option[T] = values.get(selector)
+
+
 
 		private[RowSchema] def belongsTo(mapping :RowSchema[_]) :Boolean = mapping eq composite
+
+		protected[schema] def extractor :Extractor[S, T]
+
+		def selector :Selector[composite.type, Owner, S, T] = {
+			if (fastSelector == null) {
+				val s = safeSelector
+				if (s != null) fastSelector = s
+				else include()
+			}
+			fastSelector
+		}
+
+		@volatile
+		private[this] var safeSelector :Selector[composite.type, Owner, S, T] = _
+		private[this] var fastSelector :Selector[composite.type, Owner, S, T] = _
 
 		private[this] var initialized = false
 
 		/** Manually trigger initialization of this instance within the enclosing mapping. */
 		private[RowSchema] final def include() :this.type = synchronized {
 			if (!initialized) {
+				fastSelector = selectorFor(this)
+				safeSelector = fastSelector
 				init()
 				initialized = true
 			}
@@ -70,6 +90,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 			if (!isSymLink(this)) {
 				initComponents += this
 				initSubcomponents += this
+//				initSelectors = initSelectors.updated(this, selector)
 				subcomponents foreach { c => liftSubcomponent(c) }
 			}
 		}
@@ -78,8 +99,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 			if (!isSymLink(subcomponent)) composite.synchronized {
 				if (!initSelectors.contains(subcomponent)) {
 					val selector = apply(subcomponent)
-					val picksub = (s :S) => pick(s).flatMap(selector.pick)
-					val surepicksub = surepick.flatMap(st => selector.surepick.map(tu => st andThen tu))
+					val extractsub = extractor andThen selector.extractor
 
 					if (columnPrefix == null)
 						throw new IllegalStateException(s"$this.columnPrefix is null: overrides with a val must happen before any component declarations!")
@@ -95,18 +115,16 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 					val lifted = subcomponent match {
 						case column :ColumnMapping[Owner, U] =>
 							composite.include(initPreceding(new ColumnComponent[U](
-								picksub, surepicksub, columnPrefix + column.name, subbuffs
+								extractsub.optional, extractsub.requisite, columnPrefix + column.name, subbuffs
 							)(column.form)))
 						case _ =>
-							new LiftedComponent[U](subcomponent, picksub, surepicksub, columnPrefix, subbuffs)
+							new LiftedComponent[U](subcomponent, extractsub, columnPrefix, subbuffs)
 					}
-					initSelectors = initSelectors.updated(subcomponent, lifted)
+					initSelectors = initSelectors.updated(subcomponent, lifted.selector)
 				}
 			}
 
 
-
-		val lifted :ComponentMapping[T] = this
 
 		/** Buffs 'inherited' from the enclosing mapping. It uses the value selector `S=>T` to map all buffs applied
 		  * to the enclosing mapping to adapt them to this value type. This means that if there are any
@@ -114,7 +132,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 		  * must have a value for the value associated with that buff or an exception will be thrown - either
 		  * when accessing/initializing the buff list or when the value for the buff is actually needed.
 		  */
-		protected final def inheritedBuffs :Seq[Buff[T]] = transitBuffs(pick, toString)
+		protected final def inheritedBuffs :Seq[Buff[T]] = transitBuffs(extractor.optional, toString)
 
 		/** The column prefix prepended to all columns at the behest of the enclosing `RowSchema` or an empty string. */
 		protected final def inheritedPrefix :String = testedPrefix
@@ -135,7 +153,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 	  * and buffs defined in it and any other enclosing components into the adapted component.
 	  * It serves at the same time as its own `Selector` and the lifted 'effective' version of the component.
 	  */
-	private class LiftedComponent[T](original :Component[T], val pick :S=>Option[T], val surepick :Option[S=>T],
+	private class LiftedComponent[T](original :Component[T], val extractor :Extractor[S, T],
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
 		extends ShallowProxy[Owner, T] with ComponentMapping[T]
 	{
@@ -144,6 +162,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 		protected[RowSchema] override def init() :Unit = composite.synchronized {
 			if (!isSymLink(this)) {
 				initSubcomponents += this
+//				initSelectors = initSelectors.updated(original, selector)
 				subcomponents foreach { c => liftSubcomponent(c) }
 			}
 		}
@@ -155,9 +174,8 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 	/** Base trait for components which have a value for all instances of `T`. */
 	trait MandatoryComponent[T] extends ComponentMapping[T] {
-		final override def pick :S => Some[T] = (e :S) => Some(extractor(e))
-		final override def surepick = Some(extractor)
-		protected def extractor :S=>T
+		protected[schema] override def extractor :RequisiteExtractor[S, T] = Extractor.requisite(extract)
+		protected def extract :S=>T
 
 		override def buffs :Seq[Buff[T]] = inheritedBuffs
 	}
@@ -167,16 +185,15 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect ]]
 	  */
 	trait OptionalComponent[T] extends ComponentMapping[T] {
-		final override def surepick :None.type = None
-		def pick :S => Option[T]
+		protected def extract :S => Option[T]
+		protected[schema] override def extractor = Extractor(extract)
 
 		override def buffs :Seq[Buff[T]] = inheritedBuffs
 	}
 
 	/** Convenience base component class which initializes accessor fields using the constructor argument getter. */
 	abstract class BaseComponent[T](value :S=>T) extends ComponentMapping[T] {
-		override val surepick = Some(value)
-		override val pick :S => Some[T] = (e :S) => Some(value(e))
+		protected[schema] override val extractor :Extractor[S, T] = Extractor.requisite(value)
 		override val buffs :Seq[Buff[T]] = inheritedBuffs
 	}
 
@@ -197,14 +214,15 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 	}
 
 
-	abstract class BaseOptionalComponent[T](val pick :S => Option[T])
+	abstract class BaseOptionalComponent[T](pick :S => Option[T])
 		extends OptionalComponent[T]
 	{
+		protected[schema] override val extractor = Extractor(pick)
 		override val buffs :Seq[Buff[T]] = inheritedBuffs
 	}
 
-	abstract class OptionalComponentSchema[T](value :S => Option[T], prefix :String = "")
-		extends BaseOptionalComponent[T](value) with RowSchema[T]
+	abstract class OptionalComponentSchema[T](pick :S => Option[T], prefix :String = "")
+		extends BaseOptionalComponent[T](pick) with RowSchema[T]
 	{
 		override final val columnPrefix = composite.testedPrefix + prefix
 	}
@@ -219,9 +237,9 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 /*
-	class EmbeddedComponent[T, C<:Mapping[T]](value :S=>T, mapping :C) extends MappingImpostor[T, C] with Component[T] {
-		override protected[RowSchema] val pick = (e: S) => Some(value(e))
-		override protected[RowSchema] val surepick = Some(value)
+	private class EmbeddedComponent[T, C <: Mapping[T]](protected[schema] val extractor :Extractor[S, T], mapping :C)
+		extends ShallowProxy[Owner, T] with ComponentMapping[T]
+	{
 		override val adaptee: C = mapping
 		override def toString = s"@$adaptee"
 	}
@@ -244,26 +262,28 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 	/** A column for which a value exists in all instances of `S`. It doesn't mean that it is mandatory in any particular
-	  * sql statement. It automatically inherits the enclosing mapping's `columnPrefix` and buffs.
+	  * SQL statement. It automatically inherits the enclosing mapping's `columnPrefix` and buffs.
 	  */
 	private class MandatoryColumn[T :SQLForm](value :S=>T, name :String, opts :Seq[Buff[T]])
 		extends StandardColumn[Owner, T](testedPrefix + name, transitBuffs(s => Some(value(s)), testedPrefix + name) ++: opts)
 		   with ComponentMapping[T]
 	{
-		override val surepick = Some(value)
-		override val pick = (e :S) => Some(value(e))
+		override val extractor :RequisiteExtractor[S, T] = Extractor.requisite(value)
 	}
 
 
 	/** A lower-level column component which accepts values for all abstract fields and initializes them verbatim.
 	  * This column will ''not'' automatically inherit the enclosing mapping's `columnPrefix` or buffs
 	  */
-	private class ColumnComponent[T](val pick :S=>Option[T], val surepick :Option[S=>T], name :String, buffs :Seq[Buff[T]])
+	private class ColumnComponent[T](val extractor :Extractor[S, T], name :String, buffs :Seq[Buff[T]])
 	                                (implicit sqlForm :SQLForm[T])
 		extends StandardColumn[Owner, T](name, buffs) with ComponentMapping[T]
 	{
-		def this(value :S=>T, name :String, buffs :Seq[Buff[T]])(implicit form :SQLForm[T]) =
-			this((e :S) => Some(value(e)), Some(value), name, buffs)
+		def this(value :S => T, name :String, buffs :Seq[Buff[T]])(implicit form :SQLForm[T]) =
+			this(Extractor.requisite(value), name, buffs)
+
+		def this(pick :S => Option[T], surepick :Option[S=>T], name :String, buffs :Seq[Buff[T]])(implicit form :SQLForm[T]) =
+			this(surepick map Extractor.requisite[S, T] getOrElse Extractor(pick), name, buffs)
 	}
 
 
@@ -286,8 +306,11 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 			case _ =>
 		}
 
-		def apply(pick :S=>T) :Column[T] =
+		def apply(pick :S => T) :Column[T] =
 			initPreceding(new ColumnComponent[T](pick, testedPrefix + (name getOrElse template.name), buffs)(template.form))
+
+		def opt(pick :S => Option[T]) :Column[T] =
+			initPreceding(new ColumnComponent[T](pick, None, testedPrefix + (name getOrElse template.name), buffs)(template.form))
 
 		def prefixed(prefix :Option[String]) :ColumnCopist[T] =
 			new ColumnCopist(template, prefix.mapOrElse(p => Some(p + (name getOrElse template.name)), name), buffs)
@@ -326,20 +349,20 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 
-	protected def column[T](name :String, pick :S=>T, buffs :Buff[T]*)
+	protected def column[T](name :String, pick :S => T, buffs :Buff[T]*)
 	                       (implicit form :SQLForm[T]) :Column[T] =
 		initPreceding(new MandatoryColumn[T](pick, name, buffs))
 
-	protected def column[T](pick :S=>T, buffs :Buff[T]*)(implicit form :SQLForm[T], subject :TypeTag[S]) :Column[T] =
+	protected def column[T](pick :S => T, buffs :Buff[T]*)(implicit form :SQLForm[T], subject :TypeTag[S]) :Column[T] =
 		column[T](PropertyPath.nameOf(pick), pick, buffs:_*)
 
 
 
-	protected def optcolumn[T](name :String, pick :S=>Option[T], buffs :Buff[T]*)
+	protected def optcolumn[T](name :String, pick :S => Option[T], buffs :Buff[T]*)
 	                          (implicit form :SQLForm[T]) :Column[T] =
 		initPreceding(new ColumnComponent(pick, None, testedPrefix + name, transitBuffs(pick) ++: buffs))
 
-	protected def optcolumn[T](pick :S=>Option[T], buffs :Buff[T]*)(implicit form :SQLForm[T], subject :TypeTag[S]) :Column[T] =
+	protected def optcolumn[T](pick :S => Option[T], buffs :Buff[T]*)(implicit form :SQLForm[T], subject :TypeTag[S]) :Column[T] =
 		optcolumn[T](PropertyPath.nameOf(pick), pick, buffs: _*)
 
 
@@ -349,11 +372,11 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 
-	protected def autoins[T](name :String, pick :S=>Option[T], options :Buff[T]*)
+	protected def autoins[T](name :String, pick :S => Option[T], options :Buff[T]*)
 	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
 		column[T](name, pick(_:S).get, AutoInsert +: options:_*)
 
-	protected def autoins[T](pick :S=>Option[T], options :Buff[T]*)
+	protected def autoins[T](pick :S => Option[T], options :Buff[T]*)
 	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
 		column[T](PropertyPath.nameOf(pick), pick(_:S).get, AutoInsert +: options :_*)
 
@@ -387,16 +410,27 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 	protected def isDefined(values :Values) :Boolean = true
 
-	implicit def valueOf[T](component :ComponentMapping[T])(implicit values :Values) :T = values(component)
-	implicit def valueOf[T](component :Component[T])(implicit values :Values) :T = values(apply(component))
+
+
+	implicit def valueOf[T](component :ComponentMapping[T])(implicit values :Values) :T =
+		values(component.selector)
+
+	implicit def valueOf[T](component :Component[T])(implicit values :Values) :T =
+		values(apply(component))
 
 
 
 
+	override def lift[T](component :Component[T]) :Component[T] = component match {
+		case lifted :RowSchema[_]#ComponentMapping[_] if lifted belongsTo this =>
+			lifted.asInstanceOf[Component[T]]
+		case _ =>
+			apply(component).lifted
+	}
 
 	override def apply[T](component :Component[T]) :Selector[this.type, Owner, S, T] = component match {
 		case lifted :RowSchema[_]#ComponentMapping[T] if lifted belongsTo this =>
-			lifted.asInstanceOf[ComponentMapping[T]]
+			lifted.asInstanceOf[ComponentMapping[T]].selector
 		case _  =>
 			if (fastSelectors == null) {
 				val initialized = selectors
@@ -407,22 +441,19 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 					fastSelectors = selectors
 				}
 			}
-			fastSelectors.getOrElse(component, throw new NoSuchElementException(
+			fastSelectors.getOrElse(component, throw new IllegalArgumentException(
 				s"Component $component is not a part of mapping $this."
-			)).asInstanceOf[ComponentMapping[T]]
+			)).asInstanceOf[Selector[this.type, Owner, S, T]]
 	}
 
-	private def update(source :AnyComponent, lifted :ComponentMapping[_]) :Unit = synchronized {
-		if (isInitialized)
-			throw new IllegalStateException(
-				s"Cannot lift component $source of $this to $lifted: components have already been exported. Create components eagerly!"
-			)
-		initSelectors = initSelectors.updated(source, lifted)
-	}
 
-	private[this] var initSelectors = Map[AnyComponent, ComponentMapping[_]]()
-	@volatile private[this] var selectors :Map[AnyComponent, ComponentMapping[_]] = _
-	private[this] var fastSelectors :Map[AnyComponent, ComponentMapping[_]] = _
+
+	protected def selectorFor[T](component :ComponentMapping[T]) :Selector[this.type, Owner, S, T] =
+		Selector[Owner, S, T](this, component)(component.extractor)
+
+	private[this] var initSelectors = Map[AnyComponent, Selector[this.type, Owner, S, _]]()
+	@volatile private[this] var selectors :Map[AnyComponent, Selector[this.type, Owner, S, _]] = _
+	private[this] var fastSelectors :Map[AnyComponent, Selector[this.type, Owner, S, _]] = _
 
 
 
@@ -523,15 +554,17 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 				initInsertable.initialize()
 				initAutoInsert.initialize()
 				initAutoUpdate.initialize()
-//				for (c <- components; if !isSymLink(c); sub <- c.subcomponents; if !isSymLink(sub))
-//					initSubcomponents += sub
 				initSubcomponents.initialize()
 
 				fastSelectors = initSelectors
 				selectors = fastSelectors
 				initSelectors = null
+
+				finalizeInitialization()
 			}
 		}
+
+	protected def finalizeInitialization() :Unit = ()
 
 
 
@@ -603,6 +636,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 	private[this] final val initComponents = new LateInitComponents
+	private[this] final val initSubcomponents = new LateInitComponents
 	private[this] final val initColumns = new LateInitComponents
 	private[this] final val initSelectable = new LateInitComponents
 	private[this] final val initQueryable = new LateInitComponents
@@ -610,7 +644,6 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 	private[this] final val initAutoUpdate = new LateInitComponents
 	private[this] final val initInsertable = new LateInitComponents
 	private[this] final val initAutoInsert = new LateInitComponents
-	private[this] final val initSubcomponents = new LateInitComponents
 
 	final override def components :Unique[Component[_]] = initComponents.items
 	final override def subcomponents :Unique[Component[_]] = initSubcomponents.items
@@ -637,6 +670,6 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 trait RowSubSchema[O <: AnyMapping, S] extends RowSchema[S] with SubMapping[O, S]
 
-
+trait RowRootSchema[S] extends RowSchema[S] with RootMapping[S]
 
 

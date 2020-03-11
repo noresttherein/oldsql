@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.model
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, PrimaryKey, Restraint, Restrictive}
 import net.noresttherein.oldsql.model.ComposedOf.{DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.True
-import net.noresttherein.oldsql.morsels.PropertyPath
+import net.noresttherein.oldsql.model.PropertyPath
 
 import scala.collection.immutable.Seq
 import scala.collection.breakOut
