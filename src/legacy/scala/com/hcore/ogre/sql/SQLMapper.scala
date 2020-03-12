@@ -51,7 +51,7 @@ trait SQLMapper[+S<:RowSource, +Y[X]] {
 //	protected[sql] def matchConversion[X, Z](f :AutoConversionFormula[S, Z, X]) :Y[X] //= matchComposite(f)
 //
 //
-//	protected[sql] def matchTuple[X](f :TupleFormula[S, X]) :Y[X] //= matchComposite(f)
+//	protected[sql] def matchTuple[X](f :SQLTuple[S, X]) :Y[X] //= matchComposite(f)
 //
 //	protected[sql] def matchHList[X<:HList](f :HListFormula[S, X]) :Y[X] //= matchTuple(f)
 //
@@ -68,7 +68,7 @@ trait SQLMapper[+S<:RowSource, +Y[X]] {
 //	protected[sql] def matchRows[X](f :SelectAsRows[S, X]) :Y[Seq[X]] //= matchConversion(f)
 //
 //
-//	protected[sql] def matchCondition(f :ConditionFormula[S]) :Y[Boolean] //= matchFormula(f)
+//	protected[sql] def matchCondition(f :SQLCondition[S]) :Y[Boolean] //= matchFormula(f)
 //
 //	protected[sql] def matchExists[X](f :ExistsFormula[S, X]) :Y[Boolean] //= matchCondition(f)
 //

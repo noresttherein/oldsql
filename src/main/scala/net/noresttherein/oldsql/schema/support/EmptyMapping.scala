@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.{Mapping, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.Selector
+import net.noresttherein.oldsql.schema.Mapping.ComponentSelector
 
 
 /**
@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.schema.Mapping.Selector
   */
 trait EmptyMapping[S] extends Mapping[S] {
 
-	override def apply[T](component :Component[T]) :Selector[this.type, Owner, S, T] =
+	override def apply[T](component :Component[T]) :Selector[T] =
 		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")
 
 	override def components :Unique[Component[_]] = Unique.empty

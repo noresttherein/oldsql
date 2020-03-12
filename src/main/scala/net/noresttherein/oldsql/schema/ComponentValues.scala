@@ -2,8 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, Selector, SingletonComponent, SingletonMapping, TypedMapping, TypedSingleton}
-import net.noresttherein.oldsql.schema.Mapping.ComponentSelector
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, ComponentSelector, SingletonComponent, SingletonMapping, TypedMapping, TypedSingleton}
+import net.noresttherein.oldsql.schema.Mapping.GeneralSelector
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
@@ -89,20 +89,20 @@ trait ComponentValues[M <: SingletonMapping] {
 	  * @param selector the selector for the required component of the associated mapping.
 	  * @throws NoSuchElementException if no value could be provided, be it preset, assembled or default.
 	  */
-	def apply[T](selector :ComponentSelector[M, T]) :T = \(selector).value(selector.lifted)
+	def apply[T](selector :GeneralSelector[M, T]) :T = \(selector).value(selector.lifted)
 
 	/** Return the value for the given component or `None` if it can't be obtained in any way (predefined, assembly or
 	  * default). Should be equivalent to component.optionally(this :\ component), rather than return a value directly
 	  * without inspection by the component.
 	  * @param selector the selector for the required component of the associated mapping.
 	  */
-	def get[T](selector :ComponentSelector[M, T]) :Option[T] = \(selector).getValue(selector.lifted)
+	def get[T](selector :GeneralSelector[M, T]) :Option[T] = \(selector).getValue(selector.lifted)
 
 	/** Return `ComponentValues` for the given component of the associated mapping. Returned object will delegate all
 	  * calls to this instance (or the parent instance of this mapping)
 	  * @param selector the selector for the required component of the associated mapping.
 	  */
-	def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type]
+	def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type]
 
 
 
@@ -173,7 +173,7 @@ trait ComponentValues[M <: SingletonMapping] {
 	  * @tparam X
 	  * @return
 	  */
-	def stick(selector :ComponentSelector[M, _]) :ComponentValues[M] =
+	def stick(selector :GeneralSelector[M, _]) :ComponentValues[M] =
 		\(selector).stickTo[M](selector.lifted) orElse this
 
 	/** A safer casting method which allows casting this instance, invariant regarding to the mapping type, to a higher
@@ -375,7 +375,7 @@ object ComponentValues {
 		override def result(root :M) :Option[M#Subject] =
 			values.result(alias(root.asInstanceOf[M#AnyComponent]).asInstanceOf[M])
 
-		override def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type] = {
+		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] = {
 			val vals = values \ selector
 			if (vals eq this) crosscast[selector.lifted.type]
 			else new AliasedComponentValues[selector.lifted.type](
@@ -409,15 +409,15 @@ object ComponentValues {
 					fallback.predefined(root)
 
 
-		override def apply[T](selector :ComponentSelector[M, T]) :T =
+		override def apply[T](selector :GeneralSelector[M, T]) :T =
 			overrides.get(selector) orElse fallback.get(selector) getOrElse {
 				throw new NoSuchElementException("value for component " + selector.lifted + " in " + this)
 			}
 
-		override def get[T](selector :ComponentSelector[M, T]) :Option[T] =
+		override def get[T](selector :GeneralSelector[M, T]) :Option[T] =
 			overrides.get(selector) orElse fallback.get(selector)
 
-		override def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type] =
+		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] =
 			new FallbackComponentValues[selector.lifted.type](overrides \ selector, fallback \ selector)
 
 
@@ -496,11 +496,11 @@ object ComponentValues {
 		final override def result(root :M) = Some(value)
 
 
-		override def apply[T](selector :ComponentSelector[M, T]) :T = selector(value)
+		override def apply[T](selector :GeneralSelector[M, T]) :T = selector(value)
 
-		override def get[T](selector :ComponentSelector[M, T]) :Option[T] = selector.get(value)
+		override def get[T](selector :GeneralSelector[M, T]) :Option[T] = selector.get(value)
 
-		override def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type] =
+		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] =
 			selector.get(value) match {
 				case Some(v) => Predefined[selector.lifted.type](v)
 				case _ => Empty[selector.lifted.type]
@@ -523,7 +523,7 @@ object ComponentValues {
 	{
 		lazy val value :M#Subject = expr
 
-		override def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type] =
+		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] =
 			selector.surepick match {
 				case Some(pick) => new LazyPredefinedMappingValue[selector.lifted.type](pick(value))
 				case _ =>
@@ -544,13 +544,13 @@ object ComponentValues {
 		override private[schema] def predefined(root: M): Option[M#Subject] = value
 
 
-		override def apply[T](selector :ComponentSelector[M, T]) :T = selector(value getOrElse {
+		override def apply[T](selector :GeneralSelector[M, T]) :T = selector(value getOrElse {
 			throw new NoSuchElementException("value for component " + selector.lifted + " in Empty")
 		})
 
-		override def get[T](selector :ComponentSelector[M, T]) :Option[T] = value flatMap selector.pick
+		override def get[T](selector :GeneralSelector[M, T]) :Option[T] = value flatMap selector.pick
 
-		override def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type] = {
+		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] = {
 			val pick = selector.pick
 			new LazyMappingValue[selector.lifted.type](value.flatMap(pick))
 		}
@@ -572,7 +572,7 @@ object ComponentValues {
 			preset(root).flatMap(_.result(root))
 
 
-		override def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type] =
+		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] =
 			preset[selector.lifted.type](selector.lifted) getOrElse crosscast[selector.lifted.type]
 
 		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
@@ -603,13 +603,13 @@ object ComponentValues {
 		override def result(root: M): Option[M#Subject] = root.assemble(crosscast[root.type])
 
 
-		override def apply[T](selector :ComponentSelector[M, T]) :T = defined(selector) getOrElse {
+		override def apply[T](selector :GeneralSelector[M, T]) :T = defined(selector) getOrElse {
 			throw new NoSuchElementException("value for component " + selector.lifted + " in " + this)
 		}
 
-		override def get[T](selector :ComponentSelector[M, T]) :Option[T] = defined(selector)
+		override def get[T](selector :GeneralSelector[M, T]) :Option[T] = defined(selector)
 
-		override def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type] =
+		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] =
 			defined(selector) match {
 				case Some(t) => Predefined[selector.lifted.type](t)
 				case _ => crosscast[selector.lifted.type]
@@ -618,7 +618,7 @@ object ComponentValues {
 		override def identical[C <: CompatibleMapping[M] with Singleton](mapping :C) :ComponentValues[C] =
 			crosscast[C]
 
-		protected def defined[T](selector :ComponentSelector[M, T]) :Option[T]
+		protected def defined[T](selector :GeneralSelector[M, T]) :Option[T]
 
 	}
 
@@ -632,7 +632,7 @@ object ComponentValues {
 	                                         (value :M#Subject, components :Unique[AnyComponent[M#Owner]])
 		extends SelectedComponentValues[M]
 	{
-		override protected def defined[T](selector: ComponentSelector[M, T]): Option[T] =
+		override protected def defined[T](selector: GeneralSelector[M, T]): Option[T] =
 			if (components.contains(selector.lifted)) selector.get(value)
 			else None
 
@@ -643,7 +643,7 @@ object ComponentValues {
 	private class CustomComponentValues[M <: SingletonMapping](vals :AnyComponent[M#Owner] => Option[_])
 		extends SelectedComponentValues[M]
 	{
-		override protected def defined[T](selector: ComponentSelector[M, T]): Option[T] =
+		override protected def defined[T](selector: GeneralSelector[M, T]): Option[T] =
 			vals(selector.lifted).crosstyped[T]
 
 		override def toString :String = "Custom(" + vals + ")"
@@ -663,9 +663,9 @@ object ComponentValues {
 		override def result(root: M): Option[M#Subject] = None
 
 
-		override def get[T](selector :ComponentSelector[M, T]) :Option[T] = None
+		override def get[T](selector :GeneralSelector[M, T]) :Option[T] = None
 
-		override def \[T](selector :ComponentSelector[M, T]) :ComponentValues[selector.lifted.type] =
+		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] =
 			this.crosscast[selector.lifted.type]
 
 

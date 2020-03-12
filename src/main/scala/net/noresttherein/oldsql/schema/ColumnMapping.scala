@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
-import net.noresttherein.oldsql.schema.Mapping.{Selector, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelector, TypedMapping}
 import net.noresttherein.oldsql.slang._
 
 import scala.util.Try
@@ -25,12 +25,12 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 //	final def insertable :Seq[Component[S]] = Seq(this)
 //	final def generated :Seq[Component[S]] = Seq(this)
 
-	final def selectable :Unique[Component[S]] = selfUnless(NoSelect)
-	final def queryable :Unique[Component[S]] = selfUnless(NoQuery)
-	final def updatable :Unique[Component[S]] = selfUnless(NoUpdate)
-	final def autoUpdated :Unique[Component[S]] = if (AutoUpdate.enabled(buffs)) Unique(this) else Unique.empty
- 	final def insertable :Unique[Component[S]] = selfUnless(NoInsert)
-	final def autoInserted :Unique[Component[S]] = if (AutoInsert.enabled(buffs)) Unique(this) else Unique.empty
+	final override def selectable :Unique[Component[S]] = selfUnless(NoSelect)
+	final override def queryable :Unique[Component[S]] = selfUnless(NoQuery)
+	final override def updatable :Unique[Component[S]] = selfUnless(NoUpdate)
+	final override def autoUpdated :Unique[Component[S]] = if (AutoUpdate.enabled(buffs)) Unique(this) else Unique.empty
+ 	final override def insertable :Unique[Component[S]] = selfUnless(NoInsert)
+	final override def autoInserted :Unique[Component[S]] = if (AutoInsert.enabled(buffs)) Unique(this) else Unique.empty
 
 	protected def selfUnless(buff :BuffType) :Unique[Component[S]] =
 		if (buff.enabled(buffs)) Unique.empty else Unique(this)
@@ -99,9 +99,9 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 
 	override def lift[T](component :Component[T]) :Component[T] = component
 
-	override def apply[T](component :Component[T]) :Selector[this.type, O, S, T] =
+	override def apply[T](component :Component[T]) :Selector[T] =
 		if (component == this)
-			Selector.ident[this.type, O, S](this).asInstanceOf[Selector[this.type, O, S, T]]
+			ComponentSelector.ident[this.type, O, S](this).asInstanceOf[Selector[T]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $component is not a subcomponent of column $column. The only subcomponent of a column is the column itself."
@@ -160,7 +160,7 @@ object ColumnMapping {
 
 	def adapt[O <: AnyMapping, T](mapping :TypedMapping[T]) :Option[ColumnMapping[O, T]] = mapping match {
 		case c :ColumnMapping[_, _] => Some(c.asInstanceOf[ColumnMapping[O, T]])
-		case _ => Try(new ColumnView[O, T](mapping.asComponent)).toOption
+		case _ => Try(new ColumnView[O, T](mapping)).toOption
 	}
 
 

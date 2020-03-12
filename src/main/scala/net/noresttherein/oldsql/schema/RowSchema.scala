@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor
 import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, NoInsert, NoQuery, NoSelect, NoUpdate, Unmapped}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm, Selector}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelector, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.slang._
 
@@ -59,7 +59,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 		protected[schema] def extractor :Extractor[S, T]
 
-		def selector :Selector[composite.type, Owner, S, T] = {
+		def selector :ComponentSelector[composite.type, Owner, S, T] = {
 			if (fastSelector == null) {
 				val s = safeSelector
 				if (s != null) fastSelector = s
@@ -69,8 +69,8 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 		}
 
 		@volatile
-		private[this] var safeSelector :Selector[composite.type, Owner, S, T] = _
-		private[this] var fastSelector :Selector[composite.type, Owner, S, T] = _
+		private[this] var safeSelector :ComponentSelector[composite.type, Owner, S, T] = _
+		private[this] var fastSelector :ComponentSelector[composite.type, Owner, S, T] = _
 
 		private[this] var initialized = false
 
@@ -155,7 +155,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 	/** A proxy class for non-direct subcomponents of the enclosing `RowSchema` which incorporates any column prefix
 	  * and buffs defined in it and any other enclosing components into the adapted component.
-	  * It serves at the same time as its own `Selector` and the lifted 'effective' version of the component.
+	  * It serves at the same time as its own `ComponentSelector` and the lifted 'effective' version of the component.
 	  */
 	private class LiftedComponent[T](original :Component[T], val extractor :Extractor[S, T],
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
@@ -432,7 +432,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 			apply(component).lifted
 	}
 
-	override def apply[T](component :Component[T]) :Selector[this.type, Owner, S, T] = component match {
+	override def apply[T](component :Component[T]) :Selector[T] = component match {
 		case lifted :RowSchema[_]#ComponentMapping[T] if lifted belongsTo this =>
 			lifted.asInstanceOf[ComponentMapping[T]].selector
 		case _  =>
@@ -447,17 +447,17 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 			}
 			fastSelectors.getOrElse(component, throw new IllegalArgumentException(
 				s"Component $component is not a part of mapping $this."
-			)).asInstanceOf[Selector[this.type, Owner, S, T]]
+			)).asInstanceOf[Selector[T]]
 	}
 
 
 
-	protected def selectorFor[T](component :ComponentMapping[T]) :Selector[this.type, Owner, S, T] =
-		Selector[Owner, S, T](this, component)(component.extractor)
+	protected def selectorFor[T](component :ComponentMapping[T]) :ComponentSelector[this.type, Owner, S, T] =
+		ComponentSelector[Owner, S, T](this, component)(component.extractor)
 
-	private[this] var initSelectors = Map[AnyComponent, Selector[this.type, Owner, S, _]]()
-	@volatile private[this] var selectors :Map[AnyComponent, Selector[this.type, Owner, S, _]] = _
-	private[this] var fastSelectors :Map[AnyComponent, Selector[this.type, Owner, S, _]] = _
+	private[this] var initSelectors = Map[AnyComponent, ComponentSelector[this.type, Owner, S, _]]()
+	@volatile private[this] var selectors :Map[AnyComponent, ComponentSelector[this.type, Owner, S, _]] = _
+	private[this] var fastSelectors :Map[AnyComponent, ComponentSelector[this.type, Owner, S, _]] = _
 
 
 

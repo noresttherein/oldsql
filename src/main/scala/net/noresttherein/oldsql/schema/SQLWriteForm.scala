@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{MappedSQLWriteForm, Tuple2WriteForm}
 import net.noresttherein.oldsql.slang._
 
-
+import scala.collection.immutable.Seq
 
 
 
@@ -138,6 +138,13 @@ object SQLWriteForm {
 
 
 
+	def Lazy[T](form: => SQLWriteForm[T]) :SQLWriteForm[T] =
+		new LazyWriteForm[T] {
+			override protected[this] var init = () => form
+		}
+
+
+
 	def chain[T](forms :Seq[SQLWriteForm[T]]) :SQLWriteForm[T] = forms match {
 		case Seq() => empty
 		case Seq(form) => form
@@ -158,7 +165,7 @@ object SQLWriteForm {
 	implicit def OptionWriteForm[T :SQLWriteForm] :SQLWriteForm[Option[T]] =
 		SQLWriteForm[T].flatUnmap(identity[Option[T]])
 
-	implicit def SomeTypeForm[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
+	implicit def SomeWriteForm[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
 		SQLWriteForm[T].unmap(_.get)
 
 	implicit def ChainWriteForm[T <: Chain, H](implicit t :SQLWriteForm[T], h :SQLWriteForm[H]) :SQLWriteForm[T ~ H] =
@@ -243,11 +250,9 @@ object SQLWriteForm {
 
 
 
-	trait MappedSQLWriteForm[-T, S]
-		extends SQLWriteForm[T]
-	{
+	trait MappedSQLWriteForm[-T, S] extends SQLWriteForm[T] {
 		val source :SQLWriteForm[S]
-		val unmap :T=>Option[S]
+		val unmap :T => Option[S]
 
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = unmap(value) match {
 			case Some(s) => source.set(position)(statement, s)
@@ -307,7 +312,11 @@ object SQLWriteForm {
 	}
 
 
-	trait ProxySQLWriteForm[-T] extends SQLWriteForm[T] {
+
+
+
+
+	trait ProxyWriteForm[-T] extends SQLWriteForm[T] {
 		protected def form :SQLWriteForm[T]
 
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
@@ -317,12 +326,10 @@ object SQLWriteForm {
 			form.setNull(position)(statement)
 
 		override def literal(value: T): String = form.literal(value)
-
 		override def inlineLiteral(value: T): String = form.inlineLiteral(value)
-
 		override def nullLiteral: String = form.nullLiteral
-
 		override def inlineNullLiteral: String = form.inlineNullLiteral
+
 
 
 		override def writtenColumns: Int = form.writtenColumns
@@ -330,6 +337,56 @@ object SQLWriteForm {
 		override def toString :String = "~"+form
 	}
 
+
+
+	private[schema] trait LazyWriteForm[-T] extends ProxyWriteForm[T] {
+		protected[this] var init: () => SQLWriteForm[T]
+		@volatile
+		protected[this] var initialized :SQLWriteForm[T] = _
+		protected[this] var fastAccess :SQLWriteForm[T] = _
+
+		override def form :SQLWriteForm[T] = {
+			if (fastAccess == null) {
+				val f = initialized
+				val cons = init
+				if (f != null)
+					fastAccess = f
+				else if (cons == null)
+					fastAccess = initialized
+				else {
+					fastAccess = cons()
+					initialized = fastAccess
+					init = null
+				}
+			}
+			fastAccess
+		}
+
+		override def unmap[X](fun :X => T) :SQLWriteForm[X] =
+			if (fastAccess == null && initialized == null) Lazy(form.unmap(fun))
+			else form.unmap(fun)
+
+		override def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] =
+			if (fastAccess == null && initialized == null) Lazy(form.flatUnmap(fun))
+			else form.flatUnmap(fun)
+
+		override def asOpt :SQLWriteForm[Option[T]] =
+			if (fastAccess == null && initialized == null) Lazy(form.asOpt)
+			else form.asOpt
+
+		override def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] =
+			if (fastAccess == null && initialized == null) Lazy(form * other)
+			else form * other
+
+		override def &&[O <: T](read :SQLReadForm[O]) :SQLForm[O] =
+			if (fastAccess == null && initialized == null) super.&&(read)
+			else form && read
+
+		override def toString :String =
+			if (fastAccess == null && initialized == null) "Lazy>"
+			else form.toString
+
+	}
 
 
 
@@ -506,64 +563,6 @@ object SQLWriteForm {
 	}
 
 
-
-
-/*
-	trait AbstractHListWriteForm[-T >:Null <:HList] extends SQLWriteForm[T] { self =>
-		protected[sql] def elementsLiteral(sb :StringBuilder, value :T) :StringBuilder
-
-		def ::[H](form :SQLWriteForm[H]) :HListWriteForm[H, T] = new HListWriteFormImpl(form, this)
-	}
-
-
-
-	trait HListWriteForm[-H, -T>:Null <:HList] extends AbstractHListWriteForm[H::T] {
-		val head :SQLWriteForm[H]
-		val tail :AbstractHListWriteForm[T]
-
-		override def apply(params: PositionedParameters, value: H::T): Unit = {
-			head(params, value.head)
-			tail(params, value.tail)
-		}
-
-		override def literal(value: ::[H, T]): String =
-			if (value==null)
-				(tail.elementsLiteral(new StringBuilder("(")++= head.nullLiteral, null) += ')').toString
-			else
-				(tail.elementsLiteral(new StringBuilder("(") ++= head.literal(value.head), value.tail) += ')').toString
-
-		override def nullLiteral: String = literal(null)
-
-
-		override def inlineLiteral(value: ::[H, T]): String =
-			if (value==null)
-				tail.elementsLiteral(new StringBuilder(head.nullLiteral), null).toString
-			else
-				tail.elementsLiteral(new StringBuilder(head.literal(value.head)), value.tail).toString
-
-		override def inlineNullLiteral: String = inlineLiteral(null)
-
-		override protected[sql] def elementsLiteral(sb: StringBuilder, value: H::T): StringBuilder =
-			if (value==null)
-				tail.elementsLiteral(sb ++= ", " ++= head.nullLiteral, null)
-			else tail.elementsLiteral(sb ++= ", " ++= head.literal(value.head), value.tail)
-
-		override def writtenColumns: Int = head.writtenColumns + tail.writtenColumns
-
-		override def nullParam(params: PositionedParameters): Unit = {
-			head.nullParam(params)
-			tail.nullParam(params)
-		}
-
-		override def toString = s"v$head::" + tail.toString
-	}
-
-
-	case class HListWriteFormImpl[-H, -T >:Null <:HList](head :SQLWriteForm[H], tail :AbstractHListWriteForm[T]) extends HListWriteForm[H, T] {
-		override val writtenColumns: Int = head.writtenColumns + tail.writtenColumns
-		override def toString = super.toString
-	}
-*/
 
 }
 

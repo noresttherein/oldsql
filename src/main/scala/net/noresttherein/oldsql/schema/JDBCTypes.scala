@@ -18,6 +18,7 @@ trait SQLTypes {
 }
 
 
+
 trait JDBCTypes extends SQLTypes {
 
 	def apply[T :SQLForm] :SQLForm[T] = implicitly[SQLForm[T]]
@@ -44,15 +45,18 @@ trait JDBCTypes extends SQLTypes {
 
 
 
-	implicit def OptionType[T :SQLForm] :SQLForm[Option[T]] = SQLForm[T].asOpt(t=>Some(Option(t)), None)(o => o)
+/*
+	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] =
+		SQLForm[T].asOpt(t => Some(Option(t)), None)(o => o)
 
-	implicit def OptionColumnType[T :ColumnForm] :ColumnForm[Option[T]] =
-		implicitly[ColumnForm[T]].asOpt(t=>Some(Option(t)), None)(o => o)
+	implicit def OptionColumnForm[T :ColumnForm] :ColumnForm[Option[T]] =
+		implicitly[ColumnForm[T]].asOpt(t => Some(Option(t)), None)(o => o)
 
-	implicit def SomeType[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].as(Some(_))(_.get)
+	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].as(Some(_))(_.get)
 
-	implicit def SomeColumnType[T :ColumnForm] :ColumnForm[Some[T]] =
+	implicit def SomeColumnForm[T :ColumnForm] :ColumnForm[Some[T]] =
 		implicitly[ColumnForm[T]].as(Some(_))(_.get)
+*/
 
 
 

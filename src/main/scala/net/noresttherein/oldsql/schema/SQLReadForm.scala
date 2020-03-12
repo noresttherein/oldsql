@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackColumnReadForm, FallbackReadForm, MappedSQLReadForm, Tuple2ReadForm}
 import net.noresttherein.oldsql.slang._
 
-
+import scala.collection.immutable.Seq
 
 
 
@@ -70,9 +70,12 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 	def apply(column :String)(res :ResultSet) :T = apply(res.findColumn(column))(res)
 
-	override def opt(position :Int)(res :ResultSet) :Option[T] = Option(apply(position)(res)).filterNot(_ => res.wasNull)
+	override def opt(position :Int)(res :ResultSet) :Option[T] = {
+		val t = apply(position)(res)
+		if (res.wasNull) None else Option(t)
+	}
 
-	def opt(column :String)(res :ResultSet) :Option[T] = Option(apply(column)(res)).filterNot(_ => res.wasNull)
+	def opt(column :String)(res :ResultSet) :Option[T] = opt(res.findColumn(column))(res)
 
 
 	override def nullMap[X :NullValue](fun :T => X) :ColumnReadForm[X] =
@@ -135,6 +138,7 @@ object SQLReadForm {
 
 	def eval[T](value: =>T) :SQLReadForm[T] = new EvalReadForm(Some(value))(NullValue(value))
 
+	def Lazy[T](form : =>SQLReadForm[T]) :SQLReadForm[T] = new LazyReadForm(() => form)
 
 
 	def seq[T](forms :Seq[SQLReadForm[T]]) :SQLReadForm[Seq[T]] = new SeqReadFormImpl[T](forms)
@@ -226,7 +230,7 @@ object SQLReadForm {
 
 
 
-	private[schema] class FallbackReadForm[T](first :SQLReadForm[T], second :SQLReadForm[T]) extends SQLReadForm[T] {
+	private[schema] class FallbackReadForm[+T](first :SQLReadForm[T], second :SQLReadForm[T]) extends SQLReadForm[T] {
 		override def opt(position :Int)(res :ResultSet) :Option[T] =
 			first.opt(position)(res) orElse second.opt(position)(res)
 
@@ -245,7 +249,7 @@ object SQLReadForm {
 
 
 
-	private[schema] class FallbackColumnReadForm[T](first :ColumnReadForm[T], second :ColumnReadForm[T])
+	private[schema] class FallbackColumnReadForm[+T](first :ColumnReadForm[T], second :ColumnReadForm[T])
 		extends FallbackReadForm[T](first, second) with ColumnReadForm[T]
 	{
 		override val sqlType :Int = first.sqlType
@@ -263,6 +267,111 @@ object SQLReadForm {
 			else new FallbackColumnReadForm(first, second orElse fallback)
 	}
 
+
+
+
+
+
+	trait ProxyReadForm[+T] extends SQLReadForm[T] {
+		protected def form :SQLReadForm[T]
+
+		override def opt(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
+		override def apply(position :Int)(res :ResultSet) :T = form(position)(res)
+
+		override def nullMap[X :NullValue](fun :T => X) :SQLReadForm[X] = form.nullMap(fun)
+		override def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] = form.map(fun, nullValue)
+		override def map[X](fun :T => X) :SQLReadForm[X] = form.map(fun)
+		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] = form.flatMap(fun)
+		override def flatMap[X](fun :T => Option[X], nullValue :X) :SQLReadForm[X] = form.flatMap(fun, nullValue)
+		override def asOpt :SQLReadForm[Option[T]] = form.asOpt
+
+
+		override def nullValue :T = form.nullValue
+		override def readColumns :Int = form.readColumns
+
+		def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+		override def equals(that :Any) :Boolean = that match {
+			case ref :AnyRef if ref eq this => true
+			case proxy :ProxyReadForm[_] if proxy.canEqual(this) && canEqual(proxy) => form == proxy.form
+			case _ => false
+		}
+
+		override def hashCode :Int = form.hashCode
+
+		override def toString :String = "~" + form
+	}
+
+
+
+	private[schema] class LazyReadForm[+T](private[this] var init :() => SQLReadForm[T]) extends ProxyReadForm[T] {
+		@volatile
+		private[this] var initialized :SQLReadForm[T] = _
+		private[this] var fastAccess :SQLReadForm[T] = _
+
+		def isInitialized :Boolean = fastAccess != null || initialized != null
+
+		override protected def form :SQLReadForm[T] = {
+			if (fastAccess == null) {
+				val f = initialized
+				val cons = init
+				if (f != null)
+					fastAccess = f
+				else if (cons == null)
+					fastAccess = initialized
+                else {
+					fastAccess = cons()
+					initialized = fastAccess
+					init = null
+				}
+			}
+			fastAccess
+		}
+
+		override def nullMap[X :NullValue](fun :T => X) :SQLReadForm[X] =
+			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.nullMap(fun))
+			else form.nullMap(fun)
+
+		override def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] =
+			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.map(fun, nullValue))
+			else form.map(fun, nullValue)
+
+		override def map[X](fun :T => X) :SQLReadForm[X] =
+			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.map(fun))
+			else form.map(fun)
+
+		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] =
+			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.flatMap(fun))
+			else form.flatMap(fun)
+
+		override def flatMap[X](fun :T => Option[X], nullValue :X) :SQLReadForm[X] =
+			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.flatMap(fun, nullValue))
+			else form.flatMap(fun, nullValue)
+
+		override def asOpt :SQLReadForm[Option[T]] =
+			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.asOpt)
+			else form.asOpt
+
+		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] =
+			if  (fastAccess == null && initialized == null) new LazyReadForm(() => super.orElse(fallback))
+			else form orElse fallback
+
+		override def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] =
+			if (fastAccess == null && initialized == null) new LazyReadForm(() => super.*(other))
+			else form * other
+
+		override def &&[O >: T](write :SQLWriteForm[O]) :SQLForm[O] =
+			if (fastAccess == null && initialized == null) super.&&(write)
+			else form && write
+
+
+
+		override def canEqual(that :Any) :Boolean = this eq that.asInstanceOf[AnyRef]
+
+		override def toString :String =
+			if (fastAccess == null && initialized == null) "<Lazy"
+			else form.toString
+	}
 
 
 

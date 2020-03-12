@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.model.PropertyPath.{==>, PropertyReflectionException}
-import net.noresttherein.oldsql.schema.Mapping.Selector
+import net.noresttherein.oldsql.schema.Mapping.ComponentSelector
 import net.noresttherein.oldsql.slang._
 
 import scala.reflect.runtime.universe.TypeTag
@@ -18,7 +18,7 @@ trait ReflectedSchema[S] extends RowSchema[S] { composite =>
 	protected implicit val subjectType :TypeTag[S]
 
 	class PropertySelector[T](override val lifted :ComponentMapping[T])
-		extends Selector[composite.type, composite.Owner, S, T]
+		extends ComponentSelector[composite.type, composite.Owner, S, T]
 	{
 		override val extractor = lifted.extractor
 		override val pick = extractor.optional

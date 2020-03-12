@@ -44,7 +44,10 @@ trait Unique[+T] extends collection.immutable.Iterable[T] with IterableLike[T, U
 
 	def :+[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That
 
+	override def stringPrefix = "Unique"
 }
+
+
 
 
 
@@ -68,6 +71,10 @@ object Unique extends TraversableFactory[Unique] {
 
 
 
+	def Lazy[T](init: => Unique[T]) :Unique[T] = new LazyUnique[T](() => init)
+
+
+
 	implicit def canBuildFrom[T] :CanBuildFrom[Unique[_], T, Unique[T]] =
 		ReusableCBF.asInstanceOf[CanBuildFrom[Unique[_], T, Unique[T]]]
 
@@ -82,8 +89,58 @@ object Unique extends TraversableFactory[Unique] {
 		  * If aSeq's dynamic type was already an Unique, it returns itself cast to Unique.
 		  * Of course, if aSeq static type already was an Unique, it is a simple static noOp call.
 		  */
-		final def unique :Unique[T] = apply(elems)
+		def unique :Unique[T] = apply(elems)
+
+		def toUniqueSeq :Unique[T] = apply(elems)
 	}
+
+
+
+
+
+
+	class LazyUnique[T](private[this] var initialize: () => Unique[T]) extends Unique[T] {
+		@volatile private[this] var initialized :Unique[T] = _
+		private[this] var fastAccess :Unique[T] = _
+
+		protected def items :Unique[T] = {
+			if (fastAccess == null) {
+				var init = initialized
+				if (init != null) fastAccess = init
+				else synchronized {
+					init = initialized
+					if (init != null) fastAccess = init
+					else {
+						fastAccess = initialize()
+						initialized = fastAccess
+						initialize = null
+					}
+				}
+			}
+			fastAccess
+		}
+
+		override def apply(idx :Int) :T = items(idx)
+
+		override def indexOf[U >: T](elem :U) :Int = items.indexOf(elem)
+
+		override def +:[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That =
+			elem +: items
+
+		override def :+[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That =
+			items :+ elem
+
+		override def ++[B >: T, That](that :GenTraversableOnce[B])(implicit bf :CanBuildFrom[Unique[T], B, That]) :That =
+			items ++ that
+
+
+		override def foreach[U](f :T => U) :Unit = items foreach f
+
+		override def iterator :Iterator[T] = items.iterator
+	}
+
+
+
 
 
 

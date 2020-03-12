@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.morsels
 
-import net.noresttherein.oldsql.morsels.Extractor.{IdentityExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{IdentityExtractor, OptionExtractor, RequisiteExtractor}
 
 
 /** A wrapper over an option-returning function `X=>Option[Y]`. It serves three main purposes:
@@ -65,6 +65,12 @@ object Extractor {
 
 
 
+	def fromOpt[X] :Extractor[Option[X], X] = opt.asInstanceOf[Extractor[Option[X], X]]
+
+	private[this] val opt = new OptionExtractor[Any]
+
+
+
 	def unapply[X, Y](extractor :Extractor[X, Y]) :Some[X => Option[Y]] = Some(extractor.optional)
 
 
@@ -90,11 +96,11 @@ object Extractor {
 		override def andThen[Z](extractor :Extractor[Y, Z]) :Extractor[X, Z] = extractor match {
 			case _ :IdentityExtractor[_] => extractor compose this
 			case sure :RequisiteExtractor[Y, Z] =>
-				val first = this.extractor; val second = sure.extractor
-				Extractor.requisite(first andThen second)
+				Extractor.requisite(this.extractor andThen sure.extractor)
+			case _ :OptionExtractor[_] =>
+				Extractor(this.extractor.asInstanceOf[X => Option[Nothing]]).asInstanceOf[Extractor[X, Z]]
 			case _ =>
-				val first = this.extractor; val second = extractor.optional
-				Extractor(first andThen second)
+				Extractor(this.extractor andThen extractor.optional)
 		}
 
 		def andThen[Z](extractor :RequisiteExtractor[Y, Z]) :RequisiteExtractor[X, Z] = extractor match {
@@ -128,5 +134,30 @@ object Extractor {
 		override def andThen[Z](extractor :RequisiteExtractor[X, Z]) :RequisiteExtractor[X, Z] = extractor
 		override def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, X] = extractor
 	}
+
+
+
+
+
+	private class OptionExtractor[X] extends Extractor[Option[X], X] {
+		override def optional :Option[X] => Option[X] = identity[Option[X]]
+		override def requisite :Option[Option[X] => X] = None
+
+		override def apply(x :Option[X]) :Option[X] = x
+
+		override def andThen[Z](extractor :Extractor[X, Z]) :Extractor[Option[X], Z] = extractor match {
+			case _ :IdentityExtractor[_] => extractor compose this
+			case req :RequisiteExtractor[X, Z] =>
+				val f = req.extractor
+				Extractor { opt :Option[X] => opt.map(f) }
+			case _ =>
+				val f = extractor.optional
+				Extractor { opt :Option[X] => opt.flatMap(f) }
+		}
+
+	}
+
+
 }
+
 

@@ -9,6 +9,9 @@ import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, Chai
 import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, ChainWriteForm, EmptyWriteForm, MappedSQLWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 
+import scala.collection.immutable.Seq
+
+
 
 trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	def apply(position :Int)(res :ResultSet) :T
@@ -33,7 +36,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	def asOpt[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :SQLForm[X] =
 		MappedSQLForm[X, T](map, unmap, nullValue)(this)
 
-	override def asOpt :SQLForm[Option[T]] = SQLForm.OptionType(this)
+	override def asOpt :SQLForm[Option[T]] = SQLForm.OptionForm(this)
 
 
 	def *[O](other :SQLForm[O]) :SQLForm[(T, O)] = new Tuple2Form()(this, other)
@@ -88,6 +91,10 @@ trait RecordForm[T] extends SQLForm[T]
 
 object SQLForm extends JDBCTypes {
 
+	@inline def column[T](implicit form :ColumnForm[T]) :ColumnForm[T] = form
+
+
+
 	def combine[T](read :SQLReadForm[T], write :SQLWriteForm[T]) :SQLForm[T] =
 		new CombinedForm[T](read, write)
 
@@ -104,6 +111,18 @@ object SQLForm extends JDBCTypes {
 
 
 	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
+
+	implicit def OptionColumnForm[T :ColumnForm] :ColumnForm[Option[T]] =
+		new OptionForm[T] with ColumnForm[Option[T]] {
+			override val sqlType = implicitly[ColumnForm[T]].sqlType
+		}
+
+	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].as(Some(_))(_.get)
+
+	implicit def SomeColumnForm[T :ColumnForm] :ColumnForm[Some[T]] =
+		column[T].as(Some(_))(_.get)
+
+
 	implicit def Tuple2Form[T1 :SQLForm, T2 :SQLForm] :SQLForm[(T1, T2)] = new Tuple2Form[T1, T2]
 
 	implicit def ChainForm[T <: Chain, H](implicit t :SQLForm[T], h :SQLForm[H]) :SQLForm[T ~ H] =
@@ -244,17 +263,17 @@ object SQLForm extends JDBCTypes {
 
 	object MappedSQLForm {
 
-		def apply[T, S :SQLForm](map :S=>Option[T], unmap :T=>Option[S], nullValue :T) :MappedSQLForm[T, S] = SQLForm[S] match {
+		def apply[T, S :SQLForm](map :S => Option[T], unmap :T => Option[S], nullValue :T) :MappedSQLForm[T, S] = SQLForm[S] match {
 			case t :ColumnForm[_] =>
 				column(map, unmap, nullValue)(t.asInstanceOf[ColumnForm[S]])
-			case t :RecordForm[_] =>
+			case _ :RecordForm[_] =>
 				new MappedSQLForm[T, S](map, unmap, nullValue) with RecordForm[T]
 			case _ =>
 				new MappedSQLForm[T, S](map, unmap, nullValue)
 
 		}
 
-		def column[T, S :ColumnForm](map :S=>Option[T], unmap :T=>Option[S], nullValue :T) :MappedColumnForm[T, S] =
+		def column[T, S :ColumnForm](map :S => Option[T], unmap :T => Option[S], nullValue :T) :MappedColumnForm[T, S] =
 			new MappedColumnForm(map, unmap, nullValue)
 
 	}
