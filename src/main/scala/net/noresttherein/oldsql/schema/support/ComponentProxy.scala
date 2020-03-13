@@ -9,6 +9,8 @@ import net.noresttherein.oldsql.schema.{AnyMapping, Buff, ComponentValues, Mappi
 import scala.collection.mutable
 
 
+
+
 /**
   * @author Marcin Mościcki
   */
@@ -43,8 +45,8 @@ trait ComponentProxy[O, S] extends SubMapping[O, S] {
 object ComponentProxy {
 
 
-	trait ShallowProxy[O, S] extends ComponentProxy[O, S] {
-		protected override val adaptee :NarrowedMapping[O, S]
+	trait ShallowProxy[O, S] extends ComponentProxy[O, S] with MappingAdapter[Component[O, S], O, S, S] {
+		protected override val adaptee :Component[S]
 
 		override def apply[T](component :Component[T]) :Selector[T] =
 			(if (component eq adaptee)
@@ -57,18 +59,10 @@ object ComponentProxy {
 			if (component eq adaptee) component
 			else adaptee.lift(component)
 
-		override def components :Unique[Component[_]] = adaptee.components
-		override def subcomponents :Unique[Component[_]] = adaptee.subcomponents
-		override def columns :Unique[Component[_]] = adaptee.columns
 
-		override def selectable :Unique[Component[_]] = adaptee.selectable
-		override def queryable :Unique[Component[_]] = adaptee.queryable
-		override def updatable :Unique[Component[_]] = adaptee.updatable
-		override def autoUpdated :Unique[Component[_]] = adaptee.autoUpdated
-		override def insertable :Unique[Component[_]] = adaptee.insertable
-		override def autoInserted :Unique[Component[_]] = adaptee.autoInserted
-
-		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = adaptee.selectForm(components)
+		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+			if (components.contains(adaptee)) adaptee.selectForm(selectable)
+			else adaptee.selectForm(components)
 
 		override def selectForm :SQLReadForm[S] = adaptee.selectForm
 		override def queryForm :SQLWriteForm[S] = adaptee.queryForm
@@ -80,7 +74,7 @@ object ComponentProxy {
 
 
 
-		override def assemble(values :Values) :Option[S] = adaptee.optionally(values.asInstanceOf[adaptee.Values])
+		override def assemble(values :Values) :Option[S] = adaptee.optionally(values.identical[adaptee.type](adaptee))
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ShallowProxy[_, _]]

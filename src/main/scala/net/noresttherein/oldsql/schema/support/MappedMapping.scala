@@ -1,109 +1,139 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.schema.{AnyMapping, Mapping, SQLReadForm, SubMapping}
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
-
-
-//class MappedMapping[T, S, M<:Mapping[S]](val adaptee :M, val toResultType: S=>T, val fromResultType: T=>S)
-//	extends DedicatedMappedMapping[T, S, M]
+import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.schema.{AnyMapping, Buff, Mapping, SQLReadForm, SQLWriteForm, SubMapping}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector, TypedMapping}
 
 
 
-object MappedMapping { //todo:
-	def apply[M <: TypedMapping[S], S, T](mapping :M, mapped :S=>T, unmapped :T=>S) :M MappedAs T = ???
-//		new GenericMappedMapping[T, S, M] {
-//			override protected val toResultType = mapped
-//			override protected val fromResultType = unmapped
-//			override val adaptee: M = mapping
-//		}
+trait MappedAs[M <: AnyMapping, T] extends Mapping[T] {
+	val adaptee :M
+}
 
 
-	trait MappedAs[M <: AnyMapping, T] extends SubMapping[M#Owner, T] {
 
-		val adaptee :M
-//		type Component[X] = M#Component[X] //>: M#Component[X] <: SubMapping[X, Owner]
 
-//		def reverseMorphism :MappingMorphism[M, this.type]
 
-		def apply[C<:M#AnyComponent](component :M=>C) :C
-	}
 
-/*
-	trait DedicatedMappedMapping[V, T, M<:Mapping[T]]
-		extends MappingSubstitute[V, T, M]
+class MappedMapping[M <: Mapping.Component[O, S], O, S, T](override val adaptee :M, map :S => T, unmap :T => S)
+	extends MappingAdapter[M, O, S, T] with MappedAs[M, T]
+{
+
+	override def apply[X](component :Component[X]) :Selector[X] =
+		if (component eq adaptee)
+			adapteeSelector.asInstanceOf[Selector[X]]
+		else
+			ComponentSelector(this, component)(adaptee(component).extractor compose unmap)
+
+	private[this] val adapteeSelector = ComponentSelector.req(this, adaptee)(unmap) :Selector[S]
+
+
+
+	override val components :Unique[Component[_]] = Unique(adaptee)//adaptee.components
+
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[T] =
+		if (components.contains(adaptee)) adaptee.selectForm(selectable).map(map)
+		else adaptee.selectForm(components).map(map)
+
+	override val selectForm :SQLReadForm[T] = adaptee.selectForm.map(map)
+	override val queryForm :SQLWriteForm[T] = adaptee.queryForm.unmap(unmap)
+	override val updateForm :SQLWriteForm[T] = adaptee.updateForm.unmap(unmap)
+	override val insertForm :SQLWriteForm[T] = adaptee.insertForm.unmap(unmap)
+
+
+	override val buffs :Seq[Buff[T]] = adaptee.buffs.map(_.bimap(map, unmap))
+
+
+
+	override def assemble(values :Values) :Option[T] = values.get(adapteeSelector).map(map)
+
+	override def nullValue :Option[T] = adaptee.nullValue.map(map)
+
+
+
+//	def map[X](there :T => X, back :X => T) :MappedAs[M, X] =
+//		adaptee.map(map andThen there, back andThen unmap)
+
+
+	override def toString :String = "Mapped(" + adaptee  + ")"
+}
+
+
+
+
+
+
+object MappedMapping {
+
+	def apply[M <: Component[O, S], O, S, T](mapping :M, mapped :S => T, unmapped :T => S) :M MappedAs T =
+		new MappedMapping[M, O, S, T](mapping, mapped, unmapped)
+
+	def opt[M <: Component[O, S], O, S, T](mapping :M, mapped :S => Option[T], unmapped :T => Option[S]) :M MappedAs T =
+		new OptionalMapping[M, O, S, T](mapping, mapped, unmapped)
+
+
+
+
+
+
+
+	private class OptionalMapping[M <: Mapping.Component[O, S], O, S, T]
+	                             (val adaptee :M, map :S => Option[T], unmap :T => Option[S])
+		extends MappingAdapter[M, O, S, T] with SubMapping[O, T] with MappedAs[M, T]
 	{
-		override def buffs = adaptee.modifiers.map(_.map(toResultType))
 
-		protected val toResultType :T=>V
-		protected val fromResultType :V=>T
+		override def apply[X](component :Component[X]) :Selector[X] =
+			if (component eq adaptee)
+				adapteeSelector.asInstanceOf[Selector[X]]
+			else
+				ComponentSelector(this, component)(adaptee(component).extractor compose Extractor(unmap))
 
-		protected def morphism = new SubstituteMorphism {
-			override def value = ValueMorphism.homomorphism(fromResultType)
-		}
-
-		override def assemble(values: Values): Option[V] =
-			values.morph(morphism).result(adaptee).map(toResultType)
-
-
-		override def selectForm: SQLReadForm[V] = adaptee.selectForm.map(toResultType)
-
-		override protected def contentsEqual(that: MappingAdapter[_, _]): Boolean = that match {
-			case map :DedicatedMappedMapping[_, _, _] =>
-				map.toResultType == toResultType &&
-					map.fromResultType == fromResultType
-			case _ => false
-		}
-
-		override def hashCode = (adaptee, toResultType, fromResultType).hashCode
-
-		override def toString = s"Mapped($adaptee)"
-
-	}
+		private[this] val adapteeSelector = ComponentSelector.opt(this, adaptee)(unmap) :Selector[S]
 
 
 
-	trait GenericMappedMapping[V, T, M<:TypedMapping[T]]
-		extends GenericMappingSubstitute[V, M] with MappedAs[M, V]
-	{ substitute =>
-		override def apply[C <: M#AnyComponent](component: M => C): C =
-			component(adaptee)
+		override val components :Unique[Component[_]] = Unique(adaptee)
 
-		override def modifiers = adaptee.modifiers.map(_.map(toResultType))
+		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[T] =
+			if (components.contains(adaptee)) adaptee.selectForm(selectable).flatMap(map, nullValue.get)
+			else adaptee.selectForm(components).flatMap(map, nullValue.get)
 
-		protected val toResultType :T=>V
-		protected val fromResultType :V=>T
-
-		protected val morphism = new SubstituteMorphism {
-			override def value = ValueMorphism.homomorphism(fromResultType)
-		}
+		override val selectForm :SQLReadForm[T] = adaptee.selectForm.flatMap(map, nullValue.get)
+		override val queryForm :SQLWriteForm[T] = adaptee.queryForm.flatUnmap(unmap)
+		override val updateForm :SQLWriteForm[T] = adaptee.updateForm.flatUnmap(unmap)
+		override val insertForm :SQLWriteForm[T] = adaptee.insertForm.flatUnmap(unmap)
 
 
-		val reverseMorphism = new MappingMorphism[M, this.type] {
-			def source = adaptee
-			def target = substitute
-			def value = ValueMorphism.homomorphism(toResultType)
-			def components = ComponentMorphism.identity[M#Component]
-		}
+		override val buffs :Seq[Buff[T]] = adaptee.buffs.map(buff => buff.bimap(
+			 s => map(s).getOrElse { throw new IllegalStateException(
+				 s"Failed mapping of $adaptee: could not derive the value for the buff $buff from $s."
+			 )},
+			(t :T) => unmap(t) getOrElse { throw new IllegalStateException(
+				s"Failed mapping of $adaptee: could not unmap value $t as part of the buff $buff."
+			)}
+		))
 
 
-		override def assemble(values: Values): Option[V] =
-			values.morph(morphism).result(adaptee).map(toResultType)
+
+		override def assemble(values :Values) :Option[T] = values.get(adapteeSelector).flatMap(map)
+
+		override val nullValue :Option[T] = adaptee.nullValue.flatMap(map)
+
+		if (nullValue == null)
+			throw new IllegalArgumentException(s"Can't map mapping $adaptee: no null value after mapping ${adaptee.nullValue}.")
 
 
-		override def selectForm: SQLReadForm[V] = adaptee.selectForm.map(toResultType)
+//		override def map[X](there :T => X, back :X => T) :MappedAs[M, X] =
+//			MappedMapping.opt[M, O, S, T](adaptee, map(_:S).map(there), back andThen unmap)
+//
+//		override def optmap[X](there :T => Option[X], back :X => Option[T]) :MappedAs[, X] =
 
-		override protected def contentsEqual(that: MappingAdapter[_, _]): Boolean = that match {
-			case map :GenericMappedMapping[_, _, _] =>
-				map.toResultType == toResultType &&
-					map.fromResultType == fromResultType
-			case _ => false
-		}
-
-		override def hashCode :Int = (adaptee, toResultType, fromResultType).hashCode
-
-		override def toString = s"Mapped($adaptee)"
+		override def toString :String = "Mapped(" + adaptee  + ")"
 
 	}
-*/
+
+
+
 }
 

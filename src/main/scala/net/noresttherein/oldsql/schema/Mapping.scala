@@ -8,8 +8,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor
 import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, MappingReadForm, MappingWriteForm, ComponentSelector}
 import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
-import net.noresttherein.oldsql.schema.support.{MappedMapping, PrefixedMapping}
-import net.noresttherein.oldsql.schema.support.MappedMapping.MappedAs
+import net.noresttherein.oldsql.schema.support.{MappedMapping, PrefixedMapping, MappedAs}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.Mapping.GeneralSelector
 import net.noresttherein.oldsql.schema.bits.OptionMapping
@@ -189,7 +188,7 @@ sealed trait AnyMapping { mapping =>
 	  */
 	def assemble(values :Values) :Option[Subject]
 
-	def nullValue :Option[Subject]
+	def nullValue :Option[Subject] //todo: why do we need it at all?
 
 
 
@@ -218,7 +217,11 @@ sealed trait AnyMapping { mapping =>
 	def inOption :OptionMapping[this.type, Owner, Subject] = OptionMapping(this)
 
 	def map[X](there :Subject => X, back :X => Subject) :this.type MappedAs X =
-		MappedMapping[this.type, Subject, X](this, there, back)
+		MappedMapping[this.type, Owner, Subject, X](this, there, back)
+
+	def optmap[X](there :Subject => Option[X], back :X => Option[Subject]) :this.type MappedAs X =
+		MappedMapping.opt[this.type, Owner, Subject, X](this, there, back)
+
 
 
 	override def toString :String = sqlName getOrElse this.unqualifiedClassName
@@ -314,7 +317,7 @@ object Mapping {
 	type CompatibleMapping[M <: AnyMapping] = AnyMapping {
 		type Owner = M#Owner
 		type Subject = M#Subject
-		type Component[X] = M#Component[X]
+//		type Component[X] = M#Component[X]
 	}
 
 	type TypeCompatibleMapping[M <: AnyMapping] = AnyMapping {

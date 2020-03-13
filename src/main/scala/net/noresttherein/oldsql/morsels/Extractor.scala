@@ -3,6 +3,7 @@ package net.noresttherein.oldsql.morsels
 import net.noresttherein.oldsql.morsels.Extractor.{IdentityExtractor, OptionExtractor, RequisiteExtractor}
 
 
+
 /** A wrapper over an option-returning function `X=>Option[Y]`. It serves three main purposes:
   *   - as a base class for extractor objects declaring `unapply`;
   *   - differentiation between 'requisite' extractors, i.e. functions `X=>Some[Y]`;
@@ -32,8 +33,25 @@ trait Extractor[-X, +Y] {
 			Extractor { x :X => first(x).flatMap(second) }
 	}
 
+	def andThen[Z](req :Y => Z) :Extractor[X, Z] = {
+		val first = optional
+		Extractor { x :X => first(x).map(req) }
+	}
+
+
+
 	def compose[W](extractor :Extractor[W, X]) :Extractor[W, Y] = extractor andThen this
+
+	def compose[W](req :W => X) :Extractor[W, Y] = Extractor(req andThen optional)
+
+
+
+	override def toString :String = "Extractor@" + System.identityHashCode(this)
+
 }
+
+
+
 
 
 
@@ -93,6 +111,8 @@ object Extractor {
 
 		def apply(x :X) :Some[Y] = Some(get(x))
 
+
+
 		override def andThen[Z](extractor :Extractor[Y, Z]) :Extractor[X, Z] = extractor match {
 			case _ :IdentityExtractor[_] => extractor compose this
 			case sure :RequisiteExtractor[Y, Z] =>
@@ -108,7 +128,16 @@ object Extractor {
 			case _ => Extractor.requisite(this.extractor andThen extractor.extractor)
 		}
 
+		override def andThen[Z](req :Y => Z) :RequisiteExtractor[X, Z] = Extractor.requisite(extractor andThen req)
+
+
+
 		def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, Y] = extractor andThen this
+
+		override def compose[W](req :W => X) :RequisiteExtractor[W, Y] = Extractor.requisite(req andThen extractor)
+
+
+		override def toString :String = "Requisite@" + System.identityHashCode(this)
 	}
 
 
@@ -118,6 +147,7 @@ object Extractor {
 
 		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Option[X => Y] = extractor.requisite
 	}
+
 
 
 	trait IdentityExtractor[X] extends RequisiteExtractor[X, X] {
@@ -133,6 +163,10 @@ object Extractor {
 		override def compose[W](extractor :Extractor[W, X]) :Extractor[W, X] = extractor
 		override def andThen[Z](extractor :RequisiteExtractor[X, Z]) :RequisiteExtractor[X, Z] = extractor
 		override def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, X] = extractor
+		override def andThen[Z](req :X => Z) :RequisiteExtractor[X, Z] = Extractor.requisite(req)
+		override def compose[W](req :W => X) :RequisiteExtractor[W, X] = Extractor.requisite(req)
+
+		override def toString = "Identity"
 	}
 
 

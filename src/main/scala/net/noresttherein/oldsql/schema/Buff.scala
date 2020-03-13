@@ -24,6 +24,9 @@ import scala.reflect.ClassTag
   */
 trait Buff[T] {
 
+	/** The type of this buff, i.e. the factory that created this instance. */
+	def buffType :BuffType
+
 	/** Does this buff belong to the buff group defined by `group`, carrying information defined by the group?
 	  * this will be true if this buff was created by this group or if the group which created this buff
 	  * has strictly narrower meaning than the passed argument, effectively implying the latter.
@@ -31,16 +34,19 @@ trait Buff[T] {
 	  */
 	def is(group :BuffType) :Boolean = buffType.implies(group)
 
+
 	/** Adapts this buff for a new component type. For flag buffs, this is an identity operation; for buffs
 	  * with values it creates a new buff of the same type carrying the mapped value. Certain buffs, in particular
 	  * audit buffs, do not support this operation and will throw an `UnsupportedOperationException`.
 	  */
-	def map[X](there :T=>X) :Buff[X]
+	def map[X](there :T => X) :Buff[X]
 
+	/** Adapts this buff for a new component type. For flag buffs, this is an identity operation; for buffs
+	  * with values it creates a new buff of the same type carrying the mapped value. This method
+	  * differs from `map` in that it also works for `AuditBuff` instances.
+	  */
+	def bimap[X](there :T => X, back :X => T) :Buff[X]
 
-
-	/** The type of this buff, i.e. the factory that created this instance. */
-	def buffType :BuffType
 
 
 	def canEqual(that :Any) :Boolean = that.getClass == this.getClass
@@ -426,6 +432,7 @@ object Buff {
 
 	private class FlagBuff[T](val buffType :FlagBuffType) extends Buff[T] {
 		override def map[X](there :T => X) :FlagBuff[X] = this.asInstanceOf[FlagBuff[X]]
+		override def bimap[X](there :T => X, back :X => T) :Buff[X] = this.asInstanceOf[FlagBuff[X]]
 	}
 
 
@@ -497,6 +504,8 @@ object Buff {
 	  */
 	trait ValuedBuff[T] extends Buff[T] {
 		override def map[X](there :T => X) :ValuedBuff[X]
+
+		override def bimap[X](there :T => X, back :X => T) :ValuedBuff[X]
 
 		def value :T
 
@@ -573,6 +582,8 @@ object Buff {
 
 		override def map[X](there: T => X): ConstantBuff[X] = buffType(there(value))
 
+		override def bimap[X](there: T => X, back :X => T) :ConstantBuff[X] = buffType(there(value))
+
 		override def equals(that: Any): Boolean = that match {
 			case o :ConstantBuff[_] => (o eq this) || o.canEqual(this) && o.value==value && o.buffType == buffType
 			case _ => false
@@ -617,6 +628,8 @@ object Buff {
 
 		override def map[X](there :T => X) :GeneratedBuff[X] = buffType(there(generator))
 
+		override def bimap[X](there :T => X, back :X => T) :GeneratedBuff[X] = buffType(there(generator))
+
 		override def equals(that :Any) :Boolean = that match {
 			case ref :AnyRef if ref eq this => true
 			case _ => false
@@ -657,14 +670,16 @@ object Buff {
 	}
 
 
+
 	/** A column/component `Buff` carrying a function `T=>T` which is used to modify the value read or written
 	  * to the database. Which operations are actually affected depends on the buff type.
 	  */
 	class AuditBuff[T](val buffType :AuditBuffType, val substitute :T => T) extends Buff[T] {
-		override def map[X](there :T => X) :Nothing =
+
+		override def map[X](there :T => X) :AuditBuff[X] =
 			throw new UnsupportedOperationException(this +".map: AuditBuff can't be mapped unidirectionally.")
 
-		def map[X](there :T => X, back :X => T) :AuditBuff[X] =
+		override def bimap[X](there :T => X, back :X => T) :AuditBuff[X] =
 			new AuditBuff[X](buffType, back andThen substitute andThen there)
 
 		override def equals(that :Any) :Boolean = that match {
@@ -728,7 +743,7 @@ object Buff {
 		override def map[X](there :T => X) :Nothing =
 			throw new UnsupportedOperationException(this +".map: ManagedBuff can't be mapped unidirectionally.")
 
-		override def map[X](there :T => X, back :X => T) :ManagedBuff[X] =
+		override def bimap[X](there :T => X, back :X => T) :ManagedBuff[X] =
 			new ManagedBuff(buffType, there(init), back andThen substitute andThen there)
 
 		override def equals(that :Any) :Boolean = that match {
