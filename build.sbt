@@ -4,7 +4,7 @@ name := "oldsql"
 
 version := "pleistocen"
 
-scalaVersion := "2.11.12"
+scalaVersion := "2.13.1"
 
 fork in Compile := true
 
@@ -25,10 +25,10 @@ libraryDependencies ++= Seq(
 	"org.postgresql" % "postgresql" % "9.2-1004-jdbc41",
 	"net.bytebuddy" % "byte-buddy" % "1.10.8",
 //	"cglib" % "cglib-nodep" % "3.3.0",
-	"org.scala-lang" % "scala-library" % "2.11.12",
-	"org.scala-lang" % "scala-reflect" % "2.11.12",
-	"org.scalatest" %% "scalatest" % "2.2.4" % "test",
-	"org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
+	"org.scala-lang" % "scala-library" % "2.13.1",
+	"org.scala-lang" % "scala-reflect" % "2.13.1",
+	"org.scalatest" %% "scalatest" % "3.3.0-SNAP2" % "test",
+	"org.scalacheck" %% "scalacheck" % "1.14.3" % "test"
 	//"org.mockito" % "mockito-all" 
 )
 
@@ -36,7 +36,6 @@ libraryDependencies ++= Seq(
 scalacOptions ++= Seq(
 //	"-Ylog-classpath",
 //	"-Xlog-implicits",
-	"-Xexperimental",
 	"-feature",
 	"-deprecation",
 //	"-language:postfixOps",

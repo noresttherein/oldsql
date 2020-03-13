@@ -387,7 +387,7 @@ object ComponentValues {
 		override def aliased(lift :M#AnyComponent => M#AnyComponent) :ComponentValues[M] = this
 
 		override def identical[C <: CompatibleMapping[M] with Singleton](mapping :C) :ComponentValues[C] = {
-			val vals = values.identical(mapping)
+			val vals = values.identical[C](mapping)
 			if (vals eq values) crosscast[C]
 			else new AliasedComponentValues[C](alias.asInstanceOf[C#AnyComponent=>C#AnyComponent], vals)
 		}
@@ -576,7 +576,7 @@ object ComponentValues {
 			preset[selector.lifted.type](selector.lifted) getOrElse crosscast[selector.lifted.type]
 
 		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
-			preset(mapping) getOrElse crosscast[C]
+			preset[C](mapping) getOrElse crosscast[C]
 
 		protected def preset[C <: SingletonMapping](component :C) :Option[ComponentValues[C]]
 

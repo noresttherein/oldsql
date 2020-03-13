@@ -627,9 +627,9 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 		override def iterator :Iterator[ComponentMapping[_]] = items.iterator
 
-		override def indexOf[B >: ComponentMapping[_]](elem :B) :Int = items.indexOf(elem)
+		override def indexOf[B >: ComponentMapping[_]](elem :B, start :Int) :Int = items.indexOf(elem, start)
 
-		override def lastIndexOf[B >: ComponentMapping[_]](elem :B) :Int = items.lastIndexOf(elem)
+		override def lastIndexOf[B >: ComponentMapping[_]](elem :B, end :Int) :Int = items.lastIndexOf(elem, end)
 
 	}
 
@@ -655,10 +655,10 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 	final override def insertable :Unique[Component[_]] = initInsertable.items
 	final override def autoInserted :Unique[Component[_]] = initAutoInsert.items
 
-	final override val selectForm = MappingReadForm.defaultSelect(this)
-	final override val queryForm = MappingWriteForm.defaultQuery(this)
-	final override val insertForm = MappingWriteForm.defaultInsert(this)
-	final override val updateForm = MappingWriteForm.defaultUpdate(this)
+	final override val selectForm = MappingReadForm.defaultSelect(this) :SQLReadForm[S]
+	final override val queryForm = MappingWriteForm.defaultQuery(this) :SQLWriteForm[S]
+	final override val insertForm = MappingWriteForm.defaultInsert(this) :SQLWriteForm[S]
+	final override val updateForm = MappingWriteForm.defaultUpdate(this) :SQLWriteForm[S]
 
 
 }

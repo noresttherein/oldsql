@@ -33,10 +33,10 @@ trait Extractor[-X, +Y] {
 			Extractor { x :X => first(x).flatMap(second) }
 	}
 
-	def andThen[Z](req :Y => Z) :Extractor[X, Z] = {
-		val first = optional
-		Extractor { x :X => first(x).map(req) }
-	}
+//	def andThen[Z](req :Y => Z) :Extractor[X, Z] = {
+//		val first = optional
+//		Extractor { x :X => first(x).map(req) }
+//	}
 
 
 
@@ -128,11 +128,11 @@ object Extractor {
 			case _ => Extractor.requisite(this.extractor andThen extractor.extractor)
 		}
 
-		override def andThen[Z](req :Y => Z) :RequisiteExtractor[X, Z] = Extractor.requisite(extractor andThen req)
+//		override def andThen[Z](req :Y => Z) :RequisiteExtractor[X, Z] = Extractor.requisite(extractor andThen req)
 
 
 
-		def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, Y] = extractor andThen this
+		def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, Y] = extractor.andThen[Y](this)
 
 		override def compose[W](req :W => X) :RequisiteExtractor[W, Y] = Extractor.requisite(req andThen extractor)
 
@@ -163,7 +163,7 @@ object Extractor {
 		override def compose[W](extractor :Extractor[W, X]) :Extractor[W, X] = extractor
 		override def andThen[Z](extractor :RequisiteExtractor[X, Z]) :RequisiteExtractor[X, Z] = extractor
 		override def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, X] = extractor
-		override def andThen[Z](req :X => Z) :RequisiteExtractor[X, Z] = Extractor.requisite(req)
+//		override def andThen[Z](req :X => Z) :RequisiteExtractor[X, Z] = Extractor.requisite(req)
 		override def compose[W](req :W => X) :RequisiteExtractor[W, X] = Extractor.requisite(req)
 
 		override def toString = "Identity"

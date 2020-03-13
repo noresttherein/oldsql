@@ -1,12 +1,11 @@
 package net.noresttherein.oldsql.collection
 
 
-import net.noresttherein.oldsql.collection.Unique.{IndexedUnique, UniqueSeqAdapter, UniqueSetAdapter}
+import net.noresttherein.oldsql.collection.Unique.{UniqueSeqAdapter, UniqueSetAdapter}
 
-import scala.collection.immutable.{IndexedSeq, Seq}
-import scala.collection.mutable.{Builder, ListBuffer}
-import scala.collection.{AbstractSeq, AbstractSet, GenTraversableOnce, IterableLike}
-import scala.collection.generic.{CanBuildFrom, GenericCompanion, GenericTraversableTemplate, TraversableFactory}
+import scala.collection.immutable.{IndexedSeq, Iterable, Seq, Set}
+import scala.collection.mutable.Builder
+import scala.collection.{AbstractSeq, AbstractSet, IterableFactory, IterableFactoryDefaults, IterableOps}
 
 
 /** A collection of unique items in a specific order providing `O(1)` `indexOf(T)`, `contains(T)`, `toSet`, `toSeq`
@@ -16,15 +15,9 @@ import scala.collection.generic.{CanBuildFrom, GenericCompanion, GenericTraversa
   *
   * @tparam T element type.
   */
-trait Unique[+T] extends collection.immutable.Iterable[T] with IterableLike[T, Unique[T]]
-                    with GenericTraversableTemplate[T, Unique] with Serializable
-{ unique =>
+trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with IterableFactoryDefaults[T, Unique] { unique =>
 
-	protected[this] override def newBuilder :Builder[T, Unique[T]] = Unique.newBuilder
-
-	override def genericBuilder[B] :Builder[B, Unique[B]] = Unique.newBuilder[B]
-
-	override def companion :GenericCompanion[Unique] = Unique
+	override def iterableFactory :IterableFactory[Unique] = Unique
 
 	def apply(idx :Int) :T
 
@@ -39,10 +32,9 @@ trait Unique[+T] extends collection.immutable.Iterable[T] with IterableLike[T, U
 
 	override def toSet[U >: T] :Set[U] = new UniqueSetAdapter(this)
 
+	def +:[U >: T](elem :U) :Unique[U]
 
-	def +:[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That
-
-	def :+[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That
+	def :+[U >: T](elem :U) :Unique[U]
 
 	override def stringPrefix = "Unique"
 }
@@ -53,17 +45,17 @@ trait Unique[+T] extends collection.immutable.Iterable[T] with IterableLike[T, U
 
 
 /** Companion object serving as a factory for Unique - sequence-like collections with fast indexOf operations. */
-object Unique extends TraversableFactory[Unique] {
+object Unique extends IterableFactory[Unique] {
 
 
-	def apply[T](elems :Iterable[T]) :Unique[T] = elems match {
+	override def from[T](elems :IterableOnce[T]) :Unique[T] = elems match {
 		case _ :Unique[_] => elems.asInstanceOf[Unique[T]]
 		case seq :UniqueSeqAdapter[_] => seq.toUniqueSeq.asInstanceOf[Unique[T]]
 		case set :UniqueSetAdapter[_] => set.toUniqueSeq.asInstanceOf[Unique[T]]
 		case _ => (newBuilder[T] ++= elems).result
 	}
 
-	def newBuilder[T] :Builder[T, Unique[T]] = new UniqueBuilder[T]()
+	override def newBuilder[T] :Builder[T, Unique[T]] = new UniqueBuilder[T]()
 
 	override def empty[E] :Unique[E] = reusableEmpty
 
@@ -75,8 +67,6 @@ object Unique extends TraversableFactory[Unique] {
 
 
 
-	implicit def canBuildFrom[T] :CanBuildFrom[Unique[_], T, Unique[T]] =
-		ReusableCBF.asInstanceOf[CanBuildFrom[Unique[_], T, Unique[T]]]
 
 	implicit def uniqueToSeq[T](unique :Unique[T]) :Seq[T] = unique.toSeq
 
@@ -89,9 +79,9 @@ object Unique extends TraversableFactory[Unique] {
 		  * If aSeq's dynamic type was already an Unique, it returns itself cast to Unique.
 		  * Of course, if aSeq static type already was an Unique, it is a simple static noOp call.
 		  */
-		def unique :Unique[T] = apply(elems)
+		def unique :Unique[T] = from(elems)
 
-		def toUniqueSeq :Unique[T] = apply(elems)
+		def toUniqueSeq :Unique[T] = from(elems)
 	}
 
 
@@ -124,15 +114,12 @@ object Unique extends TraversableFactory[Unique] {
 
 		override def indexOf[U >: T](elem :U) :Int = items.indexOf(elem)
 
-		override def +:[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That =
-			elem +: items
+		override def +:[U >: T](elem :U) :Unique[U] = elem +: items
 
-		override def :+[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That =
-			items :+ elem
+		override def :+[U >: T](elem :U) :Unique[U] = items :+ elem
 
-		override def ++[B >: T, That](that :GenTraversableOnce[B])(implicit bf :CanBuildFrom[Unique[T], B, That]) :That =
-			items ++ that
 
+		override def concat[B >: T](suffix :IterableOnce[B]) :Unique[B] = items ++ suffix
 
 		override def foreach[U](f :T => U) :Unit = items foreach f
 
@@ -150,7 +137,7 @@ object Unique extends TraversableFactory[Unique] {
 		extends Builder[T, Unique[T]]
 	{
 
-		override def +=(elem :T) :this.type = {
+		override def addOne(elem :T) :this.type = {
 			if (!index.contains(elem)) {
 				index = index.updated(elem, index.size)
 				items += elem
@@ -181,49 +168,26 @@ object Unique extends TraversableFactory[Unique] {
 
 		override def indexOf[U >: T](elem :U) :Int = index(elem.asInstanceOf[T])
 
-		override def +:[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That =
-			if (bf == Unique.ReusableCBF)
-				if (contains(elem)) this.asInstanceOf[That]
-				else new IndexedUnique(items :+ elem, index.asInstanceOf[Map[U, Int]].updated(elem, size)).asInstanceOf[That]
-			else if (contains(elem)) {
-				val b = bf(this)
-				b sizeHint size
-				(b ++= this).result
-			} else {
-				val b = bf(this)
-				b sizeHint size + 1
-				(b ++= this += elem).result
-			}
+		override def +:[U >: T](elem :U) :Unique[U] =
+			if (contains(elem)) this
+			else new IndexedUnique(items :+ elem, index.asInstanceOf[Map[U, Int]].updated(elem, size))
 
-		override def :+[U >: T, That](elem :U)(implicit bf :CanBuildFrom[Unique[T], U, That]) :That =
-			if (bf == Unique.ReusableCBF)
-				if (contains(elem)) this.asInstanceOf[That]
-				else
-                    new IndexedUnique(
-						items :+ elem,
-	                    index.asInstanceOf[Map[U, Int]].mapValues(_ + 1).updated(elem, 0)
-                    ).asInstanceOf[That]
-			else if (contains(elem)) {
-				val b = bf(this)
-				b sizeHint size
-				(b ++= this).result
-			} else {
-				val b = bf(this)
-				b sizeHint size + 1
-				(b += elem ++= this).result
-			}
-
-		override def ++[U >: T, That](that :GenTraversableOnce[U])(implicit bf :CanBuildFrom[Unique[T], U, That]) :That =
-			if (bf == ReusableCBF)
-				if (that.isEmpty)
-					this.asInstanceOf[That]
-				else
-	                (new UniqueBuilder(
-						IndexedSeq.newBuilder[U] ++= items,
-						index.asInstanceOf[Map[U, Int]]) ++= that.seq
-					).result.asInstanceOf[That]
+		override def :+[U >: T](elem :U) :Unique[U] =
+			if (contains(elem)) this
 			else
-				(bf(this) ++= this ++= that.seq).result
+                new IndexedUnique(
+					items :+ elem,
+                    index.asInstanceOf[Map[U, Int]].map(pair => pair._1 -> (pair._2 + 1)).updated(elem, 0)
+                )
+
+		override def concat[U >: T](that :IterableOnce[U]) :Unique[U] =
+			if (that.iterator.isEmpty)
+				this
+			else
+                (new UniqueBuilder(
+					IndexedSeq.newBuilder[U] ++= items,
+					index.asInstanceOf[Map[U, Int]]) ++= that
+				).result()
 
 	}
 
@@ -234,9 +198,15 @@ object Unique extends TraversableFactory[Unique] {
 
 		override def apply(idx :Int) :T = unique(idx)
 
-		override def indexOf[U >: T](elem :U) :Int = unique.indexOf(elem)
+		override def indexOf[U >: T](elem :U, start :Int) :Int = {
+			val i = unique.indexOf(elem)
+			if (i < start) -1 else i
+		}
 
-		override def lastIndexOf[U >: T](elem :U) :Int = unique.indexOf(elem)
+		override def lastIndexOf[U >: T](elem :U, end :Int) :Int = {
+			val i = unique.indexOf(elem)
+			if (i > end) -1 else i
+		}
 
 		override def contains[U >: T](elem :U) :Boolean = unique.contains(elem)
 
@@ -256,9 +226,9 @@ object Unique extends TraversableFactory[Unique] {
 
 		override def contains(elem :T) :Boolean = unique.contains(elem)
 
-		override def +(elem :T) :Set[T] = if (contains(elem)) this else Set(toSeq:_*)
+		override def incl(elem :T) :Set[T] = if (contains(elem)) this else Set(toSeq:_*)
 
-		override def -(elem :T) :Set[T] = if (contains(elem)) Set(toSeq:_*) - elem else this
+		override def excl(elem :T) :Set[T] = if (contains(elem)) Set(toSeq:_*) - elem else this
 
 		override def iterator :Iterator[T] = unique.iterator
 

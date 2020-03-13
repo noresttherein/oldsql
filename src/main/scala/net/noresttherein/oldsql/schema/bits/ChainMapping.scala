@@ -40,7 +40,7 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[S]
 
 				case _ =>
 					selectors = fastSelect
-					Unique(res.reverse)
+					Unique.from(res.reverse)
 			}
 		fastSelect = Map()
 		rec(schema, identity[C])

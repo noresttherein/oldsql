@@ -4,10 +4,8 @@ import net.noresttherein.oldsql.model.ComposedOf.{Arity, ComposableFrom, Decompo
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.{Collection, Custom}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.SaferCasts._
-import sun.plugin.dom.html.ns4.HTMLAppletCollection
 
-import scala.collection.breakOut
-import scala.collection.generic.CanBuildFrom
+import scala.collection.{BuildFrom, Factory}
 //todo: implicits for immutable.Iterable and immutable.Map
 
 
@@ -103,11 +101,12 @@ trait ComposedOf[C, E] {
 	}
 
 
-	override def toString :String = {
-		val (c, d) = (composer.toString, decomposer.toString)
-		if (c == d) c
-		else if (c == "Collection" && d == "Iterable") "Collection"
-		else c + "/" +  "d"
+	override def toString :String = (composer, decomposer) match {
+		case (c :Collection[_, _], DecomposableTo.Iterable()) => c.toString
+		case (c, d) =>
+			val cs = c.toString;val ds = d.toString
+			if (cs == ds) cs
+			else cs + "/" + ds
 	}
 
 }
@@ -329,10 +328,10 @@ object ComposedOf {
 
 
 	sealed abstract class FallbackComposableFromImplicits {
-		implicit def canBuildFrom[C, T](implicit cbf :CanBuildFrom[_, T, C]) :C ComposableFrom T =
-			new Custom(items => (cbf() ++= items).result())
+		implicit def factory[C, T](implicit factory :Factory[T, C]) :C ComposableFrom T =
+			new Custom(items => (factory.newBuilder ++= items).result())
 
-		implicit def collection[C<:Iterable[T], T](implicit cbf :CanBuildFrom[_, T, C]) :C ConstructFrom T =
+		implicit def collection[C<:Iterable[T], T](implicit factory :Factory[T, C]) :C ConstructFrom T =
 			Collection[C, T]()
 
 	}
@@ -433,29 +432,29 @@ object ComposedOf {
 			@inline def apply[E] :CollectionComposer[E] = new CollectionComposer[E] {}
 
 			trait CollectionComposer[E] extends Any {
-				def as[T <: Iterable[E]](implicit cbf :CanBuildFrom[_, E, T]) :T ConstructFrom E =
+				def as[T <: Iterable[E]](implicit factory :Factory[E, T]) :T ConstructFrom E =
 					new Collection[T, E]
 
-				def in[C[X] <: Iterable[X]](implicit cbf :CanBuildFrom[_, E, C[E]]) :C[E] ConstructFrom E =
+				def in[C[X] <: Iterable[X]](implicit cbf :Factory[E, C[E]]) :C[E] ConstructFrom E =
 					new Collection[C[E], E]
 			}
 
 
-			def apply[T <: Iterable[E], E]()(implicit cbf :CanBuildFrom[_, E, T]) :T ConstructFrom E =
+			def apply[T <: Iterable[E], E]()(implicit factory :Factory[E, T]) :T ConstructFrom E =
 				new Collection[T, E]
 
 
-			def unapply[T, E](composition :T ComposableFrom E) :Option[CanBuildFrom[_, E, T]] = composition match {
-				case col :Collection[T, E] => Some(col.cbf)
+			def unapply[T, E](composition :T ComposableFrom E) :Option[Factory[E, T]] = composition match {
+				case col :Collection[T, E] => Some(col.factory)
 				case _ => None
 			}
 
-			def unapply[T, E](composedOf :T ComposedOf E) :Option[CanBuildFrom[_, E, T]] = composedOf.composer match {
-				case col :Collection[T, E] => Some(col.cbf)
+			def unapply[T, E](composedOf :T ComposedOf E) :Option[Factory[E, T]] = composedOf.composer match {
+				case col :Collection[T, E] => Some(col.factory)
 				case _ => None
 			}
 
-			def unapply[T](kin :Kin[T]) :Option[CanBuildFrom[_, _, T]] = kin match {
+			def unapply[T](kin :Kin[T]) :Option[Factory[_, T]] = kin match {
 				case ComposedOf(comp) => unapply(comp)
 				case _ => None
 			}
@@ -496,14 +495,14 @@ object ComposedOf {
 
 
 		private case object Super extends ComposableFrom[Any, Any] {
-			def arity = Arity._1
+			def arity :Arity = Arity._1
 			override def attempt(items: Iterable[Any]) :Option[Any] = items.size == 1 ifTrue items.head
 			override def toString = "One" //">:"
 		}
 
 
 		private case object Opt extends ConstructFrom[Option[Any], Any] {
-			def arity = Arity._0_1
+			def arity :Arity = Arity._0_1
 
 			override def attempt(items: Iterable[Any]) :Option[Option[Any]] =
 				items.headOption.providing(items.size <= 1) orElse None
@@ -512,22 +511,22 @@ object ComposedOf {
 		}
 
 
-		private[ComposedOf] class Collection[C, E](implicit val cbf :CanBuildFrom[_, E, C])
-			extends Custom[C, E](iter => (cbf() ++= iter).result) with ConstructFrom[C, E]
+		private[ComposedOf] class Collection[C, E](implicit val factory :Factory[E, C])
+			extends Custom[C, E](iter => (factory.newBuilder ++= iter).result) with ConstructFrom[C, E]
 		{   //cbf is often a reusable, single instance
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[Collection[_, _]]
 
 			override def equals(that :Any) :Boolean = that match {
 				case self :AnyRef if self eq this => true
-				case col :Collection[_, _] if col canEqual this => col.cbf == cbf
+				case col :Collection[_, _] if col canEqual this => col.factory == factory
 				case _ => false
 			}
 
-			override def hashCode :Int = cbf.hashCode
+			override def hashCode :Int = factory.hashCode
 
 			override def compatibleWith[X >: C](other: ComposableFrom[X, _]): Boolean = canEqual(other)
 
-			override def toString = "Collection"
+			override def toString :String = factory.innerClassName
 		}
 
 
@@ -540,13 +539,13 @@ object ComposedOf {
 
 
 		private case object MapComposer extends ConstructFrom[Map[Any, Any], Any->Any] {
-			def arity = Arity._0_n
+			def arity :Arity = Arity._0_n
 
 			override def apply(items :Iterable[Any -> Any]) :Map[Any, Any] =
-				items.map { case _1 -> _2 => _1 -> _2 }(breakOut)
+				items.map { case _1 -> _2 => _1 -> _2 }.toMap
 
 			override def attempt(items :Iterable[Any -> Any]) :Option[Map[Any, Any]] =
-				Some(items.map { case _1 -> _2 => _1 -> _2 }(breakOut))
+				Some(items.map { case _1 -> _2 => _1 -> _2 }.toMap)
 
 			override def toString = "Map"
 		}

@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.model.MappedKin.{KinMapper, PropertyMapper}
 import net.noresttherein.oldsql.model.Restraint.{Restrainer, True}
 
 import scala.collection.generic.CanBuildFrom
+import scala.collection.Factory
 
 
 
@@ -228,10 +229,10 @@ object Kin {
 
 
 
-	implicit def singleResult[T](factory :KinComposer[T]) :Kin[T] = factory.one
-	implicit def optionalResult[T](factory :KinComposer[T]) :Kin[Option[T]] = factory.optional
-	implicit def collectionResult[C<:Iterable[T], T](factory :KinComposer[T])(implicit cbf :CanBuildFrom[_, T, C]) :Kin[C] =
-		factory.as[C]
+	implicit def singleResult[T](composer :KinComposer[T]) :Kin[T] = composer.one
+	implicit def optionalResult[T](composer :KinComposer[T]) :Kin[Option[T]] = composer.optional
+	implicit def collectionResult[C <: Iterable[T], T](composer :KinComposer[T])(implicit factory :Factory[T, C]) :Kin[C] =
+		composer.as[C]
 
 
 

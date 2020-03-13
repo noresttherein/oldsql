@@ -1,11 +1,12 @@
 package net.noresttherein.oldsql.collection
 
-import net.noresttherein.oldsql.collection.InverseIndexSeq.Indexed
 
-import scala.collection.{AbstractSeq, AbstractSet, GenTraversableOnce}
-import scala.collection.generic.CanBuildFrom
-import scala.collection.mutable.Builder
-import scala.reflect.ClassTag
+//import net.noresttherein.oldsql.collection.InverseIndexSeq.Indexed
+//
+//import scala.collection.{AbstractSeq, AbstractSet, GenTraversableOnce}
+//import scala.collection.generic.CanBuildFrom
+//import scala.collection.mutable.Builder
+//import scala.reflect.ClassTag
 
 
 
@@ -18,6 +19,7 @@ import scala.reflect.ClassTag
   *
   * @tparam T element type.
   */
+/*
 trait InverseIndexSeq[+T] extends Seq[T] with Serializable {
 	protected[this] override def newBuilder :Builder[T, Seq[T]] =
 		List.newBuilder[T].mapResult(new Indexed(_))
@@ -70,7 +72,7 @@ object InverseIndexSeq {
 	  * @tparam T element type
 	  */
 	private class Indexed[+T] private[InverseIndexSeq] (backing :Seq[T]) extends AbstractSeq[T] with InverseIndexSeq[T] {
-		private[this] val index :Map[Any, Int] = backing.view.zipWithIndex.reverse.toMap
+		private[this] val index :Map[Any, Int] = backing.view.zipWithIndex.force.reverse.toMap
 		private[this] lazy val lastIndex :Map[Any, Int] = backing.view.zipWithIndex.toMap
 
 		override val length: Int = backing.length
@@ -189,3 +191,4 @@ object InverseIndexSeq {
 
 	}
 }
+*/

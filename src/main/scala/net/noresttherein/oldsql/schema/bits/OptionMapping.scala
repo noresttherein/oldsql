@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.{InverseIndexSeq, Unique}
+import net.noresttherein.oldsql.collection.{Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
 import net.noresttherein.oldsql.schema.{Buff, SQLReadForm, SQLWriteForm, SubMapping}

@@ -8,7 +8,6 @@ import net.noresttherein.oldsql.model.Restraint.True
 import net.noresttherein.oldsql.model.PropertyPath
 
 import scala.collection.immutable.Seq
-import scala.collection.breakOut
 import scala.reflect.runtime.universe.TypeTag
 
 
@@ -77,14 +76,14 @@ trait Pile[T] { pile =>
 	def insert(entity :T)(implicit session :Session = newSession()) :T
 	def update(entity :T)(implicit session :Session = newSession()) :T
 
-	def save(entities :collection.Seq[T])(implicit session :Session) :Seq[T] =
-		entities.map(save(_))(breakOut)
+	def save(entities :Seq[T])(implicit session :Session) :Seq[T] =
+		entities.map(save(_))
 
-	def insert(entities :collection.Seq[T])(implicit session :Session) :Seq[T] =
-		entities.map(insert(_))(breakOut)
+	def insert(entities :Seq[T])(implicit session :Session) :Seq[T] =
+		entities.map(insert(_))
 
-	def update(entities :collection.Seq[T])(implicit session :Session) :Seq[T] =
-		entities.map(update(_))(breakOut)
+	def update(entities :Seq[T])(implicit session :Session) :Seq[T] =
+		entities.map(update(_))
 
 
 
@@ -97,7 +96,7 @@ trait Pile[T] { pile =>
 
 
 	def +=(entity :T)(implicit session :Session = newSession()) :T = save(entity)
-	def ++=(entities :collection.Seq[T])(implicit session :Session = newSession()) :Seq[T] = save(entities)
+	def ++=(entities :Seq[T])(implicit session :Session = newSession()) :Seq[T] = save(entities)
 	def -=(entity :T)(implicit session :Session = newSession()) :Unit = delete(entity)
 	def --=(entities :T)(implicit session :Session = newSession()) :Unit = delete(entities)
 
@@ -123,7 +122,7 @@ trait Pile[T] { pile =>
 
 
 
-	class QueryBuilder(filter :Restraint[T], fetch :collection.Seq[PropertyPath[T, Any]] = Nil) {
+	class QueryBuilder(filter :Restraint[T], fetch :Seq[PropertyPath[T, Any]] = Nil) {
 
 		def &&(condition :Restraint[T]) :QueryBuilder = new QueryBuilder(filter && condition, fetch)
 
@@ -134,7 +133,7 @@ trait Pile[T] { pile =>
 			else new QueryBuilder(filter, fetch ++: kin)
 
 		def fetch(kin :Iterable[T => Any])(implicit tag :TypeTag[T]) :QueryBuilder =
-			fetch(kin.map(PropertyPath[T](_))(breakOut) :_*)
+			fetch(kin.map(PropertyPath[T](_)).toSeq :_*)
 
 		def one(implicit transaction :Session = newSession()) :T = pile.one(filter, fetch :_*)
 		def all(implicit transaction :Session = newSession()) :Seq[T] = pile.all(filter, fetch :_*)

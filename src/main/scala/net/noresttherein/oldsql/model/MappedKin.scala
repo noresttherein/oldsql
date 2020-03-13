@@ -51,7 +51,7 @@ object MappedKin {
 	}
 
 
-	case class ComposingMapper[X, Y](implicit compose :Y ComposedOf X) extends KinMapper[X, Y] {
+	case class ComposingMapper[X, Y](compose :Y ComposedOf X) extends KinMapper[X, Y] {
 		def apply(x :X) :Y = compose(Seq(x))
 
 		override def apply(ref: Kin[X]): Kin[Y] =

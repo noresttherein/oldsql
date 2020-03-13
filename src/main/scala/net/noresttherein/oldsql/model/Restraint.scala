@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.model
 
 import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}
-import scala.collection.{breakOut, Iterable}
+import scala.collection.Iterable
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, ComposableFrom, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False, NestedRestraint, Not, True}
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, MappedRestrainer, NestedRestrainer}
@@ -743,7 +743,7 @@ object Restraint {
 
 			override def from[X <: T](restraint :Restraint[X]) :Option[Set[K]] = restraint match {
 				case Membership(Term, Collection(items, _), _) =>
-					items.collect[K, Set[K]] { case Literal(v) => v.asInstanceOf[K] }(breakOut) providing (_.size == items.size)
+					items.collect { case Literal(v) => v.asInstanceOf[K] }.toSet providing (_.size == items.size)
 
 				case Membership(Term, Literal(items), deco) =>
 					//todo: wrong! may be Iterable[Set[K]] after decomposer

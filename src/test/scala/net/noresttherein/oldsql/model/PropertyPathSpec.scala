@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.PropertyPath.HackedPropertyPath
-import org.scalatest.{FlatSpec, Matchers}
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
-class PropertyPathSpec extends FlatSpec with Matchers {
+class PropertyPathSpec extends AnyFlatSpec with Matchers {
 
 	class Subject {
 		val intVal = 1

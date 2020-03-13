@@ -14,7 +14,6 @@ import net.noresttherein.oldsql.schema.Mapping.GeneralSelector
 import net.noresttherein.oldsql.schema.bits.OptionMapping
 import net.noresttherein.oldsql.slang._
 
-import scala.collection.breakOut
 
 
 
@@ -555,7 +554,7 @@ object Mapping {
 
 		override def opt(position: Int)(res: ResultSet): Option[S] = {
 			var i = position
-			val columnValues = columns.map{ c => i += 1; read(c).opt(i - 1)(res) }(breakOut) :IndexedSeq[Option[Any]]
+			val columnValues = columns.toIndexedSeq.map{ c => i += 1; read(c).opt(i - 1)(res) }
 			val values = ComponentValues(mapping) { comp =>
 				val idx = columns.indexOf(mapping.lift(comp))
 				if (idx >= 0) columnValues(idx)

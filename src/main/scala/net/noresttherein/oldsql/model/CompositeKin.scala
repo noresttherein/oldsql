@@ -1,6 +1,5 @@
 package net.noresttherein.oldsql.model
 
-import scala.collection.breakOut
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{GenericKinFactory, KinComposer, KinFactory, Present}
 import net.noresttherein.oldsql.model.Kin.Lazy.LazyKin
@@ -164,7 +163,7 @@ object CompositeKin {
 
 		/** Creates a present `FlattenedKin` instance out of the actual content collection. */
 		def apply[T, E](values :T)(implicit compose :T ComposedOf E) :FlattenedKin[T, Seq[Kin[E]], E, E] =
-			new KinLinks[T, Seq[Kin[E]], E, E](Present(compose.decomposer(values).map(Present(_))(breakOut)))
+			new KinLinks[T, Seq[Kin[E]], E, E](Present(compose.decomposer(values).map(Present(_)).toSeq))
 
 
 
