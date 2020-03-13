@@ -14,7 +14,7 @@ import scala.collection.immutable.{Map, Seq}
 /**
   * @author Marcin Mościcki
   */
-trait ChainMapping[Components <: Chain, C <: Chain, O <: AnyMapping, S] extends LazyMapping[S] with SubMapping[O, S] {
+trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[S] with SubMapping[O, S] {
 	mapping =>
 
 	val schema :Components
@@ -94,12 +94,12 @@ trait ChainMapping[Components <: Chain, C <: Chain, O <: AnyMapping, S] extends 
 
 
 object ChainMapping {
-	type ComponentOf[O <: AnyMapping] = { type T[S] = Component[O, S] }
+	type ComponentOf[O] = { type T[S] = Component[O, S] }
 
-	@inline def apply[O <: AnyMapping] :Factory[O] = new Factory[O] {}
+	@inline def apply[O] :Factory[O] = new Factory[O] {}
 
 
-	trait Factory[O <: AnyMapping] extends Any {
+	trait Factory[O] extends Any {
 		@inline def apply[C <: Chain, S <: Chain](componentChain :C)
 		                                         (implicit values :MapChain[ComponentOf[O]#T, C, Self, S])
 				:ChainMapping[C, S, O, S] =

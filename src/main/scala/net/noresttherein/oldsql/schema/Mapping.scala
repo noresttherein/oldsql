@@ -38,7 +38,7 @@ sealed trait AnyMapping { mapping =>
 	  * only components/columns belonging to the selected tables (or otherwise root mappings) can be used
 	  * in the where or select clause.
 	  */
-	type Owner <: AnyMapping
+	type Owner// <: AnyMapping
 
 	/** A container with values for components of this mapping required to assemble the subject. */
 	type Values = ComponentValues[this.type]
@@ -217,7 +217,7 @@ sealed trait AnyMapping { mapping =>
 
 	def inOption :OptionMapping[this.type, Owner, Subject] = OptionMapping(this)
 
-	def map[X](there :Subject=>X, back :X=>Subject) :this.type MappedAs X =
+	def map[X](there :Subject => X, back :X => Subject) :this.type MappedAs X =
 		MappedMapping[this.type, Subject, X](this, there, back)
 
 
@@ -280,7 +280,7 @@ trait Mapping[S] extends AnyMapping { self =>
 
 
 
-trait SubMapping[O <: AnyMapping, S] extends Mapping[S] {
+trait SubMapping[O, S] extends Mapping[S] {
 	type Owner = O
 }
 
@@ -297,17 +297,15 @@ trait RootMapping[S] extends Mapping[S] {
 
 object Mapping {
 	type TypedMapping[S] = AnyMapping { type Subject = S }
-	type NarrowedMapping[O <: AnyMapping, S] = AnyMapping { type Owner = O; type Subject = S }
-	type Component[O <: AnyMapping, S] = AnyMapping { type Owner = O; type Subject = S }
-	type AnyComponent[O <: AnyMapping] = AnyMapping { type Owner = O }
-//	type AnyComponent[O <: AnyMapping] = Component[O, _]
-//	type Component[O <: AnyMapping, S] = Mapping[S] { type Owner = O }//AnyMapping { type Subject = S; type Owner = O }
+	type NarrowedMapping[O, S] = AnyMapping { type Owner = O; type Subject = S }
+	type Component[O, S] = AnyMapping { type Owner = O; type Subject = S }
+	type AnyComponent[O] = AnyMapping { type Owner = O }
 
 	type SingletonMapping = AnyMapping with Singleton
 	type TypedSingleton[S] = AnyMapping with Singleton { type Subject = S }
-	type NarrowedSingleton[O <: AnyMapping, S] = AnyMapping with Singleton { type Owner = O; type Subject = S }
-//	type SingletonComponent[O <: AnyMapping, S] = Mapping[S] with Singleton { type Owner = O }
-	type SingletonComponent[O <: AnyMapping, S] = AnyMapping with Singleton { type Owner = O; type Subject = S }
+	type NarrowedSingleton[O, S] = AnyMapping with Singleton { type Owner = O; type Subject = S }
+//	type SingletonComponent[O, S] = Mapping[S] with Singleton { type Owner = O }
+	type SingletonComponent[O, S] = AnyMapping with Singleton { type Owner = O; type Subject = S }
 
 	type ComponentCompatibleMapping[M <: AnyMapping] = AnyMapping {
 		type Component[X] = Mapping.Component[M#Owner, X]
@@ -319,7 +317,7 @@ object Mapping {
 		type Component[X] = M#Component[X]
 	}
 
-	type TypeCompatibleMapping[M<:AnyMapping] = AnyMapping {
+	type TypeCompatibleMapping[M <: AnyMapping] = AnyMapping {
 		type Subject = M#Subject
 	}
 
@@ -355,7 +353,7 @@ object Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.AnyMapping.apply[T](Component[T] ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  */
-	trait ComponentSelector[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+	trait ComponentSelector[M <: NarrowedSingleton[O, S], O, S, T]
 		extends GeneralSelector[M, T]
 	{
 		def pick :S => Option[T]
@@ -381,60 +379,60 @@ object Mapping {
 
 
 	object ComponentSelector {
-		def apply[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+		def apply[M <: NarrowedSingleton[O, S], O, S, T]
 		         (component :Component[O, T], pick :S => Option[T], surepick :Option[S=>T]) :ComponentSelector[M, O, S, T] =
 			new CustomSelector(component, pick, surepick)
 
-		def apply[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+		def apply[M <: NarrowedSingleton[O, S], O, S, T]
 		         (component :Component[O, T])(extractor :Extractor[S, T]) :ComponentSelector[M, O, S, T] =
 			extractor match {
 				case requisite :RequisiteExtractor[S, T] => new RequisiteSelector(component, requisite)
 				case _ => new ExtractorSelector(component, extractor)
 			}
 
-		@inline def apply[O <: AnyMapping, S, T](mapping :Component[O, S], component :Component[O, T])
+		@inline def apply[O, S, T](mapping :Component[O, S], component :Component[O, T])
 		                                        (extractor :Extractor[S, T]) :ComponentSelector[mapping.type, O, S, T] =
 			apply[mapping.type, O, S, T](component)(extractor)
 
 
 
-		def req[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+		def req[M <: NarrowedSingleton[O, S], O, S, T]
 		         (component :Component[O, T], requisite :S => T) :ComponentSelector[M, O, S, T] =
 			new RequisiteSelector[M, O, S, T](component, Extractor.requisite(requisite))
 
-		def req[O <: AnyMapping, S, T](mapping :Component[O, S], component :Component[O, T])(requisite :S => T) :ComponentSelector[mapping.type, O, S, T] =
+		def req[O, S, T](mapping :Component[O, S], component :Component[O, T])(requisite :S => T) :ComponentSelector[mapping.type, O, S, T] =
 			new RequisiteSelector[mapping.type, O, S, T](component, Extractor.requisite(requisite))
 
 
 
-		def opt[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+		def opt[M <: NarrowedSingleton[O, S], O, S, T]
 		       (component :Component[O, T], selector :S => Option[T]) :ComponentSelector[M, O, S, T] =
 			new OptionalSelector[M, O, S, T](component, selector)
 
-		def opt[O <: AnyMapping, S, T](mapping :Component[O, S], component :Component[O, T])(selector :S => Option[T]) :ComponentSelector[mapping.type, O, S, T] =
+		def opt[O, S, T](mapping :Component[O, S], component :Component[O, T])(selector :S => Option[T]) :ComponentSelector[mapping.type, O, S, T] =
 			new OptionalSelector[mapping.type, O, S, T](component, selector)
 
 
 
-		def ident[M <: NarrowedSingleton[O, S], O <: AnyMapping, S]
+		def ident[M <: NarrowedSingleton[O, S], O, S]
 		         (component :Component[O, S]) :ComponentSelector[M, O, S, S] =
 			new RequisiteSelector[M, O, S, S](component, Extractor.ident[S]) {
 				override def apply(whole :S) :S = whole
 				override def get(whole :S) :Option[S] = Some(whole)
 			}
 
-		def ident[O <: AnyMapping, S](mapping :Component[O, S], component :Component[O, S]) :ComponentSelector[mapping.type, O, S, S] =
+		def ident[O, S](mapping :Component[O, S], component :Component[O, S]) :ComponentSelector[mapping.type, O, S, S] =
 			ident[mapping.type, O, S](component)
 
 
 
-		def unapply[O <: AnyMapping, T, S](selector :ComponentSelector[_ <: SingletonMapping { type Owner = O; type Subject = S }, O, S, T])
+		def unapply[O, T, S](selector :ComponentSelector[_ <: SingletonMapping { type Owner = O; type Subject = S }, O, S, T])
 				:Option[(S=>Option[T], Option[S=>T], Component[O, T])] =
 			Some(selector.pick, selector.surepick, selector.lifted)
 
 
 
-		private class ExtractorSelector[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+		private class ExtractorSelector[M <: NarrowedSingleton[O, S], O, S, T]
 		                               (val lifted :Component[O, T], extract :Extractor[S, T])
 			extends ComponentSelector[M, O, S, T]
 		{
@@ -445,7 +443,7 @@ object Mapping {
 			override def get(whole :S) :Option[T] = extract(whole)
 		}
 
-		private class RequisiteSelector[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+		private class RequisiteSelector[M <: NarrowedSingleton[O, S], O, S, T]
 		                               (lifted :Component[O, T], extract :RequisiteExtractor[S, T])
 			extends ExtractorSelector[M, O, S, T](lifted, extract)
 		{
@@ -453,14 +451,14 @@ object Mapping {
 			override def apply(whole :S) :T = extractor.get(whole)
 		}
 
-		private class OptionalSelector[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+		private class OptionalSelector[M <: NarrowedSingleton[O, S], O, S, T]
 		                              (val lifted :Component[O, T], val pick :S => Option[T])
 			extends ComponentSelector[M, O, S, T]
 		{
 			override def surepick :Option[Nothing] = None
 		}
 
-		private class CustomSelector[M <: NarrowedSingleton[O, S], O <: AnyMapping, S, T]
+		private class CustomSelector[M <: NarrowedSingleton[O, S], O, S, T]
 		                            (val lifted :Component[O, T], val pick :S => Option[T], val surepick :Option[S => T])
 			extends ComponentSelector[M, O, S, T]
 	}
@@ -474,10 +472,10 @@ object Mapping {
 		def apply[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] =
 			mapping.columns.filter(test[mapping.Owner])
 
-		def filter[O <: AnyMapping](columns :Unique[AnyComponent[O]]) :Unique[AnyComponent[O]] =
+		def filter[O](columns :Unique[AnyComponent[O]]) :Unique[AnyComponent[O]] =
 			columns.filter(test[O])
 
-		def test[O <: AnyMapping](column :AnyComponent[O]) :Boolean
+		def test[O](column :AnyComponent[O]) :Boolean
 
 		def read[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
 			MappingReadForm[mapping.Owner, S](mapping, apply(mapping :mapping.type))
@@ -492,7 +490,7 @@ object Mapping {
 
 		def apply(pred :AnyMapping => Boolean) :ColumnFilter =
 			new ColumnFilter {
-				override def test[O <: AnyMapping](column :AnyComponent[O]) :Boolean = pred(column)
+				override def test[O](column :AnyComponent[O]) :Boolean = pred(column)
 			}
 
 
@@ -501,14 +499,14 @@ object Mapping {
 			def components[S](mapping :Mapping[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
 
-			def test[O <: AnyMapping](column :AnyComponent[O]): Boolean = buff.enabled(column)
+			def test[O](column :AnyComponent[O]): Boolean = buff.enabled(column)
 		}
 
 		class WithoutBuff(buff :BuffType) extends ColumnFilter {
 			def components[S](mapping :Mapping[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
 
-			def test[O <: AnyMapping](column :AnyComponent[O]): Boolean = buff.disabled(column)
+			def test[O](column :AnyComponent[O]): Boolean = buff.disabled(column)
 		}
 
 		class WriteFilter(modifier :BuffType) extends WithoutBuff(modifier) {
@@ -538,8 +536,8 @@ object Mapping {
 
 		case object AllColumns extends ColumnFilter {
 			override def apply[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] = mapping.columns
-			override def filter[O <: AnyMapping](columns :Unique[AnyComponent[O]]) :Unique[AnyComponent[O]] = columns
-			override def test[O <: AnyMapping](column :AnyComponent[O]) = true
+			override def filter[O](columns :Unique[AnyComponent[O]]) :Unique[AnyComponent[O]] = columns
+			override def test[O](column :AnyComponent[O]) = true
 		}
 	}
 
@@ -548,7 +546,7 @@ object Mapping {
 
 
 
-	private class MappingReadForm[O <: AnyMapping, S] private[Mapping]
+	private class MappingReadForm[O, S] private[Mapping]
 			(mapping :Component[O, S], columns :Unique[AnyComponent[O]], read :AnyComponent[O]=>SQLReadForm[_] = (_:AnyComponent[O]).selectForm)
 		extends SQLReadForm[S]
 	{
@@ -588,13 +586,13 @@ object Mapping {
 
 	object MappingReadForm {
 
-		def apply[O <: AnyMapping, S](mapping :Component[O, S], columns :Unique[AnyComponent[O]],
+		def apply[O, S](mapping :Component[O, S], columns :Unique[AnyComponent[O]],
 		                              forms :AnyComponent[O] => SQLReadForm[_] = (_:AnyComponent[O]).selectForm) :SQLReadForm[S] =
 			new MappingReadForm[O, S](mapping, columns, forms)
 
 
 
-		def select[O <: AnyMapping, S](mapping :Component[O, S], components :Unique[AnyComponent[O]]) :SQLReadForm[S] = {
+		def select[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]]) :SQLReadForm[S] = {
 			val columns = components.map(mapping.lift(_)).flatMap(_.selectable)
 
 			if (columns.exists(NoSelect.enabled))
@@ -629,7 +627,7 @@ object Mapping {
 
 
 
-	private class MappingWriteForm[O <: AnyMapping, S] private (
+	private class MappingWriteForm[O, S] private (
 			mapping :Component[O, S],
 			columns :Unique[AnyComponent[O]],
 			substitute :ValuedBuffType,
@@ -711,13 +709,13 @@ object Mapping {
 
 	object MappingWriteForm {
 
-		def apply[O <: AnyMapping, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		def apply[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
 		                              write :AnyComponent[O] => SQLWriteForm[_],
 		                              replacement :ValuedBuffType = AbstractValuedBuff) :SQLWriteForm[S] =
 			new MappingWriteForm[O, S](mapping, components, replacement, write)
 
 
-		def query[O <: AnyMapping, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		def query[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
 		                              write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).queryForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoQuery, ExtraQuery, write)
 
@@ -729,7 +727,7 @@ object Mapping {
 
 
 
-		def update[O <: AnyMapping, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		def update[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
 			                           write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).updateForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoUpdate, ExtraUpdate, write)
 
@@ -741,7 +739,7 @@ object Mapping {
 
 
 
-		def insert[O <: AnyMapping, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		def insert[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
 		                               write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).insertForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoInsert, ExtraInsert, write)
 
@@ -753,7 +751,7 @@ object Mapping {
 
 
 
-		private def custom[O <: AnyMapping, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		private def custom[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
 		                                       prohibit :BuffType, mandatory :ValuedBuffType,
 		                                       write :AnyComponent[O] => SQLWriteForm[_]) :SQLWriteForm[S] =
 		{

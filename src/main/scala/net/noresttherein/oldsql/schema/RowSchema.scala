@@ -668,7 +668,7 @@ trait RowSchema[S] extends Mapping[S] { composite =>
 
 
 
-trait RowSubSchema[O <: AnyMapping, S] extends RowSchema[S] with SubMapping[O, S]
+trait RowSubSchema[O, S] extends RowSchema[S] with SubMapping[O, S]
 
 trait RowRootSchema[S] extends RowSchema[S] with RootMapping[S]
 

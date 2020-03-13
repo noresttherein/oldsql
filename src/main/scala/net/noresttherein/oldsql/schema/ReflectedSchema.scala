@@ -68,6 +68,6 @@ trait ReflectedSchema[S] extends RowSchema[S] { composite =>
 
 
 
-trait ReflectedSubSchema[O <: AnyMapping, S] extends ReflectedSchema[S] with RowSubSchema[O, S]
+trait ReflectedSubSchema[O, S] extends ReflectedSchema[S] with RowSubSchema[O, S]
 
 trait ReflectedRootSchema[S] extends ReflectedSchema[S] with RowRootSchema[S]

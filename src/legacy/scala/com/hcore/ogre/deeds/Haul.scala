@@ -314,7 +314,7 @@ object Haul {
 		override protected def withDerived[M <: AnyMapping](path: MappingPath[H, M], derived: DerivedHaul[R, M]) =
 			new JoinedSubselectHaul(parent, parentTable, join, source, tables, derivatives + (path -> derived))
 
-		protected def derived[F <: AnyMapping, O <: AnyMapping](joinedTable: TableFormula[R, O], join: RowSource Join F Join O): DerivedHaul[R, F] =
+		protected def derived[F <: AnyMapping, O](joinedTable: TableFormula[R, O], join: RowSource Join F Join O): DerivedHaul[R, F] =
 			JoinedSubselectHaul(source, joinedTable, join)
 		
 //		protected def derived[Y <: AnyMapping, F <: AnyMapping, FK <: AnyMapping, T <: AnyMapping](join: Join[From[T], F], subsource: From[F], joinedTable: JoinedTable[R, T]): DerivedHaul[R, F] =

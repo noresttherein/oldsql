@@ -9,8 +9,8 @@ import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 
 
 
-object MappedMapping {
-	def apply[M<:TypedMapping[S], S, T](mapping :M, mapped :S=>T, unmapped :T=>S) :M MappedAs T = ???
+object MappedMapping { //todo:
+	def apply[M <: TypedMapping[S], S, T](mapping :M, mapped :S=>T, unmapped :T=>S) :M MappedAs T = ???
 //		new GenericMappedMapping[T, S, M] {
 //			override protected val toResultType = mapped
 //			override protected val fromResultType = unmapped
@@ -18,7 +18,7 @@ object MappedMapping {
 //		}
 
 
-	trait MappedAs[M<:AnyMapping, T] extends SubMapping[M#Owner, T] {
+	trait MappedAs[M <: AnyMapping, T] extends SubMapping[M#Owner, T] {
 
 		val adaptee :M
 //		type Component[X] = M#Component[X] //>: M#Component[X] <: SubMapping[X, Owner]

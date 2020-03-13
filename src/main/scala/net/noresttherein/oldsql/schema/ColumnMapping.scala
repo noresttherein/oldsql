@@ -9,7 +9,7 @@ import scala.util.Try
 
 
 
-trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
+trait ColumnMapping[O, S] extends SubMapping[O, S] { column =>
 
 	override def sqlName = Some(name)
 
@@ -155,17 +155,17 @@ trait ColumnMapping[O<:AnyMapping, S] extends SubMapping[O, S] { column =>
 
 object ColumnMapping {
 
-	def apply[O <: AnyMapping, T :SQLForm](name :String, opts :Buff[T]*) :ColumnMapping[O, T] =
+	def apply[O, T :SQLForm](name :String, opts :Buff[T]*) :ColumnMapping[O, T] =
 		new StandardColumn(name, opts)
 
-	def adapt[O <: AnyMapping, T](mapping :TypedMapping[T]) :Option[ColumnMapping[O, T]] = mapping match {
+	def adapt[O, T](mapping :TypedMapping[T]) :Option[ColumnMapping[O, T]] = mapping match {
 		case c :ColumnMapping[_, _] => Some(c.asInstanceOf[ColumnMapping[O, T]])
 		case _ => Try(new ColumnView[O, T](mapping)).toOption
 	}
 
 
 
-	def apply[O <: AnyMapping, T](mapping :Mapping[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
+	def apply[O, T](mapping :Mapping[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
 
 
 
@@ -174,20 +174,20 @@ object ColumnMapping {
 
 
 
-	class StandardColumn[O <: AnyMapping, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :SQLForm[T])
+	class StandardColumn[O, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :SQLForm[T])
 		extends ColumnMapping[O, T]
 	{
 		override val isNullable :Boolean = super.isNullable
 	}
 
 
-	trait ColumnSubstitute[O <: AnyMapping, S, T] extends ColumnMapping[O, T] {
+	trait ColumnSubstitute[O, S, T] extends ColumnMapping[O, T] {
 		val adaptee :ColumnMapping[O, T]
 
 		override def name: String = adaptee.name
 	}
 
-	trait ColumnImpostor[O <: AnyMapping, T] extends ColumnSubstitute[O, T, T] {
+	trait ColumnImpostor[O, T] extends ColumnSubstitute[O, T, T] {
 		override def form: SQLForm[T] = adaptee.form
 
 		override def buffs :Seq[Buff[T]] = adaptee.buffs
@@ -196,7 +196,7 @@ object ColumnMapping {
 //			(values :\ adaptee).result(adaptee)
 	}
 
-	class ColumnOverride[O <: AnyMapping, T]
+	class ColumnOverride[O, T]
 			(val adaptee :ColumnMapping[O, T], nameOverride :Option[String]=None, buffsOverride :Option[Seq[Buff[T]]]=None)
 		extends ColumnImpostor[O, T]
 	{
@@ -208,7 +208,7 @@ object ColumnMapping {
 
 
 
-	class ColumnView[O <: AnyMapping, T](private val adaptee :TypedMapping[T]) extends ColumnMapping[O, T] {
+	class ColumnView[O, T](private val adaptee :TypedMapping[T]) extends ColumnMapping[O, T] {
 
 		if (adaptee.columns.size!=1 || adaptee.selectForm.readColumns!=1 || adaptee.insertForm.writtenColumns!=1 || adaptee.updateForm.writtenColumns!=1)
 			throw new IllegalArgumentException(s"Expected a column, got a multiple column mapping :$adaptee{${adaptee.columns}}")

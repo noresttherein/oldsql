@@ -12,7 +12,7 @@ import scala.collection.mutable
 /**
   * @author Marcin Mościcki
   */
-trait ComponentProxy[O <: AnyMapping, S] extends SubMapping[O, S] {
+trait ComponentProxy[O, S] extends SubMapping[O, S] {
 	protected val adaptee :TypedMapping[S]
 
 	override def buffs :Seq[Buff[S]] = adaptee.buffs
@@ -43,7 +43,7 @@ trait ComponentProxy[O <: AnyMapping, S] extends SubMapping[O, S] {
 object ComponentProxy {
 
 
-	trait ShallowProxy[O <: AnyMapping, S] extends ComponentProxy[O, S] {
+	trait ShallowProxy[O, S] extends ComponentProxy[O, S] {
 		protected override val adaptee :NarrowedMapping[O, S]
 
 		override def apply[T](component :Component[T]) :Selector[T] =
@@ -90,7 +90,7 @@ object ComponentProxy {
 
 
 
-	trait DeepProxy[O <: AnyMapping, S] extends ComponentProxy[O, S] {
+	trait DeepProxy[O, S] extends ComponentProxy[O, S] {
 
 		override def apply[T](component :Component[T]) :Selector[T] =
 			if (component eq adaptee)
@@ -148,7 +148,7 @@ object ComponentProxy {
 
 
 
-	abstract class EagerDeepProxy[M <: TypedSingleton[S], O <: AnyMapping, S] private
+	abstract class EagerDeepProxy[M <: TypedSingleton[S], O, S] private
 			(protected val adaptee :M,
 			 lifts :mutable.Map[AnyMapping, GeneralSelector[_, _]],
 			 dealias :mutable.Map[Mapping.AnyComponent[O], AnyMapping])

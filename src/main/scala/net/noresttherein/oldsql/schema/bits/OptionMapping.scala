@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.slang._
 
 
 
-trait OptionMapping[M <: NarrowedMapping[O, S], O <: AnyMapping, S] extends SubMapping[O, Option[S]] {
+trait OptionMapping[M <: NarrowedMapping[O, S], O, S] extends SubMapping[O, Option[S]] {
 	val get :M
 }
 
@@ -17,7 +17,7 @@ trait OptionMapping[M <: NarrowedMapping[O, S], O <: AnyMapping, S] extends SubM
 
 object OptionMapping {
 
-	def singleton[O <: AnyMapping, S](mapping :Component[O, S]) :OptionMapping[mapping.type, O, S] =
+	def singleton[O, S](mapping :Component[O, S]) :OptionMapping[mapping.type, O, S] =
 		apply(mapping)
 
 //	def of[M <: AnyMapping](mapping :M) :OptionMapping[M, M#Owner, M#Subject] =
@@ -25,14 +25,14 @@ object OptionMapping {
 //			override val get = mapping
 //		}
 //	def of[M <: AnyMapping] = new Factory[M] {}
-	def apply[M <: NarrowedMapping[O, S], O <: AnyMapping, S](mapping :M) :OptionMapping[M, O, S] =
+	def apply[M <: NarrowedMapping[O, S], O, S](mapping :M) :OptionMapping[M, O, S] =
 		new DirectOptionMapping[M, O, S] {
 			override val get = mapping
 		}
 
 
 
-	trait DirectOptionMapping[M <: NarrowedMapping[O, S], O <: AnyMapping, S] extends OptionMapping[M, O, S] { box =>
+	trait DirectOptionMapping[M <: NarrowedMapping[O, S], O, S] extends OptionMapping[M, O, S] { box =>
 
 		val get :M
 

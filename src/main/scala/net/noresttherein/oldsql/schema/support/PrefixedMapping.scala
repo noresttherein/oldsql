@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 
 
 
-class PrefixedMapping[M <: SingletonComponent[O, S], O <: AnyMapping, S](val prefix :String, mapping :M)
+class PrefixedMapping[M <: SingletonComponent[O, S], O, S](val prefix :String, mapping :M)
 	extends EagerDeepProxy[M, O, S](mapping)
 {
 	override protected def adapt[T](component :Component[T]) :Component[T] = component.prefixed(prefix)
@@ -39,11 +39,11 @@ class PrefixedMapping[M <: SingletonComponent[O, S], O <: AnyMapping, S](val pre
 
 
 object PrefixedMapping {
-	def apply[O <: AnyMapping, S](prefix :String, component :Component[O, S]) :Component[O, S] =
+	def apply[O, S](prefix :String, component :Component[O, S]) :Component[O, S] =
 		if (prefix.length == 0) component
 		else new PrefixedMapping[component.type, O, S](prefix, component)
 
-	def qualified[O <: AnyMapping, S](prefix :String, component :Component[O, S]) :Component[O, S] =
+	def qualified[O, S](prefix :String, component :Component[O, S]) :Component[O, S] =
 		if (prefix.length == 0) component
 		else new PrefixedMapping[component.type, O, S](prefix + ".", component)
 }
