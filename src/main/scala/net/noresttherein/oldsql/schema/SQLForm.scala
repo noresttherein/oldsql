@@ -69,6 +69,8 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 	override def asOpt[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :ColumnForm[X] =
 		MappedSQLForm.column[X, T](map, unmap, nullValue)(this)
 
+	override def asOpt :ColumnForm[Option[T]] = SQLForm.OptionColumnForm(this)
+
 
 
 	override def compatible(other: SQLForm[_]): Boolean = other match {

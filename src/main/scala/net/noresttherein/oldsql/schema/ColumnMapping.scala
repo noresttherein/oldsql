@@ -208,7 +208,7 @@ object ColumnMapping {
 
 
 
-	class ColumnView[O <: AnyMapping, T](private val adaptee :Mapping[T]) extends ColumnMapping[O, T] {
+	class ColumnView[O <: AnyMapping, T](private val adaptee :TypedMapping[T]) extends ColumnMapping[O, T] {
 
 		if (adaptee.columns.size!=1 || adaptee.selectForm.readColumns!=1 || adaptee.insertForm.writtenColumns!=1 || adaptee.updateForm.writtenColumns!=1)
 			throw new IllegalArgumentException(s"Expected a column, got a multiple column mapping :$adaptee{${adaptee.columns}}")
@@ -218,14 +218,14 @@ object ColumnMapping {
 		}
 
 
-		override val form = SQLForm.combine(
+		override val form :SQLForm[T] = SQLForm.combine(
 			adaptee.selectForm,
 			adaptee.insertForm unless(_.writtenColumns == 0) getOrElse adaptee.updateForm
 		)
 
-		override def buffs = adaptee.buffs
+		override def buffs :Seq[Buff[T]] = adaptee.buffs
 
-		override val isNullable = super.isNullable
+		override val isNullable :Boolean = super.isNullable
 
 
 		override def equals(other: Any): Boolean = other match {
