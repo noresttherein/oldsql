@@ -117,10 +117,10 @@ object SQLForm extends JDBCTypes {
 			override val sqlType = implicitly[ColumnForm[T]].sqlType
 		}
 
-	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].as(Some(_))(_.get)
+	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].as(Some.apply)(_.get)
 
 	implicit def SomeColumnForm[T :ColumnForm] :ColumnForm[Some[T]] =
-		column[T].as(Some(_))(_.get)
+		column[T].as(Some.apply)(_.get)
 
 
 	implicit def Tuple2Form[T1 :SQLForm, T2 :SQLForm] :SQLForm[(T1, T2)] = new Tuple2Form[T1, T2]
@@ -234,7 +234,7 @@ object SQLForm extends JDBCTypes {
 
 
 
-	case class CombinedForm[T](read :SQLReadForm[T], write :SQLWriteForm[T]) extends SQLForm[T] {
+	private case class CombinedForm[T](read :SQLReadForm[T], write :SQLWriteForm[T]) extends SQLForm[T] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
 			write.set(position)(statement, value)

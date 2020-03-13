@@ -104,6 +104,17 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 	override def flatUnmap[X](fun :X => Option[T]) :ColumnWriteForm[X]  =
 		MappedSQLWriteForm.column(fun)(this)
 
+	override def asOpt :ColumnWriteForm[Option[T]] = SQLWriteForm.OptionColumnWriteForm(this)
+
+
+
+	override def &&[O <: T](read :SQLReadForm[O]) :SQLForm[O] = read match {
+		case atom :ColumnReadForm[O] => SQLForm.combine(atom, this)
+		case _ => SQLForm.combine(read, this)
+	}
+
+	def &&[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] = SQLForm.combine(read, this)
+
 
 
 	override def compatible(other: SQLWriteForm[_]): Boolean = other match {
@@ -167,6 +178,13 @@ object SQLWriteForm {
 
 	implicit def SomeWriteForm[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
 		SQLWriteForm[T].unmap(_.get)
+
+	implicit def OptionColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Option[T]] =
+		SQLWriteForm.column[T].flatUnmap(identity[Option[T]])
+
+	implicit def SomeColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Some[T]] =
+		SQLWriteForm.column[T].unmap(_.get)
+
 
 	implicit def ChainWriteForm[T <: Chain, H](implicit t :SQLWriteForm[T], h :SQLWriteForm[H]) :SQLWriteForm[T ~ H] =
 		new ChainWriteForm(t, h)

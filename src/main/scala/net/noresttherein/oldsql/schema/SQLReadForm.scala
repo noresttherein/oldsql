@@ -108,6 +108,15 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 
 
+	override def &&[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = write match {
+		case atom :ColumnWriteForm[O] => SQLForm.combine(this, atom)
+		case _ => SQLForm.combine(this, write)
+	}
+
+	def &&[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = SQLForm.combine(this, write)
+
+
+
 	override def compatible(other: SQLReadForm[_]): Boolean = other match {
 		case a :ColumnReadForm[_] => a.sqlType == sqlType
 		case _ => false
@@ -146,10 +155,18 @@ object SQLReadForm {
 
 
 	implicit def OptionReadForm[T :SQLReadForm] :SQLReadForm[Option[T]] =
-		SQLReadForm[T].map(Option(_), None)
+		SQLReadForm[T].map(Option.apply, None)
 
 	implicit def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
-		SQLReadForm[T].map(Some(_))
+		SQLReadForm[T].map(Some.apply)
+
+	implicit def OptionColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Option[T]] =
+		SQLReadForm.column[T].map(Option.apply, None)
+
+	implicit def SomeColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Some[T]] =
+		SQLReadForm.column[T].map(Some.apply)
+
+
 
 	implicit def ChainReadForm[T <: Chain, H](implicit t :SQLReadForm[T], h :SQLReadForm[H]) :SQLReadForm[T ~ H] =
 		new ChainReadForm[T, H] {
