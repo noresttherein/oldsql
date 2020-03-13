@@ -444,7 +444,7 @@ trait StaticMapping[E] extends Mapping[E] { composite =>
 	def symLink[M<:Mapping[T], T](path :TypedComponentPath[this.type, M, T]) :SymLinkComponent[M, T] =
 		new SymLinkComponent[M, T](path)
 
-//	def symLink[M<:AnyMapping](path :ComponentPath[this.type, M]) :SymLinkComponent[M, path.ValueType] =
+//	def symLink[M<:Mapping](path :ComponentPath[this.type, M]) :SymLinkComponent[M, path.ValueType] =
 //		new SymLinkComponent[M, path.ValueType](path)
 
 

@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, ComponentSelector, GeneralSelector, NarrowedMapping, SingletonComponent, TypedMapping, TypedSingleton}
-import net.noresttherein.oldsql.schema.{AnyMapping, Buff, ComponentValues, Mapping, SQLReadForm, SQLWriteForm, SubMapping}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector, GeneralSelector, ComponentFor, SingletonFor}
+import net.noresttherein.oldsql.schema.{Mapping, Buff, SQLReadForm, SQLWriteForm, SubMapping}
 
 import scala.collection.mutable
 
@@ -15,7 +15,7 @@ import scala.collection.mutable
   * @author Marcin Mościcki
   */
 trait ComponentProxy[O, S] extends SubMapping[O, S] {
-	protected val adaptee :TypedMapping[S]
+	protected val adaptee :ComponentFor[S]
 
 	override def buffs :Seq[Buff[S]] = adaptee.buffs
 
@@ -142,16 +142,16 @@ object ComponentProxy {
 
 
 
-	abstract class EagerDeepProxy[M <: TypedSingleton[S], O, S] private
+	abstract class EagerDeepProxy[M <: SingletonFor[S], O, S] private
 			(protected val adaptee :M,
-			 lifts :mutable.Map[AnyMapping, GeneralSelector[_, _]],
-			 dealias :mutable.Map[Mapping.AnyComponent[O], AnyMapping])
+			 lifts :mutable.Map[Mapping, GeneralSelector[_, _]],
+			 dealias :mutable.Map[Mapping.AnyComponent[O], Mapping])
 		extends DeepProxy[O, S]
 	{
 		def this(adaptee :M) = this(
 			adaptee,
-			mutable.Map[AnyMapping, GeneralSelector[_, _]](),
-			mutable.Map[Mapping.AnyComponent[O], AnyMapping]()
+			mutable.Map[Mapping, GeneralSelector[_, _]](),
+			mutable.Map[Mapping.AnyComponent[O], Mapping]()
 		)
 
 
@@ -176,8 +176,8 @@ object ComponentProxy {
 		private[this] val originals = dealias.toMap
 
 		protected def lift[T](component :adaptee.Component[T],
-		                      lifts :mutable.Map[AnyMapping, GeneralSelector[_, _]],
-		                      dealias :mutable.Map[AnyComponent, AnyMapping]) :Component[T] =
+		                      lifts :mutable.Map[Mapping, GeneralSelector[_, _]],
+		                      dealias :mutable.Map[AnyComponent, Mapping]) :Component[T] =
 			lifts.getOrElse(component, {
 				val base :adaptee.Selector[T] =
 					if (adaptee eq component)

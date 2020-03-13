@@ -51,7 +51,7 @@ object MappingReference {
 
 
 
-	private class LazyMappingReference[T, E, /*FK<:AnyMapping, */M<:Mapping[E]](
+	private class LazyMappingReference[T, E, /*FK<:Mapping, */M<:Mapping[E]](
 			val target :MappingPath[_<:AnyMapping, M], value : =>Option[T])(implicit val items :T ComposedOf E)
 		extends MappingReference[T, E]
 	{
@@ -154,7 +154,7 @@ object MappingReference {
 
 		}
 //
-//		class MappingReferenceFactoryProxy[K, E, T, R<:Reference[T], FK<:AnyMapping, M<:Mapping[E]](
+//		class MappingReferenceFactoryProxy[K, E, T, R<:Reference[T], FK<:Mapping, M<:Mapping[E]](
 //				val target :MappingPath[FK, M], factory :GenericReferenceFactory[K, E, T, R])
 //			extends ReferenceFactoryProxy[K, E, T, R](factory) with GenericMappingReferenceFactory[K, E, T, R]
 //		{

@@ -3,7 +3,7 @@ package com.hcore.ogre.hoard
 /*
 
 
-import com.hcore.ogre.mapping.{AnyMapping, Mapping}
+import com.hcore.ogre.mapping.{Mapping, Mapping}
 import com.hcore.ogre.model.Restriction
 import com.hcore.ogre.model.Restriction.{Restrictive, Restrainer}
 import com.hcore.ogre.morsels.necromancy.PropertyPath
@@ -115,7 +115,7 @@ class JoinOpressor[S<:RowSource Join FK, FK<:Mapping[K], E, K](
 
 		override def bool(e: Literal[Boolean]): RestrictionElement[Boolean] = literalResult(e.value)
 
-		override def path[M <: AnyMapping, C <: AnyMapping](e: PathFormula[S, M, C]): RestrictionElement[C#ResultType] =
+		override def path[M <: Mapping, C <: Mapping](e: PathFormula[S, M, C]): RestrictionElement[C#ResultType] =
 			e match {
 				case ComponentFormula(table, component) if component.surepick.isDefined =>
 					propertyResult(references(table).andThen(component.surepick.get.asInstanceOf[Any=>C#ResultType]))

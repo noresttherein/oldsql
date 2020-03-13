@@ -218,21 +218,21 @@ object SQLFormula {
 //
 //	trait SQLNativeTerm[T] extends SQLTerm[RowSource, T]
 //
-//	trait SQLMappedTerm[-R<:RowSource, M<:AnyMapping] extends SQLTerm[R, M#ResultType]
+//	trait SQLMappedTerm[-R<:RowSource, M<:Mapping] extends SQLTerm[R, M#ResultType]
 //
-//	trait SQLPath[-R<:RowSource, T<:AnyMapping, M<:AnyMapping] extends SQLMappedTerm[R, M]
+//	trait SQLPath[-R<:RowSource, T<:Mapping, M<:Mapping] extends SQLMappedTerm[R, M]
 //
-//	trait SQLComponent[-R<:RowSource, T<:AnyMapping, M<:AnyMapping] extends SQLPath[R, T, M]
+//	trait SQLComponent[-R<:RowSource, T<:Mapping, M<:Mapping] extends SQLPath[R, T, M]
 //
 //	trait SQLAutoConversion[-R<:RowSource, S, T] extends SQLFormula[R, T]
 //
 //	trait SQLSelect[-R<:RowSource, T] extends SQLFormula[R, T] with Mapping[T]
 //
-//	trait SQLSelectAs[-R<:RowSource, M<:AnyMapping] extends SQLSelect[R, M#ResultType] with IsomorphicMappingAdapter[M#ResultType, M]
+//	trait SQLSelectAs[-R<:RowSource, M<:Mapping] extends SQLSelect[R, M#ResultType] with IsomorphicMappingAdapter[M#ResultType, M]
 //
 //	trait GroundSelect[T] extends SQLSelect[RowSource, T]
 //
-//	trait GroundSelectAs[M<:AnyMapping] extends GroundSelect[M#ResultType] with SQLSelectAs[RowSource, M]
+//	trait GroundSelectAs[M<:Mapping] extends GroundSelect[M#ResultType] with SQLSelectAs[RowSource, M]
 
 
 

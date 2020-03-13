@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, ComponentSelector, SingletonComponent, SingletonMapping, TypedMapping, TypedSingleton}
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, ComponentSelector, SingletonComponent, SingletonMapping, ComponentFor, SingletonFor}
 import net.noresttherein.oldsql.schema.Mapping.GeneralSelector
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
@@ -129,7 +129,7 @@ trait ComponentValues[M <: SingletonMapping] {
 	  * Please note that morphisms in general might not be lossless - some components might not have representations
 	  * in the target mapping.
 	  */
-	def morph[C<:AnyMapping](morphism :MappingMorphism[M, C]) :ComponentValues[C]
+	def morph[C<:Mapping](morphism :MappingMorphism[M, C]) :ComponentValues[C]
 */
 
 
@@ -215,7 +215,7 @@ trait ComponentValues[M <: SingletonMapping] {
   *
   */
 object ComponentValues {
-	type TypedValues[M <: TypedSingleton[T], T] = ComponentValues[M]
+	type TypedValues[M <: SingletonFor[T], T] = ComponentValues[M]
 
 
 	/** Returns ComponentValues using the given function as the source of values for components. Please note that you
@@ -272,13 +272,13 @@ object ComponentValues {
 	/** Factory for `ComponentValues` statically associated with the given mapping (will return
 	  * `ComponentValues[mapping.type]`). Should be the first choice for obtaining `ComponentValues` instances.
 	  */
-	@inline def apply(mapping :AnyMapping) :ComponentValuesFactory[mapping.type] =
+	@inline def apply(mapping :Mapping) :ComponentValuesFactory[mapping.type] =
 		new ComponentValuesFactory[mapping.type](mapping)
 
-	/** A generic version of `apply(mapping :AnyMapping)`, which will return `ComponentValues` associated with the
+	/** A generic version of `apply(mapping :Mapping)`, which will return `ComponentValues` associated with the
 	  * generic type of the mapping. It is intended for generic code, for example functions implementing generic
 	  * morphisms between mappings which operate on type arguments as mapping types. Concrete cases when
-	  * `ComponentValues` are needed for a known, particular mapping instance, should always use `apply(AnyMapping)`
+	  * `ComponentValues` are needed for a known, particular mapping instance, should always use `apply(Mapping)`
 	  * instead.
 	  * @param mapping
 	  * @tparam M
@@ -439,7 +439,7 @@ object ComponentValues {
 
 
 /*
-	class MorphedValues[X<:AnyMapping, Y<:AnyMapping](source :ComponentValues[X], morphism :MappingMorphism[X, Y])
+	class MorphedValues[X<:Mapping, Y<:Mapping](source :ComponentValues[X], morphism :MappingMorphism[X, Y])
 		extends AbstractComponentValues[Y] with DedicatedMappingValue[Y]
 	{
 		override val mapping = morphism.target
@@ -458,7 +458,7 @@ object ComponentValues {
 			direct(pathOf[C, T](component))
 
 
-		override def values[C <: AnyMapping](path: ComponentPath[Y, C]): ComponentValues[C] =
+		override def values[C <: Mapping](path: ComponentPath[Y, C]): ComponentValues[C] =
 			path.walk(this)
 
 		override def direct[C<:Y#Component[T], T](path :TypedComponentPath[Y, C, T]) :ComponentValues[C] =
@@ -473,7 +473,7 @@ object ComponentValues {
 		override def identical[C <: CompatibleMapping[Y]](mapping: C): ComponentValues[C] =
 			new MorphedValues[X, C](source, morphism.to[C](mapping))
 
-		override def morph[C<:AnyMapping](next: MappingMorphism[Y, C]): ComponentValues[C] =
+		override def morph[C<:Mapping](next: MappingMorphism[Y, C]): ComponentValues[C] =
 			new MorphedValues[X, C](source, morphism andThen next)
 
 		override def toString = s"$source for $mapping"
@@ -584,7 +584,7 @@ object ComponentValues {
 
 
 	private class StickyComponentValues[M <: SingletonMapping] private[ComponentValues]
-			(values :Map[AnyMapping, ComponentValues[_]])
+			(values :Map[Mapping, ComponentValues[_]])
 		extends PresetComponentValues[M]
 	{
 		def this(mapping :M, values :ComponentValues[M]) = this(Map(mapping->values))

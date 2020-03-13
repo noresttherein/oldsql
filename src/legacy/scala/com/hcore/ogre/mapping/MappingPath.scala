@@ -143,7 +143,7 @@ object MappingPath {
 
 
 	object SplitFirst {
-		def unapply[X <:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[(DirectPath[X, AnyMapping], MappingPath[AnyMapping, Y])] = //forSome { type M <:AnyMapping }] =
+		def unapply[X <:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[(DirectPath[X, AnyMapping], MappingPath[AnyMapping, Y])] = //forSome { type M <:Mapping }] =
 			path match {
 				case d:DirectPath[_, _] => Some(d.asInstanceOf[DirectPath[X, AnyMapping]], ComponentPath.self(d.end).asInstanceOf[AnyMapping\~\Y])
 				case _ => Indirect.unapply(path)
@@ -151,7 +151,7 @@ object MappingPath {
 	}
 
 	object Indirect {
-		def unapply[X<:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[(DirectPath[X, AnyMapping], MappingPath[AnyMapping, Y])] = // forSome { type M <:AnyMapping }] =
+		def unapply[X<:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[(DirectPath[X, AnyMapping], MappingPath[AnyMapping, Y])] = // forSome { type M <:Mapping }] =
 			path.ifSubclass[TypedConcatPath[X, AnyMapping, _, Y, _]] { concat =>
 				(concat.descending.prefix.asInstanceOf[DirectPath[X, AnyMapping]], concat.descending.suffix.asInstanceOf[AnyMapping \~\ Y])
 			}
@@ -490,7 +490,7 @@ object MappingPath {
 //		def apply[T](from :Mapping[T], to :Mapping[T]) :TypedMappingLink[from.type, to.type, T] =
 //			apply[T, T](from, to, Some(_), false)
 //
-//		def unapply[X<:AnyMapping, Y<:AnyMapping](path :MappingPath[X, Y]) :Option[MappingLink[X, Y]] =
+//		def unapply[X<:Mapping, Y<:Mapping](path :MappingPath[X, Y]) :Option[MappingLink[X, Y]] =
 //			path.asSubclass[MappingLink[X, Y]]
 //	}
 

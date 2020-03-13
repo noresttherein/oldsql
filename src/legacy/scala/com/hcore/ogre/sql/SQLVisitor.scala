@@ -2,7 +2,7 @@ package com.hcore.ogre.sql
 
 
 /*
-import com.hcore.ogre.mapping.AnyMapping
+import com.hcore.ogre.mapping.Mapping
 import com.hcore.ogre.slang.SaferCasts
 import com.hcore.ogre.sql.SQLFormula.SelectFormula.{SelectAsRows, SelectAsRow}
 import com.hcore.ogre.sql.SQLFormula._
@@ -40,7 +40,7 @@ trait GenericSQLVisitor[+F<:RowSource, +R[T]] {
 		case e :SelectFormula[_, _] =>
 			select(e.downcast).asInstanceOf[R[X]]
 		case e :PathFormula[_, _, _] =>
-			path(e.asInstanceOf[PathFormula[F, _<:AnyMapping, _<:AnyMapping]]).asInstanceOf[R[X]]
+			path(e.asInstanceOf[PathFormula[F, _<:Mapping, _<:Mapping]]).asInstanceOf[R[X]]
 		case e :TermFormula[_] =>
 			term(e.crosstyped[X])
 
@@ -75,7 +75,7 @@ trait GenericSQLVisitor[+F<:RowSource, +R[T]] {
 
 	def in[X](e :In[F, X]) :R[Boolean]
 
-	def path[M<:AnyMapping, C<:AnyMapping](e :PathFormula[F, M, C]) :R[C#ResultType]
+	def path[M<:Mapping, C<:Mapping](e :PathFormula[F, M, C]) :R[C#ResultType]
 
 	def select[H](e :SelectFormula[F, H]) :R[RowCursor[H]]
 
@@ -167,12 +167,12 @@ object SQLVisitor {
 	type Fixed[T] = { type Result[X] = T }
 
 	trait GenericActualSQLVisitor[+S<:RowSource, +R[T]] extends GenericSQLVisitor[S, R] {
-		override def path[M <: AnyMapping, C <: AnyMapping](e: PathFormula[S, M, C]): R[C#ResultType] =
+		override def path[M <: Mapping, C <: Mapping](e: PathFormula[S, M, C]): R[C#ResultType] =
 			e.ifSubclass[ComponentFormula[S, M, C]].orElse(component)(abstractPath(e))
 
-		def component[M <: AnyMapping, C <: AnyMapping](e: ComponentFormula[S, M, C]): R[C#ResultType]
+		def component[M <: Mapping, C <: Mapping](e: ComponentFormula[S, M, C]): R[C#ResultType]
 
-		def abstractPath[M <: AnyMapping, C <: AnyMapping](e: PathFormula[S, M, C]): R[C#ResultType] =
+		def abstractPath[M <: Mapping, C <: Mapping](e: PathFormula[S, M, C]): R[C#ResultType] =
 			throw new IllegalArgumentException(s"Expected an actual sql expression but got abstract path $e")
 	}
 

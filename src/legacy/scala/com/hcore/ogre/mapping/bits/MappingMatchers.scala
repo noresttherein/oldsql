@@ -17,8 +17,8 @@ object MappingMatchers {
 //		def unapply[T](mapping :Mapping[T]) :Option[ColumnMapping[T]] =
 //			ColumnMapping.adapt(mapping)
 
-//		def unapply[M<:AnyMapping, C](path)
-//		def unapply[T](path :TypedComponentPath[_<:AnyMapping, _<:TypedMapping[T], T]) :Option[ColumnMapping[T]] =
+//		def unapply[M<:Mapping, C](path)
+//		def unapply[T](path :TypedComponentPath[_<:Mapping, _<:ComponentFor[T], T]) :Option[ColumnMapping[T]] =
 //			ColumnMapping.adapt(path.end)
 
 		def unapply[M<:AnyMapping, C<:AnyMapping](path :ComponentPath[M, C]) :Option[(ColumnMapping[C#ResultType], ValueMorphism[M#ResultType, C#ResultType])] =
@@ -33,7 +33,7 @@ object MappingMatchers {
 //			case _ => None
 //		}
 
-//		def unapply[T](path :TypedComponentPath[_<:AnyMapping, _<:TypedMapping[T], T]) :Option[(ColumnMapping[T], ValueMorphism)]
+//		def unapply[T](path :TypedComponentPath[_<:Mapping, _<:ComponentFor[T], T]) :Option[(ColumnMapping[T], ValueMorphism)]
 
 		def unapply[M<:AnyMapping, C<:AnyMapping](path :ComponentPath[M, C]) :Option[(ColumnMapping[X], ValueMorphism[M#ResultType, X]) forSome { type X }] =
 			path.end.columns match {
@@ -45,15 +45,15 @@ object MappingMatchers {
 	}
 
 	object EmptyColumns {
-//		def unapply(mapping :AnyMapping) :Boolean = mapping.columns.isEmpty
+//		def unapply(mapping :Mapping) :Boolean = mapping.columns.isEmpty
 
 		def unapply[M<:AnyMapping, C<:AnyMapping](path :ComponentPath[M, C]) :Boolean = path.end.columns.map(path.lift(_) :Option[M#Component[_]]).isEmpty
 	}
 
 //	object LiftedColumns {
-//		def unapply[M<:AnyMapping, C<:AnyMapping](path :ComponentPath[M, C]) :Option[(ColumnMapping[C#ResultType], ValueMorphism[M#ResultType, C#ResultType])] =
+//		def unapply[M<:Mapping, C<:Mapping](path :ComponentPath[M, C]) :Option[(ColumnMapping[C#ResultType], ValueMorphism[M#ResultType, C#ResultType])] =
 //
 //	}
 
-//	val EmptyMapping = Unapply.Check((_:AnyMapping).columns.isEmpty)
+//	val EmptyMapping = Unapply.Check((_:Mapping).columns.isEmpty)
 }

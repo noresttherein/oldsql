@@ -178,8 +178,8 @@ object MappingMorphism {
 		def andThen[Z[T]<:TypedMapping[T]](morphism :ComponentMorphism[Y, Z]) :ComponentMorphism[X, Z]
 		def compose[Z[T]<:TypedMapping[T]](morphism :ComponentMorphism[Z, X]) :ComponentMorphism[Z, Y]
 
-//		def from[M[T]>:TypedMapping[T]] = this.asInstanceOf[ComponentMorphism[M, Y]]
-//		def to[M[T]<:TypedMapping[T]] = this.asInstanceOf
+//		def from[M[T]>:ComponentFor[T]] = this.asInstanceOf[ComponentMorphism[M, Y]]
+//		def to[M[T]<:ComponentFor[T]] = this.asInstanceOf
 //		def as[A<:ComponentCompatibleMapping[X], B<:ComponentCompatibleMapping[Y]] = this.asInstanceOf[ComponentMorphism[A, B]]
 
 //		def from[Z<:ComponentCompatibleMapping[X]] = this.asInstanceOf[ComponentMorphism[Z, Y]]
@@ -216,7 +216,7 @@ object MappingMorphism {
 			}
 
 		@inline
-//		def identity[X<:AnyMapping, Y<:ComponentCompatibleMapping[X]] :ComponentMorphism[X, Y] = id.asInstanceOf[ComponentIdentity[X, Y]]
+//		def identity[X<:Mapping, Y<:ComponentCompatibleMapping[X]] :ComponentMorphism[X, Y] = id.asInstanceOf[ComponentIdentity[X, Y]]
 		def identity[X[T]<:TypedMapping[T]] :ComponentMorphism[X, X] = id.asInstanceOf[ComponentIdentity[X, X]]
 		
 		@inline

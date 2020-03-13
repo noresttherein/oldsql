@@ -34,7 +34,7 @@ import scala.reflect.runtime.universe.TypeTag
   *
   * @tparam S value type of the mapped entity
   */
-trait RowSchema[S] extends Mapping[S] { composite =>
+trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 	/** Base trait for all components of this mapping. Creating an instance automatically lists it within owning mapping
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.

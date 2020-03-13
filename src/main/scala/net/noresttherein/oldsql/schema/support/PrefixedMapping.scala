@@ -1,6 +1,5 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.schema.{AnyMapping, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{Component, SingletonComponent}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 

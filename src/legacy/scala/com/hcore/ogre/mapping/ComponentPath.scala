@@ -531,7 +531,7 @@ object ComponentPath {
 	}
 
 
-//	class MappedComponentPath[X<:AnyMapping, Y<:AnyMapping{ type ResultType=V }, V] extends TypedComponentPath[X, Y, V] {
+//	class MappedComponentPath[X<:Mapping, Y<:Mapping{ type ResultType=V }, V] extends TypedComponentPath[X, Y, V] {
 //
 //	}
 	
@@ -622,7 +622,7 @@ object ComponentPath {
 
 
 /*
-	case class SymLinkComponentPath[X<:AnyMapping, Z<:Mapping[T], T, Y<:Mapping[V], V](target :TypedComponentPath[X, Z, T], targetMorphism :MappingMorphism[Z, Y])
+	case class SymLinkComponentPath[X<:Mapping, Z<:Mapping[T], T, Y<:Mapping[V], V](target :TypedComponentPath[X, Z, T], targetMorphism :MappingMorphism[Z, Y])
 		extends TypedMappingLink[X, Y, V] with TypedComponentPath[X, Y, V]  with TypedDirectPath[X, Y, V] with MorphismPath[X, Y]
 	{ link =>
 //		override def start = target.start
@@ -641,11 +641,11 @@ object ComponentPath {
 //			override def components: ComponentMorphism[Y#Component, X#Component] = link.target.morphism.components
 //		}
 
-		override def drop[M <: AnyMapping](other: MappingPath[_ <: AnyMapping, M]): Option[TypedComponentPath[M, Y, V]] =
+		override def drop[M <: Mapping](other: MappingPath[_ <: Mapping, M]): Option[TypedComponentPath[M, Y, V]] =
 			super.drop(other).asInstanceOf[Option[TypedComponentPath[M, Y, V]]]
 
-		override def splitWhere(fun: (MappingPath[_, _]) => Boolean): (ComponentPath[X, M], TypedComponentPath[M, Y, V]) forSome {type M <: AnyMapping} =
-			super.splitWhere(fun).asInstanceOf[(ComponentPath[X, AnyMapping], TypedComponentPath[AnyMapping, Y, V])]
+		override def splitWhere(fun: (MappingPath[_, _]) => Boolean): (ComponentPath[X, M], TypedComponentPath[M, Y, V]) forSome {type M <: Mapping} =
+			super.splitWhere(fun).asInstanceOf[(ComponentPath[X, Mapping], TypedComponentPath[Mapping, Y, V])]
 
 
 		override def walk(values: ComponentValues[X]): ComponentValues[Y] =

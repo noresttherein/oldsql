@@ -18,7 +18,7 @@ package net.noresttherein.oldsql.schema.support
   * return a SymLinkComponentPath when asked for a path to the lifted representation of this component.
   */
 /*
-trait SymLinkMapping[X<:AnyMapping, M<:Mapping[T], T] extends Mapping[T] with FullMappingProxy[T, M] {
+trait SymLinkMapping[X<:Mapping, M<:Mapping[T], T] extends Mapping[T] with FullMappingProxy[T, M] {
 	type Component[V] = SymLinkMapping[X, _<:Mapping[V], V] with ComponentProxy[V]
 
 	def target :TypedComponentPath[X, M, T]
@@ -39,14 +39,14 @@ trait SymLinkMapping[X<:AnyMapping, M<:Mapping[T], T] extends Mapping[T] with Fu
 
 object SymLinkMapping {
 
-	def apply[X<:AnyMapping, M<:Mapping[T], T](target :TypedComponentPath[X, M, T]) :SymLinkMapping[X, M, T] =
+	def apply[X<:Mapping, M<:Mapping[T], T](target :TypedComponentPath[X, M, T]) :SymLinkMapping[X, M, T] =
 		new BaseSymLink(target)
 
-	def path[X<:AnyMapping, Y<:X#Component[V], V](target :ComponentPath[X, _<:AnyMapping], default :MappingMorphism[X, Y]) :TypedComponentPath[X, Y, V] =
+	def path[X<:Mapping, Y<:X#Component[V], V](target :ComponentPath[X, _<:Mapping], default :MappingMorphism[X, Y]) :TypedComponentPath[X, Y, V] =
 		new SymLinkComponentPath(target, default)
 
 
-	class BaseSymLink[P<:AnyMapping, M<:Mapping[T], T](val target :TypedComponentPath[P, M, T]) extends SymLinkMapping[P, M, T] {
+	class BaseSymLink[P<:Mapping, M<:Mapping[T], T](val target :TypedComponentPath[P, M, T]) extends SymLinkMapping[P, M, T] {
 		def this(source :P, target :M with P#Component[T]) =
 			this((source \\ target.asInstanceOf[source.Component[T]]).asInstanceOf[TypedComponentPath[P, M, T]])
 
@@ -62,7 +62,7 @@ object SymLinkMapping {
 	  * All instances produced by values adapted by this path will first check if the argument mapping is not the target of the given path,
 	  * and if so, return values that would be returned for that mapping by ComponentValues[X].
 	  */
-	case class SymLinkComponentPath[X<:AnyMapping, Z<:AnyMapping, Y<:X#Component[V], V](target :ComponentPath[X, Z], morphism :MappingMorphism[X, Y])
+	case class SymLinkComponentPath[X<:Mapping, Z<:Mapping, Y<:X#Component[V], V](target :ComponentPath[X, Z], morphism :MappingMorphism[X, Y])
 		extends DirectComponent[X, Y, V] with MorphismPath[X, Y]
 	{ link =>
 

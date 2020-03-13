@@ -47,7 +47,7 @@ class SubselectJoin[S<:RowSource, R<:AnyMapping] private (
 		transplanted filterBy SQLScribe.subselect[Parent, this.type, O, SubsourceOf[O], Boolean](joinCondition, this, transplanted, rewriter)
 	}
 
-//	override def copyJoin[L <: RowSource, M <: AnyMapping](left: L, right: M): L SubselectJoin M =
+//	override def copyJoin[L <: RowSource, M <: Mapping](left: L, right: M): L SubselectJoin M =
 //		new SubselectJoin[L, M](left, right)
 //
 //	override protected def copyJoin(replacement: TableFormula[S Join R, R], condition: BooleanFormula[S Join R]=True()): S SubselectJoin R =

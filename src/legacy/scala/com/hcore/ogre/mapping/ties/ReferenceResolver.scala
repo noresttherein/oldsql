@@ -202,14 +202,14 @@ object ReferenceResolver {
 			value
 		}
 
-//		override def proxy[X <: AnyMapping](target: X, result: ComponentValues[X], map: (X#Component[_]) => Option[M#Component[_]]): ComponentValues[X] = {
+//		override def proxy[X <: Mapping](target: X, result: ComponentValues[X], map: (X#Component[_]) => Option[M#Component[_]]): ComponentValues[X] = {
 //			val components = target.subcomponents.indexed
-//			val adapter = (m :AnyMapping) =>
+//			val adapter = (m :Mapping) =>
 //				if (components.contains(m)) map(m.asInstanceOf[X#Component[_]])
 //				else Some(m)
 //			new ReferencingComponentValues[X](target, result, resolver.adapt(adapter))
 //		}
-		//		def proxy[X<:AnyMapping](target :X, result :ComponentValues[X], map :X#Component[_]=>Option[M#Component[_]]) :ComponentValues[X]
+		//		def proxy[X<:Mapping](target :X, result :ComponentValues[X], map :X#Component[_]=>Option[M#Component[_]]) :ComponentValues[X]
 		override def proxy[X <: AnyMapping](target: X, values: ComponentValues[X], morphism: MappingMorphism[M, X]): ComponentValues[X] =
 			new ReferencingComponentValues[X](target, values, resolver)
 	}

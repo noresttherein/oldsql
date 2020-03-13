@@ -218,7 +218,7 @@ object Haul {
 		}
 
 
-//		protected def derived[Y <: AnyMapping, F <: AnyMapping, FK <: AnyMapping, T <: AnyMapping](join: RowSource Join F Join T, joinedTable: JoinedTable[R, T]): DerivedHaul[R, F]
+//		protected def derived[Y <: Mapping, F <: Mapping, FK <: Mapping, T <: Mapping](join: RowSource Join F Join T, joinedTable: JoinedTable[R, T]): DerivedHaul[R, F]
 		protected def derived[F <: AnyMapping, T <: AnyMapping](joinedTable: TableFormula[R, T], join: RowSource Join F Join T): DerivedHaul[R, F]
 
 
@@ -270,7 +270,7 @@ object Haul {
 		type Self[S<:RowSource] = JoinWithJoinedSubselects[S, H]
 		def self = this
 
-//		protected def derived[Y <: AnyMapping, F <: AnyMapping, FK <: AnyMapping, T <: AnyMapping](join: Join[From[T], F], subsource: From[F], joinedTable: JoinedTable[R, T]): DerivedHaul[R, F] =
+//		protected def derived[Y <: Mapping, F <: Mapping, FK <: Mapping, T <: Mapping](join: Join[From[T], F], subsource: From[F], joinedTable: JoinedTable[R, T]): DerivedHaul[R, F] =
 //			new JoinedSubselectHaul[R, T, From[F], F](source, joinedTable, join, subsource, TablesIndex(subsource))
 		protected def derived[F <: AnyMapping, T <: AnyMapping](joinedTable: TableFormula[R, T], join: RowSource Join F Join T): DerivedHaul[R, F] =
 			JoinedSubselectHaul(source, joinedTable, join)
@@ -317,7 +317,7 @@ object Haul {
 		protected def derived[F <: AnyMapping, O](joinedTable: TableFormula[R, O], join: RowSource Join F Join O): DerivedHaul[R, F] =
 			JoinedSubselectHaul(source, joinedTable, join)
 		
-//		protected def derived[Y <: AnyMapping, F <: AnyMapping, FK <: AnyMapping, T <: AnyMapping](join: Join[From[T], F], subsource: From[F], joinedTable: JoinedTable[R, T]): DerivedHaul[R, F] =
+//		protected def derived[Y <: Mapping, F <: Mapping, FK <: Mapping, T <: Mapping](join: Join[From[T], F], subsource: From[F], joinedTable: JoinedTable[R, T]): DerivedHaul[R, F] =
 //			new JoinedSubselectHaul[R, T, From[F], F](source, joinedTable, join, subsource, TablesIndex(subsource))
 
 

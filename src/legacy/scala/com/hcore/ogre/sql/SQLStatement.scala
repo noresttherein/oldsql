@@ -101,7 +101,7 @@ object SQLStatement {
 	type SQLCommand = SQLStatement[Unit]
 
 
-//	trait TableStatement[T<:AnyMapping] {
+//	trait TableStatement[T<:Mapping] {
 //		val table :T
 //	}
 	

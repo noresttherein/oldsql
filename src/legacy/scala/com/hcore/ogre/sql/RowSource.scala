@@ -81,7 +81,7 @@ trait RowSource {
 	type LastTable[S <: RowSource] <:TableFormula[S, _]
 
 	/** Last mapping in this source when treated as a list, if any. */
-	def lastTable :LastTable[this.type] //:JoinedTable[this.type, _<:AnyMapping]
+	def lastTable :LastTable[this.type] //:JoinedTable[this.type, _<:Mapping]
 
 	/** First (leftmost) mapping in this source when treated as a list. */
 	def headTable :TableFormula[this.type, _<:AnyMapping]
@@ -660,7 +660,7 @@ object RowSource {
 		  * @param mapping first table in the from clause of a subselect being built.
 		  */
 		def from[M<:AnyMapping](mapping :M) :S SubselectJoin M = new SubselectJoin(source, mapping)
-//		def from[M<:AnyMapping](mapping :M) :SubselectJoin[S, S, M] = new SubselectJoin(source, mapping)
+//		def from[M<:Mapping](mapping :M) :SubselectJoin[S, S, M] = new SubselectJoin(source, mapping)
 
 
 
@@ -717,7 +717,7 @@ object RowSource {
 //		  * @param condition a function creating a representation of a sql expression from the passed aliases for the joined tables.
 //		  * @return
 //		  */
-//		def on[L<:AnyMapping, R<:AnyMapping](condition :(TableFormula[S, L], TableFormula[S, R]) => BooleanFormula[S])(
+//		def on[L<:Mapping, R<:Mapping](condition :(TableFormula[S, L], TableFormula[S, R]) => BooleanFormula[S])(
 //				implicit left :L SecondLastTableOf S, right :R LastTableOf S) :S =
 //			where(t => condition(left(source), right(source)))
 
@@ -774,7 +774,7 @@ object RowSource {
 			subselect(source.row.asInstanceOf[SQLFormula[S, S#Row]])
 
 		//todo: this would include first column of the whole source, not the first in the from list for subselects
-//		def subselectFirst[T<:AnyMapping](implicit firstTable :T FirstTableOf S) :SelectFrom[S, T#ResultType] =
+//		def subselectFirst[T<:Mapping](implicit firstTable :T FirstTableOf S) :SelectFrom[S, T#ResultType] =
 //			subselect(firstTable(source))
 
 
@@ -894,7 +894,7 @@ object RowSource {
 
 	object TableFormula {
 
-//		implicit def toComponentExpression[S<:RowSource, M<:AnyMapping, E<:RowSource](source :JoinedTable[S, M])(implicit extension :S ExtendedBy E) :ComponentFormula[E, M, M] =
+//		implicit def toComponentExpression[S<:RowSource, M<:Mapping, E<:RowSource](source :JoinedTable[S, M])(implicit extension :S ExtendedBy E) :ComponentFormula[E, M, M] =
 //			source.asInstanceOf[JoinedTable[E, M]].*
 
 		implicit def asMemberOfExtendedJoin[S<:RowSource, M<:AnyMapping, E<:RowSource](table :TableFormula[S, M])(implicit ev :S ExtendedBy E) :TableFormula[E, M] =
@@ -924,7 +924,7 @@ object RowSource {
 	  * could had been identified.
 	  *
 	  * The cause for this duplication is that an implicit parameter list on a method prevents from implicitly invoking apply
-	  * on the result. If the factory for these instances, RowTables[J, R].apply[T<:AnyMapping] took an implicit evidence
+	  * on the result. If the factory for these instances, RowTables[J, R].apply[T<:Mapping] took an implicit evidence
 	  * that M uniquely identifies a member of the join, we couldn't just write : t[T](component)
 	  * (shorthand for t.apply[T].apply(component) as the given parameter list would be taken as an explicit parameter
 	  * for the implicit argument list of the first apply call.
@@ -985,7 +985,7 @@ object RowSource {
 //			  * @param member proof that M is indeed a part of the underlying join.
 //			  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 //			  */
-//			def \\[C<:AnyMapping](path :M => ComponentPath[M, C])(implicit member :M JoinedIn (_>:S)) :ComponentExpression[S, M, C] =
+//			def \\[C<:Mapping](path :M => ComponentPath[M, C])(implicit member :M JoinedIn (_>:S)) :ComponentExpression[S, M, C] =
 //				t \\ path
 
 //		/** Create an SQL expression representing the whole underlying mapping. */
@@ -1148,7 +1148,7 @@ object RowSource {
 		@inline
 		def apply[M<:AnyMapping, S<:RowSource](implicit member :M JoinedIn S) :M JoinedIn S = member
 
-//			def apply[M<:AnyMapping, S<:RowSource](pick :S=>M) :M IncludedIn S = new IncludedIn[S, M](pick)
+//			def apply[M<:Mapping, S<:RowSource](pick :S=>M) :M IncludedIn S = new IncludedIn[S, M](pick)
 
 		/** A shorthand for implicitly[M IncludedIn S] */
 		@inline
@@ -1280,13 +1280,13 @@ object RowSource {
 		implicit def joinCrossJoin[F<:RowSource, L<:RowSource, R<:AnyMapping, M<:RowSource](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L Join R, M Join R] =
 			new JoinCrossJoin[F, Join, L, R, M](merger)
 
-//		implicit def rightCrossJoin[F<:RowSource, L<:RowSource, R<:AnyMapping, M<:RowSource](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L RightJoin R, M RightJoin R] =
+//		implicit def rightCrossJoin[F<:RowSource, L<:RowSource, R<:Mapping, M<:RowSource](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L RightJoin R, M RightJoin R] =
 //			new JoinCrossJoin[F, RightJoin, L, R, M](merger)
 //
-//		implicit def leftCrossJoin[F<:RowSource, L<:RowSource, R<:AnyMapping, M<:RowSource](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L LeftJoin R, M LeftJoin R] =
+//		implicit def leftCrossJoin[F<:RowSource, L<:RowSource, R<:Mapping, M<:RowSource](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L LeftJoin R, M LeftJoin R] =
 //			new JoinCrossJoin[F, LeftJoin, L, R, M](merger)
 //
-//		implicit def innerCrossJoin[F<:RowSource, L<:RowSource, R<:AnyMapping, M<:RowSource](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L InnerJoin R, M InnerJoin R] =
+//		implicit def innerCrossJoin[F<:RowSource, L<:RowSource, R<:Mapping, M<:RowSource](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L InnerJoin R, M InnerJoin R] =
 //			new JoinCrossJoin[F, InnerJoin, L, R, M](merger)
 
 		class JoinCrossJoin[F<:RowSource, J[A<:RowSource, B<:AnyMapping]<:Join[A, B], L<:RowSource, R<:AnyMapping, M<:RowSource] private[RowSourceCrossJoin]

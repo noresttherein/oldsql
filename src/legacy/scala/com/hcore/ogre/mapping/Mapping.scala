@@ -147,7 +147,7 @@ sealed trait AnyMapping { mapping => //this :Mapping[_] =>
 //	}
 
 
-//	implicit def nestedPath[C<:AnyComponent, X<:AnyMapping](path :ComponentPath[C, X]) :ComponentPath[this.type, X] =
+//	implicit def nestedPath[C<:AnyComponent, X<:Mapping](path :ComponentPath[C, X]) :ComponentPath[this.type, X] =
 //		(this :this.type) \: path
 
 
@@ -286,7 +286,7 @@ object Mapping {
 	}
 
 
-//	class ComponentView[M<:AnyMapping, C<:M#Component[T], T](val path :TypedPath[M, C, T]) extends AnyVal {
+//	class ComponentView[M<:Mapping, C<:M#Component[T], T](val path :TypedPath[M, C, T]) extends AnyVal {
 //		def apply(value :M#ResultType) :Option[T] = path.pick(value)
 //		def apply[X](subcomponent :C#Component[X]) :Option[M#Component[X]] = path.lift(subcomponent)
 //	}
@@ -296,7 +296,7 @@ object Mapping {
 //	def apply[E](columns :Seq[ColumnMapping[_]], assemble :Seq[_]=>E, deassamble :E=>Seq[_]) :Mapping[E] =
 //		new ColumnSeqMapping[E](columns, assemble, deassamble)
 
-//	trait MappingWalker[M<:AnyMapping]
+//	trait MappingWalker[M<:Mapping]
 
 
 	trait ColumnFilter {

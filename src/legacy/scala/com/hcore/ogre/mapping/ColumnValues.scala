@@ -54,7 +54,7 @@ object ColumnValues {
 
 	
 //	@inline
-//	def Lazy[M<:AnyMapping](mapping :M, value : =>M#ResultType) :ColumnValues[M] =
+//	def Lazy[M<:Mapping](mapping :M, value : =>M#ResultType) :ColumnValues[M] =
 //		new LazyMappingValue[M](mapping, value)
 
 

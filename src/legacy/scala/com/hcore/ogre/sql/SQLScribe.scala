@@ -106,11 +106,11 @@ object SQLScribe {
 	  * @tparam F source source type
 	  * @tparam T target source type
 	  */
-//	def apply[F<:RowSource, T<:RowSource](expression :BooleanFormula[F], from :F, to :T)(mapper :PathFormula[F, _<:AnyMapping, _<:AnyMapping]=>SQLFormula[T, _]) :BooleanFormula[T] =
+//	def apply[F<:RowSource, T<:RowSource](expression :BooleanFormula[F], from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>SQLFormula[T, _]) :BooleanFormula[T] =
 //		translate[F, T, Boolean](expression, from, to)(mapper)
 
 	
-//	def apply[F<:RowSource, T<:RowSource](from :F, to :T)(mapper :PathFormula[F, _<:AnyMapping, _<:AnyMapping]=>PathFormula[T, _<:AnyMapping, _<:AnyMapping]) :SQLFormula[T, Boolean] =
+//	def apply[F<:RowSource, T<:RowSource](from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>PathFormula[T, _<:Mapping, _<:Mapping]) :SQLFormula[T, Boolean] =
 //		translate(from)
 	
 	def apply[F<:RowSource, T<:RowSource, X](expression :SQLFormula[F, X], from :F, to :T)(mapper :PathFormula[F, _<:AnyMapping, _<:AnyMapping]=>SQLFormula[T, _]) :SQLFormula[T, X] =

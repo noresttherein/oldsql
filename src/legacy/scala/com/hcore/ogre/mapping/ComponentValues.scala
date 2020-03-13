@@ -351,9 +351,9 @@ object ComponentValues {
 	def apply(mapping :AnyMapping) :ComponentValuesFactory[mapping.type] =
 		new ComponentValuesFactory[mapping.type](mapping)
 
-	/** A generic version of apply(mapping :AnyMapping), which will return ComponentValues associated with the generic type of the mapping.
+	/** A generic version of apply(mapping :Mapping), which will return ComponentValues associated with the generic type of the mapping.
 	  * It is inteded for generic code, for example functions implementing generic morphisms between mappings which operate on type arguments as mapping types.
-	  * Concrete cases when ComponentValues are needed for a known, particular mapping instance, should always use apply(AnyMapping) instead.
+	  * Concrete cases when ComponentValues are needed for a known, particular mapping instance, should always use apply(Mapping) instead.
 	  * @param mapping
 	  * @tparam M
 	  * @return

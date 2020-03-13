@@ -76,9 +76,9 @@ trait SQLMapper[+S<:RowSource, +Y[X]] {
 //
 //
 //
-//	protected[sql] def matchPath[T<:AnyMapping, C<:AnyMapping](f :PathFormula[S, T, C]) :Y[C#ResultType] //= matchFormula(f)
+//	protected[sql] def matchPath[T<:Mapping, C<:Mapping](f :PathFormula[S, T, C]) :Y[C#ResultType] //= matchFormula(f)
 //
-//	protected[sql] def matchComponent[T<:AnyMapping, C<:AnyMapping](f :ComponentFormula[S, T, C]) :Y[C#ResultType] //= matchPath(f)
+//	protected[sql] def matchComponent[T<:Mapping, C<:Mapping](f :ComponentFormula[S, T, C]) :Y[C#ResultType] //= matchPath(f)
 //
 //
 //	protected[sql] def matchComparison[X](f :ComparisonFormula[S, X]) :Y[Boolean] //= matchCondition(f)

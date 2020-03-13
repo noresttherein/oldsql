@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
-import net.noresttherein.oldsql.schema.Mapping.{ComponentSelector, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelector, ComponentFor}
 import net.noresttherein.oldsql.slang._
 
 import scala.util.Try
@@ -158,14 +158,14 @@ object ColumnMapping {
 	def apply[O, T :SQLForm](name :String, opts :Buff[T]*) :ColumnMapping[O, T] =
 		new StandardColumn(name, opts)
 
-	def adapt[O, T](mapping :TypedMapping[T]) :Option[ColumnMapping[O, T]] = mapping match {
+	def adapt[O, T](mapping :ComponentFor[T]) :Option[ColumnMapping[O, T]] = mapping match {
 		case c :ColumnMapping[_, _] => Some(c.asInstanceOf[ColumnMapping[O, T]])
 		case _ => Try(new ColumnView[O, T](mapping)).toOption
 	}
 
 
 
-	def apply[O, T](mapping :TypedMapping[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
+	def apply[O, T](mapping :ComponentFor[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
 
 
 
@@ -208,7 +208,7 @@ object ColumnMapping {
 
 
 
-	class ColumnView[O, T](private val adaptee :TypedMapping[T]) extends ColumnMapping[O, T] {
+	class ColumnView[O, T](private val adaptee :ComponentFor[T]) extends ColumnMapping[O, T] {
 
 		if (adaptee.columns.size!=1 || adaptee.selectForm.readColumns!=1 || adaptee.insertForm.writtenColumns!=1 || adaptee.updateForm.writtenColumns!=1)
 			throw new IllegalArgumentException(s"Expected a column, got a multiple column mapping :$adaptee{${adaptee.columns}}")

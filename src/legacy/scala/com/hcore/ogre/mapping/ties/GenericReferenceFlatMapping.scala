@@ -46,7 +46,7 @@ trait GenericReferenceFlatMapping[RK<:Reference[JES], RKM<:Mapping[RK], JES, JE,
 
 //
 //
-//class ReferenceFlatMapping[RK<:Reference[JE], RKM<:Mapping[RK], JE, JEM<:Mapping[JE], JRM<:AnyMapping, E, EM<:Mapping[E], X, R<:Reference[X]]
+//class ReferenceFlatMapping[RK<:Reference[JE], RKM<:Mapping[RK], JE, JEM<:Mapping[JE], JRM<:Mapping, E, EM<:Mapping[E], X, R<:Reference[X]]
 //		(val ref :RKM, joinReference : =>ComponentPath[JEM, JRM], val referenceFactory :GenericMappingReferenceFactory[RK, E, X, R, EM])
 //	extends GenericReferenceFlatMapping[RK, RKM, JE, JEM, JRM, E, EM, X, R]
 //{

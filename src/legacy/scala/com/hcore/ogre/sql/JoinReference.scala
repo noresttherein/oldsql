@@ -23,10 +23,10 @@ import SaferCasts._
 trait JoinReference[X, E, K] extends SQLReference[X, E] {
 	type ForeignKey <: Mapping[K]
 	type JoinSource = Source Join ForeignKey
-//	type TargetTable <: AnyMapping
+//	type TargetTable <: Mapping
 
 	val joinSource :JoinSource
-	val target :ComponentExpression[Source, _<:AnyMapping, TargetMapping]
+	val target :ComponentExpression[Source, _<:Mapping, TargetMapping]
 //	val foreignKey :JoinedTable[Source, ForeignKey]
 	val key :K
 
@@ -41,7 +41,7 @@ trait JoinReference[X, E, K] extends SQLReference[X, E] {
 object JoinReference {
 
 	def apply[S<:RowSource, M<:Mapping[E], FK<:Mapping[K], X, E, K](
-			join :S Join FK, target :ComponentExpression[S, _<:AnyMapping, M], key :K, toOpt :Option[X]=None)
+			join :S Join FK, target :ComponentExpression[S, _<:Mapping, M], key :K, toOpt :Option[X]=None)
 			(implicit composedOf :X ComposedOf E)
 	:JoinReference[X, E, K] =
 		new TypedJoinReference[S, M, FK, X, E, K](join, target, key, toOpt)
@@ -51,7 +51,7 @@ object JoinReference {
 
 
 	class TypedJoinReference[S<:RowSource, M<:Mapping[E], FK<:Mapping[K], X, E, K](
-			val joinSource :S Join FK, val target :ComponentExpression[S, _<:AnyMapping, M], val key :K, value : =>Option[X]=None)
+			val joinSource :S Join FK, val target :ComponentExpression[S, _<:Mapping, M], val key :K, value : =>Option[X]=None)
 			(implicit val items :X ComposedOf E)
 		extends JoinReference[X, E, K]
 	{

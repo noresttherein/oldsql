@@ -3,13 +3,13 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.{InverseIndexSeq, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{AnyMapping, Buff, Mapping, SQLReadForm, SQLWriteForm, SubMapping}
-import net.noresttherein.oldsql.schema.Mapping.{Component, NarrowedMapping, ComponentSelector}
+import net.noresttherein.oldsql.schema.{Buff, SQLReadForm, SQLWriteForm, SubMapping}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector}
 import net.noresttherein.oldsql.slang._
 
 
 
-trait OptionMapping[M <: NarrowedMapping[O, S], O, S] extends SubMapping[O, Option[S]] {
+trait OptionMapping[M <: Component[O, S], O, S] extends SubMapping[O, Option[S]] {
 	val get :M
 }
 
@@ -20,19 +20,19 @@ object OptionMapping {
 	def singleton[O, S](mapping :Component[O, S]) :OptionMapping[mapping.type, O, S] =
 		apply(mapping)
 
-//	def of[M <: AnyMapping](mapping :M) :OptionMapping[M, M#Owner, M#Subject] =
+//	def of[M <: Mapping](mapping :M) :OptionMapping[M, M#Owner, M#Subject] =
 //		new DirectOptionMapping[M, M#Owner, M#Subject] {
 //			override val get = mapping
 //		}
-//	def of[M <: AnyMapping] = new Factory[M] {}
-	def apply[M <: NarrowedMapping[O, S], O, S](mapping :M) :OptionMapping[M, O, S] =
+//	def of[M <: Mapping] = new Factory[M] {}
+	def apply[M <: Component[O, S], O, S](mapping :M) :OptionMapping[M, O, S] =
 		new DirectOptionMapping[M, O, S] {
 			override val get = mapping
 		}
 
 
 
-	trait DirectOptionMapping[M <: NarrowedMapping[O, S], O, S] extends OptionMapping[M, O, S] { box =>
+	trait DirectOptionMapping[M <: Component[O, S], O, S] extends OptionMapping[M, O, S] { box =>
 
 		val get :M
 

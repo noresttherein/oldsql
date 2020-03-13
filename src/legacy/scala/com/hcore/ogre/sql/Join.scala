@@ -69,7 +69,7 @@ abstract class Join[+L<:RowSource, R<:AnyMapping] protected (
 		left.occurences(mapping) + (if (mapping==right) 1 else 0)
 
 
-	override def allTables = toTableStream.reverse//last +: left.all.map(_.asInstanceOf[JoinedTable[L, AnyMapping]].joinedWith[R])
+	override def allTables = toTableStream.reverse//last +: left.all.map(_.asInstanceOf[JoinedTable[L, Mapping]].joinedWith[R])
 
 	override protected[sql] def toUntypedTableStream = asTables[RowSource].last +: left.toUntypedTableStream
 
@@ -206,7 +206,7 @@ abstract class Join[+L<:RowSource, R<:AnyMapping] protected (
 
 
 
-//	def selectOne[T<:AnyMapping, C<:AnyMapping](mapping :JoinedTables[this.type]=>ComponentFormula[this.type, T, C]) :SelectMapping[this.type, C] =
+//	def selectOne[T<:Mapping, C<:Mapping](mapping :JoinedTables[this.type]=>ComponentFormula[this.type, T, C]) :SelectMapping[this.type, C] =
 //		SelectMapping(this :this.type, mapping(this :this.type))
 
 
@@ -463,7 +463,7 @@ class From[T<:AnyMapping] protected (table :TableFormula[Dual Join T, T], filter
 //	override def as(alias :String) :From[T] = {
 //		val join = new From[T](new JoinedTable[From[T], T](right, left.size, Some(alias)), True())
 //		val filter = SQLScribe[this.type, join.type](condition) {
-//			case PathExpression(t, path) if t==last => PathExpression(join.last, path.cast[T, AnyMapping])
+//			case PathExpression(t, path) if t==last => PathExpression(join.last, path.cast[T, Mapping])
 //			case e => e
 //		}
 //		join where (_ => filter)
@@ -488,7 +488,7 @@ class From[T<:AnyMapping] protected (table :TableFormula[Dual Join T, T], filter
 object From {
 	/** Create a row source for the rows mapped by a single mapping */
 	def apply[M<:AnyMapping](mapping : M) :From[M] = new From(mapping)
-	//		def apply[M<:AnyMapping](source :MappingSource[M]) = new From(source())
+	//		def apply[M<:Mapping](source :MappingSource[M]) = new From(source())
 
 	def instance(mapping :AnyMapping) :From[mapping.type] = new From[mapping.type](mapping)
 

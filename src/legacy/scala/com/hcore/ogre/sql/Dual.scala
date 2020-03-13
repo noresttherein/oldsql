@@ -69,7 +69,7 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends RowSource {
 
 
 
-//	override def selectOne[T <: AnyMapping, C <: AnyMapping](mapping: (JoinedTables[this.type]) => ComponentFormula[this.type, T, C]): SelectMapping[Dual, C] =
+//	override def selectOne[T <: Mapping, C <: Mapping](mapping: (JoinedTables[this.type]) => ComponentFormula[this.type, T, C]): SelectMapping[Dual, C] =
 //		throw new UnsupportedOperationException(s"select from Dual")
 
 
