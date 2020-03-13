@@ -165,7 +165,7 @@ object ColumnMapping {
 
 
 
-	def apply[O, T](mapping :Mapping[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
+	def apply[O, T](mapping :TypedMapping[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
 
 
 

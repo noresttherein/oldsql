@@ -48,7 +48,7 @@ sealed trait AnyMapping { mapping =>
 	type Column[T] = ColumnMapping[Owner, T]
 	type Selector[T] = ComponentSelector[this.type, Owner, Subject, T]
 
-	def asComponent :this.type with Mapping[Subject] { type Owner = mapping.Owner } //Component[Subject]
+//	def asComponent :this.type with Mapping[Subject] { type Owner = mapping.Owner } //Component[Subject]
 
 
 	/** Adapts the given subcomponent (a component being the end of some path of components starting with this instance)
@@ -242,7 +242,7 @@ trait Mapping[S] extends AnyMapping { self =>
 
 	def buffs :Seq[Buff[S]] = Nil
 
-	override def asComponent :this.type = this
+//	override def asComponent :this.type = this
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
@@ -499,14 +499,14 @@ object Mapping {
 
 
 		class WithBuff(buff :BuffType) extends ColumnFilter {
-			def components[S](mapping :Mapping[S]) :Unique[mapping.Component[_]] =
+			def components[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
 
 			def test[O](column :AnyComponent[O]): Boolean = buff.enabled(column)
 		}
 
 		class WithoutBuff(buff :BuffType) extends ColumnFilter {
-			def components[S](mapping :Mapping[S]) :Unique[mapping.Component[_]] =
+			def components[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
 
 			def test[O](column :AnyComponent[O]): Boolean = buff.disabled(column)
@@ -606,21 +606,21 @@ object Mapping {
 			new MappingReadForm[O, S](mapping, extra, _.selectForm)
 		}
 
-		def defaultSelect[S](mapping :Mapping[S]) :SQLReadForm[S] = {
+		def defaultSelect[S](mapping :TypedMapping[S]) :SQLReadForm[S] = {
 			val columns = mapping.selectable.filter(NoSelectByDefault.disabled) ++ ExtraSelect.Enabled(mapping)
 			new MappingReadForm[mapping.Owner, S](mapping, columns, _.selectForm)
 		}
 
 
-		def fullSelect[S](mapping :Mapping[S]) :SQLReadForm[S] =
+		def fullSelect[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
 			new MappingReadForm[mapping.Owner, S](mapping, mapping.selectable ++ ExtraSelect.Enabled(mapping))
 
 
 
-		def autoInsert[S](mapping :Mapping[S]) :SQLReadForm[S] =
+		def autoInsert[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
 			new MappingReadForm[mapping.Owner, S](mapping, mapping.autoInserted)
 
-		def autoUpdate[S](mapping :Mapping[S]) :SQLReadForm[S] =
+		def autoUpdate[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
 			new MappingReadForm[mapping.Owner, S](mapping, mapping.autoUpdated)
 
 	}
@@ -722,10 +722,10 @@ object Mapping {
 		                              write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).queryForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoQuery, ExtraQuery, write)
 
-		def defaultQuery[S](mapping :Mapping[S]) :SQLWriteForm[S] =
+		def defaultQuery[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			default(mapping)(NoQuery, ExtraQuery, _.queryForm)
 
-		def fullQuery[S](mapping :Mapping[S]) :SQLWriteForm[S] =
+		def fullQuery[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			full(mapping :mapping.type)(mapping.queryable, ExtraQuery, _.queryForm)
 
 
@@ -734,10 +734,10 @@ object Mapping {
 			                           write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).updateForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoUpdate, ExtraUpdate, write)
 
-		def defaultUpdate[S](mapping :Mapping[S]) :SQLWriteForm[S] =
+		def defaultUpdate[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			default(mapping)(NoUpdate, ExtraUpdate, _.updateForm)
 
-		def fullUpdate[S](mapping :Mapping[S]) :SQLWriteForm[S] =
+		def fullUpdate[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			full(mapping :mapping.type)(mapping.insertable, ExtraUpdate, _.updateForm)
 
 
@@ -746,10 +746,10 @@ object Mapping {
 		                               write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).insertForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoInsert, ExtraInsert, write)
 
-		def defaultInsert[S](mapping :Mapping[S]) :SQLWriteForm[S] =
+		def defaultInsert[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			default(mapping)(NoInsert, ExtraInsert, (_:mapping.AnyComponent).insertForm)
 
-		def fullInsert[S](mapping :Mapping[S]) :SQLWriteForm[S] =
+		def fullInsert[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			full(mapping :mapping.type)(mapping.insertable, ExtraInsert, _.insertForm)
 
 
@@ -766,13 +766,13 @@ object Mapping {
 			new MappingWriteForm[O, S](mapping, extra, mandatory, write)
 		}
 
-		private def default[S](mapping :Mapping[S])(filterNot :BuffType, mandatory :ValuedBuffType,
+		private def default[S](mapping :TypedMapping[S])(filterNot :BuffType, mandatory :ValuedBuffType,
 		                                            write :mapping.AnyComponent => SQLWriteForm[_]) :SQLWriteForm[S] = {
 			val columns = filterNot.Disabled(mapping) ++ mandatory.Enabled(mapping)
 			new MappingWriteForm[mapping.Owner, S](mapping, columns, mandatory, write)
 		}
 
-		private def full[S](mapping :Mapping[S])(columns :Unique[mapping.AnyComponent], extra :ValuedBuffType,
+		private def full[S](mapping :TypedMapping[S])(columns :Unique[mapping.AnyComponent], extra :ValuedBuffType,
 		                                         write :mapping.AnyComponent => SQLWriteForm[_]) :SQLWriteForm[S] =
 			new MappingWriteForm[mapping.Owner, S](mapping, columns ++ extra.Enabled(mapping), extra, write)
 

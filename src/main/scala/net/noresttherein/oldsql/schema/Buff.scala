@@ -448,7 +448,7 @@ object Buff {
 
 		@inline final def unapply[T](buff :Buff[T]) :Boolean = enabled(buff)
 		@inline final def unapply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
-		@inline final def unapply[T](component :Mapping[T]) :Boolean = enabled(component)
+		@inline final def unapply[T](component :TypedMapping[T]) :Boolean = enabled(component)
 
 	}
 
