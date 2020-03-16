@@ -33,5 +33,5 @@ trait EmptyMapping[S] extends BaseMapping[S] {
 	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty
 
 
-	override def assemble(values :Values) :Option[S] = None
+	override def assemble(values :Pieces) :Option[S] = None
 }

@@ -21,11 +21,11 @@ trait ReflectedSchema[S] extends RowSchema[S] { composite =>
 		extends ComponentSelector[composite.type, composite.Owner, S, T]
 	{
 		override val extractor = lifted.extractor
-		override val pick = extractor.optional
-		override val surepick = extractor.requisite
+		override val optional = extractor.optional
+		override val requisite = extractor.requisite
 
 		val property = try {
-			surepick.map(PropertyPath.property(_)) getOrElse PropertyPath.property(pick.andThen(_.get))
+			requisite.map(PropertyPath.property(_)) getOrElse PropertyPath.property(optional.andThen(_.get))
 		} catch {
 			case e :PropertyReflectionException =>
 				throw new PropertyReflectionException(s"Failed to reflect extractor for $lifted from $this; " + e.getMessage, e)

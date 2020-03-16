@@ -74,7 +74,7 @@ object ComponentProxy {
 
 
 
-		override def assemble(values :Values) :Option[S] = adaptee.optionally(values.identical[adaptee.type](adaptee))
+		override def assemble(values :Pieces) :Option[S] = adaptee.optionally(values.identical[adaptee.type](adaptee))
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ShallowProxy[_, _]]
@@ -119,19 +119,19 @@ object ComponentProxy {
 			if (component eq adaptee) Some(subject.asInstanceOf[T])
 			else adaptee.valueOf(dealias(component), subject)
 
-		override def valueOf[T](component :Component[T], values :Values) :Option[T] =
+		override def valueOf[T](component :Component[T], values :Pieces) :Option[T] =
 			values.get(apply(component))
 
 		override def apply[T](component :Component[T], subject :S) :T =
 			if (component eq adaptee) subject.asInstanceOf[T]
 			else adaptee(dealias(component), subject)
 
-		override def apply[T](component :Component[T], values :Values) :T =
+		override def apply[T](component :Component[T], values :Pieces) :T =
 			values(apply(component))
 
 
 
-		override def assemble(values :Values) :Option[S] = apply(adapt(adaptee)).get(values)
+		override def assemble(values :Pieces) :Option[S] = apply(adapt(adaptee)).get(values)
 
 
 

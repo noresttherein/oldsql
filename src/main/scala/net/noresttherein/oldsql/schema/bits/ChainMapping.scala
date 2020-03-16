@@ -30,7 +30,7 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[S]
 			chain match {
 				case t ~ (h :Component[_]) =>
 					val selector = ComponentSelector(this, h)(Extractor.requisite {
-						s :S => drop(extract(s)).asInstanceOf[Chain ~ h.Subject].head
+						s :S => drop(explode(s)).asInstanceOf[Chain ~ h.Subject].head
 					})
 					fastSelect = fastSelect.updated(h, selector)
 					rec(t, drop andThen (_.asInstanceOf[Chain~Any].tail), h::res)
@@ -67,16 +67,16 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[S]
 	}
 
 
-	protected def construct(values :C) :Option[S]
+	protected def implode(values :C) :Option[S]
 
-	protected def extract(whole :S) :C
+	protected def explode(whole :S) :C
 
 
 
 	protected implicit val componentValues :MapChain[Component, Components, Self, C]
 
-	override def assemble(values :Values) :Option[S] =
-		construct(
+	override def assemble(values :Pieces) :Option[S] =
+		implode(
 			schema.map(new GenericFun[Component, Self] {
 				override def apply[T](x :Component[T]) :T = values(mapping(x))
 			})
@@ -113,8 +113,8 @@ object ChainMapping {
 
 				override val schema = componentChain
 
-				override protected def construct(values :T) :Option[S] = fromChain(values)
-				override protected def extract(whole :S) :T = toChain(whole)
+				override protected def implode(values :T) :Option[S] = fromChain(values)
+				override protected def explode(whole :S) :T = toChain(whole)
 			}
 	}
 }

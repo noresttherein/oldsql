@@ -51,7 +51,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 	  */
 	trait ComponentMapping[T]  extends SubMapping[Owner, T] { self =>
 
-		def opt(implicit values :composite.Values) :Option[T] = values.get(selector)
+		def opt(implicit values :composite.Pieces) :Option[T] = values.get(selector)
 
 
 
@@ -106,7 +106,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 					if (buffs == null)
 						throw new IllegalStateException(s"$this.buffs is null: overrides with a val must happen before any component declarations!")
 
-					val subbuffs = selector.surepick.mapOrElse(pick => buffs.map(_.map(pick)),
+					val subbuffs = selector.requisite.mapOrElse(pick => buffs.map(_.map(pick)),
 						buffs.map(
 							buff => buff.map((t: T) => selector.get(t) getOrElse {
 								throw new IllegalArgumentException(
@@ -403,23 +403,23 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 
 
-	override def assemble(values: Values): Option[S] =
+	override def assemble(values: Pieces): Option[S] =
 		try {
 			isDefined(values) ifTrue construct(values)
 		} catch {
 			case _ :NoSuchElementException => None
 		}
 
-	protected def construct(implicit res :Values) :S
+	protected def construct(implicit res :Pieces) :S
 
-	protected def isDefined(values :Values) :Boolean = true
+	protected def isDefined(values :Pieces) :Boolean = true
 
 
 
-	implicit def valueOf[T](component :ComponentMapping[T])(implicit values :Values) :T =
+	implicit def valueOf[T](component :ComponentMapping[T])(implicit values :Pieces) :T =
 		values(component.selector)
 
-	implicit def valueOf[T](component :Component[T])(implicit values :Values) :T =
+	implicit def valueOf[T](component :Component[T])(implicit values :Pieces) :T =
 		values(apply(component))
 
 

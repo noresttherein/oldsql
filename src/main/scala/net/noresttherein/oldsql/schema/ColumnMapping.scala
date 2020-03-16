@@ -109,9 +109,9 @@ trait ColumnMapping[O, S] extends SubMapping[O, S] { column =>
 
 
 
-	override def assemble(values: Values): Option[S] = None
+	override def assemble(values: Pieces): Option[S] = None
 
-	override def optionally(values :Values) :Option[S] =
+	override def optionally(values :Pieces) :Option[S] =
 		if (isNullable)
 			values.result(this)
 		else

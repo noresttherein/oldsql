@@ -46,7 +46,7 @@ class MappedMapping[M <: Mapping.Component[O, S], O, S, T](override val adaptee 
 
 
 
-	override def assemble(values :Values) :Option[T] = values.get(adapteeSelector).map(map)
+	override def assemble(values :Pieces) :Option[T] = values.get(adapteeSelector).map(map)
 
 	override def nullValue :Option[T] = adaptee.nullValue.map(map)
 
@@ -120,7 +120,7 @@ object MappedMapping {
 		private[this] val adapteeSelector = ComponentSelector.opt(this, adaptee)(unmap) :Selector[S]
 
 
-		override def assemble(values :Values) :Option[T] = values.get(adapteeSelector).flatMap(map)
+		override def assemble(values :Pieces) :Option[T] = values.get(adapteeSelector).flatMap(map)
 
 
 

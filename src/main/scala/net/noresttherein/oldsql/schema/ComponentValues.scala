@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, ComponentSelector, SingletonComponent, SingletonMapping, ComponentFor, SingletonFor}
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, ComponentSelector, SingletonComponent, ComponentFor, SingletonFor}
 import net.noresttherein.oldsql.schema.Mapping.GeneralSelector
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
@@ -50,7 +50,7 @@ import net.noresttherein.oldsql.slang._
   * @tparam M type of the target mapping defining the components for which this instance contains values.
   *           In non-abstract cases the singleton type of the mapping object used for assembly
   */
-trait ComponentValues[M <: SingletonMapping] {
+trait ComponentValues[M <: Mapping] {
 
 	/** Compute the value for the root mapping, either using a predefined value or delegating to the mapping's assembly
 	  * method. It is not the top-level function - use either `mapping.apply()` or no-argument `apply()` on dedicated
@@ -107,7 +107,7 @@ trait ComponentValues[M <: SingletonMapping] {
 
 
 
-	def aliased(lift :M#AnyComponent => M#AnyComponent) :ComponentValues[M] =
+	def aliased(lift :AnyComponent[M#Owner] => AnyComponent[M#Owner]) :ComponentValues[M] =
 		new AliasedComponentValues[M](lift, this)
 
 
@@ -118,7 +118,7 @@ trait ComponentValues[M <: SingletonMapping] {
 	  * @tparam C
 	  * @return
 	  */
-	def identical[C <: CompatibleMapping[M] with Singleton](mapping :C) :ComponentValues[C]
+	def identical[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C]
 
 
 /*
@@ -155,7 +155,7 @@ trait ComponentValues[M <: SingletonMapping] {
 	  * @param mapping
 	  * @return
 	  */
-	def stickTo[X <: SingletonMapping](mapping :M) :ComponentValues[X] =
+	def stickTo[X <: Mapping](mapping :M) :ComponentValues[X] =
 		new StickyComponentValues[M](mapping, this).crosscast[X]
 
 
@@ -179,15 +179,15 @@ trait ComponentValues[M <: SingletonMapping] {
 	/** A safer casting method which allows casting this instance, invariant regarding to the mapping type, to a higher
 	  * mapping type. Generally used to cast from a singleton-typed instance to the generic type instance.
 	  */
-	@inline final def upcast[X >: M <: SingletonMapping] :ComponentValues[X] = this.asInstanceOf[ComponentValues[X]]
+	@inline final def upcast[X >: M <: Mapping] :ComponentValues[X] = this.asInstanceOf[ComponentValues[X]]
 
 	/** A safer casting method requiring the associated mapping type to be a subtype of the type parameter; used to cast
-	  * a generic instance into one parameterised with singleton type of the target mapping.
+	  * a generic instance into one parameterised type of the target mapping.
 	  */
 	@inline final def downcast[X <: M] :ComponentValues[X] = this.asInstanceOf[ComponentValues[X]]
 
 	/** Shortcut for casting the type parameter to a different type reserved for the implementations */
-	@inline final private[ComponentValues] def crosscast[X <: SingletonMapping] :ComponentValues[X] =
+	@inline final private[ComponentValues] def crosscast[X <: Mapping] :ComponentValues[X] =
 		this.asInstanceOf[ComponentValues[X]]
 
 
@@ -222,14 +222,14 @@ object ComponentValues {
 	  * can supply a `Map` as an argument.
 	  * @param values factory of values for components, should always return the value of the type correct for the component argument!
 	  */
-	def apply[M <: SingletonMapping](values :AnyComponent[M#Owner] => Option[_]) :ComponentValues[M] =
+	def apply[M <: Mapping](values :AnyComponent[M#Owner] => Option[_]) :ComponentValues[M] =
 		new CustomComponentValues[M](values)
 
 	/** An empty instance, returning always None or throwing NoSuchElementException.
 	  * This is the generic version of the method, use the ComponentValuesFactory to get the singleton-typed one
 	  * by calling `ComponentValues(mapping)(..)` instead.
 	  */
-	def Empty[M <: SingletonMapping] :ComponentValues[M] = empty.crosscast[M]
+	def Empty[M <: Mapping] :ComponentValues[M] = empty.crosscast[M]
 
 	/** An empty instance, returning always None or throwing a `NoSuchElementException`.
 	  * This is the generic version of the method, use the ComponentValuesFactory to get the singleton-typed one
@@ -237,7 +237,7 @@ object ComponentValues {
 	  * @param source a description of the original source which created this instance for more helpful message in
 	  *               thrown exceptions
 	  */
-	def Empty[M <: SingletonMapping](source : =>String) :ComponentValues[M] = new EmptyValues[M](source)
+	def Empty[M <: Mapping](source : =>String) :ComponentValues[M] = new EmptyValues[M](source)
 
 	/** Create ComponentValues for the given mapping and its value. All values returned by this instance will use
 	  * the path to the requested component to pick (disassemble) the value from the given argument. Please not that,
@@ -246,14 +246,14 @@ object ComponentValues {
 	  * the `ComponentValuesFactory` to get the singleton-typed one by calling `ComponentValues(mapping)(..)` instead.
 	  * @param value result, top-level value.
 	  */
-	def Predefined[M <: SingletonMapping](value :M#Subject) :ComponentValues[M] =
+	def Predefined[M <: Mapping](value :M#Subject) :ComponentValues[M] =
 		new ExplicitMappingValue[M](value)
 
 	/** Similar to Predefined[M](mapping, value), but the value is not computed until actually needed. The expression
 	  * will be evaluated at most once. This is the generic version of the method, use the `ComponentValuesFactory`
 	  * to get the singleton-typed one by calling `ComponentValues(mapping)(..)` instead.
 	  */
-	def Lazy[M <: SingletonMapping](value: =>M#Subject) :ComponentValues[M] =
+	def Lazy[M <: Mapping](value: =>M#Subject) :ComponentValues[M] =
 		new LazyPredefinedMappingValue[M](value)
 
 	/** Create a lazy, predefined instance using the value of the given expression for the component.
@@ -261,7 +261,7 @@ object ComponentValues {
 	  * default value for when the first choice couldn't be obtained. This is the generic version of the method, use
 	  * the `ComponentValuesFactory` to get the singleton-typed one by calling `ComponentValues(mapping)(..)` instead.
 	  */
-	def Fallback[M <: SingletonMapping](value: => Option[M#Subject]) :ComponentValues[M] =
+	def Fallback[M <: Mapping](value: => Option[M#Subject]) :ComponentValues[M] =
 		new LazyMappingValue[M](value)
 
 
@@ -284,7 +284,7 @@ object ComponentValues {
 	  * @tparam M
 	  * @return
 	  */
-	@inline def generic[M <: SingletonMapping](mapping :M) :ComponentValuesFactory[M] =
+	@inline def generic[M <: Mapping](mapping :M) :ComponentValuesFactory[M] =
 		new ComponentValuesFactory[M](mapping)
 
 
@@ -293,7 +293,7 @@ object ComponentValues {
 	  * @param mapping associated mapping
 	  * @tparam M static type parameter of returned ComponentValues instances.
 	  */
-	final class ComponentValuesFactory[M <: SingletonMapping](val mapping :M) extends AnyVal {
+	final class ComponentValuesFactory[M <: Mapping](val mapping :M) extends AnyVal {
 
 		/** Returns `ComponentValues` based on a predefined mapping result. The values for all components will be
 		  * obtained by disassembling (picking) their value from the argument based on the function specified by
@@ -368,12 +368,12 @@ object ComponentValues {
 
 
 
-	private class AliasedComponentValues[M <: SingletonMapping]
-	                                    (alias :M#AnyComponent=>M#AnyComponent, values :ComponentValues[M])
+	private class AliasedComponentValues[M <: Mapping]
+	                                    (alias :AnyComponent[M#Owner]=>AnyComponent[M#Owner], values :ComponentValues[M])
 		extends ComponentValues[M]
 	{
 		override def result(root :M) :Option[M#Subject] =
-			values.result(alias(root.asInstanceOf[M#AnyComponent]).asInstanceOf[M])
+			values.result(alias(root.asInstanceOf[AnyComponent[M#Owner]]).asInstanceOf[M])
 
 		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] = {
 			val vals = values \ selector
@@ -384,9 +384,9 @@ object ComponentValues {
 			)
 		}
 
-		override def aliased(lift :M#AnyComponent => M#AnyComponent) :ComponentValues[M] = this
+		override def aliased(lift :AnyComponent[M#Owner] => AnyComponent[M#Owner]) :ComponentValues[M] = this
 
-		override def identical[C <: CompatibleMapping[M] with Singleton](mapping :C) :ComponentValues[C] = {
+		override def identical[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] = {
 			val vals = values.identical[C](mapping)
 			if (vals eq values) crosscast[C]
 			else new AliasedComponentValues[C](alias.asInstanceOf[C#AnyComponent=>C#AnyComponent], vals)
@@ -397,7 +397,7 @@ object ComponentValues {
 
 
 
-	private class FallbackComponentValues[M <: SingletonMapping]
+	private class FallbackComponentValues[M <: Mapping]
 	                                     (overrides :ComponentValues[M], fallback :ComponentValues[M])
 		extends ComponentValues[M]
 	{
@@ -421,7 +421,7 @@ object ComponentValues {
 			new FallbackComponentValues[selector.lifted.type](overrides \ selector, fallback \ selector)
 
 
-		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] = {
+		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] = {
 			val _1 = overrides.identical[C](mapping)
 			val _2 = fallback.identical[C](mapping)
 			if ((_1 eq overrides) && (_2 eq fallback)) crosscast[C]
@@ -488,7 +488,7 @@ object ComponentValues {
 
 
 
-	trait PredefinedMappingValue[M <: SingletonMapping] extends ComponentValues[M] {
+	trait PredefinedMappingValue[M <: Mapping] extends ComponentValues[M] {
 		def value :M#Subject
 
 		final override def predefined(root :M) = Some(value)
@@ -506,7 +506,7 @@ object ComponentValues {
 				case _ => Empty[selector.lifted.type]
 			}
 
-		override def identical[C <: CompatibleMapping[M] with Singleton](mapping :C) :ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] =
 			crosscast[C]
 
 		override def toString :String = "Predefined(" + value + ")"
@@ -514,27 +514,27 @@ object ComponentValues {
 
 
 
-	private class ExplicitMappingValue[M <: SingletonMapping](val value :M#Subject) extends PredefinedMappingValue[M]
+	private class ExplicitMappingValue[M <: Mapping](val value :M#Subject) extends PredefinedMappingValue[M]
 
 
 
-	private class LazyPredefinedMappingValue[M <: SingletonMapping](expr : =>M#Subject)
+	private class LazyPredefinedMappingValue[M <: Mapping](expr : =>M#Subject)
 		extends PredefinedMappingValue[M]
 	{
 		lazy val value :M#Subject = expr
 
 		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] =
-			selector.surepick match {
+			selector.requisite match { //todo: check for identity
 				case Some(pick) => new LazyPredefinedMappingValue[selector.lifted.type](pick(value))
 				case _ =>
-					val pick = selector.pick
+					val pick = selector.optional
 					new LazyMappingValue[selector.lifted.type](pick(value))
 			}
 
 	}
 
 
-	private class LazyMappingValue[M <: SingletonMapping](expr : =>Option[M#Subject])
+	private class LazyMappingValue[M <: Mapping](expr : =>Option[M#Subject])
 		extends ComponentValues[M]
 	{
 		private[this] lazy val value = expr
@@ -548,14 +548,14 @@ object ComponentValues {
 			throw new NoSuchElementException("value for component " + selector.lifted + " in Empty")
 		})
 
-		override def get[T](selector :GeneralSelector[M, T]) :Option[T] = value flatMap selector.pick
+		override def get[T](selector :GeneralSelector[M, T]) :Option[T] = value flatMap selector.optional
 
 		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] = {
-			val pick = selector.pick
+			val pick = selector.optional
 			new LazyMappingValue[selector.lifted.type](value.flatMap(pick))
 		}
 
-		override def identical[C <: CompatibleMapping[M] with Singleton](mapping :C) :ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] =
 			crosscast[C]
 
 		override def toString = s"Fallback($value)"
@@ -564,7 +564,7 @@ object ComponentValues {
 
 
 
-	trait PresetComponentValues[M <: SingletonMapping] extends ComponentValues[M] {
+	trait PresetComponentValues[M <: Mapping] extends ComponentValues[M] {
 		override private[schema] def predefined(root: M): Option[M#Subject] =
 			preset(root).flatMap(_.predefined(root))
 
@@ -575,29 +575,29 @@ object ComponentValues {
 		override def \[T](selector :GeneralSelector[M, T]) :ComponentValues[selector.lifted.type] =
 			preset[selector.lifted.type](selector.lifted) getOrElse crosscast[selector.lifted.type]
 
-		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
 			preset[C](mapping) getOrElse crosscast[C]
 
-		protected def preset[C <: SingletonMapping](component :C) :Option[ComponentValues[C]]
+		protected def preset[C <: Mapping](component :C) :Option[ComponentValues[C]]
 
 	}
 
 
-	private class StickyComponentValues[M <: SingletonMapping] private[ComponentValues]
+	private class StickyComponentValues[M <: Mapping] private[ComponentValues]
 			(values :Map[Mapping, ComponentValues[_]])
 		extends PresetComponentValues[M]
 	{
 		def this(mapping :M, values :ComponentValues[M]) = this(Map(mapping->values))
 
-		override protected def preset[C <: SingletonMapping](component: C): Option[ComponentValues[C]] =
+		override protected def preset[C <: Mapping](component: C): Option[ComponentValues[C]] =
 			values.get(component).asInstanceOf[Option[ComponentValues[C]]]
 
-		override def toString :String = values.toStream.map(v => v._1+"->"+v._2).mkString("${", ",", "}")
+		override def toString :String = values.to(LazyList).map(v => v._1.toString + "->" + v._2).mkString("${", ",", "}")
 	}
 
 
 
-	trait SelectedComponentValues[M <: SingletonMapping] extends ComponentValues[M] {
+	trait SelectedComponentValues[M <: Mapping] extends ComponentValues[M] {
 		override private[schema] def predefined(root: M): Option[M#Subject] = None
 
 		override def result(root: M): Option[M#Subject] = root.assemble(crosscast[root.type])
@@ -615,7 +615,7 @@ object ComponentValues {
 				case _ => crosscast[selector.lifted.type]
 			}
 
-		override def identical[C <: CompatibleMapping[M] with Singleton](mapping :C) :ComponentValues[C] =
+		override def identical[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] =
 			crosscast[C]
 
 		protected def defined[T](selector :GeneralSelector[M, T]) :Option[T]
@@ -628,7 +628,7 @@ object ComponentValues {
 
 
 
-	private class SelectedDisassembledComponentValues[M <: SingletonMapping]
+	private class SelectedDisassembledComponentValues[M <: Mapping]
 	                                         (value :M#Subject, components :Unique[AnyComponent[M#Owner]])
 		extends SelectedComponentValues[M]
 	{
@@ -640,7 +640,7 @@ object ComponentValues {
 	}
 
 
-	private class CustomComponentValues[M <: SingletonMapping](vals :AnyComponent[M#Owner] => Option[_])
+	private class CustomComponentValues[M <: Mapping](vals :AnyComponent[M#Owner] => Option[_])
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](selector: GeneralSelector[M, T]): Option[T] =
@@ -654,7 +654,7 @@ object ComponentValues {
 
 
 
-	private class EmptyValues[M <: SingletonMapping](source : =>String) extends ComponentValues[M] {
+	private class EmptyValues[M <: Mapping](source : =>String) extends ComponentValues[M] {
 		def this() = this("Empty")
 		def this(mapping :M) = this(mapping.toString)
 
@@ -671,7 +671,7 @@ object ComponentValues {
 
 		override def orElse(values: ComponentValues[M]): ComponentValues[M] = values
 
-		override def identical[C <: CompatibleMapping[M] with Singleton](mapping: C): ComponentValues[C] = crosscast[C]
+		override def identical[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] = crosscast[C]
 
 
 		override def toString :String = source

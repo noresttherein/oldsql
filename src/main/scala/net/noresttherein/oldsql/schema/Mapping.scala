@@ -39,13 +39,13 @@ sealed trait Mapping { mapping =>
 	type Owner// <: Mapping
 
 	/** A container with values for components of this mapping required to assemble the subject. */
-	type Values = ComponentValues[this.type]
+	type Pieces = ComponentValues[this.type]
 
+	type Selector[T] = ComponentSelector[this.type, Owner, Subject, T]
 
 	type AnyComponent = Component[_]
 	type Component[T] = Mapping.Component[Owner, T] //<: SubMapping[T, Owner]
 	type Column[T] = ColumnMapping[Owner, T]
-	type Selector[T] = ComponentSelector[this.type, Owner, Subject, T]
 
 //	def asComponent :this.type with Mapping[Subject] { type Owner = mapping.Owner } //Component[Subject]
 
@@ -149,7 +149,7 @@ sealed trait Mapping { mapping =>
 	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
-	def apply(values: Values): Subject =
+	def apply(values: Pieces): Subject =
 		optionally(values) getOrElse {
 			throw new NoSuchElementException(s"Can't assemble $this from $values.")
 		}
@@ -175,7 +175,7 @@ sealed trait Mapping { mapping =>
 	  * type `Subject` itself can be an `Option` type, used to signify either or both of these cases.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
-	def optionally(values: Values): Option[Subject]
+	def optionally(values: Pieces): Option[Subject]
 
 	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
 	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
@@ -185,7 +185,7 @@ sealed trait Mapping { mapping =>
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.value ComponentValues.value]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.getValue ComponentValues.getValue]]
 	  */
-	def assemble(values :Values) :Option[Subject]
+	def assemble(values :Pieces) :Option[Subject]
 
 	def nullValue :Option[Subject] //todo: why do we need it at all?
 
@@ -193,11 +193,11 @@ sealed trait Mapping { mapping =>
 
 	def valueOf[T](component :Component[T], subject :Subject) :Option[T] = apply(component).get(subject)
 
-	def valueOf[T](component :Component[T], values :Values) :Option[T] = apply(component).get(values)
+	def valueOf[T](component :Component[T], values :Pieces) :Option[T] = apply(component).get(values)
 
 	def apply[T](component :Component[T], subject :Subject) :T = apply(component)(subject)
 
-	def apply[T](component :Component[T], values :Values) :T = apply(component)(values)
+	def apply[T](component :Component[T], values :Pieces) :T = apply(component)(values)
 
 
 
@@ -257,16 +257,16 @@ trait BaseMapping[S] extends Mapping { self =>
 
 
 
-	override def apply(values: Values): S =
+	override def apply(values: Pieces): S =
 		optionally(values) getOrElse {
 			throw new IllegalArgumentException(s"Can't assemble $this from $values")
 		}
 
-	override def optionally(values: Values): Option[S] = //todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
+	override def optionally(values: Pieces): Option[S] = //todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
 		values.result(this) map { res => (res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) } } orElse
 			OptionalSelect.Value(this) orElse ExtraSelect.Value(this)
 
-	def assemble(values :Values) :Option[S]
+	def assemble(values :Pieces) :Option[S]
 
 	def nullValue :Option[S] = None
 
@@ -298,7 +298,7 @@ trait RootMapping[S] extends BaseMapping[S] {
 
 
 object Mapping {
-
+	type TypedMapping[O, S] = SubMapping[O, S]
 	type Component[O, S] = Mapping { type Owner = O; type Subject = S }
 	type ComponentFor[S] = Mapping { type Subject = S }
 	type AnyComponent[O] = Mapping { type Owner = O }
@@ -327,18 +327,18 @@ object Mapping {
 
 
 
-	sealed trait GeneralSelector[M <: SingletonMapping, T] {
-		def pick :M#Subject => Option[T]
-		def surepick :Option[M#Subject => T]
+	sealed trait GeneralSelector[M <: Mapping, T] {
+		def optional :M#Subject => Option[T]
+		def requisite :Option[M#Subject => T]
 		def extractor :Extractor[M#Subject, T]
 
 		def apply(whole :M#Subject) :T
 
 		def get(whole :M#Subject) :Option[T]
 
-		def apply(values :M#Values) :T
+		def apply(values :ComponentValues[M]) :T
 
-		def get(values :M#Values) :Option[T]
+		def get(values :ComponentValues[M]) :Option[T]
 
 		val lifted :Component[M#Owner, T]
 	}
@@ -354,23 +354,23 @@ object Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](Component[T] ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  */
-	trait ComponentSelector[M <: SingletonComponent[O, S], O, S, T]
+	trait ComponentSelector[M <: Component[O, S], O, S, T]
 		extends GeneralSelector[M, T]
 	{
-		def pick :S => Option[T]
-		def surepick :Option[S => T]
+		def optional :S => Option[T]
+		def requisite :Option[S => T]
 
-		def extractor :Extractor[S, T] = surepick.map(Extractor.requisite[S, T]) getOrElse Extractor(pick)
+		def extractor :Extractor[S, T] = requisite.map(Extractor.requisite[S, T]) getOrElse Extractor(optional)
 
 		def apply(whole :S) :T = get(whole) getOrElse {
 			throw new NoSuchElementException(s"No value for $lifted in $whole.")
 		}
 
-		def get(whole :S) :Option[T] = pick(whole)
+		def get(whole :S) :Option[T] = optional(whole)
 
-		def apply(values :M#Values) :T = values(this)
+		def apply(values :ComponentValues[M]) :T = values(this)
 
-		def get(values :M#Values) :Option[T] = values.get(this)
+		def get(values :ComponentValues[M]) :Option[T] = values.get(this)
 
 		val lifted :Component[O, T]
 
@@ -392,13 +392,13 @@ object Mapping {
 			}
 
 		@inline def apply[O, S, T](mapping :Component[O, S], component :Component[O, T])
-		                                        (extractor :Extractor[S, T]) :ComponentSelector[mapping.type, O, S, T] =
+		                          (extractor :Extractor[S, T]) :ComponentSelector[mapping.type, O, S, T] =
 			apply[mapping.type, O, S, T](component)(extractor)
 
 
 
 		def req[M <: SingletonComponent[O, S], O, S, T]
-		         (component :Component[O, T], requisite :S => T) :ComponentSelector[M, O, S, T] =
+		       (component :Component[O, T], requisite :S => T) :ComponentSelector[M, O, S, T] =
 			new RequisiteSelector[M, O, S, T](component, Extractor.requisite(requisite))
 
 		def req[O, S, T](mapping :Component[O, S], component :Component[O, T])(requisite :S => T) :ComponentSelector[mapping.type, O, S, T] =
@@ -429,7 +429,7 @@ object Mapping {
 
 		def unapply[O, T, S](selector :ComponentSelector[_ <: SingletonMapping { type Owner = O; type Subject = S }, O, S, T])
 				:Option[(S=>Option[T], Option[S=>T], Component[O, T])] =
-			Some(selector.pick, selector.surepick, selector.lifted)
+			Some(selector.optional, selector.requisite, selector.lifted)
 
 
 
@@ -438,8 +438,8 @@ object Mapping {
 			extends ComponentSelector[M, O, S, T]
 		{
 			override def extractor :Extractor[S, T] = extract
-			override def pick :S => Option[T] = extract.optional
-			override def surepick :Option[S => T] = extract.requisite
+			override def optional :S => Option[T] = extract.optional
+			override def requisite :Option[S => T] = extract.requisite
 
 			override def get(whole :S) :Option[T] = extract(whole)
 		}
@@ -453,14 +453,14 @@ object Mapping {
 		}
 
 		private class OptionalSelector[M <: SingletonComponent[O, S], O, S, T]
-		                              (val lifted :Component[O, T], val pick :S => Option[T])
+		                              (val lifted :Component[O, T], val optional :S => Option[T])
 			extends ComponentSelector[M, O, S, T]
 		{
-			override def surepick :Option[Nothing] = None
+			override def requisite :Option[Nothing] = None
 		}
 
 		private class CustomSelector[M <: SingletonComponent[O, S], O, S, T]
-		                            (val lifted :Component[O, T], val pick :S => Option[T], val surepick :Option[S => T])
+		                            (val lifted :Component[O, T], val optional :S => Option[T], val requisite :Option[S => T])
 			extends ComponentSelector[M, O, S, T]
 	}
 

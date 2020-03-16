@@ -72,7 +72,7 @@ object OptionMapping {
 				ComponentSelector(this, selector.lifted)(Extractor.fromOpt[S] andThen selector.extractor)
 			}
 
-		override def assemble(values: Values): Option[Option[S]] = Some(values.get(getSelector))
+		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(getSelector))
 
 		override def nullValue = Some(None)
 
