@@ -7,9 +7,13 @@ import scala.reflect.runtime.universe.TypeTag
 
 /** A trait extended by various model classes in order to include the implicits inside its companion object
   * in the search of implicit conversions. This allows one to both use automatic implicit resolution
-  * (when the source/target type is known) as well as explicitly import the conversions.
+  * (when the source/target type is known) as well as explicitly import the conversions. In this way
+  * we can link the implicit conversions to the available lists of all concerned types ''and'' at the same time
+  * use a wholesale implicit import for situations when the type being converted is not defined here; defining these
+  * implicits separately would in this case result in conflicts.
   */
 trait implicits
+
 
 
 sealed abstract class StandardFallbackImplicits {
@@ -69,8 +73,7 @@ object implicits extends StandardFallbackImplicits {
 	
 	@inline implicit def literalRestrictive(big :BigInt) :Restrictive[Any, BigInt] = Literal(big)
 	@inline implicit def literalRestrictive(big :BigDecimal) :Restrictive[Any, BigDecimal] = Literal(big)
-	//todo: ambiguous conversion for adding apply to string
-//	@inline implicit def literalRestrictive[T](string :String) :Restrictive[T, String] = Literal(string)
+	@inline implicit def literalRestrictive[T](string :String) :Restrictive[T, String] = Literal(string)
 	
 
 }

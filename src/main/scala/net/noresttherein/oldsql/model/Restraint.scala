@@ -43,7 +43,7 @@ trait Restraint[-T] extends (T => Boolean) with implicits with Serializable {
 		case _ => Conjunction(Seq(this, other))
 	}
 
-	def &&[S <: T](other :TranslableTerm[S, Boolean]) :Restraint[S] = this && other()
+	def &&[S <: T](other :TranslableTerm[S, Boolean]) :Restraint[S] = this && other.toRestrictive
 
 
 
@@ -55,7 +55,7 @@ trait Restraint[-T] extends (T => Boolean) with implicits with Serializable {
 		case _ => Disjunction(Seq(this, other))
 	}
 
-	def ||[S <: T](other :TranslableTerm[S, Boolean]) :Restraint[S] = this || other()
+	def ||[S <: T](other :TranslableTerm[S, Boolean]) :Restraint[S] = this || other.toRestrictive
 
 
 
@@ -150,9 +150,9 @@ object Restraint {
 		abstract class AbstractTermRestrainer[-T, V] extends Restrainer[T, V] {
 			protected val Term :Restrictive[T, V]
 
-			override def from(value :T) :Option[V] = Option(Term(value))
+			override def from(value :T) :Option[V] = Option(Term.derive(value))
 
-			override def as(value :T) :Restraint[T] = apply(Term(value))
+			override def as(value :T) :Restraint[T] = apply(Term.derive(value))
 
 			override def in :Restrainer[T, Set[V]] = Membership(Term)
 
@@ -180,9 +180,9 @@ object Restraint {
 		{
 			override def apply(key :P) :Restraint[T] = target(key) derive nest
 
-			override def as(value :T) :Restraint[T] = target.as(nest(value)).derive(nest)
+			override def as(value :T) :Restraint[T] = target.as(nest.derive(value)).derive(nest)
 
-			override def from(value :T) :Option[P] = target.from(nest(value))
+			override def from(value :T) :Option[P] = target.from(nest.derive(value))
 
 			override def from[X <: T](restraint :Restraint[X]) :Option[P] = restraint match {
 				case NestedRestraint(p, r) if p == nest => target.from(r.asInstanceOf[Restraint[M]])
@@ -208,7 +208,7 @@ object Restraint {
 
 			override def as(value: T): Restraint[T] = backing.as(value)
 
-			override def toString :String = backing + ".compose(" + back + ", "+ there +")"
+			override def toString :String = backing.toString + ".compose(" + back + ", "+ there +")"
 		}
 
 	}
@@ -260,7 +260,7 @@ object Restraint {
 	case class NestedRestraint[-T, P](nest :Restrictive[T, P], restraint :Restraint[P])
 		extends Restraint[T]
 	{
-		override def apply(t :T) :Boolean = restraint(nest(t))
+		override def apply(t :T) :Boolean = restraint(nest.derive(t))
 
 		override def derive[X, S <: T](outer :Restrictive[X, S]) :Restraint[X] =
 			new NestedRestraint(outer andThen nest, restraint)
@@ -293,7 +293,7 @@ object Restraint {
 
 	/** Adapts a `Restrictive[Boolean]`: this restraint passes whenever `term` is true.  */
 	case class BooleanRestraint[-T](term :Restrictive[T, Boolean]) extends Restraint[T] {
-		override def apply(t :T) :Boolean = term(t)
+		override def apply(t :T) :Boolean = term.derive(t)
 
 		override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 			new BooleanRestraint(term compose nest)
@@ -314,7 +314,7 @@ object Restraint {
 
 	/** A `Restraint` explicitly testing if the given term is null by the explicit `SQL` 'IS NULL' expression. */
 	case class IsNull[-T, V](term :Restrictive[T, V]) extends Restraint[T] {
-		override def apply(x :T) :Boolean = term(x) == null
+		override def apply(x :T) :Boolean = term.derive(x) == null
 
 		override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] = new IsNull(term compose nest)
 	}
@@ -439,7 +439,7 @@ object Restraint {
 		private case class EqualityTest[-T, V](left :Restrictive[T, V], right :Restrictive[T, V])
 			extends Restraint[T]
 		{
-			override def apply(t :T) :Boolean = left(t) == right(t)
+			override def apply(t :T) :Boolean = left.derive(t) == right.derive(t)
 
 			override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 				EqualityTest(left compose nest, right compose nest)
@@ -473,7 +473,7 @@ object Restraint {
 	                               (implicit val ordering :OrderingSupport[V])
 		extends Restraint[T]
 	{
-		override def apply(t :T) :Boolean = relation(left(t), right(t))
+		override def apply(t :T) :Boolean = relation(left.derive(t), right.derive(t))
 
 		override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 			new Comparison(left compose nest, relation, right compose nest)
@@ -485,9 +485,9 @@ object Restraint {
 			case _ => false
 		}
 
-		override def hashCode(): Int = {
+		override def hashCode: Int = {
 			val state = Seq(left, relation, right, ordering)
-			state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+			state.map(_.hashCode).foldLeft(0)((a, b) => 31 * a + b)
 		}
 
 		override def toString :String = s"($left $relation $right)"
@@ -505,8 +505,6 @@ object Restraint {
 		  */
 		def apply[T :TypeTag :OrderingSupport](comparison :Relation) :Restrainer[T, T] =
 			new ComparisonRestrainer(Self(), comparison)
-
-		//todo: having OrderingSupport should mean we also have mapping for literals
 
 		/** A factory of `Restraint`s comparing the value of the given term `term` with a supplied 'key' parameter
 		  * using the relation provided here.
@@ -548,7 +546,7 @@ object Restraint {
 			extends Serializable
 		{
 			def apply[T :OrderingSupport](left :T, right :T) :Boolean =
-				implicitly[OrderingSupport[T]].compare(left, right).signum == expect ^ invert
+				implicitly[OrderingSupport[T]].compare(left, right).sign == expect ^ invert
 
 			override def equals(that :Any) :Boolean = that match {
 				case other :Relation => symbol == other.symbol
@@ -612,7 +610,7 @@ object Restraint {
 		  *                respectively, with `\` working as a string expression.
 		  */
 		def apply[T](matched :TranslableTerm[T, String], pattern :String) :Restraint[T] =
-			new Like(matched(), pattern)
+			new Like(matched.toRestrictive, pattern)
 
 
 		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, String], String)] = restraint match {
@@ -640,7 +638,7 @@ object Restraint {
 		}
 
 		private case class Like[T](term :Restrictive[T, String], pattern :String) extends Restraint[T] {
-			override def apply(t :T) :Boolean = matches(term(t), pattern)
+			override def apply(t :T) :Boolean = matches(term.derive(t), pattern)
 
 			override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 				new Like(term compose nest, pattern)
@@ -671,7 +669,7 @@ object Restraint {
 		/** Create a `Restraint` testing if the left expression is part of the collection of the right expression. */
 		def apply[T, C, E](member :TranslableTerm[T, E], collection :Restrictive[T, C])
 		                  (implicit deco :C ExtractAs E) :Restraint[T] =
-			new MembershipTest(member(), collection)
+			new MembershipTest(member.toRestrictive, collection)
 
 
 		/** Create a `Restraint` representing membership test for the value specified by the first argument
@@ -680,7 +678,7 @@ object Restraint {
 		def apply[T, E](member :Restrictive[T, E], values :Iterable[TranslableTerm[T, E]]) :Restraint[T] = values.size match {
 //			case 0 => False
 //			case 1 => Equality(member, values.head)
-			case _ => new MembershipTest[T, Iterable[E], E](member, Collection(values.map(_())))
+			case _ => new MembershipTest[T, Iterable[E], E](member, Collection(values.map(_.toRestrictive)))
 		}
 
 
@@ -723,7 +721,7 @@ object Restraint {
 		                                           (implicit val decomposer :C DecomposableTo E)
 			extends Restraint[T]
 		{
-			override def apply(t :T) :Boolean = decomposer(values(t)).toSet(member(t))
+			override def apply(t :T) :Boolean = decomposer(values.derive(t)).toSet(member.derive(t))
 
 			override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 				MembershipTest(member compose nest, values compose nest)
@@ -737,9 +735,9 @@ object Restraint {
 
 			override def apply(key :Set[K]) :Restraint[T] = Term in key
 
-			override def as(value :T) :Restraint[T] = Term in Set(Literal(Term(value)))
+			override def as(value :T) :Restraint[T] = Term in Set(Literal(Term.derive(value)))
 
-			override def from(value :T) :Option[Set[K]] = Option(Term(value)) map { Set(_) }
+			override def from(value :T) :Option[Set[K]] = Option(Term.derive(value)) map { Set(_) }
 
 			override def from[X <: T](restraint :Restraint[X]) :Option[Set[K]] = restraint match {
 				case Membership(Term, Collection(items, _), _) =>
@@ -749,7 +747,7 @@ object Restraint {
 					//todo: wrong! may be Iterable[Set[K]] after decomposer
 					Some(deco.asInstanceOf[DecomposableTo[Any, Any]].apply(items).toSet.asInstanceOf[Set[K]])
 
-				case False => Some(Set())
+				case False => Some(Set.empty)
 				case _ => None
 			}
 
@@ -774,8 +772,7 @@ object Restraint {
 	  * @tparam C the actual collection type on which this restraint works.
 	  * @tparam E element type of the restrained collection and type parameter for the adapted `Restraint` instance.
 	  */
-	private abstract class AbstractExistentialRestraint[-T, C, E] extends Restraint[T]
-	{
+	private abstract class AbstractExistentialRestraint[-T, C, E] extends Restraint[T] {
 		/** The term for the collection on which this restraint works. */
 		def collection :Restrictive[T, C]
 		/** The restraint for individual collection elements.*/
@@ -807,7 +804,7 @@ object Restraint {
 	                              (implicit val decomposer :C DecomposableTo E)
 		extends AbstractExistentialRestraint[T, C, E]
 	{
-		override def apply(t :T) :Boolean = decomposer(collection(t)) forall condition
+		override def apply(t :T) :Boolean = decomposer(collection.derive(t)) forall condition
 
 		override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 			new ForAll(collection compose nest, condition)
@@ -846,7 +843,7 @@ object Restraint {
 	                              (implicit val decomposer :C DecomposableTo E)
 		extends AbstractExistentialRestraint[T, C, E]
 	{
-		override def apply(t :T) :Boolean = decomposer(collection(t)) exists condition
+		override def apply(t :T) :Boolean = decomposer(collection.derive(t)) exists condition
 
 		override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 			new Exists[X, C, E](collection compose nest, condition)
