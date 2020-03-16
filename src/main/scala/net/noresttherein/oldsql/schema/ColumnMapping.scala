@@ -37,7 +37,7 @@ trait ColumnMapping[O, S] extends SubMapping[O, S] { column =>
 
 
 
-	def form :SQLForm[S]
+	def form :ColumnForm[S]
 	
 	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLReadForm.const(x) 
@@ -155,86 +155,19 @@ trait ColumnMapping[O, S] extends SubMapping[O, S] { column =>
 
 object ColumnMapping {
 
-	def apply[O, T :SQLForm](name :String, opts :Buff[T]*) :ColumnMapping[O, T] =
-		new StandardColumn(name, opts)
-
-	def adapt[O, T](mapping :ComponentFor[T]) :Option[ColumnMapping[O, T]] = mapping match {
-		case c :ColumnMapping[_, _] => Some(c.asInstanceOf[ColumnMapping[O, T]])
-		case _ => Try(new ColumnView[O, T](mapping)).toOption
-	}
-
-
-
-	def apply[O, T](mapping :ComponentFor[T]) :ColumnMapping[O, T] = new ColumnView[O, T](mapping)
+	def apply[O, T :ColumnForm](name :String, buffs :Buff[T]*) :ColumnMapping[O, T] =
+		new StandardColumn(name, buffs)
 
 
 
 
 
-
-
-
-	class StandardColumn[O, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :SQLForm[T])
+	class StandardColumn[O, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :ColumnForm[T])
 		extends ColumnMapping[O, T]
 	{
 		override val isNullable :Boolean = super.isNullable
 	}
 
-
-	trait ColumnSubstitute[O, S, T] extends ColumnMapping[O, T] {
-		val adaptee :ColumnMapping[O, T]
-
-		override def name: String = adaptee.name
-	}
-
-	trait ColumnImpostor[O, T] extends ColumnSubstitute[O, T, T] {
-		override def form: SQLForm[T] = adaptee.form
-
-		override def buffs :Seq[Buff[T]] = adaptee.buffs
-
-//		override def assemble(values: Values): Option[T] =
-//			(values :\ adaptee).result(adaptee)
-	}
-
-	class ColumnOverride[O, T]
-			(val adaptee :ColumnMapping[O, T], nameOverride :Option[String]=None, buffsOverride :Option[Seq[Buff[T]]]=None)
-		extends ColumnImpostor[O, T]
-	{
-		override val buffs :Seq[Buff[T]] = buffsOverride getOrElse adaptee.buffs
-		override val name :String = nameOverride getOrElse adaptee.name
-		override val isNullable = super.isNullable
-	}
-
-
-
-
-	class ColumnView[O, T](private val adaptee :ComponentFor[T]) extends ColumnMapping[O, T] {
-
-		if (adaptee.columns.size!=1 || adaptee.selectForm.readColumns!=1 || adaptee.insertForm.writtenColumns!=1 || adaptee.updateForm.writtenColumns!=1)
-			throw new IllegalArgumentException(s"Expected a column, got a multiple column mapping :$adaptee{${adaptee.columns}}")
-
-		override val name :String = adaptee.sqlName getOrElse {
-			throw new IllegalArgumentException(s"Expected a column, got a mapping without an sqlName :$adaptee{${adaptee.columns}}")
-		}
-
-
-		override val form :SQLForm[T] = SQLForm.combine(
-			adaptee.selectForm,
-			adaptee.insertForm unless(_.writtenColumns == 0) getOrElse adaptee.updateForm
-		)
-
-		override def buffs :Seq[Buff[T]] = adaptee.buffs
-
-		override val isNullable :Boolean = super.isNullable
-
-
-		override def equals(other: Any): Boolean = other match {
-			case that: ColumnView[_, _] => adaptee == that.adaptee
-			case _ => false
-		}
-
-		override def hashCode(): Int = adaptee.hashCode
-	}
 
 
 }

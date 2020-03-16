@@ -4,7 +4,7 @@ import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.SQLForm.{MappedSQLForm, Tuple2Form}
+import net.noresttherein.oldsql.schema.SQLForm.{JDBCSQLType, MappedSQLForm, Tuple2Form}
 import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, ChainReadForm, MappedSQLReadForm, SeqReadForm}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, ChainWriteForm, EmptyWriteForm, MappedSQLWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
@@ -51,7 +51,8 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 
 trait BaseColumnForm {
-	def sqlType :Int
+	/** The JDBC code for the underlying column type, as defined by constants in `java.sql.Types`. */
+	def sqlType :JDBCSQLType
 }
 
 
@@ -92,6 +93,7 @@ trait RecordForm[T] extends SQLForm[T]
 
 
 object SQLForm extends JDBCTypes {
+	type JDBCSQLType = Int
 
 	@inline def column[T](implicit form :ColumnForm[T]) :ColumnForm[T] = form
 
@@ -109,6 +111,7 @@ object SQLForm extends JDBCTypes {
 			new CombinedForm[T](read, write) with ColumnForm[T] {
 				override val sqlType = read.asInstanceOf[ColumnReadForm[T]].sqlType
 			}
+
 
 
 
@@ -303,9 +306,6 @@ object SQLForm extends JDBCTypes {
 		override def opt(position: Int)(res: ResultSet): Option[T] =
 			source.opt(position)(res).flatMap(map)
 
-		override def writtenColumns :Int = source.writtenColumns
-		override def readColumns :Int = source.readColumns
-
 	}
 
 
@@ -327,7 +327,7 @@ object SQLForm extends JDBCTypes {
 		}
 		override def setNull(position :Int)(statement :PreparedStatement) :Unit = form.setNull(position)(statement)
 
-		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = Some(form.opt(position)(res))
+		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = form.opt(position)(res).map(Option.apply)
 		override def apply(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
 
 		override def literal(value :Option[T]) :String = value match {

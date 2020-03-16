@@ -268,7 +268,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 	/** A column for which a value exists in all instances of `S`. It doesn't mean that it is mandatory in any particular
 	  * SQL statement. It automatically inherits the enclosing mapping's `columnPrefix` and buffs.
 	  */
-	private class MandatoryColumn[T :SQLForm](value :S => T, name :String, opts :Seq[Buff[T]])
+	private class MandatoryColumn[T :ColumnForm](value :S => T, name :String, opts :Seq[Buff[T]])
 		extends StandardColumn[Owner, T](testedPrefix + name, opts ++ conveyBuffs(value, testedPrefix + name))
 		   with ComponentMapping[T]
 	{
@@ -280,13 +280,14 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 	  * This column will ''not'' automatically inherit the enclosing mapping's `columnPrefix` or buffs
 	  */
 	private class ColumnComponent[T](val extractor :Extractor[S, T], name :String, buffs :Seq[Buff[T]])
-	                                (implicit sqlForm :SQLForm[T])
+	                                (implicit sqlForm :ColumnForm[T])
 		extends StandardColumn[Owner, T](name, buffs) with ComponentMapping[T]
 	{
-		def this(value :S => T, name :String, buffs :Seq[Buff[T]])(implicit form :SQLForm[T]) =
-			this(Extractor.requisite(value), name, buffs)
+		def this(value :S => T, name :String, buffs :Seq[Buff[T]])(implicit form :ColumnForm[T]) =
+			this(Extractor.req(value), name, buffs)
 
-		def this(pick :S => Option[T], surepick :Option[S=>T], name :String, buffs :Seq[Buff[T]])(implicit form :SQLForm[T]) =
+		def this(pick :S => Option[T], surepick :Option[S=>T], name :String, buffs :Seq[Buff[T]])
+		        (implicit form :ColumnForm[T]) =
 			this(surepick map Extractor.requisite[S, T] getOrElse Extractor(pick), name, buffs)
 	}
 
@@ -354,38 +355,38 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 
 	protected def column[T](name :String, pick :S => T, buffs :Buff[T]*)
-	                       (implicit form :SQLForm[T]) :Column[T] =
+	                       (implicit form :ColumnForm[T]) :Column[T] =
 		initPreceding(new MandatoryColumn[T](pick, name, buffs))
 
-	protected def column[T](pick :S => T, buffs :Buff[T]*)(implicit form :SQLForm[T], subject :TypeTag[S]) :Column[T] =
+	protected def column[T](pick :S => T, buffs :Buff[T]*)(implicit form :ColumnForm[T], subject :TypeTag[S]) :Column[T] =
 		column[T](PropertyPath.nameOf(pick), pick, buffs:_*)
 
 
 
 	protected def optcolumn[T](name :String, pick :S => Option[T], buffs :Buff[T]*)
-	                          (implicit form :SQLForm[T]) :Column[T] =
+	                          (implicit form :ColumnForm[T]) :Column[T] =
 		initPreceding(new ColumnComponent(pick, None, testedPrefix + name, buffs ++ conveyBuffs(pick, testedPrefix + name)))
 
-	protected def optcolumn[T](pick :S => Option[T], buffs :Buff[T]*)(implicit form :SQLForm[T], subject :TypeTag[S]) :Column[T] =
+	protected def optcolumn[T](pick :S => Option[T], buffs :Buff[T]*)(implicit form :ColumnForm[T], subject :TypeTag[S]) :Column[T] =
 		optcolumn[T](PropertyPath.nameOf(pick), pick, buffs: _*)
 
 
 
-	protected def unmapped[T :SQLForm](name :String, buffs :Buff[T]*) :Column[T] =
+	protected def unmapped[T :ColumnForm](name :String, buffs :Buff[T]*) :Column[T] =
 		initPreceding(new ColumnComponent[T](_ => None, None, name, Unmapped[T] +: buffs))
 
 
 
 	protected def autoins[T](name :String, pick :S => Option[T], options :Buff[T]*)
-	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
+	                        (implicit form :ColumnForm[T], tpe :TypeTag[S]) :Column[T] =
 		column[T](name, pick(_:S).get, AutoInsert[T] +: options :_*)
 
 	protected def autoins[T](pick :S => Option[T], options :Buff[T]*)
-	                        (implicit form :SQLForm[T], tpe :TypeTag[S]) :Column[T] =
+	                        (implicit form :ColumnForm[T], tpe :TypeTag[S]) :Column[T] =
 		autoins[T](PropertyPath.nameOf(pick), pick, options :_*)
 
 
-//	protected def foreignKey[T :SQLForm]()
+//	protected def foreignKey[T :ColumnForm]()
 /*
 	def symLink[T](component :Component[T]) :SymLinkComponent[component.type, T] =
 		symLink(component.path)
