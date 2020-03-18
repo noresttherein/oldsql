@@ -2,13 +2,13 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Mapping.Component
-import net.noresttherein.oldsql.schema.{Mapping, SubMapping}
+import net.noresttherein.oldsql.schema.{Mapping, AbstractMapping}
 
 
 /**
   * @author Marcin Mościcki
   */
-trait MappingAdapter[M <: Mapping.Component[O, S], O, S, T] extends SubMapping[O, T] {
+trait MappingAdapter[M <: Mapping.Component[O, S], O, S, T] extends AbstractMapping[O, T] {
 	protected val adaptee :M
 
 
@@ -25,10 +25,21 @@ trait MappingAdapter[M <: Mapping.Component[O, S], O, S, T] extends SubMapping[O
 
 
 
+	override def lift[X](component :Component[X]) :Component[X] =
+		if (component eq adaptee) component
+		else adaptee.lift(component)
+
+
 	override def sqlName :Option[String] = adaptee.sqlName
 
 	override def introString :String = adaptee.introString
 
 	override def toString :String = adaptee.toString
 
+}
+
+
+
+object MappingAdapter {
+	trait ShallowAdapter[M <: Mapping.Component[O, S], O, S, T] extends MappingAdapter[M, O, S, T] {}
 }

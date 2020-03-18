@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector, GeneralSelector, ComponentFor, SingletonFor}
-import net.noresttherein.oldsql.schema.{Mapping, Buff, SQLReadForm, SQLWriteForm, SubMapping}
+import net.noresttherein.oldsql.schema.{Mapping, Buff, SQLReadForm, SQLWriteForm, AbstractMapping}
 
 import scala.collection.mutable
 
@@ -14,7 +14,7 @@ import scala.collection.mutable
 /**
   * @author Marcin Mościcki
   */
-trait ComponentProxy[O, S] extends SubMapping[O, S] {
+trait ComponentProxy[O, S] extends AbstractMapping[O, S] {
 	protected val adaptee :ComponentFor[S]
 
 	override def buffs :Seq[Buff[S]] = adaptee.buffs
@@ -55,10 +55,6 @@ object ComponentProxy {
 				 adaptee(component)
 			).asInstanceOf[Selector[T]]
 
-		override def lift[T](component :Component[T]) :Component[T] =
-			if (component eq adaptee) component
-			else adaptee.lift(component)
-
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 			if (components.contains(adaptee)) adaptee.selectForm(selectable)
@@ -74,7 +70,7 @@ object ComponentProxy {
 
 
 
-		override def assemble(values :Pieces) :Option[S] = adaptee.optionally(values.identical[adaptee.type](adaptee))
+		override def assemble(pieces :Pieces) :Option[S] = adaptee.optionally(pieces.compatible[adaptee.type](adaptee))
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ShallowProxy[_, _]]
@@ -115,11 +111,11 @@ object ComponentProxy {
 		override def insertable :Unique[Component[_]] = adaptee.insertable.map(alias(_))
 		override def autoInserted :Unique[Component[_]] = adaptee.autoInserted.map(alias(_))
 
-		override def valueOf[T](component :Component[T], subject :S) :Option[T] =
+		override def pick[T](component :Component[T], subject :S) :Option[T] =
 			if (component eq adaptee) Some(subject.asInstanceOf[T])
-			else adaptee.valueOf(dealias(component), subject)
+			else adaptee.pick(dealias(component), subject)
 
-		override def valueOf[T](component :Component[T], values :Pieces) :Option[T] =
+		override def pick[T](component :Component[T], values :Pieces) :Option[T] =
 			values.get(apply(component))
 
 		override def apply[T](component :Component[T], subject :S) :T =
@@ -131,7 +127,7 @@ object ComponentProxy {
 
 
 
-		override def assemble(values :Pieces) :Option[S] = apply(adapt(adaptee)).get(values)
+		override def assemble(pieces :Pieces) :Option[S] = pieces.get(apply(adapt(adaptee)))
 
 
 

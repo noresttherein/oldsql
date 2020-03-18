@@ -2,10 +2,12 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{ResultSet, SQLException}
 
+import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackColumnReadForm, FallbackReadForm, MappedSQLReadForm, Tuple2ReadForm}
+import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.schema.SQLForm.{JDBCSQLType, NullValue}
+import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackColumnReadForm, FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, OptionMappedSQLReadForm, Tuple2ReadForm}
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.immutable.Seq
@@ -23,9 +25,10 @@ import scala.collection.immutable.Seq
   * @see [[net.noresttherein.oldsql.schema.ColumnReadForm]]
   */
 trait SQLReadForm[+T] {
+
 	/** Reads the column values from columns `&lt;position..position + this.readColumns)` of the passed `ResultSet`
 	  * and creates an instance of `T`. The default implementation delegates to `opt` and fallbacks to `nullValue`
-	  * if no value is available, but the exact handling is completely up to the implementation. Note `null` column
+	  * if no value is available, but the exact handling is completely up to the implementation. Note that `null` column
 	  * values may happen even on not-null database columns in outer joins.
 	  * @throws NoSuchElementException if the value cannot be assembled, typically because the indicated columns are null;
 	  *                                this is different in intent from the `NullPointerException` case
@@ -36,14 +39,19 @@ trait SQLReadForm[+T] {
 	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]
 	  */
-	def apply(position :Int)(res :ResultSet) :T = opt(position)(res) getOrElse nullValue
+	def apply(position :Int)(res :ResultSet) :T = opt(position)(res) match {
+		case Some(x) => x
+		case _ => nullValue
+	}
 
 	/** Attempts to read the column values from columns `&lt;position..position + this.readColumns` of the passed
 	  * `ResultSet` and create an instance of `T`. If the values are unavailable (required columns carry `null` values),
 	  * `None` is returned. It is a recommended practice to have the returned option reflect only the availability
-	  * of the input values and not their validity. While not strictly required, the form should throw an exception
-	  * if the values do not conform to expected constraints or the assembly process fails for any other reason.
-	  * Similarly, all thrown `SQLException`s are propagated.
+	  * of the input values and not their validity. It is allowed for the form to return `Some(null)`
+	  * (as long as `T >: Null`), but this results in propagation of `null` values to any forms derived from it
+	  * and to the application. As such, it is strongly discouraged. While not strictly required, the form should
+	  * throw an exception if the values do not conform to expected constraints or the assembly process fails
+	  * for any other reason. Similarly, all thrown `SQLException`s are propagated.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.apply apply]]
 	  */
 	def opt(position :Int)(res :ResultSet) :Option[T]
@@ -55,6 +63,13 @@ trait SQLReadForm[+T] {
 	  * for scala built-in value types will return some form of `0` here.
 	  */
 	def nullValue :T
+
+	/** Null representation for type `T`. Wrapped value is used by the form when the mapped column(s) is null.
+	  * It should be consistent with `this.nullValue` and the default implementation simply delegates to it at each call.
+	  * This wrapper can be implicitly passed as a type class, even if the form does not support `null` values
+	  * (i.e. `nullValue` throws an exception), which would not be possible by simply using `nullValue`.
+	  */
+	implicit def nulls :NullValue[T] = NullValue.byName(nullValue)
 
 	/** Number of columns read by this form. This must be a constant as it is typically is used to calculate offsets
 	  * for various forms once per `ResultSet` rather than per row. Naturally, there is no requirement for actual
@@ -70,43 +85,76 @@ trait SQLReadForm[+T] {
 	  * not be called for `null` arguments and allows handling of `null` values also when `T` is a value type without
 	  * a natural `null` value.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.mapNull]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.mapRef]]
 	  */
-	def nullMap[X :NullValue](fun :T => X) :SQLReadForm[X] = map(fun, NullValue.Null[X])
+	def map[X :NullValue](fun :T => X) :SQLReadForm[X] = SQLReadForm.map(fun)(this, NullValue[X])
 
 	/** Maps the value of `T` read by this form to `X` in order to obtain a form for `X`. If the underlying columns
 	  * carry null values, passed `nullValue` is used instead of mapping. This guarantees that the given function will
 	  * not be called for `null` arguments and allows handling of `null` values also when `T` is a value type without
-	  * a natural `null` value.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullMap]]
+	  * a natural `null` value. Note that `this.nullValue` is never called, directly or indirectly, by the created form.
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.mapNull]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.mapRef]]
 	  */
-	def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] = MappedSQLReadForm((t :T) => Some(fun(t)), nullValue)(this)
+	def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] = map(fun)(NullValue(nullValue))
+
+	/** Maps the value of `T` read by this form to a reference type `X` in order to obtain a form for `X`.
+	  * If the underlying column(s) carry null value(s), `null` is returned without applying `fun` to it.
+	  * Note that `this.nullValue` is never called, directly or indirectly, by the created form.
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.mapNull]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  */
+	def mapRef[X >: Null](fun :T => X) :SQLReadForm[X] = map(fun)
 
 	/** Maps the value of `T` read by this form to `X` in order to obtain a form for `X`. Note that the given
 	  * function may be called for `null` arguments, even if the underlying columns have a ''not null'' constraint
-	  * in case of outer join queries.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullMap]]
+	  * in case of outer join queries. Note that `this.nullValue` is never called, directly or indirectly,
+	  * by the created form.
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.mapRef]]
 	  */
-	def map[X](fun :T => X) :SQLReadForm[X] = MappedSQLReadForm((t :T) => Some(fun(t)), fun(nullValue))(this)
+	def mapNull[X](fun :T => X) :SQLReadForm[X] = map(fun)(nulls.map(fun))
+
 
 
 
 	/** Attempts to map the value of `T` read by this form to type `X` in order to produce a form for `X`.
-	  * Unlike `map`, not all values of `T` may have an associated counterpart in `X`, in which the given function
+	  * Unlike `map`, not all values of `T` may have an associated counterpart in `X`, in which case the given function
 	  * returns `None` and the new form defaults to its `nullValue`. This method variant relies on implicit
 	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] to provide the value of `X` which should be used
 	  * when the underlying columns carry null values or a value of `X` cannot be assembled due to anticipated reasons.
 	  * If the value cannot be assembled due to unforeseen circumstances or data errors, the form should
 	  * throw an exception. The function is guaranteed not to be called for `null` arguments, with the created form
 	  * using the implicit null value instead.
+	  * Note that `this.nullValue` is never called, directly or indirectly, by the created form.
 	  */
-	def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] = flatMap(fun, NullValue.Null[X])
+	def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] =
+		SQLReadForm.flatMap(fun)(this, NullValue[X])
 
 	/** Attempts to map the value of `T` read by this form to type `X` in order to produce a form for `X`.
-	  * Unlike `map`, not all values of `T` may have an associated counterpart in `X`, in which the given function
+	  * Unlike `map`, not all values of `T` may have an associated counterpart in `X`, in which case the given function
 	  * returns `None` and the new form defaults to the given `nullValue`.  The function is guaranteed not to be called
 	  * for `null` arguments, with the created form using `nullValue` instead.
+	  * Note that `this.nullValue` is never called, directly or indirectly, by the created form.
 	  */
-	def flatMap[X](fun :T => Option[X], nullValue :X) :SQLReadForm[X] = MappedSQLReadForm(fun, nullValue)(this)
+	def flatMap[X](fun :T => Option[X], nullValue :X) :SQLReadForm[X] = flatMap(fun)(NullValue(nullValue))
+
+	/** Attempts to map the value of `T` read by this form to type `X` in order to produce a form for `X`.
+	  * Unlike `map`, not all values of `T` may have an associated counterpart in `X`, in which case the given function
+	  * returns `None`. Created form's `opt` method will return `None` if either this form, or the argument function
+	  * return `None`. In the same cases, its `apply` method will return `null`.
+	  */
+	def flatMapRef[X >: Null](fun :T => Option[X]) :SQLReadForm[X] = flatMap(fun)
+
+
+	def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] =
+		SQLReadForm.optMap(fun)(this, NullValue[X])
+
+	def optMap[X](fun :Option[T] => Option[X], nullValue :X) :SQLReadForm[X] =
+		optMap(fun)(NullValue(nullValue))
+
 
 	/** Lifts this form to represent `Option[T]`. The created form maps all values returned by this form using
 	  * `Option(...)`. This means that `null` values (actual JVM nulls, not the somewhat arbitrary value provided
@@ -163,33 +211,55 @@ trait SQLReadForm[+T] {
 trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 	override final def readColumns = 1
 
+	/** Target method of `apply` and `opt` which reads the value of the column at the given index in the ResultSet
+	  * and returns it as-is, without any handling of `null` values. This method should ''not'' throw null-related
+	  * exceptions: value types should return any value of their type, while reference types should return `null`.
+	  * It is a low-level method exposed for the purpose of form implementations, and applications should use
+	  * `apply` instead.
+	  */
+	protected def read(position :Int)(res :ResultSet) :T
+
+	@inline final private[schema] def friendRead(position :Int)(res :ResultSet) :T = read(position)(res)
+
+	override def apply(position :Int)(res :ResultSet) :T = {
+		val t = read(position)(res)
+		if (res.wasNull) nullValue else t
+	}
+
 	def apply(column :String)(res :ResultSet) :T = apply(res.findColumn(column))(res)
 
 	override def opt(position :Int)(res :ResultSet) :Option[T] = {
-		val t = apply(position)(res)
+		val t = read(position)(res)
 		if (res.wasNull) None else Option(t)
 	}
 
 	def opt(column :String)(res :ResultSet) :Option[T] = opt(res.findColumn(column))(res)
 
 
-	override def nullMap[X :NullValue](fun :T => X) :ColumnReadForm[X] =
-		map(fun, NullValue.Null[X])
+	override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] =
+		ColumnReadForm.map(fun)(this, NullValue[X])
 
-	override def map[X](fun :T => X) :ColumnReadForm[X] =
-		MappedSQLReadForm.column((t :T) => Some(fun(t)), fun(this.nullValue))(this)
+	override def map[X](fun :T => X, nullValue :X) :ColumnReadForm[X] = map(fun)(NullValue(nullValue))
 
-	override def map[X](fun :T => X, nullValue :X) :ColumnReadForm[X] =
-		MappedSQLReadForm.column((t :T) => Some(fun(t)), nullValue)(this)
+	override def mapRef[X >: Null](fun :T => X) :ColumnReadForm[X] = map(fun)
+
+	override def mapNull[X](fun :T => X) :ColumnReadForm[X] = map(fun)(nulls.map(fun))
 
 	override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] =
-		flatMap(fun, NullValue.Null[X])
+		ColumnReadForm.flatMap(fun)(this, NullValue[X])
 
-	override def flatMap[X](fun :T => Option[X], nullValue :X) :ColumnReadForm[X] =
-		MappedSQLReadForm.column(fun, nullValue)(this)
+	override def flatMap[X](fun :T => Option[X], nullValue :X) :ColumnReadForm[X] = flatMap(fun)(NullValue(nullValue))
+
+	override def flatMapRef[X >: Null](fun :T => Option[X]) :ColumnReadForm[X] = flatMap(fun)
+
+	override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
+		ColumnReadForm.optMap(fun)(this, NullValue[X])
+
+	override def optMap[X](fun :Option[T] => Option[X], nullValue :X) :SQLReadForm[X] = optMap(fun)(NullValue(nullValue))
 
 
-	override def asOpt :SQLReadForm[Option[T]] = SQLReadForm.OptionColumnReadForm(this)
+
+	override def asOpt :ColumnReadForm[Option[T]] = ColumnReadForm.OptionColumnReadForm(this)
 
 
 	override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
@@ -206,11 +276,11 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 
 	override def &&[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = write match {
-		case atom :ColumnWriteForm[O] => SQLForm.combine(this, atom)
-		case _ => SQLForm.combine(this, write)
+		case atom :ColumnWriteForm[O] => this && atom
+		case _ => super.&&(write)
 	}
 
-	def &&[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = SQLForm.combine(this, write)
+	def &&[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = ColumnForm.combine(this, write)
 
 
 
@@ -225,12 +295,178 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 
 
+
+object ColumnReadForm {
+	/** Summons an implicit `ColumnReadForm[T]`. */
+	def apply[T :ColumnReadForm] :ColumnReadForm[T] = implicitly[ColumnReadForm[T]]
+
+
+
+	/** Creates a proxy form which will delegate all methods to another form, returned by the given by-name argument.
+	  * The expression is not evaluated until the form is actually needed. All mapping methods map this instance
+	  * if the backing form expression has not been evaluated, and defer to the backing form it has been computed
+	  * (essentially shedding the lazy proxy layer). The expression may be evaluated more than once if several
+	  * threads trigger the its initialization, but the created form is thread safe.
+	  */
+	def Lazy[T](init: =>ColumnReadForm[T]) :ColumnReadForm[T] =
+		new LazyReadForm[T](() => init) with LazyColumnReadForm[T]
+
+
+
+	def map[S, T](map :S => T)(implicit source :ColumnReadForm[S], nulls :NullValue[T] = null) :ColumnReadForm[T] =
+		new MappedSQLReadForm[S, T](map) with MappedColumnReadForm[S, T]
+
+	def flatMap[S :ColumnReadForm, T :NullValue](map :S => Option[T]) :ColumnReadForm[T] =
+		new FlatMappedSQLReadForm[S, T](map) with FlatMappedColumnReadForm[S, T]
+
+	def optMap[S :ColumnReadForm, T :NullValue](map :Option[S] => Option[T]) :ColumnReadForm[T] =
+		new OptionMappedSQLReadForm[S, T](map) with OptionMappedColumnReadForm[S, T]
+
+	def optMap[S :ColumnReadForm, T](map :Option[S] =>Option[T], nullValue : =>T) :ColumnReadForm[T] =
+		optMap(map)(implicitly[ColumnReadForm[S]], NullValue.byName(nullValue))
+
+
+
+
+	implicit def OptionColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Option[T]] =
+		ColumnReadForm[T].map(Option.apply, None)
+
+	implicit def SomeColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Some[T]] =
+		ColumnReadForm[T].mapNull(Some.apply)
+
+
+
+
+
+
+	private[schema] trait LazyColumnReadForm[T] extends LazyReadForm[T] with ColumnReadForm[T] {
+		protected override def form :ColumnReadForm[T] = super.form.asInstanceOf[ColumnReadForm[T]]
+
+		override def sqlType :SQLForm.JDBCSQLType = form.sqlType
+
+		protected override def read(position :Int)(res :ResultSet) :T = form.read(position)(res)
+
+		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] =
+			if (isInitialized) form.map(fun)
+			else Lazy(form.map(fun))
+
+		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] =
+			if (isInitialized) form.flatMap(fun)
+			else Lazy(form.flatMap(fun))
+
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
+			if (isInitialized) form.optMap(fun)
+			else Lazy(form.optMap(fun))
+
+		override def asOpt :ColumnReadForm[Option[T]] = if (isInitialized) form.asOpt else Lazy(form.asOpt)
+
+		override def orElse[S >: T](fallback :ColumnReadForm[S]) :ColumnReadForm[S] =
+			if (isInitialized) form orElse fallback
+			else Lazy(form orElse fallback)
+
+		override def &&[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] =
+			if (isInitialized) form && write
+			else ColumnForm.Lazy(form && write)
+	}
+
+
+
+
+
+
+	private[schema] trait OptionMappedColumnReadForm[S, +T]
+		extends OptionMappedSQLReadForm[S, T] with SQLReadForm[T] with ColumnReadForm[T]
+	{
+		private def form :ColumnReadForm[S] = source.asInstanceOf[ColumnReadForm[S]]
+
+		override def sqlType: JDBCSQLType = form.sqlType
+
+		override def read(position :Int)(res :ResultSet) :T = {
+			val s = form.friendRead(position)(res)
+			if (res.wasNull)
+				null.asInstanceOf[T] //safe cast, because erased and won't be passed out of apply/opt
+			else
+				map(Some(s)) match {
+					case Some(x) => x
+					case _ => null.asInstanceOf[T]
+				}
+		}
+
+		override def apply(column: Int)(res: ResultSet): T = super[SQLReadForm].apply(column)(res)
+
+		override def opt(position: Int)(res: ResultSet): Option[T] = map(source.opt(position)(res))
+
+		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] = form.optMap(map(_).map(fun))
+
+		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] = form.optMap(map(_).flatMap(fun))
+
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
+			form.optMap((map :Option[S] => Option[T]) andThen fun)
+	}
+
+
+
+	private[schema] trait FlatMappedColumnReadForm[S, +T] extends FlatMappedSQLReadForm[S, T] with ColumnReadForm[T] {
+		private def form :ColumnReadForm[S] = source.asInstanceOf[ColumnReadForm[S]]
+
+		override def sqlType :JDBCSQLType = form.sqlType
+
+		override protected def read(position :Int)(res :ResultSet) :T = {
+			val s = form.friendRead(position)(res)
+			if (res.wasNull)
+				null.asInstanceOf[T]
+			else
+				map(s) match {
+					case Some(x) => x
+					case _ => null.asInstanceOf[T]
+				}
+		}
+
+		override def opt(position :Int)(res :ResultSet) :Option[T] = source.opt(position)(res).flatMap(map)
+
+		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] = form.flatMap(map(_).map(fun))
+
+		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] = form.flatMap(map(_).flatMap(fun))
+
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
+			form.flatMap((map :S => Option[T]) andThen fun)
+	}
+
+
+
+	private[schema] trait MappedColumnReadForm[S, +T] extends MappedSQLReadForm[S, T] with ColumnReadForm[T] {
+		private def form :ColumnReadForm[S] = source.asInstanceOf[ColumnReadForm[S]]
+
+		override def sqlType :JDBCSQLType = form.sqlType
+
+		override protected def read(position :Int)(res :ResultSet) :T = {
+			val s = form.friendRead(position)(res)
+			if (res.wasNull) null.asInstanceOf[T]
+			else map(s)
+		}
+
+		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] =
+			form.map((map :S => T) andThen fun)
+
+		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] =
+			form.flatMap((map :S => T) andThen fun)
+
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
+			form.flatMap((s :S) => fun(Option(map(s))))
+	}
+
+
+
+}
+
+
+
+
+
+
 object SQLReadForm {
 	/** Summons an implicit `SQLReadForm[T].` */
 	def apply[T :SQLReadForm] :SQLReadForm[T] = implicitly[SQLReadForm[T]]
-
-	/** Summons an implicit `ColumnReadForm[T]`. */
-	def column[T :ColumnReadForm] :ColumnReadForm[T] = implicitly[ColumnReadForm[T]]
 
 
 
@@ -276,6 +512,35 @@ object SQLReadForm {
 	def Lazy[T](form : =>SQLReadForm[T]) :SQLReadForm[T] = new LazyReadForm(() => form)
 
 
+
+	/** Maps the result of reading `S` with an implicit form to `T`. */
+	def map[S, T](map :S => T)(implicit source :SQLReadForm[S], nulls :NullValue[T] = null) :SQLReadForm[T] =
+		source match {
+			case col :ColumnReadForm[_] =>
+				ColumnReadForm.map(map)(col.asInstanceOf[ColumnReadForm[S]], nulls)
+			case _ =>
+				new MappedSQLReadForm(map)(source, if (nulls == null) source.nulls.map(map) else nulls)
+		}
+
+	def flatMap[S :SQLReadForm, T :NullValue](map :S => Option[T]) :SQLReadForm[T] =
+		SQLReadForm[S] match {
+			case col :ColumnReadForm[_] =>
+				ColumnReadForm.flatMap(map)(col.asInstanceOf[ColumnReadForm[S]], NullValue[T])
+		}
+
+	def optMap[S, T](map :Option[S] => Option[T])(implicit source :SQLReadForm[S], nulls :NullValue[T]) :SQLReadForm[T] =
+		source match {
+			case col :ColumnReadForm[_] =>
+				ColumnReadForm.optMap(map)(col.asInstanceOf[ColumnReadForm[S]], nulls)
+			case _ =>
+				new OptionMappedSQLReadForm[S, T](map)
+		}
+
+	def optMap[S :SQLReadForm, T](map :Option[S] => Option[T], nullValue : =>T) :SQLReadForm[T] =
+		optMap(map)(SQLReadForm[S], NullValue.byName(nullValue))
+
+
+
 	def seq[T](forms :Seq[SQLReadForm[T]]) :SQLReadForm[Seq[T]] = new SeqReadFormImpl[T](forms)
 
 
@@ -284,13 +549,7 @@ object SQLReadForm {
 		SQLReadForm[T].map(Option.apply, None)
 
 	implicit def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
-		SQLReadForm[T].map(Some.apply)
-
-	implicit def OptionColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Option[T]] =
-		SQLReadForm.column[T].map(Option.apply, None)
-
-	implicit def SomeColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Some[T]] =
-		SQLReadForm.column[T].map(Some.apply)
+		SQLReadForm[T].mapNull(Some.apply)
 
 
 
@@ -303,7 +562,7 @@ object SQLReadForm {
 		}
 
 	/** An implicit value for the empty chain `@~`, which reads zero columns and simply returns `@~`. */
-	implicit val EmptyChainReadForm :SQLReadForm[@~] = const(@~)
+	implicit val EmptyChainReadForm :SQLReadForm[@~] = SQLForm.EmptyChainForm
 
 
 
@@ -320,12 +579,12 @@ object SQLReadForm {
 
 
 
-	case class ConstReadForm[+T :NullValue](value :Option[T]) extends SQLReadForm[T] {
+	private case class ConstReadForm[+T :NullValue](value :Option[T]) extends SQLReadForm[T] {
 		override def opt(position: Int)(res: ResultSet): Option[T] = value
 
 		override def readColumns: Int = 0
 
-		override def nullValue: T = NullValue.Null[T]
+		override def nullValue: T = NullValue.value[T]
 
 		override def toString :String = "<" + value
 	}
@@ -337,58 +596,94 @@ object SQLReadForm {
 
 		override def readColumns: Int = 0
 
-		override def nullValue: T = NullValue.Null[T]
+		override def nullValue: T = NullValue.value[T]
 
 		override def toString :String = "<=?"
 	}
 
 
 
-	class MappedSQLReadForm[+T, S](val map :S=>Option[T], nullExpr : =>T)(implicit val source :SQLReadForm[S])
+
+
+
+	private[schema] class OptionMappedSQLReadForm[S, +T](protected[this] final val map :Option[S] => Option[T])
+	                                                    (implicit protected[this] val source :SQLReadForm[S],
+	                                                     implicit final override val nulls :NullValue[T])
 		extends SQLReadForm[T]
 	{
-		override def nullValue :T = nullExpr
-
-		override def opt(position: Int)(res: ResultSet): Option[T] =
-			source.opt(position)(res).flatMap(map)
-
 		override def readColumns: Int = source.readColumns
 
-		override def toString = s"<=$source"
+		override def nullValue :T = nulls.value
+
+		override def opt(position: Int)(res: ResultSet): Option[T] =
+			map(source.opt(position)(res))
+
+		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] = source.optMap(map(_).map(fun))
+
+		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] = source.optMap(map(_).flatMap(fun))
+
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] = source.optMap(map andThen fun)
+
+		override def toString :String = "<=" + source
 	}
 
 
 
-	object MappedSQLReadForm {
-		def apply[T :NullValue, S :SQLReadForm](map :S=>Option[T]) :MappedSQLReadForm[T, S] =
-			apply(map, NullValue.Null[T])
+	private[schema] class FlatMappedSQLReadForm[S, +T](protected[this] final val map :S => Option[T])
+	                                                  (implicit protected[this] val source :SQLReadForm[S],
+	                                                   implicit final override val nulls :NullValue[T])
+		extends SQLReadForm[T]
+	{
+		override def readColumns :Int = source.readColumns
 
-		def apply[T, S :SQLReadForm](map :S=>Option[T], nullValue : =>T) :MappedSQLReadForm[T, S] =
-			implicitly[SQLReadForm[S]] match {
-				case a :ColumnReadForm[_] =>
-					column(map, nullValue)(a.asInstanceOf[ColumnReadForm[S]])
-				case _ =>
-					new MappedSQLReadForm[T, S](map, nullValue)
-			}
+		override def opt(position :Int)(res :ResultSet) :Option[T] = source.opt(position)(res).flatMap(map)
 
+		override def nullValue :T = nulls.value
 
-		def column[T :NullValue, S :ColumnReadForm](map :S=>Option[T]) :MappedSQLReadForm[T, S] with ColumnReadForm[T] =
-			column(map, NullValue.Null[T])
+		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] = source.flatMap(map.apply(_).map(fun))
 
-		def column[T, S :ColumnReadForm](map :S=>Option[T], nullValue : =>T) :MappedSQLReadForm[T, S] with ColumnReadForm[T] =
-			new MappedSQLReadForm[T, S](map, nullValue) with ColumnReadForm[T] {
-				override val source = implicitly[ColumnReadForm[S]]
-				override def sqlType: Int = source.sqlType
+		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] =
+			source.flatMap(map.apply(_).flatMap(fun))
 
-				override def opt(position: Int)(res: ResultSet): Option[T] =
-					super[MappedSQLReadForm].opt(position)(res)
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] =
+			source.flatMap(map andThen fun)
 
-			}
+		override def toString :String = "<=" + source
+
 	}
 
 
 
-	private[schema] class FallbackReadForm[+T](first :SQLReadForm[T], second :SQLReadForm[T]) extends SQLReadForm[T] {
+	private[schema] class MappedSQLReadForm[S, +T](protected[this] final val map :S => T)
+	                                              (implicit protected[this] val source :SQLReadForm[S],
+	                                               implicit final override val nulls :NullValue[T])
+		extends SQLReadForm[T]
+	{
+		override def readColumns :Int = source.readColumns
+
+		override def opt(position :Int)(res :ResultSet) :Option[T] = source.opt(position)(res).map(map)
+
+		override def nullValue :T = nulls.value
+
+		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] = source.map(map andThen fun)
+
+		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] = source.flatMap(map andThen fun)
+
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] =
+			source.flatMap((s :S) => fun(Option(map(s))))
+
+		override def toString :String = "<=" + source
+	}
+
+
+
+
+
+
+	private[schema] class FallbackReadForm[+T](overrides :SQLReadForm[T], fallback :SQLReadForm[T]) extends SQLReadForm[T] {
+		protected def first :SQLReadForm[T] = overrides
+		protected def second :SQLReadForm[T] = fallback
+
 		override def opt(position :Int)(res :ResultSet) :Option[T] =
 			first.opt(position)(res) orElse second.opt(position)(res)
 
@@ -411,6 +706,13 @@ object SQLReadForm {
 		extends FallbackReadForm[T](first, second) with ColumnReadForm[T]
 	{
 		override val sqlType :Int = first.sqlType
+
+		protected override def read(position :Int)(res :ResultSet) :T = {
+			var t = super.first.asInstanceOf[ColumnReadForm[T]].friendRead(position)(res)
+			if (res.wasNull)
+				t = super.second.asInstanceOf[ColumnReadForm[T]].friendRead(position)(res)
+			t
+		}
 
 		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
 			case atom :ColumnReadForm[S] => orElse(atom)
@@ -436,11 +738,9 @@ object SQLReadForm {
 		override def opt(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
 		override def apply(position :Int)(res :ResultSet) :T = form(position)(res)
 
-		override def nullMap[X :NullValue](fun :T => X) :SQLReadForm[X] = form.nullMap(fun)
-		override def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] = form.map(fun, nullValue)
-		override def map[X](fun :T => X) :SQLReadForm[X] = form.map(fun)
+		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] = form.map(fun)
 		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] = form.flatMap(fun)
-		override def flatMap[X](fun :T => Option[X], nullValue :X) :SQLReadForm[X] = form.flatMap(fun, nullValue)
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] = form.optMap(fun)
 		override def asOpt :SQLReadForm[Option[T]] = form.asOpt
 
 
@@ -459,6 +759,7 @@ object SQLReadForm {
 
 		override def toString :String = "~" + form
 	}
+
 
 
 
@@ -486,15 +787,7 @@ object SQLReadForm {
 			fastAccess
 		}
 
-		override def nullMap[X :NullValue](fun :T => X) :SQLReadForm[X] =
-			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.nullMap(fun))
-			else form.nullMap(fun)
-
-		override def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] =
-			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.map(fun, nullValue))
-			else form.map(fun, nullValue)
-
-		override def map[X](fun :T => X) :SQLReadForm[X] =
+		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] =
 			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.map(fun))
 			else form.map(fun)
 
@@ -502,9 +795,9 @@ object SQLReadForm {
 			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.flatMap(fun))
 			else form.flatMap(fun)
 
-		override def flatMap[X](fun :T => Option[X], nullValue :X) :SQLReadForm[X] =
-			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.flatMap(fun, nullValue))
-			else form.flatMap(fun, nullValue)
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] =
+			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.optMap(fun))
+			else form.optMap(fun)
 
 		override def asOpt :SQLReadForm[Option[T]] =
 			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.asOpt)
@@ -609,12 +902,12 @@ object SQLReadForm {
 		protected[this] val tail :SQLReadForm[T]
 		protected[this] val head :SQLReadForm[H]
 
+		override val readColumns :Int = tail.readColumns + head.readColumns
+
 		override def opt(position :Int)(res :ResultSet) :Option[T ~ H] =
 			for (t <- tail.opt(position)(res); h <- head.opt(position + tail.readColumns)(res)) yield t ~ h
 
 		override def nullValue :T ~ H = tail.nullValue ~ head.nullValue
-
-		override val readColumns :Int = tail.readColumns + head.readColumns
 
 		override def toString :String = head match {
 			case _ :ChainReadForm[_, _] => tail.toString + "~(" + head + ")"

@@ -1,15 +1,17 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.{Unique}
+import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{Buff, SQLReadForm, SQLWriteForm, SubMapping}
+import net.noresttherein.oldsql.schema.{AbstractMapping, Buff, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector}
+import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.slang._
 
 
 
-trait OptionMapping[M <: Component[O, S], O, S] extends SubMapping[O, Option[S]] {
+trait OptionMapping[M <: Component[O, S], O, S] extends AbstractMapping[O, Option[S]] {
 	val get :M
 }
 
@@ -20,34 +22,19 @@ object OptionMapping {
 	def singleton[O, S](mapping :Component[O, S]) :OptionMapping[mapping.type, O, S] =
 		apply(mapping)
 
-//	def of[M <: Mapping](mapping :M) :OptionMapping[M, M#Owner, M#Subject] =
-//		new DirectOptionMapping[M, M#Owner, M#Subject] {
-//			override val get = mapping
-//		}
-//	def of[M <: Mapping] = new Factory[M] {}
+
 	def apply[M <: Component[O, S], O, S](mapping :M) :OptionMapping[M, O, S] =
-		new DirectOptionMapping[M, O, S] {
-			override val get = mapping
-		}
+		new DirectOptionMapping[M, O, S](mapping)
 
 
 
-	trait DirectOptionMapping[M <: Component[O, S], O, S] extends OptionMapping[M, O, S] { box =>
+	class DirectOptionMapping[M <: Component[O, S], O, S](val adaptee :M)
+		extends OptionMapping[M, O, S] with MappingAdapter[M, O, S, Option[S]]
+	{ box =>
+		val get :M = adaptee
 
-		val get :M
-
-
-		override def components :Unique[Component[_]] = Unique(get) //todo: unify the Component types to use AnyMaping
-		override def subcomponents :Unique[Component[_]] = get +: get.subcomponents
-
-		override def columns :Unique[Component[_]] = get.columns
-		override def selectable :Unique[Component[_]] = get.selectable
-		override def queryable :Unique[Component[_]] = get.queryable
-		override def updatable :Unique[Component[_]] = get.updatable
-		override def autoUpdated :Unique[Component[_]] = get.autoUpdated
-		override def insertable :Unique[Component[_]] = get.insertable
-		override def autoInserted :Unique[Component[_]] = get.autoInserted
-
+		override val components :Unique[Component[_]] = Unique(get) //todo: unify the Component types to use AnyMaping
+		override val subcomponents :Unique[Component[_]] = get +: get.subcomponents
 
 		override def selectForm :SQLReadForm[Option[S]] = get.selectForm.asOpt
 		override def queryForm :SQLWriteForm[Option[S]] = get.queryForm.asOpt
@@ -60,13 +47,11 @@ object OptionMapping {
 			get.buffs.map(_.map(Option(_))) ++ (ExplicitSelect.enabled(get) ifTrue ExplicitSelect[Option[S]](None))
 
 
-		private def getSelector :Selector[S] =
-			ComponentSelector(this, get)(Extractor.fromOpt)
+		private def getSelector :Selector[S] = ComponentSelector(this, get)(Extractor.fromOpt)
 
 		override def apply[T](component :Component[T]) :Selector[T] =
 			if (component eq get)
 				getSelector.asInstanceOf[Selector[T]]
-//				ComponentSelector(this, component)(Extractor.fromOpt.asInstanceOf[Extractor[Option[S], T]])
 			else {
 				val selector = get(component)
 				ComponentSelector(this, selector.lifted)(Extractor.fromOpt[S] andThen selector.extractor)
@@ -74,11 +59,12 @@ object OptionMapping {
 
 		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(getSelector))
 
-		override def nullValue = Some(None)
+		override val nullValue = Some(None)
 
 
 		override def sqlName :Option[String] = get.sqlName
 
+		override def toString :String = "Option[" + get + "]"
 	}
 
 }

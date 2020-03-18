@@ -2,22 +2,33 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
-import net.noresttherein.oldsql.schema.Mapping.{ComponentSelector, ComponentFor}
+import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
+import net.noresttherein.oldsql.schema.Mapping.{ComponentFor, ComponentSelector}
 import net.noresttherein.oldsql.slang._
 
 import scala.util.Try
 
 
 
-trait ColumnMapping[O, S] extends SubMapping[O, S] { column =>
+trait ColumnMapping[O, S] extends AbstractMapping[O, S] { column =>
 
-	override def sqlName = Some(name)
+	/** Returns `Some(this.name)`. */
+	final override def sqlName = Some(name)
 
+	/** The name of this column, as seen from the containing table if it is a table/view column.
+	  * If this column represents a column in the SELECT clause of a select statement, it is the column name as
+	  * returned by the result set for that statement. The names of columns selected in a subselect query are qualified
+	  * with the table/view/subselect name/alias from the FROM clause and any aliases given in the SELECT clause are
+	  * applied.
+	  */
 	def name :String
 
+	/** Returns `Unique.empty`. */
 	final def components :Unique[Nothing] = Unique.empty
+	/** Returns `Unique.empty`. */
 	final def subcomponents :Unique[Component[S]] = Unique.empty
 
+	/** Returns `Unique(this)`. */
 	final def columns :Unique[Component[S]] = Unique(this)
 //	final def selectable :Seq[Component[S]] = Seq(this)
 //	final def queryable :Seq[Component[S]] = Seq(this)
@@ -28,15 +39,24 @@ trait ColumnMapping[O, S] extends SubMapping[O, S] { column =>
 	final override def selectable :Unique[Component[S]] = selfUnless(NoSelect)
 	final override def queryable :Unique[Component[S]] = selfUnless(NoQuery)
 	final override def updatable :Unique[Component[S]] = selfUnless(NoUpdate)
-	final override def autoUpdated :Unique[Component[S]] = if (AutoUpdate.enabled(buffs)) Unique(this) else Unique.empty
+	final override def autoUpdated :Unique[Component[S]] = selfIf(AutoUpdate)
  	final override def insertable :Unique[Component[S]] = selfUnless(NoInsert)
-	final override def autoInserted :Unique[Component[S]] = if (AutoInsert.enabled(buffs)) Unique(this) else Unique.empty
+	final override def autoInserted :Unique[Component[S]] = selfIf(AutoInsert)
 
+	/** An empty `Unique` if the given buff is ''disabled'' (not attached), or a singleton `Unique(this)` otherwise. */
 	protected def selfUnless(buff :BuffType) :Unique[Component[S]] =
 		if (buff.enabled(buffs)) Unique.empty else Unique(this)
 
+	/** An empty `Unique` if the given buff is ''enabled'' (attached), or a singleton `Unique(this)` otherwise. */
+	protected def selfIf(buff :BuffType) :Unique[Component[S]] =
+		if (buff.disabled(buffs)) Unique.empty else Unique(this)
 
 
+
+	/** A read-write form for this column's type which does not take into account any buffs attached to this column.
+	  * Serves as the basis for `selectForm`, `queryForm`, `insertForm` and `updateForm` which, in most cases,
+	  * should be used instead.
+	  */
 	def form :ColumnForm[S]
 	
 	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
@@ -109,15 +129,15 @@ trait ColumnMapping[O, S] extends SubMapping[O, S] { column =>
 
 
 
-	override def assemble(values: Pieces): Option[S] = None
+	override def assemble(pieces: Pieces): Option[S] = None
 
-	override def optionally(values :Pieces) :Option[S] =
+	override def optionally(pieces :Pieces) :Option[S] =
 		if (isNullable)
-			values.result(this)
+			pieces.result(this)
 		else
-			values.result(this) match {
+			pieces.result(this) match {
 				case Some(null) =>
-					throw new NullPointerException("Read a null value for a non-nullable column " + sqlName +
+					throw new NullPointerException("Read a null value for a non-nullable column " + name +
 						". Flag the column with Buff.Nullable to explicitly allow nulls.")
 				case res => res
 			}
@@ -138,6 +158,8 @@ trait ColumnMapping[O, S] extends SubMapping[O, S] { column =>
 
 	override def qualified(prefix :String) :ColumnMapping[O, S] =
 		prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
+
+	def numbered(index :Int) :NumberedColumn[O, S] = new NumberedColumn[O, S](index, name, buffs)(form)
 
 
 
@@ -169,6 +191,11 @@ object ColumnMapping {
 	}
 
 
-
+	class NumberedColumn[O, T](val number :Int, val name :String, override val buffs :Seq[Buff[T]])
+	                          (implicit val form :ColumnForm[T])
+		extends ColumnMapping[O, T]
+	{
+		override val isNullable :Boolean = super.isNullable
+	}
 }
 

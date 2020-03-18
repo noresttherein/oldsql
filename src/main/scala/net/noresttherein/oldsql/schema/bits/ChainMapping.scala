@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.collection.Chain.{~, GenericFun, MapChain, Self}
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.schema.{Buff, SubMapping}
+import net.noresttherein.oldsql.schema.{Buff, AbstractMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector}
 
@@ -14,7 +14,7 @@ import scala.collection.immutable.{Map, Seq}
 /**
   * @author Marcin Mościcki
   */
-trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[S] with SubMapping[O, S] {
+trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O, S] {
 	mapping =>
 
 	val schema :Components
@@ -29,7 +29,7 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[S]
 		@tailrec def rec(chain :Chain, drop :C => Chain, res :List[Component[_]] = Nil) :Unique[Component[_]] =
 			chain match {
 				case t ~ (h :Component[_]) =>
-					val selector = ComponentSelector(this, h)(Extractor.requisite {
+					val selector = ComponentSelector(this, h)(Extractor.req {
 						s :S => drop(explode(s)).asInstanceOf[Chain ~ h.Subject].head
 					})
 					fastSelect = fastSelect.updated(h, selector)

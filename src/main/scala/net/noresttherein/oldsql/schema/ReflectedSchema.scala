@@ -14,7 +14,7 @@ import scala.reflect.runtime.universe.TypeTag
 /**
   * @author Marcin Mościcki
   */
-trait ReflectedSchema[S] extends RowSchema[S] { composite =>
+trait ReflectedSchema[O, S] extends RowSchema[O, S] { composite =>
 	protected implicit val subjectType :TypeTag[S]
 
 	class PropertySelector[T](override val lifted :ComponentMapping[T])
@@ -68,6 +68,4 @@ trait ReflectedSchema[S] extends RowSchema[S] { composite =>
 
 
 
-trait ReflectedSubSchema[O, S] extends ReflectedSchema[S] with RowSubSchema[O, S]
-
-trait ReflectedRootSchema[S] extends ReflectedSchema[S] with RowRootSchema[S]
+trait ReflectedRootSchema[O, S] extends ReflectedSchema[O, S] with RowRootSchema[O, S]

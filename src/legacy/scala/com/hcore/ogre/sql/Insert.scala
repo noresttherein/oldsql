@@ -312,7 +312,7 @@ object Insert {
 				template(())
 
 //				val returnSQL = columns.flatMap(_.sqlName).mkString(s"$sql returning (", ", ", ")")
-//				val returnedOutput = SQLReadForm.seq(columns.map(_.selectForm.asOpt)).map {
+//				val returnedOutput = SQLReadForm.seq(columns.map(_.selectForm.biflatMap)).map {
 //					generated =>
 //						val returnedValues = ComponentValues.generic(table)(col => columns.indexOf(col).providing(_>=0).flatMap(generated(_)))
 //						(returnedValues orElse values).value(table)

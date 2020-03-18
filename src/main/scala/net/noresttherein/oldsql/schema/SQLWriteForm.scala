@@ -5,7 +5,7 @@ import java.sql.PreparedStatement
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{MappedSQLWriteForm, Tuple2WriteForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, Tuple2WriteForm}
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.immutable.Seq
@@ -16,6 +16,9 @@ import scala.collection.immutable.Seq
 /** Encapsulates the logic of disassembling values of `T` into values for individual columns and using them
   * to set the `PreparedStatement` parameters. As an additional functionality, it knows how to format the value
   * of `T` as an sql literal for verbatim inclusion as a constant into the SQL (rather than a parameter).
+  * Whether or not `null` values are allowed depends on actual implementation. No `NullPointerException` will
+  * be thrown directly by forms in this library, but `null` values may be passed over to client's mapping functions
+  * used to adapt a form from one type to another.
   * Implementations should provide a pure contract, in particular ''always'' setting the same number of consecutive
   * parameters, defined as `writtenColumns`. This makes it a lower-level counterpart of
   * [[net.noresttherein.oldsql.schema.Mapping]], which can be represented by possibly many forms, depending on the
@@ -94,13 +97,18 @@ trait SQLWriteForm[-T] {
 
 
 
-	/** Create a write form for `X` which will map received values to `T` and pass them to this form.  */
-	def unmap[X](fun :X => T) :SQLWriteForm[X] = MappedSQLWriteForm((x :X) => Some(fun(x)))(this)
+	/** Create a write form for `X` which will map received values to `T` and pass them to this form.
+	  * The arguments are not tested for `null` values before being passed to `fun`, which should handle `null`s
+	  * gracefully if they are considered a valid value for the adapted form's use case.
+	  */
+	def unmap[X](fun :X => T) :SQLWriteForm[X] = SQLWriteForm.map(fun)(this)
 
 	/** Create a write form for `X` which will try to map received values to `T` and pass them to this form.
 	  * If the given function yields `None`, this form's `setNull` method is used instead of `set`.
+	  * The arguments are not tested for `null` values before being passed to `fun`, which should handle `null`s
+	  * gracefully if they are considered a valid value for the adapted form's use case.
 	  */
-	def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X]  = MappedSQLWriteForm(fun)(this)
+	def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X]  = SQLWriteForm.flatMap(fun)(this)
 
 
 
@@ -155,21 +163,21 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 
 
 	override def unmap[X](fun :X => T) :ColumnWriteForm[X] =
-		MappedSQLWriteForm.column((x :X) => Some(fun(x)))(this)
+		ColumnWriteForm.map(fun)(this)
 
 	override def flatUnmap[X](fun :X => Option[T]) :ColumnWriteForm[X]  =
-		MappedSQLWriteForm.column(fun)(this)
+		ColumnWriteForm.flatMap(fun)(this)
 
-	override def asOpt :ColumnWriteForm[Option[T]] = SQLWriteForm.OptionColumnWriteForm(this)
+	override def asOpt :ColumnWriteForm[Option[T]] = ColumnWriteForm.OptionColumnWriteForm(this)
 
 
 
 	override def &&[O <: T](read :SQLReadForm[O]) :SQLForm[O] = read match {
-		case atom :ColumnReadForm[O] => SQLForm.combine(atom, this)
-		case _ => SQLForm.combine(read, this)
+		case atom :ColumnReadForm[O] => this && atom
+		case _ => super.&&(read)
 	}
 
-	def &&[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] = SQLForm.combine(read, this)
+	def &&[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] = ColumnForm.combine(read, this)
 
 
 
@@ -178,6 +186,69 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 		case _ => false
 	}
 
+}
+
+
+
+
+
+
+object ColumnWriteForm {
+	@inline def apply[X :ColumnWriteForm] :ColumnWriteForm[X] = implicitly[ColumnWriteForm[X]]
+
+
+	def Lazy[T](delayed: => ColumnWriteForm[T]) :ColumnWriteForm[T] =
+		new LazyWriteForm[T] with LazyColumnWriteForm[T] {
+			override protected[this] var init: () => SQLWriteForm[T] = () => delayed
+
+			override def sqlType = form.sqlType
+		}
+
+
+
+	def flatMap[S :ColumnWriteForm, T](map :T => Option[S]) :ColumnWriteForm[T] =
+		new FlatMappedSQLWriteForm[S, T] with ColumnWriteForm[T] {
+			override val source = implicitly[ColumnWriteForm[S]]
+			override val unmap = map
+			override def sqlType: Int = source.sqlType
+		}
+
+	def map[S :ColumnWriteForm, T](map :T => S) :ColumnWriteForm[T] =
+		new MappedSQLWriteForm[S, T] with ColumnWriteForm[T] {
+			override val source = ColumnWriteForm[S]
+			override val unmap = map
+			override def sqlType = source.sqlType
+		}
+
+
+
+
+	implicit def OptionColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Option[T]] =
+		ColumnWriteForm[T].flatUnmap(identity[Option[T]])
+
+	implicit def SomeColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Some[T]] =
+		ColumnWriteForm[T].unmap(_.get)
+
+
+
+
+
+
+	private[schema] trait LazyColumnWriteForm[T] extends LazyWriteForm[T] with ColumnWriteForm[T] {
+		@inline override def form :ColumnWriteForm[T] = super[LazyWriteForm].form.asInstanceOf[ColumnWriteForm[T]]
+
+		override def unmap[X](fun :X => T) :ColumnWriteForm[X] =
+			if (isInitialized) form.unmap(fun) else Lazy(form.unmap(fun))
+
+		override def flatUnmap[X](fun :X => Option[T]) :ColumnWriteForm[X] =
+			if (isInitialized) form.flatUnmap(fun) else Lazy(form.flatUnmap(fun))
+
+		override def asOpt :ColumnWriteForm[Option[T]] = if (isInitialized) form.asOpt else Lazy(form.asOpt)
+
+		override def &&[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] =
+			if (isInitialized) read && this
+			else ColumnForm.Lazy(read && form)
+	}
 }
 
 
@@ -228,10 +299,35 @@ object SQLWriteForm {
 	  * will be evaluated only if/when needed, but must be thread safe and may be executed more than once
 	  * if several threads trigger the initialization at the same time, but the returned form is thread safe.
 	  */
-	def Lazy[T](form: => SQLWriteForm[T]) :SQLWriteForm[T] =
+	def Lazy[T](delayed: => SQLWriteForm[T]) :SQLWriteForm[T] =
 		new LazyWriteForm[T] {
-			override protected[this] var init = () => form
+			override protected[this] var init = () => delayed
 		}
+
+
+
+	def flatMap[S :SQLWriteForm, T](map :T=>Option[S]) :SQLWriteForm[T] =
+		implicitly[SQLWriteForm[S]] match {
+			case a :ColumnWriteForm[_] =>
+				ColumnWriteForm.flatMap(map)(a.asInstanceOf[ColumnWriteForm[S]])
+			case f =>
+				new FlatMappedSQLWriteForm[S, T] {
+					override val source = f
+					override val unmap = map
+				}
+		}
+
+	def map[S :SQLWriteForm, T](map :T => S) :SQLWriteForm[T] = SQLWriteForm[S] match {
+		case a :ColumnWriteForm[_] =>
+			ColumnWriteForm.map(map)(a.asInstanceOf[ColumnWriteForm[S]])
+		case f =>
+			new MappedSQLWriteForm[S, T] {
+				override val source = f
+				override val unmap = map
+			}
+	}
+
+
 
 
 
@@ -260,11 +356,6 @@ object SQLWriteForm {
 	implicit def SomeWriteForm[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
 		SQLWriteForm[T].unmap(_.get)
 
-	implicit def OptionColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Option[T]] =
-		SQLWriteForm.column[T].flatUnmap(identity[Option[T]])
-
-	implicit def SomeColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Some[T]] =
-		SQLWriteForm.column[T].unmap(_.get)
 
 
 	implicit def ChainWriteForm[T <: Chain, H](implicit t :SQLWriteForm[T], h :SQLWriteForm[H]) :SQLWriteForm[T ~ H] =
@@ -319,39 +410,41 @@ object SQLWriteForm {
 	private class EvalWriteForm[T](value: =>Option[T])(implicit form :SQLWriteForm[T], orElse :NullValue[T])
 		extends SQLWriteForm[Any]
 	{
+		override def writtenColumns: Int = form.writtenColumns
 
-		override def set(position :Int)(statement :PreparedStatement, ignore :Any) :Unit =
-			setNull(position)(statement)
-
-		@inline final override def setNull(position :Int)(statement :PreparedStatement) :Unit = value match {
+		override def set(position :Int)(statement :PreparedStatement, ignore :Any) :Unit = value match {
 			case Some(x) => form.set(position)(statement, x)
-			case _ => form.set(position)(statement, orElse.value) //form.setNull(position)(statement)
+			case _ => form.set(position)(statement, orElse.value)
 		}
 
-		override def literal(ignored: Any): String = nullLiteral
+		@inline final override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+			set(position)(statement, null.asInstanceOf[Any]) //safe, because erased and ignored by set
 
-		@inline final override def nullLiteral: String = value match {
+		override def literal(ignored: Any): String = value match {
 			case Some(x) => form.literal(x)
 			case _ => form.literal(orElse.value) //form.nullLiteral
 		}
-		override def inlineLiteral(ignored: Any): String = inlineNullLiteral
 
-		@inline final override def inlineNullLiteral: String = value match {
+		@inline final override def nullLiteral: String = literal(null.asInstanceOf[Any])
+
+		override def inlineLiteral(ignored: Any): String = value match {
 			case Some(x) => form.inlineLiteral(x)
 			case _ => form.inlineNullLiteral
 		}
 
+		@inline final override def inlineNullLiteral: String = inlineLiteral(null.asInstanceOf[Any])
 
-		override def writtenColumns: Int = form.writtenColumns
 
 		override def toString = s"$form=?>"
 	}
 
 
 
-	private[schema] trait MappedSQLWriteForm[-T, S] extends SQLWriteForm[T] {
+	private[schema] trait FlatMappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
 		val source :SQLWriteForm[S]
 		val unmap :T => Option[S]
+
+		override def writtenColumns :Int = source.writtenColumns
 
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = unmap(value) match {
 			case Some(s) => source.set(position)(statement, s)
@@ -360,41 +453,55 @@ object SQLWriteForm {
 
 		override def setNull(position :Int)(statement :PreparedStatement) :Unit = source.setNull(position)(statement)
 
-		override def literal(value: T): String = unmap(value).mapOrElse(source.literal, source.nullLiteral)
+		override def literal(value: T): String = unmap(value) match {
+			case Some(x) => source.literal(x)
+			case _ => source.nullLiteral
+		}
 
 		override def nullLiteral: String = source.nullLiteral
 
-		override def inlineLiteral(value: T): String =
-			unmap(value).mapOrElse(source.inlineLiteral, source.inlineNullLiteral)
+		override def inlineLiteral(value: T): String = unmap(value) match {
+			case Some(x) => source.inlineLiteral(x)
+			case _ => source.inlineNullLiteral
+		}
 
 		override def inlineNullLiteral: String = source.inlineNullLiteral
 
+
+
+		override def unmap[X](fun :X => T) :SQLWriteForm[X] = SQLWriteForm.map(fun)(this)
+
+		override def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] = SQLWriteForm.flatMap(fun)(this)
+
+
+
+		override def toString :String = source.toString + "=>"
+	}
+
+
+
+	private[schema] trait MappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
+		protected val source :SQLWriteForm[S]
+		protected val unmap :T => S
+
 		override def writtenColumns :Int = source.writtenColumns
 
-		override def toString = s"$source=>"
+		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
+			source.set(position)(statement, unmap(value))
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+			source.setNull(position)(statement)
+
+		override def literal(value :T) :String = source.literal(unmap(value))
+		override def nullLiteral :String = source.nullLiteral
+		override def inlineLiteral(value :T) :String = source.inlineLiteral(unmap(value))
+		override def inlineNullLiteral :String = source.inlineNullLiteral
+
+		override def toString :String = source.toString + "=>"
 	}
 
 
 
-	object MappedSQLWriteForm {
-		def apply[T, S :SQLWriteForm](map :T=>Option[S]) :MappedSQLWriteForm[T, S] =
-			implicitly[SQLWriteForm[S]] match {
-				case a :ColumnWriteForm[_] =>
-					column(map)(a.asInstanceOf[ColumnWriteForm[S]])
-				case f =>
-					new MappedSQLWriteForm[T, S] {
-						val source = f
-						val unmap = map
-					}
-			}
-
-		def column[T, S :ColumnWriteForm](map :T=>Option[S]) :MappedSQLWriteForm[T, S] with ColumnWriteForm[T] =
-			new MappedSQLWriteForm[T, S] with ColumnWriteForm[T] {
-				val source = implicitly[ColumnWriteForm[S]]
-				val unmap = map
-				override def sqlType: Int = source.sqlType
-			}
-	}
 
 
 
@@ -448,7 +555,9 @@ object SQLWriteForm {
 		protected[this] var initialized :SQLWriteForm[T] = _
 		protected[this] var fastAccess :SQLWriteForm[T] = _
 
-		override def form :SQLWriteForm[T] = {
+		def isInitialized :Boolean = fastAccess !=  null || initialized != null
+
+		protected override def form :SQLWriteForm[T] = {
 			if (fastAccess == null) {
 				val f = initialized
 				val cons = init
@@ -482,7 +591,7 @@ object SQLWriteForm {
 			else form * other
 
 		override def &&[O <: T](read :SQLReadForm[O]) :SQLForm[O] =
-			if (fastAccess == null && initialized == null) super.&&(read)
+			if (fastAccess == null && initialized == null) SQLForm.Lazy(form && read)
 			else form && read
 
 		override def toString :String =
@@ -573,19 +682,25 @@ object SQLWriteForm {
 		val _1 :SQLWriteForm[L]
 		val _2 :SQLWriteForm[R]
 
-		override def set(position :Int)(statement :PreparedStatement, value :(L, R)) :Unit = {
-			_1.set(position)(statement, value._1)
-			_2.set(position + _1.writtenColumns)(statement, value._2)
-		}
+		override def set(position :Int)(statement :PreparedStatement, value :(L, R)) :Unit =
+			if (value == null) {
+				_1.setNull(position)(statement)
+				_2.setNull(position + _1.writtenColumns)(statement)
+			} else {
+				_1.set(position)(statement, value._1)
+				_2.set(position + _1.writtenColumns)(statement, value._2)
+			}
 
 		override def setNull(position :Int)(statement :PreparedStatement) :Unit = {
 			_1.setNull(position)(statement)
 			_2.setNull(position + _1.writtenColumns)(statement)
 		}
 
-		override def literal(value: (L, R)): String = s"(${_1.literal(value._1)}, ${_2.literal(value._2)})"
+		override def literal(value: (L, R)): String =
+			if (value == null) s"(${_1.inlineNullLiteral}, ${_2.inlineNullLiteral})"
+			else s"(${_1.inlineLiteral(value._1)}, ${_2.inlineLiteral(value._2)})"
 
-		override def nullLiteral: String = s"(${_1.nullLiteral}, ${_2.nullLiteral})"
+		override def nullLiteral: String = s"(${_1.inlineNullLiteral}, ${_2.inlineNullLiteral})"
 
 
 		override def inlineLiteral(value: (L, R)): String = _1.inlineLiteral(value._1) + ", " + _2.inlineLiteral(value._2)

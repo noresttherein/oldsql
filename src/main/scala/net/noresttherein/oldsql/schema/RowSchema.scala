@@ -34,7 +34,7 @@ import scala.reflect.runtime.universe.TypeTag
   *
   * @tparam S value type of the mapped entity
   */
-trait RowSchema[S] extends BaseMapping[S] { composite =>
+trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 
 	/** Base trait for all components of this mapping. Creating an instance automatically lists it within owning mapping
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.
@@ -49,13 +49,13 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 	  * the parent mapping - no other call is needed.
 	  * @tparam T value type of this component
 	  */
-	trait ComponentMapping[T]  extends SubMapping[Owner, T] { self =>
+	trait ComponentMapping[T]  extends AbstractMapping[Owner, T] { self =>
 
-		def opt(implicit values :composite.Pieces) :Option[T] = values.get(selector)
+		def ?(implicit values :composite.Pieces) :Option[T] = values.get(selector)
 
 
 
-		private[RowSchema] def belongsTo(mapping :RowSchema[_]) :Boolean = mapping eq composite
+		private[RowSchema] def belongsTo(mapping :RowSchema[_, _]) :Boolean = mapping eq composite
 
 		protected[schema] def extractor :Extractor[S, T]
 
@@ -178,7 +178,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 	/** Base trait for components which have a value for all instances of `T`. */
 	trait MandatoryComponent[T] extends ComponentMapping[T] {
-		protected[schema] override def extractor :RequisiteExtractor[S, T] = Extractor.requisite(extract)
+		protected[schema] override def extractor :RequisiteExtractor[S, T] = Extractor.req(extract)
 		protected def extract :S=>T
 
 		override def buffs :Seq[Buff[T]] = inheritedBuffs
@@ -197,7 +197,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 	/** Convenience base component class which initializes accessor fields using the constructor argument getter. */
 	abstract class BaseComponent[T](value :S=>T) extends ComponentMapping[T] {
-		protected[schema] override val extractor :Extractor[S, T] = Extractor.requisite(value)
+		protected[schema] override val extractor :Extractor[S, T] = Extractor.req(value)
 		override val buffs :Seq[Buff[T]] = inheritedBuffs
 	}
 
@@ -212,7 +212,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 	  * @tparam T value type of this component
 	  */
 	abstract class ComponentSchema[T](value :S => T, prefix :String="")
-		extends BaseComponent[T](value) with RowSchema[T]
+		extends BaseComponent[T](value) with RowSchema[O, T]
 	{
 		override final val columnPrefix = composite.testedPrefix + prefix
 	}
@@ -226,7 +226,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 	}
 
 	abstract class OptionalComponentSchema[T](pick :S => Option[T], prefix :String = "")
-		extends BaseOptionalComponent[T](pick) with RowSchema[T]
+		extends BaseOptionalComponent[T](pick) with RowSchema[O, T]
 	{
 		override final val columnPrefix = composite.testedPrefix + prefix
 	}
@@ -272,7 +272,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 		extends StandardColumn[Owner, T](testedPrefix + name, opts ++ conveyBuffs(value, testedPrefix + name))
 		   with ComponentMapping[T]
 	{
-		override val extractor :RequisiteExtractor[S, T] = Extractor.requisite(value)
+		override val extractor :RequisiteExtractor[S, T] = Extractor.req(value)
 	}
 
 
@@ -288,7 +288,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 		def this(pick :S => Option[T], surepick :Option[S=>T], name :String, buffs :Seq[Buff[T]])
 		        (implicit form :ColumnForm[T]) =
-			this(surepick map Extractor.requisite[S, T] getOrElse Extractor(pick), name, buffs)
+			this(surepick map Extractor.req[S, T] getOrElse Extractor(pick), name, buffs)
 	}
 
 
@@ -300,7 +300,7 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 		private[RowSchema] def this(source :ColumnMapping[_, T]) = this(source, None, source.buffs)
 
 		template match {
-			case self :RowSchema[_]#ComponentMapping[_] if self.belongsTo(composite) =>
+			case self :RowSchema[_, _]#ComponentMapping[_] if self.belongsTo(composite) =>
 				if (buffs == null)
 					throw new IllegalStateException(s"$this.buffs is null: overrides must be defined before any components.")
 				if (testedPrefix.length > 0 || buffs.nonEmpty )
@@ -404,37 +404,37 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 
 
-	override def assemble(values: Pieces): Option[S] =
+	override def assemble(pieces: Pieces): Option[S] =
 		try {
-			isDefined(values) ifTrue construct(values)
+			isDefined(pieces) ifTrue construct(pieces)
 		} catch {
 			case _ :NoSuchElementException => None
 		}
 
-	protected def construct(implicit res :Pieces) :S
+	protected def construct(implicit pieces :Pieces) :S
 
-	protected def isDefined(values :Pieces) :Boolean = true
+	protected def isDefined(pieces :Pieces) :Boolean = true
 
 
 
-	implicit def valueOf[T](component :ComponentMapping[T])(implicit values :Pieces) :T =
-		values(component.selector)
+	implicit def valueOf[T](component :ComponentMapping[T])(implicit pieces :Pieces) :T =
+		pieces(component.selector)
 
-	implicit def valueOf[T](component :Component[T])(implicit values :Pieces) :T =
-		values(apply(component))
+	implicit def valueOf[T](component :Component[T])(implicit pieces :Pieces) :T =
+		pieces(apply(component))
 
 
 
 
 	override def lift[T](component :Component[T]) :Component[T] = component match {
-		case lifted :RowSchema[_]#ComponentMapping[_] if lifted belongsTo this =>
+		case lifted :RowSchema[_, _]#ComponentMapping[_] if lifted belongsTo this =>
 			lifted.asInstanceOf[Component[T]]
 		case _ =>
 			apply(component).lifted
 	}
 
 	override def apply[T](component :Component[T]) :Selector[T] = component match {
-		case lifted :RowSchema[_]#ComponentMapping[T] if lifted belongsTo this =>
+		case lifted :RowSchema[_, _]#ComponentMapping[T] if lifted belongsTo this =>
 			lifted.asInstanceOf[ComponentMapping[T]].selector
 		case _  =>
 			if (fastSelectors == null) {
@@ -669,8 +669,9 @@ trait RowSchema[S] extends BaseMapping[S] { composite =>
 
 
 
-trait RowSubSchema[O, S] extends RowSchema[S] with SubMapping[O, S]
-
-trait RowRootSchema[S] extends RowSchema[S] with RootMapping[S]
+trait RowRootSchema[O, S] extends RowSchema[O, S] with RootMapping[O, S] {
+	override def optionally(pieces :Pieces) :Option[S] =
+		super.optionally(pieces.aliased { c => apply[c.Subject](c).lifted })
+}
 
 

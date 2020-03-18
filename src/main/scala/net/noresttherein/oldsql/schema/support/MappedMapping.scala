@@ -2,12 +2,12 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.schema.{Mapping, BaseMapping, Buff, SQLReadForm, SQLWriteForm, SubMapping}
+import net.noresttherein.oldsql.schema.{Mapping, AbstractMapping, Buff, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector, ComponentFor}
 
 
 
-trait MappedAs[M <: Mapping, T] extends BaseMapping[T] {
+trait MappedAs[M <: Mapping, T] extends AbstractMapping[M#Owner, T] {
 	val adaptee :M
 }
 
@@ -33,10 +33,10 @@ class MappedMapping[M <: Mapping.Component[O, S], O, S, T](override val adaptee 
 	override val components :Unique[Component[_]] = Unique(adaptee)//adaptee.components
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[T] =
-		if (components.contains(adaptee)) adaptee.selectForm(selectable).map(map)
-		else adaptee.selectForm(components).map(map)
+		if (components.contains(adaptee)) adaptee.selectForm(selectable).mapNull(map)
+		else adaptee.selectForm(components).mapNull(map)
 
-	override val selectForm :SQLReadForm[T] = adaptee.selectForm.map(map)
+	override val selectForm :SQLReadForm[T] = adaptee.selectForm.mapNull(map)
 	override val queryForm :SQLWriteForm[T] = adaptee.queryForm.unmap(unmap)
 	override val updateForm :SQLWriteForm[T] = adaptee.updateForm.unmap(unmap)
 	override val insertForm :SQLWriteForm[T] = adaptee.insertForm.unmap(unmap)
@@ -76,7 +76,7 @@ object MappedMapping {
 
 	private class OptionalMapping[M <: Mapping.Component[O, S], O, S, T]
 	                             (val adaptee :M, map :S => Option[T], unmap :T => Option[S])
-		extends MappingAdapter[M, O, S, T] with SubMapping[O, T] with MappedAs[M, T]
+		extends MappingAdapter[M, O, S, T] with AbstractMapping[O, T] with MappedAs[M, T]
 	{
 
 

@@ -1,10 +1,10 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{BaseMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{AbstractMapping, Mapping, SQLReadForm, SQLWriteForm}
 
 
-trait LazyMapping[S] extends BaseMapping[S] {
+trait LazyMapping[O, S] extends AbstractMapping[O, S] {
 
 //	override val subcomponents :Unique[Component[_]] = Unique.Lazy(super.subcomponents)
 
