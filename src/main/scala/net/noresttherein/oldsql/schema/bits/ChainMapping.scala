@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{~, GenericFun, MapChain, Self}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.{Buff, AbstractMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Map, Seq}
@@ -20,8 +20,8 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O,
 	val schema :Components
 
 	@volatile
-	private[this] var selectors :Map[Component[_], ComponentSelector[this.type, Owner, S, _]] = _
-	private[this] var fastSelect :Map[Component[_], ComponentSelector[this.type, Owner, S, _]] = _
+	private[this] var selectors :Map[Component[_], Selector[_]] = _
+	private[this] var fastSelect :Map[Component[_], Selector[_]] = _
 
 
 
@@ -29,14 +29,14 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O,
 		@tailrec def rec(chain :Chain, drop :C => Chain, res :List[Component[_]] = Nil) :Unique[Component[_]] =
 			chain match {
 				case t ~ (h :Component[_]) =>
-					val selector = ComponentSelector(this, h)(Extractor.req {
+					val selector = ComponentExtractor.req(h) {
 						s :S => drop(explode(s)).asInstanceOf[Chain ~ h.Subject].head
-					})
+					}
 					fastSelect = fastSelect.updated(h, selector)
 					rec(t, drop andThen (_.asInstanceOf[Chain~Any].tail), h::res)
 
 				case _ ~ h =>
-					throw new IllegalStateException(s"Non-component on mapping's $introString component list: $h")
+					throw new IllegalStateException(s"Non-component on mapping's $debugString component list: $h")
 
 				case _ =>
 					selectors = fastSelect
@@ -62,7 +62,7 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O,
 			}
 		}
 		fastSelect.getOrElse(component, throw new IllegalArgumentException(
-			s"Mapping $component is not on the $introString mapping's component list."
+			s"Mapping $component is not on the $debugString mapping's component list."
 		)).asInstanceOf[Selector[T]]
 	}
 

@@ -23,14 +23,14 @@ trait SymLinkMapping[X<:Mapping, M<:Mapping[T], T] extends Mapping[T] with FullM
 
 	def target :TypedComponentPath[X, M, T]
 
-	override def modifiers = SymLink(target) +: adaptee.modifiers
+	override def modifiers = SymLink(target) +: egg.modifiers
 
 	override protected def contentsEqual(that: MappingAdapter[_, _]): Boolean = that match {
 		case l:SymLinkMapping[_,_,_] => l.target==target
 		case _ => false
 	}
 
-	override def hashCode = (adaptee, target).hashCode
+	override def hashCode = (egg, target).hashCode
 
 	override def toString = "=>"+target
 }
@@ -50,11 +50,11 @@ object SymLinkMapping {
 		def this(source :P, target :M with P#Component[T]) =
 			this((source \\ target.asInstanceOf[source.Component[T]]).asInstanceOf[TypedComponentPath[P, M, T]])
 
-		protected val adaptee = target.end
+		protected val egg = target.end
 
 		override protected def adapt[X](component: AdaptedComponent[X]): Component[X] =
 			new BaseSymLink[P, AdaptedComponent[X], X]((target :+ component).asInstanceOf[TypedComponentPath[P, AdaptedComponent[X], X]]) with FullComponentProxy[X] {
-				override def adaptedComponent = adaptee
+				override def adaptedComponent = egg
 			}
 	}
 

@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
 import net.noresttherein.oldsql.schema.{AbstractMapping, Buff, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.slang._
@@ -28,10 +28,10 @@ object OptionMapping {
 
 
 
-	class DirectOptionMapping[M <: Component[O, S], O, S](val adaptee :M)
+	class DirectOptionMapping[M <: Component[O, S], O, S](val egg :M)
 		extends OptionMapping[M, O, S] with MappingAdapter[M, O, S, Option[S]]
 	{ box =>
-		val get :M = adaptee
+		val get :M = egg
 
 		override val components :Unique[Component[_]] = Unique(get) //todo: unify the Component types to use AnyMaping
 		override val subcomponents :Unique[Component[_]] = get +: get.subcomponents
@@ -46,15 +46,15 @@ object OptionMapping {
 		override lazy val buffs :Seq[Buff[Option[S]]] =
 			get.buffs.map(_.map(Option(_))) ++ (ExplicitSelect.enabled(get) ifTrue ExplicitSelect[Option[S]](None))
 
-
-		private def getSelector :Selector[S] = ComponentSelector(this, get)(Extractor.fromOpt)
+		//todo: make ComponentExtractor.fromOpt
+		private def getSelector :Selector[S] = ComponentExtractor(get)(Extractor.fromOpt)
 
 		override def apply[T](component :Component[T]) :Selector[T] =
 			if (component eq get)
 				getSelector.asInstanceOf[Selector[T]]
 			else {
 				val selector = get(component)
-				ComponentSelector(this, selector.lifted)(Extractor.fromOpt[S] andThen selector.extractor)
+				ComponentExtractor(selector.lifted)(Extractor.fromOpt[S] andThen selector)
 			}
 
 		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(getSelector))

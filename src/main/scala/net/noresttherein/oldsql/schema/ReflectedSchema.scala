@@ -2,7 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.model.PropertyPath.{==>, PropertyReflectionException}
-import net.noresttherein.oldsql.schema.Mapping.ComponentSelector
+import net.noresttherein.oldsql.morsels.Extractor.{IdentityExtractor, OptionalExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
 import net.noresttherein.oldsql.slang._
 
 import scala.reflect.runtime.universe.TypeTag
@@ -17,55 +18,43 @@ import scala.reflect.runtime.universe.TypeTag
 trait ReflectedSchema[O, S] extends RowSchema[O, S] { composite =>
 	protected implicit val subjectType :TypeTag[S]
 
-	class PropertySelector[T](override val lifted :ComponentMapping[T])
-		extends ComponentSelector[composite.type, composite.Owner, S, T]
-	{
-		override val extractor = lifted.extractor
-		override val optional = extractor.optional
-		override val requisite = extractor.requisite
-
-		val property = try {
-			requisite.map(PropertyPath.property(_)) getOrElse PropertyPath.property(optional.andThen(_.get))
+	abstract class PropertyExtractor[T](override val lifted :ComponentMapping[T]) extends Selector[T] {
+		val property :PropertyPath[S, T] = try {
+			lifted.extractor.requisite.map(PropertyPath.property(_)) getOrElse
+				PropertyPath.property(lifted.extractor.optional.andThen(_.get))
 		} catch {
 			case e :PropertyReflectionException =>
 				throw new PropertyReflectionException(s"Failed to reflect extractor for $lifted from $this; " + e.getMessage, e)
 		}
 	}
 
-	override protected def selectorFor[T](component :ComponentMapping[T]) :PropertySelector[T] =
-		new PropertySelector(component)
+	override protected def selectorFor[T](component :ComponentMapping[T]) :PropertyExtractor[T] =
+		component.extractor match {
+			case _ :IdentityExtractor[_] =>
+				new PropertyExtractor[S](component.asInstanceOf[ComponentMapping[S]]) with IdentityExtractor[S].asInstanceOf[PropertyExtractor[T]]
+			case req :RequisiteExtractor[S, T] =>
+				new PropertyExtractor[T](component) with RequisiteExtractor[S, T] {
+					override val getter = req.getter
+					override val optional = super.optional
+					override val requisite = super.requisite
+					override def apply(x :S) = getter(x)
+				}
+			case _ =>
+				new PropertyExtractor[T](component) with OptionalExtractor[S, T] {
+					override val optional = component.extractor.optional
+					override def get(x :S) = optional(x)
+				}
 
-	override def apply[T](component :Component[T]) :PropertySelector[T] =
-		super.apply(component).asInstanceOf[PropertySelector[T]]
-
-
-/*
-	override def apply[T](component :Component[T]) :PropertySelector[T] = {
-		if (fastSelectors == null)
-			if (selectors != null)
-				fastSelectors = selectors
-			else
-				initialize()
-		fastSelectors.getOrElse(component, throw new IllegalArgumentException(
-			s"Component $component is not a part of mapping $this."
-		)).asInstanceOf[PropertySelector[T]]
-	}
-
-	override protected def finalizeInitialization() :Unit = {
-		fastSelectors = Map()
-		subcomponents foreach { c =>
-			fastSelectors = fastSelectors.updated(c, new PropertySelector(c.asInstanceOf[ComponentMapping[Any]]))
 		}
-		selectors = fastSelectors
-	}
 
-	@volatile private[this] var selectors :Map[AnyComponent, PropertySelector[_]] = _
-	private[this] var fastSelectors :Map[AnyComponent, PropertySelector[_]] = _
-*/
+	override def apply[T](component :Component[T]) :PropertyExtractor[T] =
+		super.apply(component).asInstanceOf[PropertyExtractor[T]]
+
+
 }
 
 
 
 
 
-trait ReflectedRootSchema[O, S] extends ReflectedSchema[O, S] with RowRootSchema[O, S]
+//trait ReflectedRootSchema[O, S] extends ReflectedSchema[O, S] with RowRootSchema[O, S]

@@ -3,12 +3,12 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.{Mapping, AbstractMapping, Buff, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector, ComponentFor}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, ComponentFor}
 
 
 
-trait MappedAs[M <: Mapping, T] extends AbstractMapping[M#Owner, T] {
-	val adaptee :M
+trait MappedAs[M <: Mapping, T] extends AbstractMapping[M#Owner, T] with MappingNest[M] {
+	override val egg :M
 }
 
 
@@ -16,43 +16,43 @@ trait MappedAs[M <: Mapping, T] extends AbstractMapping[M#Owner, T] {
 
 
 
-class MappedMapping[M <: Mapping.Component[O, S], O, S, T](override val adaptee :M, map :S => T, unmap :T => S)
+class MappedMapping[M <: Mapping.Component[O, S], O, S, T](override val egg :M, map :S => T, unmap :T => S)
 	extends MappingAdapter[M, O, S, T] with MappedAs[M, T]
 {
 
 	override def apply[X](component :Component[X]) :Selector[X] =
-		if (component eq adaptee)
+		if (component eq egg)
 			adapteeSelector.asInstanceOf[Selector[X]]
 		else
-			ComponentSelector(this, component)(adaptee(component).extractor compose unmap)
+			ComponentExtractor(component)(egg(component) compose unmap)
 
-	private[this] val adapteeSelector = ComponentSelector.req(this, adaptee)(unmap) :Selector[S]
+	private[this] val adapteeSelector = ComponentExtractor.req(egg)(unmap) :Selector[S]
 
 
 
-	override val components :Unique[Component[_]] = Unique(adaptee)//adaptee.components
+	override val components :Unique[Component[_]] = Unique(egg)//egg.components
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[T] =
-		if (components.contains(adaptee)) adaptee.selectForm(selectable).mapNull(map)
-		else adaptee.selectForm(components).mapNull(map)
+		if (components.contains(egg)) egg.selectForm(selectable).mapNull(map)
+		else egg.selectForm(components).mapNull(map)
 
-	override val selectForm :SQLReadForm[T] = adaptee.selectForm.mapNull(map)
-	override val queryForm :SQLWriteForm[T] = adaptee.queryForm.unmap(unmap)
-	override val updateForm :SQLWriteForm[T] = adaptee.updateForm.unmap(unmap)
-	override val insertForm :SQLWriteForm[T] = adaptee.insertForm.unmap(unmap)
+	override val selectForm :SQLReadForm[T] = egg.selectForm.mapNull(map)
+	override val queryForm :SQLWriteForm[T] = egg.queryForm.unmap(unmap)
+	override val updateForm :SQLWriteForm[T] = egg.updateForm.unmap(unmap)
+	override val insertForm :SQLWriteForm[T] = egg.insertForm.unmap(unmap)
 
 
-	override val buffs :Seq[Buff[T]] = adaptee.buffs.map(_.bimap(map, unmap))
+	override val buffs :Seq[Buff[T]] = egg.buffs.map(_.bimap(map, unmap))
 
 
 
 	override def assemble(values :Pieces) :Option[T] = values.get(adapteeSelector).map(map)
 
-	override def nullValue :Option[T] = adaptee.nullValue.map(map)
+	override def nullValue :Option[T] = egg.nullValue.map(map)
 
 
 
-	override def toString :String = "Mapped(" + adaptee  + ")"
+	override def toString :String = "Mapped(" + egg  + ")"
 }
 
 
@@ -75,56 +75,56 @@ object MappedMapping {
 
 
 	private class OptionalMapping[M <: Mapping.Component[O, S], O, S, T]
-	                             (val adaptee :M, map :S => Option[T], unmap :T => Option[S])
+	                             (val egg :M, map :S => Option[T], unmap :T => Option[S])
 		extends MappingAdapter[M, O, S, T] with AbstractMapping[O, T] with MappedAs[M, T]
 	{
 
 
 
 
-		override val nullValue :Option[T] = adaptee.nullValue.flatMap(map)
+		override val nullValue :Option[T] = egg.nullValue.flatMap(map)
 
 		if (nullValue == null)
-			throw new IllegalArgumentException(s"Can't map mapping $adaptee: no null value after mapping ${adaptee.nullValue}.")
+			throw new IllegalArgumentException(s"Can't map mapping $egg: no null value after mapping ${egg.nullValue}.")
 
-		override val components :Unique[Component[_]] = Unique(adaptee)
+		override val components :Unique[Component[_]] = Unique(egg)
 
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[T] =
-			if (components.contains(adaptee)) adaptee.selectForm(selectable).flatMap(map, nullValue.get)
-			else adaptee.selectForm(components).flatMap(map, nullValue.get)
+			if (components.contains(egg)) egg.selectForm(selectable).flatMap(map, nullValue.get)
+			else egg.selectForm(components).flatMap(map, nullValue.get)
 
-		override val selectForm :SQLReadForm[T] = adaptee.selectForm.flatMap(map, nullValue.get)
-		override val queryForm :SQLWriteForm[T] = adaptee.queryForm.flatUnmap(unmap)
-		override val updateForm :SQLWriteForm[T] = adaptee.updateForm.flatUnmap(unmap)
-		override val insertForm :SQLWriteForm[T] = adaptee.insertForm.flatUnmap(unmap)
+		override val selectForm :SQLReadForm[T] = egg.selectForm.flatMap(map, nullValue.get)
+		override val queryForm :SQLWriteForm[T] = egg.queryForm.flatUnmap(unmap)
+		override val updateForm :SQLWriteForm[T] = egg.updateForm.flatUnmap(unmap)
+		override val insertForm :SQLWriteForm[T] = egg.insertForm.flatUnmap(unmap)
 
 
-		override val buffs :Seq[Buff[T]] = adaptee.buffs.map(buff => buff.bimap(
+		override val buffs :Seq[Buff[T]] = egg.buffs.map(buff => buff.bimap(
 			s => map(s).getOrElse { throw new IllegalStateException(
-				s"Failed mapping of $adaptee: could not derive the value for the buff $buff from $s."
+				s"Failed mapping of $egg: could not derive the value for the buff $buff from $s."
 				)},
 			(t :T) => unmap(t) getOrElse { throw new IllegalStateException(
-				s"Failed mapping of $adaptee: could not unmap value $t as part of the buff $buff."
+				s"Failed mapping of $egg: could not unmap value $t as part of the buff $buff."
 				)}
 		))
 
 
 
 		override def apply[X](component :Component[X]) :Selector[X] =
-			if (component eq adaptee)
+			if (component eq egg)
 				adapteeSelector.asInstanceOf[Selector[X]]
 			else
-				ComponentSelector(this, component)(adaptee(component).extractor compose Extractor(unmap))
+				ComponentExtractor(component)(egg(component) compose Extractor(unmap))
 
-		private[this] val adapteeSelector = ComponentSelector.opt(this, adaptee)(unmap) :Selector[S]
+		private[this] val adapteeSelector = ComponentExtractor.opt(egg)(unmap) :Selector[S]
 
 
 		override def assemble(values :Pieces) :Option[T] = values.get(adapteeSelector).flatMap(map)
 
 
 
-		override def toString :String = "Mapped(" + adaptee  + ")"
+		override def toString :String = "Mapped(" + egg  + ")"
 
 	}
 

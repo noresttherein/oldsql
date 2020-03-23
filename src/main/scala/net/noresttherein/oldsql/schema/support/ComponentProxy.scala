@@ -1,9 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentSelector, GeneralSelector, ComponentFor, SingletonFor}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, ComponentFor}
 import net.noresttherein.oldsql.schema.{Mapping, Buff, SQLReadForm, SQLWriteForm, AbstractMapping}
 
 import scala.collection.mutable
@@ -14,26 +12,13 @@ import scala.collection.mutable
 /**
   * @author Marcin Mościcki
   */
-trait ComponentProxy[O, S] extends AbstractMapping[O, S] {
-	protected val adaptee :ComponentFor[S]
+trait ComponentProxy[O, S] extends AbstractMapping[O, S] with MappingNest[ComponentFor[S]] {
 
-	override def buffs :Seq[Buff[S]] = adaptee.buffs
+	override def buffs :Seq[Buff[S]] = egg.buffs
 
-	override def sqlName :Option[String] = adaptee.sqlName
+	override def nullValue :Option[S] = egg.nullValue
 
-	override def nullValue :Option[S] = adaptee.nullValue
-
-
-
-	def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentProxy[_, _]]
-
-	override def equals(that :Any) :Boolean = that match {
-		case self :AnyRef if self eq this => true
-		case proxy :ComponentProxy[_, _] => canEqual(proxy) && proxy.canEqual(this) && adaptee == proxy.adaptee
-		case _ => false
-	}
-
-	override def hashCode :Int = adaptee.hashCode
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentProxy[_, _]]
 
 }
 
@@ -45,146 +30,152 @@ trait ComponentProxy[O, S] extends AbstractMapping[O, S] {
 object ComponentProxy {
 
 
+	/** A skeleton of a mapping proxy which uses the components of the proxied mapping as-is. */
 	trait ShallowProxy[O, S] extends ComponentProxy[O, S] with MappingAdapter[Component[O, S], O, S, S] {
-		protected override val adaptee :Component[S]
+		protected override val egg :Component[S]
 
 		override def apply[T](component :Component[T]) :Selector[T] =
-			(if (component eq adaptee)
-				 ComponentSelector.ident(this, adaptee)
+			(if (component eq egg)
+				 ComponentExtractor.ident(egg)
 			 else
-				 adaptee(component)
+				 egg(component)
 			).asInstanceOf[Selector[T]]
 
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-			if (components.contains(adaptee)) adaptee.selectForm(selectable)
-			else adaptee.selectForm(components)
+			if (components.contains(egg)) egg.selectForm(selectable)
+			else egg.selectForm(components)
 
-		override def selectForm :SQLReadForm[S] = adaptee.selectForm
-		override def queryForm :SQLWriteForm[S] = adaptee.queryForm
-		override def updateForm :SQLWriteForm[S] = adaptee.updateForm
-		override def insertForm :SQLWriteForm[S] = adaptee.insertForm
+		override def selectForm :SQLReadForm[S] = egg.selectForm
+		override def queryForm :SQLWriteForm[S] = egg.queryForm
+		override def updateForm :SQLWriteForm[S] = egg.updateForm
+		override def insertForm :SQLWriteForm[S] = egg.insertForm
 
-//		override def writeForm(filter :Mapping.ColumnFilter) :SQLWriteForm[S] = adaptee.writeForm(filter)
-//		override def readForm(filter :Mapping.ColumnFilter) :SQLReadForm[S] = adaptee.readForm(filter)
+//		override def writeForm(filter :Mapping.ColumnFilter) :SQLWriteForm[S] = egg.writeForm(filter)
+//		override def readForm(filter :Mapping.ColumnFilter) :SQLReadForm[S] = egg.readForm(filter)
 
 
 
-		override def assemble(pieces :Pieces) :Option[S] = adaptee.optionally(pieces.compatible[adaptee.type](adaptee))
+		override def assemble(pieces :Pieces) :Option[S] = egg.optionally(pieces.compatible[egg.type](egg))
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ShallowProxy[_, _]]
 
-		override def toString :String = "->" + adaptee
+		override def toString :String = "->" + egg
 	}
 
 
 
+	/** A skeleton trait for a mapping proxy which needs to adapt every component of the proxied mapping. */
 	trait DeepProxy[O, S] extends ComponentProxy[O, S] {
 
 		override def apply[T](component :Component[T]) :Selector[T] =
-			if (component eq adaptee)
-				ComponentSelector[this.type, O, S, T](component)(Extractor.ident[S].asInstanceOf[S =?> T])
+			if (component eq egg)
+				ComponentExtractor.ident(component).asInstanceOf[Selector[T]]
 			else
-				ComponentSelector[this.type, O, S, T](lift(component))(adaptee.apply(dealias(component)).extractor)
+				ComponentExtractor[O, S, T](lift(component))(egg.apply(dealias(component)))
 
 		override def lift[T](component :Component[T]) :Component[T] =
-			if (component eq adaptee)
-				component
+			if (component eq egg)
+				adapt(egg).asInstanceOf[Component[T]]
 			else
-				adapt(adaptee.lift(dealias(component)))
+				adapt(egg.lift(dealias(component)))
 
-		protected def adapt[T](component :adaptee.Component[T]) :Component[T]
+		private[this] def alias[T](component :egg.Component[T]) :Component[T] = adapt(egg.lift(component))
 
-		private[this] def alias[T](component :adaptee.Component[T]) :Component[T] = adapt(adaptee.lift(component))
+		/** A hook method left for subclasses to implement adapting of a component of the adapted mapping
+		  * to its 'lifted' form under this mapping. All column and compmonent lists  of this instance contain
+		  * components of `egg` (and `egg` itself) mapped with this method.
+		  * @param component a component of `egg` or `egg` itself.
+		  */
+		protected def adapt[T](component :egg.Component[T]) :Component[T]
 
-		protected def dealias[T](lifted :Component[T]) :adaptee.Component[T]
+		/** A hook method left for subclasses to implement the mapping of the adapted components back to their
+		  * originating components of the adapted mapping. Used in implementing `apply(component)` returning
+		  * the extractor for the component.
+		  * @param lifted a subcomponent of this instance; may be a component adapted from `egg` or a (sub)component
+		  *               of `egg` unchanged, or even `egg` itself.
+		  */
+		protected def dealias[T](lifted :Component[T]) :egg.Component[T]
 
-		override def components :Unique[Component[_]] = Unique(adapt(adaptee)) //adaptee.components.map(alias(_))
-		override def subcomponents :Unique[Component[_]] = adaptee.subcomponents.map(alias(_))
+		override def components :Unique[Component[_]] = Unique(adapt(egg)) //egg.components.map(alias(_))
+		override def subcomponents :Unique[Component[_]] = egg.subcomponents.map(alias(_))
 
-		override def columns :Unique[Component[_]] = adaptee.columns.map(alias(_))
-		override def selectable :Unique[Component[_]] = adaptee.selectable.map(alias(_))
-		override def queryable :Unique[Component[_]] = adaptee.queryable.map(alias(_))
-		override def updatable :Unique[Component[_]] = adaptee.updatable.map(alias(_))
-		override def autoUpdated :Unique[Component[_]] = adaptee.autoUpdated.map(alias(_))
-		override def insertable :Unique[Component[_]] = adaptee.insertable.map(alias(_))
-		override def autoInserted :Unique[Component[_]] = adaptee.autoInserted.map(alias(_))
+		override def columns :Unique[Component[_]] = egg.columns.map(alias(_))
+		override def selectable :Unique[Component[_]] = egg.selectable.map(alias(_))
+		override def queryable :Unique[Component[_]] = egg.queryable.map(alias(_))
+		override def updatable :Unique[Component[_]] = egg.updatable.map(alias(_))
+		override def autoUpdated :Unique[Component[_]] = egg.autoUpdated.map(alias(_))
+		override def insertable :Unique[Component[_]] = egg.insertable.map(alias(_))
+		override def autoInserted :Unique[Component[_]] = egg.autoInserted.map(alias(_))
 
 		override def pick[T](component :Component[T], subject :S) :Option[T] =
-			if (component eq adaptee) Some(subject.asInstanceOf[T])
-			else adaptee.pick(dealias(component), subject)
+			if (component eq egg) Some(subject.asInstanceOf[T])
+			else egg.pick(dealias(component), subject)
 
 		override def pick[T](component :Component[T], values :Pieces) :Option[T] =
 			values.get(apply(component))
 
 		override def apply[T](component :Component[T], subject :S) :T =
-			if (component eq adaptee) subject.asInstanceOf[T]
-			else adaptee(dealias(component), subject)
+			if (component eq egg) subject.asInstanceOf[T]
+			else egg(dealias(component), subject)
 
 		override def apply[T](component :Component[T], values :Pieces) :T =
 			values(apply(component))
 
 
 
-		override def assemble(pieces :Pieces) :Option[S] = pieces.get(apply(adapt(adaptee)))
+		override def assemble(pieces :Pieces) :Option[S] = pieces.get(apply(adapt(egg)))
 
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[DeepProxy[_, _]]
 
-		override def toString :String = "->>" + adaptee
+		override def toString :String = "->>" + egg
 	}
 
 
 
-	abstract class EagerDeepProxy[M <: SingletonFor[S], O, S] private
-			(protected val adaptee :M,
-			 lifts :mutable.Map[Mapping, GeneralSelector[_, _]],
-			 dealias :mutable.Map[Mapping.AnyComponent[O], Mapping])
-		extends DeepProxy[O, S]
+	/** A `DeepProxy` implementation which eagerly initializes all column and component lists and creates
+	  * a fixed mapping between components of the adapted mapping and their adapted counterparts as well as the
+	  * reverse.
+	  */
+	abstract class EagerDeepProxy[M <: ComponentFor[S], O, S] (protected override val egg :M)
+		extends DeepProxy[O, S] with MappingNest[M]
 	{
-		def this(adaptee :M) = this(
-			adaptee,
-			mutable.Map[Mapping, GeneralSelector[_, _]](),
-			mutable.Map[Mapping.AnyComponent[O], Mapping]()
-		)
+		private[this] val lifted = mutable.Map[Mapping, ComponentExtractor[O, S, _]]()
+		private[this] val originals = mutable.Map[Mapping.AnyComponent[O], Mapping]() 
 
+		override val components :Unique[Component[_]] = Unique(alias(egg))
 
-		override val components :Unique[Component[_]] = Unique(lift(adaptee, lifts, dealias)) //adaptee.components.map(lift(_, lifts, dealias))
+		override val subcomponents :Unique[Component[_]] = egg.subcomponents.map(alias(_))
+		override val columns :Unique[Component[_]] = egg.columns.map(alias(_))
 
-		override val subcomponents :Unique[Component[_]] = adaptee.subcomponents.map(lift(_, lifts, dealias))
-		override val columns :Unique[Component[_]] = adaptee.columns.map(lift(_, lifts, dealias))
-
-		override val selectable :Unique[Component[_]] = adaptee.selectable.map(lift(_, lifts, dealias))
-		override val queryable :Unique[Component[_]] = adaptee.queryable.map(lift(_, lifts, dealias))
-		override val updatable :Unique[Component[_]] = adaptee.updatable.map(lift(_, lifts, dealias))
-		override val autoUpdated :Unique[Component[_]] = adaptee.autoUpdated.map(lift(_, lifts, dealias))
-		override val insertable :Unique[Component[_]] = adaptee.insertable.map(lift(_, lifts, dealias))
-		override val autoInserted :Unique[Component[_]] = adaptee.autoInserted.map(lift(_, lifts, dealias))
+		override val selectable :Unique[Component[_]] = egg.selectable.map(alias(_))
+		override val queryable :Unique[Component[_]] = egg.queryable.map(alias(_))
+		override val updatable :Unique[Component[_]] = egg.updatable.map(alias(_))
+		override val autoUpdated :Unique[Component[_]] = egg.autoUpdated.map(alias(_))
+		override val insertable :Unique[Component[_]] = egg.insertable.map(alias(_))
+		override val autoInserted :Unique[Component[_]] = egg.autoInserted.map(alias(_))
 
 		{
-			val adapted = adapt[S](adaptee)
-			lifts.put(adapted, ComponentSelector.ident[this.type, O, S](adapted))
-			dealias.put(adapted, adaptee)
+			val adapted = adapt[S](egg)
+			lifted.put(adapted, ComponentExtractor.ident[O, S](adapted))
+			originals.put(adapted, egg)
 		}
-		private[this] val lifted = lifts.toMap
-		private[this] val originals = dealias.toMap
 
-		protected def lift[T](component :adaptee.Component[T],
-		                      lifts :mutable.Map[Mapping, GeneralSelector[_, _]],
-		                      dealias :mutable.Map[AnyComponent, Mapping]) :Component[T] =
-			lifts.getOrElse(component, {
-				val base :adaptee.Selector[T] =
-					if (adaptee eq component)
-						ComponentSelector.ident[adaptee.type, adaptee.Owner, S](adaptee).asInstanceOf[adaptee.Selector[T]]
+		private[this] def alias[T](component :egg.Component[T]) :Component[T] =
+			lifted.getOrElse(component, {
+				val base :egg.Selector[T] =
+					if (egg eq component)
+						ComponentExtractor.ident[egg.Owner, S](egg).asInstanceOf[egg.Selector[T]]
 					else
-	                    adaptee.apply(component)
+	                    egg.apply(component)
 				val lifted = adapt(base.lifted)
-				val selector = ComponentSelector[this.type, O, S, T](lifted)(base.extractor)
-				lifts.put(component, selector)
-				lifts.put(base.lifted, selector)
-				dealias.put(lifted, base.lifted)
+				val selector = ComponentExtractor[O, S, T](lifted)(base)
+				this.lifted.put(component, selector)
+				this.lifted.put(base.lifted, selector)
+				originals.put(lifted, base.lifted)
 				selector
 			}).lifted.asInstanceOf[Component[T]]
 
@@ -195,8 +186,8 @@ object ComponentProxy {
 				throw new IllegalArgumentException(s"$component is not a component of $this.")
 			).asInstanceOf[Selector[T]]
 
-		protected override def dealias[T](component :Component[T]) :adaptee.Component[T] =
-			originals.getOrElse(component, component).asInstanceOf[adaptee.Component[T]]
+		protected override def dealias[T](component :Component[T]) :egg.Component[T] =
+			originals.getOrElse(component, component).asInstanceOf[egg.Component[T]]
 
 
 	}

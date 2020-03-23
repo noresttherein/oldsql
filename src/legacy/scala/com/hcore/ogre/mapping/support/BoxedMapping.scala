@@ -8,8 +8,8 @@ import com.hcore.ogre.mapping.support.MappingAdapter.MappingMorphismAdapter
 abstract class BoxedMapping[V, T, M<:Mapping[T]] extends MappingMorphismAdapter[V, T, M] {
 	type Component[X] = M
 
-	override def components: Seq[Component[_]] = Seq(adaptee)
-	override def subcomponents: Seq[Component[_]] = adaptee +: adaptee.s
+	override def components: Seq[Component[_]] = Seq(egg)
+	override def subcomponents: Seq[Component[_]] = egg +: egg.s
 
 	override def columns: Seq[Component[_]] = ???
 

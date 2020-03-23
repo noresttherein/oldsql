@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.{AbstractMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.ComponentSelector
+import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
 
 
 /**

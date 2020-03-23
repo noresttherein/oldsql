@@ -5,12 +5,13 @@ import java.sql.{PreparedStatement, ResultSet}
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor
-import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentSelector, ConcreteSubclass, GeneralSelector, MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.morsels.Extractor.{IdentityExtractor, OptionalExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor, ConcreteSubclass, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 import net.noresttherein.oldsql.schema.support.{MappedAs, MappedMapping, PrefixedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.bits.OptionMapping
+import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.slang._
 
 
@@ -42,7 +43,7 @@ trait Mapping { mapping =>
 	type Pieces = ComponentValues[_ >: this.type <: Component[Subject]]
 //	type Pieces = ComponentValues[this.type]
 
-	type Selector[T] = ComponentSelector[this.type, Owner, Subject, T]
+	type Selector[T] = ComponentExtractor[Owner, Subject, T]
 
 	type AnyComponent = Component[_]
 	type Component[T] = Mapping.Component[Owner, T]
@@ -73,8 +74,8 @@ trait Mapping { mapping =>
 //	def apply[C <: AnyComponent](component :C) :Selector[C#Subject]
 	def apply[T](component :Component[T]) :Selector[T]
 
-	def :\[T](component :Component[T]) :Selector[T] = apply(component)
-
+//	def \-\[T](component :Component[T]) :this.type \-\ component.type = ??? //apply(component)
+//	def \-\[C <: AnyComponent](component :C) :this.type \# C = ???
 
 
 	/** Direct component mappings of this mapping, including any top-level columns. */
@@ -226,10 +227,52 @@ trait Mapping { mapping =>
 
 
 
+	def canEqual(that :Any) :Boolean = that.isInstanceOf[Mapping]
+
 	override def toString :String = sqlName getOrElse this.unqualifiedClassName
 
-	def introString :String = components.mkString(this.toString + "{", ", ", "}")
+	def columnString :String = columns.mkString(toString + "{", ", ", "}")
 
+	def debugString :String = {
+		/** Use recursion to print the ''lifted'' (by this mapping) version of every subcomponent.
+		  * @param ident whitespace prefix to start every new line with
+		  * @param wasColumn was the last printed component a sibling column, meaning we should print this column inline
+		  * @return true if `mapping` is a column.
+		  */
+		def rec[T](mapping :Component[T], res :StringBuilder, ident :String = "", wasColumn :Boolean = false) :Boolean =
+			mapping match {
+				case column :ColumnMapping[_, _] =>
+					if (wasColumn) //print all sibling columns in a single line
+						res ++= "; "
+					else //last component was not a column or mapping is the first component - we are at the start of a new line
+						res ++= ident ++= " "
+					res ++= column.debugString
+					true
+				case _ =>
+					res ++= "\n" ++= ident ++= mapping.toString //print basic mappping info
+					if (mapping.buffs.nonEmpty) { //print (buffs)
+						res ++= "("
+						mapping.buffs.foreach(res ++= _.toString ++= ", ")
+						res.delete(res.length - 2, res.length)
+						res ++= ")"
+					}
+					res ++= "{" //lift and print {components}
+					if (mapping.components.isEmpty)
+						res ++= "}"
+					else {
+						res ++= "\n"
+						(false /: mapping.components.map(lift(_)))(
+							(wasColumn, comp) => rec(comp, res, ident + "  ", wasColumn)
+						)
+						res ++= "\n"  ++= ident ++= "}"
+					}
+					false
+			}
+		val res = new StringBuilder
+		rec(this, res)
+		res.toString
+//		components.map(c => lift(c).debugString).mkString("\n" + toString + "{\n", "; ", "\n}")
+	}
 
 }
 
@@ -293,6 +336,20 @@ trait RootMapping[O, S] extends AbstractMapping[O, S]
 
 
 object Mapping {
+
+//	implicit class Subcomponent[M <: Mapping](private val self :M) extends AnyVal {
+//		@inline def \#[N <: Component[M#Owner, _]](component :N) :ComponentPath[M, N, M#Owner] =
+//			ComponentPath[M, N, M#Owner](component)()
+//	}
+//	implicit class PathComponent[C <: AnyComponent[_]](private val component :C) extends AnyVal {
+//		@inline def \:[M <: Component[component.Owner, _]](owner :M) :M \# C =
+//			ComponentPath[M, C](component)(owner(component).extractor)
+//	}
+//	implicit class PathComponent[M <: Component[O, _], O](private val self :M) extends AnyVal {
+//		@inline implicit def \#[N <: Component[O, _]](component :N) :M \# N =
+//			ComponentPath[M, N](component)(self(component).extractor)
+//	}
+
 	type Component[O, S] = Mapping { type Owner = O; type Subject = S }
 	type ComponentFor[S] = Mapping { type Subject = S }
 	type AnyComponent[O] = Mapping { type Owner = O }
@@ -329,23 +386,7 @@ object Mapping {
 
 
 
-	sealed trait GeneralSelector[M <: Mapping, T] {
-		def optional :M#Subject => Option[T]
-		def requisite :Option[M#Subject => T]
-		def extractor :Extractor[M#Subject, T]
-
-		def apply(whole :M#Subject) :T
-
-		def get(whole :M#Subject) :Option[T]
-
-//		def apply[N >: M <: CompatibleMapping[M]](pieces :ComponentValues[N]) :T
-//
-//		def get[N >: M <: CompatibleMapping[M]](pieces :ComponentValues[N]) :Option[T]
-
-		val lifted :Component[M#Owner, T]
-	}
-
-	/** A selector describes the parent-child relationship between a mapping and its component.
+	/** A `ComponentExtractor` describes the parent-child relationship between a mapping and its component.
 	  * It serves three functions:
 	  *   - provides a means of extracting the value of the component from the value of the parent;
 	  *   - retrieves the value of a component from `ComponentValues`;
@@ -356,114 +397,64 @@ object Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](Component[T] ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  */
-	trait ComponentSelector[M <: Component[O, S], O, S, T]
-		extends GeneralSelector[M, T]
+	trait ComponentExtractor[O, S, T]
+		extends Extractor[S, T]
 	{
-		override def optional :S => Option[T]
-		override def requisite :Option[S => T]
+		val lifted :Component[O, T]
 
-		override def extractor :Extractor[S, T] = requisite.map(Extractor.req[S, T]) getOrElse Extractor(optional)
-
-		override def apply(whole :S) :T = get(whole) getOrElse {
-			throw new NoSuchElementException(s"No value for $lifted in $whole.")
-		}
-
-		override def get(whole :S) :Option[T] = optional(whole)
-
-//		override def apply[N >: M <: Component[O, S]](pieces :ComponentValues[N]) :T = pieces(this)
-//
-//		override def get[N >: M <: Component[O, S]](pieces :ComponentValues[N]) :Option[T] = pieces.get(this)
-
-		override val lifted :Component[O, T]
-
-		override def toString :String = "Selector(" + lifted + ")"
+		override def toString :String = "Extractor(" + lifted + ")"
 	}
 
 
 
-	object ComponentSelector {
-		def apply[M <: Component[O, S], O, S, T]
-		         (component :Component[O, T], pick :S => Option[T], surepick :Option[S=>T]) :ComponentSelector[M, O, S, T] =
-			new CustomSelector(component, pick, surepick)
+	object ComponentExtractor {
+		def apply[O, S, T](component :Component[O, T], pick :S => Option[T], surepick :Option[S=>T]) :ComponentExtractor[O, S, T] =
+			surepick match {
+				case Some(sure) => req(component)(sure)
+				case _ => opt(component)(pick)
+			}
 
-		def apply[M <: Component[O, S], O, S, T]
-		         (component :Component[O, T])(extractor :Extractor[S, T]) :ComponentSelector[M, O, S, T] =
+		def apply[O, S, T](component :Component[O, T])(extractor :Extractor[S, T]) :ComponentExtractor[O, S, T] =
 			extractor match {
-				case requisite :RequisiteExtractor[S, T] => new RequisiteSelector(component, requisite)
-				case _ => new ExtractorSelector(component, extractor)
+				case _ :IdentityExtractor[_] => ident(component).asInstanceOf[ComponentExtractor[O, S, T]]
+				case requisite :RequisiteExtractor[S, T] => new RequisiteComponent(component, requisite.getter)
+				case _ => new OptionalComponent(component, extractor.optional)
 			}
 
-		@inline def apply[O, S, T](mapping :Component[O, S], component :Component[O, T])
-		                          (extractor :Extractor[S, T]) :ComponentSelector[mapping.type, O, S, T] =
-			apply[mapping.type, O, S, T](component)(extractor)
+
+
+		def req[O, S, T](component :Component[O, T])(requisite :S => T) :ComponentExtractor[O, S, T] =
+			new RequisiteComponent[O, S, T](component, requisite)
 
 
 
-		def req[M <: Component[O, S], O, S, T]
-		       (component :Component[O, T], requisite :S => T) :ComponentSelector[M, O, S, T] =
-			new RequisiteSelector[M, O, S, T](component, Extractor.req(requisite))
-
-		def req[O, S, T](mapping :Component[O, S], component :Component[O, T])(requisite :S => T) :ComponentSelector[mapping.type, O, S, T] =
-			new RequisiteSelector[mapping.type, O, S, T](component, Extractor.req(requisite))
+		def opt[O, S, T](component :Component[O, T])( selector :S => Option[T]) :ComponentExtractor[O, S, T] =
+			new OptionalComponent[O, S, T](component, selector)
 
 
 
-		def opt[M <: Component[O, S], O, S, T]
-		       (component :Component[O, T], selector :S => Option[T]) :ComponentSelector[M, O, S, T] =
-			new OptionalSelector[M, O, S, T](component, selector)
-
-		def opt[O, S, T](mapping :Component[O, S], component :Component[O, T])(selector :S => Option[T]) :ComponentSelector[mapping.type, O, S, T] =
-			new OptionalSelector[mapping.type, O, S, T](component, selector)
+		def ident[O, S](component :Component[O, S]) :ComponentExtractor[O, S, S] =
+			new RequisiteComponent[O, S, S](component, identity[S]) with IdentityExtractor[S]
 
 
 
-		def ident[M <: Component[O, S], O, S]
-		         (component :Component[O, S]) :ComponentSelector[M, O, S, S] =
-			new RequisiteSelector[M, O, S, S](component, Extractor.ident[S]) {
-				override def apply(whole :S) :S = whole
-				override def get(whole :S) :Option[S] = Some(whole)
-			}
-
-		def ident[O, S](mapping :Component[O, S], component :Component[O, S]) :ComponentSelector[mapping.type, O, S, S] =
-			ident[mapping.type, O, S](component)
-
-
-
-		def unapply[O, T, S](selector :ComponentSelector[_ <: Component[O, S], O, S, T])
-				:Option[(S => Option[T], Option[S => T], Component[O, T])] =
+		def unapply[O, S, T](selector :ComponentExtractor[O, S, T]) :Option[(S => Option[T], Option[S => T], Component[O, T])] =
 			Some(selector.optional, selector.requisite, selector.lifted)
 
 
 
-		private class ExtractorSelector[M <: Component[O, S], O, S, T]
-		                               (val lifted :Component[O, T], extract :Extractor[S, T])
-			extends ComponentSelector[M, O, S, T]
+		private class RequisiteComponent[O, S, T](final val lifted :Component[O, T], override val getter :S => T)
+			extends ComponentExtractor[O, S, T] with RequisiteExtractor[S, T]
 		{
-			override def extractor :Extractor[S, T] = extract
-			override def optional :S => Option[T] = extract.optional
-			override def requisite :Option[S => T] = extract.requisite
-
-			override def get(whole :S) :Option[T] = extract.get(whole)
+			override def apply(x :S) :T = getter(x)
 		}
 
-		private class RequisiteSelector[M <: Component[O, S], O, S, T]
-		                               (lifted :Component[O, T], extract :RequisiteExtractor[S, T])
-			extends ExtractorSelector[M, O, S, T](lifted, extract)
+		private class OptionalComponent[O, S, T](final val lifted :Component[O, T], final override val optional :S => Option[T])
+			extends ComponentExtractor[O, S, T] with OptionalExtractor[S, T]
 		{
-			override def extractor :RequisiteExtractor[S, T] = extract
-			override def apply(whole :S) :T = extractor(whole)
+			override def get(x :S) :Option[T] = optional(x)
 		}
 
-		private class OptionalSelector[M <: Component[O, S], O, S, T]
-		                              (val lifted :Component[O, T], val optional :S => Option[T])
-			extends ComponentSelector[M, O, S, T]
-		{
-			override def requisite :Option[Nothing] = None
-		}
-
-		private class CustomSelector[M <: Component[O, S], O, S, T]
-		                            (val lifted :Component[O, T], val optional :S => Option[T], val requisite :Option[S => T])
-			extends ComponentSelector[M, O, S, T]
 	}
 
 

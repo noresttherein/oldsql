@@ -8,21 +8,24 @@ import scala.collection.mutable.Builder
 import scala.collection.{AbstractSeq, AbstractSet, IterableFactory, IterableFactoryDefaults, IterableOps}
 
 
-/** A collection of unique items in a specific order providing `O(1)` `indexOf(T)`, `contains(T)`, `toSet`, `toSeq`
-  * and `size` implementations.
-  * This class is used for the column lists exported by mappings in order to quickly find the column mapping for
-  * a given column result in a `ResultSet`.
-  *
+/** A collection of unique items in a specific order providing `O(1)` `indexOf(T)`, `contains(T)`, `apply(Int)`,
+  * `toSet`, `toSeq`, `toIndexedSeq` and `size` implementations. This class is used for the column lists exported
+  * by mappings in order to quickly find the column mapping for a given column result in a `ResultSet`.
   * @tparam T element type.
   */
 trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with IterableFactoryDefaults[T, Unique] { unique =>
 
 	override def iterableFactory :IterableFactory[Unique] = Unique
 
-	def apply(idx :Int) :T
+	/** The `n`-th element in this collection.
+	  * @param n the index in the `[0..size-1]` range.
+	  */
+	def apply(n :Int) :T
 
+	/** The index of the given element in this collection, or `-1` if it does not contain `elem`. */
 	def indexOf[U >: T](elem :U) :Int
 
+	/** Checks if this collection contains the given element as defined by `equals`. */
 	def contains[U >: T](elem :U) :Boolean = indexOf(elem) >= 0
 
 
@@ -32,8 +35,16 @@ trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with
 
 	override def toSet[U >: T] :Set[U] = new UniqueSetAdapter(this)
 
+	/** Prepends an element to the front of the collection if it isn't already present.
+	  * @return `this` ''iff'' it already contains `elem`, or a `Unique` instance containing the given element
+	  *        followed by all elements from `this` if it does not.
+	  */
 	def +:[U >: T](elem :U) :Unique[U]
 
+	/** Appends an element at the end of the collection if it isn't already present.
+	  * @return `this` ''iff'' it already contains `elem`, or a `Unique` instance containing all elements of `this`,
+	  *        followed by `elem` if it does not.
+	  */
 	def :+[U >: T](elem :U) :Unique[U]
 
 	override def stringPrefix = "Unique"
@@ -62,7 +73,10 @@ object Unique extends IterableFactory[Unique] {
 	private[this] val reusableEmpty = new IndexedUnique[Nothing](IndexedSeq.empty, Map.empty)
 
 
-
+	/** A proxy to a lazily computed `Unique[T]`. The initializer will be called when any of the methods on the proxy
+	  * is called. It will be executed at most once, withing a `synchronized` block for the proxy.
+	  * Once computed, it remains thread safe but will incur no additional synchronization penalty.
+	  */
 	def Lazy[T](init: => Unique[T]) :Unique[T] = new LazyUnique[T](() => init)
 
 
@@ -72,15 +86,13 @@ object Unique extends IterableFactory[Unique] {
 
 	implicit def uniqueToSet[T](unique :Unique[T]) :Set[T] = unique.toSet
 
+	/** An implicit extension of any `Iterable` adding a `toUniqueSeq` method which converts it to a `Unique` instance.*/
 	implicit class implicitUnique[T](private val elems :Iterable[T]) extends AnyVal {
-		/** A shorthand method for converting any Seq to an Unique.
-		  * Implementation always returns this, but there is an implicit conversion available from Seq to Unique,
-		  * so instead of writing Unique(aSeq) you can write aSeq.indexed.
-		  * If aSeq's dynamic type was already an Unique, it returns itself cast to Unique.
-		  * Of course, if aSeq static type already was an Unique, it is a simple static noOp call.
+		/** A shorthand method for converting `this` collection to a `Unique`.
+		  * It delegates to `Unique.from`, meaning if `this` already is a `Unique` or collection created by
+		  * one of the `toSeq`, `toIndexedSeq`, `toSet` methods of a `Unique`, it will simply return the underlying
+		  * `Unique` instance.
 		  */
-		def unique :Unique[T] = from(elems)
-
 		def toUniqueSeq :Unique[T] = from(elems)
 	}
 
@@ -89,7 +101,31 @@ object Unique extends IterableFactory[Unique] {
 
 
 
-	class LazyUnique[T](private[this] var initialize: () => Unique[T]) extends Unique[T] {
+	private class UniqueBuilder[T](
+			private[this] var items :Builder[T, IndexedSeq[T]] = IndexedSeq.newBuilder[T],
+			private[this] var index :Map[T, Int] = Map[T, Int]())
+		extends Builder[T, Unique[T]]
+	{
+
+		override def addOne(elem :T) :this.type = {
+			if (!index.contains(elem)) {
+				index = index.updated(elem, index.size)
+				items += elem
+			}
+			this
+		}
+
+		override def clear() :Unit = {
+			index = Map[T, Int]()
+			items = IndexedSeq.newBuilder
+		}
+
+		override def result() :Unique[T] = new IndexedUnique(items.result, index.withDefaultValue(-1))
+	}
+
+
+
+	private class LazyUnique[T](private[this] var initialize: () => Unique[T]) extends Unique[T] {
 		@volatile private[this] var initialized :Unique[T] = _
 		private[this] var fastAccess :Unique[T] = _
 
@@ -128,30 +164,6 @@ object Unique extends IterableFactory[Unique] {
 
 
 
-
-
-
-	private class UniqueBuilder[T](
-			private[this] var items :Builder[T, IndexedSeq[T]] = IndexedSeq.newBuilder[T],
-			private[this] var index :Map[T, Int] = Map[T, Int]())
-		extends Builder[T, Unique[T]]
-	{
-
-		override def addOne(elem :T) :this.type = {
-			if (!index.contains(elem)) {
-				index = index.updated(elem, index.size)
-				items += elem
-			}
-			this
-		}
-
-		override def clear() :Unit = {
-			index = Map[T, Int]()
-			items = IndexedSeq.newBuilder
-		}
-
-		override def result() :Unique[T] = new IndexedUnique(items.result, index.withDefaultValue(-1))
-	}
 
 
 

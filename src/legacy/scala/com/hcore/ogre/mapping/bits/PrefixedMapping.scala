@@ -15,8 +15,8 @@ class PrefixedMapping[E, M<:Mapping[E]](val adaptee :M, val prefix :String)
 	override protected def adapt[X](component: AdaptedComponent[X]) :Component[X] =
 //		if (component.components.isEmpty)
 //			new ComponentImpostor[X](component) {
-//				val adaptee = component
-//				override val sqlName = adaptee.sqlName.map(prefix + _)
+//				val egg = component
+//				override val sqlName = egg.sqlName.map(prefix + _)
 //			}
 //		else
 			new PrefixedMapping[X, AdaptedComponent[X]](component, prefix) with FullComponentProxy[X] {

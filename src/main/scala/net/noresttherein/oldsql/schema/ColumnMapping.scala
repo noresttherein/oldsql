@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
-import net.noresttherein.oldsql.schema.Mapping.{ComponentFor, ComponentSelector}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentFor, ComponentExtractor}
 import net.noresttherein.oldsql.slang._
 
 import scala.util.Try
@@ -121,7 +121,7 @@ trait ColumnMapping[O, S] extends AbstractMapping[O, S] { column =>
 
 	override def apply[T](component :Component[T]) :Selector[T] =
 		if (component == this)
-			ComponentSelector.ident[this.type, O, S](this).asInstanceOf[Selector[T]]
+			ComponentExtractor.ident[O, S](this).asInstanceOf[Selector[T]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $component is not a subcomponent of column $column. The only subcomponent of a column is the column itself."
@@ -163,11 +163,24 @@ trait ColumnMapping[O, S] extends AbstractMapping[O, S] { column =>
 
 
 
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnMapping[_, _]]
+
+	override def equals(that :Any) :Boolean = that match {
+		case self :AnyRef if self eq this => true
+		case column :ColumnMapping[_, _] if canEqual(column) && column.canEqual(this) =>
+			column.form == form && column.name == name && column.buffs == buffs
+		case _ => false
+	}
+
+	override def hashCode :Int = (buffs.hashCode * 31 + name.hashCode) * 31 + form.hashCode
+
+
 
 	override def toString :String = name + "[" + form + "]"
 
-	override def introString :String = buffs.mkString(toString + "(", ", ", ")")
+	override def debugString :String = buffs.mkString(toString + "(", ", ", ")")
 
+	override def columnString :String = toString
 }
 
 

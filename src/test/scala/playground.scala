@@ -2,16 +2,15 @@
 /**
   * @author Marcin Mościcki
   */
-class playground {
-	trait Assembler {
-		type T
+object playground extends App {
+	abstract class Base {
+		val string :String
+		val prefixed = "prefix" + string
+
+		override def toString = prefixed
 	}
 
-	type AssemblerT[X] = Assembler { type T = X }
+	class Subclass(val string :String) extends Base
 
-	class Values[A <: AssemblerT[_]] {
-		def get :A#T = ???
-//		def value[N](a :AssemblerT[N]) :N = component(a).get
-		def component[N](a :AssemblerT[N]) :Values[a.type] = new Values[a.type]
-	}
+	println(new Subclass("string"))
 }

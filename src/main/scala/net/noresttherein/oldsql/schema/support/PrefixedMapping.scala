@@ -13,11 +13,11 @@ class PrefixedMapping[M <: SingletonComponent[O, S], O, S](val prefix :String, m
 
 	override def qualified(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
-		else new PrefixedMapping[M, O, S](prefix + "." + this.prefix, adaptee)
+		else new PrefixedMapping[M, O, S](prefix + "." + this.prefix, egg)
 
 	override def prefixed(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
-		else new PrefixedMapping[M, O, S](prefix + this.prefix, adaptee)
+		else new PrefixedMapping[M, O, S](prefix + this.prefix, egg)
 
 
 
@@ -25,14 +25,14 @@ class PrefixedMapping[M <: SingletonComponent[O, S], O, S](val prefix :String, m
 
 	override def equals(that :Any) :Boolean = that match {
 		case prefixed :PrefixedMapping[_, _, _] =>
-			(prefixed eq this) || prefixed.canEqual(this) && adaptee == prefixed.adaptee && prefix == prefixed.prefix
+			(prefixed eq this) || prefixed.canEqual(this) && egg == prefixed.egg && prefix == prefixed.prefix
 		case _ => false
 	}
 
 	override def hashCode :Int = mapping.hashCode * 31 + prefix.hashCode
 
 
-	override def toString :String = prefix + adaptee
+	override def toString :String = prefix + egg
 }
 
 

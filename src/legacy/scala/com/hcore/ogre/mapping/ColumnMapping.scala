@@ -202,8 +202,8 @@ object ColumnMapping {
 			throw new IllegalArgumentException(s"Expected column, got mapping without sqlName :$adaptee{${adaptee.columns}}")
 		}
 
-//		override def columnDefinition = Some(adaptee.columnDefinition getOrElse {
-//			throw new IllegalArgumentException(s"Expected column, got mapping without column definition :${adaptee.introString}")
+//		override def columnDefinition = Some(egg.columnDefinition getOrElse {
+//			throw new IllegalArgumentException(s"Expected column, got mapping without column definition :${egg.debugString}")
 //		})
 
 		override val columnType = new ColumnType[T] {

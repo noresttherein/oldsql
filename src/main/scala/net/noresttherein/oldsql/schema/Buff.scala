@@ -99,7 +99,7 @@ object Buff {
 	case object ReadOnly extends ComboFlag(NoInsert, NoUpdate)
 
 	/** A buff type which marks columns ignored by the enclosing mapping. It is useful when a column is still
-	  * used as part of SQL statements. */
+	  * used as part of SQL statements. Implies `ReadOnly`, `NoSelect`, `NoQuery`. */
 	case object Unmapped extends ComboFlag(ReadOnly, NoSelect, NoQuery)
 
 
