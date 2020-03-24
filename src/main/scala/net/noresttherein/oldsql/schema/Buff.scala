@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql
 
 import net.noresttherein.oldsql.schema.Buff.BuffType
-import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentFor}
+import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, TypedMapping}
 import net.noresttherein.oldsql.schema.bits.Temporal
 import net.noresttherein.oldsql.slang._
 
@@ -227,7 +227,7 @@ object Buff {
 	  * The value for this component is set as the value of the component at the end of the path and is never
 	  * written to the database, leaving that responsibility to the linked component.
 	  */
-	case class SymLink[X <: SingletonMapping, Y <: SingletonFor[T], T, V] private
+	case class SymLink[X <: SingletonMapping, Y <: TypedSingleton[T], T, V] private
 			(target :TypedComponentPath[X, Y, T], value :T=>V)
 		extends Buff[V]
 	{
@@ -241,7 +241,7 @@ object Buff {
 	}
 
 	object SymLink extends BuffType {
-		def apply[X<:SingletonMapping, Y <: SingletonFor[T], T](path :TypedComponentPath[X, Y, T]) :SymLink[X, Y, T, T] =
+		def apply[X<:SingletonMapping, Y <: TypedSingleton[T], T](path :TypedComponentPath[X, Y, T]) :SymLink[X, Y, T, T] =
 			new SymLink(path, identity[T])
 
 		def apply[T](mapping :Mapping)(target :mapping.Component[T]) :SymLink[mapping.type, target.type, T, T] =
@@ -251,14 +251,14 @@ object Buff {
 			buff.asSubclass[SymLink[_<:Mapping, _<:Mapping, _, T]]
 
 		def startsWith[M <: SingletonMapping, T](mapping :M)(component :mapping.Component[T])
-				:Option[SymLink[M, _ <: SingletonFor[X], X, T] forSome { type X }]  =
+				:Option[SymLink[M, _ <: TypedSingleton[X], X, T] forSome { type X }]  =
 			component.buffs.toStream.flatMap(startsWith(mapping, _)).headOption //.asInstanceOf[SymLink[M, Mapping[Any], Any, T]]
 
 		def startsWith[M <: SingletonMapping, T](mapping :M, buff :Buff[T])
-				:Option[SymLink[M, _ <: SingletonFor[X], X, T] forSome { type X }] =
+				:Option[SymLink[M, _ <: TypedSingleton[X], X, T] forSome { type X }] =
 			buff match {
 				case sl :SymLink[_,_,_,_] if sl.target.start == mapping =>
-					Some(sl.asInstanceOf[SymLink[M, SingletonFor[Any], Any, T]])
+					Some(sl.asInstanceOf[SymLink[M, TypedSingleton[Any], Any, T]])
 				case _ => None
 			}
 
@@ -382,7 +382,7 @@ object Buff {
 		def test[T](buff :Buff[T]) :Option[Buff[T]] = buff is this ifTrue buff
 		def test[T](buffs :Seq[Buff[T]]) :Option[Buff[T]] =
 			buffs.collectFirst { case buff if buff is this => buff }
-		def test[T](column :ComponentFor[T]) :Option[Buff[T]] = test(column.buffs)
+		def test[T](column :TypedMapping[T]) :Option[Buff[T]] = test(column.buffs)
 
 
 		override val toString :String = this.innerClassName
@@ -405,13 +405,13 @@ object Buff {
 		override def test[T](buffs :Seq[Buff[T]]) :Option[B[T]] =
 			buffs collectFirst { case Class(b) if b is this => b.asInstanceOf[B[T]] }
 
-		override def test[T](column :ComponentFor[T]) :Option[B[T]] = test(column.buffs)
+		override def test[T](column :TypedMapping[T]) :Option[B[T]] = test(column.buffs)
 
 		def unapply[T](buff :Buff[T]) :Option[B[T]] = test(buff)
 
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[B[T]] = test(buffs)
 
-		def unapply[T](column :ComponentFor[T]) :Option[B[T]] = test(column)
+		def unapply[T](column :TypedMapping[T]) :Option[B[T]] = test(column)
 	}
 
 
@@ -523,7 +523,7 @@ object Buff {
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
 			buffs collectFirst { case const :ValuedBuff[T] => const.value }
 
-		@inline def unapply[T](column :ComponentFor[T]) :Option[T] = unapply(column.buffs)
+		@inline def unapply[T](column :TypedMapping[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -553,11 +553,11 @@ object Buff {
 		object Value {
 			@inline def unapply[T](option :Buff[T]) :Option[T] = test(option).map(_.value)
 			@inline def unapply[T](options :Seq[Buff[T]]) :Option[T] = test(options).map(_.value)
-			@inline def unapply[T](mapping :ComponentFor[T]) :Option[T] = test(mapping).map(_.value)
+			@inline def unapply[T](mapping :TypedMapping[T]) :Option[T] = test(mapping).map(_.value)
 
 			@inline def apply[T](option :Buff[T]) :Option[T] = unapply(option)
 			@inline def apply[T](options :Seq[Buff[T]]) :Option[T] = unapply(options)
-			@inline def apply[T](mapping :ComponentFor[T]) :Option[T] = unapply(mapping)
+			@inline def apply[T](mapping :TypedMapping[T]) :Option[T] = unapply(mapping)
 		}
 
 	}
@@ -601,7 +601,7 @@ object Buff {
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
 			buffs collectFirst { case const :ConstantBuff[T] => const.value }
 
-		@inline def unapply[T](column :ComponentFor[T]) :Option[T] = unapply(column.buffs)
+		@inline def unapply[T](column :TypedMapping[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -649,7 +649,7 @@ object Buff {
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
 			buffs collectFirst { case const :GeneratedBuff[T] => const.value }
 
-		@inline def unapply[T](column :ComponentFor[T]) :Option[T] = unapply(column.buffs)
+		@inline def unapply[T](column :TypedMapping[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -710,7 +710,7 @@ object Buff {
 		object Audit {
 			@inline def apply[T](buff :Buff[T]) :Option[T=>T] = unapply(buff)
 			@inline def apply[T](buffs :Seq[Buff[T]]) :Seq[T=>T] = unapply(buffs)
-			@inline def apply[T](buffs :ComponentFor[T]) :Seq[T=>T] = unapply(buffs)
+			@inline def apply[T](buffs :TypedMapping[T]) :Seq[T=>T] = unapply(buffs)
 
 			def unapply[T](buff :Buff[T]) :Option[T=>T] = buff match {
 				case sub :AuditBuff[T] if sub is self => Some(sub.substitute)
@@ -720,7 +720,7 @@ object Buff {
 			def unapply[T](buffs :Seq[Buff[T]]) :Seq[T => T] =
 				buffs collect { case sub :AuditBuff[T] if sub is self => sub.substitute }
 
-			def unapply[T](column :ComponentFor[T]) :Seq[T => T] = unapply(column.buffs)
+			def unapply[T](column :TypedMapping[T]) :Seq[T => T] = unapply(column.buffs)
 		}
 	}
 

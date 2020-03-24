@@ -1,14 +1,14 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{AbstractMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{GenericMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
 
 
 /**
   * @author Marcin Mościcki
   */
-trait EmptyMapping[O, S] extends AbstractMapping[O, S] {
+trait EmptyMapping[O, S] extends GenericMapping[O, S] {
 
 	override def apply[T](component :Component[T]) :Selector[T] =
 		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")

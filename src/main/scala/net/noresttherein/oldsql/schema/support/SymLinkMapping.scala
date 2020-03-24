@@ -1,8 +1,9 @@
 package net.noresttherein.oldsql.schema.support
 
-
-
-
+import net.noresttherein.oldsql.schema.Mapping
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, TypedMapping}
+import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
+import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 
 
 /** A mapping serving as a 'symbolic link' of a kind to another mapping;
@@ -18,50 +19,64 @@ package net.noresttherein.oldsql.schema.support
   * return a SymLinkComponentPath when asked for a path to the lifted representation of this component.
   */
 /*
-trait SymLinkMapping[X<:Mapping, M<:Mapping[T], T] extends Mapping[T] with FullMappingProxy[T, M] {
-	type Component[V] = SymLinkMapping[X, _<:Mapping[V], V] with ComponentProxy[V]
+trait SymLinkMapping[X <: AnyComponent[O], Y <: Component[O, S], O, S] extends MappingNest[Y]  {
+//	type Component[V] = SymLinkMapping[X, _<:Mapping[V], V] with ComponentProxy[V]
 
-	def target :TypedComponentPath[X, M, T]
+	def target :ComponentPath[X, Y, O]
 
-	override def modifiers = SymLink(target) +: egg.modifiers
+	override def buffs = SymLink(target) +: egg.buffs
 
-	override protected def contentsEqual(that: MappingAdapter[_, _]): Boolean = that match {
-		case l:SymLinkMapping[_,_,_] => l.target==target
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[SymLinkMapping[_, _, _, _]]
+
+	override def equals(that :Any) :Boolean = that match {
+		case self :AnyRef if self eq this => true
+		case symlink :SymLinkMapping[_, _, _, _] if symlink canEqual this =>
+			egg == symlink.egg && target == symlink.target
 		case _ => false
 	}
 
-	override def hashCode = (egg, target).hashCode
+	override def hashCode :Int = egg.hashCode * 31 + target.hashCode
 
-	override def toString = "=>"+target
+	override def toString :String = "@" + target
 }
+*/
+
+
+
 
 
 
 object SymLinkMapping {
 
-	def apply[X<:Mapping, M<:Mapping[T], T](target :TypedComponentPath[X, M, T]) :SymLinkMapping[X, M, T] =
+/*
+	def apply[X <: AnyComponent[O], Y <: Component[O, S], O, S](target :ComponentPath[X, Y, O]) :SymLinkMapping[X, Y, O, S] =
 		new BaseSymLink(target)
 
-	def path[X<:Mapping, Y<:X#Component[V], V](target :ComponentPath[X, _<:Mapping], default :MappingMorphism[X, Y]) :TypedComponentPath[X, Y, V] =
+	def path[X <: Mapping, Y <: X#Component[V], V](target :ComponentPath[X, _<:Mapping, O]) :ComponentPath[X, Y, O] =
 		new SymLinkComponentPath(target, default)
 
 
-	class BaseSymLink[P<:Mapping, M<:Mapping[T], T](val target :TypedComponentPath[P, M, T]) extends SymLinkMapping[P, M, T] {
-		def this(source :P, target :M with P#Component[T]) =
-			this((source \\ target.asInstanceOf[source.Component[T]]).asInstanceOf[TypedComponentPath[P, M, T]])
+	class BaseSymLink[X <: AnyComponent[O], Y <: Component[O, T], O, T](val target :ComponentPath[X, Y, O])
+		extends SymLinkMapping[X, Y, O]
+	{
+//		def this(source :X, target :Y) =
+//			this((source \\ target.asInstanceOf[source.Component[T]]).asInstanceOf[TypedComponentPath[P, M, T]])
 
-		protected val egg = target.end
+		protected override val egg = target.end
 
 		override protected def adapt[X](component: AdaptedComponent[X]): Component[X] =
 			new BaseSymLink[P, AdaptedComponent[X], X]((target :+ component).asInstanceOf[TypedComponentPath[P, AdaptedComponent[X], X]]) with FullComponentProxy[X] {
 				override def adaptedComponent = egg
 			}
 	}
+*/
 
 	/** A substitute path to a component which is a sym link for another mapping and not present in ComponentValues.
 	  * All instances produced by values adapted by this path will first check if the argument mapping is not the target of the given path,
 	  * and if so, return values that would be returned for that mapping by ComponentValues[X].
 	  */
+
+/*
 	case class SymLinkComponentPath[X<:Mapping, Z<:Mapping, Y<:X#Component[V], V](target :ComponentPath[X, Z], morphism :MappingMorphism[X, Y])
 		extends DirectComponent[X, Y, V] with MorphismPath[X, Y]
 	{ link =>
@@ -72,6 +87,7 @@ object SymLinkMapping {
 
 		override def tailString = end.toString + "=>" + target.tailString
 	}
+*/
 
 }
-*/
+

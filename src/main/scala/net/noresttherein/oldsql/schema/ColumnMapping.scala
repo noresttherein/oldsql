@@ -3,14 +3,14 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
-import net.noresttherein.oldsql.schema.Mapping.{ComponentFor, ComponentExtractor}
+import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor}
 import net.noresttherein.oldsql.slang._
 
 import scala.util.Try
 
 
 
-trait ColumnMapping[O, S] extends AbstractMapping[O, S] { column =>
+trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 
 	/** Returns `Some(this.name)`. */
 	final override def sqlName = Some(name)

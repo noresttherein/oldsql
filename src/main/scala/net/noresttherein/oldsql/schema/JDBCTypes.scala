@@ -20,6 +20,7 @@ trait SQLTypes {
 
 
 
+/** Includes implicit `SQLForm` declarations for all SQL types defined by JDBC in `java.sql.Types`. */
 trait JDBCTypes extends SQLTypes {
 	type JDBCSQLType = Int
 

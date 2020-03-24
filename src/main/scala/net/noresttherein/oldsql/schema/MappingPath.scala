@@ -1,51 +1,54 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, ComponentFor}
-import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, TypedMapping}
+import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, ConcatPath, SelfPath}
+import net.noresttherein.oldsql.slang.TypeParameterInferenceHelp
+import net.noresttherein.oldsql.slang.TypeParameterInferenceHelp.IsBoth
 
 
 
 
 
 
-//trait MappingPath[X <: ComponentFor[S], Y <: Component[O, T], O, S, T] extends Extractor[S, T] {
-trait MappingPath[X <: Mapping, Y <: AnyComponent[O], O] { self =>
-	type Start = X //<: Mapping //<: ComponentFor[Subject] //ComponentFor[S]
-	type End = Y //<: Mapping //AnyComponent[Owner] //<: Component[Owner, Target] //ComponentFor[T]
-	type Subject = Start#Subject
-	type Target = end.Subject //End#Subject //= end.Subject
-	type Owner = O //Y#Owner//O //= end.Owner
+trait MappingPath[-X <: TypedMapping[S], +Y <: Component[O, T], O, S, T] { self =>
+	val end :Y
+	def extractor :Extractor[S, T]
 
-	val end :End
+	def \[Z <: Component[P, U], P, U](next :MappingPath[Y, Z, P, T, U]) :MappingPath[X, Z, P, S, U] = next match {
+		case _ :SelfPath[_, _, _] =>
+			if (end != next.end)
+				throw new IllegalArgumentException(s"Can't append self-path $next to $this as refers to a different mapping.")
+			this.asInstanceOf[MappingPath[X, Z, P, S, U]]
+		case _ => new ConcatPath(this, next)
+	}
 
-	def extractor :Extractor[Subject, Target]
+	def \[Z <: Component[O, U], U](next :ComponentPath[Y, Z, O, T, U]) :MappingPath[X, Z, O, S, U] =
+		\(next :MappingPath[Y, Z, O, T, U])
 
-	def \[Z <: AnyComponent[P], P](next :MappingPath[Y, Z, P]) :MappingPath[X, Z, P] = ??? //Start \~\ Z = ??? //new ConcatPath[Start, End, Z](this, next)
-//		MappingPath[Start, Z](next.end)(extractor andThen next.extractor)
+	def \[M <: Mapping, Z <: Component[O, U], U]
+	     (component :M)(implicit hint :IsBoth[M, Z, Component[O, U]]) :MappingPath[X, Z, O, S, U] =
+		this \ (end \ hint(component).left)
 
-	def \[Z <: AnyComponent[O]](next :ComponentPath[Y, Z, O]) :MappingPath[X, Z, O] //Start \~\ Z = ???
-
-	def \[Z <: Component[O, _]](component :Z) :MappingPath[X, Z, O] //Start \~\ Z //= \(new Mapping.PathComponent(end) \# component)
-//		this \ end(component)
-
-	def :\(component :Component[Owner, _]) :MappingPath[X, component.type, O] = \(component :component.type)
+	def :\[U](component :Component[O, U]) :MappingPath[X, component.type, O, S, U] =
+		\[component.type, component.type, U](component :component.type)(TypeParameterInferenceHelp.duplicateType[component.type](_))
 
 
-	def canEqual(that :Any) :Boolean = that.isInstanceOf[MappingPath[_, _, _]]
+
+	def canEqual(that :Any) :Boolean = that.isInstanceOf[MappingPath[_, _, _, _, _]]
 
 	override def equals(that :Any) :Boolean = that match {
 		case self :AnyRef if self eq this => true
-		case other :MappingPath[ _, _, _] if other.canEqual(this)  && canEqual(other) =>
-			other.end == end && other.extractor == extractor
+		case other :MappingPath[_, _, _, _, _] if (other canEqual this) && canEqual(other) =>
+			end == other.end && extractor == other.extractor
 		case _ => false
 	}
-
+	
 	override def hashCode :Int = end.hashCode * 31 + extractor.hashCode
 
-	override def toString :String = "\\~\\ " + end
-
+	override def toString :String = "./*/" + end
+	
 }
 
 
@@ -54,124 +57,140 @@ trait MappingPath[X <: Mapping, Y <: AnyComponent[O], O] { self =>
 
 
 object MappingPath {
-//	type \~\[X <: Mapping, Y <: AnyComponent[_]] = MappingPath[X, Y]
-//	type \#[X <: AnyComponent[_], Y <: AnyComponent[X#Owner]] = ComponentPath[X, Y]
-//	type \~\[X <: Mapping, Y <: Mapping] = MappingPath { type Start = X; type End = Y }
-//	type \#[X <: AnyComponent[Y#Owner], Y <: Mapping] = ComponentPath { type Start = X; type End = Y }
-//	type \~\[X <: Mapping, Y <: AnyComponent[_]] = MappingPath[X, Y, Y#Owner]
-//	type \#[X <: Mapping, Y <: AnyComponent[X#Owner]] = ComponentPath[X, Y, X#Owner]
 
-
-//	def apply[X <: Mapping, Y <: Mapping](component :Y)(extract :X#Subject =?> Y#Subject) :X \~\ Y = ???
-/*
-	def apply[X <: ComponentFor[S], S, Y <: ComponentFor[T], T](component :Y, extract :S =?> T) :X \~\ Y =
-		new MappingPath {
-			type Start = X
-			type End = Y
-//			type Subject = S
-//			type Target = T
-//			type Owner = end.Owner
-			val end = component
-			val extractor = extract
-		}
-*/
-
-//	def apply[X <: Mapping, Y <: Mapping](parent :X, component :Y) :X \~\ Y = ???
-//		new MappingPath[X, Y] {
+//	private def typed[X <: TypedMapping[S], Y <: Component[O, T], O, S, T](component :Y)(extract :S =?> T) :MappingPath[X, Y, O, S, T] =
+//		new MappingPath[X, Y, O, S, T] {
 //			override val end = component
-//			override def toString = parent.toString + " \\~\\ " + end
+//			override val extractor = extract
 //		}
 
-//	def apply[X <: AnyComponent[Y#Owner], Y <: Mapping, O](parent :X, component :Y) :X \# Y = ???
-//		new ComponentPath[X, Y] {
-//			override val end = component
-//			override def toString = parent.toString + " \\-\\ " + end
-//		}
+	
+	
+	trait ComponentPath[-X <: Component[O, S], +Y <: Component[O, T], O, S, T] extends MappingPath[X, Y, O, S, T] {
 
-
-
-	trait ComponentPath[X <: AnyComponent[O], Y <: AnyComponent[O], O] extends MappingPath[X, Y, O] {
-//		type Start <: AnyComponent[Owner]
-//		type End <: AnyComponent[Owner]
-
-/*
-		override def \[Z <: Mapping](next :End \~\ Z) :Start \~\ Z = next match {
-			case comp :ComponentPath => this \ comp.asInstanceOf[End \# Z]
-			case _ => super.\(next)
-		}
-*/
-
-		override def \[Z <: AnyComponent[Owner]](next :ComponentPath[Y, Z, O]) :ComponentPath[X, Z, O] =
-			ComponentPath[X, Z, O](next.end)(extractor andThen next.extractor)
-//			ComponentPath[Start, Z, Owner](next.end)(extractor andThen next.extractor)
-
-		override def \[Z <: Component[Owner, _]](component :Z) :ComponentPath[X, Z, O] = //Start \# Z = ??? //=
-			???
-//			ComponentPath[X, Z, O](component)(extractor andThen end(component))
-//			\(new Mapping.PathComponent(end) \# component)
-//			this \ (new Mapping.PathComponent(end) \# component)
-//			this \ (end \-\ component)
-
-		override def :\(component :Component[Owner, _]) :ComponentPath[X, component.type, O]  = //Start \# component.type = \(component :component.type)
-			this \[component.type] (component :component.type)
-
-
-
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentPath[_, _, _]]
-
-		override def toString :String = "\\-\\ " + end
-	}
-
-
-
-	object ComponentPath {
-		def apply[X <: AnyComponent[O], Y <: AnyComponent[O], O](component :Y)(extract :X#Subject =?> component.Subject) :ComponentPath[X, Y, O] =
-			new ComponentPath[X, Y, O] {
-//				override type Start = X
-//				override type End = Y
-//				override type Owner = O
-
-				override val end :component.type = component
-				override def extractor = extract
-
-//				override def \[Z <: AnyComponent[Owner]](component :Z) :Start \# Z = ???
-//					\(end \-\ component)
-
+		override def \[Z <: Component[P, U], P, U](next :MappingPath[Y, Z, P, T, U]) :MappingPath[X, Z, P, S, U] =
+			next match {
+				case _ :SelfPath[_, _, _] =>
+					if (end != next.end)
+						throw new IllegalArgumentException(s"Can't extend $this with self-path $next as it refers to a different mapping")
+					this.asInstanceOf[MappingPath[X, Z, P, S, U]]
+				case _ :ComponentPath[_, _, _, _, _] =>
+					ComponentPath.typed[X, Component[O, U], O, S, U](
+						next.end.asInstanceOf[Component[O, U]])(extractor andThen next.extractor
+					).asInstanceOf[MappingPath[X, Z, P, S, U]]
+				case _ => super.\(next)
 			}
 
-//		def apply[O](parent :AnyComponent[O], component :AnyComponent[O]) :parent.type \# component.type = ???
+
+		override def \[Z <: Component[O, U], U](next :ComponentPath[Y, Z, O, T, U]) :ComponentPath[X, Z, O, S, U] =
+			next match {
+				case _ :SelfPath[_, _, _] =>
+					if (end != next.end)
+						throw new IllegalArgumentException(s"Can't extend $this with self-path $next as it refers to a different mapping")
+					this.asInstanceOf[ComponentPath[X, Z, O, S, U]]
+				case _ =>
+					ComponentPath.typed[X, Z, O, S, U](next.end)(extractor andThen next.extractor)
+			}
+
+
+		override def \[M <: Mapping, Z <: Component[O, U], U]
+		             (component :M)(implicit hint :IsBoth[M, Z, Component[O, U]]) :ComponentPath[X, Z, O, S, U] =
+		{
+			val c = hint(component).left
+			ComponentPath.typed[X, Z, O, S, U](c)(extractor andThen end(c))
+		}
+
+		override def :\[U](component :Component[O, U]) :ComponentPath[X, component.type, O, S, U] =
+			\[component.type, component.type, U](component :component.type)(TypeParameterInferenceHelp.duplicateType[component.type](_))
+
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentPath[_, _, _, _, _]]
+
+		override def toString :String = "./" + end
+
+	}
+
+	
+
+	object ComponentPath {
+
+		def apply[P <: Mapping, X <: Component[O, S], C <: Mapping, Y <: Component[O, T], O, S, T]
+		         (parent :P, component :C)(implicit parentType :IsBoth[P, X, Component[O, S]], childType :IsBoth[C, Y, Component[O, T]])
+			:ComponentPath[X, Y, O, S, T] =
+		{ 
+			val c = childType(component).left
+			typed[X, Y, O, S, T](c)(parentType(parent).left(c))
+		}
+
+//		def apply[M <: Mapping, X <: Component[O, S], Y <: Component[O, T], O, S, T]
+//		         (component :M)(extractor :S =?> T)(implicit hint :IsBoth[M, Y, Component[O, T]]) :ComponentPath[X, Y, O, S, T] =
+//			typed[X, Y, O, S, T](hint(component).left)(extractor)
+
+		private[MappingPath] def typed[X <: Component[O, S], Y <: Component[O, T], O, S, T]
+		                              (component :Y)(extract :S =?> T) :ComponentPath[X, Y, O, S, T] =
+			new ComponentPath[X, Y, O, S, T] {
+				override val end = component
+				override def extractor = extract
+			}
+
 	}
 
 
 
-	trait SelfPath[X <: AnyComponent[O], O] extends ComponentPath[X, X, O] {
-		override def toString :String = end.toString
+	trait SelfPath[X <: Component[O, S], O, S] extends ComponentPath[X, X, O, S, S] {
+		override def extractor :RequisiteExtractor[S, S] = Extractor.ident[S]
+
+
+		override def \[Z <: Component[P, U], P, U](next :MappingPath[X, Z, P, S, U]) :MappingPath[X, Z, P, S, U] =
+			next
+
+		override def \[Z <: Component[O, U], U](next :ComponentPath[X, Z, O, S, U]) :ComponentPath[X, Z, O, S, U] =
+			next
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[SelfPath[_, _, _]]
+
+		override def toString :String = ".(" + end + ")"
 	}
+
 
 
 
 	object SelfPath {
-		def apply[X <: AnyComponent[O], O](mapping :X) :SelfPath[X, O] = new SelfPath[X, O] {
+		@inline 
+		implicit def apply[M, X <: Component[O, S], O, S]
+		                  (mapping :M)(implicit typeHint :IsBoth[M, X, Component[O, S]]) :SelfPath[X, O, S] =
+			typed[X, O, S](typeHint(mapping).left)
+
+		def typed[X <: Component[O, S], O, S](mapping :X) :SelfPath[X, O, S] = new SelfPath[X, O, S] {
 			override val end = mapping
-			override def extractor = ??? //Extractor.ident[X#Subject]
 		}
 	}
-	/*
-		private[MappingPath] class ConcatPath[W <: ComponentFor[_], X <: ComponentFor[_], Y <: Component[_, _]]
-											 (first :W \~\ X, second :X \~\ Y)
-			extends MappingPath
-		{
-			override type Start = W
-			override type End = Y
-			override type Owner = Y#Owner
 
-			override val end :Y = second.end
-			override val extractor = first.extractor andThen second.extractor :W#Subject =?> Y#Subject
 
-			override def \[Z <: AnyComponent[Owner]](component :Z) :W \~\ Z = second match {
-				case _ :ComponentPath => new ConcatPath[W, X, Z](first, second \ component)
-				case _ => new ConcatPath[W, Y, Z](this, ComponentPath[Y, Z, Owner](component)(second.end \# component))
+
+
+
+
+	private[MappingPath] class ConcatPath[W <: TypedMapping[R], X <: Component[N, S], Y <: Component[O, T], N, O, R, S, T]
+										 (first :MappingPath[W, X, N, R, S], second :MappingPath[X, Y, O, S, T])
+		extends MappingPath[W, Y, O, R, T]
+	{
+		override val end :Y = second.end
+		override val extractor : R =?> T = first.extractor andThen second.extractor
+
+		override def \[Z <: Component[P, U], P, U](next :MappingPath[Y, Z, P, T, U]) :MappingPath[W, Z, P, R, U] =
+			next match {
+				case comp :ComponentPath[_, _, _, _, _] if second.isInstanceOf[ComponentPath[_, _, _, _, _]] =>
+					new ConcatPath[W, Component[P, S], Z, P, P, R, S, U](
+						first.asInstanceOf[MappingPath[W, Component[P, S], P, R, S]],
+						second.asInstanceOf[ComponentPath[Component[P, S], Component[P, T], P, S, T]] \ comp.asInstanceOf[ComponentPath[Component[P, T], Z, P, T, U]]
+					)
+				case _ =>
+					super.\(next)
 			}
-		}
-	*/
+
+		override def toString :String = first.toString + second.toString
+	}
+
+
 }

@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, Component, ComponentFor, ComponentExtractor, ConcreteSubclass, SingletonComponent, SingletonFor}
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, TypedMapping, ComponentExtractor}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
@@ -220,7 +220,7 @@ trait ComponentValues[M <: Mapping] {
   *
   */
 object ComponentValues {
-	type TypedValues[M <: SingletonFor[T], T] = ComponentValues[M]
+	type TypedValues[M <: TypedMapping[T], T] = ComponentValues[M]
 
 
 	/** Returns ComponentValues using the given function as the source of values for components. Please note that you

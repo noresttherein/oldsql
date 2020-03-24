@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor
 import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, NoInsert, NoQuery, NoSelect, NoUpdate, Unmapped}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{ComponentFor, ComponentExtractor, MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.slang._
 
@@ -34,7 +34,7 @@ import scala.reflect.runtime.universe.TypeTag
   *
   * @tparam S value type of the mapped entity
   */
-trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
+trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 
 	/** Base trait for all components of this mapping. Creating an instance automatically lists it within owning mapping
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.
@@ -49,7 +49,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  * the parent mapping - no other call is needed.
 	  * @tparam T value type of this component
 	  */
-	trait ComponentMapping[T] extends AbstractMapping[Owner, T] { self =>
+	trait ComponentMapping[T] extends GenericMapping[O, T] { self =>
 
 		def ?(implicit values :composite.Pieces) :Option[T] = values.get(selector)
 
@@ -59,7 +59,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 
 		protected[schema] def extractor :Extractor[S, T]
 
-		def selector :ComponentExtractor[Owner, S, T] = {
+		def selector :ComponentExtractor[O, S, T] = {
 			if (fastSelector == null) {
 				val s = safeSelector
 				if (s != null) fastSelector = s
@@ -69,8 +69,8 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 		}
 
 		@volatile
-		private[this] var safeSelector :ComponentExtractor[Owner, S, T] = _
-		private[this] var fastSelector :ComponentExtractor[Owner, S, T] = _
+		private[this] var safeSelector :ComponentExtractor[O, S, T] = _
+		private[this] var fastSelector :ComponentExtractor[O, S, T] = _
 
 		private[this] var initialized = false
 
@@ -178,7 +178,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  */
 	private class LiftedComponent[T](target :Component[T], val extractor :Extractor[S, T],
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
-		extends EagerDeepProxy[Component[T], Owner, T](target) with ComponentMapping[T]
+		extends EagerDeepProxy[Component[T], O, T](target) with ComponentMapping[T]
 	{
 		protected[RowSchema] override def init() :Unit = composite.synchronized {
 			if (!isSymLink(this)) { //don't lift subcomponents as its done in `adapt` by EagerDeepProxy
@@ -303,7 +303,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 
 
 
-	/** An adapter allowing embedding of any other component, regardless of the `Owner` type, as part of this mapping.
+	/** An adapter allowing embedding of any other component, regardless of the `O` type, as part of this mapping.
 	  * The embedded component is exposed by the `body` property. The components of the embedded mapping are lifted
 	  * to components of the enclosing mapping by incorporating the `columnPrefix` and `buffs` given here (including
 	  * those inherited from the enclosing mapping). At the same time, they form the components of this instance exposed
@@ -319,7 +319,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  * @tparam C the type of the embedded component, typically its singleton type.
 	  * @tparam T the value type of this component.
 	  */
-	final class EmbeddedComponent[C <: Mapping.ComponentFor[T], T] private[RowSchema]
+	final class EmbeddedComponent[C <: Mapping.TypedMapping[T], T] private[RowSchema]
 	                             (val body :C, protected[schema] val extractor :Extractor[S, T],
 	                              override val columnPrefix :String, override val buffs :Seq[Buff[T]])
 		extends EagerDeepProxy[C, O, T](body) with ComponentMapping[T]
@@ -354,7 +354,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  * declared column options (buffs).
 	  * @tparam T value type of this column.
 	  */
-//	trait Column[T] extends ColumnMapping[Owner, T] with ComponentMapping[T]
+//	trait Column[T] extends ColumnMapping[O, T] with ComponentMapping[T]
 
 
 
@@ -362,7 +362,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  * SQL statement. It automatically inherits the enclosing mapping's `columnPrefix` and buffs.
 	  */
 	private class MandatoryColumn[T :ColumnForm](value :S => T, name :String, opts :Seq[Buff[T]])
-		extends StandardColumn[Owner, T](testedPrefix + name, opts ++ conveyBuffs(value, testedPrefix + name))
+		extends StandardColumn[O, T](testedPrefix + name, opts ++ conveyBuffs(value, testedPrefix + name))
 		   with ComponentMapping[T]
 	{
 		override val buffs = opts ++ inheritedBuffs
@@ -377,7 +377,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  */
 	private class ColumnComponent[T](val extractor :Extractor[S, T], name :String, override val buffs :Seq[Buff[T]])
 	                                (implicit sqlForm :ColumnForm[T])
-		extends StandardColumn[Owner, T](name, buffs) with ComponentMapping[T]
+		extends StandardColumn[O, T](name, buffs) with ComponentMapping[T]
 	{
 		def this(value :S => T, name :String, buffs :Seq[Buff[T]])(implicit form :ColumnForm[T]) =
 			this(Extractor.req(value), name, buffs)
@@ -403,7 +403,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  * @tparam T the value type of the embedded component.
 	  * @return a wrapper of the given mapping, automatically registered on this mapping's `components` list.
 	  */
-	protected def embed[T](component :ComponentFor[T], value :S => T, columnPrefix :String, buffs :Seq[Buff[T]] = Nil)
+	protected def embed[T](component :TypedMapping[T], value :S => T, columnPrefix :String, buffs :Seq[Buff[T]] = Nil)
 			:EmbeddedComponent[component.type, T] =
 	{
 		val extractor = Extractor.req(value)
@@ -420,7 +420,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  * @tparam T the value type of the embedded component.
 	  * @return a wrapper of the given mapping, automatically registered on this mapping's `components` list.
 	  */
-	protected def embed[T](component :ComponentFor[T], value :S => T, buffs :Buff[T]*) :EmbeddedComponent[component.type, T] =
+	protected def embed[T](component :TypedMapping[T], value :S => T, buffs :Buff[T]*) :EmbeddedComponent[component.type, T] =
 		embed(component, value, "", buffs)
 
 
@@ -763,7 +763,7 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
 	  * (including subcomponents),  when the component's initialization is being
 	  */
 	protected def selectorFor[T](component :ComponentMapping[T]) :Selector[T] =
-		ComponentExtractor[Owner, S, T](component)(component.extractor)
+		ComponentExtractor[O, S, T](component)(component.extractor)
 
 	private[this] var initSelectors = Map[AnyComponent, Selector[_]]()
 	@volatile private[this] var selectors :Map[AnyComponent, Selector[_]] = _
@@ -1050,9 +1050,6 @@ trait RowSchema[O, S] extends AbstractMapping[O, S] { composite =>
   * is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces` implementation
   * substitutes any component passed to it with its lifted representation before looking for its value.
   */
-trait RowRootSchema[O, S] extends RowSchema[O, S] with RootMapping[O, S] {
-	override def optionally(pieces :Pieces) :Option[S] =
-		super.optionally(pieces.aliased { c => apply[c.Subject](c).lifted })
-}
+trait RowRootSchema[O, S] extends RowSchema[O, S] with RootMapping[O, S]
 
 

@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{AbstractMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
 
 
 /** A Convenience base trait for simple mappings which initializes all column lists by filtering the result
@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.schema.{AbstractMapping, Mapping, SQLReadForm, S
   * [[net.noresttherein.oldsql.collection.Unique.Lazy]], which is thread safe, invokes the initializer at most once,
   * and doesn't incur any computational penalty once initialized.
   */
-trait LazyMapping[O, S] extends AbstractMapping[O, S] {
+trait LazyMapping[O, S] extends GenericMapping[O, S] {
 
 //	override val subcomponents :Unique[Component[_]] = Unique.Lazy(super.subcomponents)
 

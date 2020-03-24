@@ -1,8 +1,8 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, ComponentFor}
-import net.noresttherein.oldsql.schema.{Mapping, Buff, SQLReadForm, SQLWriteForm, AbstractMapping}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, TypedMapping}
+import net.noresttherein.oldsql.schema.{Mapping, Buff, SQLReadForm, SQLWriteForm, GenericMapping}
 
 import scala.collection.mutable
 
@@ -12,7 +12,7 @@ import scala.collection.mutable
 /**
   * @author Marcin Mościcki
   */
-trait ComponentProxy[O, S] extends AbstractMapping[O, S] with MappingNest[ComponentFor[S]] {
+trait ComponentProxy[O, S] extends GenericMapping[O, S] with MappingNest[TypedMapping[S]] {
 
 	override def buffs :Seq[Buff[S]] = egg.buffs
 
@@ -140,7 +140,7 @@ object ComponentProxy {
 	  * a fixed mapping between components of the adapted mapping and their adapted counterparts as well as the
 	  * reverse.
 	  */
-	abstract class EagerDeepProxy[M <: ComponentFor[S], O, S] (protected override val egg :M)
+	abstract class EagerDeepProxy[M <: TypedMapping[S], O, S](protected override val egg :M)
 		extends DeepProxy[O, S] with MappingNest[M]
 	{
 		private[this] val lifted = mutable.Map[Mapping, ComponentExtractor[O, S, _]]()

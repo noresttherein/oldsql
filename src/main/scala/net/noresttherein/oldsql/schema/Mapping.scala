@@ -5,14 +5,15 @@ import java.sql.{PreparedStatement, ResultSet}
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.{IdentityExtractor, OptionalExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor, ConcreteSubclass, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 import net.noresttherein.oldsql.schema.support.{MappedAs, MappedMapping, PrefixedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.bits.OptionMapping
-import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
+import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, SelfPath}
 import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.slang.TypeParameterInferenceHelp.IsBoth
 
 
 
@@ -24,7 +25,7 @@ import net.noresttherein.oldsql.slang._
   * inference: a generic method `m[M&lt;:Mapping[T], T](m :M)` will infer type parameters `M`, `Nothing` when given
   * an argument of type `M&lt;:Mapping[T]`. On the other hand, when a type parameter is declared `M&lt;:Mapping[_]`,
   * the `Subject` is instantiated early as 'Any' and it is not equal to `m.Subject`, leading to other problems later.
-  * @see [[net.noresttherein.oldsql.schema.AbstractMapping]]
+  * @see [[net.noresttherein.oldsql.schema.GenericMapping]]
   */
 trait Mapping { mapping =>
 	/** The mapped entity type. */
@@ -281,7 +282,7 @@ trait Mapping { mapping =>
 
 
 
-trait AbstractMapping[O, S] extends Mapping { self =>
+trait GenericMapping[O, S] extends Mapping { self =>
 	type Owner = O
 	type Subject = S
 
@@ -328,7 +329,10 @@ trait AbstractMapping[O, S] extends Mapping { self =>
 
 
 
-trait RootMapping[O, S] extends AbstractMapping[O, S]
+trait RootMapping[O, S] extends GenericMapping[O, S] {
+	override def optionally(pieces :Pieces) :Option[S] =
+		super.optionally(pieces.aliased { c => apply[c.Subject](c).lifted })
+}
 
 
 
@@ -336,39 +340,26 @@ trait RootMapping[O, S] extends AbstractMapping[O, S]
 
 
 object Mapping {
+	@inline
+	implicit def mappingSelfPath[M <: Mapping, X <: Component[O, S], O, S]
+	                            (mapping :M)(implicit help :IsBoth[M, X, Component[O, S]]) :SelfPath[X, O, S] =
+		SelfPath.typed[X, O, S](help(mapping).left)
 
-//	implicit class Subcomponent[M <: Mapping](private val self :M) extends AnyVal {
-//		@inline def \#[N <: Component[M#Owner, _]](component :N) :ComponentPath[M, N, M#Owner] =
-//			ComponentPath[M, N, M#Owner](component)()
-//	}
-//	implicit class PathComponent[C <: AnyComponent[_]](private val component :C) extends AnyVal {
-//		@inline def \:[M <: Component[component.Owner, _]](owner :M) :M \# C =
-//			ComponentPath[M, C](component)(owner(component).extractor)
-//	}
-//	implicit class PathComponent[M <: Component[O, _], O](private val self :M) extends AnyVal {
-//		@inline implicit def \#[N <: Component[O, _]](component :N) :M \# N =
-//			ComponentPath[M, N](component)(self(component).extractor)
-//	}
 
-	type Component[O, S] = Mapping { type Owner = O; type Subject = S }
-	type ComponentFor[S] = Mapping { type Subject = S }
+
+	type TypedMapping[S] = Mapping { type Subject = S }
 	type AnyComponent[O] = Mapping { type Owner = O }
+	type Component[O, S] = Mapping { type Owner = O; type Subject = S }
 
-	type SingletonComponent[O, S] = Component[O, S] with Singleton //Mapping with Singleton { type Owner = O; type Subject = S }
-	type SingletonFor[S] = Mapping with Singleton { type Subject = S }
-	type AnySingleton[O] = Mapping with Singleton { type Owner = O }
 	type SingletonMapping = Mapping with Singleton
+	type TypedSingleton[S] = Mapping with Singleton { type Subject = S }
+	type AnySingleton[O] = Mapping with Singleton { type Owner = O }
+	type SingletonComponent[O, S] = Component[O, S] with Singleton //Mapping with Singleton { type Owner = O; type Subject = S }
 
-//	type ConcreteSubclass[M <: Mapping] = M with Component[M#Owner, M#Subject]
-
-	type ComponentCompatibleMapping[M <: Mapping] = Mapping {
-		type Component[X] = Mapping.Component[M#Owner, X]
-	}
 
 	type CompatibleMapping[M <: Mapping] = Mapping {
 		type Owner = M#Owner
 		type Subject = M#Subject
-//		type Component[X] = M#Component[X]
 	}
 
 	type TypeCompatibleMapping[M <: Mapping] = Mapping {
@@ -397,9 +388,7 @@ object Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](Component[T] ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  */
-	trait ComponentExtractor[O, S, T]
-		extends Extractor[S, T]
-	{
+	trait ComponentExtractor[O, -S, T] extends Extractor[S, T] {
 		val lifted :Component[O, T]
 
 		override def toString :String = "Extractor(" + lifted + ")"
@@ -463,7 +452,7 @@ object Mapping {
 
 
 	trait ColumnFilter {
-		def apply[S](mapping :ComponentFor[S]) :Unique[mapping.Component[_]] =
+		def apply[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] =
 			mapping.columns.filter(test[mapping.Owner])
 
 		def filter[O](columns :Unique[AnyComponent[O]]) :Unique[AnyComponent[O]] =
@@ -471,10 +460,10 @@ object Mapping {
 
 		def test[O](column :AnyComponent[O]) :Boolean
 
-		def read[S](mapping :ComponentFor[S]) :SQLReadForm[S] =
+		def read[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
 			MappingReadForm[mapping.Owner, S](mapping, apply(mapping :mapping.type))
 
-		def write[S](mapping :ComponentFor[S])(forms :mapping.AnyComponent => SQLForm[_]) :SQLWriteForm[S] =
+		def write[S](mapping :TypedMapping[S])(forms :mapping.AnyComponent => SQLForm[_]) :SQLWriteForm[S] =
 			MappingWriteForm[mapping.Owner, S](mapping, apply(mapping :mapping.type), forms)
 	}
 
@@ -490,28 +479,28 @@ object Mapping {
 
 
 		class WithBuff(buff :BuffType) extends ColumnFilter {
-			def components[S](mapping :ComponentFor[S]) :Unique[mapping.Component[_]] =
+			def components[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
 
 			def test[O](column :AnyComponent[O]): Boolean = buff.enabled(column)
 		}
 
 		class WithoutBuff(buff :BuffType) extends ColumnFilter {
-			def components[S](mapping :ComponentFor[S]) :Unique[mapping.Component[_]] =
+			def components[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
 
 			def test[O](column :AnyComponent[O]): Boolean = buff.disabled(column)
 		}
 
 		class WriteFilter(modifier :BuffType) extends WithoutBuff(modifier) {
-			override def read[S](mapping: ComponentFor[S]) =
+			override def read[S](mapping: TypedMapping[S]) =
 				EmptyForm(throw new UnsupportedOperationException(s"$this: read for $mapping"))
 		}
 
 
 
 		case object ForSelect extends WithoutBuff(NoSelectByDefault) {
-			override def read[S](mapping: ComponentFor[S]) :SQLReadForm[S] = mapping.selectForm
+			override def read[S](mapping: TypedMapping[S]) :SQLReadForm[S] = mapping.selectForm
 //			override def write[S](mapping: Mapping[S]) :SQLWriteForm[Any] = SQLWriteForm.empty
 		}
 
@@ -529,7 +518,7 @@ object Mapping {
 
 
 		case object AllColumns extends ColumnFilter {
-			override def apply[S](mapping :ComponentFor[S]) :Unique[mapping.Component[_]] = mapping.columns
+			override def apply[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] = mapping.columns
 			override def filter[O](columns :Unique[AnyComponent[O]]) :Unique[AnyComponent[O]] = columns
 			override def test[O](column :AnyComponent[O]) = true
 		}
@@ -596,21 +585,21 @@ object Mapping {
 			new MappingReadForm[O, S](mapping, extra, _.selectForm)
 		}
 
-		def defaultSelect[S](mapping :ComponentFor[S]) :SQLReadForm[S] = {
+		def defaultSelect[S](mapping :TypedMapping[S]) :SQLReadForm[S] = {
 			val columns = mapping.selectable.filter(NoSelectByDefault.disabled) ++ ExtraSelect.Enabled(mapping)
 			new MappingReadForm[mapping.Owner, S](mapping, columns, _.selectForm)
 		}
 
 
-		def fullSelect[S](mapping :ComponentFor[S]) :SQLReadForm[S] =
+		def fullSelect[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
 			new MappingReadForm[mapping.Owner, S](mapping, mapping.selectable ++ ExtraSelect.Enabled(mapping))
 
 
 
-		def autoInsert[S](mapping :ComponentFor[S]) :SQLReadForm[S] =
+		def autoInsert[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
 			new MappingReadForm[mapping.Owner, S](mapping, mapping.autoInserted)
 
-		def autoUpdate[S](mapping :ComponentFor[S]) :SQLReadForm[S] =
+		def autoUpdate[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
 			new MappingReadForm[mapping.Owner, S](mapping, mapping.autoUpdated)
 
 	}
@@ -639,14 +628,7 @@ object Mapping {
 					val column = c.asInstanceOf[Component[O, Any]]
 					val form = write(column).asInstanceOf[SQLWriteForm[Any]]
 					//extras(columns.indexOf(column))
-					substitute.Value(column) orElse mapping(column).get(subject) match {
-						case Some(x) =>
-							form.set(i)(statement, x)
-//							if (x == null) form.setNull(i)(statement)
-//							else form.set(i)(statement, x)
-						case _ =>
-							form.setNull(i)(statement)
-					}
+					form.setOpt(i)(statement, substitute.Value(column) orElse mapping(column).get(subject))
 					i += form.writtenColumns
 				}
 			}
@@ -713,10 +695,10 @@ object Mapping {
 		                              write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).queryForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoQuery, ExtraQuery, write)
 
-		def defaultQuery[S](mapping :ComponentFor[S]) :SQLWriteForm[S] =
+		def defaultQuery[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			default(mapping)(NoQuery, ExtraQuery, _.queryForm)
 
-		def fullQuery[S](mapping :ComponentFor[S]) :SQLWriteForm[S] =
+		def fullQuery[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			full(mapping :mapping.type)(mapping.queryable, ExtraQuery, _.queryForm)
 
 
@@ -725,10 +707,10 @@ object Mapping {
 			                           write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).updateForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoUpdate, ExtraUpdate, write)
 
-		def defaultUpdate[S](mapping :ComponentFor[S]) :SQLWriteForm[S] =
+		def defaultUpdate[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			default(mapping)(NoUpdate, ExtraUpdate, _.updateForm)
 
-		def fullUpdate[S](mapping :ComponentFor[S]) :SQLWriteForm[S] =
+		def fullUpdate[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			full(mapping :mapping.type)(mapping.insertable, ExtraUpdate, _.updateForm)
 
 
@@ -737,10 +719,10 @@ object Mapping {
 		                               write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).insertForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoInsert, ExtraInsert, write)
 
-		def defaultInsert[S](mapping :ComponentFor[S]) :SQLWriteForm[S] =
+		def defaultInsert[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			default(mapping)(NoInsert, ExtraInsert, (_:mapping.AnyComponent).insertForm)
 
-		def fullInsert[S](mapping :ComponentFor[S]) :SQLWriteForm[S] =
+		def fullInsert[S](mapping :TypedMapping[S]) :SQLWriteForm[S] =
 			full(mapping :mapping.type)(mapping.insertable, ExtraInsert, _.insertForm)
 
 
@@ -757,13 +739,13 @@ object Mapping {
 			new MappingWriteForm[O, S](mapping, extra, mandatory, write)
 		}
 
-		private def default[S](mapping :ComponentFor[S])(filterNot :BuffType, mandatory :ValuedBuffType,
+		private def default[S](mapping :TypedMapping[S])(filterNot :BuffType, mandatory :ValuedBuffType,
 		                                                 write :mapping.AnyComponent => SQLWriteForm[_]) :SQLWriteForm[S] = {
 			val columns = filterNot.Disabled(mapping) ++ mandatory.Enabled(mapping)
 			new MappingWriteForm[mapping.Owner, S](mapping, columns, mandatory, write)
 		}
 
-		private def full[S](mapping :ComponentFor[S])(columns :Unique[mapping.AnyComponent], extra :ValuedBuffType,
+		private def full[S](mapping :TypedMapping[S])(columns :Unique[mapping.AnyComponent], extra :ValuedBuffType,
 		                                              write :mapping.AnyComponent => SQLWriteForm[_]) :SQLWriteForm[S] =
 			new MappingWriteForm[mapping.Owner, S](mapping, columns ++ extra.Enabled(mapping), extra, write)
 

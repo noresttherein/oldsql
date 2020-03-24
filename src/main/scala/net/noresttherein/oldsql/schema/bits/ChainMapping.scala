@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.collection.Chain.{~, GenericFun, MapChain, Self}
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.schema.{Buff, AbstractMapping}
+import net.noresttherein.oldsql.schema.{Buff, GenericMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
 

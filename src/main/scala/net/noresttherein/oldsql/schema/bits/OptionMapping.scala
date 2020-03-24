@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{AbstractMapping, Buff, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{GenericMapping, Buff, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter
@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.slang._
 
 
 
-trait OptionMapping[M <: Component[O, S], O, S] extends AbstractMapping[O, Option[S]] {
+trait OptionMapping[M <: Component[O, S], O, S] extends GenericMapping[O, Option[S]] {
 	val get :M
 }
 

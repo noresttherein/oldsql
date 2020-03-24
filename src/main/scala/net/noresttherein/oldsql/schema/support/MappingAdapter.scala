@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Mapping.Component
-import net.noresttherein.oldsql.schema.{Mapping, AbstractMapping}
+import net.noresttherein.oldsql.schema.{Mapping, GenericMapping}
 
 
 trait MappingNest[+M <: Mapping] extends Mapping {
@@ -28,7 +28,7 @@ trait MappingNest[+M <: Mapping] extends Mapping {
 
 /**
   */
-trait MappingAdapter[+M <: Mapping.Component[O, S], O, S, T] extends AbstractMapping[O, T] with MappingNest[M] {
+trait MappingAdapter[+M <: Mapping.Component[O, S], O, S, T] extends GenericMapping[O, T] with MappingNest[M] {
 
 	override def components :Unique[Component[_]] = Unique(egg)
 	override def subcomponents :Unique[Component[_]] = egg.subcomponents
