@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, ForcedQuery, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor}
-import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
 
-import scala.util.Try
+
+
 
 
 
@@ -30,11 +30,6 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 
 	/** Returns `Unique(this)`. */
 	final def columns :Unique[Component[S]] = Unique(this)
-//	final def selectable :Seq[Component[S]] = Seq(this)
-//	final def queryable :Seq[Component[S]] = Seq(this)
-//	final def updatable :Seq[Component[S]] = Seq(this)
-//	final def insertable :Seq[Component[S]] = Seq(this)
-//	final def generated :Seq[Component[S]] = Seq(this)
 
 	final override def selectable :Unique[Component[S]] = selfUnless(NoSelect)
 	final override def queryable :Unique[Component[S]] = selfUnless(NoQuery)
@@ -181,6 +176,8 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 	override def debugString :String = buffs.mkString(toString + "(", ", ", ")")
 
 	override def columnString :String = toString
+
+
 }
 
 
@@ -190,25 +187,56 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 
 object ColumnMapping {
 
-	def apply[O, T :ColumnForm](name :String, buffs :Buff[T]*) :ColumnMapping[O, T] =
+	def apply[O, S :ColumnForm](name :String, buffs :Buff[S]*) :ColumnMapping[O, S] =
 		new StandardColumn(name, buffs)
 
+	def apply[O, N <: String with Singleton :ValueOf, S :ColumnForm](buffs :Buff[S]*) :NamedColumn[O, N, S] =
+		new NamedColumn[O, N, S](buffs)
 
 
 
-
-	class StandardColumn[O, T](val name :String, override val buffs :Seq[Buff[T]])(implicit val form :ColumnForm[T])
-		extends ColumnMapping[O, T]
+	class StandardColumn[O, S](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
+		extends ColumnMapping[O, S]
 	{
 		override val isNullable :Boolean = super.isNullable
 	}
 
 
-	class NumberedColumn[O, T](val number :Int, val name :String, override val buffs :Seq[Buff[T]])
-	                          (implicit val form :ColumnForm[T])
-		extends ColumnMapping[O, T]
+
+	class NamedColumn[O, N <: String with Singleton, S](override val buffs :Seq[Buff[S]] = Nil)
+	                                                   (implicit named :ValueOf[N], override val form :ColumnForm[S])
+		extends ColumnMapping[O, S]
+	{
+		override val name :N = named.value
+		override val isNullable :Boolean = super.isNullable
+
+		override def withBuffs(buffs :Seq[Buff[S]]) :NamedColumn[O, N, S] =
+			new NamedColumn[O, N, S](buffs)(new ValueOf(name), form)
+
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[NamedColumn[_, _, _]]
+
+	}
+
+
+
+	class NumberedColumn[O, S](val number :Int, val name :String, override val buffs :Seq[Buff[S]])
+	                          (implicit val form :ColumnForm[S])
+		extends ColumnMapping[O, S]
 	{
 		override val isNullable :Boolean = super.isNullable
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[NumberedColumn[_, _]]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case col :NumberedColumn[_, _] if canEqual(that) && col.canEqual(this) =>
+				number == col.number && form == col.form && name == col.name && buffs == col.buffs
+			case _ => false
+		}
+
+		override def hashCode :Int = super.hashCode * 31 + number.##
 	}
+
 }
 

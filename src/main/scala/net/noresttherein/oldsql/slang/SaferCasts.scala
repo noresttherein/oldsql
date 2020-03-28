@@ -22,13 +22,13 @@ private[oldsql] object SaferCasts {
 		}
 
 
-		@inline def asSubclass[S<:T](implicit S :ClassTag[S]) :Option[S] = S.unapply(value)
+		@inline def asSubclass[S <: T](implicit S :ClassTag[S]) :Option[S] = S.unapply(value)
 
-		@inline def asSubclassOf[S](implicit S:ClassTag[S]) :Option[S] = S.unapply(value)
+		@inline def asSubclassOf[S](implicit S :ClassTag[S]) :Option[S] = S.unapply(value)
 
 		@inline def ifSubclassOf[S] :CastValueGuard[T, S] = new CastValueGuard[T, S](value)
 
-		@inline def ifSubclass[S<:T] :CastValueGuard[T, S] = ifSubclassOf[S]
+		@inline def ifSubclass[S <: T] :CastValueGuard[T, S] = ifSubclassOf[S]
 
 //		@inline def explicitCast[F>:T, S] :S = value.asInstanceOf[S]
 

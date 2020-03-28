@@ -7,8 +7,11 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor
 import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, NoInsert, NoQuery, NoSelect, NoUpdate, Unmapped}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor, MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, MappingReadForm, MappingWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.support.{MappedMapping, PrefixedMapping}
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.AbstractSeq
@@ -34,7 +37,7 @@ import scala.reflect.runtime.universe.TypeTag
   *
   * @tparam S value type of the mapped entity
   */
-trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
+trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 	/** Base trait for all components of this mapping. Creating an instance automatically lists it within owning mapping
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.
@@ -87,17 +90,13 @@ trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 
 		/** Register itself and all its subcomponents within the parent mapping. This method will be called only once. */
 		protected[RowSchema] def init() :Unit = composite.synchronized {
-			if (!isSymLink(this)) {
-				initComponents += this
-				initSubcomponents += this
-				subcomponents foreach { c => liftSubcomponent(c) }
-			}
+			initComponents += this
+			initSubcomponents += this
+			subcomponents foreach { c => liftSubcomponent(c) }
 		}
 
 		protected[RowSchema] def liftSubcomponent[U](subcomponent :Component[U]) :Component[U] = subcomponent match {
 			case mine :RowSchema[_, _]#ComponentMapping[_] if mine belongsTo composite => subcomponent
-
-			case _ if isSymLink(subcomponent) => subcomponent
 
 			case _ => composite.synchronized {
 				initSelectors.getOrElse(subcomponent, {
@@ -124,7 +123,7 @@ trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 						)
 
 					val lifted = subcomponent match {
-						case column :ColumnMapping[_, U] =>
+						case column :ColumnMapping[_, _] =>
 							new ColumnComponent[U](
 								subextractor.optional, subextractor.requisite, columnPrefix + column.name, subbuffs
 							)(column.form)
@@ -181,9 +180,7 @@ trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 		extends EagerDeepProxy[Component[T], O, T](target) with ComponentMapping[T]
 	{
 		protected[RowSchema] override def init() :Unit = composite.synchronized {
-			if (!isSymLink(this)) { //don't lift subcomponents as its done in `adapt` by EagerDeepProxy
-				initSubcomponents += this        //don't include ourselves on the composite.components list.
-			}
+			initSubcomponents += this //don't lift subcomponents, don't include in the composite.components list.
 		}
 
 		override def canEqual(that :Any) :Boolean = that match {
@@ -326,10 +323,8 @@ trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 	{ nest =>
 
 		protected[RowSchema] override def init() :Unit = composite.synchronized {
-			if (!isSymLink(this)) { //don't lift subcomponents as its done by EagerDeepProxy
-				initComponents += this
-				initSubcomponents += this
-			}
+			initComponents += this
+			initSubcomponents += this //don't lift subcomponents as its done by EagerDeepProxy
 		}
 
 		protected override def adapt[X](component :egg.Component[X]) :Component[X] =
@@ -653,80 +648,12 @@ trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 
 
 
-	/** Performs the assembly of this mapping's subject from the components. This method is called in a double-dispatch
-	  * from `optionally`/`apply`, which should be used by external mappings, as they are responsible for
-	  * introducing default values and any manipulation of the final values. The standard implementation
-	  * invokes [[net.noresttherein.oldsql.schema.RowSchema.construct construct(pieces)]] as long as
-	  * [[net.noresttherein.oldsql.schema.RowSchema.isDefined isDefined(pieces)]] returns `true`. Additionally,
-	  * all `NoSuchElementException` exceptions (thrown by default by components `apply` method when no value can
-	  * be assembled or is predefined) are caught and result in returning `None`. All other exceptions,
-	  * including `NullPointerException` which may result from unavailable columns, are propagated. Subclasses should
-	  * override those methods instead of `assemble`.
-	  * @return `Some(construct(pieces))` if `isDefined(pieces)` returns `true` or `None` if it returns `false` or
-	  *        a `NoSuchElementException` is caught.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.construct construct]]
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.isDefined isDefined]]
-	  */
-	override def assemble(pieces: Pieces): Option[S] =
-		try {
-			isDefined(pieces) ifTrue construct(pieces)
-		} catch {
-			case _ :NoSuchElementException => None
-		}
-
-	/** The final target of the assembly process for this mapping invoked directly by `assemble` (and, indirectly,
-	  * `optionally`/`apply`. It is left to implement for subclasses and, in order to make it the simplest possible,
-	  * is not responsible for recognizing whether a value can be assembled, but rather this functionality is
-	  * shared by `isDefined` method, which can force `assemble` to return `None` without calling `construct`,
-	  * and catching later any `NoSuchElementException`s thrown from  this method and resulting from a failed assembly
-	  * of a subcomponent. Another difference is that `pieces` is declared as an implicit parameter, which coupled
-	  * with an implicit conversion of `Component[O, T]` to `T` in its presence, allows to use the components directly
-	  * as arguments to the constructor of the returned subject instance. For example:
-	  * {{{
-	  *     case class Address(country :String, city :String, zip :String, street :String, no :String)
-	  *
-	  *     class AddressSchema[O] extends RowSchema[O, Address] {
-	  *         val country = column(_.country)
-	  *         val city = column(_.city)
-	  *         val zip = column(_.zip)
-	  *         val street = column(_.street)
-	  *         val no = column(_.no)
-	  *
-	  *         override def construct(implicit pieces :Pieces) :Address =
-	  *             Address(country, city, zip, street, no)
-	  *     }
-	  * }}}
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.isDefined isDefined]]
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.assemble assemble]]
-	  */
-	protected def construct(implicit pieces :Pieces) :S
-
-	/** Verifies the presence of necessary subcomponents in the input pieces for the assembly to be successful.
-	  * This method is called from `assemble` in order to possibly prevent it from proceeding with the assembly
-	  * and  calling `construct`, but return `None` instead. The contract obliges it only detect the situations
-	  * where `construct` would certainly fail with an exception, but not necessarily all of them. It is designed
-	  * primarily with the thought about outer joins where all columns of a table can carry `null` values.
-	  * For this reason, it simply always returns `true`, but entity tables override it with a check of availability
-	  * of the primary key. The subclasses are free to implement any condition here.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.construct construct]]
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.assemble assemble]]
-	  */
-	protected def isDefined(pieces :Pieces) :Boolean = true
-
-
 
 	/** Implicitly convert a component of this instance into its subject value by assembling it from implicitly
 	  * available `Pieces` for this mapping. This will work for both direct components and indirect subcomponents.
 	  */
 	implicit def valueOf[T](component :ComponentMapping[T])(implicit pieces :Pieces) :T =
-		if (component belongsTo this) pieces(component.selector)
-		else pieces(apply(component))
-
-	/** Implicitly convert a component of this instance into its subject value by assembling it from implicitly
-	  * available `Pieces` for this mapping. This will work for both direct components and indirect subcomponents.
-	  */
-	implicit def valueOf[T](component :Component[T])(implicit pieces :Pieces) :T =
-		pieces(apply(component))
+		pieces(component.selector)
 
 
 
@@ -827,15 +754,15 @@ trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 			throw new IllegalStateException(
 				s"Attempted to include $column as a column of $this: included component's columns: ${column.columns}; sqlName: ${column.sqlName}"
 			)
-		if (!isSymLink(column)) {
-			initColumns += column
-			if (NoSelect.disabled(column)) initSelectable += column
-			if (NoQuery.disabled(column)) initQueryable += column
-			if (NoUpdate.disabled(column)) initUpdatable += column
-			if (NoInsert.disabled(column)) initInsertable += column
-			if (AutoInsert.enabled(column)) initAutoInsert += column
-			if (AutoUpdate.enabled(column)) initAutoUpdate += column
-		}
+
+		initColumns += column
+		if (NoSelect.disabled(column)) initSelectable += column
+		if (NoQuery.disabled(column)) initQueryable += column
+		if (NoUpdate.disabled(column)) initUpdatable += column
+		if (NoInsert.disabled(column)) initInsertable += column
+		if (AutoInsert.enabled(column)) initAutoInsert += column
+		if (AutoUpdate.enabled(column)) initAutoUpdate += column
+
 		column
 	}
 
@@ -972,7 +899,7 @@ trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 		def isInitialized :Boolean = initialized != null
 
 		def initialize() :Unit = {
-			cached = uninitialized.result.toUniqueSeq
+			cached = uninitialized.result.toUnique
 			initialized = cached
 			uninitialized = null
 		}
@@ -1031,6 +958,19 @@ trait RowSchema[O, S] extends GenericMapping[O, S] { composite =>
 	override val insertForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.insertForm)
 	override val updateForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.updateForm)
 
+
+
+	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
+		MappedMapping[this.type, O, S, X](this, there, back)
+
+	override def flatMap[X](there :S => Option[X], back :X => Option[S])
+	                       (implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
+		MappedMapping.opt[this.type, O, S, X](this, there, back)
+
+
+	override def qualified(prefix :String) :Adapted[this.type] = PrefixedMapping.qualified(prefix, this)
+
+	override def prefixed(prefix :String) :Adapted[this.type] = PrefixedMapping(prefix, this)
 
 }
 

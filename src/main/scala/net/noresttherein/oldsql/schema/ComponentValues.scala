@@ -222,7 +222,7 @@ trait ComponentValues[M <: Mapping] {
 object ComponentValues {
 	type TypedValues[M <: TypedMapping[T], T] = ComponentValues[M]
 
-
+	//todo: this implementation is very logger unfriendly, with no info about actual values
 	/** Returns ComponentValues using the given function as the source of values for components. Please note that you
 	  * can supply a `Map` as an argument.
 	  * @param values factory of values for components, should always return the value of the type correct for the component argument!
@@ -398,7 +398,7 @@ object ComponentValues {
 
 		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] = {
 			val vals = values \ extractor
-			if (vals eq this) crosscast[extractor.lifted.type]
+			if (vals eq values) crosscast[extractor.lifted.type]
 			else new AliasedComponentValues[extractor.lifted.type](
 				alias.asInstanceOf[extractor.lifted.AnyComponent => extractor.lifted.AnyComponent],
 				vals
@@ -674,7 +674,7 @@ object ComponentValues {
 			if (components.contains(extractor.lifted)) extractor.get(value)
 			else None
 
-		override def toString :String = components.mkString("Disassembled(" + value + ", ", ", ", ")")
+		override def toString :String = components.mkString("Disassembled(" + value + ": ", ", ", ")")
 	}
 
 
@@ -689,16 +689,19 @@ object ComponentValues {
 
 
 
-	private class IndexedComponentValues[M <: Mapping](vals :Seq[Any], index :AnyComponent[M#Owner] => Int)
+	private class IndexedComponentValues[M <: Mapping](vals :Seq[Option[Any]], index :AnyComponent[M#Owner] => Int)
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] = {
 			val i = index(extractor.lifted)
 			if (i < 0) None
-			else Some(vals(i).asInstanceOf[T])
+			else vals(i).asInstanceOf[Option[T]]
 		}
 
-		override def toString :String = vals.mkString("ComponentValues(", ", ", ")")
+		override def toString :String = vals.map {
+			case Some(x) => String.valueOf(x)
+			case None => "_"
+		}.mkString("ComponentValues(", ", ", ")")
 	}
 
 

@@ -130,7 +130,7 @@ object ColumnReadForm {
 		new OptionMappedSQLReadForm[S, T](map) with OptionMappedColumnReadForm[S, T]
 
 	def optMap[S :ColumnReadForm, T](map :Option[S] =>Option[T], nullValue : =>T) :ColumnReadForm[T] =
-		optMap(map)(implicitly[ColumnReadForm[S]], NullValue.byName(nullValue))
+		optMap(map)(implicitly[ColumnReadForm[S]], NullValue.eval(nullValue))
 
 
 

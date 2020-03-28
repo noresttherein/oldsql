@@ -4,11 +4,9 @@ import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
-import net.noresttherein.oldsql.schema.ColumnWriteForm.LazyColumnWriteForm
-import net.noresttherein.oldsql.schema.SQLForm.{CombinedForm, FlatMappedSQLForm, JDBCSQLType, LazyForm, MappedSQLForm, NullableForm, NullValue, OptionForm, Tuple2Form}
+import net.noresttherein.oldsql.schema.SQLForm.{NullValue, Tuple2Form}
 import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, ChainWriteForm, EmptyWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, SeqWriteForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, ChainWriteForm, EmptyWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, OptionWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.immutable.Seq
@@ -39,7 +37,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
 	def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] =
-		SQLForm.map[T, X](map, unmap)(this, NullValue[X])
+		SQLForm.map[T, X](map)(unmap)(this, NullValue[X])
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying
 	  * column(s) is null, the `nullValue` provided  here is returned directly from `opt`/`apply`
@@ -52,8 +50,8 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 		bimap(map)(unmap)(NullValue(nullValue))
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values.
-	  * The `nullValue` of the new form is the result of mapping this instance's `nulls` with the given function,
-	  * meaning it must handle `null` (or its counterpart for `T`) without throwing an exception.
+	  * The `nullValue` of the new form is the result of mapping this instance's `nulls` with the given function.
+	  * Any exceptions thrown in that case will be propagated when the `nullValue` for the new form is called.
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
@@ -71,7 +69,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
 	def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
-		SQLForm.flatMap(map, unmap)(this, NullValue[X])
+		SQLForm.flatMap(map)(unmap)(this, NullValue[X])
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying
 	  * column(s) is null, or `map` returns `None`, the `nullValue` provided  here is returned directly
@@ -87,8 +85,8 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values.
 	  * The `nullValue` of the new form is the result of mapping this instance's `nulls` with the given function,
 	  * meaning it must handle `null` (or its counterpart for `T`) without throwing an exception. If `map` returns
-	  * `None` for `this.nullValue`, a `NoSuchElementException` will be thrown; this can happen both from this method,
-	  * and when `nullValue` for the created form is accessed, depending on how this form handles null values.
+	  * `None` for `this.nullValue`, a `NoSuchElementException` will be thrown when `nullValue` for the created form
+	  * is accessed. Similarly, any exceptions thrown by the `map` function will be propagated.
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
@@ -134,23 +132,22 @@ object SQLForm extends JDBCTypes {
 
 
 
-	def flatMap[S :SQLForm, T :NullValue](map :S => Option[T], unmap :T => Option[S]) :SQLForm[T] = SQLForm[S] match {
+	def flatMap[S :SQLForm, T :NullValue](map :S => Option[T])(unmap :T => Option[S]) :SQLForm[T] = SQLForm[S] match {
 		case t :ColumnForm[_] =>
-			ColumnForm.flatMap(map, unmap)(t.asInstanceOf[ColumnForm[S]], NullValue[T])
+			ColumnForm.flatMap(map)(unmap)(t.asInstanceOf[ColumnForm[S]], NullValue[T])
 		case _ =>
 			new FlatMappedSQLForm[S, T](map, unmap)
 	}
 
-	def map[S, T](map :S => T, unmap :T => S)(implicit source :SQLForm[S], nulls :NullValue[T] = null) :SQLForm[T] =
+	def map[S, T](map :S => T)(unmap :T => S)(implicit source :SQLForm[S], nulls :NullValue[T] = null) :SQLForm[T] =
 		SQLForm[S] match {
 			case t :ColumnForm[_] =>
-				ColumnForm.map(map, unmap)(
+				ColumnForm.map(map)(unmap)(
 					t.asInstanceOf[ColumnForm[S]], if (nulls == null) source.nulls.map(map) else nulls
 				)
 			case _ =>
 				new MappedSQLForm[S, T](map, unmap)
 		}
-
 
 
 	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
@@ -181,14 +178,26 @@ object SQLForm extends JDBCTypes {
 		  */
 		def value :T
 
+		/** Returns the `value` inside a `Some` unless it would throw an exception, in which case `None` is returned. */
+		def toOption :Option[T] = Option(value)
+
 		/** Adapt this null value to some other type `U`. In most cases, this will simply apply the function to
-		  * the wrapped value, but special instances may propagate themselves instead.
+		  * the wrapped value, but special instances may propagate themselves instead. If the function throws
+		  * an exception for the `value`, it will be swallowed and a `NullValue` instance which reevaluates
+		  * `map(this.value)` at each access will be returned.
 		  */
 		def map[U](f :T => U) :NullValue[U]
 
+		/** Adapt this null value to some other type `U`. In most cases, this will simply apply the function to
+		  * the wrapped value, but special instances may propagate themselves instead. If the function throws
+		  * an exception for the `value`, it will be swallowed and a `NullValue` instance which reevaluates
+		  * `map(this.value)` at each access will be returned. Returning `None` by the function has the same
+		  * effect as throwing a `NoSuchElementException`, which will be throw by the returned `NullValue` instead
+		  * of letting it out of this method.
+		  */
 		def flatMap[U](f :T => Option[U]) :NullValue[U] =
 			map(tnull => f(tnull) getOrElse {
-				throw new NoSuchElementException("No corresponding null value for " + tnull + " of " + this)
+			 	throw new NoSuchElementException("No corresponding null value for " + tnull + " of " + this)
 			})
 
 	}
@@ -207,7 +216,13 @@ object SQLForm extends JDBCTypes {
 		/** Create a new instance wrapping the given value of `T` as the 'null' value. */
 		def apply[T](sqlNull :T) :NullValue[T] = new NullValue[T] {
 			override def value = sqlNull
-			override def map[U](f :T => U) :NullValue[U] = NullValue(f(sqlNull))
+
+			override def map[U](f :T => U) :NullValue[U] = try {
+					NullValue(f(sqlNull))
+				} catch {
+					case _ :Exception => NullValue.eval(f(sqlNull))
+				}
+
 			override def toString :String = "Null(" + value + ")"
 		}
 
@@ -216,9 +231,9 @@ object SQLForm extends JDBCTypes {
 		  * While returning different values for different calls is strongly discouraged, this allows to provide
 		  * an expression which throws an exception or references a not initialized as of yet value.
 		  */
-		def byName[T](eval: =>T) :NullValue[T] = new NullValue[T] {
-			override def value :T = eval
-			override def map[U](f :T => U) = byName(f(eval))
+		def eval[T](whenNull: =>T) :NullValue[T] = new NullValue[T] {
+			override def value :T = whenNull
+			override def map[U](f :T => U) = eval(f(whenNull))
 			override def toString = "Null(?)"
 		}
 
@@ -227,6 +242,7 @@ object SQLForm extends JDBCTypes {
 		  */
 		final val NotNull :NullValue[Nothing] = new NullValue[Nothing] {
 			override def value = throw new NullPointerException("This type does not allow null values.")
+			override def toOption = scala.None
 			override def map[U](f :Nothing => U) :NullValue[U] = this
 			override def toString = "NotNull"
 		}
@@ -454,43 +470,18 @@ object SQLForm extends JDBCTypes {
 
 
 
-	private[schema] class OptionForm[T](implicit form :SQLForm[T]) extends SQLForm[Option[T]] {
-		override def readColumns :Int = form.readColumns
-		override def writtenColumns :Int = form.writtenColumns
+	private[schema] class OptionForm[T](implicit some :SQLForm[T])
+		extends OptionWriteForm[T] with SQLForm[Option[T]]
+	{
+		override def readColumns :Int = some.readColumns
 
-
-		override def set(position :Int)(statement :PreparedStatement, value :Option[T]) :Unit =
-			form.setOpt(position)(statement, value)
-
-		override def setNull(position :Int)(statement :PreparedStatement) :Unit = form.setNull(position)(statement)
-
-		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = form.opt(position)(res).map(Option.apply)
-		override def apply(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
-
-		override def literal(value :Option[T]) :String = value match {
-			case Some(x) => form.literal(x)
-			case _ => form.nullLiteral
-		}
-		override def inlineLiteral(value :Option[T]) :String = value match {
-			case Some(x) => form.inlineLiteral(x)
-			case _ => form.inlineNullLiteral
-		}
+		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = some.opt(position)(res).map(Option.apply)
+		override def apply(position :Int)(res :ResultSet) :Option[T] = some.opt(position)(res)
 
 		override def nullValue :Option[T] = None
 
-		override def nullLiteral :String = form.nullLiteral
-		override def inlineNullLiteral :String = form.inlineNullLiteral
+		protected override def form :SQLForm[T] = some
 
-		private def some :SQLForm[T] = form
-
-		override def equals(that :Any) :Boolean = that match {
-			case opt :OptionForm[_] => opt.some == form
-			case _ => false
-		}
-
-		override def hashCode :Int = form.hashCode
-
-		override def toString :String = "Option[" + form + "]"
 	}
 
 

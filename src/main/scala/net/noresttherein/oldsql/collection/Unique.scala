@@ -47,6 +47,11 @@ trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with
 	  */
 	def :+[U >: T](elem :U) :Unique[U]
 
+
+	def :++[U >: T](elems :IterableOnce[U]) :Unique[U]
+
+	def ++:[U >: T](elems :IterableOnce[U]) :Unique[U]
+
 	override def stringPrefix = "Unique"
 }
 
@@ -61,8 +66,8 @@ object Unique extends IterableFactory[Unique] {
 
 	override def from[T](elems :IterableOnce[T]) :Unique[T] = elems match {
 		case _ :Unique[_] => elems.asInstanceOf[Unique[T]]
-		case seq :UniqueSeqAdapter[_] => seq.toUniqueSeq.asInstanceOf[Unique[T]]
-		case set :UniqueSetAdapter[_] => set.toUniqueSeq.asInstanceOf[Unique[T]]
+		case seq :UniqueSeqAdapter[_] => seq.toUnique.asInstanceOf[Unique[T]]
+		case set :UniqueSetAdapter[_] => set.toUnique.asInstanceOf[Unique[T]]
 		case _ => (newBuilder[T] ++= elems).result
 	}
 
@@ -86,14 +91,14 @@ object Unique extends IterableFactory[Unique] {
 
 	implicit def uniqueToSet[T](unique :Unique[T]) :Set[T] = unique.toSet
 
-	/** An implicit extension of any `Iterable` adding a `toUniqueSeq` method which converts it to a `Unique` instance.*/
-	implicit class implicitUnique[T](private val elems :Iterable[T]) extends AnyVal {
+	/** An implicit extension of any `Iterable` adding a `toUnique` method which converts it to a `Unique` instance.*/
+	implicit class implicitUnique[T](private val elems :collection.Iterable[T]) extends AnyVal {
 		/** A shorthand method for converting `this` collection to a `Unique`.
 		  * It delegates to `Unique.from`, meaning if `this` already is a `Unique` or collection created by
 		  * one of the `toSeq`, `toIndexedSeq`, `toSet` methods of a `Unique`, it will simply return the underlying
 		  * `Unique` instance.
 		  */
-		def toUniqueSeq :Unique[T] = from(elems)
+		def toUnique :Unique[T] = from(elems)
 	}
 
 
@@ -154,6 +159,13 @@ object Unique extends IterableFactory[Unique] {
 
 		override def :+[U >: T](elem :U) :Unique[U] = items :+ elem
 
+		override def :++[U >: T](elems :IterableOnce[U]) :Unique[U] =
+			if (elems.iterator.isEmpty) this
+			else items :++ elems
+
+		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
+			if (elems.iterator.isEmpty) this
+			else elems ++: items
 
 		override def concat[B >: T](suffix :IterableOnce[B]) :Unique[B] = items ++ suffix
 
@@ -192,14 +204,24 @@ object Unique extends IterableFactory[Unique] {
                     index.asInstanceOf[Map[U, Int]].map(pair => pair._1 -> (pair._2 + 1)).updated(elem, 0)
                 )
 
+
+		override def :++[U >: T](elems :IterableOnce[U]) :Unique[U] = concat(elems)
+
+		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
+			if (elems.iterator.isEmpty)
+				this
+			else
+	            (new UniqueBuilder ++= elems ++= this).result()
+
+
 		override def concat[U >: T](that :IterableOnce[U]) :Unique[U] =
 			if (that.iterator.isEmpty)
 				this
 			else
                 (new UniqueBuilder(
 					IndexedSeq.newBuilder[U] ++= items,
-					index.asInstanceOf[Map[U, Int]]) ++= that
-				).result()
+					index.asInstanceOf[Map[U, Int]]
+                ) ++= that).result()
 
 	}
 
@@ -228,7 +250,7 @@ object Unique extends IterableFactory[Unique] {
 
 		override def toSet[U >: T] :Set[U] = unique.toSet
 
-		def toUniqueSeq :Unique[T] = unique
+		def toUnique :Unique[T] = unique
 	}
 
 
@@ -250,7 +272,7 @@ object Unique extends IterableFactory[Unique] {
 
 		override def toSeq :Seq[T] = unique.toSeq
 
-		def toUniqueSeq :Unique[T] = unique
+		def toUnique :Unique[T] = unique
 	}
 
 

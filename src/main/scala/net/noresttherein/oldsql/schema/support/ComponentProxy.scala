@@ -2,7 +2,8 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, TypedMapping}
-import net.noresttherein.oldsql.schema.{Mapping, Buff, SQLReadForm, SQLWriteForm, GenericMapping}
+import net.noresttherein.oldsql.schema.{Buff, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 
 import scala.collection.mutable
 
@@ -18,8 +19,6 @@ trait ComponentProxy[O, S] extends GenericMapping[O, S] with MappingNest[TypedMa
 
 	override def nullValue :Option[S] = egg.nullValue
 
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentProxy[_, _]]
-
 }
 
 
@@ -31,7 +30,7 @@ object ComponentProxy {
 
 
 	/** A skeleton of a mapping proxy which uses the components of the proxied mapping as-is. */
-	trait ShallowProxy[O, S] extends ComponentProxy[O, S] with MappingAdapter[Component[O, S], O, S, S] {
+	trait ShallowProxy[O, S] extends ComponentProxy[O, S] with ShallowAdapter[Component[O, S], O, S, S] {
 		protected override val egg :Component[S]
 
 		override def apply[T](component :Component[T]) :Selector[T] =
@@ -58,8 +57,6 @@ object ComponentProxy {
 
 		override def assemble(pieces :Pieces) :Option[S] = egg.optionally(pieces.compatible[egg.type](egg))
 
-
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ShallowProxy[_, _]]
 
 		override def toString :String = "->" + egg
 	}
@@ -99,7 +96,7 @@ object ComponentProxy {
 		protected def dealias[T](lifted :Component[T]) :egg.Component[T]
 
 		override def components :Unique[Component[_]] = Unique(adapt(egg)) //egg.components.map(alias(_))
-		override def subcomponents :Unique[Component[_]] = egg.subcomponents.map(alias(_))
+		override def subcomponents :Unique[Component[_]] = adapt(egg) +: egg.subcomponents.map(alias(_))
 
 		override def columns :Unique[Component[_]] = egg.columns.map(alias(_))
 		override def selectable :Unique[Component[_]] = egg.selectable.map(alias(_))
@@ -129,13 +126,11 @@ object ComponentProxy {
 
 
 
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[DeepProxy[_, _]]
-
 		override def toString :String = "->>" + egg
 	}
 
 
-
+	//todo: look into removing Owner and Subject parameters
 	/** A `DeepProxy` implementation which eagerly initializes all column and component lists and creates
 	  * a fixed mapping between components of the adapted mapping and their adapted counterparts as well as the
 	  * reverse.
@@ -148,7 +143,7 @@ object ComponentProxy {
 
 		override val components :Unique[Component[_]] = Unique(alias(egg))
 
-		override val subcomponents :Unique[Component[_]] = egg.subcomponents.map(alias(_))
+		override val subcomponents :Unique[Component[_]] = alias(egg) +: egg.subcomponents.map(alias(_))
 		override val columns :Unique[Component[_]] = egg.columns.map(alias(_))
 
 		override val selectable :Unique[Component[_]] = egg.selectable.map(alias(_))

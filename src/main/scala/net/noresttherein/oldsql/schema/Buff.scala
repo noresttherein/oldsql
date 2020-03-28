@@ -222,48 +222,6 @@ object Buff {
 
 
 
-/*
-	/** A mapping buff marking a given component as a sym link to another component under the root mapping.
-	  * The value for this component is set as the value of the component at the end of the path and is never
-	  * written to the database, leaving that responsibility to the linked component.
-	  */
-	case class SymLink[X <: SingletonMapping, Y <: TypedSingleton[T], T, V] private
-			(target :TypedComponentPath[X, Y, T], value :T=>V)
-		extends Buff[V]
-	{
-		override def map[O](there: V => O): Buff[O] = new SymLink(target, value andThen there)
-
-		def startingWith[M <: SingletonMapping](mapping :M) :Option[SymLink[M, Y, T, V]] =
-			this.asInstanceOf[SymLink[M, Y, T, V]].providing(target.start==mapping)
-
-
-		override def factory: BuffType = SymLink
-	}
-
-	object SymLink extends BuffType {
-		def apply[X<:SingletonMapping, Y <: TypedSingleton[T], T](path :TypedComponentPath[X, Y, T]) :SymLink[X, Y, T, T] =
-			new SymLink(path, identity[T])
-
-		def apply[T](mapping :Mapping)(target :mapping.Component[T]) :SymLink[mapping.type, target.type, T, T] =
-			new SymLink[mapping.type, target.type, T, T](mapping \\ target, identity[T])
-
-		override def test[T](buff: Buff[T]): Option[SymLink[_<:Mapping, _<:Mapping, _, T]] =
-			buff.asSubclass[SymLink[_<:Mapping, _<:Mapping, _, T]]
-
-		def startsWith[M <: SingletonMapping, T](mapping :M)(component :mapping.Component[T])
-				:Option[SymLink[M, _ <: TypedSingleton[X], X, T] forSome { type X }]  =
-			component.buffs.toStream.flatMap(startsWith(mapping, _)).headOption //.asInstanceOf[SymLink[M, Mapping[Any], Any, T]]
-
-		def startsWith[M <: SingletonMapping, T](mapping :M, buff :Buff[T])
-				:Option[SymLink[M, _ <: TypedSingleton[X], X, T] forSome { type X }] =
-			buff match {
-				case sl :SymLink[_,_,_,_] if sl.target.start == mapping =>
-					Some(sl.asInstanceOf[SymLink[M, TypedSingleton[Any], Any, T]])
-				case _ => None
-			}
-
-	}
-*/
 
 	/** A buff type marking that a column contains an application generated timestamp set once, when the row is inserted.
 	  * It is an `ExtraInsert` buff, meaning it will be automatically included in every insert and the value present

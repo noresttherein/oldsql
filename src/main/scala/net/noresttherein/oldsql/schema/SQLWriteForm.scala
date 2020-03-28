@@ -260,7 +260,7 @@ object SQLWriteForm {
 
 
 	implicit def OptionWriteForm[T :SQLWriteForm] :SQLWriteForm[Option[T]] =
-		SQLWriteForm[T].flatUnmap(identity[Option[T]])
+		new OptionWriteForm[T] { val form :SQLWriteForm[T] = SQLWriteForm[T] }
 
 	implicit def SomeWriteForm[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
 		SQLWriteForm[T].unmap(_.get)
@@ -559,6 +559,41 @@ object SQLWriteForm {
 	}
 
 
+
+
+
+	private[schema] trait OptionWriteForm[-T] extends SQLWriteForm[Option[T]] {
+		protected def form :SQLWriteForm[T]
+
+		override def writtenColumns :Int = form.writtenColumns
+
+		override def set(position :Int)(statement :PreparedStatement, value :Option[T]) :Unit =
+			form.setOpt(position)(statement, value)
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+			form.setNull(position)(statement)
+
+		override def literal(value :Option[T]) :String = value match {
+			case Some(x) => form.literal(x)
+			case None => form.nullLiteral
+		}
+		override def nullLiteral :String = form.nullLiteral
+
+		override def inlineLiteral(value :Option[T]) :String = value match {
+			case Some(x) => form.inlineLiteral(x)
+			case None => form.inlineNullLiteral
+		}
+		override def inlineNullLiteral :String = form.inlineNullLiteral
+
+		override def equals(that :Any) :Boolean = that match {
+			case opt :OptionWriteForm[_] => opt.form == form
+			case _ => false
+		}
+
+		override def hashCode :Int = form.hashCode
+
+		override def toString :String = "Option[" + form + "]"
+	}
 
 
 

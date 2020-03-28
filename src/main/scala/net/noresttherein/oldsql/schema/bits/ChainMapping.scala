@@ -1,8 +1,9 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{Chain, Unique}
-import net.noresttherein.oldsql.collection.Chain.{~, GenericFun, MapChain, Self}
+import net.noresttherein.oldsql.collection.Chain.{~, MapChain}
 import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.generic.{GenericFun, Self}
 import net.noresttherein.oldsql.schema.{Buff, GenericMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
@@ -46,8 +47,6 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O,
 		rec(schema, identity[C])
 	}
 
-	override val subcomponents :Unique[Component[_]] = Unique.Lazy(components.flatMap(_.subcomponents))
-	override val columns :Unique[Component[_]] = Unique.Lazy(components.flatMap(_.columns))
 
 
 	override def apply[T](component :Component[T]) :Selector[T] = {
@@ -83,8 +82,6 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O,
 		)
 
 
-	override def buffs :Seq[Buff[S]] = Nil
-
 	override def toString :String = schema.toString
 }
 
@@ -99,11 +96,15 @@ object ChainMapping {
 	@inline def apply[O] :Factory[O] = new Factory[O] {}
 
 
+
 	trait Factory[O] extends Any {
+
 		@inline def apply[C <: Chain, S <: Chain](componentChain :C)
 		                                         (implicit values :MapChain[ComponentOf[O]#T, C, Self, S])
 				:ChainMapping[C, S, O, S] =
 			apply[C, S, S](componentChain, Some(_:S), identity[S])
+
+
 
 		@inline def apply[C <: Chain, T <: Chain, S](componentChain :C, fromChain :T => Option[S], toChain :S => T)
 		                                            (implicit values :MapChain[ComponentOf[O]#T, C, Self, T])

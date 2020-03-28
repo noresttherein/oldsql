@@ -70,7 +70,7 @@ trait SQLReadForm[+T] {
 	  * This wrapper can be implicitly passed as a type class, even if the form does not support `null` values
 	  * (i.e. `nullValue` throws an exception), which would not be possible by simply using `nullValue`.
 	  */
-	implicit def nulls :NullValue[T] = NullValue.byName(nullValue)
+	implicit def nulls :NullValue[T] = NullValue.eval(nullValue)
 
 	/** Number of columns read by this form. This must be a constant as it is typically is used to calculate offsets
 	  * for various forms once per `ResultSet` rather than per row. Naturally, there is no requirement for actual
@@ -102,8 +102,7 @@ trait SQLReadForm[+T] {
 
 	/** Maps the value of `T` read by this form to `X` in order to obtain a form for `X`. Note that the given
 	  * function may be called for `null` arguments, even if the underlying columns have a ''not null'' constraint
-	  * in case of outer join queries. Note that `this.nullValue` is never called, directly or indirectly,
-	  * by the created form.
+	  * in case of outer join queries.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
 	  */
 	def mapNull[X](fun :T => X) :SQLReadForm[X] = map(fun)(nulls.map(fun))
@@ -138,9 +137,9 @@ trait SQLReadForm[+T] {
 	  * Unlike `map`, not all values of `T` may have an associated counterpart in `X`, in which case the given function
 	  * returns `None` and the new form defaults to the given `nullValue`. The `nullValue` for the new form
 	  * is determined by applying the given function to the `nullValue` of this form. If the function returns `None`,
-	  * a `NoSuchElementException` is thrown - either by this method or when the `nullValue` of the new form
-	  * is actually accessed.
-	  * @throws NoSuchElementException if `fun(this.nullValue)` returns `None`.
+	  * a `NoSuchElementException` is thrown when the new form's `nullValue` method is called. If the function throws
+	  * a `NullPointerException` or `NoSuchElementException` for the null value, the same exception will be thrown
+	  * from the `nullValue` method.
 	  */
 	def flatMapNull[X](fun :T => Option[X]) :SQLReadForm[X] = flatMap(fun)(nulls.flatMap(fun))
 
@@ -273,7 +272,7 @@ object SQLReadForm {
 		}
 
 	def optMap[S :SQLReadForm, T](map :Option[S] => Option[T], nullValue : =>T) :SQLReadForm[T] =
-		optMap(map)(SQLReadForm[S], NullValue.byName(nullValue))
+		optMap(map)(SQLReadForm[S], NullValue.eval(nullValue))
 
 
 

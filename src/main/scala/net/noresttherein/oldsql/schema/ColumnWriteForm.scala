@@ -2,7 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
-import net.noresttherein.oldsql.schema.SQLWriteForm.{FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm}
+import net.noresttherein.oldsql.schema.SQLForm.JDBCSQLType
+import net.noresttherein.oldsql.schema.SQLWriteForm.{FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, OptionWriteForm}
 
 
 
@@ -88,7 +89,7 @@ object ColumnWriteForm {
 
 
 	implicit def OptionColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Option[T]] =
-		ColumnWriteForm[T].flatUnmap(identity[Option[T]])
+		new OptionColumnWriteForm[T] { val form :ColumnWriteForm[T] = ColumnWriteForm[T] }
 
 	implicit def SomeColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Some[T]] =
 		ColumnWriteForm[T].unmap(_.get)
@@ -112,6 +113,15 @@ object ColumnWriteForm {
 		override def &&[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] =
 			if (isInitialized) read && this
 			else ColumnForm.Lazy(read && form)
+	}
+
+
+
+
+
+	private[schema] trait OptionColumnWriteForm[T] extends OptionWriteForm[T] with ColumnWriteForm[Option[T]] {
+		protected override def form :ColumnWriteForm[T]
+		override def sqlType :JDBCSQLType = form.sqlType
 	}
 
 }

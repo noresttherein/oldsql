@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql.ResultSet
 
 import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
-import net.noresttherein.oldsql.schema.ColumnWriteForm.LazyColumnWriteForm
+import net.noresttherein.oldsql.schema.ColumnWriteForm.{LazyColumnWriteForm, OptionColumnWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{CombinedForm, FlatMappedSQLForm, JDBCSQLType, LazyForm, MappedSQLForm, NullableForm, NullValue, OptionForm}
 
 
@@ -18,7 +18,7 @@ trait BaseColumnForm {
 trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteForm[T] {
 
 	override def bimap[X :NullValue](map :T => X)(unmap :X => T) :ColumnForm[X] =
-		ColumnForm.map[T, X](map, unmap)(this, NullValue[X])
+		ColumnForm.map[T, X](map)(unmap)(this, NullValue[X])
 
 	override def bimap[X](map :T => X, nullValue :X)(unmap :X => T) :ColumnForm[X] =
 		bimap(map)(unmap)(NullValue(nullValue))
@@ -28,7 +28,7 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 
 
 	override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
-		ColumnForm.flatMap(map, unmap)(this, NullValue[X])
+		ColumnForm.flatMap(map)(unmap)(this, NullValue[X])
 
 	override def biflatMap[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :ColumnForm[X] =
 		biflatMap(map)(unmap)(NullValue(nullValue))
@@ -86,19 +86,18 @@ object ColumnForm {
 
 
 
-	def map[S, T](map :S => T, unmap :T => S)(implicit source :ColumnForm[S], nulls :NullValue[T] = null) :ColumnForm[T] =
+	def map[S, T](map :S => T)(unmap :T => S)(implicit source :ColumnForm[S], nulls :NullValue[T] = null) :ColumnForm[T] =
 		new MappedSQLForm[S, T](map, unmap) with MappedColumnReadForm[S, T] with ColumnForm[T]
 
-	def flatMap[S :ColumnForm, T :NullValue](map :S => Option[T], unmap :T => Option[S]) :ColumnForm[T] =
+	def flatMap[S :ColumnForm, T :NullValue](map :S => Option[T])(unmap :T => Option[S]) :ColumnForm[T] =
 		new FlatMappedSQLForm[S, T](map, unmap) with FlatMappedColumnReadForm[S, T] with ColumnForm[T]
 
 
 
 	implicit def OptionColumnForm[T :ColumnForm] :ColumnForm[Option[T]] =
-		new OptionForm[T] with ColumnForm[Option[T]] {
-			override val sqlType = implicitly[ColumnForm[T]].sqlType
-
-			override def read(position :Int)(res :ResultSet) = ColumnForm[T].opt(position)(res)
+		new OptionForm[T] with OptionColumnWriteForm[T] with ColumnForm[Option[T]] {
+			override val form = ColumnForm[T]
+			override def read(position :Int)(res :ResultSet) :Option[T] = ColumnForm[T].opt(position)(res)
 		}
 
 	implicit def SomeColumnForm[T :ColumnForm] :ColumnForm[Some[T]] =

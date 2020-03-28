@@ -12,8 +12,9 @@ import net.noresttherein.oldsql.schema.{GenericMapping, Mapping, SQLReadForm, SQ
   */
 trait LazyMapping[O, S] extends GenericMapping[O, S] {
 
-//	override val subcomponents :Unique[Component[_]] = Unique.Lazy(super.subcomponents)
+	override val subcomponents :Unique[Component[_]] = Unique.Lazy(components.flatMap { c => c +: c.components })
 
+	override val columns :Unique[Component[_]] = Unique.Lazy(components.flatMap(_.columns))
 	override val selectable :Unique[Component[_]] = Unique.Lazy(super.selectable)
 	override val queryable :Unique[Component[_]] = Unique.Lazy(super.queryable)
 	override val updatable :Unique[Component[_]] = Unique.Lazy(super.updatable)
