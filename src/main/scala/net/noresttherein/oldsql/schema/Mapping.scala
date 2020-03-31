@@ -4,7 +4,7 @@ import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor, ConcreteSubclass, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.support.{MappedMapping, PrefixedMapping}
@@ -19,44 +19,129 @@ import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 
 
 
-/** Root interface of the  mapping class hierarchy to be used when the mapped type is of little importance (for example
-  * in collections of mappings for various types). All implementations are required to extend `Mapping[T]` instead,
-  * which is parameterized with the mapped type. The main reason for this duplicity is the limitation of scala type
-  * inference: a generic method `m[M&lt;:Mapping[T], T](m :M)` will infer type parameters `M`, `Nothing` when given
-  * an argument of type `M&lt;:Mapping[T]`. On the other hand, when a type parameter is declared `M&lt;:Mapping[_]`,
-  * the `Subject` is instantiated early as 'Any' and it is not equal to `m.Subject`, leading to other problems later.
+/** A `Mapping` describes how a scala type (declared as the member type `Subject` of this trait)
+  * is decomposed into the relational format of the underlying database. In particular, it declares all the columns used,
+  * but it can have a hierarchical structure of arbitrary limit, with nested components - and indeed the columns
+  * themselves - being also `Mapping` implementations. It is bidirectional in its nature and invariant regarding
+  * its subject type, but it is entirely possible to provide read-only (or write-only) implementations and mechanisms
+  * exist to define which columns are included in which operations, allowing to automatically omit some from all INSERT
+  * or UPDATE statements for example. In fact, the choice can be quite arbitrary and done in a case by case basis,
+  * for example having `BLOB` columns excluded by default from SELECT statements and requiring their explicit
+  * mention. This makes it different from [[net.noresttherein.oldsql.schema.SQLForm SQLForm]], which is used for actual
+  * interacting with the JDBC `ResultSet` and `PreparedStatement` API, but uses a fixed, strictly positional
+  * column schema and does not carry any information about column names or other meta data.
+  *
+  * `Mapping` instances used by this mapping to handle separate fragments of the mapped type are referred to as
+  * ''Components'' throughout the library; it is important to note however that a `Mapping` for a database table,
+  * for a whole query row of multiple joined tables, an 'Address' component of a handful of columns and a single
+  * column are not distinct in nature, with only the columns being treated specially in some rare circumstances.
+  *
+  * This homomorphism and structural nature, apart from promoting reusability and encouraging data encapsulation
+  * in the domain model rather than flat, simple mappings, have several implications. First, a components
+  * of a component of a mapping are called sometimes subcomponents when the distinction is being made, but are
+  * themselves also valid components of this mapping. It is encouraged that the assembly (and disassembly) process
+  * remains strictly hierarchical, with any instance responsible only on handling the transformation between
+  * its subject type and the values of its direct components. This simplifies several implementation details and
+  * increases reusability, but is not always feasible and a `Mapping` can always check the value of any of its
+  * subcomponents or columns in its process.
+  *
+  * Second, as a component type can easily appear several times as part
+  * of a larger mapping (a business having several addresses of different types, or a person having several phone
+  * numbers), they naturally must use different column names. It is a good design principle to think ahead and
+  * have reusable components accept at least a prefix/suffix to include in column names, but exceptions will always
+  * exist, especially when dealing with preexisting schemas. A `Mapping` is therefore completely free to translate
+  * a component it uses by modifying the column names as it sees fit. Additionally, any mapping can (at least
+  * in theory) declare [[net.noresttherein.oldsql.schema.Buff Buffs]] which can modify the handling of all of its
+  * subcomponents (such as making them read-only). This means that a component being part of a larger mapping can
+  * exist in several versions: as declared in its own implementation, the final, effective version as used by
+  * an SQL statement, and possibly any number in between. The effective, 'public' version of each component is
+  * referred to as a ''lifted'' component, and only those public, lifted instances must appear in the components
+  * (and columns) lists declared as part of this generic interface (as opposed to the declarations of individual
+  * components). It is important to be furthermore aware that a component instance may be public/'lifted'
+  * from a point of view of the enclosing mapping, but not the root mapping. The library performs this translation
+  * automatically when passing on the `Pieces` with selected values and several base classes exist fully handling
+  * this translation under scenes, but it is important to remember when implementing custom `Mapping`s
+  * with new functionality.
+  *
+  * This is the root interface of the mapping class hierarchy, used almost exclusively throughout the library
+  * (with subclasses, with the exception of adapters exposing the adapted mapping publicly, simply providing different
+  * implementations or features directed 'inwards', towards the implementing classes, rather than providing additional
+  * public interface. Every concrete mapping however needs to define two types: the mapped scala type `Subject`
+  * and a marker phantom type `Owner` which serves solely to introduce static type distinction between several
+  * instances of the same component type but coming from different sources. In fact, many generic operations
+  * are impossible to reliably implement without asserting that the handles `Mapping` actually defines those types
+  * (that is, those types are equal for all instances of the mapping type). This is done through the type aliases
+  * defined here [[net.noresttherein.oldsql.schema.Mapping#Component[T] Component]],
+  * [[net.noresttherein.oldsql.schema.Mapping.AnyComponent AnyComponent]] and their global, static counterparts
+  * from the companion object: [[net.noresttherein.oldsql.schema.Mapping.Component Component]],
+  * [[net.noresttherein.oldsql.schema.Mapping.AnyComponent AnyComponent]],
+  * [[net.noresttherein.oldsql.schema.Mapping.TypedMapping TypedMapping]]. For uniformity and interoperability, these
+  * are all defined as structural narrowing of the trait `Mapping` itself rather than separate classes, but all
+  * concrete implementations should extend at least [[net.noresttherein.oldsql.schema.GenericMapping]] instead
+  * of this trait directly.
+  *
+  * The reasons for these distinctions are twofold: first, several types rely heavily on the infix notation
+  * of two-argument type constructors, preventing them from accepting the type parameters of `GenericMapping`
+  * or `Component`. Abstract type parameters of existential types such as `Component[_]` are not unified, leading
+  * to absurd situations where 'obviously' equal types are not unified by the compiler, almost completely preventing
+  * their type safe use. The second reason is the limitation of the type inferer which, when faces with
+  * method with a signature in the form of `[M &lt;: Component[O, S], O, S](m :M)` will, when applied to
+  * `m :GenericMapping[O, Int]` infer types `GenericMapping[O, Int], Nothing, Nothing` causing a compile error.
+  * On the other hand, defining the type parameter as `[M <: Component[_, _]]` assigns new distinct types to the
+  * missing type parameters, which are not unified even with `m.Subject`/`m.Owner` itself, leading to a lot of issues.
+  * This can be circumvented with implicit parameters, but at the cost of additional complexity.
   * @see [[net.noresttherein.oldsql.schema.GenericMapping]]
+  * @see [[net.noresttherein.oldsql.schema.MappingSupport]]
+  * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
 trait Mapping { mapping =>
 	/** The mapped entity type. */
 	type Subject
 
-	/** The mapping which this instance is a part of. This may be the mapping directly enclosing this mapping,
-	  * but more typically will be a 'root' mapping, such as a table mapping. The 'Owner' tag is passed down
-	  * the components comprising such a mapping in order to identify them as containing columns being part of
-	  * the owner mapping, thus adding type safety when creating sql formulas, which can thus enforce that
-	  * only components/columns belonging to the selected tables (or otherwise root mappings) can be used
-	  * in the where or select clause.
+
+	/** A phantom marker type denoting the origin of this mapping. It is used to statically distinguish between
+	  * different instances of the same mapping class, but mapping different portions of the result set -
+	  * in particular, work as aliased names for repeated occurrence of a table and its components in a joined query.
+	  * In addition, it is used by the SQL DSL to ensure that an SQL expression refers only to components
+	  * coming from the one particular query, preventing accidental use of other, non-joined mappings.
 	  */
 	type Owner
 
-	/** A container with values for components of this mapping required to assemble the subject. */
+	/** A container with values for components of this mapping required to assemble the subject.
+	  * It is a [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] instance parameterized with
+	  * some super type of this mapping. In practice, this almost always be the singleton type of this mapping,
+	  * but some generic code softens this restriction. Each `Pieces` instance is, at least in theory, dedicated
+	  * to a particular component instance (its class and position in the larger mapping structure).
+	  * From the type safety point of view however it is sufficient that the subject type of this mapping matches
+	  * the subject type of the `Pieces`'s type parameter. This additional restriction serves solely to prevent
+	  * accidental passing of an instance prepared for one mapping to another, such as a component of this mapping.
+	  */
 	type Pieces = ComponentValues[_ >: this.type <: Component[Subject]]
 
+	/** An extractor of the value for some component of this mapping with the subject type `T`, which carries
+	  * additionally the lifted version of that component (from the point of view of this mapping).
+	  */
 	type Selector[T] = ComponentExtractor[Owner, Subject, T]
 
 	type AnyComponent = Component[_]
+
+	/** Any mapping with the same origin marker type, making it a supertype of all valid component types of this mapping. */
 	type Component[T] = Mapping.Component[Owner, T]
+
+	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin marker type
+	  * as this instance and thus a valid subcomponent type of this mapping.
+	  */
 	type Column[T] = ColumnMapping[Owner, T]
 
 
 
 	/** Adapts the given subcomponent (a component being the end of some path of components starting with this instance)
-	  * to its exported form as present in the `subcomponents` and `components` list. For every valid transitive
+	  * to its public form as present in the `subcomponents` and `components` list. For every valid transitive
 	  * subcomponent of this mapping, there is exactly one equal to its lifted form on the `subcomponents` list.
 	  * This process can modify the mapping definition by changing names of the columns (prefixing them) and updating
 	  * their buffs by cascading the buffs present on this instance.
-	  * By default this is an identity operation as no adaptation of subcomponents takes place.
+	  * By default it returns the `lifted` property of the selector for the component returned by
+	  * [[net.noresttherein.oldsql.schema.Mapping#apply[T](component:Component[T]) apply(component)]].
 	  */
 	def lift[T](component :Component[T]) :Component[T] = apply(component).lifted
 
@@ -70,37 +155,50 @@ trait Mapping { mapping =>
 
 
 
+	/** Retrieves the [[net.noresttherein.oldsql.schema.Mapping.ComponentExtractor ComponentExtractor]]
+	  * for the given component.
+	  * @throws NoSuchElementException if `component` is not a subcomponent of this mapping.
+	  */
 	def apply[T](component :Component[T]) :Selector[T]
 
 
 
-	/** Direct component mappings of this mapping, including any top-level columns. */
+	/** Direct component mappings of this mapping, including any top-level columns. Always empty for columns. */
 	def components :Unique[Component[_]]
 
 	/** All transitive components of this mapping (i.e. components/columns declared by it's components or
 	  * other subcomponents), or all that this mapping cares to expose, as instances of this.Component[_].
-	  * This list should include all selectable columns.
+	  * This list should include all selectable columns. It is typically defined by recursive ''flat mapping''
+	  * over the `components` list and including the direct components themselves. This list is always empty
+	  * for columns, thus ending any similar recursion.
 	  */
 	def subcomponents :Unique[Component[_]]
 
 
 	/** All direct and transitive columns declared within this mapping. This will include columns which are read-only,
-	  * write-only and so on. */
+	  * write-only and so on. Column mappings returns a singleton list containing themselves. */
 	def columns :Unique[Component[_]]
-	/** All columns which can be listed in the select clause of an SQL statement (don't have the `NoSelect` flag). */
+
+	/** All columns which can be listed in the select clause of an SQL statement (don't have the `NoSelect` buff). */
 	def selectable :Unique[Component[_]] = columnsWithout(NoSelect)
-	/** All columns which can be part of an SQL statement's where clause (don't have the `NoQuery` flag set). */
+
+	/** All columns which can be part of an SQL statement's where clause (don't have the `NoQuery` buff enabled). */
 	def queryable :Unique[Component[_]] = columnsWithout(NoQuery)
-	/** All columns which can be updated on existing database records (don't have the `NoUpdate` flag set). */
+
+	/** All columns which can be updated on existing database records (don't have the `NoUpdate` buff enabled). */
 	def updatable :Unique[Component[_]] = columnsWithout(NoUpdate)
-	/** All columns which are updated by the database on each update statement (and should be returned to the application). */
+
+	/** All columns which are updated by the database on each update statement (have the `AutoUpdate` buff)
+	  * and could/should be returned to the application). */
 	def autoUpdated :Unique[Component[_]] = columnsWith(AutoUpdate)
-	/** All columns which can occur in an insert statement (don't have the `NoInsert` flag set). */
+
+	/** All columns which can occur in an insert statement (don't have the `NoInsert` buff enabled). */
 	def insertable :Unique[Component[_]] = columnsWithout(NoInsert)
-	/** Columns autogenerated by the database; this implies being non-insertable. */
+
+	/** Columns autogenerated by the database on insert (have the `AutoInsert` buff); this implies being non-insertable. */
 	def autoInserted :Unique[Component[_]] = columnsWith(AutoInsert)
 
-	/** All columns with a given buff provided. */
+	/** All columns with a given buff enabled. */
 	def columnsWith(buff :BuffType) :Unique[Component[_]] =
 		columns.filter(buff.enabled)
 
@@ -109,7 +207,9 @@ trait Mapping { mapping =>
 		columns.filter(buff.disabled)
 
 
-	/** Read form of a select statement for this mapping including the given components of this mapping. */
+	/** Read form of a select statement for this mapping including the given components of this mapping.
+	  * The list provided here can include any components, not just the columns.
+	  */
 	def selectForm(components :Unique[Component[_]]) :SQLReadForm[Subject]
 
 	/** Default read form (included columns) of a select statement for this mapping. */
@@ -134,19 +234,23 @@ trait Mapping { mapping =>
 
 	/** Optional flags and annotations modifying the way this mapping is used. They are primarily used
 	  * to include or exclude columns from a given type of SQL statements. For this reason they typically appear
-	  * only on columns. If a larger component declares a buff, it should be inherited by all its subcomponents
-	  * (and, transitively, by all columns). As those subcomponents can in turn have their own buffs attached,
-	  * care needs to be taken in order to avoid conflicts and undesired interactions.
+	  * only on columns. If a larger component declares a buff, it is typically inherited by all its subcomponents
+	  * (and, transitively, by all columns). This iss not a strict requirement however, and custom mapping
+	  * implementations can interpret attached buffs as pertaining only to the mapping itself, without affecting
+	  * its subcomponents. As those subcomponents can in turn have their own buffs attached, care needs to be taken
+	  * in order to avoid conflicts and undesired interactions.
 	  */
 	def buffs :Seq[Buff[Subject]]
 
 
 
 	/** Attempts to retrieve or assemble the value of `Subject` from the passed `ComponentValues` for this instance.
-	  * Standard implementation will test several sources together with `values` before giving up:
-	  * a ready value present for this mapping, assembling the result from subcomponents and finally,
-	  * a default coming from an attached `OptionalBuff` (or related). By default it forwards to
+	  * Standard implementation will test several sources together with `pieces` before giving up:
+	  * a ready value present for this mapping in the `pieces`, assembling the result from subcomponents and, finally,
+	  * a default coming from an attached `OptionalSelect` (or related). By default it forwards to
 	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and should stay consistent with it.
+	  * Mapping implementations for concrete domain model classes should typically override `assemble` instead of
+	  * this method directly.
 	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
@@ -156,24 +260,28 @@ trait Mapping { mapping =>
 		}
 
 	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
-	  * This is the top-level method which can, together with passed `values`, produce the result in several ways.
+	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
 	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.result result]] method
 	  * of `ComponentValues` (which, by default, will first check if it has a predefined value stored for this mapping,
 	  * and, only if not, forward to this instance's [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
-	  * method which is responsible for actual assembly of the value from the values of the subcomponents, recursively
-	  * obtained from `values`.
+	  * method which is responsible for the actual assembly of the subject from the values of the subcomponents,
+	  * recursively obtained from `pieces`.
 	  *
 	  * If all of the above fails, this method will check for a predefined value stored in an attached
 	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] (or related) buff if it exists.
+	  * Additionally, any `AuditBuff`s present can modify the returned value and subclasses are free to
+	  * handle other buffs or implement additional behaviour directly.
 	  *
-	  * Returning `None` signifies that the value of this mapping was not available in `values`, and is different
-	  * from a 'null' value explicitly retrieved by the query. While the two sometimes will get conflated in practice
-	  * (which can be unavoidable). It is generally used for the cases such as outer joins, or missing columns from
+	  * Returning `None` signifies that the value of this mapping was not available in `pieces`, and is different
+	  * from a 'null' value explicitly retrieved by the query. The two sometimes will get conflated in practice
+	  * (which can be unavoidable). It is generally used for cases such as outer joins, or missing columns from
 	  * the select clause. It is therefore perfectly possible for `Some(null)` (or some other representation of the
-	  * `null` value for type `Subject`) to be returned. Likewise, even if data for this mapping is missing,
-	  * it may decide to return here some default 'missing' value; it is ultimately always up to the mapping
-	  * implementation to handle the matter. The above distinction is complicated further by the fact that the mapped
-	  * type `Subject` itself can be an `Option` type, used to signify either or both of these cases.
+	  * `null` value for type `Subject`) to be returned. This approach is discouraged however, as it can possibly
+	  * cause `NullPointerException`s higher up the stack by mappings/forms not prepared to handle `null` values
+	  * (which is most common). Likewise, even if data for this mapping is missing, it may decide to return here some
+	  * default 'missing' value; it is ultimately always up to the mapping implementation to handle the matter.
+	  * The above distinction is complicated further by the fact that the mapped type `Subject` itself can be
+	  * an `Option` type, used to signify either or both of these cases.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
 	def optionally(pieces: Pieces): Option[Subject]
@@ -191,29 +299,56 @@ trait Mapping { mapping =>
 	def nullValue :Option[Subject] //todo: why do we need it at all?
 
 
+	/** Extract the value for the given component from the given `Subject` instance. */
 	def pick[T](component :Component[T], subject :Subject) :Option[T] = apply(component).get(subject)
 
+	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
 	def pick[T](component :Component[T], pieces :Pieces) :Option[T] = pieces.get(apply(component))
 
+	/** Extract the value for the given component from the given `Subject` instance. */
 	def apply[T](component :Component[T], subject :Subject) :T = apply(component)(subject)
 
+	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
 	def apply[T](component :Component[T], pieces :Pieces) :T = pieces(apply(component))
 
 
 
+	/** The SQL/DDL-related name associated with this mapping. This must be defined for all column and table
+	  * mappings, but is typically empty in all other cases.
+	  */
 	def sqlName :Option[String] = None
 
+	/** An adapter of this mapping with the names of all its public columns prefixed with the given string.
+	  * This is equivalent to `prefixed(prefix + ".")` unless prefix is an empty string, in which case it is
+	  * a no-op (or at least returns a mapping with exact same column nams).
+	  */
 	def qualified(prefix :String) :Component[Subject]
 
+	/** An adapter of this mapping with the names of all its public columns prefixed with the given string. */
 	def prefixed(prefix :String) :Component[Subject]
 
 
-
+	/** Lifts this mapping by encapsulating the subject values in an `Option`. The created mapping will
+	  * always return `Some(x)` from its `optionally` and `assemble` methods, where `x` is the value returned by
+	  * the method of this instance. This means that `Some(None)` is returned when this component has no value
+	  * associated in a given `Pieces` instance, and that `apply(Pieces)` method of the returned mapping will
+	  * never fail. This instance is exposed as the public `get` field of the returned mapping, allowing direct
+	  * access to any components definitions in this mapping.
+	  */
 	def inOption :OptionMapping[this.type, Owner, Subject] = OptionMapping(this)
 
+	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
+	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
+	  * `NullValue.value` will be returned.
+	  */
 	def map[X](there :Subject => X, back :X => Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
 		MappedMapping[this.type, Owner, Subject, X](this, there, back)
 
+	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
+	  * by this mapping. If `there` or this mapping's `optionally` subject constructor returns `None`,
+	  * implicitly provided here `NullValue.value` will be returned. If `back` returns `None`, `null` value will
+	  * be written in the database.
+	  */
 	def flatMap[X](there :Subject => Option[X], back :X => Option[Subject])
 	              (implicit nulls :NullValue[X] = null) :Component[X] =
 		MappedMapping.opt[this.type, Owner, Subject, X](this, there, back)
@@ -221,6 +356,8 @@ trait Mapping { mapping =>
 
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[Mapping]
+
+
 
 	override def toString :String = sqlName getOrElse this.unqualifiedClassName
 
@@ -274,6 +411,23 @@ trait Mapping { mapping =>
 
 
 
+/** The de facto base trait of all `Mapping` implementations.
+  *
+  * `Mapping` remains the main outside interface
+  * as it allows easy parameterizing with the mapping type without the extra `Owner` and `Subject` type parameters,
+  * but it severely limits available options of what is possible to do, especially when several instances with same or
+  * related types are available. While extending it is not currently strictly required and the library just demands
+  * that the two member types are defined on a `Mapping` via the  `Component[O, S]` type alias narrowing the `Mapping`,
+  * Doing so is the most convenient way to achieve it and provides implementations of several methods which could
+  * not be done without
+  *
+  * @tparam O marker type used to distinguish between several instances of the same mapping class, but coming from
+  *           different sources (especially different aliases for a table occurring more then once in a join).
+  *           At the same time, it adds additional type safety by ensuring that only components of mappings included
+  *           in a query can be used in the creation of SQL expressions used by that query.
+  * @tparam S the subject type, that is the type of objects read and written to a particular table (or a view, query,
+  *           or table fragment).
+  */
 trait GenericMapping[O, S] extends Mapping { self =>
 	type Owner = O
 	type Subject = S
@@ -322,6 +476,16 @@ trait GenericMapping[O, S] extends Mapping { self =>
 
 
 
+/** A `Mapping` subclass which, in its `optionally` (and indirectly `apply`) method, declares aliasing
+  * of its components on the passed `Pieces`. Some mappings (and possibly their of its components) allow
+  * declaring a column prefix to be added to all its columns, as well as additional buffs, which should be inherited
+  * by all of its subcomponents (including columns), so a component, as defined, can be a different instance from its
+  * final representation included on the mapping's component/column lists. As it is the latter version of the component
+  * which is used by the framework to create any SQL statements, and thus also by the `Pieces`, but typically
+  * the former is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces`
+  * implementation substitutes any component passed to it with its lifted representation before looking for its value.
+  *
+  */
 trait RootMapping[O, S] extends GenericMapping[O, S] {
 	override def optionally(pieces :Pieces) :Option[S] =
 		super.optionally(pieces.aliased { c => apply[c.Subject](c).lifted })
@@ -386,8 +550,19 @@ object Mapping {
 
 		override def compose[X](extractor :Extractor[X, S]) :ComponentExtractor[O, X, T] = extractor match {
 			case _ :IdentityExtractor[_] => this.asInstanceOf[ComponentExtractor[O, X, T]]
+
+			case const :ConstantExtractor[_, S] => try {
+				ComponentExtractor.const(lifted)(apply(const.constant))
+			} catch {
+				case _ :Exception => ComponentExtractor.opt(lifted)(const.getter andThen optional)
+			}
+
 			case req :RequisiteExtractor[X, S] =>
 				ComponentExtractor.opt(lifted)(req.getter andThen optional)
+
+			case _ :EmptyExtractor[_, _] =>
+				ComponentExtractor.none[O, T](lifted)
+
 			case _ =>
 				val first = extractor.optional; val second = optional
 				ComponentExtractor.opt(lifted)(first(_) flatMap second)
@@ -423,15 +598,17 @@ object Mapping {
 		def req[O, S, T](component :Component[O, T])(requisite :S => T) :ComponentExtractor[O, S, T] =
 			new RequisiteComponent[O, S, T](component, requisite)
 
-
-
-		def opt[O, S, T](component :Component[O, T])( selector :S => Option[T]) :ComponentExtractor[O, S, T] =
+		def opt[O, S, T](component :Component[O, T])(selector :S => Option[T]) :ComponentExtractor[O, S, T] =
 			new OptionalComponent[O, S, T](component, selector)
 
+		def ident[O, T](component :Component[O, T]) :ComponentExtractor[O, T, T] =
+			new IdentityComponent[O, T](component)
 
+		def const[O, T](component :Component[O, T])(value :T) :ComponentExtractor[O, Any, T] =
+			new ConstantComponent[O, T](component, value)
 
-		def ident[O, S](component :Component[O, S]) :ComponentExtractor[O, S, S] =
-			new IdentityComponent[O, S](component)
+		def none[O, T](component :Component[O, T]) :ComponentExtractor[O, Any, T] =
+			new EmptyComponent(component)
 
 
 
@@ -440,21 +617,24 @@ object Mapping {
 
 
 
-		class OptionalComponent[O, S, T](final val lifted :Component[O, T], final override val optional :S => Option[T])
+		class OptionalComponent[O, S, T](val lifted :Component[O, T], override val optional :S => Option[T])
 			extends ComponentExtractor[O, S, T] with OptionalExtractor[S, T]
 		{
 			override def get(x :S) :Option[T] = optional(x)
+
+			override def toString :String = "Optional(" + lifted + ")"
 		}
 
 
 
-		class RequisiteComponent[O, S, T](final val lifted :Component[O, T], override val getter :S => T)
+		class RequisiteComponent[O, -S, T](final val lifted :Component[O, T], override val getter :S => T)
 			extends ComponentExtractor[O, S, T] with RequisiteExtractor[S, T]
 		{
 			override def apply(x :S) :T = getter(x)
 
 			override def compose[X](extractor :X =?> S) :ComponentExtractor[O, X, T] = extractor match {
 				case _ :IdentityExtractor[_] => this.asInstanceOf[ComponentExtractor[O, X, T]]
+				case _ :ConstantExtractor[_, _] => super.compose(extractor)
 				case req :RequisiteExtractor[X, S] =>
 					new RequisiteComponent[O, X, T](lifted, req.getter andThen getter)
 				case _ =>
@@ -464,6 +644,11 @@ object Mapping {
 
 			override def compose[W](extractor :RequisiteExtractor[W, S]) :RequisiteComponent[O, W, T] = extractor match {
 				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[O, W, T]]
+				case const :ConstantExtractor[_, S] => try {
+					new ConstantComponent[O, T](lifted, getter(const.constant))
+				} catch {
+					case _ :Exception => new RequisiteComponent[O, W, T](lifted, extractor.getter andThen getter)
+				}
 				case _ =>
 					new RequisiteComponent[O, W, T](lifted, extractor.getter andThen getter)
 			}
@@ -482,8 +667,13 @@ object Mapping {
 			override def compose[W](extractor :W =?> S) :ComponentExtractor[O, W, S] = extractor match {
 				case comp :ComponentExtractor[_, _, _] if comp.lifted == lifted =>
 					comp.asInstanceOf[ComponentExtractor[O, W, S]]
+
 				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[O, W, S]]
+
+				case c :ConstantExtractor[_, _] => const(lifted)(c.constant.asInstanceOf[S])
+
 				case e :RequisiteExtractor[_, _] => req(lifted)(e.getter.asInstanceOf[W => S])
+
 				case _ => opt(lifted)(extractor.optional)
 			}
 
@@ -497,6 +687,35 @@ object Mapping {
 
 			override def toString :String = "Identity(" + lifted + ")"
 		}
+
+
+
+		class ConstantComponent[O, S](component :Component[O, S], const :S)
+			extends RequisiteComponent[O, Any, S](component, (_ :Any) => const) with ConstantExtractor[Any, S]
+		{
+			override def constant :S = const
+
+			override def compose[W](extractor :W =?> Any) :ComponentExtractor[O, W, S] = this
+
+			override def compose[W](extractor :RequisiteExtractor[W, Any]) :RequisiteComponent[O, W, S] = this
+
+			override def compose[W](req :W => Any) :RequisiteComponent[O, W, S] = this
+
+			override def toString :String = "Const(" + component + "=" + constant + ")"
+		}
+
+
+
+		class EmptyComponent[O, T](component :Component[O, T])
+			extends OptionalComponent[O, Any, T](component, Extractor.none.optional) with EmptyExtractor[Any, T]
+		{
+			override def compose[W](extractor :W =?> Any) :EmptyComponent[O, T] = this
+
+			override def compose[W](req :W => Any) :EmptyComponent[O, T] = this
+
+			override def toString :String = "Empty(" + component + ")"
+		}
+
 
 	}
 

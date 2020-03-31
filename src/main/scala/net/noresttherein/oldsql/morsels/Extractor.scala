@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.morsels
 
-import net.noresttherein.oldsql.morsels.Extractor.{IdentityExtractor, OptionExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionExtractor, RequisiteExtractor}
 
 
 
@@ -26,7 +26,7 @@ trait Extractor[-X, +Y] {
 	def unapply(x :X) :Option[Y] = get(x)
 
 	def andThen[Z](extractor :Extractor[Y, Z]) :Extractor[X, Z] = extractor match {
-		case _ :IdentityExtractor[_] => extractor compose this
+		case _ :IdentityExtractor[_] | _ :ConstantExtractor[_, _] | _ :EmptyExtractor[_, _] => extractor compose this
 		case sure :RequisiteExtractor[Y, Z] => requisite match {
 			case Some(req) => Extractor.req(req andThen sure.getter)
 			case _ =>
@@ -77,8 +77,13 @@ object Extractor {
 
 	def req[X, Y](extract :X => Y) :RequisiteExtractor[X, Y] = new RequisiteAdapter(extract)
 
+	def const[Y](result :Y) :ConstantExtractor[Any, Y] = new ConstantAdapter[Y](result)
+
+	def none :EmptyExtractor[Any, Nothing] = Empty()
+
 	def ident[X] :IdentityExtractor[X] = id.asInstanceOf[IdentityExtractor[X]]
 
+	private[this] val fail = new EmptyExtractor[Any, Nothing] {}
 	private[this] val id = new IdentityExtractor[Any] {}
 
 
@@ -102,19 +107,39 @@ object Extractor {
 
 
 
-	object Requisite {
-		@inline def apply[X, Y](f :RequisiteExtractor[X, Y]) :RequisiteExtractor[X, Y] = f
-
-		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Option[X => Y] = extractor.requisite
-	}
-
-
 	object Optional {
 		@inline def apply[X, Y](f :OptionalExtractor[X, Y]) :OptionalExtractor[X, Y] = f
 
 		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Option[X => Option[Y]] =
 			if (extractor.requisite.isEmpty) Some(extractor.optional)
 			else None
+	}
+
+	object Requisite {
+		@inline def apply[X, Y](f :RequisiteExtractor[X, Y]) :RequisiteExtractor[X, Y] = f
+
+		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Option[X => Y] = extractor.requisite
+	}
+
+	object Identity {
+		def apply[X]() :IdentityExtractor[X] = id.asInstanceOf[IdentityExtractor[X]]
+
+		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Boolean = extractor.isInstanceOf[IdentityExtractor[_]]
+	}
+
+	object Constant {
+		@inline def apply[Y](value :Y) :ConstantExtractor[Any, Y] = new ConstantAdapter[Y](value)
+
+		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Option[Y] = extractor match {
+			case const :ConstantExtractor[_, _] => Some(const.constant.asInstanceOf[Y])
+			case _ => None
+		}
+	}
+
+	object Empty {
+		def apply() :EmptyExtractor[Any, Nothing] = fail
+
+		@inline def unapply(extractor :Extractor[_, _]) :Boolean = extractor.isInstanceOf[EmptyExtractor[_, _]]
 	}
 
 
@@ -128,7 +153,8 @@ object Extractor {
 		}
 
 		override def andThen[Z](extractor :Extractor[Y, Z]) :Extractor[X, Z] = extractor match {
-			case _ :IdentityExtractor[_] => extractor compose this
+			case _ :IdentityExtractor[_] | _ :ConstantExtractor[_, _] | _ :EmptyExtractor[_, _] =>
+				extractor compose this
 			case sure :RequisiteExtractor[Y, Z] =>
 				val first = optional; val second = sure.getter
 				Extractor { x :X => first(x).map(second) }
@@ -144,7 +170,7 @@ object Extractor {
 	trait RequisiteExtractor[-X, +Y] extends Extractor[X, Y] {
 		def getter :X => Y = apply
 		override def optional :X => Some[Y] = (x :X) => Some(apply(x))
-		override def requisite :Some[X=>Y] = Some(getter)
+		override def requisite :Some[X => Y] = Some(getter)
 
 		def apply(x :X) :Y
 
@@ -153,7 +179,8 @@ object Extractor {
 
 
 		override def andThen[Z](extractor :Extractor[Y, Z]) :Extractor[X, Z] = extractor match {
-			case _ :IdentityExtractor[_] => extractor compose this
+			case _ :IdentityExtractor[_] | _ :ConstantExtractor[_, _] | _ :EmptyExtractor[_, _] =>
+				extractor compose this
 			case sure :RequisiteExtractor[Y, Z] =>
 				Extractor.req(this.getter andThen sure.getter)
 			case _ :OptionExtractor[_] =>
@@ -163,7 +190,7 @@ object Extractor {
 		}
 
 		def andThen[Z](extractor :RequisiteExtractor[Y, Z]) :RequisiteExtractor[X, Z] = extractor match {
-			case _ :IdentityExtractor[_] => extractor compose this
+			case _ :IdentityExtractor[_] | _ :ConstantExtractor[_, _] | _ :EmptyExtractor[_, _] => extractor compose this
 			case _ => Extractor.req(this.getter andThen extractor.getter)
 		}
 
@@ -184,9 +211,9 @@ object Extractor {
 
 
 	trait IdentityExtractor[X] extends RequisiteExtractor[X, X] {
-		override val getter = identity[X] _
-		override val optional = (x :X) => Some(x)
-		override val requisite = Some(identity[X] _)
+		override val getter :X => X = identityGetter.asInstanceOf[X => X]
+		override def optional :X => Some[X] = identityOptional.asInstanceOf[X => Some[X]]
+		override def requisite :Some[X => X] = identityRequisite.asInstanceOf[Some[X => X]]
 
 		override def apply(x :X) :X = x
 
@@ -196,11 +223,81 @@ object Extractor {
 		override def compose[W](extractor :Extractor[W, X]) :Extractor[W, X] = extractor
 		override def andThen[Z](extractor :RequisiteExtractor[X, Z]) :RequisiteExtractor[X, Z] = extractor
 		override def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, X] = extractor
-//		override def andThen[Z](req :X => Z) :RequisiteExtractor[X, Z] = Extractor.requisite(req)
 		override def compose[W](req :W => X) :RequisiteExtractor[W, X] = Extractor.req(req)
 
 		override def toString = "Identity"
 	}
+
+	private[this] final val identityGetter = identity[Any] _
+	private[this] final val identityOptional = (x :Any) => Some(x)
+	private[this] final val identityRequisite = Some((x :Any) => x)
+
+
+
+
+
+
+	trait ConstantExtractor[-X, +Y] extends RequisiteExtractor[X, Y] {
+		def constant :Y
+		//declarations final to assure both functions and method use erased arguments and hence can be cast to Any =>
+		final override val getter = { val c = constant; _ :X => c }
+		final override val requisite = Some(getter)
+		final override val optional = { val c = Some(constant); _ :X => c}
+
+		final override def apply(x :X) :Y = constant
+
+		final override def get(x :X) :Some[Y] = Some(constant)
+
+		override def andThen[Z](extractor :Y =?> Z) :X =?> Z = extractor match {
+			case _ :EmptyExtractor[_, _] => extractor compose this
+			case _ => try {
+				const(extractor(constant))
+			} catch {
+				case _ :Exception => super.andThen(extractor)
+			}
+		}
+
+		override def andThen[Z](extractor :RequisiteExtractor[Y, Z]) :RequisiteExtractor[X, Z] =
+			try {
+				const(extractor(constant))
+			} catch {
+				case _ :Exception => super.andThen(extractor)
+			}
+
+		override def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, Y] =
+			this.asInstanceOf[RequisiteExtractor[W, Y]]
+
+		override def compose[W](req :W => X) :RequisiteExtractor[W, Y] = this.asInstanceOf[RequisiteExtractor[W, Y]]
+
+		override def compose[W](extractor :W =?> X) :W =?> Y = extractor match {
+			case _ :RequisiteExtractor[_, _] => this.asInstanceOf[ConstantExtractor[W, Y]]
+			case _ :EmptyExtractor[W, X] => none
+			case _ => extractor andThen this
+		}
+
+		override def toString :String = "Const(" + constant + ")"
+	}
+
+
+
+
+
+
+	trait EmptyExtractor[-X, +Y] extends Extractor[X, Y] {
+		override val optional :Any => Option[Nothing] = emptyOptional
+		override def requisite :Option[Any => Nothing] = None
+
+		override def apply(x :X) :Y = throw new NoSuchElementException(toString + ".apply(" + x + ")")
+		override def get(x :X) :Option[Y] = None
+
+		override def andThen[Z](extractor :Y =?> Z) :X =?> Z = none
+		override def compose[W](extractor :W =?> X) :W =?> Y = none 
+		override def compose[W](req :W => X) :W =?> Y = none
+
+		override def toString :String = "Empty"
+	}
+
+	private[this] val emptyOptional = (_ :Any) => None
 
 
 
@@ -220,6 +317,12 @@ object Extractor {
 		override def apply(x :X) :Y = getter(x)
 
 		override def get(x :X) = Some(getter(x))
+	}
+
+
+
+	private class ConstantAdapter[+Y](const :Y) extends ConstantExtractor[Any, Y] {
+		override def constant :Y = const
 	}
 
 

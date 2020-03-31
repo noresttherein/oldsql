@@ -67,7 +67,7 @@ object MappedKin {
 	//		extends GenericKinFactory[K, F, FS, Kin[FS]]
 	//	{
 	//		val composer = new ComposingMapper
-	//		override def delayed(key: K, value: => FS): Kin[FS] = Lazy(value)
+	//		override def delayed(key: K, value: => FS): Kin[FS] = later(value)
 	//
 	//		override def full(value: FS): Kin[FS] = Full(value)
 	//

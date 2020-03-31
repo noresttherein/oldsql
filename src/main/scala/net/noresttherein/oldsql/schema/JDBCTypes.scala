@@ -1,11 +1,11 @@
 package net.noresttherein.oldsql.schema
 
-import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Integer => JInt, Long => JLong, Short => JShort}
+import java.lang.{Boolean => JBoolean, Byte => JByte, Character => JChar, Double => JDouble, Float => JFloat, Integer => JInt, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal}
-import java.io.{InputStream, Reader}
+import java.io.{ByteArrayInputStream, InputStream, Reader}
 import java.net.URL
 import java.sql
-import java.sql.{Blob, Clob, Date, NClob, PreparedStatement, Ref, ResultSet, SQLXML, Time, Timestamp, Types}
+import java.sql.{Blob, Clob, Date, NClob, PreparedStatement, Ref, ResultSet, RowId, SQLXML, Time, Timestamp, Types}
 import java.sql.Types._
 import java.time.format.DateTimeFormatter
 
@@ -30,39 +30,38 @@ trait JDBCTypes extends SQLTypes {
 	def apply[T :SQLForm] :SQLForm[T] = implicitly[SQLForm[T]]
 
 
-	override def get[X](value: X): Option[SQLForm[X]] = PartialFunction.condOpt(value){
-		case _ :Boolean => BooleanForm
-		case _ :BigDecimal => BigDecimalForm
-		case _ :Byte => ByteForm
-		case _ :Short => ShortForm
-		case _ :Int => IntForm
-		case _ :Long => LongForm
-		case _ :Float => FloatForm
-		case _ :Double => DoubleForm
-		case _ :sql.Date => DateForm
-		case _ :sql.Time => TimeForm
-		case _ :sql.Timestamp => TimestampForm
-		case _ :URL => URLForm
-
-	}.asInstanceOf[Option[SQLForm[X]]]
-
-
-
-
-
-
-/*
-	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] =
-		SQLForm[T].biflatMap(t => Some(Option(t)), None)(o => o)
-
-	implicit def OptionColumnForm[T :ColumnForm] :ColumnForm[Option[T]] =
-		implicitly[ColumnForm[T]].biflatMap(t => Some(Option(t)), None)(o => o)
-
-	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].as(Some(_))(_.get)
-
-	implicit def SomeColumnForm[T :ColumnForm] :ColumnForm[Some[T]] =
-		implicitly[ColumnForm[T]].as(Some(_))(_.get)
-*/
+	override def get[X](value: X): Option[SQLForm[X]] = (value match {
+		case _ :Number => PartialFunction.condOpt(value) {
+			case _ :JDBCSQLType | _ :JInt => IntForm
+			case _ :Long | _ :JLong => LongForm
+			case _ :Double | _ :JDouble => DoubleForm
+			case _ :Float | _ :JFloat => FloatForm
+			case _ :BigDecimal => BigDecimalForm
+			case _ :JBigDecimal => JavaBigDecimalForm
+			case _ :Byte => ByteForm
+			case _ :Short => ShortForm
+		}
+		case _ => PartialFunction.condOpt(value) {
+			case _ :String => StringForm
+			case _ :Boolean | _ :JBoolean => BooleanForm
+			case _ :Char | _ :JChar => CharForm
+			case _ :sql.Timestamp => TimestampForm
+			case _ :sql.Date => DateForm
+			case _ :sql.Time => TimeForm
+			case _ :Array[Byte] => BytesForm
+			case _ :sql.Blob => BlobForm
+			case _ :sql.Clob => ClobForm
+			case _ :sql.NClob => NClobForm
+			case _ :URL => URLForm
+			case _ :ByteArrayInputStream => BinaryStreamForm
+//			case _ :InputStream => BinaryStreamForm
+			case _ :Reader => CharacterStreamForm
+			case _ :sql.Ref => RefForm
+			case _ :sql.RowId => RowIdForm
+			case _ :sql.Array => SQLArrayForm
+			case _ :sql.SQLXML => SQLXMLForm
+		}
+	}).asInstanceOf[Option[SQLForm[X]]]
 
 
 
@@ -200,6 +199,34 @@ trait JDBCTypes extends SQLTypes {
 		protected override def read(column: Int)(res: ResultSet) :Array[Byte] = res.getBytes(column)
 
 		override def toString = "BINARY"
+	}
+
+	implicit case object CharForm extends JDBCForm[Char](CHAR) {
+		override protected def read(position :Int)(res :ResultSet) :Char =
+			res.getString(position) match {
+				case null => 0
+				case s if s.length != 1 =>throw new IllegalArgumentException("Read '" + s + "' instead of a single Char from result set at index " + position)
+				case c => c.charAt(0)
+			}
+
+		override def set(position :Int)(statement :PreparedStatement, value :Char) :Unit =
+			statement.setString(position, String.valueOf(value))
+
+		override def toString = "CHAR"
+	}
+
+	implicit case object JavaCharForm extends NullableJDBCForm[JChar](CHAR) {
+		override protected def read(position :Int)(res :ResultSet) :JChar =
+			res.getString(position) match {
+				case null => null
+				case s if s.length != 1 =>throw new IllegalArgumentException("Read '" + s + "' instead of a single Char from result set at index " + position)
+				case c => c.charAt(0)
+			}
+
+		override def set(position :Int)(statement :PreparedStatement, value :JChar) :Unit =
+			statement.setString(position, if (value == null) null else String.valueOf(value))
+
+		override def toString = "JCHAR"
 	}
 
 	implicit case object CharacterStreamForm extends NullableJDBCForm[Reader](LONGVARCHAR) with NonLiteralForm[Reader] {
@@ -362,7 +389,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "NVARCHAR"
 	}
 
-	implicit case object RefForm extends NullableJDBCForm[Ref](REF) with NonLiteralForm[Ref] {
+	implicit case object RefForm extends NullableJDBCForm[sql.Ref](REF) with NonLiteralForm[Ref] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Ref) :Unit =
 			statement.setRef(position, value)
@@ -370,6 +397,14 @@ trait JDBCTypes extends SQLTypes {
 		protected override def read(column: Int)(res: ResultSet): Ref = res.getRef(column)
 
 		override def toString = "REF"
+	}
+
+	implicit case object RowIdForm extends NullableJDBCForm[sql.RowId](REF) with NonLiteralForm[RowId] {
+
+		override protected def read(position :Int)(res :ResultSet) :RowId = res.getRowId(position)
+
+		override def set(position :Int)(statement :PreparedStatement, value :RowId) :Unit =
+			statement.setRowId(position, value)
 	}
 
 	implicit case object ShortForm extends JDBCForm[Short](SMALLINT) {

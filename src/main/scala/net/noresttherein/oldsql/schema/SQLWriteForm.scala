@@ -2,8 +2,10 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.LiteralIndex.&~
+import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, Tuple2WriteForm}
 import net.noresttherein.oldsql.slang._
@@ -267,10 +269,16 @@ object SQLWriteForm {
 
 
 
-	implicit def ChainWriteForm[T <: Chain, H](implicit t :SQLWriteForm[T], h :SQLWriteForm[H]) :SQLWriteForm[T ~ H] =
+	implicit val EmptyChainWriteForm :SQLWriteForm[@~] = empty
+
+	implicit def ChainWriteForm[I <: Chain, L](implicit t :SQLWriteForm[I], h :SQLWriteForm[L]) :SQLWriteForm[I ~ L] =
 		new ChainWriteForm(t, h)
 
-	implicit val EmptyChainWriteForm :SQLWriteForm[@~] = empty
+	implicit def LiteralIndexWriteForm[I <: LiteralIndex :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I &~ (K, V)] =
+		new LiteralIndexWriteForm(SQLWriteForm[I], SQLWriteForm[V])
+
+	implicit def RecordWriteForm[I <: Record :SQLWriteForm, K <: String with Singleton, V :SQLWriteForm] :SQLWriteForm[I |# (K, V)] =
+		new RecordWriteForm(SQLWriteForm[I], SQLWriteForm[V])
 
 
 
@@ -379,7 +387,7 @@ object SQLWriteForm {
 
 
 
-	private[schema] trait FlatMappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
+	trait FlatMappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
 		val source :SQLWriteForm[S]
 		val unmap :T => Option[S]
 
@@ -417,7 +425,7 @@ object SQLWriteForm {
 
 
 
-	private[schema] trait MappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
+	trait MappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
 		protected val source :SQLWriteForm[S]
 		protected val unmap :T => S
 
@@ -721,74 +729,124 @@ object SQLWriteForm {
 
 
 
-	private[schema] case class ChainWriteForm[-T <: Chain, -H](tail :SQLWriteForm[T], head :SQLWriteForm[H])
-		extends SQLWriteForm[T ~ H]
-	{
-		override val writtenColumns :Int = tail.writtenColumns + head.writtenColumns
 
-		override def set(position :Int)(statement :PreparedStatement, value :T ~ H) :Unit =
+
+
+	private[schema] trait GenericChainWriteForm[C[+A <: I, +B <: L] <: A ~ B, -I <: Chain, -L] extends SQLWriteForm[C[I, L]] {
+		protected val init :SQLWriteForm[I]
+		protected val last :SQLWriteForm[L]
+
+		override val writtenColumns :Int = init.writtenColumns + last.writtenColumns
+
+		override def set(position :Int)(statement :PreparedStatement, value :C[I, L]) :Unit =
 			if (value == null)
 				setNull(position)(statement)
 			else {
-				tail.set(position)(statement, value.tail)
-				head.set(position + tail.writtenColumns)(statement, value.head)
+				init.set(position)(statement, value.init)
+				last.set(position + init.writtenColumns)(statement, value.last)
 			}
 
 		override def setNull(position :Int)(statement :PreparedStatement) :Unit = {
-			tail.setNull(position)(statement)
-			head.setNull(position + tail.writtenColumns)(statement)
+			init.setNull(position)(statement)
+			last.setNull(position + init.writtenColumns)(statement)
 		}
 
 
-		override def literal(value :T ~ H, inline :Boolean) :String = {
+
+		override def literal(value :I C L, inline :Boolean) :String = {
 			def rec(chain :Chain, form :SQLWriteForm[_], res :StringBuilder = new StringBuilder) :StringBuilder =
 				(chain, form) match {
-					case (t ~ h, f :ChainWriteForm[_, _]) =>
-						rec(t, f.tail, res) ++= ", "
-						if (f.head.isInstanceOf[ChainWriteForm[_, _]])
-							res ++= "(" ++= f.head.asInstanceOf[SQLWriteForm[Any]].literal(h) ++= ")"
+					case (t ~ h, f :GenericChainWriteForm[_, _, _]) =>
+						rec(t, f.init, res) ++= ", "
+						if (f.last.isInstanceOf[ChainWriteForm[_, _]])
+							res ++= "(" ++= f.last.asInstanceOf[SQLWriteForm[Any]].literal(h) ++= ")"
 						else
-							res ++= f.head.asInstanceOf[SQLWriteForm[Any]].literal(h)
-					case (null, f :ChainWriteForm[_, _]) =>
-						rec(null, f.tail, res) ++= ", "
+							res ++= f.last.asInstanceOf[SQLWriteForm[Any]].literal(h)
+					case (null, f :GenericChainWriteForm[_, _, _]) =>
+						rec(null, f.init, res) ++= ", "
 					case _ =>
 						res
 				}
 			if (inline)
 				rec(value, this).toString
 			else
-	            (rec(value, this, new StringBuilder("(")) ++= ")").toString
+				(rec(value, this, new StringBuilder("(")) ++= ")").toString
 		}
 
-		override def nullLiteral(inline :Boolean) :String = literal(null, inline)
-		override def literal(value :T ~ H) :String = literal(value, false)
-		override def inlineLiteral(value :T ~ H) :String = literal(value, true)
-		override def nullLiteral :String = literal(null, false)
-		override def inlineNullLiteral :String = literal(null, true)
+		override def nullLiteral(inline :Boolean) :String = literal(null.asInstanceOf[I C L], inline)
+		override def literal(value :I C L) :String = literal(value, false)
+		override def inlineLiteral(value :I C L) :String = literal(value, true)
+		override def nullLiteral :String = literal(null.asInstanceOf[I C L], false)
+		override def inlineNullLiteral :String = literal(null.asInstanceOf[I C L], true)
 
 
 		override def equals(that :Any) :Boolean = that match {
-			case chain :ChainWriteForm[_, _] =>
-				(chain eq this) || (chain canEqual this) && chain.head == head && chain.tail == tail
+			case chain :GenericChainWriteForm[_, _, _] =>
+				(chain eq this) || (chain canEqual this) && chain.last == last && chain.init == init
 			case _ => false
 		}
 
-		override def hashCode :Int = head.hashCode * 31 + tail.hashCode
+		override def hashCode :Int = last.hashCode * 31 + init.hashCode
 
 		override def toString :String =  {
 			def rec(form :SQLWriteForm[_], res :StringBuilder = new StringBuilder) :StringBuilder = form match {
-				case chain :ChainWriteForm[_, _] =>
-					rec(chain.tail, res) ++= "~"
-					chain.head match {
-						case _ :ChainWriteForm[_, _] => rec(chain.head, res ++= "(") ++= ")"
-						case _ => res append chain.head
+				case chain :GenericChainWriteForm[_, _, _] =>
+					rec(chain.init, res) ++= symbol
+					chain.last match {
+						case _ :ChainWriteForm[_, _] => rec(chain.last, res ++= "(") ++= ")"
+						case _ => res append chain.last
 					}
 				case  _ => res ++= "@~"
 			}
 			rec(this).toString
 		}
+
+		protected def symbol :String
+
 	}
 
+
+
+	private[schema] class ChainWriteForm[-I <: Chain, -L]
+	                                    (protected val init :SQLWriteForm[I], protected val last :SQLWriteForm[L])
+		extends GenericChainWriteForm[~, I, L]
+	{
+		override protected def symbol :String = "~"
+	}
+
+
+
+	private[schema] class LiteralIndexWriteForm[-I <: LiteralIndex, -K <: Singleton, -V]
+	                                           (protected val init :SQLWriteForm[I], protected val value :SQLWriteForm[V])
+		extends GenericChainWriteForm[&~, I, (K, V)]
+	{
+		override protected val last :SQLWriteForm[(K, V)] = value.unmap(_._2)
+
+		override def equals(that :Any) :Boolean = that match {
+			case other :LiteralIndexWriteForm[_, _, _] =>
+				(other eq this) || (other canEqual this) && init == other.init && value == other.value
+			case _ => false
+		}
+
+		override protected def symbol :String = "&~"
+	}
+
+
+
+	private[schema] class RecordWriteForm[-I <: Record, -K <: String with Singleton, -V]
+	                                     (protected val init :SQLWriteForm[I], protected val value :SQLWriteForm[V])
+		extends GenericChainWriteForm[|#, I, (K, V)]
+	{
+		override protected val last :SQLWriteForm[(K, V)] = value.unmap(_._2)
+
+		override def equals(that :Any) :Boolean = that match {
+			case other :RecordWriteForm[_, _, _] =>
+				(other eq this) || (other canEqual this) && init == other.init && value == other.value
+			case _ => false
+		}
+
+		override protected def symbol :String = "|#"
+	}
 
 
 }

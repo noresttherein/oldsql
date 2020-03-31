@@ -35,3 +35,18 @@ trait EmptyMapping[O, S] extends GenericMapping[O, S] {
 
 	override def assemble(values :Pieces) :Option[S] = None
 }
+
+
+
+class ConstantMapping[O, S](subject :S) extends EmptyMapping[O, S] {
+	private[this] val result = Some(subject)
+
+	override def assemble(values :Pieces) :Option[S] = result
+
+	override def optionally(values :Pieces) :Option[S] = result
+
+	override def apply(values :Pieces) :S = subject
+
+	override def toString :String = "Const(" + subject + ")"
+}
+

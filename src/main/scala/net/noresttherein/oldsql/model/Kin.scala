@@ -200,7 +200,7 @@ object Kin {
 	  * will specify the expected result type for the found values (single value, `Seq`, `Set`, etc).
 	  * Implicit conversion exists converting a `KinComposer[T]` to a `Kin[T]`.
 	  *
-	  * Example: `Kin[Hero](Equality(_.id, id)).single`.
+	  * Example: `Kin[Hero](Equality(_.id, id)).one`.
 	  *
 	  * This call delegates to `AllWhere(Restraint)`.
 	  *
@@ -443,7 +443,7 @@ object Kin {
 
 	private[oldsql] class Absent[+T] extends Kin[T] {
 		override def isEmpty = true
-		override def get :Nothing = throw new NoSuchElementException(this+".get")
+		override def get :Nothing = throw new NoSuchElementException(toString + ".get")
 		override def toOpt :Option[Nothing] = None
 
 		override def equals(that :Any) :Boolean = that match {
@@ -669,7 +669,7 @@ object Kin {
 		override def isEmpty :Boolean = toOpt.isEmpty
 
 		override def get :T = toOpt match {
-			case None => throw new NoSuchElementException(this + ".get")
+			case None => throw new NoSuchElementException(toString + ".get")
 			case Some(item) => item
 		}
 
@@ -698,7 +698,7 @@ object Kin {
 	}
 
 //	trait BaseKinFactory[K, E, X] extends KinFactory[K, E, X] {
-//		override def delayed(key: K, value: => X): Kin[X] { type Item = E } = Lazy(value)
+//		override def delayed(key: K, value: => X): Kin[X] { type Item = E } = later(value)
 //
 //		override def present(value: X): Kin[X] { type Item = E } = Present(value)
 //	}
@@ -780,8 +780,7 @@ object Kin {
 
 			override def isEmpty :Boolean = toOpt.isEmpty
 
-			@volatile
-			private[this] var value :Option[T] = _
+			@volatile private[this] var value :Option[T] = _
 
 			def toOpt :Option[T] = {
 				if (value == null)
@@ -798,8 +797,7 @@ object Kin {
 		class LazyKinFactory[K, E, X, R<:Kin[X]](factory : ()=>GenericKinFactory[K, E, X, R])
 			extends GenericKinFactory[K, E, X, R]
 		{
-			@volatile
-			private[this] var resolved :GenericKinFactory[K, E, X, R] = _
+			@volatile private[this] var resolved :GenericKinFactory[K, E, X, R] = _
 
 			protected def backing :GenericKinFactory[K, E, X, R] = {
 				if (resolved == null)

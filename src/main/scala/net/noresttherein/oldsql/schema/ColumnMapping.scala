@@ -4,6 +4,7 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
 import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
+import net.noresttherein.oldsql.schema.support.LabeledMapping
 
 
 
@@ -190,8 +191,8 @@ object ColumnMapping {
 	def apply[O, S :ColumnForm](name :String, buffs :Buff[S]*) :ColumnMapping[O, S] =
 		new StandardColumn(name, buffs)
 
-	def apply[O, N <: String with Singleton :ValueOf, S :ColumnForm](buffs :Buff[S]*) :NamedColumn[O, N, S] =
-		new NamedColumn[O, N, S](buffs)
+	def apply[N <: String with Singleton :ValueOf, O, S :ColumnForm](buffs :Buff[S]*) :LabeledColumn[N, O, S] =
+		new LabeledColumn[N, O, S](buffs)
 
 
 
@@ -203,18 +204,18 @@ object ColumnMapping {
 
 
 
-	class NamedColumn[O, N <: String with Singleton, S](override val buffs :Seq[Buff[S]] = Nil)
-	                                                   (implicit named :ValueOf[N], override val form :ColumnForm[S])
-		extends ColumnMapping[O, S]
+	class LabeledColumn[N <: String with Singleton, O, S](override val buffs :Seq[Buff[S]] = Nil)
+	                                                     (implicit named :ValueOf[N], override val form :ColumnForm[S])
+		extends ColumnMapping[O, S] with LabeledMapping[N, O, S]
 	{
 		override val name :N = named.value
 		override val isNullable :Boolean = super.isNullable
 
-		override def withBuffs(buffs :Seq[Buff[S]]) :NamedColumn[O, N, S] =
-			new NamedColumn[O, N, S](buffs)(new ValueOf(name), form)
+		override def withBuffs(buffs :Seq[Buff[S]]) :LabeledColumn[N, O, S] =
+			new LabeledColumn[N, O, S](buffs)(new ValueOf(name), form)
 
 
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[NamedColumn[_, _, _]]
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LabeledColumn[_, _, _]]
 
 	}
 

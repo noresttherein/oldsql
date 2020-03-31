@@ -87,10 +87,10 @@ object ColumnForm {
 
 
 	def map[S, T](map :S => T)(unmap :T => S)(implicit source :ColumnForm[S], nulls :NullValue[T] = null) :ColumnForm[T] =
-		new MappedSQLForm[S, T](map, unmap) with MappedColumnReadForm[S, T] with ColumnForm[T]
+		new MappedColumnForm[S, T](map, unmap)
 
 	def flatMap[S :ColumnForm, T :NullValue](map :S => Option[T])(unmap :T => Option[S]) :ColumnForm[T] =
-		new FlatMappedSQLForm[S, T](map, unmap) with FlatMappedColumnReadForm[S, T] with ColumnForm[T]
+		new FlatMappedColumnForm[S, T](map, unmap)
 
 
 
@@ -113,5 +113,16 @@ object ColumnForm {
 	}
 
 
+
+	class MappedColumnForm[S :ColumnForm, T :NullValue](map :S => T, unmap :T => S)
+		extends MappedSQLForm(map, unmap) with MappedColumnReadForm[S, T] with ColumnForm[T]
+
+	class FlatMappedColumnForm[S :ColumnForm, T :NullValue](map :S => Option[T], unmap :T => Option[S])
+		extends FlatMappedSQLForm(map, unmap) with FlatMappedColumnReadForm[S, T] with ColumnForm[T]
+
+
+
+	class DerivedColumnForm[S :ColumnForm, T :NullValue](map :S => T, unmap :T => S, override val toString :String)
+		extends MappedColumnForm[S, T](map, unmap)
 
 }

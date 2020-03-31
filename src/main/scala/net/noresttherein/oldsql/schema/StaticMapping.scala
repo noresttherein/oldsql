@@ -1,8 +1,5 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.support.{MappedMapping, PrefixedMapping}
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang._
 
 

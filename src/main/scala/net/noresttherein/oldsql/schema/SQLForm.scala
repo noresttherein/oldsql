@@ -2,11 +2,13 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{PreparedStatement, ResultSet}
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.LiteralIndex.&~
+import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.SQLForm.{NullValue, Tuple2Form}
-import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, ChainWriteForm, EmptyWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, OptionWriteForm, SeqWriteForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, LiteralIndexReadForm, MappedSQLReadForm, SeqReadForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, ChainWriteForm, EmptyWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, OptionWriteForm, RecordWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.immutable.Seq
@@ -158,12 +160,20 @@ object SQLForm extends JDBCTypes {
 
 	implicit def Tuple2Form[T1 :SQLForm, T2 :SQLForm] :SQLForm[(T1, T2)] = new Tuple2Form[T1, T2]
 
-	implicit def ChainForm[T <: Chain, H](implicit t :SQLForm[T], h :SQLForm[H]) :SQLForm[T ~ H] =
-		new ChainForm(t, h)
-
 	implicit val EmptyChainForm :SQLForm[@~] = new EmptyForm[@~](@~) {
 		override def toString = "@~"
 	}
+
+	implicit def ChainForm[I <: Chain, L](implicit i :SQLForm[I], l :SQLForm[L]) :SQLForm[I ~ L] =
+		new ChainForm(i, l)
+
+	implicit def LiteralIndexForm[I <: LiteralIndex :SQLForm, K <: Singleton :ValueOf, V :SQLForm] :SQLForm[I &~ (K, V)] =
+		new LiteralIndexForm(SQLForm[I], valueOf[K], SQLForm[V])
+
+	implicit def RecordForm[I <: Record :SQLForm, K <: String with Singleton :ValueOf, V :SQLForm] :SQLForm[I |# (K, V)] =
+		new RecordForm(SQLForm[I], valueOf[K], SQLForm[V])
+
+
 
 
 
@@ -405,8 +415,8 @@ object SQLForm extends JDBCTypes {
 
 
 
-	private[schema] class FlatMappedSQLForm[S, T](map :S => Option[T], val unmap :T => Option[S])
-	                                             (implicit override val source :SQLForm[S], nulls :NullValue[T])
+	class FlatMappedSQLForm[S, T](map :S => Option[T], val unmap :T => Option[S])
+	                             (implicit override val source :SQLForm[S], nulls :NullValue[T])
 		extends FlatMappedSQLReadForm[S, T](map) with FlatMappedSQLWriteForm[S, T] with SQLForm[T]
 	{
 		override def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] =
@@ -417,11 +427,10 @@ object SQLForm extends JDBCTypes {
 
 
 
-	private[schema] class MappedSQLForm[S, T](map :S => T, val unmap :T => S)
-	                                         (implicit override val source :SQLForm[S], nulls :NullValue[T])
+	class MappedSQLForm[S, T](map :S => T, val unmap :T => S)
+	                         (implicit override val source :SQLForm[S], nulls :NullValue[T])
 		extends MappedSQLReadForm[S, T](map) with MappedSQLWriteForm[S, T] with SQLForm[T]
 	{
-
 		override def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] =
 			source.bimap(this.map andThen map)(unmap andThen this.unmap)
 
@@ -507,44 +516,29 @@ object SQLForm extends JDBCTypes {
 
 
 
-	private class ChainForm[T <: Chain, H](override val tail :SQLForm[T], override val head :SQLForm[H])
-		extends ChainWriteForm(tail, head) with ChainReadForm[T, H] with SQLForm[T ~ H]
+	private class ChainForm[I <: Chain, L](override val init :SQLForm[I], override val last :SQLForm[L])
+		extends ChainWriteForm(init, last) with ChainReadForm[I, L] with SQLForm[I ~ L]
 	{
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ChainForm[_, _]]
 
 		override def toString :String = super[ChainWriteForm].toString
 	}
 
-
-
-/*
-	import shapeless.::
-
-
-
-	implicit case object HNilForm extends AbstractEmptyForm[HNil] with AbstractHListWriteForm[HNil] {
-		def ::[X](f :SQLForm[X]) :HListForm[X, HNil] = new HListForm(f, this)
-
-		override def nullValue: HNil = HNil
-		override def nullLiteral: String = "()"
-		override def literal(value :HNil) = "()"
-
-		override def inlineLiteral(value: HNil): String = ""
-		override def inlineNullLiteral: String = ""
-
-		override protected[sql] def elementsLiteral(sb: StringBuilder, value :HNil): StringBuilder = sb
-		override def toString = "HNIL"
-	}
-
-
-
-	case class HListForm[H, T>:Null<:HList](head :SQLForm[H], tail :SQLForm[T] with AbstractHListWriteForm[T])
-		extends SQLForm[H::T] with HListReadForm[H, T] with HListWriteForm[H, T]
+	private class LiteralIndexForm[I <: LiteralIndex, K <: Singleton, V]
+	                              (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
+		extends LiteralIndexWriteForm[I, K, V](init, value) with LiteralIndexReadForm[&~, I, K, V] with SQLForm[I &~ (K, V)]
 	{
-		override def toString = s"$head::" + tail.toString
+		override protected[this] def cons(init :I, value :V) :I &~ (K, V) = init &~ (key -> value)
+		override def symbol :String = "&~"
 	}
-*/
 
+	private class RecordForm[I <: Record, K <: String with Singleton, V]
+	                        (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
+		extends RecordWriteForm[I, K, V](init, value) with LiteralIndexReadForm[|#, I, K, V] with SQLForm[I |# (K, V)]
+	{
+		override protected[this] def cons(init :I, value :V) :I |# (K, V) = init |# key -> value
+		override def symbol :String = "|#"
+	}
 
 
 

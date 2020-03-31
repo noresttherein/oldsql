@@ -213,7 +213,7 @@ object ColumnReadForm {
 
 
 
-	private[schema] trait FlatMappedColumnReadForm[S, +T] extends FlatMappedSQLReadForm[S, T] with ColumnReadForm[T] {
+	trait FlatMappedColumnReadForm[S, +T] extends FlatMappedSQLReadForm[S, T] with ColumnReadForm[T] {
 		private def form :ColumnReadForm[S] = source.asInstanceOf[ColumnReadForm[S]]
 
 		override def sqlType :JDBCSQLType = form.sqlType
@@ -241,7 +241,7 @@ object ColumnReadForm {
 
 
 
-	private[schema] trait MappedColumnReadForm[S, +T] extends MappedSQLReadForm[S, T] with ColumnReadForm[T] {
+	trait MappedColumnReadForm[S, +T] extends MappedSQLReadForm[S, T] with ColumnReadForm[T] {
 		private def form :ColumnReadForm[S] = source.asInstanceOf[ColumnReadForm[S]]
 
 		override def sqlType :JDBCSQLType = form.sqlType

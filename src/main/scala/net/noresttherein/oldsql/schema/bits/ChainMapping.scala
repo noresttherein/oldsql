@@ -26,15 +26,15 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O,
 
 
 
-	override val components :Unique[Component[_]] = Unique.Lazy {
+	override val components :Unique[Component[_]] = Unique.later {
 		@tailrec def rec(chain :Chain, drop :C => Chain, res :List[Component[_]] = Nil) :Unique[Component[_]] =
 			chain match {
 				case t ~ (h :Component[_]) =>
 					val selector = ComponentExtractor.req(h) {
-						s :S => drop(explode(s)).asInstanceOf[Chain ~ h.Subject].head
+						s :S => drop(explode(s)).asInstanceOf[Chain ~ h.Subject].last
 					}
 					fastSelect = fastSelect.updated(h, selector)
-					rec(t, drop andThen (_.asInstanceOf[Chain~Any].tail), h::res)
+					rec(t, drop andThen (_.asInstanceOf[Chain~Any].init), h::res)
 
 				case _ ~ h =>
 					throw new IllegalStateException(s"Non-component on mapping's $debugString component list: $h")

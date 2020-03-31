@@ -14,9 +14,7 @@ import scala.util.Try
 
 
 
-trait MappedMapping[M <: Mapping.Component[O, S], O, S, T]
-	extends ShallowAdapter[M, O, S, T]
-{
+trait MappedMapping[+M <: Mapping.Component[O, S], O, S, T] extends ShallowAdapter[M, O, S, T] {
 	implicit protected def nulls :NullValue[T]
 	protected def map :S => T
 	protected def unmap :T => S
@@ -57,24 +55,24 @@ trait MappedMapping[M <: Mapping.Component[O, S], O, S, T]
 		if (nulls != null) nulls.toOption
 		else Try { egg.nullValue.map(map) }.toOption.flatten
 
-	override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :M AdaptedAs X = {
-		val newNull =
-			if (nulls != null) nulls
-			else if (this.nulls != null) this.nulls.map(there)
-			else null
-		MappedMapping[M, O, S, X](egg, map andThen there, back andThen unmap)(newNull)
-	}
+	override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappingAdapter[M, O, X] =
+		MappedMapping[M, O, S, X](egg, map andThen there, back andThen unmap)(mapNulls(there))
 
 	override def flatMap[X](there :T => Option[X], back :X => Option[T])
-	                       (implicit nulls :NullValue[X] = null) :M AdaptedAs X =
-	{
-		val newNull =
-			if (nulls != null) nulls
-			else if (this.nulls != null) this.nulls.flatMap(there)
-			else null
-		MappedMapping.opt[M, O, S, X](egg, map andThen there, back(_) map unmap)(newNull)
-	}
+	                       (implicit nulls :NullValue[X]) :MappingAdapter[M, O, X] =
+		MappedMapping.opt[M, O, S, X](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
 
+
+
+	protected def mapNulls[X](there :T => X)(implicit nulls :NullValue[X]) :NullValue[X] =
+		if (nulls != null) nulls
+		else if (this.nulls != null) this.nulls.map(there)
+		else null
+
+	protected def flatMapNulls[X](there :T => Option[X])(implicit nulls :NullValue[X]) :NullValue[X] =
+		if (nulls != null) nulls
+		else if (this.nulls != null) this.nulls.flatMap(there)
+		else null
 
 
 	override def toString :String = "Mapped(" + egg  + ")"
@@ -108,7 +106,7 @@ object MappedMapping {
 
 
 
-	class FlatMappedMapping[M <: Mapping.Component[O, S], O, S, T]
+	class FlatMappedMapping[+M <: Mapping.Component[O, S], O, S, T]
 	                       (override val egg :M,
 	                        protected final val map :S => Option[T],
 	                        protected final val unmap :T => Option[S],
@@ -165,27 +163,25 @@ object MappedMapping {
 
 
 
-		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :M AdaptedAs X = {
-			val newNull =
-				if (nulls != null) nulls
-				else this.nulls.map(there)
-			new FlatMappedMapping[M, O, S, X](egg, map(_) map there, back andThen unmap, newNull)
-		}
+		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappingAdapter[M, O, X] =
+			new FlatMappedMapping[M, O, S, X](egg, map(_) map there, back andThen unmap, mapNulls(there))
 
 		override def flatMap[X](there :T => Option[X], back :X => Option[T])
-		                       (implicit nulls :NullValue[X]) :M AdaptedAs X =
-		{
-			val newNull =
-				if (nulls != null) nulls
-				else this.nulls.flatMap(there)
-			new FlatMappedMapping[M, O, S, X](egg, map(_) flatMap there, back(_) flatMap unmap, newNull)
-		}
+		                       (implicit nulls :NullValue[X]) :MappingAdapter[M, O, X] =
+			new FlatMappedMapping[M, O, S, X](egg, map(_) flatMap there, back(_) flatMap unmap, flatMapNulls(there))
+
+
+		protected def mapNulls[X](there :T => X)(implicit nulls :NullValue[X]) :NullValue[X] =
+			if (nulls != null) nulls else this.nulls.map(there)
+
+		protected def flatMapNulls[X](there :T => Option[X])(implicit nulls :NullValue[X]) :NullValue[X] =
+			if (nulls != null) nulls else this.nulls.flatMap(there)
+
 
 
 		override def toString :String = "Mapped(" + egg  + ")"
 
 	}
-
 
 
 }

@@ -214,7 +214,7 @@ class PropertyPathSpec extends AnyFlatSpec with Matchers {
 
 	"PropertyPath" should "properly reflect generic root types" in {
 		val chain = PropertyPath[Seq[Option[Int]]](c => c.head.get)
-		chain.name should equal("head.get")
+		chain.name should equal("last.get")
 	}
 
 }

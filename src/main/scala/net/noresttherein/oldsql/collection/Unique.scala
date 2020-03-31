@@ -82,7 +82,7 @@ object Unique extends IterableFactory[Unique] {
 	  * is called. It will be executed at most once, withing a `synchronized` block for the proxy.
 	  * Once computed, it remains thread safe but will incur no additional synchronization penalty.
 	  */
-	def Lazy[T](init: => Unique[T]) :Unique[T] = new LazyUnique[T](() => init)
+	def later[T](init: => Unique[T]) :Unique[T] = new LazyUnique[T](() => init)
 
 
 

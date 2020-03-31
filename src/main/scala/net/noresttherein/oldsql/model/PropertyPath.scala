@@ -348,12 +348,11 @@ object PropertyPath {
 		  * and function prefix.fun adnThen this.fun.
 		  */
 		def prepend[S, XX<:X](prefix :PropertyPath[S, XX]) :PropertyPath[S, Y] =
-			new HackedPropertyPath[S, Y](prefix.name+"."+name, prefix.fun andThen fun, prefix.definedFor)
+			new HackedPropertyPath[S, Y](prefix.name + "." + name, prefix.fun andThen fun, prefix.definedFor)
 
 		override def equals(that :Any) :Boolean = that match {
-			case p:PropertyPath[_, _] =>
-				(definedFor<:<p.definedFor || p.definedFor<:<definedFor) && name==p.name
-			//				definedFor =:= p.definedFor && name == p.name
+			case p :PropertyPath[_, _] =>
+				(definedFor <:< p.definedFor || p.definedFor <:< definedFor) && name == p.name
 			case _ => false
 		}
 
@@ -433,7 +432,7 @@ object PropertyPath {
 
 
 	private class ChainedProperty[-S, +T]
-	(tpe :Type, _method :PropertyCall, _property :S=>T, private final val tail :ReflectedPropertyPath[_, T])
+			(tpe :Type, _method :PropertyCall, _property :S=>T, private final val tail :ReflectedPropertyPath[_, T])
 		extends ReflectedPropertyPath[S, T](tpe, _method, _property)
 	{
 		private[PropertyPath] def this(tpe :Type, method :PropertyCall, tail :ReflectedPropertyPath[Any, T]) =

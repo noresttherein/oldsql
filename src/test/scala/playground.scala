@@ -1,7 +1,7 @@
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Record.{|#, #>}
 import net.noresttherein.oldsql.collection.Record
-import net.noresttherein.oldsql.schema.{RowSchema, SQLForm}
+import net.noresttherein.oldsql.schema.{MappingSupport, SQLForm}
 import net.noresttherein.oldsql.schema.RowSource.Table
 
 
@@ -12,6 +12,10 @@ import net.noresttherein.oldsql.schema.RowSource.Table
 object playground extends App {
 
 //	import net.noresttherein.oldsql.collection.Record._
+
+//	trait Tagged[+T]
+
+//	class TaggedAny(val inner :Tagged[T]) extends Tagged
 
 	val record =   "key1" #> 1 |# "key2" #> 2 |# "key3" #> 3 : @~ |# ("key1", Int) |# ("key2", Int) |# ("key3", Int)
 
@@ -43,7 +47,7 @@ object playground extends App {
 	println(record("key2"))
 	println(record("key2") = "value2")
 	println(record("key5") = 5)
-	//	implicit class SomeTable[O](val name :String) extends RowSchema[O, Int] {
+	//	implicit class SomeTable[O](val name :String) extends MappingSupport[O, Int] {
 //		override protected def construct(implicit pieces :Pieces) :Int = 1
 //	}
 //

@@ -3,8 +3,10 @@ package net.noresttherein.oldsql.schema
 import java.sql.{ResultSet, SQLException}
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.LiteralIndex.&~
+import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
 import net.noresttherein.oldsql.schema.SQLForm.{JDBCSQLType, NullValue}
 import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, OptionMappedSQLReadForm, Tuple2ReadForm}
@@ -288,16 +290,44 @@ object SQLReadForm {
 
 
 
-	/** Provides an implicit form for the heterogeneous list (`Chain`) `T ~ H` as long as implicit forms for both
-	  * `T` and `H` are available. */
-	implicit def ChainReadForm[T <: Chain, H](implicit t :SQLReadForm[T], h :SQLReadForm[H]) :SQLReadForm[T ~ H] =
-		new ChainReadForm[T, H] {
-			override protected val tail = t
-			override protected val head = h
-		}
-
 	/** An implicit value for the empty chain `@~`, which reads zero columns and simply returns `@~`. */
 	implicit val EmptyChainReadForm :SQLReadForm[@~] = SQLForm.EmptyChainForm
+
+	/** Provides an implicit form for the heterogeneous list (`Chain`) `I ~ L` as long as implicit forms for both
+	  * `I` and `L` are available. */
+	implicit def ChainReadForm[I <: Chain, L](implicit i :SQLReadForm[I], l :SQLReadForm[L]) :SQLReadForm[I ~ L] =
+		new ChainReadForm[I, L] {
+			override protected val init = i
+			override protected val last = l
+		}
+
+	/** Provides an implicit form for the heterogeneous map indexed by literal types (`LiteralIndex`) `I &~ L`
+	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
+	  */
+	implicit def LiteralIndexReadForm[I <: LiteralIndex :SQLReadForm, K <: Singleton :ValueOf, V :SQLReadForm]
+			:SQLReadForm[I &~ (K, V)] =
+		new LiteralIndexReadForm[&~, I, K, V] {
+			override protected val init = SQLReadForm[I]
+			override protected val value = SQLReadForm[V]
+			override protected val key = valueOf[K]
+
+			override protected[this] def cons(init :I, value :V) = init &~ (key -> value)
+			override protected def symbol = "&~"
+		}
+
+	/** Provides an implicit form for the heterogeneous map indexed by string literals (`Record`) `I |# L`
+	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
+	  */
+	implicit def RecordReadForm[I <: Record :SQLReadForm, K <: String with Singleton :ValueOf, V :SQLReadForm]
+			:SQLReadForm[I |# (K, V)] =
+		new LiteralIndexReadForm[|#, I, K, V] {
+			override protected val init = SQLReadForm[I]
+			override protected val value = SQLReadForm[V]
+			override protected val key = valueOf[K]
+
+			override protected[this] def cons(init :I, value :V) = init |# (key -> value)
+			override protected def symbol = "|#"
+		}
 
 
 
@@ -373,9 +403,9 @@ object SQLReadForm {
 
 
 
-	private[schema] class FlatMappedSQLReadForm[S, +T](protected[this] final val map :S => Option[T])
-	                                                  (implicit protected[this] val source :SQLReadForm[S],
-	                                                   implicit final override val nulls :NullValue[T])
+	class FlatMappedSQLReadForm[S, +T](protected[this] final val map :S => Option[T])
+	                                  (implicit protected[this] val source :SQLReadForm[S],
+	                                   final override val nulls :NullValue[T])
 		extends SQLReadForm[T]
 	{
 		override def readColumns :Int = source.readColumns
@@ -398,7 +428,7 @@ object SQLReadForm {
 
 
 
-	private[schema] class MappedSQLReadForm[S, +T](protected[this] final val map :S => T)
+	class MappedSQLReadForm[S, +T](protected[this] final val map :S => T)
 	                                              (implicit protected[this] val source :SQLReadForm[S],
 	                                               implicit final override val nulls :NullValue[T])
 		extends SQLReadForm[T]
@@ -648,31 +678,67 @@ object SQLReadForm {
 
 
 
-	private[schema] trait ChainReadForm[+T <: Chain, +H] extends SQLReadForm[T ~ H] {
-		protected val tail :SQLReadForm[T]
-		protected val head :SQLReadForm[H]
 
-		override val readColumns :Int = tail.readColumns + head.readColumns
+
+	private[schema] trait ChainReadForm[+T <: Chain, +H] extends SQLReadForm[T ~ H] {
+		protected val init :SQLReadForm[T]
+		protected def last :SQLReadForm[H]
+
+		override val readColumns :Int = init.readColumns + last.readColumns
 
 		override def opt(position :Int)(res :ResultSet) :Option[T ~ H] =
-			for (t <- tail.opt(position)(res); h <- head.opt(position + tail.readColumns)(res)) yield t ~ h
+			for (t <- init.opt(position)(res); h <- last.opt(position + init.readColumns)(res)) yield t ~ h
 
-		override def nullValue :T ~ H = tail.nullValue ~ head.nullValue
+		override val nullValue :T ~ H = init.nullValue ~ last.nullValue
 
 
 
 		override def equals(that :Any) :Boolean = that match {
 			case chain :ChainReadForm[_, _] =>
-				(chain eq this) || (chain canEqual this) && chain.head == head && chain.tail == tail
+				(chain eq this) || (chain canEqual this) && chain.last == last && chain.init == init
 			case _ => false
 		}
 
-		override def hashCode :Int = head.hashCode * 31 + tail.hashCode
+		override def hashCode :Int = init.hashCode * 31 + last.hashCode
 
-		override def toString :String = head match {
-			case _ :ChainReadForm[_, _] => tail.toString + "~(" + head + ")"
-			case _ => tail.toString + "~" + head
+		override def toString :String = last match {
+			case _ :ChainReadForm[_, _] => init.toString + "~(" + last + ")"
+			case _ => init.toString + "~" + last
 		}
+	}
+
+
+
+	private[schema] trait LiteralIndexReadForm[C[+A <: I, +B <: (K, V)] <: A &~ B, I <: LiteralIndex, K <: Singleton, V]
+		extends SQLReadForm[I C (K, V)]
+	{
+		protected val init :SQLReadForm[I]
+		protected val value :SQLReadForm[V]
+		protected def key :K
+
+		override val readColumns :Int = init.readColumns + value.readColumns
+
+		protected[this] def cons(init :I, value :V) :I C (K, V)
+
+		override def opt(position :Int)(res :ResultSet) :Option[I C (K, V)] =
+			for (i <- init.opt(position)(res); v <- value.opt(position + init.readColumns)(res))
+				yield cons(i, v)
+
+		override val nullValue :I C (K, V) = cons(init.nullValue, value.nullValue)
+
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case index :LiteralIndexReadForm[_, _, _, _] if index canEqual this =>
+				index.key == key && index.value == value && index.init == init
+			case _ => false
+		}
+
+		override def hashCode :Int = (init.hashCode * 31 + key.hashCode) * 31 + value.hashCode
+
+		protected def symbol :String
+
+		override def toString :String = init.toString + symbol + "(" + key + "->" + value + ")"
 	}
 
 
@@ -680,41 +746,6 @@ object SQLReadForm {
 
 
 
-
-
-/*
-		trait AbstractHListReadForm[+T >:Null <:HList] extends SQLReadForm[T] { self =>
-			def ::[H](form :SQLReadForm[H]) :HListReadForm[H, T] = new HListReadFormImpl(form, this)
-		}
-
-
-		trait HListReadForm[+H, +T<:HList] extends AbstractHListReadForm[H::T] {
-			val head :SQLReadForm[H]
-			val tail :SQLReadForm[T]
-
-			override def opt(position: Int)(res: ResultSet): Option[H::T] =
-				for (h<-head.opt(position)(res); t<-tail.opt(position+head.readColumns)(res))
-					yield h::t
-
-			override def readColumns: Int = head.readColumns + tail.readColumns
-
-			override def opt(res: PositionedResult): Option[H::T] = {
-				val (first, rest) = (head.opt(res), tail.opt(res))
-				for (h<-first; t<-rest) yield h::t
-			}
-
-			override def nullValue: H::T = head.nullValue::tail.nullValue
-
-			override def toString = s"^$head::" + tail.toString
-		}
-
-		case class HListReadFormImpl[+H, +T<:HList](head :SQLReadForm[H], tail :SQLReadForm[T]) extends HListReadForm[H, T] {
-
-			override def readColumns: Int = head.readColumns + tail.readColumns
-
-			override def toString = super.toString
-		}
-	*/
 
 }
 

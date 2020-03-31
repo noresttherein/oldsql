@@ -21,7 +21,7 @@ import scala.reflect.runtime.universe.TypeTag
 
 
 
-
+//todo: name DeclarativeMapping ?
 //todo: provide examples
 /** Convenience base trait for mappings which are defined statically, rather than dynamically (i.e their mapped type
   * and schema are known). This includes table mappings and other instances where columns are known statically and
@@ -37,11 +37,11 @@ import scala.reflect.runtime.universe.TypeTag
   *
   * @tparam S value type of the mapped entity
   */
-trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
+trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 
 	/** Base trait for all components of this mapping. Creating an instance automatically lists it within owning mapping
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.
-	  * This registering is delayed, as in most cases properties listing its subcomponents will not be initialized before 
+	  * This registering is delayed, as in most cases properties listing its subcomponents will not be initialized before
 	  * its constructor is over, so instead it adds itself only to a 'waiting list', which is processed and its contents
 	  * appropriately registered within the parent mapping once either this instance's `include()` method is called, parent
 	  * mapping explicitly requests initializing all waiting lists via its 'initialize()' method, or any of the parent
@@ -58,7 +58,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 
 
-		private[RowSchema] def belongsTo(mapping :RowSchema[_, _]) :Boolean = mapping eq composite
+		private[MappingSupport] def belongsTo(mapping :MappingSupport[_, _]) :Boolean = mapping eq composite
 
 		protected[schema] def extractor :Extractor[S, T]
 
@@ -78,7 +78,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 		private[this] var initialized = false
 
 		/** Manually trigger initialization of this instance within the enclosing mapping. */
-		private[RowSchema] final def include() :this.type = synchronized {
+		private[MappingSupport] final def include() :this.type = synchronized {
 			if (!initialized) {
 				fastSelector = selectorFor(this)
 				safeSelector = fastSelector
@@ -89,14 +89,14 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 		}
 
 		/** Register itself and all its subcomponents within the parent mapping. This method will be called only once. */
-		protected[RowSchema] def init() :Unit = composite.synchronized {
+		protected[MappingSupport] def init() :Unit = composite.synchronized {
 			initComponents += this
 			initSubcomponents += this
 			subcomponents foreach { c => liftSubcomponent(c) }
 		}
 
-		protected[RowSchema] def liftSubcomponent[U](subcomponent :Component[U]) :Component[U] = subcomponent match {
-			case mine :RowSchema[_, _]#ComponentMapping[_] if mine belongsTo composite => subcomponent
+		protected[MappingSupport] def liftSubcomponent[U](subcomponent :Component[U]) :Component[U] = subcomponent match {
+			case mine :MappingSupport[_, _]#ComponentMapping[_] if mine belongsTo composite => subcomponent
 
 			case _ => composite.synchronized {
 				initSelectors.getOrElse(subcomponent, {
@@ -155,10 +155,10 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 			else mine ++: inherited
 		}
 
-		/** The column prefix prepended to all columns at the behest of the enclosing `RowSchema` or an empty string. */
+		/** The column prefix prepended to all columns at the behest of the enclosing `MappingSupport` or an empty string. */
 		protected final def inheritedPrefix :String = testedPrefix
 
-		/** The column prefix prepended to all columns by this component ''and'' the enclosing `RowSchema`.
+		/** The column prefix prepended to all columns by this component ''and'' the enclosing `MappingSupport`.
 		  * Defaults to `inheritedPrefix`. */
 		protected def columnPrefix :String = inheritedPrefix
 
@@ -170,7 +170,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 
 
-	/** A proxy class for non-direct subcomponents of the enclosing `RowSchema` which incorporates any column prefix
+	/** A proxy class for non-direct subcomponents of the enclosing `MappingSupport` which incorporates any column prefix
 	  * and buffs defined in it and any other enclosing components into the adapted component.
 	  * It serves at the same time as its own `ComponentExtractor` and the lifted 'effective' version of the component.
 	  * Its components * are at the same time the lifted components of the enclosing mapping.
@@ -179,12 +179,12 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
 		extends EagerDeepProxy[Component[T], O, T](target) with ComponentMapping[T]
 	{
-		protected[RowSchema] override def init() :Unit = composite.synchronized {
+		protected[MappingSupport] override def init() :Unit = composite.synchronized {
 			initSubcomponents += this //don't lift subcomponents, don't include in the composite.components list.
 		}
 
 		override def canEqual(that :Any) :Boolean = that match {
-			case comp :RowSchema[_, _]#LiftedComponent[_] => comp belongsTo composite
+			case comp :MappingSupport[_, _]#LiftedComponent[_] => comp belongsTo composite
 			case _ => false
 		}
 
@@ -199,7 +199,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	/** Base trait for components which have a value for all instances of `T`. */
 	trait MandatoryComponent[T] extends ComponentMapping[T] {
 		protected[schema] override def extractor :RequisiteExtractor[S, T] = Extractor.req(extract)
-		protected def extract :S=>T
+		protected def extract :S => T
 	}
 
 	/** Base trait for components which might not have a value for all instances of `T` (such as properties declared
@@ -217,7 +217,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  *             from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
 	  *             to subcomponents of this component.
 	  * @tparam T value type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.BaseOptionalComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSupport.BaseOptionalComponent]]
 	  */
 	abstract class BaseComponent[T](value :S => T, opts :Buff[T]*) extends ComponentMapping[T] {
 		protected[schema] override val extractor :Extractor[S, T] = Extractor.req(value)
@@ -240,7 +240,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  * @tparam T value type of this component.
 	  */
 	abstract class ComponentSchema[T](value :S => T, prefix :String, opts :Seq[Buff[T]] = Nil)
-		extends BaseComponent[T](value, opts :_*) with RowSchema[O, T]
+		extends BaseComponent[T](value, opts :_*) with MappingSupport[O, T]
 	{
 		def this(value :S => T, buffs :Buff[T]*) = this(value, "", buffs)
 
@@ -256,7 +256,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  *             from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
 	  *             to subcomponents of this component.
 	  * @tparam T value type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.BaseComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSupport.BaseComponent]]
 	  */
 	abstract class BaseOptionalComponent[T](value :S => Option[T], opts :Buff[T]*)
 		extends OptionalComponent[T]
@@ -281,7 +281,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  * @tparam T value type of this component.
 	  */
 	abstract class OptionalComponentSchema[T](value :S => Option[T], prefix :String, opts :Seq[Buff[T]] = Nil)
-		extends BaseOptionalComponent[T](value, opts :_*) with RowSchema[O, T]
+		extends BaseOptionalComponent[T](value, opts :_*) with MappingSupport[O, T]
 	{
 		def this(value :S => Option[T], buffs :Buff[T]*) = this(value, "", buffs)
 
@@ -292,9 +292,9 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 /*
 	class SymLinkComponent[C<:Mapping[T], T](target :TypedComponentPath[this.type, C, T]) extends BaseSymLink[this.type, C, T](target) with Component[T] {
-		override protected[RowSchema] val pick: (S) => Option[T] = target.pick
-		override protected[RowSchema] val surepick: Option[(S) => T] = target.surepick
-		override private[RowSchema] def init() = Path(comp => target.lift(comp.adaptedComponent))
+		override protected[MappingSupport] val pick: (S) => Option[T] = target.pick
+		override protected[MappingSupport] val surepick: Option[(S) => T] = target.surepick
+		override private[MappingSupport] def init() = Path(comp => target.lift(comp.adaptedComponent))
 	}
 */
 
@@ -316,13 +316,13 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  * @tparam C the type of the embedded component, typically its singleton type.
 	  * @tparam T the value type of this component.
 	  */
-	final class EmbeddedComponent[C <: Mapping.TypedMapping[T], T] private[RowSchema]
+	final class EmbeddedComponent[C <: Mapping.TypedMapping[T], T] private[MappingSupport]
 	                             (val body :C, protected[schema] val extractor :Extractor[S, T],
 	                              override val columnPrefix :String, override val buffs :Seq[Buff[T]])
 		extends EagerDeepProxy[C, O, T](body) with ComponentMapping[T]
 	{ nest =>
 
-		protected[RowSchema] override def init() :Unit = composite.synchronized {
+		protected[MappingSupport] override def init() :Unit = composite.synchronized {
 			initComponents += this
 			initSubcomponents += this //don't lift subcomponents as its done by EagerDeepProxy
 		}
@@ -344,7 +344,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 	/** Base trait for column components declared directly under this mapping. In general, there should be little need
 	  * to descend your classes directly from it, as column functionality is limited and constructor methods provided
-	  * within `RowSchema` should be sufficient. As with the base `ComponentMapping` trait, simple creation of
+	  * within `MappingSupport` should be sufficient. As with the base `ComponentMapping` trait, simple creation of
 	  * this instance schedules its registration within the parent mapping on the appropriate column lists, depending on
 	  * declared column options (buffs).
 	  * @tparam T value type of this column.
@@ -423,12 +423,12 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 
 
-	/** A builder adapting a given column template to a column of this `RowSchema`. */
-	protected class ColumnCopist[T] private[RowSchema] (template :ColumnMapping[_, T], name :Option[String], buffs :Seq[Buff[T]]) {
-		private[RowSchema] def this(source :ColumnMapping[_, T]) = this(source, None, source.buffs)
+	/** A builder adapting a given column template to a column of this `MappingSupport`. */
+	protected class ColumnCopist[T] private[MappingSupport](template :ColumnMapping[_, T], name :Option[String], buffs :Seq[Buff[T]]) {
+		private[MappingSupport] def this(source :ColumnMapping[_, T]) = this(source, None, source.buffs)
 
 		template match {
-			case self :RowSchema[_, _]#ComponentMapping[_] if self.belongsTo(composite) =>
+			case self :MappingSupport[_, _]#ComponentMapping[_] if self.belongsTo(composite) =>
 				if (buffs == null)
 					throw new IllegalStateException(s"$this.buffs is null: overrides must be defined before any components.")
 				if (testedPrefix.length > 0 || buffs.nonEmpty )
@@ -609,7 +609,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  * @param value the getter function for the value for this column.
 	  * @param buffs the buffs attached to this column. `Buff.AutoInsert` and mapped buffs of `this.buffs` are added
 	  *              to the list automatically.
-	  * @returns a new column, which will not appear on the `insertable` column list (and possibly others, based on
+	  * @return a new column, which will not appear on the `insertable` column list (and possibly others, based on
 	  *         buffs defined here and inherited from this mapping).
 	  */
 	protected def autoins[T](name :String, value :S => Option[T], buffs :Buff[T]*)
@@ -659,14 +659,14 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 
 	override def lift[T](component :Component[T]) :Component[T] = component match {
-		case lifted :RowSchema[_, _]#ComponentMapping[_] if lifted belongsTo this =>
+		case lifted :MappingSupport[_, _]#ComponentMapping[_] if lifted belongsTo this =>
 			lifted.asInstanceOf[Component[T]]
 		case _ =>
 			apply(component).lifted
 	}
 
 	override def apply[T](component :Component[T]) :Selector[T] = component match {
-		case lifted :RowSchema[_, _]#ComponentMapping[_] if lifted belongsTo this =>
+		case lifted :MappingSupport[_, _]#ComponentMapping[_] if lifted belongsTo this =>
 			lifted.asInstanceOf[ComponentMapping[T]].selector
 		case _  =>
 			if (fastSelectors == null) {
@@ -785,8 +785,8 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  * unless a subclass decides to initialize a component manually by its `include()` method. It can then
 	  * use this method before the call to `include()` in order to preserve the order of component definition
 	  * on all column/component lists.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.initPreceding[T](value:T) initPreceding(value)]]
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.ComponentMapping.include() ComponentMapping.include()]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSupport.initPreceding[T](value:T) initPreceding(value)]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSupport.ComponentMapping.include() ComponentMapping.include()]]
 	  */
 	protected final def initPreceding() :Unit = synchronized {
 		delayedInits.foreach(_.include())
@@ -796,7 +796,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	/** An ease-of-life variant of no-argument `initPreceding()` which returns the given argument after finishing
 	  * the initialization of all already defined components. It allows to 'inject' the initialization as an intermediate
 	  * step into any expression.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.initPreceding() initPreceding()]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSupport.initPreceding() initPreceding()]]
 	  */
 	@inline protected final def initPreceding[T](value :T) :T = { initPreceding(); value }
 
@@ -812,10 +812,10 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 	/** Tests if the component lists of this instance have already been initialized and can not be changed any further.
 	  * This happens either when any of the column/component lists of this instance are accessed, or when a subclass
-	  * manually triggers the initialization by a call to [[net.noresttherein.oldsql.schema.RowSchema.initialize() initialize()]].
+	  * manually triggers the initialization by a call to [[net.noresttherein.oldsql.schema.MappingSupport.initialize() initialize()]].
 	  * Any attempt to create new components after this happens will result in `IllegalStateException` thrown
 	  * by the constructor.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.initialize() initialize()]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSupport.initialize() initialize()]]
 	  */
 	protected final def isInitialized :Boolean = initComponents.isInitialized
 
@@ -832,7 +832,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  * It is triggered automatically the first time any of the component lists of this instance is accessed, but
 	  * can be also called explicitly by a subclass. It is idempotent and synchronized, meaning any calls after
 	  * the first one are ignored.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.finalizeInitialization()]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSupport.finalizeInitialization()]]
 	  */
 	protected final def initialize() :Unit =
 		if (!isInitialized) synchronized {
@@ -860,7 +860,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 	/** A hook method called by `initialize()` after component lists are initialized. By default it does nothing,
 	  * but subclasses may override it to implement any additional initialization steps they require.
-	  * @see [[net.noresttherein.oldsql.schema.RowSchema.initialize() initialize()]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSupport.initialize() initialize()]]
 	  */
 	protected def finalizeInitialization() :Unit = ()
 
@@ -880,7 +880,7 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 	  * in any change of state.
 	  */
 	private[this] class LateInitComponents(private[this] var uninitialized :Builder[ComponentMapping[_], List[ComponentMapping[_]]])
-		extends AbstractSeq[ComponentMapping[_]] 
+		extends AbstractSeq[ComponentMapping[_]]
 	{
 		def this() = this(List.newBuilder)
 
@@ -979,17 +979,17 @@ trait RowSchema[O, S] extends StaticMapping[O, S] { composite =>
 
 
 
-/** A `RowSchema` extension which, in its `optionally` (and indirectly `apply`) method, declares aliasing
-  * of its components on the passed `Pieces`. As `RowSchema` (and possibly any of its components) allows
+/** A `MappingSupport` extension which, in its `optionally` (and indirectly `apply`) method, declares aliasing
+  * of its components on the passed `Pieces`. As `MappingSupport` (and possibly any of its components) allows
   * declaring a column prefix to be added to all its columns as well as additional buffs which should be inherited
   * by all of its subcomponents (including columns), the component, as defined, can be a different instance from its
   * final representation included on the mapping's component/column lists. This is in particular necessary if a
-  * component not extending the inner [[net.noresttherein.oldsql.schema.RowSchema.ComponentMapping ComponentMapping]]
+  * component not extending the inner [[net.noresttherein.oldsql.schema.MappingSupport.ComponentMapping ComponentMapping]]
   * class is embedded in the mapping. As it is the latter version of the component which is used by the framework
   * to create any SQL statements, and thus also by the `Pieces`, but typically the original component as defined
   * is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces` implementation
   * substitutes any component passed to it with its lifted representation before looking for its value.
   */
-trait RowRootSchema[O, S] extends RowSchema[O, S] with RootMapping[O, S]
+trait RootMappingSupport[O, S] extends MappingSupport[O, S] with RootMapping[O, S]
 
 
