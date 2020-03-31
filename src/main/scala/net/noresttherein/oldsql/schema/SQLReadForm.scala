@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.collection.LiteralIndex.&~
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
 import net.noresttherein.oldsql.schema.SQLForm.{JDBCSQLType, NullValue}
-import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, OptionMappedSQLReadForm, Tuple2ReadForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, Tuple2ReadForm}
 import net.noresttherein.oldsql.slang._
 
 import scala.annotation.tailrec
@@ -181,7 +181,7 @@ trait SQLReadForm[+T] {
 	/** Combines this form with another form, which columns are expected to directly follow the columns for this
 	  * form in the result set, to create a form producing pairs of values.
 	  */
-	def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] = new Tuple2ReadForm()(this, other)
+	def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] = Tuple2ReadForm(this, other)
 
 	/** Combines this form with a `SQLWriteForm` to create a read/write `SQLForm[O]`. */
 	def &&[O>:T](write :SQLWriteForm[O]) :SQLForm[O] = SQLForm.combine[O](this, write)
@@ -201,7 +201,7 @@ trait SQLReadForm[+T] {
 
 
 
-object SQLReadForm {
+object SQLReadForm extends ScalaReadForms {
 	/** Summons an implicit `SQLReadForm[T].` */
 	def apply[T :SQLReadForm] :SQLReadForm[T] = implicitly[SQLReadForm[T]]
 
@@ -282,11 +282,6 @@ object SQLReadForm {
 
 
 
-	implicit def OptionReadForm[T :SQLReadForm] :SQLReadForm[Option[T]] =
-		SQLReadForm[T].map(Option.apply, None)
-
-	implicit def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
-		SQLReadForm[T].mapNull(Some.apply)
 
 
 
@@ -648,33 +643,6 @@ object SQLReadForm {
 		override val readColumns = super.readColumns
 		override def toString = super.toString
 	}
-
-
-
-	private[schema] trait AbstractTuple2ReadForm[L, R] extends SQLReadForm[(L, R)] {
-		val _1  :SQLReadForm[L]
-		val _2  :SQLReadForm[R]
-
-		override def opt(position: Int)(res: ResultSet): Option[(L, R)] = {
-			val l = _1.opt(position)(res)
-			val r = _2.opt(position + _1.readColumns)(res)
-			for (v1<-l; v2<-r) yield (v1, v2)
-		}
-
-		override def nullValue: (L, R) = (_1.nullValue, _2.nullValue)
-
-		override def readColumns: Int = _1.readColumns + _2.readColumns
-
-		override def equals(that :Any) :Boolean = that match {
-			case tuple :AbstractTuple2ReadForm[_, _] =>
-				(tuple eq this) || tuple.canEqual(this) && tuple._1 == _1 && tuple._2 == _2
-			case _ => false
-		}
-
-		override def toString = s"<(${_1},${_2})"
-	}
-
-	private[schema] class Tuple2ReadForm[L, R](implicit val _1  :SQLReadForm[L], val _2 :SQLReadForm[R]) extends AbstractTuple2ReadForm[L, R]
 
 
 

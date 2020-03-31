@@ -7,8 +7,8 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.LiteralIndex.&~
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.SQLForm.{NullValue, Tuple2Form}
-import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractTuple2ReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, LiteralIndexReadForm, MappedSQLReadForm, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{AbstractTuple2WriteForm, ChainWriteForm, EmptyWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, OptionWriteForm, RecordWriteForm, SeqWriteForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, LiteralIndexReadForm, MappedSQLReadForm, SeqReadForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, EmptyWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, RecordWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.immutable.Seq
@@ -104,7 +104,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	override def asOpt :SQLForm[Option[T]] = SQLForm.OptionForm(this)
 
 
-	def *[O](other :SQLForm[O]) :SQLForm[(T, O)] = new Tuple2Form()(this, other)
+	def *[O](other :SQLForm[O]) :SQLForm[(T, O)] = Tuple2Form(this, other)
 
 
 
@@ -120,7 +120,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 
 
-object SQLForm extends JDBCTypes {
+object SQLForm extends JDBCTypes with ScalaForms {
 
 	def combine[T](read :SQLReadForm[T], write :SQLWriteForm[T]) :SQLForm[T] =
 		new CombinedForm[T](read, write)
@@ -151,15 +151,11 @@ object SQLForm extends JDBCTypes {
 				new MappedSQLForm[S, T](map, unmap)
 		}
 
+	
 
-	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
-
-	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].bimapNull(Some.apply)(_.get)
-
-
-
-	implicit def Tuple2Form[T1 :SQLForm, T2 :SQLForm] :SQLForm[(T1, T2)] = new Tuple2Form[T1, T2]
-
+	
+	
+	
 	implicit val EmptyChainForm :SQLForm[@~] = new EmptyForm[@~](@~) {
 		override def toString = "@~"
 	}
@@ -475,38 +471,6 @@ object SQLForm extends JDBCTypes {
 
 
 
-
-
-
-
-	private[schema] class OptionForm[T](implicit some :SQLForm[T])
-		extends OptionWriteForm[T] with SQLForm[Option[T]]
-	{
-		override def readColumns :Int = some.readColumns
-
-		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = some.opt(position)(res).map(Option.apply)
-		override def apply(position :Int)(res :ResultSet) :Option[T] = some.opt(position)(res)
-
-		override def nullValue :Option[T] = None
-
-		protected override def form :SQLForm[T] = some
-
-	}
-
-
-
-	private class Tuple2Form[L, R](implicit val _1 :SQLForm[L], implicit val _2 :SQLForm[R])
-		extends AbstractTuple2ReadForm[L, R] with AbstractTuple2WriteForm[L, R] with SQLForm[(L, R)]
-	{
-		override def equals(that :Any) :Boolean = that match {
-			case t :Tuple2Form[_, _] => (t eq this) || t._1 == _1 && t._2 == _2
-			case _ => false
-		}
-
-		override def hashCode :Int = (_1, _2).hashCode
-
-		override def toString = s"(${_1},${_2})"
-	}
 
 
 

@@ -193,69 +193,239 @@ object Chain extends ChainFactory {
 	private def ChainApplication[X <: Chain, F, Y](apply :(F, X) => Y) :ChainApplication[X, F, Y] =
 		new ChainApplication(apply)
 
-//	private[this] val function1 = ChainApplication { (f :Any => Any, xs: @~ ~ Any) => f(xs.last) }
 
-	implicit def applyFunction1[X, Y] =
-		ChainApplication { (f :X => Y, xs: @~ ~ X) => f(xs.last) }
+	
+	implicit def applyFunction1[X, Y] :ChainApplication[@~ ~ X, X => Y, Y] =
+		ChainApplication { (f :X => Y, xs: @~ ~X) => f(xs.last) }
 
-	implicit def applyFunction2[X1, X2, Y] =
-		ChainApplication { (f :(X1, X2) => Y, xs: @~ ~ X1 ~ X2) => f(xs.init.last, xs.last) }
+	implicit def applyFunction2[A, B, Y] :ChainApplication[@~ ~ A ~ B, (A, B) => Y, Y] =
+		ChainApplication { (f :(A, B) => Y, xs: @~ ~A~B) => f(xs.init.last, xs.last) }
 
-	implicit def applyFunction3[X1, X2, X3, Y] =
+	implicit def applyFunction3[A, B, C, Y] :ChainApplication[@~ ~ A ~ B ~ C, (A, B, C) => Y, Y] =
 		ChainApplication {
-			(f :(X1, X2, X3) => Y, xs: @~ ~ X1 ~ X2 ~ X3) => val xs1 = xs.init; f(xs1.init.last, xs1.last, xs.last)
+			(f :(A, B, C) => Y, xs: @~ ~A~B~C) => val xs1 = xs.init; f(xs1.init.last, xs1.last, xs.last)
 		}
 
-	implicit def applyFunction4[X1, X2, X3, X4, Y] =
+	implicit def applyFunction4[A, B, C, D, Y] :ChainApplication[@~ ~ A ~ B ~ C ~ D, (A, B, C, D) => Y, Y] =
 		ChainApplication {
-			(f :(X1, X2, X3, X4) => Y, xs: @~ ~ X1 ~ X2 ~ X3 ~ X4) =>
+			(f :(A, B, C, D) => Y, xs: @~ ~A~B~C~D) =>
 				val xs1 = xs.init; val xs2 = xs1.init; f(xs2.init.last, xs2.last, xs1.last, xs.last)
 		}
 
-	implicit def applyFunction5[X1, X2, X3, X4, X5, Y] =
+	implicit def applyFunction5[A, B, C, D, E, Y] :ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E, (A, B, C, D, E) => Y, Y] =
 		ChainApplication {
-			(f :(X1, X2, X3, X4, X5) => Y, xs: @~ ~ X1 ~ X2 ~ X3 ~ X4 ~ X5) =>
+			(f :(A, B, C, D, E) => Y, xs: @~ ~A~B~C~D~E) =>
 				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init
 				f(xs3.init.last, xs3.last, xs2.last, xs1.last, xs.last)
 		}
 
-	implicit def applyFunction6[X1, X2, X3, X4, X5, X6, Y] =
+	implicit def applyFunction6[A, B, C, D, E, F, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F, (A, B, C, D, E, F) => Y, Y] =
 		ChainApplication {
-			(f :(X1, X2, X3, X4, X5, X6) => Y, xs: @~ ~ X1 ~ X2 ~ X3 ~ X4 ~ X5 ~ X6) =>
+			(f :(A, B, C, D, E, F) => Y, xs: @~ ~A~B~C~D~E~F) =>
 				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init
 				f(xs4.init.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
 		}
 
-	implicit def applyFunction7[X1, X2, X3, X4, X5, X6, X7, Y] =
+	implicit def applyFunction7[A, B, C, D, E, F, G, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G, (A, B, C, D, E, F, G) => Y, Y] =
 		ChainApplication {
-			(f :(X1, X2, X3, X4, X5, X6, X7) => Y, xs: @~ ~ X1 ~ X2 ~ X3 ~ X4 ~ X5 ~ X6 ~ X7) =>
+			(f :(A, B, C, D, E, F, G) => Y, xs: @~ ~A~B~C~D~E~F~G) =>
 				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
 				f(xs5.init.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
 		}
 
-	implicit def applyFunction8[X1, X2, X3, X4, X5, X6, X7, X8, Y] =
+	implicit def applyFunction8[A, B, C, D, E, F, G, H, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H, (A, B, C, D, E, F, G, H) => Y, Y] =
 		ChainApplication {
-			(f :(X1, X2, X3, X4, X5, X6, X7, X8) => Y, xs: @~ ~ X1 ~ X2 ~ X3 ~ X4 ~ X5 ~ X6 ~ X7 ~ X8) =>
+			(f :(A, B, C, D, E, F, G, H) => Y, xs: @~ ~A~B~C~D~E~F~G~H) =>
 				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
 				val xs6 = xs5.init
 				f(xs6.init.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
 		}
 
-	implicit def applyFunction9[X1, X2, X3, X4, X5, X6, X7, X8, X9, Y] =
+	implicit def applyFunction9[A, B, C, D, E, F, G, H, I, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I, (A, B, C, D, E, F, G, H, I) => Y, Y] =
 		ChainApplication {
-			(f :(X1, X2, X3, X4, X5, X6, X7, X8, X9) => Y, xs: @~ ~ X1 ~ X2 ~ X3 ~ X4 ~ X5 ~ X6 ~ X7 ~ X8 ~ X9) =>
+			(f :(A, B, C, D, E, F, G, H, I) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I) =>
 				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
 				val xs6 = xs5.init; val xs7 = xs6.init
 				f(xs7.init.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
 		}
 
-	implicit def applyFunction10[X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, Y] =
+	implicit def applyFunction10[A, B, C, D, E, F, G, H, I, J, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J,
+			                  (A, B, C, D, E, F, G, H, I, J) => Y, Y] =
 		ChainApplication {
-			(f :(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10) => Y, xs: @~ ~ X1 ~ X2 ~ X3 ~ X4 ~ X5 ~ X6 ~ X7 ~ X8 ~ X9 ~ X10) =>
+			(f :(A, B, C, D, E, F, G, H, I, J) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J) =>
 				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
 				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init
 				f(xs8.init.last, xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
 		}
+
+	implicit def applyFunction11[A, B, C, D, E, F, G, H, I, J, K, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K,
+			                  (A, B, C, D, E, F, G, H, I, J, K) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init
+				f(xs9.init.last, xs9.last, 
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction12[A, B, C, D, E, F, G, H, I, J, K, L, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L,
+			                  (A, B, C, D, E, F, G, H, I, J, K, L) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				f(xs10.init.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction13[A, B, C, D, E, F, G, H, I, J, K, L, M, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M,
+			                  (A, B, C, D, E, F, G, H, I, J, K, L, M) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init
+				f(xs11.init.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction14[A, B, C, D, E, F, G, H, I, J, K, L, M, N, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N,
+		                      (A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init
+				f(xs12.init.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction15[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O,
+			                  (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init
+				f(xs13.init.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction16[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P,
+		                      (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				f(xs14.init.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction17[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q,
+		                      (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init
+			f(xs15.init.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+				xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction18[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R,
+		                      (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init
+				f(xs16.init.last, xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction19[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R ~ S,
+		                      (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init
+				f(xs17.init.last, xs17.last,
+					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction20[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R ~ S ~ T,
+		                      (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				f(xs18.init.last, xs18.last, xs17.last,
+					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction21[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R ~ S ~ T ~ U,
+		                      (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T~U) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				val xs19 = xs18.init
+				f(xs19.init.last, xs19.last, xs18.last, xs17.last,
+					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+	implicit def applyFunction22[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R ~ S ~ T ~ U ~ V,
+		                      (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T~U~V) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				val xs19 = xs18.init; val xs20 = xs19.init
+				f(xs20.init.last, xs20.last, xs19.last, xs18.last, xs17.last,
+					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
+		}
+
+
+
+
+
 
 
 }
@@ -736,49 +906,5 @@ object Record extends LiteralIndexFactory {
 //			self.toSeq[(K, V)].toMap
 
 	}
-
-/*
-	final class :->[+K <: Key, +V](val key :K, val value :V) {
-		def isEmpty = false
-		def get :(K, V) = key -> value
-
-//		def |~[S <: Key, X](other :S :-> X): @~ |~ (K :-> V) |~ (S :-> X) = @~ |~ this |~ other
-//		def |~
-
-		override def equals(that :Any) :Boolean = that match {
-			case other: :->[_, _] => (other eq this) || other.key == key && other.value == value
-			case _ => false
-		}
-
-		override def hashCode :Int = key.hashCode * 31 + value.hashCode
-
-		override def toString :String = value match {
-			case _ :Record => key.toString + " :-> (" + value + ")"
-			case _ => key.toString + " :-> " + value
-		}
-	}
-
-
-
-
-	object :-> {
-		@inline def apply[K <: Key, V](key :K, value :V) :K :-> V = new :->(key, value)
-
-		@inline def unapply[K <: Key, V](entry :K :-> V) :K :-> V = entry
-
-		@inline implicit def fromTuple2[K <: Key, V](entry :(K, V)) :K :-> V =
-			new :->(entry._1, entry._2)
-
-		@inline implicit def toTuple2[K <: Key, V](entry :K :-> V)  :(K, V) =
-			entry.key -> entry.value
-
-	}
-
-	@inline implicit def :->[K <: Key](key :K) :method_:->[K] = new method_:->(key)
-
-	class method_:->[K <: Key](private val key :K) extends AnyVal {
-		def :->[V](value :V) :K :-> V = new :->(key, value)
-	}
-*/
 
 }

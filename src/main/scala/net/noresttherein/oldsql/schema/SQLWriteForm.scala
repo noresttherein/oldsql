@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.LiteralIndex.&~
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, Tuple2WriteForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.Tuple2WriteForm
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.immutable.Seq
@@ -143,7 +143,7 @@ trait SQLWriteForm[-T] {
 	/** Combine this form with another form, to create a form for the `(T, O)` pair. The parameters for the second form
 	  * are expected to immediately follow this form's statement parameters.
 	  */
-	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = new Tuple2WriteForm()(this, other)
+	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = Tuple2WriteForm(this, other)
 
 
 
@@ -165,7 +165,8 @@ trait SQLWriteForm[-T] {
 
 
 
-object SQLWriteForm {
+object SQLWriteForm extends ScalaWriteForms {
+	
 	/** Summon an implicitly available `SQLWriteForm[T]`. */
 	def apply[T :SQLWriteForm] :SQLWriteForm[T] = implicitly[SQLWriteForm[T]]
 
@@ -259,13 +260,6 @@ object SQLWriteForm {
 
 
 
-
-
-	implicit def OptionWriteForm[T :SQLWriteForm] :SQLWriteForm[Option[T]] =
-		new OptionWriteForm[T] { val form :SQLWriteForm[T] = SQLWriteForm[T] }
-
-	implicit def SomeWriteForm[T :SQLWriteForm] :SQLWriteForm[Some[T]] =
-		SQLWriteForm[T].unmap(_.get)
 
 
 
@@ -568,43 +562,6 @@ object SQLWriteForm {
 
 
 
-
-
-	private[schema] trait OptionWriteForm[-T] extends SQLWriteForm[Option[T]] {
-		protected def form :SQLWriteForm[T]
-
-		override def writtenColumns :Int = form.writtenColumns
-
-		override def set(position :Int)(statement :PreparedStatement, value :Option[T]) :Unit =
-			form.setOpt(position)(statement, value)
-
-		override def setNull(position :Int)(statement :PreparedStatement) :Unit =
-			form.setNull(position)(statement)
-
-		override def literal(value :Option[T]) :String = value match {
-			case Some(x) => form.literal(x)
-			case None => form.nullLiteral
-		}
-		override def nullLiteral :String = form.nullLiteral
-
-		override def inlineLiteral(value :Option[T]) :String = value match {
-			case Some(x) => form.inlineLiteral(x)
-			case None => form.inlineNullLiteral
-		}
-		override def inlineNullLiteral :String = form.inlineNullLiteral
-
-		override def equals(that :Any) :Boolean = that match {
-			case opt :OptionWriteForm[_] => opt.form == form
-			case _ => false
-		}
-
-		override def hashCode :Int = form.hashCode
-
-		override def toString :String = "Option[" + form + "]"
-	}
-
-
-
 	private class WriteFormChain[-T](val forms :Seq[SQLWriteForm[T]]) extends SQLWriteForm[T] with CompositeWriteForm[T] {
 		override val writtenColumns :Int = super.writtenColumns
 
@@ -675,57 +632,6 @@ object SQLWriteForm {
 		override val writtenColumns :Int = super.writtenColumns
 		override def toString :String = super.toString
 	}
-
-
-
-
-
-	private[schema] trait AbstractTuple2WriteForm[-L, -R] extends SQLWriteForm[(L, R)] {
-		override def writtenColumns: Int = _1.writtenColumns + _2.writtenColumns
-
-		val _1 :SQLWriteForm[L]
-		val _2 :SQLWriteForm[R]
-
-		override def set(position :Int)(statement :PreparedStatement, value :(L, R)) :Unit =
-			if (value == null) {
-				_1.setNull(position)(statement)
-				_2.setNull(position + _1.writtenColumns)(statement)
-			} else {
-				_1.set(position)(statement, value._1)
-				_2.set(position + _1.writtenColumns)(statement, value._2)
-			}
-
-		override def setNull(position :Int)(statement :PreparedStatement) :Unit = {
-			_1.setNull(position)(statement)
-			_2.setNull(position + _1.writtenColumns)(statement)
-		}
-
-
-		override def literal(value: (L, R)): String =
-			if (value == null) s"(${_1.inlineNullLiteral}, ${_2.inlineNullLiteral})"
-			else s"(${_1.inlineLiteral(value._1)}, ${_2.inlineLiteral(value._2)})"
-
-		override def nullLiteral: String = s"(${_1.inlineNullLiteral}, ${_2.inlineNullLiteral})"
-
-		override def inlineLiteral(value: (L, R)): String = _1.inlineLiteral(value._1) + ", " + _2.inlineLiteral(value._2)
-
-		override def inlineNullLiteral: String = _1.inlineNullLiteral + ", " + _2.inlineNullLiteral
-
-
-		override def equals(that :Any) :Boolean = that match {
-			case tuple :AbstractTuple2WriteForm[_, _] =>
-				(tuple eq this) || (tuple canEqual this) && tuple._1 == _1 && tuple._2 == _2
-			case _ => false
-		}
-
-		override def hashCode :Int = _1.hashCode * 31 + _2.hashCode
-
-		override def toString = s"v(${_1},${_2})"
-	}
-
-
-
-	private[schema] class Tuple2WriteForm[-L, -R](implicit val _1 :SQLWriteForm[L], val _2 :SQLWriteForm[R]) extends AbstractTuple2WriteForm[L, R]
 
 
 

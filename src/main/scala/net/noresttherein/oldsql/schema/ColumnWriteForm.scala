@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
+import net.noresttherein.oldsql.schema.ScalaWriteForms.OptionWriteForm
 import net.noresttherein.oldsql.schema.SQLForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.SQLWriteForm.{FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, OptionWriteForm}
 
