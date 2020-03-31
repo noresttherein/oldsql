@@ -11,7 +11,9 @@ import net.noresttherein.oldsql.schema.support.{ConstantMapping, EmptyMapping, L
 import net.noresttherein.oldsql.schema.MappingSchema.{Empty, MappingSchemaGuts, MultiComponentSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatMappedSchemaMapping, MappedSchemaMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappedMapping.FlatMappedMapping
+import net.noresttherein.oldsql.schema.ColumnMapping.LabeledColumn
 
 import scala.annotation.tailrec
 import scala.reflect.runtime.universe.TypeTag
@@ -111,8 +113,11 @@ object SchemaMapping {
 	}
 
 
-
 }
+
+
+
+
 
 
 /** Base trait for `SchemaMapping` implementations which need individual access to their components during
@@ -192,14 +197,37 @@ trait MappingSchema[+C <: Chain, O, R <: Chain, S] extends GenericMapping[O, R] 
 	def col[T :ColumnForm](name :String, value :S => T, buffs :Buff[T]*) :MappingSchema[C ~ ||[T], O, R ~ T, S] =
 		comp(value, ColumnMapping[O, T](name, buffs:_*))
 
-	def col[T :ColumnForm](value :S => T, buffs :Buff[T]*)(implicit tpe :TypeTag[S]) :MappingSchema[C ~ ||[T], O, R ~ T, S] =
+	def col[T :ColumnForm](value :S => T, buffs :Buff[T]*)(implicit tpe :TypeTag[S])
+			:MappingSchema[C ~ ||[T], O, R ~ T, S] =
 		col(PropertyPath.nameOf(value), value, buffs :_*)
 
-	def optcol[T :ColumnForm](name :String, value :S => Option[T], buffs :Buff[T]*) :MappingSchema[C ~ ||[T], O, R ~ T, S] =
+	def optcol[T :ColumnForm](name :String, value :S => Option[T], buffs :Buff[T]*)
+			:MappingSchema[C ~ ||[T], O, R ~ T, S] =
 		optcomp(value, ColumnMapping[O, T](name, buffs:_*))
 
-	def optcol[T :ColumnForm](value :S => Option[T], buffs :Buff[T]*)(implicit tpe :TypeTag[S]) :MappingSchema[C ~ ||[T], O, R ~ T, S] =
+	def optcol[T :ColumnForm](value :S => Option[T], buffs :Buff[T]*)(implicit tpe :TypeTag[S])
+			:MappingSchema[C ~ ||[T], O, R ~ T, S] =
 		optcol(PropertyPath.nameOf(value), value, buffs :_*)
+
+
+/*
+	def comp[N <: Label, M <: Component[T], T](label :N, value :S => T, component :M)
+			:MappingSchema[C ~ (N @: M), O, R ~ T, S] =
+		comp(value, label @: component)
+
+	def optcomp[N <: Label, M <: Component[T], T](label :N, value :S => Option[T], component :M)
+			:MappingSchema[C ~ (N @: M), O, R ~ T, S] =
+		optcomp(value, label @: component)
+
+	def lbl[N <: Label, T :ColumnForm](name :N, value :S => T, buffs :Buff[T]*)
+			:MappingSchema[C ~ LabeledColumn[N, O, T], O, R ~ T, S] =
+		comp(value, ColumnMapping.labeled[N, O, T](name, buffs:_*))
+
+	def optlbl[N <: Label, T :ColumnForm](name :N, value :S => Option[T], buffs :Buff[T]*)
+			:MappingSchema[C ~ LabeledColumn[N, O, T], O, R ~ T, S] =
+		optcomp(value, ColumnMapping.labeled[N, O, T](name, buffs:_*))
+*/
+
 
 
 	def map(constructor :R => S) :SchemaMapping[C, O, R, S] =

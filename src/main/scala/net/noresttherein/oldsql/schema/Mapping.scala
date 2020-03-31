@@ -5,12 +5,13 @@ import java.sql.{PreparedStatement, ResultSet}
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor, ConcreteSubclass, MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
-import net.noresttherein.oldsql.schema.support.{MappedMapping, PrefixedMapping}
+import net.noresttherein.oldsql.schema.support.{LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.bits.OptionMapping
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, SelfPath}
+import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
@@ -327,6 +328,7 @@ trait Mapping { mapping =>
 	/** An adapter of this mapping with the names of all its public columns prefixed with the given string. */
 	def prefixed(prefix :String) :Component[Subject]
 
+	def renamed(name :String) :Component[Subject]
 
 	/** Lifts this mapping by encapsulating the subject values in an `Option`. The created mapping will
 	  * always return `Some(x)` from its `optionally` and `assemble` methods, where `x` is the value returned by
@@ -463,14 +465,17 @@ trait GenericMapping[O, S] extends Mapping { self =>
 	def nullValue :Option[S] = None
 
 
-	def qualified(prefix :String) :Component[Subject] =
+	def qualified(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
 		else PrefixedMapping(prefix + ".", this)
 
-	def prefixed(prefix :String) :Component[Subject] =
+	def prefixed(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
 		else PrefixedMapping(prefix, this)
 
+	def renamed(name :String) :Component[S] =
+		if (sqlName.contains(name)) this
+		else RenamedMapping(name, this)
 
 }
 
@@ -502,16 +507,22 @@ object Mapping {
 	                            (mapping :M)(implicit help :IsBoth[M, X, Component[O, S]]) :SelfPath[X, O, S] =
 		SelfPath.typed[X, O, S](mapping)
 
+	implicit class MappingLabelling[M <: Component[_, _]](private val self :M) extends AnyVal {
+		/** Attaches a label (a string literal) to this mapping, transforming it into a `LabeledMapping` with the
+		  * literal type included as its type parameter.
+		  */
+		def @:[L <: Label](label :L) :L @: M = LabeledMapping(label, self)
+	}
 
 
 	type TypedMapping[S] = Mapping { type Subject = S }
 	type AnyComponent[O] = Mapping { type Owner = O }
 	type Component[O, S] = Mapping { type Owner = O; type Subject = S }
 
-	type SingletonMapping = Mapping with Singleton
-	type TypedSingleton[S] = Mapping with Singleton { type Subject = S }
-	type AnySingleton[O] = Mapping with Singleton { type Owner = O }
-	type SingletonComponent[O, S] = Component[O, S] with Singleton //Mapping with Singleton { type Owner = O; type Subject = S }
+//	type SingletonMapping = Mapping with Singleton
+//	type TypedSingleton[S] = Mapping with Singleton { type Subject = S }
+//	type AnySingleton[O] = Mapping with Singleton { type Owner = O }
+//	type SingletonComponent[O, S] = Component[O, S] with Singleton //Mapping with Singleton { type Owner = O; type Subject = S }
 
 
 	type CompatibleMapping[M <: Mapping] = Mapping {
@@ -519,9 +530,9 @@ object Mapping {
 		type Subject = M#Subject
 	}
 
-	type TypeCompatibleMapping[M <: Mapping] = Mapping {
-		type Subject = M#Subject
-	}
+//	type TypeCompatibleMapping[M <: Mapping] = Mapping {
+//		type Subject = M#Subject
+//	}
 
 	type ConcreteSubclass[M <: Mapping] = M {
 		type Owner = M#Owner

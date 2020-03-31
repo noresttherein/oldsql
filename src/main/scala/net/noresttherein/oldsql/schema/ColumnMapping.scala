@@ -146,7 +146,7 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 
 	def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[O, S] = ColumnMapping(name, opts:_*)(form)
 
-	def renamed(name :String) :ColumnMapping[O, S] = ColumnMapping(name, buffs:_*)(form)
+	override def renamed(name :String) :ColumnMapping[O, S] = ColumnMapping(name, buffs:_*)(form)
 
 	override def prefixed(prefix :String) :ColumnMapping[O, S] = ColumnMapping(prefix + name, buffs:_*)(form)
 
@@ -194,6 +194,8 @@ object ColumnMapping {
 	def apply[N <: String with Singleton :ValueOf, O, S :ColumnForm](buffs :Buff[S]*) :LabeledColumn[N, O, S] =
 		new LabeledColumn[N, O, S](buffs)
 
+	def labeled[N <: String with Singleton, O, S :ColumnForm](label :N, buffs :Buff[S]*) :LabeledColumn[N, O, S] =
+		new LabeledColumn[N, O, S](buffs)(new ValueOf(label), ColumnForm[S])
 
 
 	class StandardColumn[O, S](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
@@ -206,7 +208,7 @@ object ColumnMapping {
 
 	class LabeledColumn[N <: String with Singleton, O, S](override val buffs :Seq[Buff[S]] = Nil)
 	                                                     (implicit named :ValueOf[N], override val form :ColumnForm[S])
-		extends ColumnMapping[O, S] with LabeledMapping[N, O, S]
+		extends LabeledMapping[N, O, S] with ColumnMapping[O, S]
 	{
 		override val name :N = named.value
 		override val isNullable :Boolean = super.isNullable
