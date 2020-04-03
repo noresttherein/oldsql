@@ -109,6 +109,11 @@ object Chain extends ChainFactory {
 			rec(self)
 		}
 
+
+		/** Appends the given chain to the end of this chain. */
+		def ++[S <: Chain, R <: Chain](suffix :S)(implicit concat :ChainConcat[C, S, R]) :R =
+			concat(self, suffix)
+
 		/** Given a function `F` accepting the same number of arguments, of the same types and in the same order
 		  * as the elements of this chain, apply it to the elements of this chain and return the result.
 		  */
@@ -477,6 +482,24 @@ trait ChainFactory extends ChainFactoryBase {
 	/** Fallback `UpperBound` implicit value used when the chain `C` is abstract, that is ends with `Chain`/`Type`
 	  * rather than `@~`. As the name implies, the type inferred will actually use the non-singleton version of*/
 	implicit def nonSingletonUpperBound[C <: Type] :UpperBound[C, NonSingleton] = noBound.asInstanceOf[UpperBound[C, NonSingleton]]
+
+
+
+	abstract class ChainConcat[P <: Type, S <: Type, C <: Type] private[ChainFactory] {
+		def apply(prefix :P, suffix :S) :C
+	}
+
+	private[this] final val cat_@~ = new ChainConcat[Type, @~, Type] {
+		override def apply(prefix :Type, suffix: @~) = prefix
+	}
+
+	implicit def emptyConcat[P <: Type] :ChainConcat[P, @~, P] = cat_@~.asInstanceOf[ChainConcat[P, @~, P]]
+
+	implicit def concatLast[P <: Type, S <: Type, C <: Type, L <: Item](implicit init :ChainConcat[P, S, C])
+			:ChainConcat[P, S Link L, C Link L] =
+		new ChainConcat[P, S Link L, C Link L] {
+			override def apply(prefix :P, suffix :Link[S, L]) = link(init(prefix, suffix.init), suffix.last)
+		}
 }
 
 
@@ -702,40 +725,44 @@ object LiteralIndex extends LiteralIndexFactory {
 
 
 
-	/** Operations on the index `T` */
-	class TypeIndexOps[T <: LiteralIndex](private val self :T) extends AnyVal {
+	/** Operations on the index `I` */
+	class TypeIndexOps[I <: LiteralIndex](private val self :I) extends AnyVal {
 		/** Extends the index with another entry `N`, becoming the new last entry. */
-		@inline def &~[N <: (Singleton, Any)](next :N) :T &~ N = new &~(self, next)
+		@inline def &~[N <: (Singleton, Any)](next :N) :I &~ N = new &~(self, next)
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
 		  * is made based on the types, rather than values. As `LiteralIndex` is covariant regarding both
 		  * of its type parameters, it is possible to break the implicit entry resolution mechanism by upcasting
-		  * an entry to `Singleton` (or some `T with Singleton`), in which case `K =:= Singleton` (alternatively,
-		  * the same `T with Singleton`) would resolve the first of such entries. If the key of the found entry
+		  * an entry to `Singleton` (or some `I with Singleton`), in which case `K =:= Singleton` (alternatively,
+		  * the same `I with Singleton`) would resolve the first of such entries. If the key of the found entry
 		  * does not equal the argument, an `IllegalArgumentException` will be thrown. Note that this might happen
 		  * even the key is actually present in the index and in the fully instantiated part of this index's type
 		  * definition, but following a bogus widened key.
-		  * This method can't be called if the key `K` is not a part of the (known) type definition of the index `T`.
+		  * This method can't be called if the key `K` is not a part of the (known) type definition of the index `I`.
 		  * @tparam K a singleton type of the key (a literal type in non-abstract contexts).
 		  * @tparam V the type of the value associated with the key `K`.
 		  */
-		@inline def apply[K <: Singleton, V](key :K)(implicit get :IndexGet[T, K, V]) :V = get(self, key)
+		@inline def apply[K <: Singleton, V](key :K)(implicit get :IndexGet[I, K, V]) :V = get(self, key)
 
 		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
 		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
 		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
 		  * (it starts with `@~` rather than `LiteralIndex`), it returns a new index with the new pair at the end.
 		  * Note that, as `LiteralIndex` is covariant regarding both of its type arguments, it is possible to break
-		  * this method by upcasting a key type simply to `Singleton` (or `T with Singleton` for some type `T`),
-		  * which would then match any other `K =:= T with Singleton` provided here. If the actual key of the entry
+		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
+		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
 		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
 		  * `IllegalArgumentException` will be thrown.
 		  */
-		@inline def update[K <: Singleton, V, I <: LiteralIndex](key :K, value :V)(implicit put :IndexPut[T, K, V, I]) :I =
+		@inline def update[K <: Singleton, V, R <: LiteralIndex](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
-//		@inline def toMap[K, V](implicit ub :UpperBound[T, (K, V)]) :Map[K, V] =
+		/** Appends the given chain to the end of this chain. */
+		def ++[S <: LiteralIndex, R <: LiteralIndex](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
+			concat(self, suffix)
+
+//		@inline def toMap[K, V](implicit ub :UpperBound[I, (K, V)]) :Map[K, V] =
 //			self.toSeq[(K, V)].toMap
 
 	}
@@ -870,39 +897,43 @@ object Record extends LiteralIndexFactory {
 
 
 
-	implicit class RecordOps[T <: Record](private val self :T) extends AnyVal {
+	implicit class RecordOps[I <: Record](private val self :I) extends AnyVal {
 		/** Appends a next entry to the end of the record. */
-		@inline def |#[E <: (Key, Any)](entry :E) :T |# E = new |#(self, entry)
+		@inline def |#[E <: (Key, Any)](entry :E) :I |# E = new |#(self, entry)
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
 		  * is made based on the types, rather than values. As `LiteralIndex` is covariant regarding both
 		  * of its type parameters, it is possible to break the implicit entry resolution mechanism by upcasting
-		  * an entry to `Singleton` (or some `T with Singleton`), in which case `K =:= Singleton` (alternatively,
-		  * the same `T with Singleton`) would resolve the first of such entries. If the key of the found entry
+		  * an entry to `Singleton` (or some `I with Singleton`), in which case `K =:= Singleton` (alternatively,
+		  * the same `I with Singleton`) would resolve the first of such entries. If the key of the found entry
 		  * does not equal the argument, an `IllegalArgumentException` will be thrown. Note that this might happen
 		  * even the key is actually present in the index and in the fully instantiated part of this index's type
 		  * definition, but following a bogus widened key.
-		  * This method can't be called if the key `K` is not a part of the (known) type definition of the index `T`.
+		  * This method can't be called if the key `K` is not a part of the (known) type definition of the index `I`.
 		  * @tparam K a singleton type of the key (a literal type in non-abstract contexts).
 		  * @tparam V the type of the value associated with the key `K`.
 		  */
-		@inline def apply[K <: Key, V](key :K)(implicit get :IndexGet[T, K, V]) :V = get(self, key)
+		@inline def apply[K <: Key, V](key :K)(implicit get :IndexGet[I, K, V]) :V = get(self, key)
 
 		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
 		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
 		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
 		  * (it starts with `@~` rather than `LiteralIndex`), it returns a new index with the new pair at the end.
 		  * Note that, as `LiteralIndex` is covariant regarding both of its type arguments, it is possible to break
-		  * this method by upcasting a key type simply to `Singleton` (or `T with Singleton` for some type `T`),
-		  * which would then match any other `K =:= T with Singleton` provided here. If the actual key of the entry
+		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
+		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
 		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
 		  * `IllegalArgumentException` will be thrown.
 		  */
-		@inline def update[K <: Key, V, I <: Record](key :K, value :V)(implicit put :IndexPut[T, K, V, I]) :I =
+		@inline def update[K <: Key, V, R <: Record](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
-//		@inline def toMap[K, V](implicit ub :UpperBound[T, (K, V)]) :Map[K, V] =
+		/** Appends the given record to the end of this record. */
+		def ++[S <: Record, R <: Record](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
+			concat(self, suffix)
+
+//		@inline def toMap[K, V](implicit ub :UpperBound[I, (K, V)]) :Map[K, V] =
 //			self.toSeq[(K, V)].toMap
 
 	}

@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.AnyComponent
 
 
 /**
@@ -44,6 +44,17 @@ object RowSource {
 		trait TableConstructor[S] extends Any {
 			def apply[M[O] <: GenericMapping[O, S]](name :String)(implicit mapping :String => M[_]) :Table[M] =
 				Table(name, mapping(name))
+		}
+
+		of[Entity]("table")
+		
+		case class Entity(name :String)
+
+		implicit class Entities[O](s :String) extends MappingSupport[O, Entity] {
+			val name = column(_.name)
+
+			override protected def construct(implicit pieces :Pieces) :Entity =
+				Entity(name)
 		}
 	}
 

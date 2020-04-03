@@ -390,7 +390,7 @@ object Buff {
 
 	private class FlagBuff[T](val buffType :FlagBuffType) extends Buff[T] {
 		override def map[X](there :T => X) :FlagBuff[X] = this.asInstanceOf[FlagBuff[X]]
-		override def bimap[X](there :T => X, back :X => T) :Buff[X] = this.asInstanceOf[FlagBuff[X]]
+		override def bimap[X](there :T => X, back :X => T) :FlagBuff[X] = this.asInstanceOf[FlagBuff[X]]
 	}
 
 
@@ -734,4 +734,17 @@ object Buff {
 		def apply[T](init: =>T, update :T => T) :ManagedBuff[T] = new ManagedBuff(this, init, update)
 
 	}
+
+
+
+
+
+
+	/** An exception thrown when the [[net.noresttherein.oldsql.schema.Mapping#flatMap Mapping.flatMap]] operation
+	  * fails due to presence of a buff which cannot be mapped with the given function, either because
+	  * the operation is not supported at all, or the function returned `None` for the `Buff`'s value.
+	  * This exception can be thrown both from the `flatMap` method and at some later point, when the buff's value
+	  * is accessed for buffs which generated values.
+	  */
+	class BuffMappingFailureException(msg :String, cause :Throwable = null) extends RuntimeException(msg, cause)
 }

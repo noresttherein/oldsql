@@ -18,8 +18,13 @@ trait BaseColumnForm {
 
 trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteForm[T] {
 
-	override def bimap[X :NullValue](map :T => X)(unmap :X => T) :ColumnForm[X] =
-		ColumnForm.map[T, X](map)(unmap)(this, NullValue[X])
+	override def bimap[X :NullValue](map :T => X)(unmap :X => T) :ColumnForm[X] = NullValue[X] match {
+		case null =>
+			ColumnForm.map[T, X](map)(unmap)(this, nulls.map(map))
+		case nulls =>
+			ColumnForm.map[T, X](map)(unmap)(this, nulls)
+	}
+
 
 	override def bimap[X](map :T => X, nullValue :X)(unmap :X => T) :ColumnForm[X] =
 		bimap(map)(unmap)(NullValue(nullValue))
@@ -28,13 +33,17 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 		bimap(map)(unmap)(nulls.map(map))
 
 
-	override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
-		ColumnForm.flatMap(map)(unmap)(this, NullValue[X])
+	override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] = NullValue[X] match {
+		case null =>
+			ColumnForm.flatMap[T, X](map)(unmap)(this, nulls.flatMap(map))
+		case _ =>
+			ColumnForm.flatMap(map)(unmap)(this, NullValue[X])
+	}
 
 	override def biflatMap[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :ColumnForm[X] =
 		biflatMap(map)(unmap)(NullValue(nullValue))
 
-	override def biflatMapNull[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
+	override def biflatMapNull[X](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
 		biflatMap(map)(unmap)(nulls.flatMap(map))
 
 	override def asOpt :ColumnForm[Option[T]] = ColumnForm.OptionColumnForm(this)

@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, NoInsert, NoQuery, NoSelect, NoUpdate, Unmapped}
+import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, BuffMappingFailureException, NoInsert, NoQuery, NoSelect, NoUpdate, Unmapped}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, MappingReadForm, MappingWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
@@ -891,7 +891,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 		        val pick = extractor.optional
 		        buffs.map { buff =>
 			        buff.map{ s => pick(s) getOrElse {
-				        throw new IllegalArgumentException(
+				        throw new BuffMappingFailureException(
 					        s"Can't apply buff $buff of $this to subcomponent '$component': selector function returned no value for $s."
 				        )
 			        }}

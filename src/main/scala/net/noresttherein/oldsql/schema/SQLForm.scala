@@ -38,8 +38,13 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
-	def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] =
-		SQLForm.map[T, X](map)(unmap)(this, NullValue[X])
+	def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] = NullValue[X] match {
+		case null =>
+			SQLForm.map[T, X](map)(unmap)(this, nulls.map(map))
+		case _ =>
+			SQLForm.map[T, X](map)(unmap)(this, NullValue[X])
+	}
+
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying
 	  * column(s) is null, the `nullValue` provided  here is returned directly from `opt`/`apply`
@@ -70,8 +75,13 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
-	def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
-		SQLForm.flatMap(map)(unmap)(this, NullValue[X])
+	def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] = NullValue[X] match {
+		case null =>
+			SQLForm.flatMap(map)(unmap)(this, nulls.flatMap(map))
+		case _ =>
+			SQLForm.flatMap(map)(unmap)(this, NullValue[X])
+	}
+
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying
 	  * column(s) is null, or `map` returns `None`, the `nullValue` provided  here is returned directly
@@ -92,7 +102,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
-	def biflatMapNull[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
+	def biflatMapNull[X](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
 		biflatMap(map)(unmap)(nulls.flatMap(map))
 
 

@@ -1,10 +1,11 @@
 package net.noresttherein.oldsql.schema.bits
 
+import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{Chain, Record, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, GenericMapping, StaticMapping}
-import net.noresttherein.oldsql.schema.ColumnMapping.LabeledColumn
+import net.noresttherein.oldsql.schema.ColumnMapping.{BaseColumn, LabeledColumn}
 import net.noresttherein.oldsql.schema.bits.RecordSchema.RecordMapping.{GetComponent, RecordComponents}
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
@@ -36,7 +37,7 @@ trait RecordSchema[O, R <: Record, S] extends GenericMapping[O, S] { outer =>
 
 
 
-	override def map[X](there :S => X, back :X => S)(implicit nullValue :NullValue[X]) :RecordSchema[O, R, X] =
+	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :RecordSchema[O, R, X] =
 		new MappedRecordSchema[O, R, S, X](this, there, back)
 
 	override def flatMap[X](there :S => Option[X], back :X => Option[S])
@@ -177,9 +178,9 @@ object RecordSchema {
 
 
 	class RecordColumn[N <: Name :ValueOf, O, S :ColumnForm](buffs :Seq[Buff[S]] = Nil)
-		extends LabeledColumn[N, O, S](buffs) with RecordComponent[N, O, S]
+		extends BaseColumn[O, S](valueOf[N], buffs) with RecordComponent[N, O, S]
 	{
-		override val key :N = name
+		override val key :N = valueOf[N]
 
 		protected[RecordSchema] override def subcomponentsList :List[Component[_]] = Nil
 	}

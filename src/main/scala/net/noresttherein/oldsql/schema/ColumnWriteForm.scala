@@ -4,7 +4,7 @@ import java.sql.PreparedStatement
 
 import net.noresttherein.oldsql.schema.ScalaWriteForms.OptionWriteForm
 import net.noresttherein.oldsql.schema.SQLForm.JDBCSQLType
-import net.noresttherein.oldsql.schema.SQLWriteForm.{FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, OptionWriteForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, NullWriteForm, OptionWriteForm}
 
 
 
@@ -61,6 +61,19 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 
 object ColumnWriteForm {
 	@inline def apply[X :ColumnWriteForm] :ColumnWriteForm[X] = implicitly[ColumnWriteForm[X]]
+
+
+
+	@inline def const[X :ColumnWriteForm](value :X) :ColumnWriteForm[Any] =
+		if (value == null)
+			new NullWriteForm[X] with ColumnWriteForm[Any] {
+				override val sqlType = ColumnWriteForm[X].sqlType
+			}
+		else
+            new ConstWriteForm[X](value) with ColumnWriteForm[Any] {
+				override val sqlType = ColumnWriteForm[X].sqlType
+			}
+
 
 
 	def Lazy[T](delayed: => ColumnWriteForm[T]) :ColumnWriteForm[T] =

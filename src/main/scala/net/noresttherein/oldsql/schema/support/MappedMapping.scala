@@ -2,10 +2,11 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.schema.{Buff, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
+import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 
 import scala.util.Try
 
@@ -140,11 +141,11 @@ object MappedMapping {
 
 
 		override val buffs :Seq[Buff[T]] = egg.buffs.map(buff => buff.bimap(
-			s => map(s).getOrElse { throw new IllegalStateException(
-				s"Failed mapping of $egg: could not derive the value for the buff $buff from $s."
+			s => map(s).getOrElse { throw new BuffMappingFailureException(
+					s"Failed mapping of $egg: could not derive the value for the buff $buff from $s."
 				)},
-			(t :T) => unmap(t) getOrElse { throw new IllegalStateException(
-				s"Failed mapping of $egg: could not unmap value $t as part of the buff $buff."
+			(t :T) => unmap(t) getOrElse { throw new BuffMappingFailureException(
+					s"Failed mapping of $egg: could not unmap value $t as part of the buff $buff."
 				)}
 		))
 
@@ -182,6 +183,55 @@ object MappedMapping {
 		override def toString :String = "Mapped(" + egg  + ")"
 
 	}
+
+
+
+
+
+
+/*
+	class MappedColumnMapping[M <: ColumnMapping[O, S], O, S, T]
+	                         (override val egg :M, override val map :S => T, override val unmap :T => S)
+	                         (implicit override val nulls :NullValue[T] = null)
+		extends MappedMapping[M, O, S, T] with MappingAdapter[M, O, T] with ColumnMapping[O, T]
+	{
+		override def name :String = egg.name
+
+		override val form :ColumnForm[T] =
+			if (nulls != null) egg.form.bimap(map)(unmap)
+			else egg.form.bimapNull(map)(unmap)
+
+		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappedColumnMapping[M, O, S, X] =
+			new MappedColumnMapping[M, O, S, X](egg, map andThen there, back andThen unmap)(mapNulls(there))
+
+		override def flatMap[X](there :T => Option[X], back :X => Option[T])
+		                       (implicit nulls :NullValue[X]) :FlatMappedColumnMapping[M, O, S, X] =
+			new FlatMappedColumnMapping[M, O, S, X](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
+	}
+
+
+
+	class FlatMappedColumnMapping[M <: ColumnMapping[O, S], O, S, T]
+	                             (col :M, there :S => Option[T], back :T => Option[S])
+	                             (implicit nullValue :NullValue[T] = null)
+		extends FlatMappedMapping[M, O, S, T](col, there, back) with ColumnMapping[O, T]
+	{
+		override def name :String = egg.name
+
+		override val form :ColumnForm[T] =
+			if (nulls != null) egg.form.biflatMap(map)(unmap)
+			else egg.form.biflatMapNull(map)(unmap)
+
+		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :FlatMappedColumnMapping[M, O, S, X] =
+			new FlatMappedColumnMapping[M, O, S, X](egg, map(_) map there, back andThen unmap)(mapNulls(there))
+
+		override def flatMap[X](there :T => Option[X], back :X => Option[T])
+		                       (implicit nulls :NullValue[X]) :FlatMappedColumnMapping[M, O, S, X] =
+			new FlatMappedColumnMapping[M, O, S, X](egg, map(_) flatMap there, back(_) flatMap unmap)(flatMapNulls(there))
+
+	}
+*/
+
 
 
 }

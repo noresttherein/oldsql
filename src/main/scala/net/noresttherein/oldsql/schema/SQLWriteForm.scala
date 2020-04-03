@@ -292,7 +292,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-	private class NullWriteForm[T](implicit writer :SQLWriteForm[T]) extends ProxyWriteForm[Any] {
+	private[schema] class NullWriteForm[T](implicit writer :SQLWriteForm[T]) extends ProxyWriteForm[Any] {
 		//the cast here is used only for the equals implementation in ProxyWriteForm
 		protected override def form :SQLWriteForm[Any] = writer.asInstanceOf[SQLWriteForm[Any]]
 
@@ -313,7 +313,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-	private class ConstWriteForm[T](value :T)(implicit form :SQLWriteForm[T]) extends SQLWriteForm[Any] {
+	private[schema] class ConstWriteForm[T](value :T)(implicit form :SQLWriteForm[T]) extends SQLWriteForm[Any] {
 		private def target = form
 		private def const = value
 

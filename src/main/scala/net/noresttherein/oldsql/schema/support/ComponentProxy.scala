@@ -160,7 +160,7 @@ object ComponentProxy {
 			adaptEgg +: egg.subcomponents.map(alias(_, false))
 
 
-		{
+		{ //fixme: mutable values require a fence before exposing to multiple threads
 			val adapted = adaptEgg
 			lifted.put(adapted, ComponentExtractor.ident[O, S](adapted))
 			originals.put(adapted, egg)
