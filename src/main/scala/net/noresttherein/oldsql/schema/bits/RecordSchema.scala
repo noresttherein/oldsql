@@ -225,7 +225,7 @@ object RecordSchema {
 
 			override val components :Unique[Component[_]] = Unique(tail, head)
 
-			override val subcomponents :Unique[Component[_]] = Unique.later(Unique.from(subcomponentsList))
+			override val subcomponents :Unique[Component[_]] = Unique.Lazy(subcomponentsList)
 
 			protected[RecordSchema] override def subcomponentsList :ListBuffer[Component[_]] =
 				tail.subcomponentsList += tail ++= head.subcomponentsList.reverse += head

@@ -26,7 +26,7 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O,
 
 
 
-	override val components :Unique[Component[_]] = Unique.later {
+	override val components :Unique[Component[_]] = Unique.delay {
 		@tailrec def rec(chain :Chain, drop :C => Chain, res :List[Component[_]] = Nil) :Unique[Component[_]] =
 			chain match {
 				case t ~ (h :Component[_]) =>

@@ -78,11 +78,17 @@ object Unique extends IterableFactory[Unique] {
 	private[this] val reusableEmpty = new IndexedUnique[Nothing](IndexedSeq.empty, Map.empty)
 
 
+	/** A `Unique[T]` with lazily evaluated contents. The initializer will be called only when any of the methods
+	  * on the proxy is called. It will be executed at most once, withing a `synchronized` block for the proxy.
+	  * Once computed, it remains thread safe but will incur no additional synchronization penalty.
+	  */
+	@inline def Lazy[T](init: => IterableOnce[T]) :Unique[T] = delay(from(init))
+
 	/** A proxy to a lazily computed `Unique[T]`. The initializer will be called when any of the methods on the proxy
 	  * is called. It will be executed at most once, withing a `synchronized` block for the proxy.
 	  * Once computed, it remains thread safe but will incur no additional synchronization penalty.
 	  */
-	def later[T](init: => Unique[T]) :Unique[T] = new LazyUnique[T](() => init)
+	def delay[T](init: => Unique[T]) :Unique[T] = new LazyUnique[T](() => init)
 
 
 
@@ -91,6 +97,18 @@ object Unique extends IterableFactory[Unique] {
 
 	implicit def uniqueToSet[T](unique :Unique[T]) :Set[T] = unique.toSet
 
+	/** An implicit extension of a ''by-name'' expression evaluating to a `Unique[T]` instance, adding a `delayed`
+	  * method which creates a proxy using it to initialize its target. */
+	implicit class DelayedUnique[T](initializer: => Unique[T]) {
+		/** Treats the `this` argument as a ''by-name'' expression to be evaluated only when the created `Unique`
+		  * proxy's contents are accessed.
+		  * @return `Unique.delay(initializer)`.
+		  * @see [[net.noresttherein.oldsql.collection.Unique.delay delay]]
+		  */
+		@inline def delayed :Unique[T] = Unique.delay(initializer)
+	}
+
+
 	/** An implicit extension of any `Iterable` adding a `toUnique` method which converts it to a `Unique` instance.*/
 	implicit class implicitUnique[T](private val elems :collection.Iterable[T]) extends AnyVal {
 		/** A shorthand method for converting `this` collection to a `Unique`.
@@ -98,7 +116,7 @@ object Unique extends IterableFactory[Unique] {
 		  * one of the `toSeq`, `toIndexedSeq`, `toSet` methods of a `Unique`, it will simply return the underlying
 		  * `Unique` instance.
 		  */
-		def toUnique :Unique[T] = from(elems)
+		@inline def toUnique :Unique[T] = from(elems)
 	}
 
 

@@ -1,16 +1,17 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.Component
+import net.noresttherein.oldsql.schema.Mapping.{Component, ConcreteMapping}
 import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.AdaptedAs
+import net.noresttherein.oldsql.schema.support.MappingNest.OpenNest
 
 
 
 /** Skeletal base trait for mappings enclosing another mapping `egg`. It is the root of the hierarchy of various
   * proxies, adapters and mapped mappings.
   */
-trait MappingNest[+M <: Mapping] extends Mapping {
+trait MappingNest[+M <: Mapping] extends Mapping { this :ConcreteMapping =>
 	protected val egg :M
 
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
@@ -33,7 +34,21 @@ trait MappingNest[+M <: Mapping] extends Mapping {
 
 
 
-trait MappingAdapter[+M <: Mapping, O, S] extends GenericMapping[O, S] with MappingNest[M] {
+
+object MappingNest {
+
+	trait OpenNest[+M <: ConcreteMapping] extends MappingNest[M] { this :ConcreteMapping =>
+		override val egg :M
+	}
+
+}
+
+
+
+
+
+
+trait MappingAdapter[+M <: ConcreteMapping, O, S] extends GenericMapping[O, S] with OpenNest[M] {
 	override val egg :M
 
 //	override def map[X](there :S => X, back :X => S) :egg.type AdaptedAs X =
@@ -50,9 +65,9 @@ trait MappingAdapter[+M <: Mapping, O, S] extends GenericMapping[O, S] with Mapp
 
 object MappingAdapter {
 
-	type Adapted[M <: Mapping] = MappingAdapter[M, M#Owner, M#Subject]
-	type AdaptedAs[M <: Mapping, T] = MappingAdapter[M, M#Owner, T]
-	type AdaptedFor[M <: Mapping, O] = MappingAdapter[M, O, M#Subject]
+	type Adapted[M <: ConcreteMapping] = MappingAdapter[M, M#Owner, M#Subject]
+	type AdaptedAs[M <: ConcreteMapping, T] = MappingAdapter[M, M#Owner, T]
+	type AdaptedFor[M <: ConcreteMapping, O] = MappingAdapter[M, O, M#Subject]
 
 
 	/** Base trait for mappings which adapt another proxy from the same source `O`. Declares a single component,

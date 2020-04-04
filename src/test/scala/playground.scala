@@ -1,7 +1,7 @@
 import net.noresttherein.oldsql.collection.Chain.@~
-import net.noresttherein.oldsql.collection.Record.{|#, #>}
+import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.collection.Record
-import net.noresttherein.oldsql.schema.{MappingSupport, SQLForm}
+import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, MappingSchema, MappingSupport, SchemaMapping, SQLForm}
 import net.noresttherein.oldsql.schema.RowSource.Table
 
 
@@ -10,6 +10,19 @@ import net.noresttherein.oldsql.schema.RowSource.Table
   * @author Marcin Mościcki
   */
 object playground extends App {
+
+	case class Gun(make :String, model :String, caliber :Double)
+	case class Human(gun :Gun, backup :Gun, secondBackup :Gun)
+
+	def guns[O] = MappingSchema[O, Gun].col(_.make).col(_.model).col(_.caliber).map(Gun.apply _)
+	def humans[O] =
+		MappingSchema[O, Human].comp(_.gun, guns[O].:@["gun"]).comp(_.backup, guns[O].:@["backup"]).comp(_.secondBackup, guns[O].:@["second"])
+//		MappingSchema[O, Human].comp(_.gun, guns[O]).comp(_.backup, guns[O]).comp(_.secondBackup, guns[O])
+
+	class Humans[O] extends AbstractSchemaMapping(humans[O]) {
+		override protected def construct(implicit pieces :Pieces) :Human =
+			Human(!"gun", !"backup", !"second")
+	}
 
 //	import net.noresttherein.oldsql.collection.Record._
 

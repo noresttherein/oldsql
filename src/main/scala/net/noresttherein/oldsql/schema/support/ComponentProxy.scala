@@ -64,6 +64,9 @@ object ComponentProxy {
 
 
 
+
+
+
 	/** A skeleton trait for a mapping proxy which needs to adapt every component of the proxied mapping. */
 	trait DeepProxy[O, S] extends ComponentProxy[O, S] {
 
@@ -135,6 +138,10 @@ object ComponentProxy {
 
 		override def toString :String = "->>" + egg
 	}
+
+
+
+
 
 
 	//todo: look into removing Owner and Subject parameters

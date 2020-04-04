@@ -5,7 +5,7 @@ import java.sql.{PreparedStatement, ResultSet}
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor, MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor, ConcreteMapping, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.support.{LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
@@ -95,7 +95,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
   * @see [[net.noresttherein.oldsql.schema.MappingSupport]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
-trait Mapping { mapping =>
+trait Mapping { mapping :ConcreteMapping =>
 	/** The mapped entity type. */
 	type Subject
 
@@ -430,7 +430,7 @@ trait Mapping { mapping =>
   * @tparam S the subject type, that is the type of objects read and written to a particular table (or a view, query,
   *           or table fragment).
   */
-trait GenericMapping[O, S] extends Mapping { self =>
+trait GenericMapping[O, S] extends ConcreteMapping { self =>
 	type Owner = O
 	type Subject = S
 
@@ -511,13 +511,31 @@ object Mapping {
 		/** Attaches a label (a string literal) to this mapping, transforming it into a `LabeledMapping` with the
 		  * literal type included as its type parameter.
 		  */
-		def @:[L <: Label](label :L) :L @: M = LabeledMapping(label, self)
+		def @:[L <: Label](label :L) :L @: M = LabeledMapping[L, M, M#Owner, M#Subject](label, self)
 	}
 
 
-	type TypedMapping[S] = Mapping { type Subject = S }
-	type AnyComponent[O] = Mapping { type Owner = O }
-	type Component[O, S] = Mapping { type Owner = O; type Subject = S }
+
+	/** This is an implementation artifact which may disappear from the library without notice. ''Do not use
+	  * it in the client code''.
+	  * A sealed trait mixed-in by `GenericMapping`, which enforces that any of its (proper) subclasses,
+	  * abstract or not, are also `GenericMapping` instances. Many generic methods and classes require
+	  * their `Mapping` type parameter to have definitions of both or one of `Owner` and `Subject`.
+	  * Unfortunately, declaring `[M &lt;: Component[_, _]]` leads to `M#Owner`, `M#Subject` being instantiated
+	  * early as unique types, not unifiable with types `O, S` where `C &lt;: Component[O, S]]` is the type argument
+	  * for `M`. Somewhat counterintuitively, `[M &lt;: ConcreteMapping]` on the other hand, leads to
+	  * `M#Owner =:= O` and `M#Subject =:= S` in the same circumstances. While the generic class/method will
+	  * likely need to resort to casting down `M#Subject` to `m.Subject` for some `m :M`, in the interface at least
+	  * it provides type safety. The only exception would be `M =:= ConcreteMapping` itself, so we simply warn
+	  * against any references to it by the client application.
+	  */
+	sealed trait ConcreteMapping extends Mapping
+
+
+
+	type TypedMapping[S] = ConcreteMapping { type Subject = S }
+	type AnyComponent[O] = ConcreteMapping { type Owner = O }
+	type Component[O, S] = ConcreteMapping { type Owner = O; type Subject = S }
 
 //	type SingletonMapping = Mapping with Singleton
 //	type TypedSingleton[S] = Mapping with Singleton { type Subject = S }
@@ -525,7 +543,7 @@ object Mapping {
 //	type SingletonComponent[O, S] = Component[O, S] with Singleton //Mapping with Singleton { type Owner = O; type Subject = S }
 
 
-	type CompatibleMapping[M <: Mapping] = Mapping {
+	type CompatibleMapping[M <: Mapping] = ConcreteMapping {
 		type Owner = M#Owner
 		type Subject = M#Subject
 	}
@@ -534,7 +552,7 @@ object Mapping {
 //		type Subject = M#Subject
 //	}
 
-	type ConcreteSubclass[M <: Mapping] = M {
+	type ConcreteSubclass[M <: ConcreteMapping] = M {
 		type Owner = M#Owner
 		type Subject = M#Subject
 	}

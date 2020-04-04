@@ -634,7 +634,7 @@ object Buff {
 	class AuditBuff[T](val buffType :AuditBuffType, val substitute :T => T) extends Buff[T] {
 
 		override def map[X](there :T => X) :AuditBuff[X] =
-			throw new UnsupportedOperationException(this +".map: AuditBuff can't be mapped unidirectionally.")
+			throw new UnsupportedOperationException(toString + ".map: AuditBuff can't be mapped unidirectionally.")
 
 		override def bimap[X](there :T => X, back :X => T) :AuditBuff[X] =
 			new AuditBuff[X](buffType, back andThen substitute andThen there)
@@ -646,7 +646,7 @@ object Buff {
 
 		override def hashCode :Int = buffType.hashCode * 31 + substitute.hashCode
 
-		override def toString :String = buffType + "(" + substitute + ")"
+		override def toString :String = buffType.toString + "(" + substitute + ")"
 	}
 
 
@@ -698,7 +698,7 @@ object Buff {
 		override def value :T = init
 
 		override def map[X](there :T => X) :Nothing =
-			throw new UnsupportedOperationException(this +".map: ManagedBuff can't be mapped unidirectionally.")
+			throw new UnsupportedOperationException(toString + ".map: ManagedBuff can't be mapped unidirectionally.")
 
 		override def bimap[X](there :T => X, back :X => T) :ManagedBuff[X] =
 			new ManagedBuff(buffType, there(init), back andThen substitute andThen there)
@@ -710,7 +710,7 @@ object Buff {
 
 		override def hashCode :Int = System.identityHashCode(this)
 
-		override def toString :String = buffType + "(?, " + substitute + ")"
+		override def toString :String = buffType.toString + "(?, " + substitute + ")"
 	}
 
 
@@ -728,7 +728,7 @@ object Buff {
 
 		override protected def apply[T](map :T => T) :AuditBuff[T] =
 			throw new UnsupportedOperationException(
-				this + ".apply(" + map + "): ManagedBuffType requires an initial value; use the two-argument constructor."
+				toString + ".apply(" + map + "): ManagedBuffType requires an initial value; use the two-argument constructor."
 			)
 
 		def apply[T](init: =>T, update :T => T) :ManagedBuff[T] = new ManagedBuff(this, init, update)

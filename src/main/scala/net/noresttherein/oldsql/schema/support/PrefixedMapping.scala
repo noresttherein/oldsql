@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.schema.Mapping.{Component}
+import net.noresttherein.oldsql.schema.Mapping.Component
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.schema.Mapping

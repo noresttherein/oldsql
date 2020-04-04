@@ -62,7 +62,7 @@ trait StaticMapping[O, S] extends GenericMapping[O, S] {
 	  * This method is called from `assemble` in order to possibly prevent it from proceeding with the assembly
 	  * and  calling `construct`, but return `None` instead. The contract obliges it only detect the situations
 	  * where `construct` would certainly fail with an exception, but not necessarily all of them. It is designed
-	  * primarily with the thought about outer joins where all columns of a table can carry `null` values.
+	  * primarily with the thought of outer joins where all columns of a table can carry `null` values.
 	  * For this reason, it simply always returns `true`, but entity tables override it with a check of availability
 	  * of the primary key. The subclasses are free to implement any condition here.
 	  * @see [[net.noresttherein.oldsql.schema.StaticMapping.construct construct]]
