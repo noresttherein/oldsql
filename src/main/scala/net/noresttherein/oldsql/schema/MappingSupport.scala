@@ -186,6 +186,9 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 
 
 
+
+
+
 	/** A proxy class for non-direct subcomponents of the enclosing `MappingSupport` which incorporates any column prefix
 	  * and buffs defined in it and any other enclosing components into the adapted component.
 	  * It serves at the same time as its own `ComponentExtractor` and the lifted 'effective' version of the component.

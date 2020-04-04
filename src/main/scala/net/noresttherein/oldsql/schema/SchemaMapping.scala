@@ -65,7 +65,8 @@ trait SchemaMapping[+C <:Chain, R <: Chain, O, S] extends GenericMapping[O, S] {
 
 
 	/** Rebases this mapping to the flat version of its schema, where every non-column component is recursively replaced
-	  * with the full list of its columns.
+	  * with the full list of its columns. The new mapping will delegate its assembly to this instance, and the
+	  * values of replaced components will be assembled from the column values.
 	  */
 	def inline[U >: C <: Chain, IC <: Chain, IL <: Chain]
 	          (implicit inliner :SchemaInlining[U, R, O, S, IC, IL]) :FlatSchemaMapping[IC, IL, O, S] =
@@ -106,6 +107,30 @@ trait SchemaMapping[+C <:Chain, R <: Chain, O, S] extends GenericMapping[O, S] {
 			ComponentExtractor.req(schema)(schema.disassemble _).asInstanceOf[Selector[T]]
 		else
             schema.extractor(component)
+
+
+
+	/** Returns the `ComponentExtractor` for the component labeled with the given string literal in the schema.
+	  * If more than one component with the same label exist, the last occurrence is selected.
+	  * @param label a `String` literal, or the value returned by `valueOf[N]` in generic code.
+	  * @tparam N the string singleton type of the label key.
+	  * @tparam T the subject type of the returned component.
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping./]]
+	  */
+	def apply[N <: Label, T](label :N)(implicit get :GetSchemaComponent[C, R, LabeledMapping[N, O, T], N, O, T])
+			:ComponentExtractor[O, S, T] =
+		get.extractor(schema, label)
+
+	/** Returns the component labeled with the given string literal in the schema. If more than one component with
+	  * the same label exist, the last occurrence in the component chain `C` is selected.
+	  * @param label a `String` literal, or the value returned by `valueOf[N]` in generic code.
+	  * @tparam M the full type of the returned component, as present on the component list `C`.
+	  * @tparam N the string singleton type of the label key.
+	  * @tparam T the subject type of the returned component.
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.apply[N,T](label:N)]]
+	  */
+	def /[M <: LabeledMapping[N, O, T], N <: Label, T](label :N)(implicit get :GetSchemaComponent[C, R, M, N, O, T]) :M =
+		get(schema, label)
 
 
 
@@ -390,7 +415,8 @@ abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, O, S](contents :Ma
   * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaComponentAccessor#apply apply()]],
   * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaComponentAccessor#prev prev]].
   *
-  * @tparam C a `Chain` listing the types of all components in this schema.
+  * @tparam C a `Chain` listing the types of all components in this schema. All components must implement
+  *           `MappingSchema[_, _, O, _]`.
   * @tparam O a label type serving to distinguish statically between mappings of the same class but mapping
   *           different fragments of a `ResultSet`, when more than one copy is present.
   * @tparam R a `Chain` containing the subject types of all components in the chain `C`, which is the subject type
@@ -400,14 +426,23 @@ abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, O, S](contents :Ma
   */
 trait MappingSchema[+C <: Chain, R <: Chain, O, S] extends GenericMapping[O, R] { outer :MappingSchemaGuts[C, R, O, S] =>
 
-	/** A shorthand alias for `ColumnMapping[O, T]` allowing reduced notation in the component type chain. */
+	/** A shorthand alias for `SchemaColumn[O, T]` allowing reduced notation in the component type chain. */
 	type ||[T] = SchemaColumn[O, T]
+	/** A shorthand alias for `LabeledSchemaColumn[N, O, T]` allowing reduced notation `N @|| T` in the component type chain. */
 	type @||[N <: Label, T] = LabeledSchemaColumn[N, O, T]
 
-	type Subschema[+L <: Chain,  V<: Chain, T] = SchemaMapping[L, V, O, T]
+	/** Component type of this schema, enforcing implementation of `SchemaMapping` of all components. */
+	type Subschema[+L <: Chain,  V <: Chain, T] = SchemaMapping[L, V, O, T]
 
+	/** Fully typed list of components in this schema as a `Chain`. */
 	def members :C
 
+
+
+	/** Appends the given component to this schema.
+	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
+	  * @param value an extractor returning the value of this component for the subject type `S` of an owning mapping.
+	  */
 	def comp[X <: Mapping, M <: Subschema[L, V, T], L <: Chain, V <: Chain, T]
 	        (component :X, value :Extractor[S, T])
 	        (implicit types :IsBoth[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, O, S] =
@@ -415,105 +450,220 @@ trait MappingSchema[+C <: Chain, R <: Chain, O, S] extends GenericMapping[O, R] 
 			ComponentExtractor(component, value.optional, value.requisite)
 		)
 
+	/** Appends the given component to this schema.
+	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
+	  * @param value a function returning the value of this component for the subject type `S` of an owning mapping.
+	  */
 	def comp[X <: Mapping, M <: Subschema[L, V, T], L <: Chain, V <: Chain, T]
             (value :S => T, component :X)
             (implicit types :IsBoth[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, O, S] =
 		new NonEmptySchema[C, M, R, T, O, S](this, types(component), ComponentExtractor.req(types(component))(value))
 
+	/** Appends the given component to this schema.
+	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
+	  * @param value a function returning the value of this component for the subject type `S` of an owning mapping
+	  *              as an `Option`. Whenever `None` is returned, a null values are written to the database for all
+	  *              of the component's columns.
+	  */
 	def optcomp[X <: Mapping, M <: Subschema[L, V, T], L <: Chain, V <: Chain, T]
 	           (value :S => Option[T], component :X)
 	           (implicit types :IsBoth[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, O, S] =
 		new NonEmptySchema[C, M, R, T, O, S](this, types(component), ComponentExtractor.opt(types(component))(value))
 
 
-
-	def col[M <: SchemaColumn[O, T], T]
-	       (column :M, value :S =?> T)(implicit types :IsBoth[M, M, SchemaColumn[O, T]])
-			:MappingSchema[C ~ M, R ~ T, O, S] =
-		new NonEmptySchema[C, M, R, T, O, S](this, types(column),
+	/** Appends a new column component to this schema. Full static type of the column will be encoded in the
+	  * component chain of the returned schema.
+	  */
+	def col[M <: SchemaColumn[O, T], T](column :M, value :S =?> T) :MappingSchema[C ~ M, R ~ T, O, S] =
+		new NonEmptySchema[C, M, R, T, O, S](this, column,
 			                                 ComponentExtractor(column, value.optional, value.requisite))
 
 //	def col[T :ColumnForm](name :String, value :S =?> T, buffs :Buff[T]*) :MappingSchema[C ~ ||[T], R ~ T, O, S] =
 //		comp(value, SchemaColumn[O, T](name, buffs :_*))
 
+	/** Appends a new column to this schema with the given name. */
 	def col[T :ColumnForm](name :String, value :S => T, buffs :Buff[T]*) :MappingSchema[C ~ ||[T], R ~ T, O, S] =
 		comp(value, SchemaColumn[O, T](name, buffs:_*))
 
 //	def col[T :ColumnForm](value :S =?> T, buffs :Buff[T]*)(implicit tpe :TypeTag[S]) :MappingSchema[C ~ ||[T], R ~ T, O, S] =
 //		comp(value, SchemaColumn[O, T](PropertyPath.nameOf(value.requisite getOrElse value.optional), buffs:_*))
 
+	/** Appends a new column to this schema with the name being the reflected name of the zero-argument method
+	  * called on the argument by the extractor function `value`.
+	  * @param value a function returning a single property of the enclosing mapping's subject `S`.
+	  */
 	def col[T :ColumnForm](value :S => T, buffs :Buff[T]*)(implicit tpe :TypeTag[S])
 			:MappingSchema[C ~ ||[T], R ~ T, O, S] =
 		col(PropertyPath.nameOf(value), value, buffs :_*)
 
+	/** Appends a new column of the given name to this schema.
+	  * @param value a function returning the value for the column from the enclosing mapping's subject `S`.
+	  */
 	def optcol[T :ColumnForm](name :String, value :S => Option[T], buffs :Buff[T]*)
 			:MappingSchema[C ~ ||[T], R ~ T, O, S] =
 		optcomp(value, SchemaColumn[O, T](name, buffs:_*))
 
+	/** Appends a new column to this schema with the name being the reflected name of the zero-argument method
+	  * called on the argument by the extractor function `value`.
+	  * @param value a function returning a single property of the enclosing mapping's subject `S`.
+	  */
 	def optcol[T :ColumnForm](value :S => Option[T], buffs :Buff[T]*)(implicit tpe :TypeTag[S])
 			:MappingSchema[C ~ ||[T], R ~ T, O, S] =
 		optcol(PropertyPath.nameOf(value), value, buffs :_*)
 
 
-/*
-	def comp[N <: Label, M <: Component[T], T](label :N, value :S => T, component :M)
-			:MappingSchema[C ~ (N @: M), O, R ~ T, S] =
-		comp(value, label @: component)
 
-	def optcomp[N <: Label, M <: Component[T], T](label :N, value :S => Option[T], component :M)
-			:MappingSchema[C ~ (N @: M), O, R ~ T, S] =
-		optcomp(value, label @: component)
-*/
+	/** Appends a new column labeled with its name to this schema.
+	  * @param name a string literal with the name of the column.
+	  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
+	  * @param buffs a vararg list of buffs modifying the handling of the column.
+	  * @tparam N the singleton type of the string literal used as the column name.
+	  * @tparam T the mapped column type.
+	  */
 	def lbl[N <: Label, T :ColumnForm](name :N, value :S => T, buffs :Buff[T]*)
 			:MappingSchema[C ~ (N @|| T), R ~ T, O, S] =
 		col(LabeledSchemaColumn[N, O, T](name, buffs:_*), Extractor.req(value))
 
+	/** Appends a new column labeled with its name to this schema.
+	  * @param name a string literal with the name of the column.
+	  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
+	  * @param buffs a vararg list of buffs modifying the handling of the column.
+	  * @tparam N the singleton type of the string literal used as the column name.
+	  * @tparam T the mapped column type.
+	  */
 	def optlbl[N <: Label, T :ColumnForm](name :N, value :S => Option[T], buffs :Buff[T]*)
 			:MappingSchema[C ~ (N @|| T), R ~ T, O, S] =
 		col(LabeledSchemaColumn[N, O, T](name, buffs:_*), Extractor(value))
 
 
-
-
+	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+	  * provided with component and column definitions when building this schema for disassembly of its subject
+	  * before writing to the database, and the function specified here for assembling its subject from the
+	  * chain of subjects of all top-level components of this schema.
+	  * @param constructor a function accepting a chain with the values of all components as they appear in the
+	  *                    components chain `C`.
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
+	  */
 	def map(constructor :R => S) :SchemaMapping[C, R, O, S] =
 		new MappedMappingSchema[C, R, O, S](this, constructor)
 
+	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+	  * provided with component and column definitions when building this schema for disassembly of its subject
+	  * before writing to the database, and the function specified here for assembling its subject from the
+	  * chain of subjects of all top-level components of this schema. This will result in slightly more efficient
+	  * assembly than the other overloaded `map` method, as no chain with the values of all components will be assembled
+	  * as an intermediate step.
+	  * @param constructor a function which number of arguments and their types match the subject types of all
+	  *                    components as listed by the chain `R`.
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
+	  */
 	def map[F](constructor :F)(implicit apply :ChainApplication[R, F, S]) :SchemaMapping[C, R, O, S] =
 		map { v :R => v.feedTo(constructor) }
 
 
 
+	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+	  * provided with component and column definitions when building this schema for disassembly of its subject
+	  * before writing to the database, and the function specified here for assembling its subject from the
+	  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may
+	  * not produce the subject value for all input rows.
+	  * @param constructor a function accepting a chain with the values of all components as they appear in the
+	  *                    components chain `C`.
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
+	  */
 	def flatMap(constructor :R => Option[S]) :SchemaMapping[C, R, O, S] =
 		new FlatMappedMappingSchema[C, R, O, S](this, constructor)
 
+	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+	  * provided with component and column definitions when building this schema for disassembly of its subject
+	  * before writing to the database, and the function specified here for assembling its subject from the
+	  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
+	  * the subject value for all input rows. This will result in slightly more efficient assembly than the other
+	  * overloaded `flatMap` method, as no chain with the values of all components will be assembled as an intermediate step.
+	  * @param constructor a function which number of arguments and their types match the subject types of all
+	  *                    components as listed by the chain `R`.
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
+	  */
 	def flatMap[F](constructor :F)(implicit apply :ChainApplication[R, F, Option[S]]) :SchemaMapping[C, R, O, S] =
 		flatMap { row :R => row.feedTo(constructor) }
 
 
 
+	/** Transforms this schema into an equivalent `FlatMappingSchema` by recursively replacing each component in the
+	  * chain `C` with its columns. This process loses all information about replaced components and the new schema
+	  * does not reference this instance in any way other than using the same column instances. It is however
+	  * intended to be used as part of inlining of the enclosing mapping, which will retain the references to
+	  * all components and use them for the assembly exactly as the enclosing mapping.
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.inline]]
+	  */
 	def inline[U >: C <: Chain, IC <: Chain, IR <: Chain]
 	          (implicit inliner :SchemaInlining[U, R, O, S, IC, IR]) :FlatMappingSchema[IC, IR, O, S] =
 		inliner(this)
 
 
 
+	/** Returns the `ComponentExtractor` for the component labeled with the given string literal in the schema.
+	  * If more than one component with the same label exist, the last occurrence is selected.
+	  * @param label a `String` literal, or the value returned by `valueOf[N]` in generic code.
+	  * @tparam N the string singleton type of the label key.
+	  * @tparam T the subject type of the returned component.
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema./]]
+	  */
 	def apply[N <: Label, T](label :N)(implicit get :GetSchemaComponent[C, R, LabeledMapping[N, O, T], N, O, T])
 			:ComponentExtractor[O, S, T] =
 		get.extractor(this, label)
 
+	/** Returns the component labeled with the given string literal in the schema. If more than one component with
+	  * the same label exist, the last occurrence in the component chain `C` is selected.
+	  * @param label a `String` literal, or the value returned by `valueOf[N]` in generic code.
+	  * @tparam M the full type of the returned component, as present on the component list `C`.
+	  * @tparam N the string singleton type of the label key.
+	  * @tparam T the subject type of the returned component.
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
+	  */
 	def /[M <: LabeledMapping[N, O, T], N <: Label, T](label :N)(implicit get :GetSchemaComponent[C, R, M, N, O, T]) :M =
 		get(this, label)
 
 
-
+	/** Adapts this schema for some other subject type `X` from which the value of the current enclosing mapping
+	  * subject type `S` can be derived. This has the effect of composing the extractor for every component
+	  * in this schema with the given function.
+	  * @param extractor a function returning the owning mapping's subject value from some other value type.
+	  * @tparam X the new target type for the enclosing mapping.
+	  * @return An instance exactly equivalent to one where all method calls appending components used in building
+	  *         of this schema have their passed extractor composed with the given function.
+	  */
 	def compose[X](extractor :X => S) :MappingSchema[C, R, O, X]
 
+	/** Adapts this schema for some other subject type `X` from which the value of the current enclosing mapping
+	  * subject type `S` can be derived. This has the effect of composing the extractor for every component
+	  * in this schema with the given extractor.
+	  * @param extractor an `Extractor` returning the owning mapping's subject value from some other value type.
+	  * @tparam X the new target type for the enclosing mapping.
+	  * @return An instance exactly equivalent to one where all method calls appending components used in building
+	  *         of this schema have their passed extractor composed with the given extractor.
+	  */
 	def compose[X](extractor :X =?> S) :MappingSchema[C, R, O, X]
 
+	/** The extractor returning the value for the given component from the enclosing mapping's subject type `S`.
+	  * Note that this is different from the extractor returned by `this(component)`, as the latter retrieves
+	  * the value from the chain of subject types of all components in the schema.
+	  */
 	def extractor[X](component :Component[X]) :ComponentExtractor[O, S, X]
 
+
+	/** Returns the chain with the values of all components from the subject value of the enclosing `SchemaMapping`.
+	  * @return a chain of component values inside `Some` as long as all of them returned `Some`
+	  *         from their `optionally` method, and `None` in the case when at least one of them didn't have a value
+	  *         in the given subject.
+	  */
 	def unapply(subject :S) :Option[R]
 
+	/** Returns the chain with the values of all components from the subject value of the enclosing `SchemaMapping`
+	  * This method will ask the extractors given for all components to produce a value for that component.
+	  * If at least one of them fails, a `NoSuchElementException` will be thrown.
+	  * @return a chain of values for all components on the component chain `C`.
+	  */
 	def disassemble(subject :S) :R
 
 
@@ -608,14 +758,13 @@ object MappingSchema {
 
 
 
+	/** A `MappingSchema` where every component is a column (extending the `SchemaColumn` interface). */
 	trait FlatMappingSchema[+C <: Chain, R <: Chain, O, S] extends MappingSchema[C, R, O, S] {
 		outer :MappingSchemaGuts[C, R, O, S] =>
 
 
-		override def col[M <: SchemaColumn[O, T], T]
-		                (column :M, value :S =?> T)(implicit types :IsBoth[M, M, SchemaColumn[O, T]])
-				:FlatMappingSchema[C ~ M, R ~ T, O, S] =
-			new FlatNonEmptySchema[C, M, R, T, O, S](this, types(column),
+		override def col[M <: SchemaColumn[O, T], T](column :M, value :S =?> T) :FlatMappingSchema[C ~ M, R ~ T, O, S] =
+			new FlatNonEmptySchema[C, M, R, T, O, S](this, column,
 				                                     ComponentExtractor(column, value.optional, value.requisite))
 
 		override def col[T :ColumnForm](name :String, value :S => T, buffs :Buff[T]*) :FlatMappingSchema[C ~ ||[T], R ~ T, O, S] =
