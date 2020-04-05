@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.AnyComponent
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
 import net.noresttherein.oldsql.sql.FromClause.FromFormula
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, Formula, FormulaMatcher}
@@ -26,7 +27,7 @@ trait SQLTerm[+T] extends SQLFormula[FromClause, T] {
 
 	private[oldsql] override def equivalent(expression: Formula[_]): Boolean = this == expression
 
-	override def isGroundedIn(tables: Iterable[FromFormula[_, _]]): Boolean = freeValue.isDefined
+	override def isGroundedIn(tables: Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]): Boolean = freeValue.isDefined
 
 //	override def get(values :RowValues[FromClause]) :Option[T] = freeValue
 }

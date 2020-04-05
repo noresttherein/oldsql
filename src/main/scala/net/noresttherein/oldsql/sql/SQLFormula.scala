@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnReadForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SelectFrom, SubselectFrom, FromFormula}
+import net.noresttherein.oldsql.schema.Mapping.AnyComponent
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromFormula, SelectFrom, SubselectFrom}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ConversionMatcher, OrNull}
 import net.noresttherein.oldsql.sql.SQLCondition.{CaseCondition, ConditionMatcher, Equality}
@@ -108,7 +109,11 @@ trait SQLFormula[-F <: FromClause, +V] { //todo: add a type parameter which is B
 
 	def isFree :Boolean = freeValue.isDefined
 
-	def isGroundedIn(tables :Iterable[FromFormula[_, _]]) :Boolean
+	/** An SQL formula is said to be ''grounded in `FromFormula`s F1,...,FN'' if it can be evaluated based on the
+	  * collective column set represented by mappings of sources of those formulas. In other words, it depends
+	  * only on those parts of the FROM clause.
+	  */
+	def isGroundedIn(tables :Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]) :Boolean
 
 /*
 	def evaluate(values :RowValues[F]) :V = get(values) getOrElse {
@@ -175,7 +180,7 @@ object SQLFormula {
 		protected def parts :Seq[SQLFormula[F, _]]
 
 
-		override def isGroundedIn(tables: Iterable[FromFormula[_, _]]): Boolean =
+		override def isGroundedIn(tables: Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]): Boolean =
 			parts.forall(_.isGroundedIn(tables))
 
 		override protected def reverseCollect[X](fun: PartialFunction[SQLFormula[_ <: FromClause, _], X], acc: List[X]): List[X] =
@@ -399,8 +404,8 @@ object SQLFormula {
 	  * is built by recursively extending partial traits defining methods for visiting all subclasses of a given
 	  * formula class. They typically form a one-to-one relationship with formula classes, with each formula
 	  * declaring in its companion object its own matcher, extending the matchers of its subclasses.
-	  * To alleviate the latter, two parallel interface families are introduced: `Case''Formula''`
-	  * and `Match''Formula''`. The former implements all visitor methods for all subclasses of ''Formula''
+	  * To alleviate the latter, two parallel interface families are introduced: `Case`''Formula''
+	  * and `Match`''Formula''. The former implements all visitor methods for all subclasses of ''Formula''
 	  * by delegating to the method for the ''Formula'' class (introduced by the trait if the formula is abstract),
 	  * catching all subclasses in a single case. The latter is similar, but doesn't introduce a new method for
 	  * abstract formulas and leaves all methods for direct subclasses of ''Formula'' not implemented. The methods

@@ -165,7 +165,9 @@ object SchemaMapping {
 
 
 	/** A `SchemaMapping` variant which uses a `FlatSchemaMapping`, that is the component list `C` contains only
-	  * `SchemaColumn`s.
+	  * `SchemaColumn`s. Note that the column chain `C` includes all columns of the columns in the mapping
+	  * and thus might not be reflective of the select clause of a select statement for the subject type, or
+	  * the updated column list updated with SQL update statements.
 	  */
 	trait FlatSchemaMapping[+C <: Chain, R <: Chain, O, S] extends SchemaMapping[C, R, O, S] { outer =>
 		override val schema :FlatMappingSchema[C, R, O, S]
@@ -402,6 +404,8 @@ abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, O, S](contents :Ma
 
 
 /** A list of components of some `SchemaMapping` for subject type `S`, with all their types encoded in this class's type.
+  * This is the full list of components, ignoring the fact that some of them might not be available or are optional
+  * for some types of database operations.
   * Each component of type `T` additionally has a `ComponentExtractor[O, S, T]` associated with it by this instance,
   * which can be accessed using the [[net.noresttherein.oldsql.schema.MappingSchema#extractor extractor(component)]]
   * method. A schema itself is a mapping for the chain `R` containing the values of all of its components in order,
@@ -423,6 +427,7 @@ abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, O, S](contents :Ma
   *           of this mapping.
   * @tparam S the entity type of an owning `SchemaMapping`.
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
+  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping]]
   */
 trait MappingSchema[+C <: Chain, R <: Chain, O, S] extends GenericMapping[O, R] { outer :MappingSchemaGuts[C, R, O, S] =>
 

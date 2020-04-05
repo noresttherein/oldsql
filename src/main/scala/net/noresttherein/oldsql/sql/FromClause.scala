@@ -1,19 +1,42 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain
-import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.schema.Mapping.Component
-import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula
+import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLReadForm}
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component}
+import net.noresttherein.oldsql.sql.FromClause.FromFormula
+import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, Formula}
 import net.noresttherein.oldsql.sql.SQLTuple.ChainFormula
 
 
 trait FromClause {
+
+	/** Type of the last mapping in this join (the rightmost one) if not empty. */
+	type LastMapping[O] <: AnyComponent[O]
+
+	/** Table alias proxy for the last table (or table-like expression) in this list as seen from some `FromClause`
+	  * type `F` containing this instance in its 'tail'. In other words, this projects the type of the last element
+	  * of this clause to an extending row source.
+	  */
+	type LastTable[-F <: FromClause] <: FromFormula[F, LastMapping]
+
+	/** Last mapping in this source when treated as a list, if any. */
+	def lastTable :LastTable[this.type] //:JoinedTable[this.type, _<:Mapping]
+
+
 
 	/** Result types of all mappings in this source concatenated into a heterogeneous list.
 	  * The chain contains the mapped types in the same order as their mappings appear in this type's definition
 	  * and is, like `Join` (but unlike `::`), left associative.
 	  */
 	type Row <: Chain
+
+	/** Create an sql tuple formula containing `TableFormula`s for all joined tables in their order of appearance.
+	  * It will contain entries for all mappings in this source, including parameter mappings and mappings listed in this
+	  * source's `Outer` prefix (if this source is a subselect source).
+	  */
+	def row :ChainFormula[this.type, Row]
+
+
 
 	/** Type of the outer source if this source represents a subselect source created by `Outer.from()`.
 	  * All 'real' `Join` subclasses have this type equal to the `Outer` of their left side, but `SubselectJoin`
@@ -39,14 +62,6 @@ trait FromClause {
 
 	/** Number of mappings contained in this join (counting all their occurrences separately). */
 	def size :Int
-
-
-
-	/** Create an sql tuple formula containing `TableFormula`s for all joined tables in their order of appearance.
-	  * It will contain entries for all mappings in this source, including parameter mappings and mappings listed in this
-	  * source's `Outer` prefix (if this source is a subselect source).
-	  */
-//	def row :ChainFormula[this.type, Row]
 
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[FromClause]
@@ -83,30 +98,57 @@ object FromClause {
 
 
 
-	trait FromFormula[-F <: FromClause, M <: Mapping] extends SQLFormula[F, M#Subject] {
-		type Subject = M#Subject
+	case class FromFormula[-F <: FromClause, M[O] <: AnyComponent[O]] private[sql] (from :RowSource[M], index :Int)
+		extends MappingFormula[F, M]
+	{
+		val mapping :M[Any] = from[Any] //todo:
+
+		override def readForm :SQLReadForm[Subject] = from[Any].selectForm
+
+		override def applyTo[Y[+X]](matcher :SQLFormula.FormulaMatcher[F, Y]) :Y[Subject] = ???
+
+		override def isGroundedIn(tables :Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]) :Boolean =
+			tables.exists(_ == this)
+
+		override def isomorphic(expression :Formula[_]) :Boolean = ???
+
+		override private[oldsql] def equivalent(expression :Formula[_]) = ???
 	}
 
 
 
-	/** Proof that source S is an extension of source R / source R is a prefix source of S.
-	  * It means that S<: R Join T1 ... Join TN forSome T1 ... TN.
+	object FromFormula {
+		trait FromMatcher[+F <: FromClause, +Y[X]] {
+			def from[M[O] <: AnyComponent[O]](f :FromFormula[F, M]) :Y[M[Any]#Subject]
+		}
+
+		type MatchFrom[+F <: FromClause, +Y[X]] = FromMatcher[F, Y]
+
+		type CaseFrom[+F <: FromClause, +Y[X]] = FromMatcher[F, Y]
+	}
+
+
+	/** Proof that the FROM clause `S` is an extension of the clause `F` / the clause `F` is a prefix the clause of `S`.
+	  * It means that `S &lt;: F Join T1 ... Join TN forSome { type T1 ... TN }`.
 	  */
-	class ExtendedBy[R<:FromClause, -S<:FromClause] private() {
-//		def apply[T <: Component[O, E], O, E](table :TableFormula[R, T, O, E]) :TableFormula[S, T, O, E] =
+	class ExtendedBy[F <: FromClause, -S <: FromClause] private() {
+//		def apply[T <: Component[O, E], O, E](table :TableFormula[F, T, O, E]) :TableFormula[S, T, O, E] =
 //			table.asInstanceOf[TableFormula[S, T, O, E]]
 
-		def apply[T](expression :SQLFormula[R, T]) :SQLFormula[S, T] =
+		def apply[T](expression :SQLFormula[F, T]) :SQLFormula[S, T] =
 			expression.asInstanceOf[SQLFormula[S, T]]
 
-		def apply[T](expression :ColumnFormula[R, T]) :ColumnFormula[S, T] =
+		def apply[T](expression :ColumnFormula[F, T]) :ColumnFormula[S, T] =
 			expression.asInstanceOf[ColumnFormula[S, T]]
 	}
 
 	object ExtendedBy {
-		implicit def itself[R<:FromClause] :ExtendedBy[R, R] = new ExtendedBy[R, R]
-		implicit def join[S<:FromClause, L<:FromClause, R<:Mapping](implicit ev :S ExtendedBy L) :ExtendedBy[S, L Join R] =
-			new ExtendedBy[S, L Join R]
+		private[this] val instance = new ExtendedBy[FromClause, FromClause]
+
+		implicit def itself[F <: FromClause] :ExtendedBy[F, F] = instance.asInstanceOf[F ExtendedBy F]
+
+		implicit def join[S <: FromClause, L <: FromClause, R[O] <: AnyComponent[O]](implicit ev :S ExtendedBy L) :ExtendedBy[S, L Join R] =
+			instance.asInstanceOf[S ExtendedBy (L Join R)]
 	}
 
 

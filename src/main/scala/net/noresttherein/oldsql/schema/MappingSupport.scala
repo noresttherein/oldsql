@@ -22,7 +22,7 @@ import scala.reflect.runtime.universe.TypeTag
 
 
 
-//todo: name DeclarativeMapping ?
+//todo: name DeclarativeMapping ? MappingFrame?
 //todo: provide examples
 /** Convenience base trait for mappings which are defined statically, rather than dynamically (i.e their mapped type
   * and schema are known). This includes table mappings and other instances where columns are known statically and
@@ -323,13 +323,6 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 
 
 
-/*
-	class SymLinkComponent[C<:Mapping[T], T](target :TypedComponentPath[this.type, C, T]) extends BaseSymLink[this.type, C, T](target) with Component[T] {
-		override protected[MappingSupport] val pick: (S) => Option[T] = target.pick
-		override protected[MappingSupport] val surepick: Option[(S) => T] = target.surepick
-		override private[MappingSupport] def init() = Path(comp => target.lift(comp.adaptedComponent))
-	}
-*/
 
 
 
@@ -694,7 +687,9 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	private class RenamedColumn[X](name :String, comp :Component[X],
 	                               override val extractor :S =?> X, override val buffs :Seq[Buff[X]])
 		extends EagerDeepProxy[Component[X], O, X](comp) with ComponentMapping[X]
-	{
+	{   //fixme: returning a component with non-empty component lists as a column is asking for trouble
+		//this may require modifying the Mapping interface to in fact return ColumnMapping from the column lists.
+
 		protected override def adapt[V](component :egg.Component[V]) :Component[V] =
 			new RenamedColumn[V](name :String, component, extractor andThen egg(component), component.buffs)
 

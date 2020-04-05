@@ -2,9 +2,10 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.collection.Chain.@~
-import net.noresttherein.oldsql.sql.FromClause.{SubselectFrom}
+import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.SQLTuple.ChainFormula
 
 
 /** An empty source, serving both as a source for expressions not needing any input tables
@@ -15,7 +16,14 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	def this() = this(True())
 
+	override type LastMapping[O] = Nothing
+	override type LastTable[-F <: FromClause] = Nothing
+
+	override def lastTable :Nothing = throw new NoSuchElementException("Dual.lastTable")
+
 	override type Row = @~
+
+	override def row :ChainFormula[FromClause, @~] = ChainFormula.EmptyChain
 
 	override type Outer = FromClause
 
@@ -74,7 +82,6 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	//	override def selectOne[T <: Mapping, C <: Mapping](mapping: (JoinedTables[this.type]) => ComponentFormula[this.type, T, C]): SelectMapping[Dual, C] =
 	//		throw new UnsupportedOperationException(s"select from Dual")
-
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]

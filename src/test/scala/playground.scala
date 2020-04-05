@@ -24,6 +24,7 @@ object playground extends App {
 			Human(!"gun", !"backup", !"second")
 	}
 
+
 //	import net.noresttherein.oldsql.collection.Record._
 
 //	trait Tagged[+T]

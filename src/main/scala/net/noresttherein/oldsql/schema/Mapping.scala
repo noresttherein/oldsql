@@ -88,7 +88,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
   * their type safe use. The second reason is the limitation of the type inferer which, when faces with
   * method with a signature in the form of `[M &lt;: Component[O, S], O, S](m :M)` will, when applied to
   * `m :GenericMapping[O, Int]` infer types `GenericMapping[O, Int], Nothing, Nothing` causing a compile error.
-  * On the other hand, defining the type parameter as `[M <: Component[_, _]]` assigns new distinct types to the
+  * On the other hand, defining the type parameter as `[M &lt;: Component[_, _]]` assigns new distinct types to the
   * missing type parameters, which are not unified even with `m.Subject`/`m.Owner` itself, leading to a lot of issues.
   * This can be circumvented with implicit parameters, but at the cost of additional complexity.
   * @see [[net.noresttherein.oldsql.schema.GenericMapping]]
@@ -429,7 +429,7 @@ trait Mapping { mapping :ConcreteMapping =>
   *           in a query can be used in the creation of SQL expressions used by that query.
   * @tparam S the subject type, that is the type of objects read and written to a particular table (or a view, query,
   *           or table fragment).
-  */
+  */ //todo: if type parameter `O` stays, it should be last, so that type inferer can infer Component[S, _] type functor
 trait GenericMapping[O, S] extends ConcreteMapping { self =>
 	type Owner = O
 	type Subject = S
@@ -467,7 +467,7 @@ trait GenericMapping[O, S] extends ConcreteMapping { self =>
 
 	def qualified(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
-		else PrefixedMapping(prefix + ".", this)
+		else prefixed(prefix + ".")
 
 	def prefixed(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
@@ -533,9 +533,14 @@ object Mapping {
 
 
 
-	type TypedMapping[S] = ConcreteMapping { type Subject = S }
-	type AnyComponent[O] = ConcreteMapping { type Owner = O }
-	type Component[O, S] = ConcreteMapping { type Owner = O; type Subject = S }
+	type TypedMapping[S] = ConcreteMapping { type Subject = S } //todo: MappingOf
+	type AnyComponent[O] = ConcreteMapping { type Owner = O } //todo: MappingFrom
+	type Component[O, S] = ConcreteMapping { type Owner = O; type Subject = S } //todo: TypedMapping
+
+//	type MappingFrom[O] = { type T[S] = Component[O, S] }
+//	type MappingOf[S] = { type T[O] = Component[O, S] }
+
+
 
 //	type SingletonMapping = Mapping with Singleton
 //	type TypedSingleton[S] = Mapping with Singleton { type Subject = S }
@@ -618,8 +623,10 @@ object Mapping {
 		def apply[O, S, T](component :Component[O, T])(extractor :Extractor[S, T]) :ComponentExtractor[O, S, T] =
 			extractor match {
 				case _ :IdentityExtractor[_] => ident(component).asInstanceOf[ComponentExtractor[O, S, T]]
+				case c :ConstantExtractor[_, T] => const(component)(c.constant)
 				case requisite :RequisiteExtractor[S, T] => new RequisiteComponent(component, requisite.getter)
-				case _ => new OptionalComponent(component, extractor.optional)
+				case _ :EmptyExtractor[_, _] => none(component)
+				case _ => new OptionalComponent(component, extractor.optional) //todo: FromOptionExtractor
 			}
 
 

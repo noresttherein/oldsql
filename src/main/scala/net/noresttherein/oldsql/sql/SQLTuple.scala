@@ -146,21 +146,21 @@ object SQLTuple {
 
 
 
-		case class ChainHead[-F <: FromClause, T <: Chain, H](tail :ChainFormula[F, T], head :SQLFormula[F, H])
+		case class ChainHead[-F <: FromClause, T <: Chain, H](init :ChainFormula[F, T], last :SQLFormula[F, H])
 			extends ChainFormula[F, T ~ H]
 		{
-			override def size :Int = tail.size + 1
+			override def size :Int = init.size + 1
 
-			override def readForm :SQLReadForm[T ~ H] = SQLReadForm.ChainReadForm[T, H](tail.readForm, head.readForm)
+			override def readForm :SQLReadForm[T ~ H] = SQLReadForm.ChainReadForm[T, H](init.readForm, last.readForm)
 
 //			override def get(values :RowValues[F]) :Option[T ~ H] =
 //				for (t <- tail.get(values); h <- head.get(values)) yield t ~ h
 
 			override def freeValue :Option[T ~ H] =
-				for (t <- tail.freeValue; h <- head.freeValue) yield t ~ h
+				for (t <- init.freeValue; h <- last.freeValue) yield t ~ h
 
 			override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :ChainFormula[S, T ~ H] =
-				tail.map(mapper) ~ mapper(head)
+				init.map(mapper) ~ mapper(last)
 		}
 
 
