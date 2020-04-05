@@ -18,7 +18,7 @@ import scala.collection.immutable.Seq
 /** `SQLTuple` represents an SQL expression consisting of several individual values.
   * In its literal form it is written as `(col1, col2, ..., colN)`.
   */
-trait SQLTuple[-F <: FromClause, +T] extends CompositeFormula[F, T] {
+trait SQLTuple[-F <: FromClause, T] extends CompositeFormula[F, T] {
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLTuple[_, _]]
 
@@ -51,7 +51,7 @@ object SQLTuple {
 
 
 
-	case class SeqFormula[-F <: FromClause, +T](override val parts :Seq[SQLFormula[F, T]]) extends SQLTuple[F, Seq[T]] {
+	case class SeqFormula[-F <: FromClause, T](override val parts :Seq[SQLFormula[F, T]]) extends SQLTuple[F, Seq[T]] {
 		override def inOrder :Seq[SQLFormula[F, T]] = parts
 
 		override def readForm :SQLReadForm[Seq[T]] = SQLReadForm.seq(inOrder.map(_.readForm))

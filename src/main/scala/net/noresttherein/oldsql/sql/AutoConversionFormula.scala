@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
 /**
   * @author Marcin Mościcki
   */
-trait AutoConversionFormula[-F <: FromClause, S, +T] extends CompositeFormula[F, T] {
+trait AutoConversionFormula[-F <: FromClause, S, T] extends CompositeFormula[F, T] {
 	def expr :SQLFormula[F, S]
 
 	def convert(s :S) :T
@@ -131,7 +131,7 @@ object AutoConversionFormula {
 
 
 		implicit def promote[F <: FromClause, X, Y](expr :SQLFormula[F, X])(implicit lift :Lift[X, Y])
-		:PromotionConversion[F, X, Y] =
+				:PromotionConversion[F, X, Y] =
 			new PromotionConversion(expr)
 
 

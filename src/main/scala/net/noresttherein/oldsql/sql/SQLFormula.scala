@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.sql.LogicalFormula.{And, CaseLogical, LogicalMat
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, Formula, FormulaMatcher, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
-import net.noresttherein.oldsql.sql.SQLTerm.{BoundParameter, CaseTerm, False, SQLLiteral, SQLParameter, TermMatcher, True}
+import net.noresttherein.oldsql.sql.SQLTerm.{BoundParameter, CaseTerm, False, SQLLiteral, TermMatcher, True}
 import net.noresttherein.oldsql.sql.SQLTuple.{CaseTuple, SeqFormula, TupleMatcher}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
@@ -25,8 +25,8 @@ import scala.reflect.ClassTag
 /** A representation of an SQL expression as an AST.
   * @tparam F row source - list of tables which provide columns used in this expression
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
-  */ //todo: make it invariant regarding V again, doesn't matter for value types and mappings will differ for subclasses.
-trait SQLFormula[-F <: FromClause, +V] { //todo: add a type parameter which is Bound || Unbound (flag if it contains any abstract/unbound parts)
+  */
+trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bound || Unbound (flag if it contains any abstract/unbound parts)
 	import SQLTerm.TermFormulas
 
 	def readForm :SQLReadForm[V]
@@ -35,10 +35,10 @@ trait SQLFormula[-F <: FromClause, +V] { //todo: add a type parameter which is B
 //	      (path :ComponentPath[T, C, O, E, L])(implicit lift :SQLTypePromotion[L, R, X]) :SetComponent[F, T, C, O, E, L, R, X] =
 //		SetComponent(path, this :SQLFormula[F, R])
 
-	def ==?[U >: V, O, X](value :O)(implicit lift :SQLTypePromotion[U, O, X], form :SQLForm[O]) :BooleanFormula[F] =
-		(this :SQLFormula[F, U]) === value.? //todo: if this works, invariant is the way to go
+	def ==?[O, X](value :O)(implicit lift :SQLTypePromotion[V, O, X], form :SQLForm[O]) :BooleanFormula[F] =
+		this === value.?
 
-	def ===[S <: F, U >: V, O, X](that :SQLFormula[S, O])(implicit lift :SQLTypePromotion[U, O, X]) :BooleanFormula[S] =
+	def ===[S <: F, O, X](that :SQLFormula[S, O])(implicit lift :SQLTypePromotion[V, O, X]) :BooleanFormula[S] =
 		new Equality(lift.left(this), lift.right(that))
 
 
@@ -72,9 +72,7 @@ trait SQLFormula[-F <: FromClause, +V] { //todo: add a type parameter which is B
 
 
 
-	def boundParameters :Seq[BoundParameter[_]] = collect { case x :BoundParameter[_] => x }
-
-	def parameters :Seq[SQLParameter[_]] = collect { case p :SQLParameter[_] => p }
+	def parameters :Seq[BoundParameter[_]] = collect { case x :BoundParameter[_] => x }
 
 
 
@@ -160,7 +158,7 @@ object SQLFormula {
 
 
 
-	trait ColumnFormula[-F <: FromClause, +V] extends SQLFormula[F, V] {
+	trait ColumnFormula[-F <: FromClause, V] extends SQLFormula[F, V] {
 		override def readForm :ColumnReadForm[V]
 
 		override def opt :ColumnFormula[F, Option[V]] = OrNull(this)
@@ -175,7 +173,7 @@ object SQLFormula {
 
 
 
-	trait CompositeFormula[-F <: FromClause, +T] extends SQLFormula[F, T] {
+	trait CompositeFormula[-F <: FromClause, T] extends SQLFormula[F, T] {
 		protected def inOrder :Seq[SQLFormula[F, _]] = parts
 		protected def parts :Seq[SQLFormula[F, _]]
 
@@ -315,7 +313,7 @@ object SQLFormula {
 		object Lift { //todo: java type promotion
 			implicit def self[T] :Lift[T, T] = ident.asInstanceOf[Lift[T, T]]
 			implicit def option[T] :Lift[T, Option[T]] = opt.asInstanceOf[Lift[T, Option[T]]]
-			//			implicit def some[T] :Lift[Some[T], Option[T]] = new Supertype[Some[T], Option[T]]
+//			implicit def some[T] :Lift[Some[T], Option[T]] = new Supertype[Some[T], Option[T]]
 //			implicit def singleRow[T] :Lift[RowCursor[T], T] = selectRow.asInstanceOf[Lift[RowCursor[T], T]]
 //			implicit def rowSeq[T] :Lift[RowCursor[T], T] = selectRows.asInstanceOf[Lift[RowCursor[T], T]]
 

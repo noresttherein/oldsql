@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.{False, True}
 
 
 /** Base trait for SQL formulas implementing Boolean algebra. */
-trait LogicalFormula[-F <: FromClause] extends CompositeFormula[F, Boolean] with ColumnFormula[F, Boolean] {
+trait LogicalFormula[-F <: FromClause] extends CompositeFormula[F, Boolean] with BooleanFormula[F] {
 	override def readForm :ColumnReadForm[Boolean] = ColumnForm[Boolean]
 }
 
