@@ -50,7 +50,7 @@ trait GenericReferenceFlatMapping[RK<:Reference[JES], RKM<:Mapping[RK], JES, JE,
 //		(val ref :RKM, joinReference : =>ComponentPath[JEM, JRM], val referenceFactory :GenericMappingReferenceFactory[RK, E, X, R, EM])
 //	extends GenericReferenceFlatMapping[RK, RKM, JE, JEM, JRM, E, EM, X, R]
 //{
-//	val egg = ref
+//	val adaptee = ref
 //	def joinedReference = joinReference
 //
 //}

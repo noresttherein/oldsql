@@ -36,11 +36,11 @@ object MappedMapping {
 		extends MappingSubstitute[V, T, M]
 	{
 //		override def apply[C <: M#AnyComponent](component: M => C): C =
-//			component(egg)
+//			component(adaptee)
 
 		override def modifiers = adaptee.modifiers.map(_.map(toResultType))
 
-//		override def columnDefinition = egg.columnDefinition.map { coldef =>
+//		override def columnDefinition = adaptee.columnDefinition.map { coldef =>
 //			ColumnDefinition[V](coldef.name)(
 //				MappedSQLForm(
 //					(t:T) => Some(toResultType(t)),

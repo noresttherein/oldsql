@@ -4,8 +4,8 @@ import com.hcore.ogre.mapping.support.BaseMappings.{AbstractEmptyMapping, EmptyM
 
 /*
 
-class MappingView[T, M<:Mapping[T]](val egg :M) extends AbstractEmptyMapping[T] {
-	override type Component[X] = egg.Component[X]
+class MappingView[T, M<:Mapping[T]](val adaptee :M) extends AbstractEmptyMapping[T] {
+	override type Component[X] = adaptee.Component[X]
 
 	override def assemble(values: Values): Option[T] = ???
 

@@ -14,7 +14,7 @@ trait ComponentMapping[E, P<:Mapping[E], T] extends Mapping[T] {
 
 object ComponentMapping {
 
-//	class LiftedComponent[, C<:Mapping[V]](val egg :C) extends MappingImpostor[V, C] with ComponentMappin
+//	class LiftedComponent[, C<:Mapping[V]](val adaptee :C) extends MappingImpostor[V, C] with ComponentMappin
 
 
 

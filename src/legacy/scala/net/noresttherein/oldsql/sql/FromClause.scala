@@ -69,10 +69,10 @@ trait FromClause {
 
 
 	/** Type of the last mapping in this join (the rightmost one) if not empty. */
-	type LastMapping <: Mapping
+	type LastMapping <:Mapping
 
 	/** Table alias proxy for the last table (or table-like expression) in this list as seen from some `FromClause`
-	  * type `F` containing this instance in its 'tail'. In other words, this projects the type of the last element
+	  * type `F` containing this instance in its 'tail'. In other words, this projectsthe type of the last element
 	  * of this clause to an extending row source.
 	  */
 	type LastTable[F <: FromClause] <: TableFormula[F, _]

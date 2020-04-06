@@ -58,7 +58,7 @@ object MappingAdapter {
 	trait MappingProxy[V, M<:TypedMapping[V]] extends MappingAdapter[V, M] {
 		override def modifiers: Seq[MappingExtension[V]] = adaptee.modifiers
 		override def nullValue: Option[V] = adaptee.nullValue
-//		override def columnDefinition = egg.columnDefinition
+//		override def columnDefinition = adaptee.columnDefinition
 
 		protected trait ProxyMorphism extends AdapterMorphism with ValueIdentityMorphism[this.type, adaptee.type, V]
 	}
@@ -163,7 +163,7 @@ object MappingAdapter {
 				val cast = component.asInstanceOf[adaptee.Component[X]]
 				DirectComponent[this.type, cast.type, X](morphism andThen (adaptee \\ cast).morphism)
 			}
-//			else DirectComponent[this.type, egg.type, T](morphism) :\ component.asInstanceOf[egg.Component[X]]
+//			else DirectComponent[this.type, adaptee.type, T](morphism) :\ component.asInstanceOf[adaptee.Component[X]]
 		}.asInstanceOf[TypedComponentPath[this.type, component.type, X]]
 
 
@@ -186,7 +186,7 @@ object MappingAdapter {
 
 		override def assemble(values: Values): Option[T] =
 			values.get(adaptee)
-			//egg.assemble(values :\ egg)
+			//adaptee.assemble(values :\ adaptee)
 
 		override def morphism = new DirectMorphism with ValueIdentityMorphism[this.type, adaptee.type, T]
 	}
@@ -221,9 +221,9 @@ object MappingAdapter {
 			adaptee.scoutValue(ctx \\ MappedComponent(morphism))
 
 //		override implicit def \\[X](component: Component[X]): TypedComponentPath[this.type, component.type, X] =
-//			DirectComponent(morphism andThen (egg \\ component).morphism)
+//			DirectComponent(morphism andThen (adaptee \\ component).morphism)
 
-		def morphism = new SubstituteMorphism with ProxyMorphism //with StructuralIdentityMorphism[this.type, egg.type]
+		def morphism = new SubstituteMorphism with ProxyMorphism //with StructuralIdentityMorphism[this.type, adaptee.type]
 
 	}
 
@@ -354,7 +354,7 @@ object MappingAdapter {
 			adaptee.scoutValue(ctx \\ MappedComponent(morphism))
 
 //		protected lazy val fromAdapted =
-//			ComponentMorphism.cached[AdaptedComponent, Component](egg.subcomponents, adapt(_))
+//			ComponentMorphism.cached[AdaptedComponent, Component](adaptee.subcomponents, adapt(_))
 
 
 		override implicit def \\[T](component: Component[T]): TypedComponentPath[this.type, component.type, T] = {

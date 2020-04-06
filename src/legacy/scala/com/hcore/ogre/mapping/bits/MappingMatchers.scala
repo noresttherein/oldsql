@@ -18,7 +18,7 @@ object MappingMatchers {
 //			ColumnMapping.adapt(mapping)
 
 //		def unapply[M<:Mapping, C](path)
-//		def unapply[T](path :TypedComponentPath[_<:Mapping, _<:TypedMapping[T], T]) :Option[ColumnMapping[T]] =
+//		def unapply[T](path :TypedComponentPath[_<:Mapping, _<:ComponentFor[T], T]) :Option[ColumnMapping[T]] =
 //			ColumnMapping.adapt(path.end)
 
 		def unapply[M<:AnyMapping, C<:AnyMapping](path :ComponentPath[M, C]) :Option[(ColumnMapping[C#ResultType], ValueMorphism[M#ResultType, C#ResultType])] =
@@ -33,7 +33,7 @@ object MappingMatchers {
 //			case _ => None
 //		}
 
-//		def unapply[T](path :TypedComponentPath[_<:Mapping, _<:TypedMapping[T], T]) :Option[(ColumnMapping[T], ValueMorphism)]
+//		def unapply[T](path :TypedComponentPath[_<:Mapping, _<:ComponentFor[T], T]) :Option[(ColumnMapping[T], ValueMorphism)]
 
 		def unapply[M<:AnyMapping, C<:AnyMapping](path :ComponentPath[M, C]) :Option[(ColumnMapping[X], ValueMorphism[M#ResultType, X]) forSome { type X }] =
 			path.end.columns match {

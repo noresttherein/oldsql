@@ -58,7 +58,7 @@ trait GenericJoinComponentReferenceMapping[FK, FKM<:Mapping[FK], TM<:AnyMapping,
 	  */
 	val referenceFactory :GenericMappingReferenceFactory[TK, E, X, R, EM]
 
-	/** A shorthand for egg to be used in queries when it would be more convenient to refer to the foreign key
+	/** A shorthand for adaptee to be used in queries when it would be more convenient to refer to the foreign key
 	  * by its actual type, rather then boxed in a reference R by this instance.
 	  */
 	val key :FKM

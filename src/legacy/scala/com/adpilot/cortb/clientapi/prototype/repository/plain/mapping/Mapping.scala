@@ -89,7 +89,7 @@ trait Mapping[E] extends GetResult[E] with AnyMapping { self =>
 
 
 /*
-	def selectIncluding(explicitColumns :Column[_]*) :Mapping[E] = new GenericMapping[E] {
+	def selectIncluding(explicitColumns :Column[_]*) :Mapping[E] = new AbstractMapping[E] {
 
 		val columns = {
 			def mapColumn[T](column :Column[T]) = new EmbeddedColumn(column, column.value, None, Seq(ReadOnly))
