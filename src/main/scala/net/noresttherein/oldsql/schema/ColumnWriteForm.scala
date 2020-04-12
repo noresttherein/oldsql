@@ -3,9 +3,10 @@ package net.noresttherein.oldsql.schema
 import java.sql.PreparedStatement
 
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.ScalaWriteForms.OptionWriteForm
-import net.noresttherein.oldsql.schema.SQLForm.JDBCSQLType
-import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, NullWriteForm, OptionWriteForm}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstWriteForm, EvalOrNullWriteForm, EvalWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, NullWriteForm, OptionWriteForm, ProxyWriteForm}
 
 
 
@@ -62,6 +63,9 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 		case _ => false
 	}
 
+	
+	
+	override def toString :String = sqlType.toString + ">"
 }
 
 
@@ -80,8 +84,27 @@ object ColumnWriteForm {
 	def none[X :ColumnWriteForm] :ColumnWriteForm[Any] =
 		new NullWriteForm[X] with ColumnWriteForm[Any] {
 			override val sqlType = ColumnWriteForm[X].sqlType
+
+			override def setNull(position :Int)(statement :PreparedStatement) :Unit = 
+				form.setNull(position)(statement)
+
+			override def literal(value :Any) = form.nullLiteral
+			override def nullLiteral = form.nullLiteral
+			override def inlineLiteral(value :Any) = form.inlineNullLiteral
+			override def inlineNullLiteral = form.inlineNullLiteral
+
+			override def toString = super[NullWriteForm].toString
 		}
 
+	
+	
+	/** A form which will ignore all values provided as arguments and instead write the value provided here,
+	  * using the implicit `ColumnWriteForm[T]`.
+	  */
+	def opt[X :ColumnWriteForm](value :Option[X]) :ColumnWriteForm[Any] =
+		if (value.isEmpty) none[X]
+		else const(value.get) 
+	
 	/** A form which will ignore all values provided as arguments and instead write the value provided here,
 	  * using the implicit `ColumnWriteForm[T]`.
 	  */
@@ -90,8 +113,68 @@ object ColumnWriteForm {
 			none[X]
 		else
             new ConstWriteForm[X](value) with ColumnWriteForm[Any] {
-				override val sqlType = ColumnWriteForm[X].sqlType
+	            override val sqlType = ColumnWriteForm[X].sqlType
+
+	            override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+		            target.set(position)(statement, const)
+
+	            override def literal(value :Any) = target.literal(const)
+	            override def nullLiteral = target.literal(const)
+	            override def inlineLiteral(value :Any) = target.inlineLiteral(const)
+	            override def inlineNullLiteral = target.inlineLiteral(const)
+
+	            override def toString :String = super[ConstWriteForm].toString
 			}
+
+	
+	
+	/** A form which will ignore all values provided as arguments and instead write the value resulting from evaluating
+	  * the given by-name argument, using the implicit `ColumnWriteForm[T]`. The given expression must be thread safe
+	  * and will be evaluated exactly once for every `set` and/or `setNull` call on the returned form. If it yields
+	  * `None`, the default `orElse` value will be written instead using the backing forms `set` method.
+	  */
+	def evalopt[T :ColumnWriteForm](value: =>Option[T], orElse :T) :ColumnWriteForm[Any] =
+		new EvalOrNullWriteForm[T](value)(SQLWriteForm[T], NullValue(orElse)) with ColumnWriteForm[Any] {
+			override val sqlType = ColumnWriteForm[T].sqlType
+
+			override def setNull(position :Int)(statement :PreparedStatement) :Unit = 
+				super[EvalOrNullWriteForm].setNull(position)(statement)
+
+			override def literal(value :Any) = super[EvalOrNullWriteForm].literal(value)
+			override def nullLiteral = literal(null.asInstanceOf[T])
+			override def inlineLiteral(value :Any) = super[EvalOrNullWriteForm].inlineLiteral(value)
+			override def inlineNullLiteral = inlineLiteral(null.asInstanceOf[T])
+
+			override def toString :String = super[EvalOrNullWriteForm].toString
+		}
+
+	/** A form which will ignore all values provided as arguments and instead write the value resulting from evaluating
+	  * the given by-name argument, using the implicit `ColumnWriteForm[T]`. The given expression must be thread safe
+	  * and will be evaluated exactly once for every `set` and/or `setNull` call on the returned form. If it yields
+	  * `None`, the value carried by an implicitly available `NullValue` will be written instead, using the backing
+	  * form's `set` method.
+	  */
+	def evalopt[T :ColumnWriteForm](value: =>Option[T]) :ColumnWriteForm[Any] =
+		new EvalWriteForm[T](value) with ColumnWriteForm[Any] {
+			override val sqlType = ColumnWriteForm[T].sqlType
+
+			override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+				super[EvalWriteForm].setNull(position)(statement)
+
+			override def literal(value :Any) = super[EvalWriteForm].literal(value)
+			override def nullLiteral = literal(null.asInstanceOf[T])
+			override def inlineLiteral(value :Any) = super[EvalWriteForm].inlineLiteral(value)
+			override def inlineNullLiteral = inlineLiteral(null.asInstanceOf[T])
+
+			override def toString :String = super[EvalWriteForm].toString
+		}
+
+	/** A form which will ignore all values provided as arguments and instead write the value resulting from evaluating
+	  * the given by-name argument, using the implicit `ColumnWriteForm[T]`. The given expression must be thread safe
+	  * and will be evaluated exactly once for every `set` and/or `setNull` call on the returned form.
+	  */
+	def eval[T :ColumnWriteForm](value: =>T) :ColumnWriteForm[Any] =
+		evalopt(Some(value))
 
 
 
@@ -102,8 +185,6 @@ object ColumnWriteForm {
 	def Lazy[T](delayed: => ColumnWriteForm[T]) :ColumnWriteForm[T] =
 		new LazyWriteForm[T] with LazyColumnWriteForm[T] {
 			override protected[this] var init: () => SQLWriteForm[T] = () => delayed
-
-			override def sqlType = form.sqlType
 		}
 
 
@@ -113,7 +194,8 @@ object ColumnWriteForm {
 		new FlatMappedSQLWriteForm[S, T] with ColumnWriteForm[T] {
 			override val source = implicitly[ColumnWriteForm[S]]
 			override val unmap = map
-			override def sqlType: Int = source.sqlType
+			override def sqlType: JDBCSQLType = source.sqlType
+			override def toString = super[FlatMappedSQLWriteForm].toString
 		}
 
 	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#unmap unmap]] on the implicit form for `S`. */
@@ -122,6 +204,7 @@ object ColumnWriteForm {
 			override val source = ColumnWriteForm[S]
 			override val unmap = map
 			override def sqlType = source.sqlType
+			override def toString = super[MappedSQLWriteForm].toString
 		}
 
 
@@ -138,8 +221,24 @@ object ColumnWriteForm {
 
 
 
-	private[schema] trait LazyColumnWriteForm[T] extends LazyWriteForm[T] with ColumnWriteForm[T] {
-		@inline override def form :ColumnWriteForm[T] = super[LazyWriteForm].form.asInstanceOf[ColumnWriteForm[T]]
+	private[schema] trait ColumnProxyWriteForm[-T] extends ProxyWriteForm[T] with ColumnWriteForm[T] {
+//		abstract override def form :ColumnWriteForm[T] = super[ProxyWriteForm].form.asInstanceOf[ColumnWriteForm[T]]
+
+		override def sqlType :JDBCSQLType = form.asInstanceOf[ColumnWriteForm[T]].sqlType
+		
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit = form.setNull(position)(statement)
+		override def literal(value :T) :String = form.literal(value)
+		override def nullLiteral :String = form.nullLiteral
+		override def inlineLiteral(value :T) :String = form.inlineLiteral(value)
+		override def inlineNullLiteral :String = form.inlineNullLiteral
+
+		override def toString :String = "~" + form
+	}
+	
+	
+	
+	private[schema] trait LazyColumnWriteForm[-T] extends LazyWriteForm[T] with ColumnProxyWriteForm[T] {
+		override def form :ColumnWriteForm[T] = super[LazyWriteForm].form.asInstanceOf[ColumnWriteForm[T]]
 
 		override def unmap[X](fun :X => T) :ColumnWriteForm[X] =
 			if (isInitialized) form.unmap(fun) else Lazy(form.unmap(fun))
@@ -152,6 +251,8 @@ object ColumnWriteForm {
 		override def &&[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] =
 			if (isInitialized) read && this
 			else ColumnForm.Lazy(read && form)
+		
+		override def toString :String = if (isInitialized) form.toString else "Lazy:" + sqlType + ">" 
 	}
 
 
@@ -161,6 +262,7 @@ object ColumnWriteForm {
 	private[schema] trait OptionColumnWriteForm[T] extends OptionWriteForm[T] with ColumnWriteForm[Option[T]] {
 		protected override def form :ColumnWriteForm[T]
 		override def sqlType :JDBCSQLType = form.sqlType
+		override def toString :String = "Option[" + form + "]"
 	}
 
 }

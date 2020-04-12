@@ -44,8 +44,20 @@ object ComponentProxy {
 
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-			if (components.contains(egg)) egg.selectForm(selectable)
+			if (components.contains(egg)) egg.selectForm(egg.selectable)
 			else egg.selectForm(components)
+
+		override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components.contains(egg)) egg.queryForm(egg.queryable)
+			else egg.queryForm(components)
+
+		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components.contains(egg)) egg.updateForm(egg.updatable)
+			else egg.updateForm(components)
+
+		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components.contains(egg)) egg.insertForm(egg.insertable)
+			else egg.insertForm(components)
 
 		override def selectForm :SQLReadForm[S] = egg.selectForm
 		override def queryForm :SQLWriteForm[S] = egg.queryForm

@@ -37,6 +37,17 @@ trait MappedMapping[+M <: Mapping.Component[O, S], O, S, T] extends ShallowAdapt
 		if (nulls == null) form.mapNull(map) else form.map(map)
 	}
 
+	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[T] =
+		egg.queryForm(if (components.contains(egg)) egg.queryable else components).unmap(unmap)
+
+	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[T] =
+		egg.updateForm(if (components.contains(egg)) egg.updatable else components).unmap(unmap)
+
+	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[T] =
+		egg.insertForm(if (components.contains(egg)) egg.insertable else components).unmap(unmap)
+
+
+
 	override val selectForm :SQLReadForm[T] =
 		if (nulls == null) egg.selectForm.mapNull(map)
 		else egg.selectForm.map(map)
@@ -131,8 +142,22 @@ object MappedMapping {
 
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[T] =
-			if (components.contains(egg)) egg.selectForm(selectable).flatMap(map)
+			if (components.contains(egg)) egg.selectForm(egg.selectable).flatMap(map)
 			else egg.selectForm(components).flatMap(map)
+
+		override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[T] =
+			if (components.contains(egg)) egg.queryForm(egg.queryable).flatUnmap(unmap)
+			else egg.queryForm(components).flatUnmap(unmap)
+
+		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[T] =
+			if (components.contains(egg)) egg.updateForm(egg.updatable).flatUnmap(unmap)
+			else egg.updateForm(components).flatUnmap(unmap)
+
+		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[T] =
+			if (components.contains(egg)) egg.insertForm(egg.insertable).flatUnmap(unmap)
+			else egg.insertForm(components).flatUnmap(unmap)
+
+		
 
 		override val selectForm :SQLReadForm[T] = egg.selectForm.flatMap(map)
 		override val queryForm :SQLWriteForm[T] = egg.queryForm.flatUnmap(unmap)

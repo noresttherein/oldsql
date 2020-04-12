@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.support.EmptyMapping
+import net.noresttherein.oldsql.schema.support.{EmptyMapping, FormMapping}
 import net.noresttherein.oldsql.schema.{ColumnForm, GenericMapping, Mapping, RootMapping, RowSource, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, ComponentExtractor}
 import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
@@ -109,7 +109,7 @@ object WithParam {
 	  * @param name a suggested name of the parameter for debugging purposes.
 	  * @tparam P the parameter type needed to prepare statements using this mapping in their sources.
 	  */
-	class ParamMapping[O, P](name :String)(implicit form :SQLForm[P]) extends RootMapping[O, P] with EmptyMapping[O, P] { This =>
+	class ParamMapping[O, P](name :String)(implicit sqlForm :SQLForm[P]) extends FormMapping[O, P] { This =>
 
 		def this()(implicit form :SQLForm[P]) = this("?")
 
@@ -121,10 +121,6 @@ object WithParam {
 
 //		def optcol[T :ColumnForm](pick :P => Option[T]) :Component[T] = opt(pick)
 
-		override def selectForm :SQLForm[P] = form
-		override def queryForm :SQLForm[P] = form
-		override def updateForm :SQLForm[P] = form
-		override def insertForm :SQLForm[P] = form
 
 
 		override def apply[T](component :Component[T]) :ComponentExtractor[O, P, T] = component match {
@@ -138,17 +134,10 @@ object WithParam {
 
 
 
-		private class ComponentMapping[T](private[ParamMapping] val extractor :Extractor[P, T])(implicit form :SQLForm[T])
-			extends GenericMapping[O, T] with EmptyMapping[O, T]
+		private class ComponentMapping[T :SQLForm](private[ParamMapping] val extractor :Extractor[P, T])
+			extends FormMapping[O, T]
 		{
 			def param :ParamMapping[O, P] = This
-
-			override def selectForm(components :Unique[Component[_]]) :SQLReadForm[T] = form
-			override def selectForm :SQLForm[T] = form
-			override def insertForm :SQLForm[T] = form
-			override def queryForm :SQLForm[T] = form
-			override def updateForm :SQLForm[T] = form
-
 			override def toString = s"$This[$form]"
 		}
 

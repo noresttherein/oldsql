@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsertByDefault, NoQueryByDefault, NoSelectByDefault, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
+import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 
 import scala.collection.mutable.Builder
@@ -16,9 +17,9 @@ import scala.collection.mutable.Builder
 /**
   * @author Marcin Mościcki
   */
-class CustomizedMapping[M <: Component[O, S], O, S] private
+class CustomizedMapping[+M <: Component[O, S], O, S] private
                        (override val egg :M, substitutions :NaturalMap[AnyComponent[O]#Component, AnyComponent[O]#Component])
-	extends EagerDeepProxy[M, O, S](egg) with Adapted[M]
+	extends EagerDeepProxy[M, O, S](egg) with MappingAdapter[M, O, S]
 {
 	override protected def adapt[T](component :egg.Component[T]) :Component[T] =
 		substitutions.getOrElse(component, component)

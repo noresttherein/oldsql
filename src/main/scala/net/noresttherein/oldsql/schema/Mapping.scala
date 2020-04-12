@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.support.{LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
-import net.noresttherein.oldsql.schema.bits.OptionMapping
+import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, OptionMapping}
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, SelfPath}
 import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
@@ -208,6 +208,17 @@ trait Mapping { mapping :ConcreteMapping =>
 		columns.filter(buff.disabled)
 
 
+
+	def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
+
+	def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
+
+	def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
+
+	def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
+
+
+
 	/** Read form of a select statement for this mapping including the given components of this mapping.
 	  * The list provided here can include any components, not just the columns.
 	  */
@@ -216,11 +227,17 @@ trait Mapping { mapping :ConcreteMapping =>
 	/** Default read form (included columns) of a select statement for this mapping. */
 	def selectForm :SQLReadForm[Subject]
 
+	def queryForm(components :Unique[Component[_]]) :SQLWriteForm[Subject]
+
 	/** Default write form (included parameters) of a query filter for this mapping. */ //todo: PK? all?
 	def queryForm :SQLWriteForm[Subject]
 
+	def updateForm(components :Unique[Component[_]]) :SQLWriteForm[Subject]
+
 	/** Default write form (included columns) of update statements for this mapping. */
 	def updateForm :SQLWriteForm[Subject]
+
+	def insertForm(components :Unique[Component[_]]) :SQLWriteForm[Subject]
 
 	/** Default write form (included columns) of insert statements for this mapping. */
 	def insertForm :SQLWriteForm[Subject]
@@ -441,6 +458,15 @@ trait GenericMapping[O, S] extends ConcreteMapping { self =>
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 		MappingReadForm.select(this :this.type, components)
 
+	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		MappingWriteForm.query(this :this.type, components)
+
+	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		MappingWriteForm.update(this :this.type, components)
+
+	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		MappingWriteForm.insert(this :this.type, components)
+
 	override def selectForm: SQLReadForm[S] = MappingReadForm.defaultSelect(this)
 	override def queryForm: SQLWriteForm[S] = MappingWriteForm.defaultQuery(this)
 	override def updateForm: SQLWriteForm[S] = MappingWriteForm.defaultUpdate(this)
@@ -448,6 +474,20 @@ trait GenericMapping[O, S] extends ConcreteMapping { self =>
 	//fixme: ColumnFilter needs to know what type of read/write column form to use
 //	override def writeForm(filter :ColumnFilter) :SQLWriteForm[S] = filter.write(this)
 //	override def readForm(filter :ColumnFilter) :SQLReadForm[S] = filter.read(this)
+
+
+
+	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+		CustomizedMapping.select(this :this.type, include, exclude)
+
+	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+		CustomizedMapping.query(this :this.type, include, exclude)
+
+	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+		CustomizedMapping.update(this :this.type, include, exclude)
+
+	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+		CustomizedMapping.insert(this :this.type, include, exclude)
 
 
 

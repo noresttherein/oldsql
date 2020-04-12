@@ -36,6 +36,19 @@ object OptionMapping {
 		override val components :Unique[Component[_]] = Unique(get)
 		override val subcomponents :Unique[Component[_]] = get +: get.subcomponents
 
+
+		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[Option[S]] =
+			get.selectForm(if (components.contains(get)) get.selectable else components).asOpt
+
+		override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
+			get.queryForm(if (components.contains(get)) get.queryable else components).asOpt
+
+		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
+			get.updateForm(if (components.contains(get)) get.updatable else components).asOpt
+
+		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
+			get.insertForm(if (components.contains(get)) get.insertable else components).asOpt
+
 		override val selectForm :SQLReadForm[Option[S]] = get.selectForm.asOpt
 		override val queryForm :SQLWriteForm[Option[S]] = get.queryForm.asOpt
 		override val updateForm :SQLWriteForm[Option[S]] = get.updateForm.asOpt

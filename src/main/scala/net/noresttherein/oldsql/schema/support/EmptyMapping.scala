@@ -26,8 +26,11 @@ trait EmptyMapping[O, S] extends GenericMapping[O, S] {
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = SQLForm.NothingForm
+	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
+	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
+	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
+	
 	override def selectForm :SQLReadForm[S] = SQLForm.NothingForm
-
 	override def queryForm :SQLWriteForm[S] = SQLWriteForm.empty
 	override def updateForm :SQLWriteForm[S] = SQLWriteForm.empty
 	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty
@@ -35,6 +38,10 @@ trait EmptyMapping[O, S] extends GenericMapping[O, S] {
 
 	override def assemble(values :Pieces) :Option[S] = None
 }
+
+
+
+
 
 
 
@@ -48,5 +55,31 @@ class ConstantMapping[O, S](subject :S) extends EmptyMapping[O, S] {
 	override def apply(values :Pieces) :S = subject
 
 	override def toString :String = "Const(" + subject + ")"
+}
+
+
+
+class FormMapping[O, S](implicit val form :SQLForm[S]) extends EmptyMapping[O, S] {
+
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+		if (components.isEmpty) SQLReadForm.nulls(form.nulls)
+		else if (components.size == 1 && components.head == this) form
+		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
+
+	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = insertForm(components)
+	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = insertForm(components)
+
+	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (components.isEmpty) SQLWriteForm.empty
+		else if (components.size == 1 && components.head == this) form
+		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
+
+
+
+	override def selectForm :SQLForm[S] = form
+	override def insertForm :SQLForm[S] = form
+	override def queryForm :SQLForm[S] = form
+	override def updateForm :SQLForm[S] = form
+
 }
 

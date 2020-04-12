@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.collection.LiteralIndex.&~
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.SQLForm.{NullValue, Tuple2Form}
 import net.noresttherein.oldsql.schema.SQLReadForm.{ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, LiteralIndexReadForm, MappedSQLReadForm, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, EmptyWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, RecordWriteForm, SeqWriteForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, EmptyWriteForm, EvalOrNullWriteForm, EvalWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, RecordWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.immutable.Seq
@@ -123,6 +123,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
 	override def toString :String = this.innerClassName
+
 }
 
 
@@ -132,11 +133,61 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 object SQLForm extends JDBCTypes with ScalaForms {
 
-	def combine[T](read :SQLReadForm[T], write :SQLWriteForm[T]) :SQLForm[T] =
+	/** Summon an implicit instance of `SQLForm[T]`. */
+	def apply[T :SQLForm] :SQLForm[T] = implicitly[SQLForm[T]]
+
+
+
+	/** Creates an `SQLForm` delegating all calls to the implicitly provided read and write forms. */
+	def combine[T](implicit read :SQLReadForm[T], write :SQLWriteForm[T]) :SQLForm[T] =
 		new CombinedForm[T](read, write)
 
 
 
+	/** Creates a dummy form which always writes the null value as defined by the implicit `write` form,
+	  * and returns `None`/`nulls.value` when reading.
+	  */
+	def nulls[T](implicit write :SQLWriteForm[T], nulls :NullValue[T]) :SQLForm[T] =
+		combine(SQLReadForm.nulls[T](write.writtenColumns), SQLWriteForm.none[T])
+
+	/** Creates a dummy form which always writes the null value as defined by the implicit `write` form,
+	  * and returns `None` when reading. All calls to `apply` will result in a `NullPointerException`.
+	  */
+	def none[T](implicit write :SQLWriteForm[T]) :SQLForm[T] =
+		combine(SQLReadForm.none[T](write.writtenColumns), SQLWriteForm.none[T])
+
+
+
+	/** Creates a dummy form which always returns and writes the same value. */
+	def opt[T](value :Option[T])(implicit write :SQLWriteForm[T], nulls :NullValue[T]) :SQLForm[T] =
+		combine(SQLReadForm.opt(value, write.writtenColumns), SQLWriteForm.opt(value))
+
+	/** Creates a dummy form which always returns and writes the same value. */
+	def const[T](value :T)(implicit write :SQLWriteForm[T]) :SQLForm[T] =
+		combine(SQLReadForm.const(value, write.writtenColumns), SQLWriteForm.const(value))
+
+
+
+	/** Creates a dummy form which ignores its input and always reads and writes the value resulting from
+	  * reevaluating the given expression.
+	  */
+	def evalopt[T](value: => Option[T])(implicit write :SQLWriteForm[T], nulls :NullValue[T]) :SQLForm[T] =
+		combine(SQLReadForm.evalopt(value, write.writtenColumns), new EvalOrNullWriteForm[T](value)(write, nulls))
+
+	/** Creates a dummy form which ignores its input and always reads and writes the value resulting from
+	  * reevaluating the given expression.
+	  */
+	def eval[T](value: => T)(implicit write :SQLWriteForm[T]) :SQLForm[T] =
+		combine(SQLReadForm.eval(value, write.writtenColumns), SQLWriteForm.eval(value))
+
+
+
+	/** Creates a proxy form which will delegate all methods to another form, returned by the given by-name argument.
+	  * The expression is not evaluated until the form is actually needed. All mapping methods map this instance
+	  * if the backing form expression has not been evaluated, and defer to the backing form it has been computed
+	  * (essentially shedding the lazy proxy layer). The expression may be evaluated more than once if several
+	  * threads trigger the its initialization, but the created form is thread safe.
+	  */
 	def Lazy[T](init: => SQLForm[T]) :SQLForm[T] = new LazyForm[T](() => init)
 
 
@@ -320,8 +371,6 @@ object SQLForm extends JDBCTypes with ScalaForms {
 	  */
 	abstract class AbstractEmptyForm[T] extends SQLForm[T] with EmptyWriteForm[T] {
 		override def apply(position: Int)(res: ResultSet): T = nullValue
-
-		def apply(column :String)(res :ResultSet) :T = nullValue
 
 		override def opt(position :Int)(rs :ResultSet) :Option[T] = None
 

@@ -2,10 +2,10 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, QueryAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
 import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
-import net.noresttherein.oldsql.schema.support.LabeledMapping
+import net.noresttherein.oldsql.schema.support.{EmptyMapping, LabeledMapping}
 
 
 
@@ -55,9 +55,9 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 	  * should be used instead.
 	  */
 	def form :ColumnForm[S]
-	
+
 	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
-		case Some(ConstantBuff(x)) => SQLReadForm.const(x) 
+		case Some(ConstantBuff(x)) => SQLReadForm.const(x)
 		case Some(buff) => SQLReadForm.eval(buff.value)
 		case _ =>
 			val audits = SelectAudit.Audit(buffs)
@@ -111,6 +111,59 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 			if (audits.isEmpty) form
 			else form.unmap(audits.reduce(_ andThen _))
 	}
+
+
+
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+		if (components.size == 1 && components.contains(this)) selectForm
+		else if (components.isEmpty) SQLReadForm.none
+		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
+
+	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (components.size == 1 && components.contains(this)) queryForm
+		else if (components.isEmpty) SQLWriteForm.none(form)
+		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
+
+	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (components.size == 1 && components.contains(this)) updateForm
+		else if (components.isEmpty) SQLWriteForm.none(form)
+		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
+
+	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (components.size == 1 && components.contains(this)) insertForm
+		else if (components.isEmpty) SQLWriteForm.none(form)
+		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
+
+
+
+
+	protected def customize(optional :BuffType, excluded :FlagBuffType, explicit :BuffType)
+	                       (include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		if (include.size > 1)
+			throw new IllegalArgumentException("Mappings " + include + " are not components of column " + this)
+		else if (exclude.size > 1)
+		     throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this)
+		else if (exclude.headOption.contains(this) && optional.enabled(this))
+		     ColumnMapping[O, S](name, excluded[S] +: buffs :_*)(form)
+		else if (include.headOption.contains(this) && explicit.enabled(this))
+		     ColumnMapping[O, S](name, buffs.filter(explicit.disabled) :_*)(form)
+		else
+			this
+
+	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(OptionalSelect, NoSelectByDefault, ExplicitSelect)(include, exclude)
+
+	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(OptionalQuery, NoQueryByDefault, ExplicitQuery)(include, exclude)
+
+	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(OptionalUpdate, NoUpdateByDefault, ExplicitUpdate)(include, exclude)
+
+	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(OptionalInsert, NoInsertByDefault, ExplicitInsert)(include, exclude)
+
+
+
 
 
 

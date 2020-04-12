@@ -9,7 +9,7 @@ import java.sql.{Blob, Clob, Date, NClob, PreparedStatement, Ref, ResultSet, Row
 import java.sql.Types._
 import java.time.format.DateTimeFormatter
 
-import net.noresttherein.oldsql.schema.ColumnForm.NullableColumnForm
+import net.noresttherein.oldsql.schema.ColumnForm.{JDBCSQLType, NullableColumnForm}
 import net.noresttherein.oldsql.schema.SQLForm.{NonLiteralForm, NullValue}
 
 
@@ -22,12 +22,11 @@ trait SQLTypes {
 
 /** Includes implicit `SQLForm` declarations for all SQL types defined by JDBC in `java.sql.Types`. */
 trait JDBCTypes extends SQLTypes {
-	type JDBCSQLType = Int
+
+
 
 	private[this] implicit val NotNull = NullValue.NotNull
 
-
-	def apply[T :SQLForm] :SQLForm[T] = implicitly[SQLForm[T]]
 
 
 	override def get[X](value: X): Option[SQLForm[X]] = (value match {

@@ -2,10 +2,11 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.ResultSet
 
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
-import net.noresttherein.oldsql.schema.SQLForm.{JDBCSQLType, NullValue}
-import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, OptionMappedSQLReadForm}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm, FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, NullReadForm, OptionMappedSQLReadForm}
 
 
 
@@ -69,9 +70,9 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 	override def andThen[X](extractor :T =?> X) :SQLReadForm[X] = extractor match {
 		case _ :IdentityExtractor[_] => this.asInstanceOf[SQLReadForm[X]]
-//		case const :ConstantExtractor[_, _] => ColumnReadForm.const(const.constant.asInstanceOf[X])
+		case const :ConstantExtractor[_, _] => ColumnReadForm.const(sqlType, const.constant.asInstanceOf[X])
 		case req :RequisiteExtractor[_, _] => mapNull(req.getter.asInstanceOf[T => X])
-//		case _ :EmptyExtractor[_, _] => ColumnReadForm.none
+		case _ :EmptyExtractor[_, _] => ColumnReadForm.none(sqlType)
 		case _ => flatMapNull(extractor.optional)
 	}
 
@@ -107,6 +108,10 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 		case _ => false
 	}
 
+
+
+	override def toString :String = "<" + sqlType
+
 }
 
 
@@ -118,6 +123,66 @@ object ColumnReadForm {
 
 	/** Summons an implicit `ColumnReadForm[T]`. */
 	def apply[T :ColumnReadForm] :ColumnReadForm[T] = implicitly[ColumnReadForm[T]]
+
+
+
+	/** Creates a dummy form which produces no values. Every call to `opt` will return `None`, while `apply`
+	  * will always return the implicitly available `NullValue[T]`.
+	  */
+	def nulls[T :NullValue](jdbcType :JDBCSQLType) :ColumnReadForm[T] =
+		new NullReadForm[T](1) with ColumnReadForm[T] {
+			override def opt(position :Int)(res :ResultSet) = None
+			override def apply(position :Int)(res :ResultSet) = nulls.value
+			override def read(position :Int)(res :ResultSet) = nulls.value
+			override val sqlType = jdbcType
+			override def toString = "<NULL:" + sqlType
+		}
+
+	/** Creates a dummy form which produces no values. Every call to `opt` will return `None`, while `apply`
+	  * will always throw a `NullPointerException`.
+	  */
+	def none[T](jdbcType :JDBCSQLType) :ColumnReadForm[T] = nulls(jdbcType)(NullValue.NotNull)
+
+
+
+	/** Creates a dummy form which always produces the same value, never reading from the `ResultSet`.
+	  * If `value` is `None`, implicit `NullValue[T]` will be used by `apply`.
+	  */
+	def opt[T :NullValue](jdbcType :JDBCSQLType, value :Option[T]) :ColumnReadForm[T] =
+		new ConstReadForm[T](value, 1) with ColumnReadForm[T] {
+			override def opt(position :Int)(res :ResultSet) = get
+			override def apply(position :Int)(res :ResultSet) = super[ConstReadForm].apply(position)(res)
+			override def read(position :Int)(res :ResultSet) :T = super[ConstReadForm].apply(position)(res)
+			override val sqlType = jdbcType
+			override def toString = "<" + value + ":" + sqlType
+		}
+
+	/** Creates a dummy form which always produces the same value, never reading from the `ResultSet`.
+	  * The `value` will be returned by `apply`, by `opt` as `Some(value)`, and as the form's `nullValue`.
+	  * Note that if `value` is `null`, it will be treated as a valid return value rather than 'no value'
+	  * and may result in `NullPointerException`s later if the handling code is not null-safe.
+	  */
+	def const[T](jdbcType :JDBCSQLType, value :T) :ColumnReadForm[T] = opt(jdbcType, Option(value))(NullValue(value))
+
+	/** Creates a dummy form which always returns from its `opt` method the value obtained
+	  * by reevaluating the given expression. An implicitly provided null value is used by its `nullValue` method,
+	  * to which the `apply` method delegates when the former yields `None`. The expression must be thread safe.
+	  */
+	def evalopt[T :NullValue](jdbcType :JDBCSQLType, value: => Option[T]) :ColumnReadForm[T] =
+		new EvalReadForm[T](value, 1) with ColumnReadForm[T] {
+			override def opt(position :Int)(res :ResultSet) = super[EvalReadForm].opt(position)(res)
+			override def apply(position :Int)(res :ResultSet) = super[EvalReadForm].apply(position)(res)
+			override def read(position :Int)(res :ResultSet) = super[EvalReadForm].apply(position)(res)
+			override val sqlType = jdbcType
+			override def toString = "<?:" + sqlType
+		}
+
+	/** Creates a form which always returns from its `apply` method the value
+	  * obtained by reevaluating the given expression. The result of `opt` is defined as `Some(value)`.
+	  * The expression must be thread safe.
+	  */
+	def eval[T](jdbcType :JDBCSQLType, value: => T) :ColumnReadForm[T] =
+		evalopt(jdbcType, Some(value))(NullValue.eval(value))
 
 
 
@@ -161,7 +226,7 @@ object ColumnReadForm {
 	private[schema] trait LazyColumnReadForm[T] extends LazyReadForm[T] with ColumnReadForm[T] {
 		protected override def form :ColumnReadForm[T] = super.form.asInstanceOf[ColumnReadForm[T]]
 
-		override def sqlType :SQLForm.JDBCSQLType = form.sqlType
+		override def sqlType :JDBCSQLType = form.sqlType
 
 		protected override def read(position :Int)(res :ResultSet) :T = form.read(position)(res)
 
@@ -186,6 +251,10 @@ object ColumnReadForm {
 		override def &&[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] =
 			if (isInitialized) form && write
 			else ColumnForm.Lazy(form && write)
+
+		override def toString :String =
+			if (isInitialized) form.toString
+			else "<Lazy:" + sqlType
 	}
 
 
@@ -221,6 +290,8 @@ object ColumnReadForm {
 
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
 			form.optMap((map :Option[S] => Option[T]) andThen fun)
+
+		override def toString :String = "<=" + source
 	}
 
 
@@ -249,6 +320,8 @@ object ColumnReadForm {
 
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
 			form.flatMap((map :S => Option[T]) andThen fun)
+
+		override def toString :String = "<=" + source
 	}
 
 
@@ -272,6 +345,8 @@ object ColumnReadForm {
 
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
 			form.flatMap((s :S) => fun(Option(map(s))))
+
+		override def toString :String = "<=" + source
 	}
 
 
@@ -282,7 +357,7 @@ object ColumnReadForm {
 	private[schema] class FallbackColumnReadForm[+T](first :ColumnReadForm[T], second :ColumnReadForm[T])
 		extends FallbackReadForm[T](first, second) with ColumnReadForm[T]
 	{
-		override val sqlType :Int = first.sqlType
+		override val sqlType :JDBCSQLType = first.sqlType
 
 		protected override def read(position :Int)(res :ResultSet) :T = {
 			var t = super.first.asInstanceOf[ColumnReadForm[T]].friendRead(position)(res)
@@ -302,6 +377,8 @@ object ColumnReadForm {
 					s"($this) orElse $fallback: different sqlType ($sqlType vs ${fallback.sqlType})."
 				)
 			else new FallbackColumnReadForm(first, second orElse fallback)
+
+		override def toString :String = super[FallbackReadForm].toString
 	}
 
 
