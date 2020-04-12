@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.AnyComponent
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
-import net.noresttherein.oldsql.sql.FromClause.FromFormula
+import net.noresttherein.oldsql.sql.MappingFormula.FromFormula
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.BoundParameter
 import net.noresttherein.oldsql.sql.SQLTerm.BoundParameter.{BoundParameterMatcher, CaseBoundParameter}

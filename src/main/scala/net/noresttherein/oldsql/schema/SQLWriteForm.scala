@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.LiteralIndex.&~
 import net.noresttherein.oldsql.collection.Record.|#
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.Tuple2WriteForm
 import net.noresttherein.oldsql.slang._
@@ -132,8 +133,21 @@ trait SQLWriteForm[-T] {
 	def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X]  = SQLWriteForm.flatMap(fun)(this)
 
 
+	/** Creates a write form for `X` which will use this form after extracting a value from `X` with the given
+	  * extractor. This is equivalent to `unmap` or `flatUnmap`, depending on whether the extractor is
+	  * a `RequisiteExtractor` instance.
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.unmap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.flatUnmap]]
+	  */
+	def compose[X](extractor :X =?> T) :SQLWriteForm[X] = extractor match {
+		case _ :IdentityExtractor[_] => this.asInstanceOf[SQLWriteForm[X]]
+		case const :ConstantExtractor[_, _] => SQLWriteForm.const(const.constant.asInstanceOf[T])(this)
+		case req :RequisiteExtractor[_, _] => unmap(req.getter.asInstanceOf[X => T])
+		case _ :EmptyExtractor[_, _] => SQLWriteForm.none(this)
+		case _ => flatUnmap(extractor.optional)
+	}
 
-//	def getOrElse[S](other :)
+
 
 	/** Lift this form to represent `Option[T]`, where `Some` values are delegated to this instance's `set` method,
 	  * while `None` results in calling this form's `setNull` instead.
@@ -166,14 +180,14 @@ trait SQLWriteForm[-T] {
 
 
 object SQLWriteForm extends ScalaWriteForms {
-	
+
 	/** Summon an implicitly available `SQLWriteForm[T]`. */
 	def apply[T :SQLWriteForm] :SQLWriteForm[T] = implicitly[SQLWriteForm[T]]
 
-	/** Summon an implicitly available `ColumnWriteForm[T]`. */
-	def column[T :ColumnWriteForm] :ColumnWriteForm[T] = implicitly[ColumnWriteForm[T]]
 
 
+	/** An `SQLWriteForm` which will always write the 'null' value of type `T` using the implicitly available form. */
+	def none[T :SQLWriteForm] :SQLWriteForm[Any] = new NullWriteForm[T]()
 
 	/** A form which will ignore all values provided as arguments and instead write the value provided here,
 	  * using the implicit `SQLWriteForm[T]`.
@@ -218,6 +232,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
+	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#flatUnmap flatUnmap]] on the implicit form for `S`. */
 	def flatMap[S :SQLWriteForm, T](map :T=>Option[S]) :SQLWriteForm[T] =
 		implicitly[SQLWriteForm[S]] match {
 			case a :ColumnWriteForm[_] =>
@@ -229,6 +244,7 @@ object SQLWriteForm extends ScalaWriteForms {
 				}
 		}
 
+	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#unmap unmap]] on the implicit form for `S`. */
 	def map[S :SQLWriteForm, T](map :T => S) :SQLWriteForm[T] = SQLWriteForm[S] match {
 		case a :ColumnWriteForm[_] =>
 			ColumnWriteForm.map(map)(a.asInstanceOf[ColumnWriteForm[S]])

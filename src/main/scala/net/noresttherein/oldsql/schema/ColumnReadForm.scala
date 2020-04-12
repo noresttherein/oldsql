@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.ResultSet
 
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
 import net.noresttherein.oldsql.schema.SQLForm.{JDBCSQLType, NullValue}
 import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, OptionMappedSQLReadForm}
@@ -50,6 +51,8 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 	override def mapNull[X](fun :T => X) :ColumnReadForm[X] = map(fun)(nulls.map(fun))
 
+
+
 	override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] =
 		ColumnReadForm.flatMap(fun)(this, NullValue[X])
 
@@ -58,10 +61,19 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 	override def flatMapNull[X](fun :T => Option[X]) :ColumnReadForm[X] = flatMap(fun)(nulls.flatMap(fun))
 
 
+
 	override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
 		ColumnReadForm.optMap(fun)(this, NullValue[X])
 
 	override def optMap[X](fun :Option[T] => Option[X], nullValue :X) :SQLReadForm[X] = optMap(fun)(NullValue(nullValue))
+
+	override def andThen[X](extractor :T =?> X) :SQLReadForm[X] = extractor match {
+		case _ :IdentityExtractor[_] => this.asInstanceOf[SQLReadForm[X]]
+//		case const :ConstantExtractor[_, _] => ColumnReadForm.const(const.constant.asInstanceOf[X])
+		case req :RequisiteExtractor[_, _] => mapNull(req.getter.asInstanceOf[T => X])
+//		case _ :EmptyExtractor[_, _] => ColumnReadForm.none
+		case _ => flatMapNull(extractor.optional)
+	}
 
 
 

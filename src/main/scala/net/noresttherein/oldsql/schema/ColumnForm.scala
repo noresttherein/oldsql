@@ -64,6 +64,7 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 
 
 object ColumnForm {
+
 	@inline def apply[X :ColumnForm] :ColumnForm[X] = implicitly[ColumnForm[X]]
 
 	def combine[T](read :ColumnReadForm[T], write :ColumnWriteForm[T]) :ColumnForm[T] =

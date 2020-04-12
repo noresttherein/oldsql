@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ScalaWriteForms.OptionWriteForm
 import net.noresttherein.oldsql.schema.SQLForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, NullWriteForm, OptionWriteForm}
@@ -34,6 +35,15 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 	override def flatUnmap[X](fun :X => Option[T]) :ColumnWriteForm[X]  =
 		ColumnWriteForm.flatMap(fun)(this)
 
+	override def compose[X](extractor :X =?> T) :ColumnWriteForm[X] =  extractor match {
+		case _ :IdentityExtractor[_] => this.asInstanceOf[ColumnWriteForm[X]]
+		case const :ConstantExtractor[_, _] => ColumnWriteForm.const(const.constant.asInstanceOf[T])(this)
+		case req :RequisiteExtractor[_, _] => unmap(req.getter.asInstanceOf[X => T])
+		case _ :EmptyExtractor[_, _] => ColumnWriteForm.none(this)
+		case _ => flatUnmap(extractor.optional)
+	}
+
+
 	override def asOpt :ColumnWriteForm[Option[T]] = ColumnWriteForm.OptionColumnWriteForm(this)
 
 
@@ -60,15 +70,24 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 
 
 object ColumnWriteForm {
+
+	/** Summon an implicitly available `SQLWriteForm[T]`. */
 	@inline def apply[X :ColumnWriteForm] :ColumnWriteForm[X] = implicitly[ColumnWriteForm[X]]
 
 
 
-	@inline def const[X :ColumnWriteForm](value :X) :ColumnWriteForm[Any] =
+	/** A `ColumnWriteForm` which will always write the 'null' value of type `T` using the implicitly available form. */
+	def none[X :ColumnWriteForm] :ColumnWriteForm[Any] =
+		new NullWriteForm[X] with ColumnWriteForm[Any] {
+			override val sqlType = ColumnWriteForm[X].sqlType
+		}
+
+	/** A form which will ignore all values provided as arguments and instead write the value provided here,
+	  * using the implicit `ColumnWriteForm[T]`.
+	  */
+	def const[X :ColumnWriteForm](value :X) :ColumnWriteForm[Any] =
 		if (value == null)
-			new NullWriteForm[X] with ColumnWriteForm[Any] {
-				override val sqlType = ColumnWriteForm[X].sqlType
-			}
+			none[X]
 		else
             new ConstWriteForm[X](value) with ColumnWriteForm[Any] {
 				override val sqlType = ColumnWriteForm[X].sqlType
@@ -76,6 +95,10 @@ object ColumnWriteForm {
 
 
 
+	/** A proxy form which will delegate all calls to the form returned by the given expression. The expression
+	  * will be evaluated only if/when needed, but must be thread safe and may be executed more than once
+	  * if several threads trigger the initialization at the same time, but the returned form is thread safe.
+	  */
 	def Lazy[T](delayed: => ColumnWriteForm[T]) :ColumnWriteForm[T] =
 		new LazyWriteForm[T] with LazyColumnWriteForm[T] {
 			override protected[this] var init: () => SQLWriteForm[T] = () => delayed
@@ -85,6 +108,7 @@ object ColumnWriteForm {
 
 
 
+	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#flatUnmap flatUnmap]] on the implicit form for `S`. */
 	def flatMap[S :ColumnWriteForm, T](map :T => Option[S]) :ColumnWriteForm[T] =
 		new FlatMappedSQLWriteForm[S, T] with ColumnWriteForm[T] {
 			override val source = implicitly[ColumnWriteForm[S]]
@@ -92,6 +116,7 @@ object ColumnWriteForm {
 			override def sqlType: Int = source.sqlType
 		}
 
+	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#unmap unmap]] on the implicit form for `S`. */
 	def map[S :ColumnWriteForm, T](map :T => S) :ColumnWriteForm[T] =
 		new MappedSQLWriteForm[S, T] with ColumnWriteForm[T] {
 			override val source = ColumnWriteForm[S]

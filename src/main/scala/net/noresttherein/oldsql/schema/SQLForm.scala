@@ -135,9 +135,6 @@ object SQLForm extends JDBCTypes with ScalaForms {
 	def combine[T](read :SQLReadForm[T], write :SQLWriteForm[T]) :SQLForm[T] =
 		new CombinedForm[T](read, write)
 
-	@inline def combine[T](read :ColumnReadForm[T], write :ColumnWriteForm[T]) :ColumnForm[T] =
-		ColumnForm.combine(read, write)
-
 
 
 	def Lazy[T](init: => SQLForm[T]) :SQLForm[T] = new LazyForm[T](() => init)

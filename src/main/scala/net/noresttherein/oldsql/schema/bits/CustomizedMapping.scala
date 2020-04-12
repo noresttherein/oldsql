@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.generic
 import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
-import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsertByDefault, NoSelectByDefault, NoUpdateByDefault, OptionalInsert, OptionalSelect, OptionalUpdate}
+import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsertByDefault, NoQueryByDefault, NoSelectByDefault, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
 import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 
@@ -36,13 +36,17 @@ object CustomizedMapping {
 	                                      (implicit inferS :IsBoth[M, M, Component[O, S]]) :CustomizedMapping[M, O, S] =
 		customize(source, include, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
 
-	def insert[M <: Component[O, S], O, S](source :M, include :Iterable[Component[O, _]], exclude :Iterable[Component[O, _]] = Nil)
-	                                      (implicit inferS :IsBoth[M, M, Component[O, S]]) :CustomizedMapping[M, O, S] =
-		customize(source, include, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
+	def query[M <: Component[O, S], O, S](source :M, include :Iterable[Component[O, _]], exclude :Iterable[Component[O, _]] = Nil)
+	                                     (implicit inferS :IsBoth[M, M, Component[O, S]]) :CustomizedMapping[M, O, S] =
+		customize(source, include, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
 
 	def update[M <: Component[O, S], O, S](source :M, include :Iterable[Component[O, _]], exclude :Iterable[Component[O, _]] = Nil)
 	                                      (implicit inferS :IsBoth[M, M, Component[O, S]]) :CustomizedMapping[M, O, S] =
 		customize(source, include, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
+
+	def insert[M <: Component[O, S], O, S](source :M, include :Iterable[Component[O, _]], exclude :Iterable[Component[O, _]] = Nil)
+	                                      (implicit inferS :IsBoth[M, M, Component[O, S]]) :CustomizedMapping[M, O, S] =
+		customize(source, include, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
 
 
 

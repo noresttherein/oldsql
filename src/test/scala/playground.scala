@@ -10,6 +10,15 @@ import net.noresttherein.oldsql.schema.RowSource.Table
   * @author Marcin Mościcki
   */
 object playground extends App {
+	trait UpperBound[O]
+	trait High[F[O] <: UpperBound[O]]
+	trait Lower[O] extends UpperBound[O]
+
+	type T <: High[f] forSome { type f[O] <: UpperBound[O] }
+	def high(h :T) = ???
+
+//	high(new High[Lower] {})
+
 
 	case class Gun(make :String, model :String, caliber :Double)
 	case class Human(gun :Gun, backup :Gun, secondBackup :Gun)

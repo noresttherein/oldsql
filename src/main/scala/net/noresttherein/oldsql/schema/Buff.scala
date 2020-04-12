@@ -99,8 +99,8 @@ object Buff {
 	case object ReadOnly extends ComboFlag(NoInsert, NoUpdate)
 
 	/** A buff type which marks columns ignored by the enclosing mapping. It is useful when a column is still
-	  * used as part of SQL statements. Implies `ReadOnly`, `NoSelect`, `NoQuery`. */
-	case object Unmapped extends ComboFlag(ReadOnly, NoSelect, NoQuery)
+	  * used as part of SQL statements. Implies `ReadOnly` and `NoSelect`. */
+	case object Ignored extends ComboFlag(ReadOnly, NoSelect)
 
 
 
@@ -129,26 +129,41 @@ object Buff {
 
 	/** A buff marking a column as non-selectable, and providing the value for the annotated component.
 	  * This can be used in particular for 'virtual' columns - components which take part in the mapping, but
-	  * aren't present in the database at all. */
+	  * aren't present in the database at all.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual]] */
 	case object ExtraSelect extends ComboBuffType(NoSelect) with GeneratedBuffType
 
+	/** A buff marking a component or column which does not exist in the database and will not be used as part
+	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,
+	  * the provided expression is used as its value. This can be useful during schema migrations, when a mapping
+	  * might need to cover several versions of the schema, or if it is reused for several similar tables.
+	  */
+	case object Virtual extends ComboBuffType(ExtraSelect, ReadOnly, NoQuery) with GeneratedBuffType
 
 
-//	/** A buff marking that a given column/component can be omitted from the the parameter list of the where
-//	  * clause of an update statement. It is still included by default and needs to be excluded explicitly. */
-//	case object OptionalQuery extends FlagBuffType
-//
-//	/** A buff marking that a given column/component can be omitted from the parameter list of the where clause
-//	  * of an update statement and needs to be included explicitly. It implies `OptionalQuery` and `NoQueryByDefault`. */
-//	case object ExplicitQuery extends ComboFlag(OptionalQuery, NoQueryByDefault)
+
+	/** A buff marking that a given column or component can be omitted from the the parameter list of the WHERE
+	  * clause of an SQL statement. This covers the case when a comparison in an SQL expression happens between
+	  * whole subjects of a multi column mapping, rather than listing the columns individually. The annotated component
+	  * is still included by default when comparing the owning mapping's subjects and needs to be excluded explicitly.
+	  */
+	case object OptionalQuery extends FlagBuffType
+
+	/** A buff marking that a given column or component can be omitted from the parameter list of the WHERE clause
+	  * of an SQL statement and needs to be included explicitly. This applies when the comparison expression
+	  * happens on the level of the subject of a multi column mapping enclosing the buffed component without listing
+	  * its columns individually. It implies `OptionalQuery` and `NoQueryByDefault`. */
+	case object ExplicitQuery extends ComboFlag(OptionalQuery, NoQueryByDefault)
 
 	/** A buff type marking that a given column/component must be included in every query against the table, using
 	  * the value provided by the buff. It implies `NoSelect` and `NoQuery` and is used to artificially limit the number
-	  * of mapped entities. */
+	  * of mapped entities.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped]] */
 	case object ExtraQuery extends ComboBuffType(NoSelect, NoQuery) with GeneratedBuffType
 
 	/** Marks that a column/component ''must'' be included as part of the where clause of any update statement. */
 	case object ForcedQuery extends FlagBuffType
+
 
 
 	/** A buff marking that a given column/component can be omitted from the insert statement.
@@ -188,6 +203,16 @@ object Buff {
 	/** Marks a column/component as having its value set by this buff rather than a property of the entity
 	  * at every write to the database. Implies `ReadOnly`, `ExtraInsert` and `ExtraUpdate`. */
 	case object ExtraWrite extends ComboBuffType(ReadOnly, ExtraInsert, ExtraUpdate) with GeneratedBuffType
+
+
+
+	/** Marks a column or component which is not part of the mapped scala class, but is still part of the mapped
+	  * entity from the relational point of view. All rows which are subject to mapping by the application have
+	  * the value returned by the buff, essentially partitioning the table and limiting the application to a subset
+	  * of its rows. It implies both `ExtraQuery` and `ExtraWrite`, meaning that all queries against the table will
+	  * include the annotated column in the filter and all inserts and updates will set its value based on this buff.
+	  */
+	case object Unmapped extends ComboBuffType(ExtraQuery, ExtraWrite) with GeneratedBuffType
 
 
 

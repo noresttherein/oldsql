@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
-import net.noresttherein.oldsql.sql.SQLTuple.ChainFormula
+import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 
 
 /** An empty source, serving both as a source for expressions not needing any input tables
@@ -23,7 +23,7 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	override type Row = @~
 
-	override def row :ChainFormula[FromClause, @~] = ChainFormula.EmptyChain
+	override def row :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
 	override type Outer = FromClause
 
@@ -109,7 +109,7 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
   * (like 'SELECT _ FROM DUAL' in Oracle) and terminator element for Join lists
   * (by default any chain of Join[_, _] classes is eventually terminated by a Dual instance).
   */
-case object Dual extends Dual {
+object Dual extends Dual {
 	def unapply(source :FromClause) :Boolean = source.isInstanceOf[Dual]
 }
 

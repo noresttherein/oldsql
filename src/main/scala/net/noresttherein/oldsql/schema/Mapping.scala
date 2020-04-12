@@ -580,6 +580,7 @@ object Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  */
 	trait ComponentExtractor[O, -S, T] extends Extractor[S, T] {
+		//todo: rename exported
 		val lifted :Component[O, T]
 
 		override def compose[X](extractor :Extractor[X, S]) :ComponentExtractor[O, X, T] = extractor match {

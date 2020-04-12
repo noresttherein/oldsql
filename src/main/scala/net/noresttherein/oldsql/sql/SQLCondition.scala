@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.sql.SQLCondition.ComparisonFormula.{CaseComparison, ComparisonMatcher}
+import net.noresttherein.oldsql.sql.SQLCondition.Comparison.{CaseComparison, ComparisonMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.Equality.{CaseEquality, EqualityMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
@@ -20,7 +20,7 @@ trait SQLCondition[-F <: FromClause] extends CompositeFormula[F, Boolean] with C
 
 object SQLCondition {
 	//todo: uniform naming convention for classes.
-	trait ComparisonFormula[-F <: FromClause, T] extends SQLCondition[F] {
+	trait Comparison[-F <: FromClause, T] extends SQLCondition[F] {
 		val left :SQLFormula[F, T]
 		val right :SQLFormula[F, T]
 		def symbol :String
@@ -28,14 +28,14 @@ object SQLCondition {
 
 
 
-	object ComparisonFormula {
+	object Comparison {
 
 		type ComparisonMatcher[+F <: FromClause, +Y[X]] = EqualityMatcher[F, Y]
 
 		type MatchComparison[+F <: FromClause, +Y[X]] = CaseEquality[F, Y]
 
 		trait CaseComparison[+F <: FromClause, +Y[X]] extends MatchComparison[F, Y] {
-			def comparison[X](f :ComparisonFormula[F, X]) :Y[Boolean]
+			def comparison[X](f :Comparison[F, X]) :Y[Boolean]
 
 			override def equality[X](f :Equality[F, X]) :Y[Boolean] = comparison(f)
 
@@ -46,7 +46,7 @@ object SQLCondition {
 
 
 	case class Equality[-F <: FromClause, T](left :SQLFormula[F, T], right :SQLFormula[F, T])
-		extends ComparisonFormula[F, T]
+		extends Comparison[F, T]
 	{
 		protected override def parts :Seq[SQLFormula[F, T]] = Seq(left, right)
 
@@ -180,7 +180,7 @@ object SQLCondition {
 
 		override def exists[X](f :ExistsFormula[F, X]) :Y[Boolean] = condition(f)
 
-		override def comparison[X](f: ComparisonFormula[F, X]): Y[Boolean] = condition(f)
+		override def comparison[X](f: Comparison[F, X]): Y[Boolean] = condition(f)
 
 	}
 */
@@ -191,7 +191,7 @@ object SQLCondition {
 	trait CaseCondition[+F <: FromClause, +Y[X]] extends ConditionMatcher[F, Y] with MatchCondition[F, Y] {
 		def condition(e :SQLCondition[F]) :Y[Boolean]
 
-		override def comparison[X](e :ComparisonFormula[F, X]) :Y[Boolean] = condition(e)
+		override def comparison[X](e :Comparison[F, X]) :Y[Boolean] = condition(e)
 	}
 
 

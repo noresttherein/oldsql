@@ -7,6 +7,7 @@ import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.LiteralIndex.&~
 import net.noresttherein.oldsql.collection.Record.|#
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
 import net.noresttherein.oldsql.schema.SQLForm.{JDBCSQLType, NullValue}
 import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, Tuple2ReadForm}
@@ -154,6 +155,20 @@ trait SQLReadForm[+T] {
 		optMap(fun)(NullValue(nullValue))
 
 
+
+	/** Maps the value of `T` read by this form to `X` in order to obtain a form for `X`.
+	  * This will call `mapNull` or `flatMapNull` based on whether the extractor is a `RequisiteExtractor`.
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#mapNull]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#flatMapNull]]
+	  */
+	def andThen[X](extractor :T =?> X) :SQLReadForm[X] = extractor match {
+		case _ :IdentityExtractor[_] => this.asInstanceOf[SQLReadForm[X]]
+//		case const :ConstantExtractor[_, _] => SQLReadForm.const(const.constant.asInstanceOf[X])
+		case req :RequisiteExtractor[_, _] => mapNull(req.getter.asInstanceOf[T => X])
+//		case _ :EmptyExtractor[_, _] => SQLReadForm.none(readColumns)
+		case _ => flatMapNull(extractor.optional)
+	}
+
 	/** Lifts this form to represent `Option[T]`. The created form maps all values returned by this form using
 	  * `Option(...)`. This means that `null` values (actual JVM nulls, not the somewhat arbitrary value provided
 	  * by this form) are mapped to `Some(None)`, while a returned `None` indicates that this form returned `None`.
@@ -211,6 +226,12 @@ object SQLReadForm extends ScalaReadForms {
 	  * If `value` is `None`, the implicit `NullValue[T]` is used by the form's `apply` method to stand in.
 	  */
 	def const[T :NullValue](value :Option[T]) :SQLReadForm[T] = new ConstReadForm(value)
+
+//	/** Creates a form reading zero columns and always returning the provided value from its `opt` method.
+//	  * If `value` is `None`, the implicit `NullValue[T]` is used by the form's `apply` method to stand in.
+//	  * This method variant allows specifying the number of 'read' columns returned by `readColumns`.
+//	  */
+//	def const[T :NullValue](value :Option[T], readColumns :Int) :SQLReadForm[T] = new ConstReadForm(value, readColumns)
 
 	/** Creates a form reading zero columns and always returning the provided value from its `opt` method.
 	  * If `value` is `None`, the `apply` method will return the provided `nullValue` instead.
@@ -339,17 +360,15 @@ object SQLReadForm extends ScalaReadForms {
 
 
 
-	private class ConstReadForm[+T :NullValue](value :Option[T]) extends SQLReadForm[T] {
+	private class ConstReadForm[+T :NullValue](value :Option[T], val readColumns :Int = 0) extends SQLReadForm[T] {
 		private def get = value
 
 		override def opt(position: Int)(res: ResultSet): Option[T] = value
 
-		override def readColumns: Int = 0
-
 		override def nullValue: T = NullValue.value[T]
 
 		override def equals(that :Any) :Boolean = that match {
-			case const :ConstReadForm[_] => (const eq this) || const.get == value
+			case const :ConstReadForm[_] => (const eq this) || const.get == value && const.readColumns == readColumns
 			case _ => false
 		}
 
@@ -360,10 +379,8 @@ object SQLReadForm extends ScalaReadForms {
 
 
 
-	private class EvalReadForm[+T :NullValue](value: =>Option[T]) extends SQLReadForm[T] {
+	private class EvalReadForm[+T :NullValue](value: =>Option[T], val readColumns :Int = 0) extends SQLReadForm[T] {
 		override def opt(position: Int)(res: ResultSet): Option[T] = value
-
-		override def readColumns: Int = 0
 
 		override def nullValue: T = NullValue.value[T]
 

@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, BuffMappingFailureException, NoInsert, NoQuery, NoSelect, NoUpdate, Unmapped}
+import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, BuffMappingFailureException, NoInsert, NoQuery, NoSelect, NoUpdate, Ignored}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, MappingReadForm, MappingWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
@@ -637,13 +637,13 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	  * be ignored by every database operation. Such a column can still be used manually when creating SQL statements,
 	  * for example to narrow down the result set, excluding rows which should be ignored by the application.
 	  * @param name the name of the column (the complete name will include `this.columnPrefix`).
-	  * @param buffs the buffs to attach to the created column. This list will be prepended with `Buff.Unmapped[T]`.
+	  * @param buffs the buffs to attach to the created column. This list will be prepended with `Buff.Ignored[T]`.
 	  * @return a new column, enlisted on the `columns`, `components` and `subcomponents` property of this mapping
 	  *         and none other.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Ignored]]
 	  */
 	protected def unmapped[T :ColumnForm](name :String, buffs :Buff[T]*) :Column[T] =
-		initPreceding(new ColumnComponent[T](_ => None, None, name, Unmapped[T] +: buffs))
+		initPreceding(new ColumnComponent[T](_ => None, None, name, Ignored[T] +: buffs))
 
 
 

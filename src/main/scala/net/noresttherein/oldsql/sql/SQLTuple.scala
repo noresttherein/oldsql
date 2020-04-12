@@ -4,11 +4,12 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLFormula.{CompositeFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral
-import net.noresttherein.oldsql.sql.SQLTuple.ChainFormula.{CaseChain, ChainHead, ChainMatcher}
-import net.noresttherein.oldsql.sql.SQLTuple.SeqFormula.{CaseSeq, SeqMatcher}
+import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple.{CaseChain, ChainHead, ChainMatcher}
+import net.noresttherein.oldsql.sql.SQLTuple.SeqTuple.{CaseSeq, SeqMatcher}
 
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
@@ -51,7 +52,7 @@ object SQLTuple {
 
 
 
-	case class SeqFormula[-F <: FromClause, T](override val parts :Seq[SQLFormula[F, T]]) extends SQLTuple[F, Seq[T]] {
+	case class SeqTuple[-F <: FromClause, T](override val parts :Seq[SQLFormula[F, T]]) extends SQLTuple[F, Seq[T]] {
 		override def inOrder :Seq[SQLFormula[F, T]] = parts
 
 		override def readForm :SQLReadForm[Seq[T]] = SQLReadForm.seq(inOrder.map(_.readForm))
@@ -71,7 +72,7 @@ object SQLTuple {
 		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Seq[T]] = matcher.seq(this)
 
 		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) =
-			SeqFormula(inOrder.map(mapper(_)))
+			SeqTuple(inOrder.map(mapper(_)))
 
 
 		override def toString :String = inOrder.mkString("Seq(", ",", ")")
@@ -79,16 +80,16 @@ object SQLTuple {
 
 
 
-	object SeqFormula {
-		implicit def literalSeq[T :SQLForm](items :Seq[T]) :SeqFormula[FromClause, T] =
-			new SeqFormula[FromClause, T](items.map(SQLLiteral(_)))
+	object SeqTuple {
+		implicit def literalSeq[T :SQLForm](items :Seq[T]) :SeqTuple[FromClause, T] =
+			new SeqTuple[FromClause, T](items.map(SQLLiteral(_)))
 
-		implicit def expressionSeq[R<:FromClause, T](items :Seq[SQLFormula[R, T]]) :SeqFormula[R, T] =
-			new SeqFormula[R, T](items)
+		implicit def expressionSeq[R<:FromClause, T](items :Seq[SQLFormula[R, T]]) :SeqTuple[R, T] =
+			new SeqTuple[R, T](items)
 
 
 		trait SeqMatcher[+F <: FromClause, +Y[X]] {
-			def seq[X](f :SeqFormula[F, X]) :Y[Seq[X]]
+			def seq[X](f :SeqTuple[F, X]) :Y[Seq[X]]
 		}
 
 		type MatchSeq[+F <: FromClause, +Y[X]] = SeqMatcher[F, Y]
@@ -101,11 +102,11 @@ object SQLTuple {
 
 
 
-	sealed trait ChainFormula[-F <: FromClause, T <: Chain] extends SQLTuple[F, T] {
+	sealed trait ChainTuple[-F <: FromClause, T <: Chain] extends SQLTuple[F, T] {
 		def size :Int
 
 		protected override def parts :Seq[SQLFormula[F, _]] = {
-			@tailrec def rec(formula :ChainFormula[F, _], acc :List[SQLFormula[F, _]] = Nil) :Seq[SQLFormula[F, _]] =
+			@tailrec def rec(formula :ChainTuple[F, _], acc :List[SQLFormula[F, _]] = Nil) :Seq[SQLFormula[F, _]] =
 				formula match {
 					case ChainHead(tail, head) => rec(tail, head::acc)
 					case _ => acc
@@ -117,7 +118,14 @@ object SQLTuple {
 
 		override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[T] = matcher.chain(this)
 
-		override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :ChainFormula[S, T]
+		override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :ChainTuple[S, T]
+
+		override def asPartOf[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
+			ev(this)
+
+		override def asPartOf[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
+			ev(this)
+
 
 		def ~[S <: F, H](head :SQLFormula[S, H]) :ChainHead[S, T, H] = new ChainHead(this, head)
 
@@ -126,19 +134,19 @@ object SQLTuple {
 
 
 
-	object ChainFormula {
+	object ChainTuple {
 
 		trait ChainMatcher[+F <: FromClause, +Y[X]] {
-			def chain[X <: Chain](f :ChainFormula[F, X]) :Y[X]
+			def chain[X <: Chain](f :ChainTuple[F, X]) :Y[X]
 		}
 
 		type CaseChain[+F <: FromClause, +Y[X]] = ChainMatcher[F, Y]
 
 		trait MatchChain[+F <: FromClause, +Y[X]] extends ChainMatcher[F, Y] {
-			def chainHead[T <: Chain, H](tail :ChainFormula[F, T], head :SQLFormula[F, H]) :Y[T ~ H]
+			def chainHead[T <: Chain, H](tail :ChainTuple[F, T], head :SQLFormula[F, H]) :Y[T ~ H]
 			def emptyChain :Y[@~]
 
-			override def chain[X <: Chain](f :ChainFormula[F, X]) :Y[X] = (f match {
+			override def chain[X <: Chain](f :ChainTuple[F, X]) :Y[X] = (f match {
 				case ChainHead(tail, head) => chainHead(tail, head)
 				case _ => emptyChain
 			}).asInstanceOf[Y[X]]
@@ -146,8 +154,8 @@ object SQLTuple {
 
 
 
-		case class ChainHead[-F <: FromClause, T <: Chain, H](init :ChainFormula[F, T], last :SQLFormula[F, H])
-			extends ChainFormula[F, T ~ H]
+		case class ChainHead[-F <: FromClause, T <: Chain, H](init :ChainTuple[F, T], last :SQLFormula[F, H])
+			extends ChainTuple[F, T ~ H]
 		{
 			override def size :Int = init.size + 1
 
@@ -159,13 +167,13 @@ object SQLTuple {
 			override def freeValue :Option[T ~ H] =
 				for (t <- init.freeValue; h <- last.freeValue) yield t ~ h
 
-			override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :ChainFormula[S, T ~ H] =
+			override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :ChainTuple[S, T ~ H] =
 				init.map(mapper) ~ mapper(last)
 		}
 
 
 
-		case object EmptyChain extends SQLTerm[@~] with ChainFormula[FromClause, @~] {
+		case object EmptyChain extends SQLTerm[@~] with ChainTuple[FromClause, @~] {
 			override def size :Int = 0
 
 			override def writeForm :SQLWriteForm[Unit] = SQLWriteForm.empty
@@ -174,7 +182,7 @@ object SQLTuple {
 
 			override val freeValue :Option[@~] = Some(@~)
 
-			override def map[S <: FromClause](mapper :SQLRewriter[FromClause, S]) :ChainFormula[S, @~] = this
+			override def map[S <: FromClause](mapper :SQLRewriter[FromClause, S]) :ChainTuple[S, @~] = this
 		}
 	}
 
@@ -190,9 +198,9 @@ object SQLTuple {
 	trait CaseTuple[+F <: FromClause, +Y[X]] extends TupleMatcher[F, Y] with MatchTuple[F, Y] {
 		def tuple[X](f: SQLTuple[F, X]): Y[X]
 
-		override def chain[X <: Chain](f :ChainFormula[F, X]) :Y[X] = tuple(f)
+		override def chain[X <: Chain](f :ChainTuple[F, X]) :Y[X] = tuple(f)
 
-		override def seq[X](f: SeqFormula[F, X]): Y[Seq[X]] = tuple(f)
+		override def seq[X](f: SeqTuple[F, X]): Y[Seq[X]] = tuple(f)
 
 	}
 

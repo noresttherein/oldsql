@@ -1,11 +1,14 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain
-import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLReadForm}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component}
-import net.noresttherein.oldsql.sql.FromClause.FromFormula
+import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.sql.MappingFormula.FromFormula
 import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, Formula}
-import net.noresttherein.oldsql.sql.SQLTuple.ChainFormula
+import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
+import net.noresttherein.oldsql.sql.WithParam.{ParamMapping, ParamSource}
 
 
 trait FromClause {
@@ -34,7 +37,7 @@ trait FromClause {
 	  * It will contain entries for all mappings in this source, including parameter mappings and mappings listed in this
 	  * source's `Outer` prefix (if this source is a subselect source).
 	  */
-	def row :ChainFormula[this.type, Row]
+	def row :ChainTuple[this.type, Row]
 
 
 
@@ -65,6 +68,7 @@ trait FromClause {
 
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[FromClause]
+
 }
 
 
@@ -96,59 +100,121 @@ object FromClause {
 	}
 
 
+	/** A `FromClause` without any tables specified, representing a single statement parameter `X`.
+	  * This type encompasses all from clauses ending with a synthetic parameter source, not simply the empty ones.
+	  */
+	type FromParam[X] = FromClause WithParam X
 
+	/** A factory of `FromClause` instances representing statement parameters. Used as sources for SQL formulas which
+	  * are independent of any tables, but depend on application parameters which values are not known during
+	  * their creation.
+	  */
+	object FromParam {
 
-	case class FromFormula[-F <: FromClause, M[O] <: AnyComponent[O]] private[sql] (from :RowSource[M], index :Int)
-		extends MappingFormula[F, M]
-	{
-		val mapping :M[Any] = from[Any] //todo:
+		/** Create a source consisting only of a mapping of a statement parameter `X`.
+		  * @param param a mapping representing statement parameter of type `X`, where any function `X=>T`
+		  *              can be represented as a `Component[T]` of the mapping.
+		  * @tparam X the type of the statement/source parameter.
+		  * @return a `Dual WithParam X` instance, consisting of the passed `ParamMapping[X]`.
+		  */
+		def apply[X](param :ParamSource[X]) :FromParam[X] = WithParam(Dual, param)
 
-		override def readForm :SQLReadForm[Subject] = from[Any].selectForm
-
-		override def applyTo[Y[+X]](matcher :SQLFormula.FormulaMatcher[F, Y]) :Y[Subject] = ???
-
-		override def isGroundedIn(tables :Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]) :Boolean =
-			tables.exists(_ == this)
-
-		override def isomorphic(expression :Formula[_]) :Boolean = ???
-
-		override private[oldsql] def equivalent(expression :Formula[_]) = ???
+		/** Create a source consisting only of a mapping for a statement parameter `X`. This mapping serves
+		  * as a placeholder for a value to be bound in the future to a value of `X`. Whenever there is a need to use
+		  * a value which can be obtained from `X` in an SQL formula grounded in the returned source, a
+		  * `WithParam[X]#Component[T]` wrapping a function `X=>T` can be used as its placeholder.
+		  * @tparam X the type of the statement/source parameter.
+		  * @return a `Dual WithParam X` instance, containing a single `ParamMapping[X]`.
+		  */
+		def apply[X :SQLForm] :FromParam[X] = Dual.withParam[X]
 	}
 
 
 
-	object FromFormula {
-		trait FromMatcher[+F <: FromClause, +Y[X]] {
-			def from[M[O] <: AnyComponent[O]](f :FromFormula[F, M]) :Y[M[Any]#Subject]
+
+
+
+//	class As[+F <: FromClause, A <: String with Singleton](val from :F, val alias :A)
+//		extends FromClause
+
+
+
+
+
+	implicit class FromClauseExtensions[F <: FromClause](private val self :F) extends AnyVal {
+		def row(implicit row :RowOf[F, F#Row]) :SQLFormula[F, F#Row] = row(self)
+
+
+		def join[T[O] <: AnyComponent[O]](table :RowSource[T]) :F InnerJoin T = (self :FromClause) match {
+			case Dual => From(table).asInstanceOf[F InnerJoin T]
+			case _ => InnerJoin(self, table)
 		}
 
-		type MatchFrom[+F <: FromClause, +Y[X]] = FromMatcher[F, Y]
+		//todo: maybe we should make From[T] extends all three join kinds?
+		@inline def leftJoin[T[O] <: AnyComponent[O]](table :RowSource[T]) :F LeftJoin T = LeftJoin(self, table)
 
-		type CaseFrom[+F <: FromClause, +Y[X]] = FromMatcher[F, Y]
+		@inline def rightJoin[T[O] <: AnyComponent[O]](table :RowSource[T]) :F RightJoin T = RightJoin(self, table)
+
+		@inline def outerJoin[T[O] <: AnyComponent[O]](table :RowSource[T]) :F LeftJoin T = LeftJoin(self, table)
+
+		@inline def withParam[X :SQLForm] :F WithParam X = WithParam(self, ParamSource[X]())
+
+		@inline def withParam[X :SQLForm](name :String) :F WithParam X = WithParam(self, ParamSource[X](name))
+
+		@inline def from[T[O] <: AnyComponent[O]](table :RowSource[T]) :F SubselectJoin T =
+			new SubselectJoin(self, table)
+
+		//todo:
+		//def joinAll
+
+//		def on()
+
 	}
+
+
+
+	abstract class RowOf[-F <: FromClause, R <: Chain] extends (F => ChainTuple[F, R])
+
+	object RowOf {
+		implicit val EmptyRow :RowOf[Dual, @~] = { _ => ChainTuple.EmptyChain }
+
+		implicit def joinRow[L <: FromClause, R[O] <: AnyComponent[O], S <: Chain]
+		                    (implicit left :RowOf[L, S]) :RowOf[L Join R, S ~ R[Any]#Subject] =
+			new RowOf[L Join R, S ~ R[Any]#Subject] {
+				override def apply(join :L Join R) =
+					left(join.left).asPartOf(join) ~ (join.lastTable :MappingFormula[FromClause Join R, R])
+			}
+	}
+
+
+
 
 
 	/** Proof that the FROM clause `S` is an extension of the clause `F` / the clause `F` is a prefix the clause of `S`.
 	  * It means that `S &lt;: F Join T1 ... Join TN forSome { type T1 ... TN }`.
 	  */
-	class ExtendedBy[F <: FromClause, -S <: FromClause] private() {
+	class ExtendedBy[F <: FromClause, -S <: FromClause] private(private[sql] val length :Int) {
 //		def apply[T <: Component[O, E], O, E](table :TableFormula[F, T, O, E]) :TableFormula[S, T, O, E] =
 //			table.asInstanceOf[TableFormula[S, T, O, E]]
+		 def apply[E[-R <: FromClause , X] <: SQLFormula[R, X], T](expression :E[F, T]) :E[S, T] =
+			expression.asInstanceOf[E[S, T]]
 
-		def apply[T](expression :SQLFormula[F, T]) :SQLFormula[S, T] =
-			expression.asInstanceOf[SQLFormula[S, T]]
-
-		def apply[T](expression :ColumnFormula[F, T]) :ColumnFormula[S, T] =
-			expression.asInstanceOf[ColumnFormula[S, T]]
+		def apply[T <: Chain](expression :ChainTuple[F, T]) :ChainTuple[S, T] =
+			expression.asInstanceOf[ChainTuple[S, T]]
+//		def apply[T](expression :SQLFormula[F, T]) :SQLFormula[S, T] =
+//			expression.asInstanceOf[SQLFormula[S, T]]
+//
+//		def apply[T](expression :ColumnFormula[F, T]) :ColumnFormula[S, T] =
+//			expression.asInstanceOf[ColumnFormula[S, T]]
 	}
 
 	object ExtendedBy {
-		private[this] val instance = new ExtendedBy[FromClause, FromClause]
+		private[this] val instance = new ExtendedBy[FromClause, FromClause](0)
 
 		implicit def itself[F <: FromClause] :ExtendedBy[F, F] = instance.asInstanceOf[F ExtendedBy F]
 
 		implicit def join[S <: FromClause, L <: FromClause, R[O] <: AnyComponent[O]](implicit ev :S ExtendedBy L) :ExtendedBy[S, L Join R] =
-			instance.asInstanceOf[S ExtendedBy (L Join R)]
+			new ExtendedBy(ev.length + 1)
 	}
 
 

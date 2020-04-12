@@ -2,18 +2,20 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnReadForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.AnyComponent
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromFormula, SelectFrom, SubselectFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SelectFrom, SubselectFrom}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ConversionMatcher, OrNull}
 import net.noresttherein.oldsql.sql.SQLCondition.{CaseCondition, ConditionMatcher, Equality}
-import net.noresttherein.oldsql.sql.LogicalFormula.{And, CaseLogical, LogicalMatcher, NotFormula, Or}
+import net.noresttherein.oldsql.sql.LogicalFormula.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, Formula, FormulaMatcher, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.sql.SQLTerm.{BoundParameter, CaseTerm, False, SQLLiteral, TermMatcher, True}
-import net.noresttherein.oldsql.sql.SQLTuple.{CaseTuple, SeqFormula, TupleMatcher}
+import net.noresttherein.oldsql.sql.SQLTuple.{CaseTuple, SeqTuple, TupleMatcher}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.sql.MappingFormula.{CaseMapping, FromFormula, MappingMatcher}
 
 import scala.reflect.ClassTag
 
@@ -43,16 +45,16 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 
 
 
-//	def in [S <: F, U >: V, O, X](that :SeqFormula[S, O])(implicit lift :SQLTypePromotion[U, O, X]) :BooleanFormula[S] =
-//		new In[S, X](lift.left(this), SeqFormula(that.parts.map(lift.right.apply[S])))
+//	def in [S <: F, U >: V, O, X](that :SeqTuple[S, O])(implicit lift :SQLTypePromotion[U, O, X]) :BooleanFormula[S] =
+//		new In[S, X](lift.left(this), SeqTuple(that.parts.map(lift.right.apply[S])))
 
 
 
 	def and[S <: F](other :BooleanFormula[S])(implicit ev :this.type <:< BooleanFormula[S]) :BooleanFormula[S] =
-		And(ev(this)) and other
+		AND(ev(this)) and other
 
 	def or [S <: F](other :BooleanFormula[S])(implicit ev :this.type <:< BooleanFormula[S]) :BooleanFormula[S] =
-		Or(ev(this)) or other
+		OR(ev(this)) or other
 
 	def && [S <: F](other :BooleanFormula[S])(implicit ev :this.type <:< BooleanFormula[S]) :BooleanFormula[S] =
 		other match {
@@ -68,7 +70,7 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 			case _ => this or other
 		}
 
-	def unary_![S <: F](implicit ev :this.type <:< BooleanFormula[S]) :BooleanFormula[S] = NotFormula(ev(this))
+	def unary_![S <: F](implicit ev :this.type <:< BooleanFormula[S]) :BooleanFormula[S] = NOT(ev(this))
 
 
 
@@ -234,6 +236,24 @@ object SQLFormula {
 			def logical(f :LogicalFormula[F]) :Y[Boolean] = composite(f)
 		}
 
+	}
+
+
+
+
+
+
+	@inline implicit def SQLFormulaExtension[X, E[-S <: FromClause, X] <: SQLFormula[S, X], F <: FromClause, T]
+	                                        (e :X)(implicit infer :IsBoth[X, E[F, T], SQLFormula[F, T]])
+			:SQLFormulaExtension[E, F, T] =
+		new SQLFormulaExtension[E, F, T](e)
+
+
+	class SQLFormulaExtension[E[-S <: FromClause, X] <: SQLFormula[S, X], F <: FromClause, T](private val self :E[F, T])
+		extends AnyVal
+	{
+//		@inline def asPartOf[S <: FromClause](implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
+//		@inline def asPartOf[S <: FromClause](from :S)(implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
 	}
 
 
@@ -415,7 +435,7 @@ object SQLFormula {
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.CaseFormula]]
 	  */
 	trait FormulaMatcher[+F <: FromClause, +Y[+X]] extends SQLMapper[F, Y]
-		with TermMatcher[F, Y] with CompositeMatcher[F, Y] //with SelectMatcher[F, Y] with MappingMatcher[F, Y]
+		with TermMatcher[F, Y] with CompositeMatcher[F, Y] with MappingMatcher[F, Y] //with SelectMatcher[F, Y]
 	{
 		override def apply[X](f: SQLFormula[F, X]): Y[X] = f.applyTo(this) //f.extract(this) getOrElse unhandled(f)
 	}
@@ -426,7 +446,7 @@ object SQLFormula {
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.FormulaMatcher]]
 	  */
 	trait MatchFormula[+F <: FromClause, +Y[X]] //extends FormulaMatcher[F, Y]
-		extends CaseTerm[F, Y] with CaseComposite[F, Y] //with CaseSelect[F, Y] with CaseMapping[F, Y]
+		extends CaseTerm[F, Y] with CaseComposite[F, Y] with CaseMapping[F, Y]//with CaseSelect[F, Y]
 
 	/** A not particularly useful `FormulaMatcher` which delegates all the cases to the single `formula` method
 	  * invoked for every subformula (SQL AST node).

@@ -44,7 +44,7 @@ object SQLMapper {
 	type SQLExtractor[+S <: FromClause, Y[+X]] = SQLMatcher[S, OptionResult[Y]#T]
 
 
-	type FormulaResult[S <: FromClause] = { type T[+X] = SQLFormula[S, X] }
+	type FormulaResult[S <: FromClause] = { type T[X] = SQLFormula[S, X] }
 
 	type SQLRewriter[+F <: FromClause, T <: FromClause] = SQLMapper[F, FormulaResult[T]#T]
 

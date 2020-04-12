@@ -75,7 +75,6 @@ object AutoConversionFormula {
 
 
 
-	//todo: use PromotionConversion
 	/*
 		case class OrNull[-F <: FromClause, T](expr :SQLFormula[F, T]) extends AutoConversionFormula[F, T, Option[T]] {
 
