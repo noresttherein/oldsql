@@ -200,14 +200,14 @@ class PropertyPathSpec extends AnyFlatSpec with Matchers {
 
 
 
-	case class Owner(master :Master)
+	case class Origin(master :Master)
 
 	case class Master(id :Option[Long], slave :Option[Slave])
 
 	case class Slave(id :Option[Long])
 
 	"PropertyPath" should "properly reflect option properties" in {
-		val chain = PropertyPath[Owner](_.master.slave.get.id)
+		val chain = PropertyPath[Origin](_.master.slave.get.id)
 		chain.name should equal("master.slave.get.id")
 	}
 

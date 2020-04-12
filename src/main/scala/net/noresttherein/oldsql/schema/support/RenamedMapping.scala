@@ -7,8 +7,8 @@ import net.noresttherein.oldsql.schema.Mapping
 import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 
 
-class RenamedMapping[M <: Component[O, S] , O, S](name :String, override val egg :M)
-	extends ShallowProxy[O, S] with MappingAdapter[M, O, S]
+class RenamedMapping[M <: Component[S, O], S, O](name :String, override val egg :M)
+	extends ShallowProxy[S, O] with MappingAdapter[M, S, O]
 {
 	override val sqlName = Some(name)
 
@@ -26,30 +26,30 @@ class RenamedMapping[M <: Component[O, S] , O, S](name :String, override val egg
 
 
 object RenamedMapping {
-	def apply[O, S](name :String, mapping :Component[O, S]) :Component[O, S] =
+	def apply[S, O](name :String, mapping :Component[S, O]) :Component[S, O] =
 		if (mapping.columns.size == 1)
-			new DeeplyRenamedMapping[O, S](name, mapping)
+			new DeeplyRenamedMapping[S, O](name, mapping)
 		else
-			new RenamedMapping[Component[O, S], O, S](name, mapping)
+			new RenamedMapping[Component[S, O], S, O](name, mapping)
 
 
-	def column[O, S](name :String, mapping :Component[O, S]) :Component[O, S] =
+	def column[S, O](name :String, mapping :Component[S, O]) :Component[S, O] =
 		new DeeplyRenamedMapping(name, mapping)
 
-	def deep[O, S](name :String, mapping :Component[O, S]) :Adapted[mapping.type] =
-		new RenamedMapping[mapping.type, O, S](name, mapping)
+	def deep[S, O](name :String, mapping :Component[S, O]) :Adapted[mapping.type] =
+		new RenamedMapping[mapping.type, S, O](name, mapping)
 
-	def shallow[O, S](name :String, mapping :Component[O, S]) :Adapted[mapping.type] =
-		new RenamedMapping[mapping.type, O, S](name, mapping)
+	def shallow[S, O](name :String, mapping :Component[S, O]) :Adapted[mapping.type] =
+		new RenamedMapping[mapping.type, S, O](name, mapping)
 
-	def generic[M <: Mapping, C <: Component[O, S], O, S]
-	           (name :String, mapping :M)(implicit types :IsBoth[M, C, Component[O, S]]) :Adapted[C] =
-		new RenamedMapping[C, O, S](name, mapping)
+	def generic[M <: Mapping, C <: Component[S, O], S, O]
+	           (name :String, mapping :M)(implicit types :IsBoth[M, C, Component[S, O]]) :Adapted[C] =
+		new RenamedMapping[C, S, O](name, mapping)
 
 
 
-	class DeeplyRenamedMapping[O, S](name :String, column :Component[O, S])
-		extends EagerDeepProxy[Component[O, S], O, S](column)
+	class DeeplyRenamedMapping[S, O](name :String, column :Component[S, O])
+		extends EagerDeepProxy[Component[S, O], S, O](column)
 	{
 		override val sqlName = Some(name)
 

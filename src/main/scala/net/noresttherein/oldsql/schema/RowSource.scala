@@ -19,7 +19,7 @@ trait RowSource[M[O] <: AnyComponent[O]] {
 
 object RowSource {
 
-	def apply[M[O] <: GenericMapping[O, _]](name :String, template :M[_]) :RowSource[M] = new RowSource[M] {
+	def apply[M[O] <: GenericMapping[_, O]](name :String, template :M[_]) :RowSource[M] = new RowSource[M] {
 		override def apply[O] = template.asInstanceOf[M[O]]
 		override def sql = name
 	}
@@ -39,13 +39,13 @@ object RowSource {
 	}
 
 	object Table {
-		def apply[M[O] <: GenericMapping[O, _]](tableName :String, template :M[_]) :Table[M] =
+		def apply[M[O] <: GenericMapping[_, O]](tableName :String, template :M[_]) :Table[M] =
 			new Table[M] {
 				override def name = tableName
 				override def apply[O] = template.asInstanceOf[M[O]]
 			}
 
-		def apply[M[O] <: GenericMapping[O, _]](tableName :String)(implicit mapping :String => M[_]) :Table[M] =
+		def apply[M[O] <: GenericMapping[_, O]](tableName :String)(implicit mapping :String => M[_]) :Table[M] =
 			apply(tableName, mapping(tableName))
 
 //		def apply[M[O] <: GenericMapping[O, _], N <: String with Singleton]
@@ -55,7 +55,7 @@ object RowSource {
 //				override def apply[O] = mapping(name).asInstanceOf[M[O]]
 //			}
 
-		def apply[N <: String with Singleton, M[O] <: GenericMapping[O, _]]
+		def apply[N <: String with Singleton, M[O] <: GenericMapping[_, O]]
 		         (implicit tableName :ValueOf[N], mapping :String => M[_]) :StaticTable[N, M] =
 			new StaticTable[N, M] {
 				override val name = valueOf[N]
@@ -67,7 +67,7 @@ object RowSource {
 		def of[S] :TableConstructor[S] = new TableConstructor[S] {}
 
 		trait TableConstructor[S] extends Any {
-			def apply[M[O] <: GenericMapping[O, S]](name :String)(implicit mapping :String => M[_]) :Table[M] =
+			def apply[M[O] <: GenericMapping[S, O]](name :String)(implicit mapping :String => M[_]) :Table[M] =
 				Table(name, mapping(name))
 		}
 

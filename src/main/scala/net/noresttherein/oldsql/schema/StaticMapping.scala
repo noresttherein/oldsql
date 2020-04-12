@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.slang._
 /**
   * @author Marcin Mościcki
   */
-trait StaticMapping[O, S] extends GenericMapping[O, S] {
+trait StaticMapping[S, O] extends GenericMapping[S, O] {
 
 
 	/** Performs the assembly of this mapping's subject from the components. This method is called in a double-dispatch

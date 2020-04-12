@@ -12,7 +12,6 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, S
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.{MappedMapping, PrefixedMapping}
-import net.noresttherein.oldsql.schema.support.RenamedMapping.DeeplyRenamedMapping
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.AbstractSeq
@@ -38,7 +37,7 @@ import scala.reflect.runtime.universe.TypeTag
   *
   * @tparam S value type of the mapped entity
   */
-trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
+trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 
 	/** Base trait for all components of this mapping. Creating an instance automatically lists it within owning mapping
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.
@@ -53,7 +52,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	  * the parent mapping - no other call is needed.
 	  * @tparam T value type of this component
 	  */
-	trait ComponentMapping[T] extends GenericMapping[O, T] { self =>
+	trait ComponentMapping[T] extends GenericMapping[T, O] { self =>
 
 		def ?(implicit values :composite.Pieces) :Option[T] = values.get(selector)
 
@@ -63,7 +62,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 
 		protected[schema] def extractor :Extractor[S, T]
 
-		def selector :ComponentExtractor[O, S, T] = {
+		def selector :ComponentExtractor[S, T, O] = {
 			if (fastSelector == null) {
 				val s = safeSelector
 				if (s != null) fastSelector = s
@@ -73,8 +72,8 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 		}
 
 		@volatile
-		private[this] var safeSelector :ComponentExtractor[O, S, T] = _
-		private[this] var fastSelector :ComponentExtractor[O, S, T] = _
+		private[this] var safeSelector :ComponentExtractor[S, T, O] = _
+		private[this] var fastSelector :ComponentExtractor[S, T, O] = _
 
 		private[this] var initialized = false
 
@@ -196,7 +195,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	  */
 	private class LiftedComponent[T](target :Component[T], val extractor :Extractor[S, T],
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
-		extends EagerDeepProxy[Component[T], O, T](target) with ComponentMapping[T]
+		extends EagerDeepProxy[Component[T], T, O](target) with ComponentMapping[T]
 	{
 		def adapted :Component[T] = egg
 
@@ -273,7 +272,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	  * @tparam T value type of this component.
 	  */
 	abstract class ComponentSchema[T](value :S => T, prefix :String, opts :Seq[Buff[T]] = Nil)
-		extends BaseComponent[T](value, opts :_*) with MappingSupport[O, T]
+		extends BaseComponent[T](value, opts :_*) with MappingSupport[T, O]
 	{
 		def this(value :S => T, buffs :Buff[T]*) = this(value, "", buffs)
 
@@ -314,7 +313,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	  * @tparam T value type of this component.
 	  */
 	abstract class OptionalComponentSchema[T](value :S => Option[T], prefix :String, opts :Seq[Buff[T]] = Nil)
-		extends BaseOptionalComponent[T](value, opts :_*) with MappingSupport[O, T]
+		extends BaseOptionalComponent[T](value, opts :_*) with MappingSupport[T, O]
 	{
 		def this(value :S => Option[T], buffs :Buff[T]*) = this(value, "", buffs)
 
@@ -344,7 +343,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	final class EmbeddedComponent[T] private[MappingSupport]
 	                             (val body :TypedMapping[T], protected[schema] val extractor :Extractor[S, T],
 	                              override val columnPrefix :String, override val buffs :Seq[Buff[T]])
-		extends EagerDeepProxy[TypedMapping[T], O, T](body) with ComponentMapping[T]
+		extends EagerDeepProxy[TypedMapping[T], T, O](body) with ComponentMapping[T]
 	{ nest =>
 
 		protected[MappingSupport] override def init() :Unit = composite.synchronized {
@@ -385,7 +384,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	  * It automatically inherits the enclosing mapping's `columnPrefix` and buffs.
 	  */
 	private class DirectColumn[T :ColumnForm](override val extractor :S =?> T, name :String, opts :Seq[Buff[T]])
-		extends StandardColumn[O, T](testedPrefix + name, opts ++ conveyBuffs(extractor, testedPrefix + name))
+		extends StandardColumn[T, O](testedPrefix + name, opts ++ conveyBuffs(extractor, testedPrefix + name))
 		   with ComponentMapping[T]
 	{
 		def this(value :S => T, name :String, opts :Seq[Buff[T]]) =
@@ -407,7 +406,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	  */
 	private class ColumnComponent[T](val extractor :Extractor[S, T], name :String, override val buffs :Seq[Buff[T]])
 	                                (implicit sqlForm :ColumnForm[T])
-		extends StandardColumn[O, T](name, buffs) with ComponentMapping[T]
+		extends StandardColumn[T, O](name, buffs) with ComponentMapping[T]
 	{
 		def this(value :S => T, name :String, buffs :Seq[Buff[T]])(implicit form :ColumnForm[T]) =
 			this(Extractor.req(value), name, buffs)
@@ -459,8 +458,8 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 
 
 	/** A builder adapting a given column template to a column of this `MappingSupport`. */
-	protected class ColumnCopist[T] private[MappingSupport](template :ColumnMapping[_, T], name :Option[String], buffs :Seq[Buff[T]]) {
-		private[MappingSupport] def this(source :ColumnMapping[_, T]) = this(source, None, source.buffs)
+	protected class ColumnCopist[T] private[MappingSupport](template :ColumnMapping[T, _], name :Option[String], buffs :Seq[Buff[T]]) {
+		private[MappingSupport] def this(source :ColumnMapping[T, _]) = this(source, None, source.buffs)
 
 		template match {
 			case self :MappingSupport[_, _]#ComponentMapping[_] if self.belongsTo(composite) =>
@@ -538,25 +537,25 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	/** Create a column based on the given column.
 	  * @return a builder instance allowing to override any properties of the given template column.
 	  */
-	protected def column[T](template :ColumnMapping[_, T]) :ColumnCopist[T] =
+	protected def column[T](template :ColumnMapping[T, _]) :ColumnCopist[T] =
 		new ColumnCopist(template)
 
 	/** Create a column based on the given column, giving it a new name.
 	  * @return a builder instance allowing to override any properties of the given template column.
 	  */
-	protected def column[T](template :ColumnMapping[_, T], name :String) :ColumnCopist[T] =
+	protected def column[T](template :ColumnMapping[T, _], name :String) :ColumnCopist[T] =
 		new ColumnCopist[T](template, Some(name), template.buffs)
 
 	/** Create a column based on the given column, replacing its buff list with the provided buffs.
 	  * @return a builder instance allowing to override any properties of the given template column.
 	  */
-	protected def column[T](template :ColumnMapping[_, T], buffs :Seq[Buff[T]]) :ColumnCopist[T] =
+	protected def column[T](template :ColumnMapping[T, _], buffs :Seq[Buff[T]]) :ColumnCopist[T] =
 		new ColumnCopist(template, None, buffs)
 
 	/** Create a column based on the given column, replacing its name and buff list with the provided values.
 	  * @return a builder instance allowing to override any properties of the given template column.
 	  */
-	protected def column[T](template :ColumnMapping[_, T], name :String, buffs :Seq[Buff[T]]) :ColumnCopist[T] =
+	protected def column[T](template :ColumnMapping[T, _], name :String, buffs :Seq[Buff[T]]) :ColumnCopist[T] =
 		new ColumnCopist(template, Some(name), buffs)
 
 
@@ -686,7 +685,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 
 	private class RenamedColumn[X](name :String, comp :Component[X],
 	                               override val extractor :S =?> X, override val buffs :Seq[Buff[X]])
-		extends EagerDeepProxy[Component[X], O, X](comp) with ComponentMapping[X]
+		extends EagerDeepProxy[Component[X], X, O](comp) with ComponentMapping[X]
 	{   //fixme: returning a component with non-empty component lists as a column is asking for trouble
 		//this may require modifying the Mapping interface to in fact return ColumnMapping from the column lists.
 
@@ -727,7 +726,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 			initUpdatable::initInsertable::initAutoInsert::initAutoUpdate::Nil
 
 		val replacement = column match {
-			case col :ColumnMapping[O, T] =>
+			case col :ColumnMapping[T, O] =>
 				val replacement = new ColumnComponent[T](extract, name, lifted.buffs)(col.form) {
 					override def init() :Unit = () //we'll replace the lifted column with this manually
 				}
@@ -844,7 +843,7 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 	  * (including subcomponents),  when the component's initialization is being
 	  */
 	protected def selectorFor[T](component :ComponentMapping[T]) :Selector[T] =
-		ComponentExtractor[O, S, T](component)(component.extractor)
+		ComponentExtractor[S, T, O](component)(component.extractor)
 
 	private[this] var initSelectors = Map[AnyComponent, Selector[_]]()
 	@volatile private[this] var selectors :Map[AnyComponent, Selector[_]] = _
@@ -1116,11 +1115,11 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
 
 
 	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
-		MappedMapping[this.type, O, S, X](this, there, back)
+		MappedMapping[this.type, S, X, O](this, there, back)
 
 	override def flatMap[X](there :S => Option[X], back :X => Option[S])
 	                       (implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
-		MappedMapping.opt[this.type, O, S, X](this, there, back)
+		MappedMapping.opt[this.type, S, X, O](this, there, back)
 
 
 	override def qualified(prefix :String) :Adapted[this.type] = PrefixedMapping.qualified(prefix, this)
@@ -1145,6 +1144,6 @@ trait MappingSupport[O, S] extends StaticMapping[O, S] { composite =>
   * is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces` implementation
   * substitutes any component passed to it with its lifted representation before looking for its value.
   */
-trait RootMappingSupport[O, S] extends MappingSupport[O, S] with RootMapping[O, S]
+trait RootMappingSupport[S, O] extends MappingSupport[S, O] with RootMapping[S, O]
 
 

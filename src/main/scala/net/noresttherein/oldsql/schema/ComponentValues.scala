@@ -89,7 +89,7 @@ trait ComponentValues[M <: Mapping] {
 	  * @param extractor the extractor for the required component of the associated mapping.
 	  * @throws NoSuchElementException if no value could be provided, be it preset, assembled or default.
 	  */
-	def apply[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :T =
+	def apply[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :T =
 		get(extractor) getOrElse {
 			throw new NoSuchElementException("No value for " + extractor + " in " + this)
 		}
@@ -99,19 +99,19 @@ trait ComponentValues[M <: Mapping] {
 	  * without inspection by the component.
 	  * @param extractor the extractor for the required component of the associated mapping.
 	  */
-	def get[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] =
+	def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] =
 		\(extractor).getValue(extractor.lifted)
 
 	/** Return `ComponentValues` for the given component of the associated mapping. Returned object will delegate all
 	  * calls to this instance (or the parent instance of this mapping)
 	  * @param extractor the extractor for the required component of the associated mapping.
 	  */
-	def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type]
+	def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type]
 
 
 
 
-	def aliased(lift :AnyComponent[M#Owner] => AnyComponent[M#Owner]) :ComponentValues[M] =
+	def aliased(lift :AnyComponent[M#Origin] => AnyComponent[M#Origin]) :ComponentValues[M] =
 		new AliasedComponentValues[M](lift, this)
 
 
@@ -178,7 +178,7 @@ trait ComponentValues[M <: Mapping] {
 	  * to the path of original definition.
 	  * @return
 	  */
-	def stick[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[M] =
+	def stick[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[M] =
 		\(extractor).stickTo[M](extractor.lifted) orElse this
 
 	/** A safer casting method which allows casting this instance, invariant regarding to the mapping type, to a higher
@@ -227,7 +227,7 @@ object ComponentValues {
 	  * can supply a `Map` as an argument.
 	  * @param values factory of values for components, should always return the value of the type correct for the component argument!
 	  */
-	def apply[M <: ConcreteMapping](values :AnyComponent[M#Owner] => Option[_]) :ComponentValues[M] =
+	def apply[M <: ConcreteMapping](values :AnyComponent[M#Origin] => Option[_]) :ComponentValues[M] =
 		new CustomComponentValues[M](values)
 
 	/** An empty instance, returning always None or throwing NoSuchElementException.
@@ -318,7 +318,7 @@ object ComponentValues {
 		  * @param value input for values of the given components.
 		  * @param components list of components which should be used as sources in the assembly process.
 		  */
-		def apply(value :M#Subject, components :Unique[AnyComponent[M#Owner]]) :ComponentValues[M] =
+		def apply(value :M#Subject, components :Unique[AnyComponent[M#Origin]]) :ComponentValues[M] =
 			new SelectedDisassembledComponentValues[M](value, components)
 
 		/** Returns ComponentValues using the given function as the source of values for components. Please note that
@@ -326,7 +326,7 @@ object ComponentValues {
 		  * @param values factory of values for components, should always return the value of the type correct for the component argument!
 		  * @return
 		  */
-		def apply(values :AnyComponent[M#Owner] => Option[_]) :ComponentValues[M] =
+		def apply(values :AnyComponent[M#Origin] => Option[_]) :ComponentValues[M] =
 			new CustomComponentValues[M](values)
 
 		/** Create ComponentValues for the given mapping and its value. All values returned by this instance will use
@@ -374,14 +374,14 @@ object ComponentValues {
 
 
 	private class AliasedComponentValues[M <: Mapping]
-	                                    (alias :AnyComponent[M#Owner]=>AnyComponent[M#Owner], values :ComponentValues[M])
+	                                    (alias :AnyComponent[M#Origin]=>AnyComponent[M#Origin], values :ComponentValues[M])
 		extends ComponentValues[M]
 	{
 		override def result(root :M) :Option[M#Subject] =
-			values.result(alias(root.asInstanceOf[AnyComponent[M#Owner]]).asInstanceOf[M])
+			values.result(alias(root.asInstanceOf[AnyComponent[M#Origin]]).asInstanceOf[M])
 
 
-		override def get[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] = {
+		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {
 			val next = values \ extractor
 			val aliased = alias(extractor.lifted)
 			val predef = next.predefined(aliased.asInstanceOf[extractor.lifted.type])
@@ -396,7 +396,7 @@ object ComponentValues {
                 )
 		}
 
-		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] = {
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] = {
 			val vals = values \ extractor
 			if (vals eq values) crosscast[extractor.lifted.type]
 			else new AliasedComponentValues[extractor.lifted.type](
@@ -405,7 +405,7 @@ object ComponentValues {
 			)
 		}
 
-		override def aliased(lift :AnyComponent[M#Owner] => AnyComponent[M#Owner]) :ComponentValues[M] =
+		override def aliased(lift :AnyComponent[M#Origin] => AnyComponent[M#Origin]) :ComponentValues[M] =
 			new AliasedComponentValues[M](lift andThen alias, values)
 
 		override def compatible[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] = {
@@ -431,15 +431,15 @@ object ComponentValues {
 					fallback.predefined(root)
 
 
-		override def apply[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :T =
+		override def apply[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :T =
 			overrides.get(extractor) orElse fallback.get(extractor) getOrElse {
 				throw new NoSuchElementException("value for component " + extractor.lifted + " in " + this)
 			}
 
-		override def get[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] =
+		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] =
 			overrides.get(extractor) orElse fallback.get(extractor)
 
-		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
 			new FallbackComponentValues[extractor.lifted.type](overrides \ extractor, fallback \ extractor)
 
 
@@ -518,11 +518,11 @@ object ComponentValues {
 		final override def result(root :M) = Some(value)
 
 
-		override def apply[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :T = extractor(value)
+		override def apply[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :T = extractor(value)
 
-		override def get[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] = extractor.get(value)
+		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = extractor.get(value)
 
-		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
 			extractor.get(value) match {
 				case Some(v) => Predefined[extractor.lifted.type](v)
 				case _ => Empty[extractor.lifted.type]
@@ -545,7 +545,7 @@ object ComponentValues {
 	{
 		lazy val value :M#Subject = expr
 
-		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
 			extractor.requisite match { //todo: check for identity
 				case Some(pick) => new LazyPredefinedMappingValue[extractor.lifted.type](pick(value))
 				case _ =>
@@ -566,14 +566,14 @@ object ComponentValues {
 		override def predefined(root: M): Option[M#Subject] = value
 
 
-		override def apply[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :T = extractor(value getOrElse {
+		override def apply[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :T = extractor(value getOrElse {
 			throw new NoSuchElementException("No value for component " + extractor.lifted + " in Empty")
 		})
 
-		override def get[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] =
+		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] =
 			value flatMap extractor.optional
 
-		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] = {
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] = {
 			val pick = extractor.optional
 			new LazyMappingValue[extractor.lifted.type](value.flatMap(pick))
 		}
@@ -595,7 +595,7 @@ object ComponentValues {
 			preset(root).flatMap(_.result(root))
 
 
-		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
 			preset[extractor.lifted.type](extractor.lifted) getOrElse crosscast[extractor.lifted.type]
 
 		override def compatible[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
@@ -635,19 +635,19 @@ object ComponentValues {
 
 		override def result(root: M): Option[M#Subject] = root.assemble(crosscast[root.type])
 
-		override def apply[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :T =
+		override def apply[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :T =
 			defined(extractor) match {
 				case Some(x) => x
 				case _ => extractor.lifted(crosscast[extractor.lifted.type])
 			}
 
-		override def get[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] = {
+		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {
 			val predef = defined(extractor)
 			if (predef.isDefined) predef
 			else extractor.lifted.optionally(crosscast[extractor.lifted.type])
 		}
 
-		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
 			defined(extractor) match {
 				case Some(t) => Predefined[extractor.lifted.type](t)
 				case _ => crosscast[extractor.lifted.type]
@@ -656,7 +656,7 @@ object ComponentValues {
 		override def compatible[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] =
 			crosscast[C]
 
-		protected def defined[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T]
+		protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T]
 
 	}
 
@@ -667,10 +667,10 @@ object ComponentValues {
 
 
 	private class SelectedDisassembledComponentValues[M <: ConcreteMapping]
-	                                                 (value :M#Subject, components :Unique[AnyComponent[M#Owner]])
+	                                                 (value :M#Subject, components :Unique[AnyComponent[M#Origin]])
 		extends SelectedComponentValues[M]
 	{
-		protected override def defined[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]): Option[T] =
+		protected override def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]): Option[T] =
 			if (components.contains(extractor.lifted)) extractor.get(value)
 			else None
 
@@ -678,10 +678,10 @@ object ComponentValues {
 	}
 
 
-	private class CustomComponentValues[M <: ConcreteMapping](vals :AnyComponent[M#Owner] => Option[_])
+	private class CustomComponentValues[M <: ConcreteMapping](vals :AnyComponent[M#Origin] => Option[_])
 		extends SelectedComponentValues[M]
 	{
-		override protected def defined[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]): Option[T] =
+		override protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]): Option[T] =
 			vals(extractor.lifted).crosstyped[T]
 
 		override def toString :String = "Custom(" + vals + ")"
@@ -689,10 +689,10 @@ object ComponentValues {
 
 
 
-	private class IndexedComponentValues[M <: ConcreteMapping](vals :Seq[Option[Any]], index :AnyComponent[M#Owner] => Int)
+	private class IndexedComponentValues[M <: ConcreteMapping](vals :Seq[Option[Any]], index :AnyComponent[M#Origin] => Int)
 		extends SelectedComponentValues[M]
 	{
-		override protected def defined[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] = {
+		override protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {
 			val i = index(extractor.lifted)
 			if (i < 0) None
 			else vals(i).asInstanceOf[Option[T]]
@@ -718,9 +718,9 @@ object ComponentValues {
 		override def result(root: M): Option[M#Subject] = None
 
 
-		override def get[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :Option[T] = None
+		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = None
 
-		override def \[T](extractor :ComponentExtractor[M#Owner, M#Subject, T]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
 			this.crosscast[extractor.lifted.type]
 
 

@@ -140,6 +140,14 @@ object FromClause {
 
 
 
+	class JoinedTables[F <: FromClause](private val self :F) extends AnyVal {
+		def apply[M[O] <: AnyComponent[O]] :FromFormula[F, M] = ???
+//		def apply[S]
+	}
+
+
+
+
 
 	implicit class FromClauseExtensions[F <: FromClause](private val self :F) extends AnyVal {
 		def row(implicit row :RowOf[F, F#Row]) :SQLFormula[F, F#Row] = row(self)

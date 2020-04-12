@@ -8,19 +8,19 @@ import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 
 
 
-class PrefixedMapping[M <: Component[O, S], O, S](val prefix :String, override val egg :M)
-	extends EagerDeepProxy[M, O, S](egg) with MappingAdapter[M, O, S] //Adapted[M]
+class PrefixedMapping[M <: Component[S, O], S, O](val prefix :String, override val egg :M)
+	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O] //Adapted[M]
 {
 	override protected def adapt[T](component :Component[T]) :Component[T] = component.prefixed(prefix)
 
 
 	override def qualified(prefix :String) :Adapted[M] =
 		if (prefix.length == 0) this
-		else new PrefixedMapping[M, O, S](prefix + "." + this.prefix, egg)
+		else new PrefixedMapping[M, S, O](prefix + "." + this.prefix, egg)
 
 	override def prefixed(prefix :String) :Adapted[M] =
 		if (prefix.length == 0) this
-		else new PrefixedMapping[M, O, S](prefix + this.prefix, egg)
+		else new PrefixedMapping[M, S, O](prefix + this.prefix, egg)
 
 
 
@@ -41,19 +41,19 @@ class PrefixedMapping[M <: Component[O, S], O, S](val prefix :String, override v
 
 
 object PrefixedMapping {
-	def apply[O, S](prefix :String, component :Component[O, S]) :Adapted[component.type] =
-		new PrefixedMapping[component.type, O, S](prefix, component)
+	def apply[S, O](prefix :String, component :Component[S, O]) :Adapted[component.type] =
+		new PrefixedMapping[component.type, S, O](prefix, component)
 
-	def qualified[O, S](prefix :String, component :Component[O, S]) :Adapted[component.type] =
+	def qualified[S, O](prefix :String, component :Component[S, O]) :Adapted[component.type] =
 		if (prefix.length == 0)
-			new PrefixedMapping[component.type, O, S]("", component)
+			new PrefixedMapping[component.type, S, O]("", component)
 		else
-            new PrefixedMapping[component.type, O, S](prefix + ".", component)
+            new PrefixedMapping[component.type, S, O](prefix + ".", component)
 
 
 
-	def generic[X <: Mapping, M <: Component[O, S], O, S]
+	def generic[X <: Mapping, M <: Component[S, O], S, O]
 	           (prefix :String, component :X)(implicit hint :IsBoth[X, M, Component[O, S]]) :Adapted[M] =
-		new PrefixedMapping[M, O, S](prefix, component)
+		new PrefixedMapping[M, S, O](prefix, component)
 
 }

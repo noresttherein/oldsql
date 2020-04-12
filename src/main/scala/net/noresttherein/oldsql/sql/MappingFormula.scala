@@ -30,7 +30,7 @@ object MappingFormula {
 		def from :FromFormula[F, T]
 		def table :T[Any] = from.mapping
 		def mapping :M[Any]
-		def extractor :ComponentExtractor[Any, T[Any]#Subject, M[Any]#Subject] //= table(mapping)
+		def extractor :ComponentExtractor[T[Any]#Subject, M[Any]#Subject, Any] //= table(mapping)
 
 		override def isGroundedIn(tables :Iterable[FromFormula[_, (m) forSome {type m[O] <: AnyComponent[O]}]]) :Boolean =
 			tables.exists(_ == table)
@@ -51,11 +51,11 @@ object MappingFormula {
 
 
 		def unapply[F <: FromClause, T](f :SQLFormula[F, T])
-				:Option[(FromFormula[F, M], ComponentExtractor[_, E, T])] forSome { type M[O] <: Component[O, E]; type E } =
+				:Option[(FromFormula[F, M], ComponentExtractor[E, T, _])] forSome { type M[O] <: Component[E, O]; type E } =
 			???
 
 
-		private class ComponentFrom[-F <: FromClause, T[O] <: Component[O, E], M[O] <: Component[O, S], E, S]
+		private class ComponentFrom[-F <: FromClause, T[O] <: Component[E, O], M[O] <: Component[S, O], E, S]
 		                           (override val from :FromFormula[F, T], val mapping :M[Any])
 			extends ComponentFormula[F, T, M]
 		{
@@ -91,7 +91,7 @@ object MappingFormula {
 		override def from :FromFormula[F, M] = this
 		override val mapping :M[Any] = source[Any]
 		override def table :M[Any] = mapping
-		override val extractor = ComponentExtractor.ident(table.asInstanceOf[Component[Any, M[Any]#Subject]])
+		override val extractor = ComponentExtractor.ident(table.asInstanceOf[Component[M[Any]#Subject, Any]])
 
 		override def readForm :SQLReadForm[Subject] = mapping.selectForm
 

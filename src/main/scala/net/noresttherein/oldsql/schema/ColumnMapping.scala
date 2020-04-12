@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.support.{EmptyMapping, LabeledMapping}
 
 
 
-trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
+trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 	/** Returns `Some(this.name)`. */
 	final override def sqlName = Some(name)
@@ -144,9 +144,9 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 		else if (exclude.size > 1)
 		     throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this)
 		else if (exclude.headOption.contains(this) && optional.enabled(this))
-		     ColumnMapping[O, S](name, excluded[S] +: buffs :_*)(form)
+		     ColumnMapping[S, O](name, excluded[S] +: buffs :_*)(form)
 		else if (include.headOption.contains(this) && explicit.enabled(this))
-		     ColumnMapping[O, S](name, buffs.filter(explicit.disabled) :_*)(form)
+		     ColumnMapping[S, O](name, buffs.filter(explicit.disabled) :_*)(form)
 		else
 			this
 
@@ -171,7 +171,7 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 
 	override def apply[T](component :Component[T]) :Selector[T] =
 		if (component == this)
-			ComponentExtractor.ident[O, S](this).asInstanceOf[Selector[T]]
+			ComponentExtractor.ident[S, O](this).asInstanceOf[Selector[T]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $component is not a subcomponent of column $column. The only subcomponent of a column is the column itself."
@@ -198,18 +198,18 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 
 
 
-	def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[O, S] = ColumnMapping(name, opts:_*)(form)
+	def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[S, O] = ColumnMapping(name, opts:_*)(form)
 
-	override def renamed(name :String) :ColumnMapping[O, S] = ColumnMapping(name, buffs:_*)(form)
+	override def renamed(name :String) :ColumnMapping[S, O] = ColumnMapping(name, buffs:_*)(form)
 
-	override def prefixed(prefix :String) :ColumnMapping[O, S] = ColumnMapping(prefix + name, buffs:_*)(form)
+	override def prefixed(prefix :String) :ColumnMapping[S, O] = ColumnMapping(prefix + name, buffs:_*)(form)
 
-	def prefixed(prefix :Option[String]) :ColumnMapping[O, S] = prefix.map(prefixed) getOrElse this
+	def prefixed(prefix :Option[String]) :ColumnMapping[S, O] = prefix.map(prefixed) getOrElse this
 
-	override def qualified(prefix :String) :ColumnMapping[O, S] =
+	override def qualified(prefix :String) :ColumnMapping[S, O] =
 		prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
 
-	def numbered(index :Int) :NumberedColumn[O, S] = new NumberedColumn[O, S](index, name, buffs)(form)
+	def numbered(index :Int) :NumberedColumn[S, O] = new NumberedColumn[S, O](index, name, buffs)(form)
 
 
 
@@ -242,61 +242,61 @@ trait ColumnMapping[O, S] extends GenericMapping[O, S] { column =>
 
 object ColumnMapping {
 
-	def apply[O, S :ColumnForm](name :String, buffs :Buff[S]*) :ColumnMapping[O, S] =
+	def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :ColumnMapping[S, O] =
 		new StandardColumn(name, buffs)
 
-	def apply[N <: String with Singleton :ValueOf, O, S :ColumnForm](buffs :Buff[S]*) :LabeledColumn[N, O, S] =
-		new LabeledColumn[N, O, S](buffs)
+	def apply[N <: String with Singleton :ValueOf, S :ColumnForm, O](buffs :Buff[S]*) :LabeledColumn[N, S, O] =
+		new LabeledColumn[N, S, O](buffs)
 
-	def labeled[N <: String with Singleton, O, S :ColumnForm](label :N, buffs :Buff[S]*) :LabeledColumn[N, O, S] =
-		new LabeledColumn[N, O, S](buffs)(new ValueOf(label), ColumnForm[S])
+	def labeled[N <: String with Singleton, S :ColumnForm, O](label :N, buffs :Buff[S]*) :LabeledColumn[N, S, O] =
+		new LabeledColumn[N, S, O](buffs)(new ValueOf(label), ColumnForm[S])
 
 
 
-	class BaseColumn[O, S](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
-		extends ColumnMapping[O, S]
+	class BaseColumn[S, O](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
+		extends ColumnMapping[S, O]
 	{
 		override val isNullable :Boolean = super.isNullable
 	}
 
 
 
-	class StandardColumn[O, S](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
-		extends ColumnMapping[O, S]
+	class StandardColumn[S, O](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
+		extends ColumnMapping[S, O]
 	{
 		override val isNullable :Boolean = super.isNullable
 
-		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[O, X] =
-			new StandardColumn[O, X](name, buffs.map(_.map(there)))(
+		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
+			new StandardColumn[X, O](name, buffs.map(_.map(there)))(
 				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
 			)
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[O, X] =
-			new StandardColumn[O, X](name, schema.flatMapBuffs(this)(there))(
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
+			new StandardColumn[X, O](name, schema.flatMapBuffs(this)(there))(
 				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 			)
 	}
 
 
 
-	class LabeledColumn[N <: String with Singleton, O, S](override val buffs :Seq[Buff[S]] = Nil)
+	class LabeledColumn[N <: String with Singleton, S, O](override val buffs :Seq[Buff[S]] = Nil)
 	                                                     (implicit named :ValueOf[N], override val form :ColumnForm[S])
-		extends LabeledMapping[N, O, S] with ColumnMapping[O, S]
+		extends LabeledMapping[N, S, O] with ColumnMapping[S, O]
 	{
 		override val name :N = named.value
 		override val isNullable :Boolean = super.isNullable
 
-		override def withBuffs(buffs :Seq[Buff[S]]) :LabeledColumn[N, O, S] =
-			new LabeledColumn[N, O, S](buffs)(new ValueOf(name), form)
+		override def withBuffs(buffs :Seq[Buff[S]]) :LabeledColumn[N, S, O] =
+			new LabeledColumn[N, S, O](buffs)(new ValueOf(name), form)
 
-		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :LabeledColumn[N, O, X] =
-			new LabeledColumn[N, O, X](buffs.map(_.map(there)))(
+		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :LabeledColumn[N, X, O] =
+			new LabeledColumn[N, X, O](buffs.map(_.map(there)))(
 				implicitly[ValueOf[N]],
 				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
 			)
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :LabeledColumn[N, O, X] =
-			new LabeledColumn[N, O, X](schema.flatMapBuffs(this)(there))(
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :LabeledColumn[N, X, O] =
+			new LabeledColumn[N, X, O](schema.flatMapBuffs(this)(there))(
 				implicitly[ValueOf[N]],
 				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 			)
@@ -307,21 +307,21 @@ object ColumnMapping {
 
 
 
-	class NumberedColumn[O, S](val number :Int, val name :String, override val buffs :Seq[Buff[S]])
+	class NumberedColumn[S, O](val number :Int, val name :String, override val buffs :Seq[Buff[S]])
 	                          (implicit val form :ColumnForm[S])
-		extends ColumnMapping[O, S]
+		extends ColumnMapping[S, O]
 	{
 		override val isNullable :Boolean = super.isNullable
 
-		override def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[O, S] = new NumberedColumn(number, name, buffs)
+		override def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[S, O] = new NumberedColumn(number, name, buffs)
 
-		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :NumberedColumn[O, X] =
-			new NumberedColumn[O, X](number, name, buffs.map(_.map(there)))(
+		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :NumberedColumn[X, O] =
+			new NumberedColumn[X, O](number, name, buffs.map(_.map(there)))(
 				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
 			)
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :NumberedColumn[O, X] =
-			new NumberedColumn[O, X](number, name, schema.flatMapBuffs(this)(there))(
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :NumberedColumn[X, O] =
+			new NumberedColumn[X, O](number, name, schema.flatMapBuffs(this)(there))(
 				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 			)
 

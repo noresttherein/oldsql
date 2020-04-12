@@ -5,14 +5,13 @@ import java.sql.{PreparedStatement, ResultSet}
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, ComponentExtractor, ConcreteMapping, MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, ConcreteMapping, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.support.{LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, OptionMapping}
-import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, SelfPath}
+import net.noresttherein.oldsql.schema.MappingPath.SelfPath
 import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 
@@ -68,7 +67,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
   * (with subclasses, with the exception of adapters exposing the adapted mapping publicly, simply providing different
   * implementations or features directed 'inwards', towards the implementing classes, rather than providing additional
   * public interface. Every concrete mapping however needs to define two types: the mapped scala type `Subject`
-  * and a marker phantom type `Owner` which serves solely to introduce static type distinction between several
+  * and a marker phantom type `Origin` which serves solely to introduce static type distinction between several
   * instances of the same component type but coming from different sources. In fact, many generic operations
   * are impossible to reliably implement without asserting that the handles `Mapping` actually defines those types
   * (that is, those types are equal for all instances of the mapping type). This is done through the type aliases
@@ -86,10 +85,10 @@ import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
   * or `Component`. Abstract type parameters of existential types such as `Component[_]` are not unified, leading
   * to absurd situations where 'obviously' equal types are not unified by the compiler, almost completely preventing
   * their type safe use. The second reason is the limitation of the type inferer which, when faces with
-  * method with a signature in the form of `[M &lt;: Component[O, S], O, S](m :M)` will, when applied to
+  * method with a signature in the form of `[M &lt;: Component[S, O], O, S](m :M)` will, when applied to
   * `m :GenericMapping[O, Int]` infer types `GenericMapping[O, Int], Nothing, Nothing` causing a compile error.
   * On the other hand, defining the type parameter as `[M &lt;: Component[_, _]]` assigns new distinct types to the
-  * missing type parameters, which are not unified even with `m.Subject`/`m.Owner` itself, leading to a lot of issues.
+  * missing type parameters, which are not unified even with `m.Subject`/`m.Origin` itself, leading to a lot of issues.
   * This can be circumvented with implicit parameters, but at the cost of additional complexity.
   * @see [[net.noresttherein.oldsql.schema.GenericMapping]]
   * @see [[net.noresttherein.oldsql.schema.MappingSupport]]
@@ -106,7 +105,7 @@ trait Mapping { mapping :ConcreteMapping =>
 	  * In addition, it is used by the SQL DSL to ensure that an SQL expression refers only to components
 	  * coming from the one particular query, preventing accidental use of other, non-joined mappings.
 	  */
-	type Owner
+	type Origin
 
 	/** A container with values for components of this mapping required to assemble the subject.
 	  * It is a [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] instance parameterized with
@@ -122,17 +121,17 @@ trait Mapping { mapping :ConcreteMapping =>
 	/** An extractor of the value for some component of this mapping with the subject type `T`, which carries
 	  * additionally the lifted version of that component (from the point of view of this mapping).
 	  */
-	type Selector[T] = ComponentExtractor[Owner, Subject, T]
+	type Selector[T] = ComponentExtractor[Subject, T, Origin]
 
 	type AnyComponent = Component[_]
 
 	/** Any mapping with the same origin marker type, making it a supertype of all valid component types of this mapping. */
-	type Component[T] = Mapping.Component[Owner, T]
+	type Component[T] = Mapping.Component[T, Origin]
 
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin marker type
 	  * as this instance and thus a valid subcomponent type of this mapping.
 	  */
-	type Column[T] = ColumnMapping[Owner, T]
+	type Column[T] = ColumnMapping[T, Origin]
 
 
 
@@ -354,14 +353,14 @@ trait Mapping { mapping :ConcreteMapping =>
 	  * never fail. This instance is exposed as the public `get` field of the returned mapping, allowing direct
 	  * access to any components definitions in this mapping.
 	  */
-	def inOption :OptionMapping[this.type, Owner, Subject] = OptionMapping(this)
+	def inOption :OptionMapping[this.type, Subject, Origin] = OptionMapping(this)
 
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
 	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
 	  * `NullValue.value` will be returned.
 	  */
 	def map[X](there :Subject => X, back :X => Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
-		MappedMapping[this.type, Owner, Subject, X](this, there, back)
+		MappedMapping[this.type, Subject, X, Origin](this, there, back)
 
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
 	  * by this mapping. If `there` or this mapping's `optionally` subject constructor returns `None`,
@@ -370,7 +369,7 @@ trait Mapping { mapping :ConcreteMapping =>
 	  */
 	def flatMap[X](there :Subject => Option[X], back :X => Option[Subject])
 	              (implicit nulls :NullValue[X] = null) :Component[X] =
-		MappedMapping.opt[this.type, Owner, Subject, X](this, there, back)
+		MappedMapping.opt[this.type, Subject, X, Origin](this, there, back)
 
 
 
@@ -433,10 +432,10 @@ trait Mapping { mapping :ConcreteMapping =>
 /** The de facto base trait of all `Mapping` implementations.
   *
   * `Mapping` remains the main outside interface
-  * as it allows easy parameterizing with the mapping type without the extra `Owner` and `Subject` type parameters,
+  * as it allows easy parameterizing with the mapping type without the extra `Origin` and `Subject` type parameters,
   * but it severely limits available options of what is possible to do, especially when several instances with same or
   * related types are available. While extending it is not currently strictly required and the library just demands
-  * that the two member types are defined on a `Mapping` via the  `Component[O, S]` type alias narrowing the `Mapping`,
+  * that the two member types are defined on a `Mapping` via the  `Component[S, O]` type alias narrowing the `Mapping`,
   * Doing so is the most convenient way to achieve it and provides implementations of several methods which could
   * not be done without
   *
@@ -447,8 +446,8 @@ trait Mapping { mapping :ConcreteMapping =>
   * @tparam S the subject type, that is the type of objects read and written to a particular table (or a view, query,
   *           or table fragment).
   */ //todo: if type parameter `O` stays, it should be last, so that type inferer can infer Component[S, _] type functor
-trait GenericMapping[O, S] extends ConcreteMapping { self =>
-	type Owner = O
+trait GenericMapping[S, O] extends ConcreteMapping { self =>
+	type Origin = O
 	type Subject = S
 
 	def buffs :Seq[Buff[S]] = Nil
@@ -531,7 +530,7 @@ trait GenericMapping[O, S] extends ConcreteMapping { self =>
   * implementation substitutes any component passed to it with its lifted representation before looking for its value.
   *
   */
-trait RootMapping[O, S] extends GenericMapping[O, S] {
+trait RootMapping[S, O] extends GenericMapping[S, O] {
 	override def optionally(pieces :Pieces) :Option[S] =
 		super.optionally(pieces.aliased { c => apply[c.Subject](c).lifted })
 }
@@ -543,15 +542,15 @@ trait RootMapping[O, S] extends GenericMapping[O, S] {
 
 object Mapping {
 	@inline
-	implicit def mappingSelfPath[M <: Mapping, X <: Component[O, S], O, S]
-	                            (mapping :M)(implicit help :IsBoth[M, X, Component[O, S]]) :SelfPath[X, O, S] =
-		SelfPath.typed[X, O, S](mapping)
+	implicit def mappingSelfPath[M <: Mapping, X <: Component[S, O], S, O]
+	                            (mapping :M)(implicit help :IsBoth[M, X, Component[S, O]]) :SelfPath[X, S, O] =
+		SelfPath.typed[X, S, O](mapping)
 
 	implicit class MappingLabelling[M <: Component[_, _]](private val self :M) extends AnyVal {
 		/** Attaches a label (a string literal) to this mapping, transforming it into a `LabeledMapping` with the
 		  * literal type included as its type parameter.
 		  */
-		def @:[L <: Label](label :L) :L @: M = LabeledMapping[L, M, M#Owner, M#Subject](label, self)
+		def @:[L <: Label](label :L) :L @: M = LabeledMapping[L, M, M#Subject, M#Origin](label, self)
 	}
 
 
@@ -560,11 +559,11 @@ object Mapping {
 	  * it in the client code''.
 	  * A sealed trait mixed-in by `GenericMapping`, which enforces that any of its (proper) subclasses,
 	  * abstract or not, are also `GenericMapping` instances. Many generic methods and classes require
-	  * their `Mapping` type parameter to have definitions of both or one of `Owner` and `Subject`.
-	  * Unfortunately, declaring `[M &lt;: Component[_, _]]` leads to `M#Owner`, `M#Subject` being instantiated
-	  * early as unique types, not unifiable with types `O, S` where `C &lt;: Component[O, S]]` is the type argument
+	  * their `Mapping` type parameter to have definitions of both or one of `Origin` and `Subject`.
+	  * Unfortunately, declaring `[M &lt;: Component[_, _]]` leads to `M#Origin`, `M#Subject` being instantiated
+	  * early as unique types, not unifiable with types `O, S` where `C &lt;: Component[S, O]]` is the type argument
 	  * for `M`. Somewhat counterintuitively, `[M &lt;: ConcreteMapping]` on the other hand, leads to
-	  * `M#Owner =:= O` and `M#Subject =:= S` in the same circumstances. While the generic class/method will
+	  * `M#Origin =:= O` and `M#Subject =:= S` in the same circumstances. While the generic class/method will
 	  * likely need to resort to casting down `M#Subject` to `m.Subject` for some `m :M`, in the interface at least
 	  * it provides type safety. The only exception would be `M =:= ConcreteMapping` itself, so we simply warn
 	  * against any references to it by the client application.
@@ -574,22 +573,22 @@ object Mapping {
 
 
 	type TypedMapping[S] = ConcreteMapping { type Subject = S } //todo: MappingOf
-	type AnyComponent[O] = ConcreteMapping { type Owner = O } //todo: MappingFrom
-	type Component[O, S] = ConcreteMapping { type Owner = O; type Subject = S } //todo: TypedMapping
+	type AnyComponent[O] = ConcreteMapping { type Origin = O } //todo: MappingFrom
+	type Component[S, O] = ConcreteMapping { type Origin = O; type Subject = S } //todo: TypedMapping
 
-//	type MappingFrom[O] = { type T[S] = Component[O, S] }
-//	type MappingOf[S] = { type T[O] = Component[O, S] }
+//	type MappingFrom[O] = { type T[S] = Component[S, O] }
+//	type MappingOf[S] = { type T[O] = Component[S, O] }
 
 
 
 //	type SingletonMapping = Mapping with Singleton
 //	type TypedSingleton[S] = Mapping with Singleton { type Subject = S }
-//	type AnySingleton[O] = Mapping with Singleton { type Owner = O }
-//	type SingletonComponent[O, S] = Component[O, S] with Singleton //Mapping with Singleton { type Owner = O; type Subject = S }
+//	type AnySingleton[O] = Mapping with Singleton { type Origin = O }
+//	type SingletonComponent[S, O] = Component[S, O] with Singleton //Mapping with Singleton { type Origin = O; type Subject = S }
 
 
 	type CompatibleMapping[M <: Mapping] = ConcreteMapping {
-		type Owner = M#Owner
+		type Origin = M#Origin
 		type Subject = M#Subject
 	}
 
@@ -598,7 +597,7 @@ object Mapping {
 //	}
 
 	type ConcreteSubclass[M <: ConcreteMapping] = M {
-		type Owner = M#Owner
+		type Origin = M#Origin
 		type Subject = M#Subject
 	}
 
@@ -619,12 +618,12 @@ object Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](Component[T] ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  */
-	trait ComponentExtractor[O, -S, T] extends Extractor[S, T] {
+	trait ComponentExtractor[-S, T, O] extends Extractor[S, T] {
 		//todo: rename exported
-		val lifted :Component[O, T]
+		val lifted :Component[T, O]
 
-		override def compose[X](extractor :Extractor[X, S]) :ComponentExtractor[O, X, T] = extractor match {
-			case _ :IdentityExtractor[_] => this.asInstanceOf[ComponentExtractor[O, X, T]]
+		override def compose[X](extractor :Extractor[X, S]) :ComponentExtractor[X, T, O] = extractor match {
+			case _ :IdentityExtractor[_] => this.asInstanceOf[ComponentExtractor[X, T, O]]
 
 			case const :ConstantExtractor[_, S] => try {
 				ComponentExtractor.const(lifted)(apply(const.constant))
@@ -636,17 +635,17 @@ object Mapping {
 				ComponentExtractor.opt(lifted)(req.getter andThen optional)
 
 			case _ :EmptyExtractor[_, _] =>
-				ComponentExtractor.none[O, T](lifted)
+				ComponentExtractor.none[T, O](lifted)
 
 			case _ =>
 				val first = extractor.optional; val second = optional
 				ComponentExtractor.opt(lifted)(first(_) flatMap second)
 		}
 
-		override def compose[X](first :X => S) :ComponentExtractor[O, X, T] =
+		override def compose[X](first :X => S) :ComponentExtractor[X, T, O] =
 			ComponentExtractor.opt(lifted)(first andThen optional)
 
-		def andThen[Y](selector :ComponentExtractor[O, T, Y]) :ComponentExtractor[O, S, Y] =
+		def andThen[Y](selector :ComponentExtractor[T, Y, O]) :ComponentExtractor[S, Y, O] =
 			selector compose this
 
 		override def toString :String = "Extractor(" + lifted + ")"
@@ -655,15 +654,15 @@ object Mapping {
 
 
 	object ComponentExtractor {
-		def apply[O, S, T](component :Component[O, T], pick :S => Option[T], surepick :Option[S=>T]) :ComponentExtractor[O, S, T] =
+		def apply[S, T, O](component :Component[T, O], pick :S => Option[T], surepick :Option[S => T]) :ComponentExtractor[S, T, O] =
 			surepick match {
 				case Some(sure) => req(component)(sure)
 				case _ => opt(component)(pick)
 			}
 
-		def apply[O, S, T](component :Component[O, T])(extractor :Extractor[S, T]) :ComponentExtractor[O, S, T] =
+		def apply[S, T, O](component :Component[T, O])(extractor :Extractor[S, T]) :ComponentExtractor[S, T, O] =
 			extractor match {
-				case _ :IdentityExtractor[_] => ident(component).asInstanceOf[ComponentExtractor[O, S, T]]
+				case _ :IdentityExtractor[_] => ident(component).asInstanceOf[ComponentExtractor[S, T, O]]
 				case c :ConstantExtractor[_, T] => const(component)(c.constant)
 				case requisite :RequisiteExtractor[S, T] => new RequisiteComponent(component, requisite.getter)
 				case _ :EmptyExtractor[_, _] => none(component)
@@ -672,30 +671,30 @@ object Mapping {
 
 
 
-		def req[O, S, T](component :Component[O, T])(requisite :S => T) :ComponentExtractor[O, S, T] =
-			new RequisiteComponent[O, S, T](component, requisite)
+		def req[S, T, O](component :Component[T, O])(requisite :S => T) :ComponentExtractor[S, T, O] =
+			new RequisiteComponent[S, T, O](component, requisite)
 
-		def opt[O, S, T](component :Component[O, T])(selector :S => Option[T]) :ComponentExtractor[O, S, T] =
-			new OptionalComponent[O, S, T](component, selector)
+		def opt[S, T, O](component :Component[T, O])(selector :S => Option[T]) :ComponentExtractor[S, T, O] =
+			new OptionalComponent[S, T, O](component, selector)
 
-		def ident[O, T](component :Component[O, T]) :ComponentExtractor[O, T, T] =
-			new IdentityComponent[O, T](component)
+		def ident[T, O](component :Component[T, O]) :ComponentExtractor[T, T, O] =
+			new IdentityComponent[T, O](component)
 
-		def const[O, T](component :Component[O, T])(value :T) :ComponentExtractor[O, Any, T] =
-			new ConstantComponent[O, T](component, value)
+		def const[T, O](component :Component[T, O])(value :T) :ComponentExtractor[Any, T, O] =
+			new ConstantComponent[T, O](component, value)
 
-		def none[O, T](component :Component[O, T]) :ComponentExtractor[O, Any, T] =
+		def none[T, O](component :Component[T, O]) :ComponentExtractor[Any, T, O] =
 			new EmptyComponent(component)
 
 
 
-		def unapply[O, S, T](selector :ComponentExtractor[O, S, T]) :Option[(S => Option[T], Option[S => T], Component[O, T])] =
+		def unapply[S, T, O](selector :ComponentExtractor[S, T, O]) :Option[(S => Option[T], Option[S => T], Component[T, O])] =
 			Some(selector.optional, selector.requisite, selector.lifted)
 
 
 
-		class OptionalComponent[O, S, T](val lifted :Component[O, T], override val optional :S => Option[T])
-			extends ComponentExtractor[O, S, T] with OptionalExtractor[S, T]
+		class OptionalComponent[S, T, O](val lifted :Component[T, O], override val optional :S => Option[T])
+			extends ComponentExtractor[S, T, O] with OptionalExtractor[S, T]
 		{
 			override def get(x :S) :Option[T] = optional(x)
 
@@ -704,48 +703,48 @@ object Mapping {
 
 
 
-		class RequisiteComponent[O, -S, T](final val lifted :Component[O, T], override val getter :S => T)
-			extends ComponentExtractor[O, S, T] with RequisiteExtractor[S, T]
+		class RequisiteComponent[-S, T, O](final val lifted :Component[T, O], override val getter :S => T)
+			extends ComponentExtractor[S, T, O] with RequisiteExtractor[S, T]
 		{
 			override def apply(x :S) :T = getter(x)
 
-			override def compose[X](extractor :X =?> S) :ComponentExtractor[O, X, T] = extractor match {
-				case _ :IdentityExtractor[_] => this.asInstanceOf[ComponentExtractor[O, X, T]]
+			override def compose[X](extractor :X =?> S) :ComponentExtractor[X, T, O] = extractor match {
+				case _ :IdentityExtractor[_] => this.asInstanceOf[ComponentExtractor[X, T, O]]
 				case _ :ConstantExtractor[_, _] => super.compose(extractor)
 				case req :RequisiteExtractor[X, S] =>
-					new RequisiteComponent[O, X, T](lifted, req.getter andThen getter)
+					new RequisiteComponent[X, T, O](lifted, req.getter andThen getter)
 				case _ =>
 					val first = extractor.optional
-					new OptionalComponent[O, X, T](lifted, first(_).map(getter))
+					new OptionalComponent[X, T, O](lifted, first(_).map(getter))
 			}
 
-			override def compose[W](extractor :RequisiteExtractor[W, S]) :RequisiteComponent[O, W, T] = extractor match {
-				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[O, W, T]]
+			override def compose[W](extractor :RequisiteExtractor[W, S]) :RequisiteComponent[W, T, O] = extractor match {
+				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[W, T, O]]
 				case const :ConstantExtractor[_, S] => try {
-					new ConstantComponent[O, T](lifted, getter(const.constant))
+					new ConstantComponent[T, O](lifted, getter(const.constant))
 				} catch {
-					case _ :Exception => new RequisiteComponent[O, W, T](lifted, extractor.getter andThen getter)
+					case _ :Exception => new RequisiteComponent[W, T, O](lifted, extractor.getter andThen getter)
 				}
 				case _ =>
-					new RequisiteComponent[O, W, T](lifted, extractor.getter andThen getter)
+					new RequisiteComponent[W, T, O](lifted, extractor.getter andThen getter)
 			}
 
-			override def compose[W](req :W => S) :RequisiteComponent[O, W, T] =
-				new RequisiteComponent[O, W, T](lifted, req andThen getter)
+			override def compose[W](req :W => S) :RequisiteComponent[W, T, O] =
+				new RequisiteComponent[W, T, O](lifted, req andThen getter)
 
 			override def toString :String = "Requisite(" + lifted + ")"
 		}
 
 
 
-		class IdentityComponent[O, S](component :Component[O, S])
-			extends RequisiteComponent[O, S, S](component, identity[S]) with IdentityExtractor[S]
+		class IdentityComponent[S, O](component :Component[S, O])
+			extends RequisiteComponent[S, S, O](component, identity[S]) with IdentityExtractor[S]
 		{
-			override def compose[W](extractor :W =?> S) :ComponentExtractor[O, W, S] = extractor match {
+			override def compose[W](extractor :W =?> S) :ComponentExtractor[W, S, O] = extractor match {
 				case comp :ComponentExtractor[_, _, _] if comp.lifted == lifted =>
-					comp.asInstanceOf[ComponentExtractor[O, W, S]]
+					comp.asInstanceOf[ComponentExtractor[W, S, O]]
 
-				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[O, W, S]]
+				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[W, S, O]]
 
 				case c :ConstantExtractor[_, _] => const(lifted)(c.constant.asInstanceOf[S])
 
@@ -754,41 +753,41 @@ object Mapping {
 				case _ => opt(lifted)(extractor.optional)
 			}
 
-			override def compose[W](extractor :RequisiteExtractor[W, S]) :RequisiteComponent[O, W, S] = extractor match {
-				case comp :RequisiteComponent[_, _, _] => comp.asInstanceOf[RequisiteComponent[O, W, S]]
-				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[O, W, S]]
-				case _ => new RequisiteComponent[O, W, S](lifted, extractor.getter)
+			override def compose[W](extractor :RequisiteExtractor[W, S]) :RequisiteComponent[W, S, O] = extractor match {
+				case comp :RequisiteComponent[_, _, _] => comp.asInstanceOf[RequisiteComponent[W, S, O]]
+				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[W, S, O]]
+				case _ => new RequisiteComponent[W, S, O](lifted, extractor.getter)
 			}
 
-			override def compose[W](req :W => S) = new RequisiteComponent[O, W, S](lifted, req)
+			override def compose[W](req :W => S) = new RequisiteComponent[W, S, O](lifted, req)
 
 			override def toString :String = "Identity(" + lifted + ")"
 		}
 
 
 
-		class ConstantComponent[O, S](component :Component[O, S], const :S)
-			extends RequisiteComponent[O, Any, S](component, (_ :Any) => const) with ConstantExtractor[Any, S]
+		class ConstantComponent[S, O](component :Component[S, O], const :S)
+			extends RequisiteComponent[Any, S, O](component, (_ :Any) => const) with ConstantExtractor[Any, S]
 		{
 			override def constant :S = const
 
-			override def compose[W](extractor :W =?> Any) :ComponentExtractor[O, W, S] = this
+			override def compose[W](extractor :W =?> Any) :ComponentExtractor[W, S, O] = this
 
-			override def compose[W](extractor :RequisiteExtractor[W, Any]) :RequisiteComponent[O, W, S] = this
+			override def compose[W](extractor :RequisiteExtractor[W, Any]) :RequisiteComponent[W, S, O] = this
 
-			override def compose[W](req :W => Any) :RequisiteComponent[O, W, S] = this
+			override def compose[W](req :W => Any) :RequisiteComponent[W, S, O] = this
 
 			override def toString :String = "Const(" + component + "=" + constant + ")"
 		}
 
 
 
-		class EmptyComponent[O, T](component :Component[O, T])
-			extends OptionalComponent[O, Any, T](component, Extractor.none.optional) with EmptyExtractor[Any, T]
+		class EmptyComponent[T, O](component :Component[T, O])
+			extends OptionalComponent[Any, T, O](component, Extractor.none.optional) with EmptyExtractor[Any, T]
 		{
-			override def compose[W](extractor :W =?> Any) :EmptyComponent[O, T] = this
+			override def compose[W](extractor :W =?> Any) :EmptyComponent[T, O] = this
 
-			override def compose[W](req :W => Any) :EmptyComponent[O, T] = this
+			override def compose[W](req :W => Any) :EmptyComponent[T, O] = this
 
 			override def toString :String = "Empty(" + component + ")"
 		}
@@ -803,7 +802,7 @@ object Mapping {
 
 	trait ColumnFilter {
 		def apply[S](mapping :TypedMapping[S]) :Unique[mapping.Component[_]] =
-			mapping.columns.filter(test[mapping.Owner])
+			mapping.columns.filter(test[mapping.Origin])
 
 		def filter[O](columns :Unique[AnyComponent[O]]) :Unique[AnyComponent[O]] =
 			columns.filter(test[O])
@@ -811,10 +810,10 @@ object Mapping {
 		def test[O](column :AnyComponent[O]) :Boolean
 
 		def read[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
-			MappingReadForm[mapping.Owner, S](mapping, apply(mapping :mapping.type))
+			MappingReadForm[S, mapping.Origin](mapping, apply(mapping :mapping.type))
 
 		def write[S](mapping :TypedMapping[S])(forms :mapping.AnyComponent => SQLForm[_]) :SQLWriteForm[S] =
-			MappingWriteForm[mapping.Owner, S](mapping, apply(mapping :mapping.type), forms)
+			MappingWriteForm[S, mapping.Origin](mapping, apply(mapping :mapping.type), forms)
 	}
 
 
@@ -879,8 +878,8 @@ object Mapping {
 
 
 
-	private class MappingReadForm[O, S] private[Mapping]
-			(mapping :Component[O, S], columns :Unique[AnyComponent[O]], read :AnyComponent[O]=>SQLReadForm[_] = (_:AnyComponent[O]).selectForm)
+	private class MappingReadForm[S, O] private[Mapping]
+			(mapping :Component[S, O], columns :Unique[AnyComponent[O]], read :AnyComponent[O]=>SQLReadForm[_] = (_:AnyComponent[O]).selectForm)
 		extends SQLReadForm[S]
 	{
 		private[this] val columnArray = columns.toArray
@@ -918,13 +917,13 @@ object Mapping {
 
 	object MappingReadForm {
 
-		def apply[O, S](mapping :Component[O, S], columns :Unique[AnyComponent[O]],
+		def apply[S, O](mapping :Component[S, O], columns :Unique[AnyComponent[O]],
 		                              forms :AnyComponent[O] => SQLReadForm[_] = (_:AnyComponent[O]).selectForm) :SQLReadForm[S] =
-			new MappingReadForm[O, S](mapping, columns, forms)
+			new MappingReadForm[S, O](mapping, columns, forms)
 
 
 
-		def select[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]]) :SQLReadForm[S] = {
+		def select[S, O](mapping :Component[S, O], components :Unique[AnyComponent[O]]) :SQLReadForm[S] = {
 			val columns = components.map(mapping.lift(_)).flatMap(_.selectable)
 
 			if (columns.exists(NoSelect.enabled))
@@ -932,25 +931,25 @@ object Mapping {
 					s"Can't create a select form for $mapping using $components: NoSelect buff present among the selection."
 				)
 			val extra = columns ++ ExtraSelect.Enabled(mapping)
-			new MappingReadForm[O, S](mapping, extra, _.selectForm)
+			new MappingReadForm[S, O](mapping, extra, _.selectForm)
 		}
 
 		def defaultSelect[S](mapping :TypedMapping[S]) :SQLReadForm[S] = {
 			val columns = mapping.selectable.filter(NoSelectByDefault.disabled) ++ ExtraSelect.Enabled(mapping)
-			new MappingReadForm[mapping.Owner, S](mapping, columns, _.selectForm)
+			new MappingReadForm[S, mapping.Origin](mapping, columns, _.selectForm)
 		}
 
 
 		def fullSelect[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
-			new MappingReadForm[mapping.Owner, S](mapping, mapping.selectable ++ ExtraSelect.Enabled(mapping))
+			new MappingReadForm[S, mapping.Origin](mapping, mapping.selectable ++ ExtraSelect.Enabled(mapping))
 
 
 
 		def autoInsert[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
-			new MappingReadForm[mapping.Owner, S](mapping, mapping.autoInserted)
+			new MappingReadForm[S, mapping.Origin](mapping, mapping.autoInserted)
 
 		def autoUpdate[S](mapping :TypedMapping[S]) :SQLReadForm[S] =
-			new MappingReadForm[mapping.Owner, S](mapping, mapping.autoUpdated)
+			new MappingReadForm[S, mapping.Origin](mapping, mapping.autoUpdated)
 
 	}
 
@@ -959,8 +958,8 @@ object Mapping {
 
 
 
-	private class MappingWriteForm[O, S] private (
-			mapping :Component[O, S],
+	private class MappingWriteForm[S, O] private (
+			mapping :Component[S, O],
 			columns :Unique[AnyComponent[O]],
 			substitute :ValuedBuffType,
 			write :AnyComponent[O] => SQLWriteForm[_])
@@ -975,7 +974,7 @@ object Mapping {
 				val subject = value.asInstanceOf[mapping.Subject]
 				var i = position
 				columns foreach { c =>
-					val column = c.asInstanceOf[Component[O, Any]]
+					val column = c.asInstanceOf[Component[Any, O]]
 					val form = write(column).asInstanceOf[SQLWriteForm[Any]]
 					//extras(columns.indexOf(column))
 					form.setOpt(i)(statement, substitute.Value(column) orElse mapping(column).get(subject))
@@ -1035,13 +1034,13 @@ object Mapping {
 
 	object MappingWriteForm {
 
-		def apply[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		def apply[S, O](mapping :Component[S, O], components :Unique[AnyComponent[O]],
 		                              write :AnyComponent[O] => SQLWriteForm[_],
 		                              replacement :ValuedBuffType = AbstractValuedBuff) :SQLWriteForm[S] =
-			new MappingWriteForm[O, S](mapping, components, replacement, write)
+			new MappingWriteForm[S, O](mapping, components, replacement, write)
 
 
-		def query[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		def query[S, O](mapping :Component[S, O], components :Unique[AnyComponent[O]],
 		                              write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).queryForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoQuery, ExtraQuery, write)
 
@@ -1053,7 +1052,7 @@ object Mapping {
 
 
 
-		def update[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		def update[S, O](mapping :Component[S, O], components :Unique[AnyComponent[O]],
 			                           write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).updateForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoUpdate, ExtraUpdate, write)
 
@@ -1065,7 +1064,7 @@ object Mapping {
 
 
 
-		def insert[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		def insert[S, O](mapping :Component[S, O], components :Unique[AnyComponent[O]],
 		                               write :AnyComponent[O] => SQLWriteForm[_] = (_:AnyComponent[O]).insertForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoInsert, ExtraInsert, write)
 
@@ -1077,7 +1076,7 @@ object Mapping {
 
 
 
-		private def custom[O, S](mapping :Component[O, S], components :Unique[AnyComponent[O]],
+		private def custom[S, O](mapping :Component[S, O], components :Unique[AnyComponent[O]],
 		                                       prohibit :BuffType, mandatory :ValuedBuffType,
 		                                       write :AnyComponent[O] => SQLWriteForm[_]) :SQLWriteForm[S] =
 		{
@@ -1086,18 +1085,18 @@ object Mapping {
 					s"Can't create a write form for $mapping using $components: $prohibit buff present among selection"
 				)
 			val extra = components.flatMap(mapping.lift(_).columns.toSeq.filter(prohibit.disabled) ++ mandatory.Enabled(mapping))
-			new MappingWriteForm[O, S](mapping, extra, mandatory, write)
+			new MappingWriteForm[S, O](mapping, extra, mandatory, write)
 		}
 
 		private def default[S](mapping :TypedMapping[S])(filterNot :BuffType, mandatory :ValuedBuffType,
 		                                                 write :mapping.AnyComponent => SQLWriteForm[_]) :SQLWriteForm[S] = {
 			val columns = filterNot.Disabled(mapping) ++ mandatory.Enabled(mapping)
-			new MappingWriteForm[mapping.Owner, S](mapping, columns, mandatory, write)
+			new MappingWriteForm[S, mapping.Origin](mapping, columns, mandatory, write)
 		}
 
 		private def full[S](mapping :TypedMapping[S])(columns :Unique[mapping.AnyComponent], extra :ValuedBuffType,
 		                                              write :mapping.AnyComponent => SQLWriteForm[_]) :SQLWriteForm[S] =
-			new MappingWriteForm[mapping.Owner, S](mapping, columns ++ extra.Enabled(mapping), extra, write)
+			new MappingWriteForm[S, mapping.Origin](mapping, columns ++ extra.Enabled(mapping), extra, write)
 
 	}
 

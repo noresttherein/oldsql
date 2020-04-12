@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.{Component, ConcreteMapping}
+import net.noresttherein.oldsql.schema.Mapping.ConcreteMapping
 import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.AdaptedAs
 import net.noresttherein.oldsql.schema.support.MappingNest.OpenNest
@@ -48,7 +48,7 @@ object MappingNest {
 
 
 
-trait MappingAdapter[+M <: ConcreteMapping, O, S] extends GenericMapping[O, S] with OpenNest[M] {
+trait MappingAdapter[+M <: ConcreteMapping, S, O] extends GenericMapping[S, O] with OpenNest[M] {
 	override val egg :M
 
 //	override def map[X](there :S => X, back :X => S) :egg.type AdaptedAs X =
@@ -65,9 +65,9 @@ trait MappingAdapter[+M <: ConcreteMapping, O, S] extends GenericMapping[O, S] w
 
 object MappingAdapter {
 
-	type Adapted[M <: ConcreteMapping] = MappingAdapter[M, M#Owner, M#Subject]
-	type AdaptedAs[M <: ConcreteMapping, T] = MappingAdapter[M, M#Owner, T]
-	type AdaptedFor[M <: ConcreteMapping, O] = MappingAdapter[M, O, M#Subject]
+	type Adapted[M <: ConcreteMapping] = MappingAdapter[M, M#Subject, M#Origin]
+	type AdaptedAs[M <: ConcreteMapping, T] = MappingAdapter[M, T, M#Origin]
+	type AdaptedFor[M <: ConcreteMapping, O] = MappingAdapter[M, M#Subject, O]
 
 
 	/** Base trait for mappings which adapt another proxy from the same source `O`. Declares a single component,
@@ -81,7 +81,7 @@ object MappingAdapter {
 	  * @tparam S the subject type of the adapted mapping `M`.
 	  * @tparam T the subject type of this mapping.
 	  */
-	trait ShallowAdapter[+M <: Mapping.Component[O, S], O, S, T] extends GenericMapping[O, T] with MappingNest[M] {
+	trait ShallowAdapter[+M <: Mapping.Component[S, O], S, T, O] extends GenericMapping[T, O] with MappingNest[M] {
 
 		override def components :Unique[Component[_]] = Unique(egg)
 		override def subcomponents :Unique[Component[_]] = egg.subcomponents //fixme: does not include egg

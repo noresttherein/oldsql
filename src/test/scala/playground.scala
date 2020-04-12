@@ -1,8 +1,7 @@
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
-import net.noresttherein.oldsql.collection.Record
-import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, MappingSchema, MappingSupport, SchemaMapping, SQLForm}
-import net.noresttherein.oldsql.schema.RowSource.Table
+import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, Mapping, MappingSchema}
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, TypedMapping}
 
 
 
@@ -18,14 +17,22 @@ object playground extends App {
 	def high(h :T) = ???
 
 //	high(new High[Lower] {})
-
+	class J[L, R <: Mapping] {
+		def as[A <: String with Singleton, M[O] <: AnyComponent[O]](alias :A)(implicit ev: R <:< M[_]) :J[L, M[A]] = ???
+	}
+//	abstract class C[O] extends GenericMapping[O, Int]
+//	val alias = new J[C[Any], C[Any]] as "ala"
+//	alias :J[C[Any], C["ala"]]
+	abstract class C extends GenericMapping[Int, Any]
+	val alias = new J[C, C] as "ala"
+	alias :J[C, GenericMapping[Int, "ala"]]
 
 	case class Gun(make :String, model :String, caliber :Double)
 	case class Human(gun :Gun, backup :Gun, secondBackup :Gun)
 
-	def guns[O] = MappingSchema[O, Gun].col(_.make).col(_.model).col(_.caliber).map(Gun.apply _)
+	def guns[O] = MappingSchema[Gun, O].col(_.make).col(_.model).col(_.caliber).map(Gun.apply _)
 	def humans[O] =
-		MappingSchema[O, Human].comp(_.gun, guns[O].:@["gun"]).comp(_.backup, guns[O].:@["backup"]).comp(_.secondBackup, guns[O].:@["second"])
+		MappingSchema[Human, O].comp(_.gun, guns[O].:@["gun"]).comp(_.backup, guns[O].:@["backup"]).comp(_.secondBackup, guns[O].:@["second"])
 //		MappingSchema[O, Human].comp(_.gun, guns[O]).comp(_.backup, guns[O]).comp(_.secondBackup, guns[O])
 
 	class Humans[O] extends AbstractSchemaMapping(humans[O]) {

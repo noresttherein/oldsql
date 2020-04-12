@@ -1,14 +1,14 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{GenericMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{GenericMapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
 
 
 /**
   * @author Marcin Mościcki
   */
-trait EmptyMapping[O, S] extends GenericMapping[O, S] {
+trait EmptyMapping[S, O] extends GenericMapping[S, O] {
 
 	override def apply[T](component :Component[T]) :Selector[T] =
 		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")
@@ -45,7 +45,7 @@ trait EmptyMapping[O, S] extends GenericMapping[O, S] {
 
 
 
-class ConstantMapping[O, S](subject :S) extends EmptyMapping[O, S] {
+class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
 	private[this] val result = Some(subject)
 
 	override def assemble(values :Pieces) :Option[S] = result
@@ -59,7 +59,7 @@ class ConstantMapping[O, S](subject :S) extends EmptyMapping[O, S] {
 
 
 
-class FormMapping[O, S](implicit val form :SQLForm[S]) extends EmptyMapping[O, S] {
+class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O] {
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 		if (components.isEmpty) SQLReadForm.nulls(form.nulls)

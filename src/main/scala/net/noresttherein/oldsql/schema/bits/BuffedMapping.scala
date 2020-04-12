@@ -12,14 +12,14 @@ import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 /**
   * @author Marcin Mościcki
   */
-class BuffedMapping[+M <: Component[O, S], O, S](override val egg :M, override val buffs :Seq[Buff[S]])
-	extends EagerDeepProxy[M, O, S](egg) with MappingAdapter[M, O, S]
+class BuffedMapping[+M <: Component[S, O], S, O](override val egg :M, override val buffs :Seq[Buff[S]])
+	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
 {
 	override protected def adapt[T](component :egg.Component[T]) :Component[T] =
 		new BuffedMapping(component, schema.mapBuffs(this)(egg(component)))
 
 	protected override def adaptColumn[T](component :egg.Component[T]) :Component[T] = component match {
-		case column :ColumnMapping[O, T] =>
+		case column :ColumnMapping[T, O] =>
 			column.withBuffs(schema.mapBuffs(this)(egg(component)))
 		case _ =>
 			adapt(component)
@@ -32,6 +32,7 @@ class BuffedMapping[+M <: Component[O, S], O, S](override val egg :M, override v
 
 object BuffedMapping {
 	//todo: withBuffs method on Mapping
-	def apply[X <: Mapping, M <: Component[O, S], O, S](mapping :X, buffs :Buff[S]*)(implicit infer :IsBoth[X, M, Component[O, S]]) :MappingAdapter[M, O, S] =
-		new BuffedMapping[M, O, S](mapping, buffs)
+	def apply[X <: Mapping, M <: Component[S, O], S, O](mapping :X, buffs :Buff[S]*)
+	                                                   (implicit infer :IsBoth[X, M, Component[S, O]]) :MappingAdapter[M, S, O] =
+		new BuffedMapping[M, S, O](mapping, buffs)
 }

@@ -84,8 +84,10 @@ abstract class Join[+L <: FromClause, R[O] <: AnyComponent[O]] protected
 	def whereLast(filter :FromFormula[FromClause Join R, R] => BooleanFormula[FromClause Join R]) :This =
 		this.filter(filter(table))
 
-//	def on(filter :(L#LastTable[L Join R], FromFormula[L Join R, R]) => BooleanFormula[L Join R]) :Self[L] =
+//	def on(filter :(L#LastTable[This], FromFormula[This, R]) => BooleanFormula[This]) :This =
 //		this.filter(filter(left.lastTable))
+
+//	def where(filter :JoinedTables[This] => BooleanFormula[This]) :This
 /*
 	override def filteredBy :BooleanFormula[this.type] = left.filter.asPartOf(this) && joinCondition
 

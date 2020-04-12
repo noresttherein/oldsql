@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
@@ -15,7 +15,7 @@ import scala.util.Try
 
 
 
-trait MappedMapping[+M <: Mapping.Component[O, S], O, S, T] extends ShallowAdapter[M, O, S, T] {
+trait MappedMapping[+M <: Mapping.Component[S, O], S, T, O] extends ShallowAdapter[M, S, T, O] {
 	implicit protected def nulls :NullValue[T]
 	protected def map :S => T
 	protected def unmap :T => S
@@ -67,12 +67,12 @@ trait MappedMapping[+M <: Mapping.Component[O, S], O, S, T] extends ShallowAdapt
 		if (nulls != null) nulls.toOption
 		else Try { egg.nullValue.map(map) }.toOption.flatten
 
-	override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappingAdapter[M, O, X] =
-		MappedMapping[M, O, S, X](egg, map andThen there, back andThen unmap)(mapNulls(there))
+	override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+		MappedMapping[M, S, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
 
 	override def flatMap[X](there :T => Option[X], back :X => Option[T])
-	                       (implicit nulls :NullValue[X]) :MappingAdapter[M, O, X] =
-		MappedMapping.opt[M, O, S, X](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
+	                       (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+		MappedMapping.opt[M, S, X, O](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
 
 
 
@@ -97,33 +97,33 @@ trait MappedMapping[+M <: Mapping.Component[O, S], O, S, T] extends ShallowAdapt
 
 object MappedMapping {
 
-	def apply[M <: Component[O, S], O, S, T](mapping :M, mapped :S => T, unmapped :T => S)
+	def apply[M <: Component[S, O], S, T, O](mapping :M, mapped :S => T, unmapped :T => S)
 	                                        (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
-		new MappingBijection[M, O, S, T](mapping, mapped, unmapped)
+		new MappingBijection[M, S, T, O](mapping, mapped, unmapped)
 
 
-	def opt[M <: Component[O, S], O, S, T](mapping :M, mapped :S => Option[T], unmapped :T => Option[S])
+	def opt[M <: Component[S, O], S, T, O](mapping :M, mapped :S => Option[T], unmapped :T => Option[S])
 	                                      (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
-		new FlatMappedMapping[M, O, S, T](mapping, mapped, unmapped, nulls)
+		new FlatMappedMapping[M, S, T, O](mapping, mapped, unmapped, nulls)
 
 
 
 
 
 
-	private class MappingBijection[M <: Mapping.Component[O, S], O, S, T]
+	private class MappingBijection[M <: Mapping.Component[S, O], S, T, O]
 	                              (override val egg :M, override val map :S => T, override val unmap :T => S)
 	                              (implicit override val nulls :NullValue[T] = null)
-		extends MappedMapping[M, O, S, T] with MappingAdapter[M, O, T] //AdaptedAs[M, T]
+		extends MappedMapping[M, S, T, O] with MappingAdapter[M, T, O] //AdaptedAs[M, T]
 
 
 
-	class FlatMappedMapping[+M <: Mapping.Component[O, S], O, S, T]
+	class FlatMappedMapping[+M <: Mapping.Component[S, O], S, T, O]
 	                       (override val egg :M,
 	                        protected final val map :S => Option[T],
 	                        protected final val unmap :T => Option[S],
 	                        onNone :NullValue[T] = null)
-		extends ShallowAdapter[M, O, S, T] with MappingAdapter[M, O, T] //AdaptedAs[M, T]
+		extends ShallowAdapter[M, S, T, O] with MappingAdapter[M, T, O] //AdaptedAs[M, T]
 	{
 		implicit protected val nulls :NullValue[T] =
 			if (onNone != null)
@@ -189,12 +189,12 @@ object MappedMapping {
 
 
 
-		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappingAdapter[M, O, X] =
-			new FlatMappedMapping[M, O, S, X](egg, map(_) map there, back andThen unmap, mapNulls(there))
+		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+			new FlatMappedMapping[M, S, X, O](egg, map(_) map there, back andThen unmap, mapNulls(there))
 
 		override def flatMap[X](there :T => Option[X], back :X => Option[T])
-		                       (implicit nulls :NullValue[X]) :MappingAdapter[M, O, X] =
-			new FlatMappedMapping[M, O, S, X](egg, map(_) flatMap there, back(_) flatMap unmap, flatMapNulls(there))
+		                       (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+			new FlatMappedMapping[M, S, X, O](egg, map(_) flatMap there, back(_) flatMap unmap, flatMapNulls(there))
 
 
 		protected def mapNulls[X](there :T => X)(implicit nulls :NullValue[X]) :NullValue[X] =

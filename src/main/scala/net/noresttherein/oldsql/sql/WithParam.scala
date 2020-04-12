@@ -39,7 +39,7 @@ sealed trait WithParam[+F <: FromClause, X] extends Join[F, ParamSource[X]#Row] 
 
 
 
-	def mapping :ParamMapping[Any, X] = table.mapping
+	def mapping :ParamMapping[X, Any] = table.mapping
 
 
 /*
@@ -80,10 +80,10 @@ object WithParam {
 
 
 
-	class ParamSource[X :SQLForm](name :String) extends RowSource[({ type T[O] = ParamMapping[O, X] })#T] {
-		override type Row[O] = ParamMapping[O, X]
+	class ParamSource[X :SQLForm](name :String) extends RowSource[({ type T[O] = ParamMapping[X, O] })#T] {
+		override type Row[O] = ParamMapping[X, O]
 
-		override def apply[O] :ParamMapping[O, X] = new ParamMapping[O, X](name)
+		override def apply[O] :ParamMapping[X, O] = new ParamMapping[X, O](name)
 
 		override def sql :String = ":" + name
 	}
@@ -109,7 +109,7 @@ object WithParam {
 	  * @param name a suggested name of the parameter for debugging purposes.
 	  * @tparam P the parameter type needed to prepare statements using this mapping in their sources.
 	  */
-	class ParamMapping[O, P](name :String)(implicit sqlForm :SQLForm[P]) extends FormMapping[O, P] { This =>
+	class ParamMapping[P, O](name :String)(implicit sqlForm :SQLForm[P]) extends FormMapping[P, O] { This =>
 
 		def this()(implicit form :SQLForm[P]) = this("?")
 
@@ -123,11 +123,11 @@ object WithParam {
 
 
 
-		override def apply[T](component :Component[T]) :ComponentExtractor[O, P, T] = component match {
+		override def apply[T](component :Component[T]) :ComponentExtractor[P, T, O] = component match {
 			case self :AnyRef if self eq this =>
-				ComponentExtractor.ident[O, P](this).asInstanceOf[ComponentExtractor[O, P, T]]
+				ComponentExtractor.ident[P, O](this).asInstanceOf[ComponentExtractor[P, T, O]]
 			case mapping :ParamMapping[_, _]#ComponentMapping[_] if mapping.param eq this =>
-				ComponentExtractor[O, P, T](component)(mapping.asInstanceOf[ComponentMapping[T]].extractor)
+				ComponentExtractor[P, T, O](component)(mapping.asInstanceOf[ComponentMapping[T]].extractor)
 			case _ =>
 				throw new IllegalArgumentException(s"Component $component is not a part of this parameter mapping $this")
 		}
@@ -135,9 +135,9 @@ object WithParam {
 
 
 		private class ComponentMapping[T :SQLForm](private[ParamMapping] val extractor :Extractor[P, T])
-			extends FormMapping[O, T]
+			extends FormMapping[T, O]
 		{
-			def param :ParamMapping[O, P] = This
+			def param :ParamMapping[P, O] = This
 			override def toString = s"$This[$form]"
 		}
 
@@ -146,9 +146,9 @@ object WithParam {
 
 
 
-		def unapply[X](expr :SQLFormula[_, X]) :Option[ComponentExtractor[_, P, X]] = expr match {
+		def unapply[X](expr :SQLFormula[_, X]) :Option[ComponentExtractor[P, X, _]] = expr match {
 			case ComponentFormula(t, selector) if t.mapping == this =>
-				Some(selector.asInstanceOf[ComponentExtractor[_, P, X]])
+				Some(selector.asInstanceOf[ComponentExtractor[P, X, _]])
 			case _ => None
 		}
 
@@ -164,12 +164,14 @@ object WithParam {
 
 
 	object ParamMapping {
+		def apply[N <: String with Singleton, P](name :N)(implicit form :SQLForm[P]) :ParamMapping[P, N] =
+			new ParamMapping(name)
 
-		def unapply[X](expr :SQLFormula[_, X]) :Option[(ParamMapping[Any, C], ComponentExtractor[Any, C, X]) forSome { type C }] = expr match {
+		def unapply[X](expr :SQLFormula[_, X]) :Option[(ParamMapping[C, Any], ComponentExtractor[C, X, Any]) forSome { type C }] = expr match {
 			case ComponentFormula(table, extractor) if table.mapping.isInstanceOf[ParamMapping[_, _]] =>
 //				val param = extractor.asInstanceOf[ComponentExtractor[Any, X]]
 //				param.surepick.map((table.mapping.asInstanceOf[ParamMapping[Any]], _, param.lifted.queryForm))
-				Some(table.mapping.asInstanceOf[ParamMapping[Any, Any]] -> extractor.asInstanceOf[ComponentExtractor[Any, Any, X]])
+				Some(table.mapping.asInstanceOf[ParamMapping[Any, Any]] -> extractor.asInstanceOf[ComponentExtractor[Any, X, Any]])
 			case _ => None
 		}
 

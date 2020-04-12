@@ -16,7 +16,7 @@ import scala.reflect.runtime.universe.TypeTag
 /**
   * @author Marcin Mościcki
   */
-trait ReflectedMapping[O, S] extends MappingSupport[O, S] { composite =>
+trait ReflectedMapping[S, O] extends MappingSupport[S, O] { composite =>
 	protected implicit val subjectType :TypeTag[S]
 
 	private def selectorProperty[T](component :ComponentMapping[T]) :PropertyPath[S, T] =
@@ -30,7 +30,7 @@ trait ReflectedMapping[O, S] extends MappingSupport[O, S] { composite =>
 				)
 		}
 
-	trait ExtractorProperty[T] extends ComponentExtractor[O, S, T] {
+	trait ExtractorProperty[T] extends ComponentExtractor[S, T, O] {
 		val property :PropertyPath[S, T]
 		override def toString :String = "Extractor(" + property + "=" + lifted + ")"
 	}
@@ -38,25 +38,25 @@ trait ReflectedMapping[O, S] extends MappingSupport[O, S] { composite =>
 	override protected def selectorFor[T](component :ComponentMapping[T]) :ExtractorProperty[T] =
 		component.extractor match {
 			case _ :IdentityExtractor[_] => //fixme: doomed to fail - PropertyPath will throw up
-				new IdentityComponent[O, S](component.asInstanceOf[Component[S]]) with ExtractorProperty[S] {
+				new IdentityComponent[S, O](component.asInstanceOf[Component[S]]) with ExtractorProperty[S] {
 					override val property = selectorProperty(component.asInstanceOf[ComponentMapping[S]])
 				}.asInstanceOf[ExtractorProperty[T]]
 
 			case const :ConstantExtractor[_, _] => //fixme: doomed to fail - PropertyPath will throw up
-				new ConstantComponent[O, T](component, const.constant.asInstanceOf[T]) with ExtractorProperty[T] {
+				new ConstantComponent[T, O](component, const.constant.asInstanceOf[T]) with ExtractorProperty[T] {
 					override val property = selectorProperty(component)
 				}
 
 			case req :RequisiteExtractor[S, T] =>
-				new RequisiteComponent[O, S, T](component, req.getter) with ExtractorProperty[T] {
+				new RequisiteComponent[S, T, O](component, req.getter) with ExtractorProperty[T] {
 					override val property = selectorProperty(component)
 				}
 			case _ :EmptyExtractor[_, _] => //fixme: doomed to fail -> PropertyPath will throw up
-				new EmptyComponent[O, T](component) with ExtractorProperty[T] {
+				new EmptyComponent[T, O](component) with ExtractorProperty[T] {
 					override val property = selectorProperty(component)
 				}
 			case opt =>
-				new ComponentExtractor.OptionalComponent[O, S, T](component, opt.optional) with ExtractorProperty[T] {
+				new ComponentExtractor.OptionalComponent[S, T, O](component, opt.optional) with ExtractorProperty[T] {
 					override val property = selectorProperty(component)
 				}
 		}

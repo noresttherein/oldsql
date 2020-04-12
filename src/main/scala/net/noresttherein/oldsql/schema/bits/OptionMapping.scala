@@ -5,13 +5,12 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
 import net.noresttherein.oldsql.schema.{Buff, GenericMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
-import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.slang._
 
 
 
-trait OptionMapping[M <: Component[O, S], O, S] extends GenericMapping[O, Option[S]] {
+trait OptionMapping[M <: Component[S, O], S, O] extends GenericMapping[Option[S], O] {
 	val get :M
 }
 
@@ -19,17 +18,17 @@ trait OptionMapping[M <: Component[O, S], O, S] extends GenericMapping[O, Option
 
 object OptionMapping {
 
-	def singleton[O, S](mapping :Component[O, S]) :OptionMapping[mapping.type, O, S] =
+	def singleton[S, O](mapping :Component[S, O]) :OptionMapping[mapping.type, S, O] =
 		apply(mapping)
 
 
-	def apply[M <: Component[O, S], O, S](mapping :M) :OptionMapping[M, O, S] =
-		new DirectOptionMapping[M, O, S](mapping)
+	def apply[M <: Component[S, O], S, O](mapping :M) :OptionMapping[M, S, O] =
+		new DirectOptionMapping[M, S, O](mapping)
 
 
 
-	class DirectOptionMapping[M <: Component[O, S], O, S](val egg :M)
-		extends OptionMapping[M, O, S] with ShallowAdapter[M, O, S, Option[S]]
+	class DirectOptionMapping[M <: Component[S, O], S, O](val egg :M)
+		extends OptionMapping[M, S, O] with ShallowAdapter[M, S, Option[S], O]
 	{ box =>
 		val get :M = egg
 

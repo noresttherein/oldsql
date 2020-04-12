@@ -15,7 +15,7 @@ import scala.collection.mutable
 /**
   * @author Marcin Mościcki
   */
-trait ComponentProxy[O, S] extends GenericMapping[O, S] with MappingNest[TypedMapping[S]] {
+trait ComponentProxy[S, O] extends GenericMapping[S, O] with MappingNest[TypedMapping[S]] {
 
 	override def buffs :Seq[Buff[S]] = egg.buffs
 
@@ -32,7 +32,7 @@ object ComponentProxy {
 
 
 	/** A skeleton of a mapping proxy which uses the components of the proxied mapping as-is. */
-	trait ShallowProxy[O, S] extends ComponentProxy[O, S] with ShallowAdapter[Component[O, S], O, S, S] {
+	trait ShallowProxy[S, O] extends ComponentProxy[S, O] with ShallowAdapter[Component[S, O], S, S, O] {
 		protected override val egg :Component[S]
 
 		override def apply[T](component :Component[T]) :Selector[T] =
@@ -81,13 +81,13 @@ object ComponentProxy {
 
 
 	/** A skeleton trait for a mapping proxy which needs to adapt every component of the proxied mapping. */
-	trait DeepProxy[O, S] extends ComponentProxy[O, S] {
+	trait DeepProxy[S, O] extends ComponentProxy[S, O] {
 
 		override def apply[T](component :Component[T]) :Selector[T] =
 			if (component eq egg)
 				ComponentExtractor.ident(adaptEgg).asInstanceOf[Selector[T]]
 			else
-				ComponentExtractor[O, S, T](lift(component))(egg.apply(dealias(component)))
+				ComponentExtractor[S, T, O](lift(component))(egg.apply(dealias(component)))
 
 		override def lift[T](component :Component[T]) :Component[T] =
 			if (component eq egg)
@@ -151,15 +151,15 @@ object ComponentProxy {
 
 
 
-	//todo: look into removing Owner and Subject parameters
+	//todo: look into removing Origin and Subject parameters
 	/** A `DeepProxy` implementation which eagerly initializes all column and component lists and creates
 	  * a fixed mapping between components of the adapted mapping and their adapted counterparts as well as the
 	  * reverse.
 	  */
-	abstract class EagerDeepProxy[+M <: TypedMapping[S], O, S](protected override val egg :M)
-		extends DeepProxy[O, S] with MappingNest[M]
+	abstract class EagerDeepProxy[+M <: TypedMapping[S], S, O](protected override val egg :M)
+		extends DeepProxy[S, O] with MappingNest[M]
 	{
-		private[this] val lifted = mutable.Map[Mapping, ComponentExtractor[O, S, _]]()
+		private[this] val lifted = mutable.Map[Mapping, ComponentExtractor[S, _, O]]()
 		private[this] val originals = mutable.Map[Mapping.AnyComponent[O], Mapping]()
 
 		override val columns :Unique[Component[_]] = egg.columns.map(alias(_, true))
@@ -175,7 +175,7 @@ object ComponentProxy {
 
 		{
 			val adapted = adaptEgg
-			lifted.put(adapted, ComponentExtractor.ident[O, S](adapted))
+			lifted.put(adapted, ComponentExtractor.ident[S, O](adapted))
 			originals.put(adapted, egg)
 			oldsql.publishMutable()
 		}
@@ -184,13 +184,13 @@ object ComponentProxy {
 			lifted.getOrElse(component, {
 				val base :egg.Selector[T] =
 					if (egg eq component)
-						ComponentExtractor.ident[egg.Owner, S](egg).asInstanceOf[egg.Selector[T]]
+						ComponentExtractor.ident[S, egg.Origin](egg).asInstanceOf[egg.Selector[T]]
 					else
 	                    egg.apply(component)
 				val lifted =
 					if (column) adaptColumn(base.lifted)
 					else adapt(base.lifted)
-				val selector = ComponentExtractor[O, S, T](lifted)(base)
+				val selector = ComponentExtractor[S, T, O](lifted)(base)
 				this.lifted.put(component, selector)
 				this.lifted.put(base.lifted, selector)
 				if (!originals.contains(lifted))

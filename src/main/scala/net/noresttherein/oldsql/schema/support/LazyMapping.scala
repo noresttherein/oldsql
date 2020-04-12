@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{GenericMapping, SQLReadForm, SQLWriteForm}
 
 
 /** A convenience base trait for simple mappings which initialize all column lists by filtering the result
@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.schema.{GenericMapping, Mapping, SQLReadForm, SQ
   * [[net.noresttherein.oldsql.collection.Unique.delay]], which is thread safe, invokes the initializer at most once,
   * and doesn't incur any computational penalty once initialized.
   */
-trait LazyMapping[O, S] extends GenericMapping[O, S] {
+trait LazyMapping[S, O] extends GenericMapping[S, O] {
 
 	override val subcomponents :Unique[Component[_]] = Unique.delay(components.flatMap { c => c +: c.components })
 

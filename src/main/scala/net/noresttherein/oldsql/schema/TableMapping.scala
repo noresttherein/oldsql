@@ -6,12 +6,12 @@ import scala.reflect.runtime.universe.TypeTag
 /**
   * @author Marcin Mościcki
   */
-abstract class AbstractTableMapping[O, S](val tableName :String) extends RootMappingSupport[O, S] {
+abstract class AbstractTableMapping[S, O](val tableName :String) extends RootMappingSupport[S, O] {
 	override val sqlName = Some(tableName)
 }
 
-abstract class ReflectedTableMapping[O, S](tableName :String)(implicit val subjectType :TypeTag[S])
-	extends AbstractTableMapping[O, S](tableName) with ReflectedMapping[O, S]
+abstract class ReflectedTableMapping[S, O](tableName :String)(implicit val subjectType :TypeTag[S])
+	extends AbstractTableMapping[S, O](tableName) with ReflectedMapping[S, O]
 
-abstract class TableMapping[O <: String with Singleton :ValueOf, S :TypeTag]
-	extends AbstractTableMapping[O, S](valueOf[O])
+abstract class TableMapping[S :TypeTag, O <: String with Singleton :ValueOf]
+	extends AbstractTableMapping[S, O](valueOf[O])

@@ -23,26 +23,26 @@ import scala.collection.mutable.ListBuffer
 /**
   * @author Marcin Mościcki
   */
-trait RecordSchema[O, R <: Record, S] extends GenericMapping[O, S] { outer =>
+trait RecordSchema[R <: Record, S, O] extends GenericMapping[S, O] { outer =>
 
 	/** The list of components of this instance forming the schema and mapping for the `Record`
 	  * containing the their values.
 	  */
-	def schema :RecordMapping[O, R]
+	def schema :RecordMapping[R, O]
 
 	/** Retrieve the component with the given name from the schema.
 	  * @return `schema(name)` (overriden in `RecordComponent`).
 	  */
-	def apply[N <: Name, V](name :N)(implicit comp :GetComponent[O, R, N, V]) :Component[V] = schema(name)(comp)
+	def apply[N <: Name, V](name :N)(implicit comp :GetComponent[R, N, V, O]) :Component[V] = schema(name)(comp)
 
 
 
-	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :RecordSchema[O, R, X] =
-		new MappedRecordSchema[O, R, S, X](this, there, back)
+	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :RecordSchema[R, X, O] =
+		new MappedRecordSchema[R, S, X, O](this, there, back)
 
 	override def flatMap[X](there :S => Option[X], back :X => Option[S])
-	                       (implicit nulls :NullValue[X]) :RecordSchema[O, R, X] =
-		new FlatMappedRecordSchema[O, R, S, X](this, there, back, nulls)
+	                       (implicit nulls :NullValue[X]) :RecordSchema[R, X, O] =
+		new FlatMappedRecordSchema[R, S, X, O](this, there, back, nulls)
 
 }
 
@@ -51,8 +51,8 @@ trait RecordSchema[O, R <: Record, S] extends GenericMapping[O, S] { outer =>
 
 
 
-abstract class AbstractRecordSchema[O, R <: Record, S](override val schema :RecordMapping[O, R])
-	extends StaticMapping[O, S] with RecordSchema[O, R, S]
+abstract class AbstractRecordSchema[R <: Record, S, O](override val schema :RecordMapping[R, O])
+	extends StaticMapping[S, O] with RecordSchema[R, S, O]
 { outer =>
 
 
@@ -61,20 +61,20 @@ abstract class AbstractRecordSchema[O, R <: Record, S](override val schema :Reco
 		  * the enclosing mapping's schema.
 		  * @return `apply(name)`.
 		  */
-		@inline def c[V](implicit comp :GetComponent[O, R, N, V]) :Component[V] = apply(name)
+		@inline def c[V](implicit comp :GetComponent[R, N, V, O]) :Component[V] = apply(name)
 
 		/** Extension method injected into `String` literals retrieving as an `Option` the value of the component
 		  * with the given name from the implicitly available `ComponentValues`.
 		  * @return `pieces.get(apply(apply(name)))`.
 		  */
-		@inline def ?[V](implicit comp :GetComponent[O, R, N, V], pieces :Pieces) :Option[V] =
+		@inline def ?[V](implicit comp :GetComponent[R, N, V, O], pieces :Pieces) :Option[V] =
 			pieces.get(apply(apply(name)))
 
 		/** Extension method injected into `String` literals retrieving the value of the component
 		  * with the given name from the implicitly available `ComponentValues`.
 		  * @return `pieces(apply(apply(name)))`.
 		  */
-		@inline def ^[V](implicit comp :GetComponent[O, R, N, V], pieces :Pieces) :V =
+		@inline def ^[V](implicit comp :GetComponent[R, N, V, O], pieces :Pieces) :V =
 			pieces(apply(apply(name)))
 	}
 
@@ -98,18 +98,18 @@ object RecordSchema {
 	  * @see [[net.noresttherein.oldsql.schema.bits.RecordSchema.RecordMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.bits.RecordSchema.RecordComponent]]
 	  */
-	sealed trait RecordMappingBuilder[O, R <: Record] {
-		def +[K <: Name, V](next :RecordComponent[K, O, V]) :RecordMapping[O, R |# (K, V)]
+	sealed trait RecordMappingBuilder[R <: Record, O] {
+		def +[K <: Name, V](next :RecordComponent[K, V, O]) :RecordMapping[R |# (K, V), O]
 
 
-		@inline final def column[K <: Name :ValueOf, V :ColumnForm](buffs :Buff[V]*) :RecordMapping[O, R |# (K, V)] =
-			this + new RecordColumn[K, O, V](buffs)
+		@inline final def column[K <: Name :ValueOf, V :ColumnForm](buffs :Buff[V]*) :RecordMapping[R |# (K, V), O] =
+			this + new RecordColumn[K, V, O](buffs)
 
-		@inline final def column[K <: Name, V :ColumnForm](name :K, buffs: Buff[V]*) :RecordMapping[O, R |# (K, V)] =
-			this + new RecordColumn[K, O, V](buffs)(new ValueOf[K](name), ColumnForm[V])
+		@inline final def column[K <: Name, V :ColumnForm](name :K, buffs: Buff[V]*) :RecordMapping[R |# (K, V), O] =
+			this + new RecordColumn[K, V, O](buffs)(new ValueOf[K](name), ColumnForm[V])
 
-		@inline final def component[K <: Name, V](name :K, component :Component[O, V]) :RecordMapping[O, R |# (K, V)] =
-			this + new NamedRecordComponent[K, O, V](name, component)
+		@inline final def component[K <: Name, V](name :K, component :Component[V, O]) :RecordMapping[R |# (K, V), O] =
+			this + new NamedRecordComponent[K, V, O](name, component)
 	}
 
 
@@ -118,30 +118,30 @@ object RecordSchema {
 	  * from their name and subject pairs.
 	  * @tparam R the subject `Record` type.
 	  */
-	sealed trait RecordMapping[O, R <: Record] extends RecordMappingBuilder[O, R] with RecordSchema[O, R, R] {
-		override def schema :RecordMapping[O, R] = this
+	sealed trait RecordMapping[R <: Record, O] extends RecordMappingBuilder[R, O] with RecordSchema[R, R, O] {
+		override def schema :RecordMapping[R, O] = this
 
-		def +[K <: Name, V](next :RecordComponent[K, O, V]) :RecordMapping[O, R |# (K, V)] =
+		def +[K <: Name, V](next :RecordComponent[K, V, O]) :RecordMapping[R |# (K, V), O] =
 			new RecordComponents[O, R, K, V](this, next)
 
 		/** The component of this mapping with the given name. */
-		override def apply[K <: Name, V](key :K)(implicit get :GetComponent[O, R, K, V]) :RecordComponent[K, O, V] =
+		override def apply[K <: Name, V](key :K)(implicit get :GetComponent[R, K, V, O]) :RecordComponent[K, V, O] =
 			get(this)
 
 
 		override def map[X](there :R => X, back :X => R)
-		                   (implicit nulls :NullValue[X] = null) :RecordSchema[O, R, X] =
-			new MappedComponentsRecords[O, R, X](this, there, back)
+		                   (implicit nulls :NullValue[X] = null) :RecordSchema[R, X, O] =
+			new MappedComponentsRecords[R, X, O](this, there, back)
 
 
 		override def flatMap[X](there :R => Option[X], back :X => Option[R])
-		                       (implicit nulls :NullValue[X] = null) :RecordSchema[O, R, X] =
-			new FlatMappedComponentsRecords[O, R, X](this, there, back, nulls)
+		                       (implicit nulls :NullValue[X] = null) :RecordSchema[R, X, O] =
+			new FlatMappedComponentsRecords[R, X, O](this, there, back, nulls)
 
 
 		protected[RecordSchema] def last[K <: Name, V]
 		                                 (implicit ub :R <:< (Record |# (K, V)), sb :(Nothing |# (K, V)) <:< R)
-			:RecordComponent[K, O, V]
+			:RecordComponent[K, V, O]
 
 		protected[RecordSchema] def subcomponentsList :ListBuffer[Component[_]]
 		protected[RecordSchema] def selectorsList :List[(Component[_], Selector[_])]
@@ -152,16 +152,16 @@ object RecordSchema {
 
 
 
-	trait RecordComponent[N <: Name, O, S]
-		extends LabeledMapping[N, O, S] with RecordSchema[O, @~ |# (N, S), S] with RecordMappingBuilder[O, @~ |# (N, S)]
+	trait RecordComponent[N <: Name, S, O]
+		extends LabeledMapping[N, S, O] with RecordSchema[@~ |# (N, S), S, O] with RecordMappingBuilder[@~ |# (N, S), O]
 	{
 		def key :N
-		override val schema :RecordMapping[O, @~ |# (N, S)] = RecordMapping[O]() + this
+		override val schema :RecordMapping[@~ |# (N, S), O] = RecordMapping[O]() + this
 
-		override def +[K <: Name, V](next :RecordComponent[K, O, V]) :RecordMapping[O, @~ |# (N, S) |# (K, V)] =
+		override def +[K <: Name, V](next :RecordComponent[K, V, O]) :RecordMapping[@~ |# (N, S) |# (K, V), O] =
 			new RecordComponents(new RecordComponents(RecordMapping[O](), this), next)
 
-		override def apply[K <: Name, V](name :K)(implicit comp :GetComponent[O, @~ |# (N, S), K, V]) :Component[V] =
+		override def apply[K <: Name, V](name :K)(implicit comp :GetComponent[@~ |# (N, S), K, V, O]) :Component[V] =
 			this.asInstanceOf[Component[V]]
 
 		protected[RecordSchema] def subcomponentsList :List[Component[_]] = subcomponents.toList
@@ -169,16 +169,16 @@ object RecordSchema {
 
 
 
-	class NamedRecordComponent[N <: Name, O, S](name :N, override val egg :Component[O, S])
-		extends RecordComponent[N, O, S] with ShallowProxy[O, S]
+	class NamedRecordComponent[N <: Name, S, O](name :N, override val egg :Component[S, O])
+		extends RecordComponent[N, S, O] with ShallowProxy[S, O]
 	{
 		override def key :N = name
 	}
 
 
 
-	class RecordColumn[N <: Name :ValueOf, O, S :ColumnForm](buffs :Seq[Buff[S]] = Nil)
-		extends BaseColumn[O, S](valueOf[N], buffs) with RecordComponent[N, O, S]
+	class RecordColumn[N <: Name :ValueOf, S :ColumnForm, O](buffs :Seq[Buff[S]] = Nil)
+		extends BaseColumn[S, O](valueOf[N], buffs) with RecordComponent[N, S, O]
 	{
 		override val key :N = valueOf[N]
 
@@ -192,12 +192,12 @@ object RecordSchema {
 
 	object RecordMapping {
 
-		def apply[O]() :RecordMapping[O, @~] = empty.asInstanceOf[RecordMapping[O, @~]]
+		def apply[O]() :RecordMapping[@~, O] = empty.asInstanceOf[RecordMapping[@~, O]]
 
 
-		private[this] final val empty :RecordMapping[Any, @~] = new EmptyRecordMapping[Any]
+		private[this] final val empty :RecordMapping[@~, Any] = new EmptyRecordMapping[Any]
 
-		private class EmptyRecordMapping[O] extends RecordMapping[O, @~] with EmptyMapping[O, @~] {
+		private class EmptyRecordMapping[O] extends RecordMapping[@~, O] with EmptyMapping[@~, O] {
 			private[this] final val res = Some(@~)
 
 			override def last[K <: Name, V](implicit ub: @~ <:< (Record |# (K, V)), sb :(Nothing |# (K, V)) <:< @~) =
@@ -214,13 +214,13 @@ object RecordSchema {
 
 
 		private[RecordSchema] class RecordComponents[O, T <: Record, N <: Name, S]
-				                                     (val tail :RecordMapping[O, T], val head :RecordComponent[N, O, S])
-			extends RecordMapping[O, T |# (N, S)] with LazyMapping[O, T |# (N, S)]
+				                                     (val tail :RecordMapping[T, O], val head :RecordComponent[N, S, O])
+			extends RecordMapping[T |# (N, S), O] with LazyMapping[T |# (N, S), O]
 		{
 			protected[RecordSchema] override def last[K <: Name, V]
 			                                         (implicit ub :T |# (N, S) <:< (Record |# (K, V)),
-			                                          sb :Nothing |# (K, V) <:< (T |# (N, S))) :RecordComponent[K, O, V] =
-				head.asInstanceOf[RecordComponent[K, O, V]]
+			                                          sb :Nothing |# (K, V) <:< (T |# (N, S))) :RecordComponent[K, V, O] =
+				head.asInstanceOf[RecordComponent[K, V, O]]
 
 
 			override val components :Unique[Component[_]] = Unique(tail, head)
@@ -268,24 +268,24 @@ object RecordSchema {
 
 
 		@implicitNotFound("There is no component named ${K} in the components record ${R}")
-		sealed trait GetComponent[O, R <: Record, K <: Name, V] {
-			def apply(components :RecordMapping[O, R]) :RecordComponent[K, O, V]
+		sealed trait GetComponent[R <: Record, K <: Name, V, O] {
+			def apply(components :RecordMapping[R, O]) :RecordComponent[K, V, O]
 		}
 
 		object GetComponent {
-			private[this] final val last :GetComponent[Any, Record |# (Name, Any), Name, Any] =
-				new GetComponent[Any, Record |# (Name, Any), Name, Any] {
-					def apply(components :RecordMapping[Any, Record |# (Name, Any)]) =
+			private[this] final val last :GetComponent[Record |# (Name, Any), Name, Any, Any] =
+				new GetComponent[Record |# (Name, Any), Name, Any, Any] {
+					def apply(components :RecordMapping[Record |# (Name, Any), Any]) =
 						components.last
 				}
 
-			implicit def getLast[O, R <: Record, N <: Name, S] :GetComponent[O, R |# (N, S), N, S] =
-				last.asInstanceOf[GetComponent[O, R |# (N, S), N, S]]
+			implicit def getLast[O, R <: Record, N <: Name, S] :GetComponent[R |# (N, S), N, S, O] =
+				last.asInstanceOf[GetComponent[R |# (N, S), N, S, O]]
 
-			implicit def getPrevious[O, R <: Record, E <: (Name, Any), K <: Name, V]
-			                        (implicit get :GetComponent[O, R, K, V]) :GetComponent[O, R |# E, K, V] =
-				new GetComponent[O, R |# E, K, V] {
-					def apply(components :RecordMapping[O, R |# E]) =
+			implicit def getPrevious[R <: Record, E <: (Name, Any), K <: Name, V, O]
+			                        (implicit get :GetComponent[R, K, V, O]) :GetComponent[R |# E, K, V, O] =
+				new GetComponent[R |# E, K, V, O] {
+					def apply(components :RecordMapping[R |# E, O]) =
 						get(components.asInstanceOf[RecordComponents[O, R, Name, Any]].tail)
 				}
 		}
@@ -293,16 +293,16 @@ object RecordSchema {
 
 
 		@implicitNotFound("There already is a component named ${K} in the components record ${R}.")
-		final class UniqueComponentName[O, R <: Record, K <: Name]
+		final class UniqueComponentName[R <: Record, K <: Name, O]
 
 		object UniqueComponentName {
-			private[this] final val instance = new UniqueComponentName[Any, Record, Name]
+			private[this] final val instance = new UniqueComponentName[Record, Name, Any]
 
-			implicit def componentExists[O, R <: Record, K <: Name](implicit exists :GetComponent[O, R, K, _]) :UniqueComponentName[O, R, K] =
-				instance.asInstanceOf[UniqueComponentName[O, R, K]]
+			implicit def componentExists[R <: Record, K <: Name, O](implicit exists :GetComponent[R, K, _, O]) :UniqueComponentName[R, K, O] =
+				instance.asInstanceOf[UniqueComponentName[R, K, O]]
 
-			implicit def conflict[O, R <: Record, K <: Name] :UniqueComponentName[O, R, K] =
-				instance.asInstanceOf[UniqueComponentName[O, R, K]]
+			implicit def conflict[R <: Record, K <: Name, O] :UniqueComponentName[R, K, O] =
+				instance.asInstanceOf[UniqueComponentName[R, K, O]]
 		}
 
 	}
@@ -312,41 +312,41 @@ object RecordSchema {
 
 
 
-	private class MappedComponentsRecords[O, R <: Record, S](override val egg :RecordMapping[O, R],
+	private class MappedComponentsRecords[R <: Record, S, O](override val egg :RecordMapping[R, O],
 	                                                         override val map :R => S, override val unmap :S => R)
 	                                                        (implicit val nulls :NullValue[S])
-		extends MappedMapping[RecordMapping[O, R], O, R, S] with MappingAdapter[RecordMapping[O, R], O, S]
-			with RecordSchema[O, R, S]
+		extends MappedMapping[RecordMapping[R, O], R, S, O] with MappingAdapter[RecordMapping[R, O], S, O]
+			with RecordSchema[R, S, O]
 	{
-		override def schema :RecordMapping[O, R] = egg
+		override def schema :RecordMapping[R, O] = egg
 
 		override def map[X](there :S => X, back :X => S)
-		                   (implicit nulls :NullValue[X]) :MappedComponentsRecords[O, R, X] =
-			new MappedComponentsRecords[O, R, X](schema, map andThen there, back andThen unmap)(mapNulls(there))
+		                   (implicit nulls :NullValue[X]) :MappedComponentsRecords[R, X, O] =
+			new MappedComponentsRecords[R, X, O](schema, map andThen there, back andThen unmap)(mapNulls(there))
 
 
 		override def flatMap[X](there :S => Option[X], back :X => Option[S])
-		                       (implicit nulls :NullValue[X]) :FlatMappedComponentsRecords[O, R, X] =
-			new FlatMappedComponentsRecords[O, R, X](schema, map andThen there, back(_) map unmap, flatMapNulls(there))
+		                       (implicit nulls :NullValue[X]) :FlatMappedComponentsRecords[R, X, O] =
+			new FlatMappedComponentsRecords[R, X, O](schema, map andThen there, back(_) map unmap, flatMapNulls(there))
 
 	}
 
 
 
-	private class FlatMappedComponentsRecords[O, R <: Record, S](override val schema :RecordMapping[O, R],
+	private class FlatMappedComponentsRecords[R <: Record, S, O](override val schema :RecordMapping[R, O],
 	                                                             assemble :R => Option[S], disassemble :S => Option[R],
 	                                                             onNone :NullValue[S])
-		extends FlatMappedMapping[RecordMapping[O, R], O, R, S](schema, assemble, disassemble, onNone)
-	       with RecordSchema[O, R, S]
+		extends FlatMappedMapping[RecordMapping[R, O], R, S, O](schema, assemble, disassemble, onNone)
+	       with RecordSchema[R, S, O]
 	{
 		override def map[X](there :S => X, back :X => S)
-		                   (implicit nulls :NullValue[X]) :FlatMappedComponentsRecords[O, R, X] =
-			new FlatMappedComponentsRecords[O, R, X](schema, map(_) map there, back andThen unmap, mapNulls(there))
+		                   (implicit nulls :NullValue[X]) :FlatMappedComponentsRecords[R, X, O] =
+			new FlatMappedComponentsRecords[R, X, O](schema, map(_) map there, back andThen unmap, mapNulls(there))
 
 
 		override def flatMap[X](there :S => Option[X], back :X => Option[S])
-		                       (implicit nulls :NullValue[X]) :FlatMappedComponentsRecords[O, R, X] =
-			new FlatMappedComponentsRecords[O, R, X](schema, map(_) flatMap there, back(_) flatMap unmap, flatMapNulls(there))
+		                       (implicit nulls :NullValue[X]) :FlatMappedComponentsRecords[R, X, O] =
+			new FlatMappedComponentsRecords[R, X, O](schema, map(_) flatMap there, back(_) flatMap unmap, flatMapNulls(there))
 
 	}
 
@@ -356,42 +356,42 @@ object RecordSchema {
 
 
 
-	private class MappedRecordSchema[O, R <: Record, T, S](override val egg :RecordSchema[O, R, T],
+	private class MappedRecordSchema[R <: Record, T, S, O](override val egg :RecordSchema[R, T, O],
 	                                                       override val map :T => S, override val unmap :S => T)
 	                                                      (implicit val nulls :NullValue[S])
-		extends MappedMapping[RecordSchema[O, R, T], O, T, S] with MappingAdapter[RecordSchema[O, R, T], O, S]
-			with RecordSchema[O, R, S]
+		extends MappedMapping[RecordSchema[R, T, O], T, S, O] with MappingAdapter[RecordSchema[R, T, O], S, O]
+			with RecordSchema[R, S, O]
 	{
-		override def schema :RecordMapping[O, R] = egg.schema
+		override def schema :RecordMapping[R, O] = egg.schema
 
-		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappedRecordSchema[O, R, T, X] =
-			new MappedRecordSchema[O, R, T, X](egg, map andThen there, back andThen unmap)(mapNulls(there))
+		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappedRecordSchema[R, T, X, O] =
+			new MappedRecordSchema[R, T, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
 
 
 		override def flatMap[X](there :S => Option[X], back :X => Option[S])
-		                       (implicit nulls :NullValue[X]) :FlatMappedRecordSchema[O, R, T, X] =
-			new FlatMappedRecordSchema[O, R, T, X](egg, map andThen there, back(_) map unmap, flatMapNulls(there))
+		                       (implicit nulls :NullValue[X]) :FlatMappedRecordSchema[R, T, X, O] =
+			new FlatMappedRecordSchema[R, T, X, O](egg, map andThen there, back(_) map unmap, flatMapNulls(there))
 
 	}
 
 
 
-	private class FlatMappedRecordSchema[O, R <: Record, T, S](mapping :RecordSchema[O, R, T],
+	private class FlatMappedRecordSchema[R <: Record, T, S, O](mapping :RecordSchema[R, T, O],
 	                                                           assemble :T => Option[S], disassemble :S => Option[T],
 	                                                           onNone :NullValue[S])
-		extends FlatMappedMapping[RecordSchema[O, R, T], O, T, S](mapping, assemble, disassemble, onNone)
-		   with RecordSchema[O, R, S]
+		extends FlatMappedMapping[RecordSchema[R, T, O], T, S, O](mapping, assemble, disassemble, onNone)
+		   with RecordSchema[R, S, O]
 	{
-		override def schema :RecordMapping[O, R] = egg.schema
+		override def schema :RecordMapping[R, O] = egg.schema
 
 		override def map[X](there :S => X, back :X => S)
-		                   (implicit nulls :NullValue[X]) :FlatMappedRecordSchema[O, R, T, X] =
-			new FlatMappedRecordSchema[O, R, T, X](egg, map(_) map there, back andThen unmap, mapNulls(there))
+		                   (implicit nulls :NullValue[X]) :FlatMappedRecordSchema[R, T, X, O] =
+			new FlatMappedRecordSchema[R, T, X, O](egg, map(_) map there, back andThen unmap, mapNulls(there))
 
 
 		override def flatMap[X](there :S => Option[X], back :X => Option[S])
-		                       (implicit nulls :NullValue[X]) :FlatMappedRecordSchema[O, R, T, X] =
-			new FlatMappedRecordSchema[O, R, T, X](egg, map(_) flatMap there, back(_) flatMap unmap, flatMapNulls(there))
+		                       (implicit nulls :NullValue[X]) :FlatMappedRecordSchema[R, T, X, O] =
+			new FlatMappedRecordSchema[R, T, X, O](egg, map(_) flatMap there, back(_) flatMap unmap, flatMapNulls(there))
 	}
 
 }

@@ -2,11 +2,9 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.collection.Chain.{~, MapChain}
-import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.generic.{GenericFun, Self}
-import net.noresttherein.oldsql.schema.{Buff, GenericMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
+import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, ComponentExtractor}
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Map, Seq}
@@ -15,7 +13,7 @@ import scala.collection.immutable.{Map, Seq}
 /**
   * @author Marcin Mościcki
   */
-trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O, S] {
+trait ChainMapping[Components <: Chain, C <: Chain, S, O] extends LazyMapping[S, O] {
 	mapping =>
 
 	val schema :Components
@@ -91,7 +89,7 @@ trait ChainMapping[Components <: Chain, C <: Chain, O, S] extends LazyMapping[O,
 
 
 object ChainMapping {
-	type ComponentOf[O] = { type T[S] = Component[O, S] }
+//	type ComponentOf[O] = { type T[S] = Component[O, S] }
 
 	@inline def apply[O] :Factory[O] = new Factory[O] {}
 
@@ -100,16 +98,16 @@ object ChainMapping {
 	trait Factory[O] extends Any {
 
 		@inline def apply[C <: Chain, S <: Chain](componentChain :C)
-		                                         (implicit values :MapChain[ComponentOf[O]#T, C, Self, S])
-				:ChainMapping[C, S, O, S] =
+		                                         (implicit values :MapChain[AnyComponent[O]#Component, C, Self, S])
+				:ChainMapping[C, S, S, O] =
 			apply[C, S, S](componentChain, Some(_:S), identity[S])
 
 
 
 		@inline def apply[C <: Chain, T <: Chain, S](componentChain :C, fromChain :T => Option[S], toChain :S => T)
-		                                            (implicit values :MapChain[ComponentOf[O]#T, C, Self, T])
-				:ChainMapping[C, T, O, S] =
-			new ChainMapping[C, T, O, S] {
+		                                            (implicit values :MapChain[AnyComponent[O]#Component, C, Self, T])
+				:ChainMapping[C, T, S, O] =
+			new ChainMapping[C, T, S, O] {
 				override protected implicit val componentValues = values
 
 				override val schema = componentChain
