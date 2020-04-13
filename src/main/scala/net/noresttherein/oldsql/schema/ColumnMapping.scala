@@ -4,8 +4,9 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
-import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
+import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, MappingAlias}
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, LabeledMapping}
+import net.noresttherein.oldsql.schema.support.LabeledMapping.Label
 
 
 
@@ -20,7 +21,7 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 	/** The name of this column, as seen from the containing table if it is a table/view column.
 	  * If this column represents a column in the SELECT clause of a select statement, it is the column name as
 	  * returned by the result set for that statement. The names of columns selected in a subselect query are qualified
-	  * with the table/view/subselect name/alias from the FROM clause and any aliases given in the SELECT clause are
+	  * with the table/view/subselect name/alias from the ''from'' clause and any aliases given in the SELECT clause are
 	  * applied.
 	  */
 	def name :String
@@ -250,6 +251,16 @@ object ColumnMapping {
 
 	def labeled[N <: String with Singleton, S :ColumnForm, O](label :N, buffs :Buff[S]*) :LabeledColumn[N, S, O] =
 		new LabeledColumn[N, S, O](buffs)(new ValueOf(label), ColumnForm[S])
+
+
+
+	implicit def ColumnAlias[S, A, B] :MappingAlias[ColumnMapping[S, A], A, ColumnMapping[S, B], B] = MappingAlias()
+
+	implicit def LabeledColumnAlias[N <: Label, S, A, B] :MappingAlias[LabeledColumn[N, S, A], A, LabeledColumn[N, S, B], B] =
+		MappingAlias()
+
+	implicit def NumberedColumn[S, A, B] :MappingAlias[NumberedColumn[S, A], A, NumberedColumn[S, B], B] =
+		MappingAlias()
 
 
 

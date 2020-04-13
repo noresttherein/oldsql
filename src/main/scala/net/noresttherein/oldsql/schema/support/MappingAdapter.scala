@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.ConcreteMapping
+import net.noresttherein.oldsql.schema.Mapping.{ConcreteMapping, MappingAlias}
 import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.AdaptedAs
 import net.noresttherein.oldsql.schema.support.MappingNest.OpenNest
@@ -69,6 +69,11 @@ object MappingAdapter {
 	type AdaptedAs[M <: ConcreteMapping, T] = MappingAdapter[M, T, M#Origin]
 	type AdaptedFor[M <: ConcreteMapping, O] = MappingAdapter[M, M#Subject, O]
 
+
+
+//	implicit def MappingAdapterAlias[X <: ConcreteMapping, A, Y <: ConcreteMapping, S, B]
+//	                                (implicit alias :MappingAlias[X, A, Y, B])
+//			:MappingAlias[MappingAdapter[X, S, A], A, MappingAdapter[X, S, B], B] =
 
 	/** Base trait for mappings which adapt another proxy from the same source `O`. Declares a single component,
 	  * the embedded `egg` mapping, with all its components and subcomponents (and columns in particular)

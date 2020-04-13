@@ -15,6 +15,8 @@ import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 
+import scala.annotation.implicitNotFound
+
 
 
 
@@ -134,6 +136,8 @@ trait Mapping { mapping :ConcreteMapping =>
 	type Column[T] = ColumnMapping[T, Origin]
 
 
+
+//	def from[O2] :Mapping.Component[Subject, O2]
 
 	/** Adapts the given subcomponent (a component being the end of some path of components starting with this instance)
 	  * to its public form as present in the `subcomponents` and `components` list. For every valid transitive
@@ -521,7 +525,7 @@ trait GenericMapping[S, O] extends ConcreteMapping { self =>
 
 
 /** A `Mapping` subclass which, in its `optionally` (and indirectly `apply`) method, declares aliasing
-  * of its components on the passed `Pieces`. Some mappings (and possibly their of its components) allow
+  * of its components on the passed `Pieces`. Some mappings (and possibly their components) allow
   * declaring a column prefix to be added to all its columns, as well as additional buffs, which should be inherited
   * by all of its subcomponents (including columns), so a component, as defined, can be a different instance from its
   * final representation included on the mapping's component/column lists. As it is the latter version of the component
@@ -533,6 +537,10 @@ trait GenericMapping[S, O] extends ConcreteMapping { self =>
 trait RootMapping[S, O] extends GenericMapping[S, O] {
 	override def optionally(pieces :Pieces) :Option[S] =
 		super.optionally(pieces.aliased { c => apply[c.Subject](c).lifted })
+
+	//todo:
+//	def mappingName :String
+//	override def sqlName = Some(mappingName)
 }
 
 
@@ -541,11 +549,17 @@ trait RootMapping[S, O] extends GenericMapping[S, O] {
 
 
 object Mapping {
+
 	@inline
 	implicit def mappingSelfPath[M <: Mapping, X <: Component[S, O], S, O]
 	                            (mapping :M)(implicit help :IsBoth[M, X, Component[S, O]]) :SelfPath[X, S, O] =
 		SelfPath.typed[X, S, O](mapping)
 
+
+
+	/** Adds a right-associative method `@:` to any `Mapping` with well defined `Origin` and `Subject` types,
+	  * which attaches a label type to it by wrapping it in `L @: M`.
+	  */
 	implicit class MappingLabelling[M <: Component[_, _]](private val self :M) extends AnyVal {
 		/** Attaches a label (a string literal) to this mapping, transforming it into a `LabeledMapping` with the
 		  * literal type included as its type parameter.
@@ -554,6 +568,76 @@ object Mapping {
 	}
 
 
+
+
+
+
+	/** Adds a `withOrigin[B]()` method to any `Mapping` with a well defined `Origin` type, which substitutes its origin
+	  * to type `B`.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingAlias]]
+	  */
+	implicit class MappingAliasing[M <: Mapping](private val self :M) extends AnyVal {
+		/** Substitutes the `Origin` type of this mapping to type `B`. Follow this method call with `()`
+		  * to apply the result and infer the result type. The returned mapping type is provided by an implicit
+		  * [[net.noresttherein.oldsql.schema.Mapping.MappingAlias MappingAlias]], see its documentation for
+		  * more information.
+		  */
+		@inline def withOrigin[B] = new ApplyMappingAliasing[M, B](self)
+	}
+
+	/** An applicable wrapper over mapping `M` which converts it to `Origin` type `B` by the use of an implicit
+	  * [[net.noresttherein.oldsql.schema.Mapping.MappingAlias MappingAlias]].
+	  */
+	class ApplyMappingAliasing[M <: Mapping, B](private val self :M) extends AnyVal {
+		@inline def apply[A, R <: Mapping]()(implicit alias :MappingAlias[M, A, R, B]) :R = alias(self)
+	}
+
+
+
+	/** Converts a mapping `M` with `Origin=A` to a mapping with `Origin=B`. While the erased value itself doesn't
+	  * generally need any conversion other than casting from erased type parameter `A` to `B`, the type
+	  * of the aliased mapping depends on the specific `Mapping` subclass.  Default conversion will produce only
+	  * the generic `Mapping` and `GenericMapping` type instances as the aliased types. If you wish
+	  * your custom mapping class be retained in the aliased type, provide your own implicit value of this class
+	  * in the mapping companion's object (or another related scope, with the option of explicit import).
+	  * In most cases, such as with `GenericMapping[S, O]`, this is a simple erased casting
+	  * `(_ :M[A]).asInstanceOf[M[B]]`. A convenience method `MappingAlias[M, A, B]() :MappingAlias[M[A], A, M[B], B]`
+	  * can be then used for the implicit value. Furthermore, if the `Origin` type parameter is the last type parameter
+	  * of the class, all type parameters can be inferred from the expected return type:
+	  * {{{
+	  *     abstract class Table[E, O] extends GenericMapping[E, O]
+	  *
+	  *     implicit def TableAlias[A, B] :MappingAlias[Table[E, A], A, Table[E, B], B] = MappingAlias()
+	  * }}}
+	  *
+	  * Note however that this conversion should replace all occurrences of the origin type `A` with `B` in the
+	  * aliased type's definition. If the type refers to its `Origin` in its other type arguments, those arguments
+	  * should be rewritten, too: in that case the above example is not sufficient.
+	  */
+	@implicitNotFound("Cannot alias mapping ${X} from origin ${A} as ${Y} from ${B}. " +
+	                  "If the aliased mapping type depends on the Origin type, provide your own implicit aliasing" +
+	                  "MappingAlias[X, A, Y, B] in the mapping's companion object.")
+	abstract class MappingAlias[-X <: Mapping, A, +Y <: Mapping, B] extends (X => Y)
+
+//	def MappingAlias[M <: AnyComponent[O], O, AM <: AnyComponent[A], A](alias :M => AM) :MappingAlias[M, O, AM, A] =
+//		alias(_)
+
+	@inline def MappingAlias[M[O] <: AnyComponent[O], A, B]() :MappingAlias[M[A], A, M[B], B] = AnyAlias()
+
+
+	private[oldsql] def AnyAlias[M <: AnyComponent[O], O, AM <: AnyComponent[A], A]() =
+		CastingAlias.asInstanceOf[MappingAlias[M, O, AM, A]]
+
+	private[this] final val CastingAlias :MappingAlias[Mapping, Any, Mapping, Any] = mapping => mapping
+
+	@inline implicit def BaseMappingAlias[O, A] :MappingAlias[AnyComponent[O], O, AnyComponent[A], A] =
+		AnyAlias()
+
+	@inline implicit def TypedMappingAlias[S, O, A] :MappingAlias[Component[S, O], O, Component[S, A], A] =
+		AnyAlias()
+
+	@inline implicit def GenericMappingAlias[S, O, A] :MappingAlias[GenericMapping[S, O], O, GenericMapping[S, A], A] =
+		AnyAlias()
 
 	/** This is an implementation artifact which may disappear from the library without notice. ''Do not use
 	  * it in the client code''.
@@ -606,7 +690,7 @@ object Mapping {
 
 
 
-
+	//todo: move out of mapping
 	/** A `ComponentExtractor` describes the parent-child relationship between a mapping and its component.
 	  * It serves three functions:
 	  *   - provides a means of extracting the value of the component from the value of the parent;

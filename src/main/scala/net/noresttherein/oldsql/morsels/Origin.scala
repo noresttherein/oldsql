@@ -20,6 +20,12 @@ object Origin {
 	def Alias[S <: String with Singleton :ValueOf] = new Alias[S](valueOf[S])
 
 
+	sealed trait Unique {
+		type T <: Origin
+	}
+
+	implicit def Unique :Unique = new Unique { type T = Origin }
+
 	trait Index[I] extends Any with Origin
 
 

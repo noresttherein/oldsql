@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.Mapping.AnyComponent
 
 
 package object sql {
-	type OuterJoin[+L <: FromClause, R[O] <: AnyComponent[O]] = LeftJoin[L, R]
+	type OuterJoin[+L <: FromClause, R <: Mapping] = LeftJoin[L, R]
 
 	final val OuterJoin = LeftJoin
 }

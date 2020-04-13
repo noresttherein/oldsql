@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{Mapping, RowSource}
 import net.noresttherein.oldsql.schema.Mapping.AnyComponent
 import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
-import net.noresttherein.oldsql.sql.MappingFormula.FromFormula
+import net.noresttherein.oldsql.sql.MappingFormula.{FromFormula, FromLast}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
 
@@ -20,7 +20,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   * selects, with any tables/mappings following its last occurrence in the type are exclusive to the deepest
   * subselect in the chain.
   *
-  * @param outer the tables of the outer select's FROM clause (possibly recursively inlined nesting).
+  * @param outer the tables of the outer select's ''from'' clause (possibly recursively inlined nesting).
   * @param from first table in the from list of this subselect
   * @param cond join condition joining this subselect (or rather, its first table) with outer select; may be expanded upon
   *             when additional tables are added to this subselect join (i.e. this source is expanded).
@@ -28,34 +28,23 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   * @tparam T Right side of this join - the first table of the ''from'' clause of the represented subselect.
   * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]]
   */
-class SubselectJoin[F <: FromClause, T[O] <: AnyComponent[O]] private
-                   (val outer :F, from :FromFormula[FromClause Join T, T], cond :BooleanFormula[F Join T] = True())
-	extends Join[F, T](outer, from, cond) //with SubselectFrom[F]
+sealed abstract class SubselectJoin[+F <: FromClause, T <: Mapping] protected
+                   (l :F, r :FromFormula[FromClause Join T, T], cond :BooleanFormula[F Join T] = True())
+	extends Join[F, T](l, r, cond) //with SubselectFrom[F]
 { subsource =>
 
-	private[sql] def this(source :F, table :RowSource[T]) =
-		this(source, new FromFormula[FromClause Join T, T](table, source.size), True())
+//	override def copy(filter :BooleanFormula[F Join T]) :F SubselectJoin T = new SubselectJoin(left, table, filter)
+//
+//	override def copy[L <: FromClause](left :L) :L SubselectJoin T = new SubselectJoin(left, table)
 
+	override type This <: F SubselectJoin T
 
-	override def copy(filter :BooleanFormula[F Join T]) :F SubselectJoin T = new SubselectJoin(left, table, filter)
+//	override def self :F SubselectJoin T = this
 
+//	override type Outer = F
+	override type Outer = left.Generalized
 
-//	override def copy[L <: FromClause, R[O] <: AnyComponent[O]](left :L, right :RowSource[R]) :L SubselectJoin R =
-//		new SubselectJoin(left, right)
-
-	override def copy[L <: FromClause](left :L) :L SubselectJoin T = new SubselectJoin(left, table)
-
-	type This = F SubselectJoin T
-//	type Copy[L <: FromClause] = L SubselectJoin T
-//	type Kind[+L <: FromClause, R[O] <: AnyComponent[O]] = L SubselectJoin R
-//	type With[R[O] <: AnyComponent[O]] = F SubselectJoin R
-
-	override def self :F SubselectJoin T = this
-
-	type Outer = F
-
-
-
+	override def outer :Outer = left.asInstanceOf[Outer]
 
 /*
 	override def filteredBy: BooleanFormula[this.type] = condition
@@ -98,4 +87,45 @@ class SubselectJoin[F <: FromClause, T[O] <: AnyComponent[O]] private
 
 
 
+
+object SubselectJoin {
+	def apply[L[O] <: AnyComponent[O], A, R[O] <: AnyComponent[O], B]
+	         (left :RowSource[L], right :RowSource[R]) :From[L[A]] SubselectJoin R[B] =
+		new SubselectClause[From[L[A]], R[B]](From(left), FromLast(right, 1))
+
+	def apply[L <: FromClause, R[O] <: AnyComponent[O], A](left :L, right :RowSource[R]) :L SubselectJoin R[A] =
+		new SubselectClause[L, R[A]](left, FromLast(right, left.size))
+
+	private[sql] def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L SubselectJoin R =
+		new SubselectClause[L, R](left, FromLast(right, left.size))
+
+	private[sql] def apply[L <: FromClause, R <: Mapping](left :L, right :FromFormula[FromClause Join R, R]) :L SubselectJoin R =
+		new SubselectClause[L, R](left, right)
+
+
+
+	def unapply[L <: FromClause, R <: Mapping](join :L Join R) :Option[(L, R)] = join match {
+		case _ :SubselectJoin[_, _] => Some(join.left -> join.right)
+		case _ => None
+	}
+
+	def unapply(from :FromClause) :Option[(FromClause, Mapping)] =
+		from match {
+			case join :SubselectJoin[_, _] => Some(join.left -> join.right)
+			case _ => None
+		}
+
+
+
+	private class SubselectClause[F <: FromClause, T <: Mapping]
+			(l :F, r :FromFormula[FromClause Join T, T], cond :BooleanFormula[F Join T] = True())
+		extends SubselectJoin[F, T](l, r, cond)
+	{
+		override def copy(filter :BooleanFormula[F Join T]) :F SubselectJoin T = new SubselectClause(left, table, filter)
+
+		override def copy[L <: FromClause](left :L) :L SubselectJoin T = new SubselectClause(left, table)
+
+		type This = F SubselectJoin T
+	}
+}
 

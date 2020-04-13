@@ -20,8 +20,8 @@ import scala.collection.Factory
   * resources which can be otherwise expensive to compute and shouldn't be fetched by default - they shield model classes
   * from the implementation details about how those associations are implemented and resolved.
   * An instance thus might contain an associated, pre-fetched entity, or a foreign key to it.
-  * They can be used for any type, including collections, and an empty Kin for a to-many relationship
-  * can for example specify a reverse foreign key (foreign key on the target entity and Kind key on this entity).
+  * They can be used for any type, including collections, and an empty `Kin` for a to-many relationship
+  * can for example specify a reverse foreign key (foreign key on the target entity and the primary key on this entity).
   * They can also serve as actual search filters - queries are after all only a filter specification on a table.
   *
   * As a kin is immutable (at least in the interface - implementations may use mutable state as long as the client

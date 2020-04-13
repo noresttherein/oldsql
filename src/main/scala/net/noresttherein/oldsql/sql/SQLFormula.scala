@@ -93,6 +93,7 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 	/** Lift this expression to one typed Option[V], without any effect on the actual generated sql. */
 	def opt :SQLFormula[F, Option[V]] = OrNull(this)
 
+	//todo: rename to stretch
 	/** Treat this expression as an expression of a source extending (i.e. containing additional tables) the source `F`
 	  * this expression is grounded in. */
 	def asPartOf[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :SQLFormula[S, V] = ev(this)
@@ -111,9 +112,9 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 
 	/** An SQL formula is said to be ''grounded in `FromFormula`s F1,...,FN'' if it can be evaluated based on the
 	  * collective column set represented by mappings of sources of those formulas. In other words, it depends
-	  * only on those parts of the FROM clause.
+	  * only on those parts of the ''from'' clause.
 	  */
-	def isGroundedIn(tables :Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]) :Boolean
+	def isGroundedIn(tables :Iterable[FromFormula[_, _]]) :Boolean
 
 /*
 	def evaluate(values :RowValues[F]) :V = get(values) getOrElse {
@@ -180,7 +181,7 @@ object SQLFormula {
 		protected def parts :Seq[SQLFormula[F, _]]
 
 
-		override def isGroundedIn(tables: Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]): Boolean =
+		override def isGroundedIn(tables: Iterable[FromFormula[_, _]]): Boolean =
 			parts.forall(_.isGroundedIn(tables))
 
 		override protected def reverseCollect[X](fun: PartialFunction[SQLFormula[_ <: FromClause, _], X], acc: List[X]): List[X] =

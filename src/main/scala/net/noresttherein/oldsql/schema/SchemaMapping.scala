@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, Chain
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
+import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, MappingAlias}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.MappingSchema.{FlatMappedMappingSchema, FlatMappingSchema, GetSchemaComponent, MappedMappingSchema, MappingSchemaGuts, NonEmptySchema, SchemaComponentLabel, SchemaInlining}
@@ -44,6 +44,23 @@ import scala.reflect.runtime.universe.TypeTag
   *         def HumanSchema[O] = MappingSchema[Human, O].col(_.gender).col(height).col(_.weight).map(Human.apply)
   *         //can be used for the result of "select gender, avg(height), avg(weight) from humans group by gender"
   *     }}}
+  *
+  * Additionally, any `SchemaMapping` can be labeled with a `String` literal type using the `@:` and `:@` methods,
+  * creating a [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaMapping LabeledSchemaMapping]]
+  * (or [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn LabeledSchemaColumn]]).
+  * Components labeled in this way can be retrieved from the schema or this mapping using
+  * [[net.noresttherein.oldsql.schema.SchemaMapping#/ this / label]] and
+  * [[net.noresttherein.oldsql.schema.SchemaMapping#apply this(label)]]:
+  * {{{
+  *     def HumanSchema[O] = MappingSchema[Human, O].comp(_.gun, "gun" @: GunSchema[O])
+  *                                                 .comp(_.backup, "backup" @: GunSchema[O])
+  *                                                 .comp(_.secondBackup, "backup2" @: GunSchema[O]).map(Human.apply)
+  *     val human = HumanSchema["human"]
+  *     val firstGun = human / "gun" //:LabeledSchemaMapping[_, @~ ~ String ~ String ~ String, Human, "human"]
+  *
+  *     val backupExtractor = human("gun")
+  *     def backupGun(human :Human) = backupExtractor(human)
+  * }}}
   *
   * There are two basic ways of creating a `SchemaMapping`:
   *   - start with building a `MappingSchema` and map the result, as in the examples above;
@@ -118,7 +135,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping./]]
 	  */
 	def apply[N <: Label, T](label :N)(implicit get :GetSchemaComponent[C, R, LabeledMapping[N, T, O], N, T, O])
-			:ComponentExtractor[S, T, O] =
+			:Selector[T] =
 		get.extractor(schema, label)
 
 	/** Returns the component labeled with the given string literal in the schema. If more than one component with
@@ -157,7 +174,32 @@ object SchemaMapping {
 	object SchemaColumn {
 		def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :SchemaColumn[S, O] =
 			new BaseColumn[S, O](name, buffs) with SchemaColumn[S, O]
+
+		implicit def SchemaColumnAlias[S, A, B] :MappingAlias[SchemaColumn[S, A], A, SchemaColumn[S, B], B] =
+			MappingAlias()
 	}
+
+
+
+	implicit def SchemaMappingAlias[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+                 (implicit alias :MappingAlias[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B])
+			:MappingAlias[SchemaMapping[AC, R, S, A], A, SchemaMapping[BC, R, S, B], B] =
+		Mapping.AnyAlias()
+
+	implicit def FlatSchemaMappingAlias[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+                 (implicit alias :MappingAlias[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
+			:MappingAlias[FlatSchemaMapping[AC, R, S, A], A, FlatSchemaMapping[BC, R, S, B], B] =
+		Mapping.AnyAlias()
+
+	implicit def LabeledSchemaMappingAlias[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+	             (implicit alias :MappingAlias[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B])
+			:MappingAlias[LabeledSchemaMapping[N, AC, R, S, A], A, LabeledSchemaMapping[N, BC, R, S, B], B] =
+		Mapping.AnyAlias()
+
+	implicit def LabeledFlatSchemaMappingAlias[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+	             (implicit alias :MappingAlias[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
+			:MappingAlias[LabeledFlatSchemaMapping[N, AC, R, S, A], A, LabeledFlatSchemaMapping[N, BC, R, S, B], B] =
+		Mapping.AnyAlias()
 
 
 
@@ -171,7 +213,6 @@ object SchemaMapping {
 	  */
 	trait FlatSchemaMapping[+C <: Chain, R <: Chain, S, O] extends SchemaMapping[C, R, S, O] { outer =>
 		override val schema :FlatMappingSchema[C, R, S, O]
-
 
 		override def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
 		                   (implicit flatterer :SchemaInlining[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
@@ -208,6 +249,30 @@ object SchemaMapping {
 
 
 
+
+
+
+	trait LabeledSchemaColumn[N <: Label, S, O]
+		extends SchemaColumn[S, O] with LabeledFlatSchemaMapping[N, @~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O]
+	{
+		override val schema :FlatMappingSchema[@~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O] =
+			MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
+	}
+
+	object LabeledSchemaColumn {
+		def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
+			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O]
+
+		implicit def LabeledSchemaColumnAlias[N <: Label, S, A, B]
+				:MappingAlias[LabeledSchemaColumn[N, S, A], A, LabeledSchemaColumn[N, S, B], B] =
+			MappingAlias()
+	}
+
+
+
+
+
+
 	private class SchemaMappingLabel[N <: Label, M <: SchemaMapping[C, R, S, O], +C <: Chain, R <: Chain, S, O]
 	                                (label :N, egg :M)
 		extends MappingLabel[N, M, S, O](label, egg) with LabeledSchemaMapping[N, C, R, S, O]
@@ -227,20 +292,6 @@ object SchemaMapping {
 
 		override def @:[L <: Label](label :L) :LabeledFlatSchemaMapping[L, C, R, S, O] =
 			new FlatSchemaMappingLabel[L, M, C, R, S, O](label, egg)
-	}
-
-
-
-	trait LabeledSchemaColumn[N <: Label, S, O]
-		extends SchemaColumn[S, O] with LabeledFlatSchemaMapping[N, @~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O]
-	{
-		override val schema :FlatMappingSchema[@~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O] =
-			MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
-	}
-
-	object LabeledSchemaColumn {
-		def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
-			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O]
 	}
 
 
@@ -832,6 +883,41 @@ object MappingSchema {
 
 
 
+	implicit def MappingSchemaAlias[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+	                               (implicit alias :ComponentChainAlias[AC, S, A, BC, B])
+			:MappingAlias[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B] =
+		Mapping.AnyAlias()
+
+	implicit def FlatMappingSchemaAlias[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+	                                   (implicit alias :ComponentChainAlias[AC, S, A, BC, B])
+			:MappingAlias[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B] =
+		Mapping.AnyAlias()
+
+
+
+	@implicitNotFound("Cannot alias component chain ${AC} from origin ${A}\nas ${BC} from origin ${B}:\n" +
+	                  "no implicit ComponentChainAlias[${AC}, ${S}, ${A}, ${BC}, ${B}].\n" +
+		              "Most likely reason is MappingAlias implicit conflict for one of the components. " +
+		              "See net.noresttherein.oldsql.schema.Mapping.MappingAlias class documentation for more information.")
+	final class ComponentChainAlias[-AC <: Chain, S, A, +BC <: Chain, B] extends (AC => BC) {
+		override def apply(components :AC) :BC = components.asInstanceOf[BC]
+	}
+
+	object ComponentChainAlias {
+		private[this] val alias :ComponentChainAlias[Chain, Any, Any, Chain, Any] = new ComponentChainAlias
+
+		implicit def emptyComponentChainAlias[S, A, B] :ComponentChainAlias[@~, S, A, @~, B] =
+			alias.asInstanceOf[ComponentChainAlias[@~, S, A, @~, B]]
+
+		implicit def componentChainAlias[AC <: Chain, AM <: Mapping, S, A, BC <: Chain, BM <: Mapping, B]
+		                                (implicit init :ComponentChainAlias[AC, S, A, BC, B],
+		                                 last :MappingAlias[AM, A, BM, B])
+				:ComponentChainAlias[AC ~ AM, S, A, BC ~ BM, B] =
+			init.asInstanceOf[ComponentChainAlias[AC ~ AM, S, A, BC ~ BM, B]]
+	}
+
+
+
 	@implicitNotFound("Cannot concatenate schemas ${PC} + ${SC} (with subject types ${PR} + ${SR}). Possible reasons:\n" +
 		"1) any of the schemas contains non-column components,\n" +
 		"2) the type of any of the schemas is not fully known,\n" +
@@ -896,7 +982,6 @@ object MappingSchema {
 
 	object SchemaInlining extends ComponentSchemaInlining {
 
-
 		implicit def columnInlining[C <: Chain, R <: Chain, M <: SchemaColumn[T, O], T, S, O, IC <: Chain, IR <: Chain]
 		                           (implicit init :SchemaInlining[C, R, S, O, IC, IR])
 				:SchemaInlining[C ~ M, R ~ T, S, O, IC ~ M, IR ~ T] =
@@ -904,7 +989,6 @@ object MappingSchema {
 				override def apply(schema :MappingSchema[C ~ M, R ~ T, S, O]) =
 					init(schema.prev).col(schema.last, schema.extractor(schema.last))
 			}
-
 	}
 
 
@@ -948,7 +1032,7 @@ object MappingSchema {
 
 
 
-	class EmptySchema[S, O] extends ConstantMapping[@~, O](@~) with FlatMappingSchema[@~, @~, S, O]
+	private[schema] class EmptySchema[S, O] extends ConstantMapping[@~, O](@~) with FlatMappingSchema[@~, @~, S, O]
 		with MappingSchemaGuts[@~, @~, S, O]
 	{
 		override def members: @~ = @~
@@ -991,8 +1075,9 @@ object MappingSchema {
 
 
 
-	class NonEmptySchema[+C <: Chain, +M <: Component[T, O], R <: Chain, T, S, O]
-	                          (val init :MappingSchema[C, R, S, O], val last :M, val extractor :ComponentExtractor[S, T, O])
+	private[schema] class NonEmptySchema[+C <: Chain, +M <: Component[T, O], R <: Chain, T, S, O]
+	                                    (val init :MappingSchema[C, R, S, O], val last :M,
+	                                     val extractor :ComponentExtractor[S, T, O])
 		extends MappingSchemaGuts[C ~ M, R ~ T, S, O] with LazyMapping[R ~ T, O]
 	{
 		override def members :C ~ M = init.members ~ last
@@ -1072,9 +1157,9 @@ object MappingSchema {
 
 
 
-	private[MappingSchema] class FlatNonEmptySchema[+C <: Chain, +M <: Component[T, O], R <: Chain, T, S, O]
-	                                                     (override val init :FlatMappingSchema[C, R, S, O], next :M,
-	                                                      get :ComponentExtractor[S, T, O])
+	private[schema] class FlatNonEmptySchema[+C <: Chain, +M <: Component[T, O], R <: Chain, T, S, O]
+	                                        (override val init :FlatMappingSchema[C, R, S, O], next :M,
+	                                         get :ComponentExtractor[S, T, O])
 		extends NonEmptySchema[C, M, R, T, S, O](init, next, get) with FlatMappingSchema[C ~ M, R ~ T, S, O]
 	{
 		override def compose[X](extractor :X => S) :FlatNonEmptySchema[C, M, R, T, X, O] =

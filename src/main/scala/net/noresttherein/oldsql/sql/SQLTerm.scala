@@ -26,7 +26,7 @@ trait SQLTerm[T] extends SQLFormula[FromClause, T] {
 
 	private[oldsql] override def equivalent(expression: Formula[_]): Boolean = this == expression
 
-	override def isGroundedIn(tables: Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]): Boolean = freeValue.isDefined
+	override def isGroundedIn(tables: Iterable[FromFormula[_, _]]): Boolean = freeValue.isDefined
 
 //	override def get(values :RowValues[FromClause]) :Option[T] = freeValue
 }

@@ -155,6 +155,7 @@ object RecordSchema {
 	trait RecordComponent[N <: Name, S, O]
 		extends LabeledMapping[N, S, O] with RecordSchema[@~ |# (N, S), S, O] with RecordMappingBuilder[@~ |# (N, S), O]
 	{
+		def label :N = key
 		def key :N
 		override val schema :RecordMapping[@~ |# (N, S), O] = RecordMapping[O]() + this
 

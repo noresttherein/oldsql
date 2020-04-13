@@ -9,25 +9,30 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 
 
 /** An empty source, serving both as a source for expressions not needing any input tables
-  * (like 'SELECT _ FROM DUAL' in Oracle) and terminator element for Join lists
+  * (like 'SELECT _ ''from'' DUAL' in Oracle) and terminator element for Join lists
   * (by default any chain of Join[_, _] classes is eventually terminated by a Dual instance).
   */
 class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	def this() = this(True())
 
-	override type LastMapping[O] = Nothing
+	override type LastMapping = Nothing
 	override type LastTable[-F <: FromClause] = Nothing
 
 	override def lastTable :Nothing = throw new NoSuchElementException("Dual.lastTable")
+
+	override type Generalized = Dual
+
+	override def generalized :Dual = this
+
+	override type Outer = FromClause
+
+	override def outer :Dual = this //throw new NoSuchElementException(s"No outer source for Dual")
 
 	override type Row = @~
 
 	override def row :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
-	override type Outer = FromClause
-
-	override def outer :Dual = this //throw new NoSuchElementException(s"No outer source for Dual")
 
 	override def size = 0
 
@@ -106,7 +111,7 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 
 /** An empty row source, serving both as a source for expressions not needing any input tables
-  * (like 'SELECT _ FROM DUAL' in Oracle) and terminator element for Join lists
+  * (like 'SELECT _ ''from'' DUAL' in Oracle) and terminator element for Join lists
   * (by default any chain of Join[_, _] classes is eventually terminated by a Dual instance).
   */
 object Dual extends Dual {
