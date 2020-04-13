@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, Chain
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, MappingAlias}
+import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor, MappingAlias}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.MappingSchema.{FlatMappedMappingSchema, FlatMappingSchema, GetSchemaComponent, MappedMappingSchema, MappingSchemaGuts, NonEmptySchema, SchemaComponentLabel, SchemaInlining}
@@ -86,7 +86,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  * values of replaced components will be assembled from the column values.
 	  */
 	def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
-	          (implicit flatterer :SchemaInlining[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
+	           (implicit flatterer :SchemaInlining[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
 		new ShallowProxy[S, O] with FlatSchemaMapping[IC, IL, S, O] {
 			override val schema = flatterer(outer.schema)
 			protected override val egg = outer
@@ -215,7 +215,7 @@ object SchemaMapping {
 		override val schema :FlatMappingSchema[C, R, S, O]
 
 		override def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
-		                   (implicit flatterer :SchemaInlining[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
+		                    (implicit flatterer :SchemaInlining[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
 			this.asInstanceOf[FlatSchemaMapping[IC, IL, S, O]]
 
 
@@ -487,7 +487,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends GenericMapping[R, O] 
 	/** A shorthand alias for `LabeledSchemaColumn[N, O, T]` allowing reduced notation `N @|| T` in the component type chain. */
 	type @||[N <: Label, T] = LabeledSchemaColumn[N, T, O]
 
-	/** Component type of this schema, enforcing implementation of `SchemaMapping` of all components. */
+	/** TypedMapping type of this schema, enforcing implementation of `SchemaMapping` of all components. */
 	type Subschema[+L <: Chain,  V <: Chain, T] = SchemaMapping[L, V, T, O]
 
 	/** Fully typed list of components in this schema as a `Chain`. */
@@ -743,7 +743,7 @@ object MappingSchema {
 
 
 	/** Methods allowing positional accept of the components listed on `I ~ L` by a `MappingSchema`.  */
-	implicit class MappingSchemaComponentAccessor[I <: Chain, L <: Component[T, O], R <: Chain, T, S, O]
+	implicit class MappingSchemaComponentAccessor[I <: Chain, L <: TypedMapping[T, O], R <: Chain, T, S, O]
 	                                             (private val self :MappingSchema[I ~ L, R ~ T, S, O]) extends AnyVal
 	{
 		/** The last component on the list - same as `last` but more readable in code like `schema.prev.prev()`. */
@@ -759,7 +759,7 @@ object MappingSchema {
 
 
 	/** Methods allowing positional accept of the components listed on `I ~ L` by a `MappingSchema`.  */
-	implicit class FlatMappingSchemaComponentAccessor[I <: Chain, L <: Component[T, O], R <: Chain, T, S, O]
+	implicit class FlatMappingSchemaComponentAccessor[I <: Chain, L <: TypedMapping[T, O], R <: Chain, T, S, O]
 	                                                 (private val self :FlatMappingSchema[I ~ L, R ~ T, S, O])
 		extends AnyVal
 	{
@@ -775,7 +775,7 @@ object MappingSchema {
 	  * the `AbstractSchemaMapping` class for the use of subclasses.
 	  * @see [[net.noresttherein.oldsql.schema.AbstractSchemaMapping]]
 	  */
-	class SchemaComponentLabel[C <: Chain, R <: Chain, V <: ComponentValues[_ <: Component[S, O]], N <: Label, S, O]
+	class SchemaComponentLabel[C <: Chain, R <: Chain, V <: ComponentValues[_ <: TypedMapping[S, O]], N <: Label, S, O]
 	                          (private val label :N) extends AnyVal
 	{
 		/** Retrieve the value of the component with this label in the implicit schema from implicit `ComponentValues`.
@@ -1011,12 +1011,12 @@ object MappingSchema {
 
 		implicit def previous[C <: Chain, R <: Chain, M <: LabeledMapping[N, T, O], X, N <: Label, O, T]
 		                     (implicit get :GetSchemaComponent[C, R, M, N, T, O])
-				:GetSchemaComponent[C ~ Component[X, O], R ~ X, M, N, T, O] =
-			new GetSchemaComponent[C ~ Component[X, O], R ~ X, M, N, T, O] {
-				override def apply[S](schema :MappingSchema[C ~ Component[X, O], R ~ X, S, O], label :N) =
+				:GetSchemaComponent[C ~ TypedMapping[X, O], R ~ X, M, N, T, O] =
+			new GetSchemaComponent[C ~ TypedMapping[X, O], R ~ X, M, N, T, O] {
+				override def apply[S](schema :MappingSchema[C ~ TypedMapping[X, O], R ~ X, S, O], label :N) =
 					get(schema.prev, label)
 
-				override def extractor[S](schema :MappingSchema[C ~ Component[X, O], R ~ X, S, O], label :N) =
+				override def extractor[S](schema :MappingSchema[C ~ TypedMapping[X, O], R ~ X, S, O], label :N) =
 					get.extractor(schema.prev, label)
 			}
 	}
@@ -1043,7 +1043,7 @@ object MappingSchema {
 			if (component eq this)
 				extractor.asInstanceOf[ComponentExtractor[S, X, O]]
 			else
-				throw new IllegalArgumentException("Component $component is not a part of this empty mapping schema.")
+				throw new IllegalArgumentException("TypedMapping $component is not a part of this empty mapping schema.")
 
 		override def unapply(subject :S): Option[@~] = Some(@~)
 
@@ -1075,7 +1075,7 @@ object MappingSchema {
 
 
 
-	private[schema] class NonEmptySchema[+C <: Chain, +M <: Component[T, O], R <: Chain, T, S, O]
+	private[schema] class NonEmptySchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, S, O]
 	                                    (val init :MappingSchema[C, R, S, O], val last :M,
 	                                     val extractor :ComponentExtractor[S, T, O])
 		extends MappingSchemaGuts[C ~ M, R ~ T, S, O] with LazyMapping[R ~ T, O]
@@ -1157,7 +1157,7 @@ object MappingSchema {
 
 
 
-	private[schema] class FlatNonEmptySchema[+C <: Chain, +M <: Component[T, O], R <: Chain, T, S, O]
+	private[schema] class FlatNonEmptySchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, S, O]
 	                                        (override val init :FlatMappingSchema[C, R, S, O], next :M,
 	                                         get :ComponentExtractor[S, T, O])
 		extends NonEmptySchema[C, M, R, T, S, O](init, next, get) with FlatMappingSchema[C ~ M, R ~ T, S, O]
@@ -1176,7 +1176,7 @@ object MappingSchema {
 
 	private[MappingSchema] class MappedMappingSchema[C <: Chain, R <: Chain, S, O]
 	                                                (override val schema :MappingSchema[C, R, S, O], constructor :R => S)
-		extends ShallowAdapter[Component[R, O], R, S, O] with SchemaMapping[C, R, S, O]
+		extends ShallowAdapter[TypedMapping[R, O], R, S, O] with SchemaMapping[C, R, S, O]
 	{
 		override protected val egg = schema
 		private[this] val schemaExtractor = ComponentExtractor.opt(schema)(schema.unapply)
@@ -1192,7 +1192,7 @@ object MappingSchema {
 
 	private[MappingSchema] class FlatMappedMappingSchema[C <: Chain, R <: Chain, S, O]
 			(override val schema :MappingSchema[C, R, S, O], constructor :R => Option[S])
-		extends ShallowAdapter[Component[R, O], R, S, O] with SchemaMapping[C, R, S, O]
+		extends ShallowAdapter[TypedMapping[R, O], R, S, O] with SchemaMapping[C, R, S, O]
 	{
 		override protected val egg = schema
 		private[this] val schemaExtractor = ComponentExtractor.opt(schema)(schema.unapply)

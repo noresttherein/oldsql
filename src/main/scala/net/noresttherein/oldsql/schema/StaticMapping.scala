@@ -37,7 +37,7 @@ trait StaticMapping[S, O] extends GenericMapping[S, O] {
 	  * shared by `isDefined` method, which can force `assemble` to return `None` without calling `construct`,
 	  * and catching later any `NoSuchElementException`s thrown from  this method and resulting from a failed assembly
 	  * of a subcomponent. Another difference is that `pieces` is declared as an implicit parameter, which coupled
-	  * with an implicit conversion of `Component[O, T]` to `T` in its presence, allows to use the components directly
+	  * with an implicit conversion of `TypedMapping[O, T]` to `T` in its presence, allows to use the components directly
 	  * as arguments to the constructor of the returned subject instance. For example:
 	  * {{{
 	  *     case class Address(country :String, city :String, zip :String, street :String, no :String)

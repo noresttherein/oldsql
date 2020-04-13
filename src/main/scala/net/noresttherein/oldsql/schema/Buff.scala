@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql
 
 import net.noresttherein.oldsql.schema.Buff.BuffType
-import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, MappingOf}
 import net.noresttherein.oldsql.schema.bits.Temporal
 import net.noresttherein.oldsql.slang._
 
@@ -365,7 +365,7 @@ object Buff {
 		def test[T](buff :Buff[T]) :Option[Buff[T]] = buff is this ifTrue buff
 		def test[T](buffs :Seq[Buff[T]]) :Option[Buff[T]] =
 			buffs.collectFirst { case buff if buff is this => buff }
-		def test[T](column :TypedMapping[T]) :Option[Buff[T]] = test(column.buffs)
+		def test[T](column :MappingOf[T]) :Option[Buff[T]] = test(column.buffs)
 
 
 		override val toString :String = this.innerClassName
@@ -388,13 +388,13 @@ object Buff {
 		override def test[T](buffs :Seq[Buff[T]]) :Option[B[T]] =
 			buffs collectFirst { case Class(b) if b is this => b.asInstanceOf[B[T]] }
 
-		override def test[T](column :TypedMapping[T]) :Option[B[T]] = test(column.buffs)
+		override def test[T](column :MappingOf[T]) :Option[B[T]] = test(column.buffs)
 
 		def unapply[T](buff :Buff[T]) :Option[B[T]] = test(buff)
 
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[B[T]] = test(buffs)
 
-		def unapply[T](column :TypedMapping[T]) :Option[B[T]] = test(column)
+		def unapply[T](column :MappingOf[T]) :Option[B[T]] = test(column)
 	}
 
 
@@ -506,7 +506,7 @@ object Buff {
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
 			buffs collectFirst { case const :ValuedBuff[T] => const.value }
 
-		@inline def unapply[T](column :TypedMapping[T]) :Option[T] = unapply(column.buffs)
+		@inline def unapply[T](column :MappingOf[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -536,11 +536,11 @@ object Buff {
 		object Value {
 			@inline def unapply[T](option :Buff[T]) :Option[T] = test(option).map(_.value)
 			@inline def unapply[T](options :Seq[Buff[T]]) :Option[T] = test(options).map(_.value)
-			@inline def unapply[T](mapping :TypedMapping[T]) :Option[T] = test(mapping).map(_.value)
+			@inline def unapply[T](mapping :MappingOf[T]) :Option[T] = test(mapping).map(_.value)
 
 			@inline def apply[T](option :Buff[T]) :Option[T] = unapply(option)
 			@inline def apply[T](options :Seq[Buff[T]]) :Option[T] = unapply(options)
-			@inline def apply[T](mapping :TypedMapping[T]) :Option[T] = unapply(mapping)
+			@inline def apply[T](mapping :MappingOf[T]) :Option[T] = unapply(mapping)
 		}
 
 	}
@@ -584,7 +584,7 @@ object Buff {
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
 			buffs collectFirst { case const :ConstantBuff[T] => const.value }
 
-		@inline def unapply[T](column :TypedMapping[T]) :Option[T] = unapply(column.buffs)
+		@inline def unapply[T](column :MappingOf[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -632,7 +632,7 @@ object Buff {
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
 			buffs collectFirst { case const :GeneratedBuff[T] => const.value }
 
-		@inline def unapply[T](column :TypedMapping[T]) :Option[T] = unapply(column.buffs)
+		@inline def unapply[T](column :MappingOf[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -693,7 +693,7 @@ object Buff {
 		object Audit {
 			@inline def apply[T](buff :Buff[T]) :Option[T=>T] = unapply(buff)
 			@inline def apply[T](buffs :Seq[Buff[T]]) :Seq[T=>T] = unapply(buffs)
-			@inline def apply[T](buffs :TypedMapping[T]) :Seq[T=>T] = unapply(buffs)
+			@inline def apply[T](buffs :MappingOf[T]) :Seq[T=>T] = unapply(buffs)
 
 			def unapply[T](buff :Buff[T]) :Option[T=>T] = buff match {
 				case sub :AuditBuff[T] if sub is self => Some(sub.substitute)
@@ -703,7 +703,7 @@ object Buff {
 			def unapply[T](buffs :Seq[Buff[T]]) :Seq[T => T] =
 				buffs collect { case sub :AuditBuff[T] if sub is self => sub.substitute }
 
-			def unapply[T](column :TypedMapping[T]) :Seq[T => T] = unapply(column.buffs)
+			def unapply[T](column :MappingOf[T]) :Seq[T => T] = unapply(column.buffs)
 		}
 	}
 

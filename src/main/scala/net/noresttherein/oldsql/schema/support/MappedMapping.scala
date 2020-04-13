@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.{Buff, Mapping, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor, MappingOf}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
@@ -15,7 +15,7 @@ import scala.util.Try
 
 
 
-trait MappedMapping[+M <: Mapping.Component[S, O], S, T, O] extends ShallowAdapter[M, S, T, O] {
+trait MappedMapping[+M <: Mapping.TypedMapping[S, O], S, T, O] extends ShallowAdapter[M, S, T, O] {
 	implicit protected def nulls :NullValue[T]
 	protected def map :S => T
 	protected def unmap :T => S
@@ -97,13 +97,13 @@ trait MappedMapping[+M <: Mapping.Component[S, O], S, T, O] extends ShallowAdapt
 
 object MappedMapping {
 
-	def apply[M <: Component[S, O], S, T, O](mapping :M, mapped :S => T, unmapped :T => S)
-	                                        (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
+	def apply[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S => T, unmapped :T => S)
+	                                           (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
 		new MappingBijection[M, S, T, O](mapping, mapped, unmapped)
 
 
-	def opt[M <: Component[S, O], S, T, O](mapping :M, mapped :S => Option[T], unmapped :T => Option[S])
-	                                      (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
+	def opt[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S => Option[T], unmapped :T => Option[S])
+	                                         (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
 		new FlatMappedMapping[M, S, T, O](mapping, mapped, unmapped, nulls)
 
 
@@ -111,14 +111,14 @@ object MappedMapping {
 
 
 
-	private class MappingBijection[M <: Mapping.Component[S, O], S, T, O]
+	private class MappingBijection[M <: Mapping.TypedMapping[S, O], S, T, O]
 	                              (override val egg :M, override val map :S => T, override val unmap :T => S)
 	                              (implicit override val nulls :NullValue[T] = null)
 		extends MappedMapping[M, S, T, O] with MappingAdapter[M, T, O] //AdaptedAs[M, T]
 
 
 
-	class FlatMappedMapping[+M <: Mapping.Component[S, O], S, T, O]
+	class FlatMappedMapping[+M <: Mapping.TypedMapping[S, O], S, T, O]
 	                       (override val egg :M,
 	                        protected final val map :S => Option[T],
 	                        protected final val unmap :T => Option[S],

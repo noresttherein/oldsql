@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, BuffMappingFailureException, NoInsert, NoQuery, NoSelect, NoUpdate, Ignored}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, MappingReadForm, MappingWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, MappingReadForm, MappingWriteForm, MappingOf}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -341,9 +341,9 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 	  * @tparam T the value type of this component.
 	  */
 	final class EmbeddedComponent[T] private[MappingSupport]
-	                             (val body :TypedMapping[T], protected[schema] val extractor :Extractor[S, T],
+	                             (val body :MappingOf[T], protected[schema] val extractor :Extractor[S, T],
 	                              override val columnPrefix :String, override val buffs :Seq[Buff[T]])
-		extends EagerDeepProxy[TypedMapping[T], T, O](body) with ComponentMapping[T]
+		extends EagerDeepProxy[MappingOf[T], T, O](body) with ComponentMapping[T]
 	{ nest =>
 
 		protected[MappingSupport] override def init() :Unit = composite.synchronized {
@@ -432,7 +432,7 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 	  * @tparam T the value type of the embedded component.
 	  * @return a wrapper of the given mapping, automatically registered on this mapping's `components` list.
 	  */
-	protected def embed[T](component :TypedMapping[T], value :S => T, columnPrefix :String, buffs :Seq[Buff[T]] = Nil)
+	protected def embed[T](component :MappingOf[T], value :S => T, columnPrefix :String, buffs :Seq[Buff[T]] = Nil)
 			:Component[T] =
 	{
 		val extractor = Extractor.req(value)
@@ -449,7 +449,7 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 	  * @tparam T the value type of the embedded component.
 	  * @return a wrapper of the given mapping, automatically registered on this mapping's `components` list.
 	  */
-	protected def embed[T](component :TypedMapping[T], value :S => T, buffs :Buff[T]*) :Component[T] =
+	protected def embed[T](component :MappingOf[T], value :S => T, buffs :Buff[T]*) :Component[T] =
 		embed(component, value, "", buffs)
 
 
@@ -832,7 +832,7 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 				}
 			}
 			fastSelectors.getOrElse(component, throw new IllegalArgumentException(
-				s"Component $component is not a part of mapping $this."
+				s"TypedMapping $component is not a part of mapping $this."
 			)).asInstanceOf[Selector[T]]
 	}
 

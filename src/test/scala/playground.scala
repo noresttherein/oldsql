@@ -1,7 +1,7 @@
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, Mapping, MappingSchema}
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
 
 
 
@@ -18,7 +18,7 @@ object playground extends App {
 
 //	high(new High[Lower] {})
 	class J[L, R <: Mapping] {
-		def as[A <: String with Singleton, M[O] <: AnyComponent[O]](alias :A)(implicit ev: R <:< M[_]) :J[L, M[A]] = ???
+		def as[A <: String with Singleton, M[O] <: MappingFrom[O]](alias :A)(implicit ev: R <:< M[_]) :J[L, M[A]] = ???
 	}
 //	abstract class C[O] extends GenericMapping[O, Int]
 //	val alias = new J[C[Any], C[Any]] as "ala"

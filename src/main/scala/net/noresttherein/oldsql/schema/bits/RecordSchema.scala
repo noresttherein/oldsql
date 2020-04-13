@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.{Buff, ColumnForm, GenericMapping, Static
 import net.noresttherein.oldsql.schema.ColumnMapping.{BaseColumn, LabeledColumn}
 import net.noresttherein.oldsql.schema.bits.RecordSchema.RecordMapping.{GetComponent, RecordComponents}
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor}
+import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor}
 import net.noresttherein.oldsql.schema.bits.RecordSchema.{FlatMappedRecordSchema, MappedRecordSchema, Name, RecordMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.MappedMapping.FlatMappedMapping
@@ -108,7 +108,7 @@ object RecordSchema {
 		@inline final def column[K <: Name, V :ColumnForm](name :K, buffs: Buff[V]*) :RecordMapping[R |# (K, V), O] =
 			this + new RecordColumn[K, V, O](buffs)(new ValueOf[K](name), ColumnForm[V])
 
-		@inline final def component[K <: Name, V](name :K, component :Component[V, O]) :RecordMapping[R |# (K, V), O] =
+		@inline final def component[K <: Name, V](name :K, component :TypedMapping[V, O]) :RecordMapping[R |# (K, V), O] =
 			this + new NamedRecordComponent[K, V, O](name, component)
 	}
 
@@ -170,7 +170,7 @@ object RecordSchema {
 
 
 
-	class NamedRecordComponent[N <: Name, S, O](name :N, override val egg :Component[S, O])
+	class NamedRecordComponent[N <: Name, S, O](name :N, override val egg :TypedMapping[S, O])
 		extends RecordComponent[N, S, O] with ShallowProxy[S, O]
 	{
 		override def key :N = name

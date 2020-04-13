@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.Mapping.ComponentExtractor
 trait EmptyMapping[S, O] extends GenericMapping[S, O] {
 
 	override def apply[T](component :Component[T]) :Selector[T] =
-		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")
+		throw new IllegalArgumentException(s"TypedMapping $component is not a part of this empty mapping: $this.")
 
 	override def components :Unique[Component[_]] = Unique.empty
 	override def subcomponents :Unique[Component[_]] = Unique.empty

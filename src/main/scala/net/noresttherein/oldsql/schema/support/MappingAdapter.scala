@@ -86,7 +86,7 @@ object MappingAdapter {
 	  * @tparam S the subject type of the adapted mapping `M`.
 	  * @tparam T the subject type of this mapping.
 	  */
-	trait ShallowAdapter[+M <: Mapping.Component[S, O], S, T, O] extends GenericMapping[T, O] with MappingNest[M] {
+	trait ShallowAdapter[+M <: Mapping.TypedMapping[S, O], S, T, O] extends GenericMapping[T, O] with MappingNest[M] {
 
 		override def components :Unique[Component[_]] = Unique(egg)
 		override def subcomponents :Unique[Component[_]] = egg.subcomponents //fixme: does not include egg

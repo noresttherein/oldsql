@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnReadForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.AnyComponent
+import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SelectFrom, SubselectFrom}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ConversionMatcher, OrNull}
@@ -33,7 +33,7 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 
 	def readForm :SQLReadForm[V]
 
-//	def =:[T <: Component[O, E], C <: Component[O, L], O, E, L, R >: V, X]
+//	def =:[T <: TypedMapping[O, E], C <: TypedMapping[O, L], O, E, L, R >: V, X]
 //	      (path :ComponentPath[T, C, O, E, L])(implicit lift :SQLTypePromotion[L, R, X]) :SetComponent[F, T, C, O, E, L, R, X] =
 //		SetComponent(path, this :SQLFormula[F, R])
 

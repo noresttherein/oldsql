@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.{Component, ComponentExtractor, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor, MappingOf}
 import net.noresttherein.oldsql.schema.{Buff, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
@@ -15,7 +15,7 @@ import scala.collection.mutable
 /**
   * @author Marcin Mościcki
   */
-trait ComponentProxy[S, O] extends GenericMapping[S, O] with MappingNest[TypedMapping[S]] {
+trait ComponentProxy[S, O] extends GenericMapping[S, O] with MappingNest[MappingOf[S]] {
 
 	override def buffs :Seq[Buff[S]] = egg.buffs
 
@@ -32,7 +32,7 @@ object ComponentProxy {
 
 
 	/** A skeleton of a mapping proxy which uses the components of the proxied mapping as-is. */
-	trait ShallowProxy[S, O] extends ComponentProxy[S, O] with ShallowAdapter[Component[S, O], S, S, O] {
+	trait ShallowProxy[S, O] extends ComponentProxy[S, O] with ShallowAdapter[TypedMapping[S, O], S, S, O] {
 		protected override val egg :Component[S]
 
 		override def apply[T](component :Component[T]) :Selector[T] =
@@ -156,11 +156,11 @@ object ComponentProxy {
 	  * a fixed mapping between components of the adapted mapping and their adapted counterparts as well as the
 	  * reverse.
 	  */
-	abstract class EagerDeepProxy[+M <: TypedMapping[S], S, O](protected override val egg :M)
+	abstract class EagerDeepProxy[+M <: MappingOf[S], S, O](protected override val egg :M)
 		extends DeepProxy[S, O] with MappingNest[M]
 	{
 		private[this] val lifted = mutable.Map[Mapping, ComponentExtractor[S, _, O]]()
-		private[this] val originals = mutable.Map[Mapping.AnyComponent[O], Mapping]()
+		private[this] val originals = mutable.Map[Mapping.MappingFrom[O], Mapping]()
 
 		override val columns :Unique[Component[_]] = egg.columns.map(alias(_, true))
 		override val selectable :Unique[Component[_]] = columnsWithout(NoSelect)
@@ -205,7 +205,7 @@ object ComponentProxy {
 				val comp = egg.lift(component.asInstanceOf[egg.Component[T]])
 				lifted.getOrElse(comp,
 					throw new NoSuchElementException(
-						s"Component $comp of $egg (public version of $component) is not on the mapping's subcomponents list."
+						s"TypedMapping $comp of $egg (public version of $component) is not on the mapping's subcomponents list."
 					)
 				)
 			}).asInstanceOf[Selector[T]]

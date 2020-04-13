@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{Mapping, RowSource}
-import net.noresttherein.oldsql.schema.Mapping.AnyComponent
+import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
 import net.noresttherein.oldsql.sql.MappingFormula.{FromFormula, FromLast}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
@@ -89,11 +89,11 @@ sealed abstract class SubselectJoin[+F <: FromClause, T <: Mapping] protected
 
 
 object SubselectJoin {
-	def apply[L[O] <: AnyComponent[O], A, R[O] <: AnyComponent[O], B]
+	def apply[L[O] <: MappingFrom[O], A, R[O] <: MappingFrom[O], B]
 	         (left :RowSource[L], right :RowSource[R]) :From[L[A]] SubselectJoin R[B] =
 		new SubselectClause[From[L[A]], R[B]](From(left), FromLast(right, 1))
 
-	def apply[L <: FromClause, R[O] <: AnyComponent[O], A](left :L, right :RowSource[R]) :L SubselectJoin R[A] =
+	def apply[L <: FromClause, R[O] <: MappingFrom[O], A](left :L, right :RowSource[R]) :L SubselectJoin R[A] =
 		new SubselectClause[L, R[A]](left, FromLast(right, left.size))
 
 	private[sql] def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L SubselectJoin R =

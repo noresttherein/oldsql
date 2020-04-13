@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.abacus.{INT, Plus}
 import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, MappingAlias, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, MappingAlias, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
 import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByMapping, ByOrigin, BySubject, ByTypeConstructor}
 import net.noresttherein.oldsql.sql.MappingFormula.FromFormula
@@ -127,7 +127,7 @@ object FromClause {
 		def row(implicit row :RowOf[F, F#Row]) :SQLFormula[F, F#Row] = row(self)
 
 
-		def join[T[O] <: AnyComponent[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F InnerJoin T[alias.T] =
+		def join[T[O] <: MappingFrom[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F InnerJoin T[alias.T] =
 			(self :FromClause) match {
 				case Dual => From(table).asInstanceOf[F InnerJoin T[alias.T]]
 				case _ => InnerJoin(self, table)
@@ -135,41 +135,41 @@ object FromClause {
 
 		//todo: maybe we should make From[T] extends all three join kinds?
 		@inline
-		def leftJoin[T[O] <: AnyComponent[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F LeftJoin T[alias.T] =
+		def leftJoin[T[O] <: MappingFrom[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F LeftJoin T[alias.T] =
 			LeftJoin(self, table)
 
 		@inline
-		def leftJoin[T[O] <: AnyComponent[O], A]
+		def leftJoin[T[O] <: MappingFrom[O], A]
 		            (table :T[A])(implicit alias :MappingAlias[T[A], A, T[Any], Any]) :F LeftJoin T[A] =
 			LeftJoin(self, RowSource(table))
 
 
 		@inline
-		def rightJoin[T[O] <: AnyComponent[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F RightJoin T[alias.T] =
+		def rightJoin[T[O] <: MappingFrom[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F RightJoin T[alias.T] =
 			RightJoin(self, table)
 
 		@inline
-		def rightJoin[T[O] <: AnyComponent[O], A]
+		def rightJoin[T[O] <: MappingFrom[O], A]
 		             (table :T[A])(implicit alias :MappingAlias[T[A], A, T[Any], Any]) :F RightJoin T[A] =
 			RightJoin(self, RowSource(table))
 
 
 		@inline
-		def outerJoin[T[O] <: AnyComponent[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F LeftJoin T[alias.T] =
+		def outerJoin[T[O] <: MappingFrom[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F LeftJoin T[alias.T] =
 			LeftJoin(self, table)
 
 		@inline
-		def outerJoin[T[O] <: AnyComponent[O], A]
+		def outerJoin[T[O] <: MappingFrom[O], A]
 		             (table :T[A])(implicit alias :MappingAlias[T[A], A, T[Any], Any]) :F LeftJoin T[A] =
 			LeftJoin(self, RowSource(table))
 
 
 		@inline
-		def from[T[O] <: AnyComponent[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F SubselectJoin T[alias.T] =
+		def from[T[O] <: MappingFrom[O]](table :RowSource[T])(implicit alias :UniqueAlias) :F SubselectJoin T[alias.T] =
 			SubselectJoin(self, table)
 
 		@inline
-		def from[T[O] <: AnyComponent[O], A]
+		def from[T[O] <: MappingFrom[O], A]
 		        (table :T[A])(implicit alias :MappingAlias[T[A], A, T[Any], Any]) :F SubselectJoin T[A] =
 			SubselectJoin(self, RowSource(table))
 
@@ -205,7 +205,7 @@ object FromClause {
 
 		def of[E](implicit get :GetTableByPredicate[F, BySubject, E]) :FromFormula[F, get.T] = get(self)
 
-		def apply[M[O] <: AnyComponent[O]](implicit get :GetTableByPredicate[F, ByTypeConstructor, M[Any]]) :FromFormula[F, get.T] =
+		def apply[M[O] <: MappingFrom[O]](implicit get :GetTableByPredicate[F, ByTypeConstructor, M[Any]]) :FromFormula[F, get.T] =
 			get(self)
 
 		def apply[N <: String with Singleton](alias :N)(implicit get :GetTableByPredicate[F, ByOrigin, N]) :FromFormula[F, get.T] =
@@ -302,7 +302,7 @@ object FromClause {
 		final class ByOrigin[M <: Mapping, O] private[GetTableByPredicate]
 		private[this] final val origin = new ByOrigin[Mapping, Any]
 
-		implicit def ByOrigin[M <: AnyComponent[O], O] :ByOrigin[M, O] = origin.asInstanceOf[ByOrigin[M, O]]
+		implicit def ByOrigin[M <: MappingFrom[O], O] :ByOrigin[M, O] = origin.asInstanceOf[ByOrigin[M, O]]
 
 
 
@@ -310,7 +310,7 @@ object FromClause {
 		final class BySubject[M <: Mapping, S] private[GetTableByPredicate]
 		private[this] final val subject = new BySubject[Mapping, Any]
 
-		implicit def BySubject[M <: TypedMapping[S], S] :BySubject[M, S] = subject.asInstanceOf[BySubject[M, S]]
+		implicit def BySubject[M <: MappingOf[S], S] :BySubject[M, S] = subject.asInstanceOf[BySubject[M, S]]
 
 
 
@@ -326,7 +326,7 @@ object FromClause {
 		final class ByTypeConstructor[M <: Mapping, T] private[GetTableByPredicate]
 		private[this] final val constructor = new ByTypeConstructor[Mapping, Any]
 
-		implicit def ByTypeConstructor[M[O] <: AnyComponent[O], A] :ByTypeConstructor[M[A], M[Any]] =
+		implicit def ByTypeConstructor[M[O] <: MappingFrom[O], A] :ByTypeConstructor[M[A], M[Any]] =
 			constructor.asInstanceOf[ByTypeConstructor[M[A], M[Any]]]
 
 	}
@@ -336,12 +336,12 @@ object FromClause {
 /*
 	@implicitNotFound("Cannot find a mapping with Origin type ${O} in the clause ${F}.")
 	sealed abstract class GetTableByOrigin[-F <: FromClause, O] {
-		type T <: AnyComponent[O]
+		type T <: MappingFrom[O]
 		def apply(from :F) :FromFormula[F, T]
 	}
 
 	object GetTableByOrigin {
-		implicit def last[M <: AnyComponent[O], O] :GetTableByOrigin[FromClause Join M, O] { type T = M } =
+		implicit def last[M <: MappingFrom[O], O] :GetTableByOrigin[FromClause Join M, O] { type T = M } =
 			new GetTableByOrigin[FromClause Join M, O] {
 				type T = M
 				override def apply(from :FromClause Join M) = from.lastTable
@@ -359,12 +359,12 @@ object FromClause {
 
 	@implicitNotFound("Cannot find a mapping with Subject type ${S} in the clause ${F}.")
 	sealed abstract class GetTableBySubject[-F <: FromClause, S] {
-		type T <: TypedMapping[S]
+		type T <: MappingOf[S]
 		def apply(from :F) :FromFormula[F, T]
 	}
 
 	object GetTableBySubject {
-		implicit def last[M <: TypedMapping[S], S] :GetTableBySubject[FromClause Join M, S] { type T = M } =
+		implicit def last[M <: MappingOf[S], S] :GetTableBySubject[FromClause Join M, S] { type T = M } =
 			new GetTableBySubject[FromClause Join M, S] {
 				type T = M
 				override def apply(from :FromClause Join M) = from.lastTable

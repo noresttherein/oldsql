@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.collection.Chain.{~, MapChain}
 import net.noresttherein.oldsql.morsels.generic.{GenericFun, Self}
 import net.noresttherein.oldsql.schema.support.LazyMapping
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, ComponentExtractor}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, ComponentExtractor}
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Map, Seq}
@@ -89,7 +89,7 @@ trait ChainMapping[Components <: Chain, C <: Chain, S, O] extends LazyMapping[S,
 
 
 object ChainMapping {
-//	type ComponentOf[O] = { type T[S] = Component[O, S] }
+//	type ComponentOf[O] = { type T[S] = TypedMapping[O, S] }
 
 	@inline def apply[O] :Factory[O] = new Factory[O] {}
 
@@ -98,14 +98,14 @@ object ChainMapping {
 	trait Factory[O] extends Any {
 
 		@inline def apply[C <: Chain, S <: Chain](componentChain :C)
-		                                         (implicit values :MapChain[AnyComponent[O]#Component, C, Self, S])
+		                                         (implicit values :MapChain[MappingFrom[O]#Component, C, Self, S])
 				:ChainMapping[C, S, S, O] =
 			apply[C, S, S](componentChain, Some(_:S), identity[S])
 
 
 
 		@inline def apply[C <: Chain, T <: Chain, S](componentChain :C, fromChain :T => Option[S], toChain :S => T)
-		                                            (implicit values :MapChain[AnyComponent[O]#Component, C, Self, T])
+		                                            (implicit values :MapChain[MappingFrom[O]#Component, C, Self, T])
 				:ChainMapping[C, T, S, O] =
 			new ChainMapping[C, T, S, O] {
 				override protected implicit val componentValues = values

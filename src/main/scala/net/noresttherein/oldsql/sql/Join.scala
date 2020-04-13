@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, MappingAlias}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingAlias}
 import net.noresttherein.oldsql.sql.FromClause.{JoinedTables, SubselectFrom}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.SaferCasts._
@@ -61,7 +61,7 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected
 	//	}
 //	def self :This
 
-//	def as[F >: L <: FromClause, M <: AnyComponent[N], N <: String with Singleton]
+//	def as[F >: L <: FromClause, M <: MappingFrom[N], N <: String with Singleton]
 //	      (alias :N)(implicit aliasing :MappingAlias[R, _, M, N]) :F Self M =
 //		copy()
 
@@ -323,11 +323,11 @@ object Join {
 	/** Create a cross join between the left side, given as a (possibly empty) source/list of  tables,
 	  * and the the mapping on the right side representing a table or some table proxy.
 	  */
-	def apply[L[O] <: AnyComponent[O], A, R[O] <: AnyComponent[O], B]
+	def apply[L[O] <: MappingFrom[O], A, R[O] <: MappingFrom[O], B]
 	         (left :RowSource[L], right :RowSource[R]) :From[L[A]] InnerJoin R[B] =
 		InnerJoin(left, right)
 
-	def apply[L <: FromClause, R[O] <: AnyComponent[O], A](left :L, right :RowSource[R]) :L InnerJoin R[A] =
+	def apply[L <: FromClause, R[O] <: MappingFrom[O], A](left :L, right :RowSource[R]) :L InnerJoin R[A] =
 		InnerJoin(left, right)
 
 
@@ -355,7 +355,7 @@ object Join {
   */
 trait ProperJoin[+L <: FromClause, R <: Mapping] extends Join[L, R] { join =>
 
-	def copy[F <: FromClause, T[O] <: AnyComponent[O], A](left :F, right :RowSource[T]) :F LikeJoin T[A]
+	def copy[F <: FromClause, T[O] <: MappingFrom[O], A](left :F, right :RowSource[T]) :F LikeJoin T[A]
 
 //	override def copy[F <: FromClause](left :F) :Self[F] = copy(left, table.source)
 
@@ -461,11 +461,11 @@ object InnerJoin {
 	/** Create a cross join between the left side, given as a (possibly empty) source/list of  tables,
 	  * and the the mapping on the right side representing a table or some table proxy.
 	  */
-	def apply[L[O] <: AnyComponent[O], A, R[O] <: AnyComponent[O], B]
+	def apply[L[O] <: MappingFrom[O], A, R[O] <: MappingFrom[O], B]
 	         (left :RowSource[L], right :RowSource[R]) :From[L[A]] InnerJoin R[B] =
 		new CrossJoin(From[L, A](left), FromLast[R, B](right, 1))
 
-	def apply[L <: FromClause, R[O] <: AnyComponent[O], A](left :L, right :RowSource[R]) :L InnerJoin R[A] =
+	def apply[L <: FromClause, R[O] <: MappingFrom[O], A](left :L, right :RowSource[R]) :L InnerJoin R[A] =
 		new CrossJoin(left, FromLast[R, A](right, 1))
 
 	private[sql] def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L InnerJoin R =
@@ -491,7 +491,7 @@ object InnerJoin {
 
 		override def copy(filter :BooleanFormula[L Join R]) :L CrossJoin R = new CrossJoin(left, table, filter)
 
-		override def copy[F <: FromClause, T[O] <: AnyComponent[O], A](left :F, right :RowSource[T]) :F InnerJoin T[A] =
+		override def copy[F <: FromClause, T[O] <: MappingFrom[O], A](left :F, right :RowSource[T]) :F InnerJoin T[A] =
 			InnerJoin(left, right)
 
 		override type This = L CrossJoin R
@@ -512,7 +512,7 @@ sealed trait LeftJoin[+L <: FromClause, R <: Mapping] extends ProperJoin[L, R] {
 
 	override def copy[F <: FromClause](left :F) :F LeftJoin R = LeftJoin(left, table.mapping)
 
-	override def copy[F <: FromClause, T[O] <: AnyComponent[O], A](left :F, right :RowSource[T]) :F LeftJoin T[A] =
+	override def copy[F <: FromClause, T[O] <: MappingFrom[O], A](left :F, right :RowSource[T]) :F LeftJoin T[A] =
 		LeftJoin(left, right)
 
 
@@ -544,11 +544,11 @@ object LeftJoin {
 	/** Create a left outer join between the left side, given as a (possibly empty) source/list of  tables,
 	  * and the the mapping on the right side representing a table or some table proxy.
 	  */
-	def apply[L[O] <: AnyComponent[O], A, R[O] <: AnyComponent[O], B]
+	def apply[L[O] <: MappingFrom[O], A, R[O] <: MappingFrom[O], B]
 	         (left :RowSource[L], right :RowSource[R]) :From[L[A]] LeftJoin R[B] =
 		new LeftOuterJoin(From[L, A](left), FromLast[R, B](right, 1))
 
-	def apply[L <: FromClause, R[O] <: AnyComponent[O], A](left :L, right :RowSource[R]) :L LeftJoin R[A] =
+	def apply[L <: FromClause, R[O] <: MappingFrom[O], A](left :L, right :RowSource[R]) :L LeftJoin R[A] =
 		new LeftOuterJoin(left, FromLast(right, left.size))
 
 	private[sql] def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L LeftJoin R =
@@ -593,7 +593,7 @@ sealed trait RightJoin[+L <: FromClause, R <: Mapping] extends ProperJoin[L, R] 
 
 	override def copy[F <: FromClause](left :F) :F RightJoin R = RightJoin(left, table.mapping)
 
-	override def copy[F <: FromClause, T[O] <: AnyComponent[O], A](left :F, right :RowSource[T]) :F RightJoin T[A] =
+	override def copy[F <: FromClause, T[O] <: MappingFrom[O], A](left :F, right :RowSource[T]) :F RightJoin T[A] =
 		RightJoin(left, right[A])
 
 
@@ -625,11 +625,11 @@ object RightJoin {
 	/** Create a right outer join between the left side, given as a (possibly empty) source/list of  tables,
 	  * and the the mapping on the right side representing a table or some table proxy.
 	  */
-	def apply[L[O] <: AnyComponent[O], A, R[O] <: AnyComponent[O], B]
+	def apply[L[O] <: MappingFrom[O], A, R[O] <: MappingFrom[O], B]
 	         (left :RowSource[L], right :RowSource[R]) :From[L[A]] RightJoin R[B] =
 		new RightOuterJoin(From[L, A](left), FromLast[R, B](right, 1))
 
-	def apply[L <: FromClause, R[O] <: AnyComponent[O], A](left :L, right :RowSource[R]) :L RightJoin R[A] =
+	def apply[L <: FromClause, R[O] <: MappingFrom[O], A](left :L, right :RowSource[R]) :L RightJoin R[A] =
 		new RightOuterJoin(left, FromLast(right, left.size))
 
 	private[sql] def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L RightJoin R =
@@ -680,7 +680,7 @@ class From[T <: Mapping] protected (from :FromFormula[FromClause Join T, T], fil
 	protected override def copy(filter :BooleanFormula[Dual Join T]) :From[T] = new From(table, filter)
 
 
-	override def copy[L <: FromClause, R[O] <: AnyComponent[O], A](left :L, right :RowSource[R]) :L InnerJoin R[A] =
+	override def copy[L <: FromClause, R[O] <: MappingFrom[O], A](left :L, right :RowSource[R]) :L InnerJoin R[A] =
 		left match {
 			case Dual => From(right[A]).asInstanceOf[L InnerJoin R[A]]
 			case _ => InnerJoin(left, right)
@@ -750,7 +750,7 @@ object From {
 //	def apply[M <: Mapping](mapping : M) :From[M] = new From(mapping)
 //
 //	def instance(mapping :Mapping) :From[mapping.type] = new From[mapping.type](mapping)
-	def apply[M[O] <: AnyComponent[O], A](source :RowSource[M]) :From[M[A]] =
+	def apply[M[O] <: MappingFrom[O], A](source :RowSource[M]) :From[M[A]] =
 		new From(FromLast[M, A](source, 0))
 
 	private[sql] def apply[M <: Mapping](mapping :M) :From[M] =

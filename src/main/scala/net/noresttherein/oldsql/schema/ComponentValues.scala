@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, CompatibleMapping, ComponentExtractor, ConcreteMapping, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, CompatibleMapping, ComponentExtractor, ConcreteMapping, MappingOf}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
@@ -111,7 +111,7 @@ trait ComponentValues[M <: Mapping] {
 
 
 
-	def aliased(lift :AnyComponent[M#Origin] => AnyComponent[M#Origin]) :ComponentValues[M] =
+	def aliased(lift :MappingFrom[M#Origin] => MappingFrom[M#Origin]) :ComponentValues[M] =
 		new AliasedComponentValues[M](lift, this)
 
 
@@ -220,14 +220,14 @@ trait ComponentValues[M <: Mapping] {
   *
   */
 object ComponentValues {
-	type TypedValues[M <: TypedMapping[T], T] = ComponentValues[M]
+	type TypedValues[M <: MappingOf[T], T] = ComponentValues[M]
 
 	//todo: this implementation is very logger unfriendly, with no info about actual values
 	/** Returns ComponentValues using the given function as the source of values for components. Please note that you
 	  * can supply a `Map` as an argument.
 	  * @param values factory of values for components, should always return the value of the type correct for the component argument!
 	  */
-	def apply[M <: ConcreteMapping](values :AnyComponent[M#Origin] => Option[_]) :ComponentValues[M] =
+	def apply[M <: ConcreteMapping](values :MappingFrom[M#Origin] => Option[_]) :ComponentValues[M] =
 		new CustomComponentValues[M](values)
 
 	/** An empty instance, returning always None or throwing NoSuchElementException.
@@ -318,7 +318,7 @@ object ComponentValues {
 		  * @param value input for values of the given components.
 		  * @param components list of components which should be used as sources in the assembly process.
 		  */
-		def apply(value :M#Subject, components :Unique[AnyComponent[M#Origin]]) :ComponentValues[M] =
+		def apply(value :M#Subject, components :Unique[MappingFrom[M#Origin]]) :ComponentValues[M] =
 			new SelectedDisassembledComponentValues[M](value, components)
 
 		/** Returns ComponentValues using the given function as the source of values for components. Please note that
@@ -326,7 +326,7 @@ object ComponentValues {
 		  * @param values factory of values for components, should always return the value of the type correct for the component argument!
 		  * @return
 		  */
-		def apply(values :AnyComponent[M#Origin] => Option[_]) :ComponentValues[M] =
+		def apply(values :MappingFrom[M#Origin] => Option[_]) :ComponentValues[M] =
 			new CustomComponentValues[M](values)
 
 		/** Create ComponentValues for the given mapping and its value. All values returned by this instance will use
@@ -374,11 +374,11 @@ object ComponentValues {
 
 
 	private class AliasedComponentValues[M <: Mapping]
-	                                    (alias :AnyComponent[M#Origin]=>AnyComponent[M#Origin], values :ComponentValues[M])
+	                                    (alias :MappingFrom[M#Origin]=>MappingFrom[M#Origin], values :ComponentValues[M])
 		extends ComponentValues[M]
 	{
 		override def result(root :M) :Option[M#Subject] =
-			values.result(alias(root.asInstanceOf[AnyComponent[M#Origin]]).asInstanceOf[M])
+			values.result(alias(root.asInstanceOf[MappingFrom[M#Origin]]).asInstanceOf[M])
 
 
 		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {
@@ -405,7 +405,7 @@ object ComponentValues {
 			)
 		}
 
-		override def aliased(lift :AnyComponent[M#Origin] => AnyComponent[M#Origin]) :ComponentValues[M] =
+		override def aliased(lift :MappingFrom[M#Origin] => MappingFrom[M#Origin]) :ComponentValues[M] =
 			new AliasedComponentValues[M](lift andThen alias, values)
 
 		override def compatible[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] = {
@@ -473,17 +473,17 @@ object ComponentValues {
 			source.predefined(morphism.source).flatMap(morphism.value(_))
 
 
-		override def get[T](component: Y#Component[T]): Option[T] =
+		override def get[T](component: Y#TypedMapping[T]): Option[T] =
 			morphism.components(component).flatMap(source.get(_))
 
-		override def values[C <: Y#Component[T], T](component: C): ComponentValues[C] =
+		override def values[C <: Y#TypedMapping[T], T](component: C): ComponentValues[C] =
 			direct(pathOf[C, T](component))
 
 
 		override def values[C <: Mapping](path: ComponentPath[Y, C]): ComponentValues[C] =
 			path.walk(this)
 
-		override def direct[C<:Y#Component[T], T](path :TypedComponentPath[Y, C, T]) :ComponentValues[C] =
+		override def direct[C<:Y#TypedMapping[T], T](path :TypedComponentPath[Y, C, T]) :ComponentValues[C] =
 			morphism.components[T](path.end).map{ src =>
 				val backing = source :\ src
 				backing.predefined(src).map(v => Predefined[C](path.end, v)) getOrElse {
@@ -667,7 +667,7 @@ object ComponentValues {
 
 
 	private class SelectedDisassembledComponentValues[M <: ConcreteMapping]
-	                                                 (value :M#Subject, components :Unique[AnyComponent[M#Origin]])
+	                                                 (value :M#Subject, components :Unique[MappingFrom[M#Origin]])
 		extends SelectedComponentValues[M]
 	{
 		protected override def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]): Option[T] =
@@ -678,7 +678,7 @@ object ComponentValues {
 	}
 
 
-	private class CustomComponentValues[M <: ConcreteMapping](vals :AnyComponent[M#Origin] => Option[_])
+	private class CustomComponentValues[M <: ConcreteMapping](vals :MappingFrom[M#Origin] => Option[_])
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]): Option[T] =
@@ -689,7 +689,7 @@ object ComponentValues {
 
 
 
-	private class IndexedComponentValues[M <: ConcreteMapping](vals :Seq[Option[Any]], index :AnyComponent[M#Origin] => Int)
+	private class IndexedComponentValues[M <: ConcreteMapping](vals :Seq[Option[Any]], index :MappingFrom[M#Origin] => Int)
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {

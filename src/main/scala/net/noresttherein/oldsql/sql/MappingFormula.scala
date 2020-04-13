@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, ComponentExtractor, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, ComponentExtractor, MappingOf}
 import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLReadForm}
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula.ComponentMatcher
@@ -51,11 +51,11 @@ object MappingFormula {
 
 
 		def unapply[F <: FromClause, T](f :SQLFormula[F, T])
-				:Option[(FromFormula[F, M], ComponentExtractor[E, T, _])] forSome { type M <: TypedMapping[E]; type E } =
+				:Option[(FromFormula[F, M], ComponentExtractor[E, T, _])] forSome { type M <: MappingOf[E]; type E } =
 			???
 
 
-		private class ComponentFrom[-F <: FromClause, T <: Component[E, O], M <: Component[S, O], E, S, O]
+		private class ComponentFrom[-F <: FromClause, T <: TypedMapping[E, O], M <: TypedMapping[S, O], E, S, O]
 		                           (override val from :FromFormula[F, T], val mapping :M)
 			extends ComponentFormula[F, T, M]
 		{
@@ -83,23 +83,23 @@ object MappingFormula {
 
 
 
-//	class FromFormula[-F <: FromClause, M[O] <: AnyComponent[O]] private[sql] (val mapping :M[Any], val index :Int)
+//	class FromFormula[-F <: FromClause, M[O] <: MappingFrom[O]] private[sql] (val mapping :M[Any], val index :Int)
 	class FromFormula[-F <: FromClause, M <: Mapping] private[sql] (val mapping :M, val index :Int)
 		extends ComponentFormula[F, M, M]
 	{
 //		type Origin
-//		type Kind[O] <: AnyComponent[O]
+//		type Kind[O] <: MappingFrom[O]
 //		def this(source :RowSource[M], index :Int) = this(source[Any], index)
 		override def from :FromFormula[F, M] = this
 //		override val mapping :M = source[Any]
 		override def table :M = mapping
-		override val extractor = ComponentExtractor.ident(table.asInstanceOf[Component[M#Subject, Any]])
+		override val extractor = ComponentExtractor.ident(table.asInstanceOf[TypedMapping[M#Subject, Any]])
 
 		override def readForm :SQLReadForm[Subject] = mapping.selectForm
 
 		override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[Subject] = matcher.from[M](this)
 
-//		override def isGroundedIn(tables :Iterable[FromFormula[_, m forSome { type m[O] <: AnyComponent[O] }]]) :Boolean =
+//		override def isGroundedIn(tables :Iterable[FromFormula[_, m forSome { type m[O] <: MappingFrom[O] }]]) :Boolean =
 //			tables.exists(_ == this)
 
 		override def asPartOf[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :FromFormula[S, M] =
@@ -119,10 +119,10 @@ object MappingFormula {
 
 
 	object FromFormula {
-		private[sql] def apply[F <: FromClause, M[A] <: AnyComponent[A], O](source :RowSource[M], index :Int) :FromFormula[F, M[O]] =
+		private[sql] def apply[F <: FromClause, M[A] <: MappingFrom[A], O](source :RowSource[M], index :Int) :FromFormula[F, M[O]] =
 			new FromFormula(source[O], index)
 
-//		private[sql] def apply[F <: FromClause, M[O] <: AnyComponent[O]](mapping :M[Any], index :Int) :FromFormula[F, M] =
+//		private[sql] def apply[F <: FromClause, M[O] <: MappingFrom[O]](mapping :M[Any], index :Int) :FromFormula[F, M] =
 //			new FromFormula(mapping, index)
 
 		def unapply[F <: FromClause, X](f :SQLFormula[F, X]) :Option[(Mapping, Int)] = f match {
@@ -145,7 +145,7 @@ object MappingFormula {
 
 	type FromLast[M <: Mapping] = FromFormula[FromClause Join M, M]
 
-	def FromLast[M[A] <: AnyComponent[A], O](from :RowSource[M], index :Int) = new FromLast[M[O]](from[O], index)
+	def FromLast[M[A] <: MappingFrom[A], O](from :RowSource[M], index :Int) = new FromLast[M[O]](from[O], index)
 
 	def FromLast[M <: Mapping](from :M, index :Int) = new FromLast(from, index)
 
