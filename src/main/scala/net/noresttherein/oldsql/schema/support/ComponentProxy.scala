@@ -207,7 +207,7 @@ object ComponentProxy {
 				val comp = egg.export(component.asInstanceOf[egg.Component[T]])
 				exports.getOrElse(comp,
 					throw new NoSuchElementException(
-						s"TypedMapping $comp of $egg (public version of $component) is not on the mapping's subcomponents list."
+						s"Component $comp of $egg (public version of $component) is not on the mapping's subcomponents list."
 					)
 				)
 			}).asInstanceOf[Selector[T]]

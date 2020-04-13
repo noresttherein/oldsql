@@ -71,7 +71,7 @@ import scala.annotation.implicitNotFound
   * instances of the same component type but coming from different sources. In fact, many generic operations
   * are impossible to reliably implement without asserting that the handles `Mapping` actually defines those types
   * (that is, those types are equal for all instances of the mapping type). This is done through the type aliases
-  * defined here [[net.noresttherein.oldsql.schema.Mapping#TypedMapping[T] TypedMapping]],
+  * defined here [[net.noresttherein.oldsql.schema.Mapping#Component[T] Component]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingFrom MappingFrom]] and their global, static counterparts
   * from the companion object: [[net.noresttherein.oldsql.schema.Mapping.TypedMapping TypedMapping]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingFrom MappingFrom]],
@@ -82,7 +82,7 @@ import scala.annotation.implicitNotFound
   *
   * The reasons for these distinctions are twofold: first, several types rely heavily on the infix notation
   * of two-argument type constructors, preventing them from accepting the type parameters of `GenericMapping`
-  * or `TypedMapping`. Abstract type parameters of existential types such as `TypedMapping[_]` are not unified, leading
+  * or `TypedMapping`. Abstract type parameters of existential types such as `Component[_]` are not unified, leading
   * to absurd situations where 'obviously' equal types are not unified by the compiler, almost completely preventing
   * their type safe use. The second reason is the limitation of the type inferer which, when faces with
   * method with a signature in the form of `[M &lt;: TypedMapping[S, O], O, S](m :M)` will, when applied to
@@ -143,7 +143,7 @@ trait Mapping { mapping :ConcreteMapping =>
 	  * This process can modify the mapping definition by changing names of the columns (prefixing them) and updating
 	  * their buffs by cascading the buffs present on this instance.
 	  * By default it returns the `export` property of the selector for the component returned by
-	  * [[net.noresttherein.oldsql.schema.Mapping#apply[T](component:TypedMapping[T]) apply(component)]].
+	  * [[net.noresttherein.oldsql.schema.Mapping#apply[T](component:Component[T]) apply(component)]].
 	  */
 	def export[T](component :Component[T]) :Component[T] = apply(component).export
 
@@ -169,7 +169,7 @@ trait Mapping { mapping :ConcreteMapping =>
 	def components :Unique[Component[_]]
 
 	/** All transitive components of this mapping (i.e. components/columns declared by it's components or
-	  * other subcomponents), or all that this mapping cares to expose, as instances of this.TypedMapping[_].
+	  * other subcomponents), or all that this mapping cares to expose, as instances of this.Component[_].
 	  * This list should include all selectable columns. It is typically defined by recursive ''flat mapping''
 	  * over the `components` list and including the direct components themselves. This list is always empty
 	  * for columns, thus ending any similar recursion.

@@ -119,7 +119,7 @@ object WithParam {
 	  * formula can be used to represent a statement parameter, its value must be known when the formula is created.
 	  * By representing a statement parameter as a mapping that can be used in the same way as table mappings
 	  * in `FromClause` table lists, we can represent any value obtainable from `P`
-	  * by a function `P => T` as a component `(P #? _)#TypedMapping[T]` wrapping that function, which can be used
+	  * by a function `P => T` as a component `(P #? _)#Component[T]` wrapping that function, which can be used
 	  * to create component formulas for that function. In particular, a `TableFormula[S, ParamMapping[P]]`
 	  * is a formula which value will be substituted by a statement parameter `P`.
 	  * @param name a suggested name of the parameter for debugging purposes.
@@ -148,7 +148,7 @@ object WithParam {
 			case mapping :ParamMapping[_, _]#ComponentMapping[_] if mapping.param eq this =>
 				ComponentExtractor[P, T, O](component)(mapping.asInstanceOf[ComponentMapping[T]].extractor)
 			case _ =>
-				throw new IllegalArgumentException(s"TypedMapping $component is not a part of this parameter mapping $this")
+				throw new IllegalArgumentException(s"Component $component is not a part of this parameter mapping $this")
 		}
 
 

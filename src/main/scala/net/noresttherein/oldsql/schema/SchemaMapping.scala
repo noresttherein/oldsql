@@ -471,12 +471,14 @@ abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :Ma
   * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaComponentAccessor#prev prev]].
   *
   * @tparam C a `Chain` listing the types of all components in this schema. All components must implement
-  *           `MappingSchema[_, _, O, _]`.
+  *           `SchemaMapping[_, _, _, O]`.
   *           different fragments of a `ResultSet`, when more than one copy is present.
   * @tparam R a `Chain` containing the subject types of all components in the chain `C`, which is the subject type
   *           of this mapping.
   * @tparam S the entity type of an owning `SchemaMapping`.
-  * @tparam O a label type serving to distinguish statically between mappings of the same class but mapping
+  * @tparam O a marker type denoting the origin of the mapping used to distinguish between different instances
+  *           of the same class but representing different tables or different occurrences of a table in the
+  *           ''from'' clause of an SQL select.
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping]]
   */
@@ -487,7 +489,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends GenericMapping[R, O] 
 	/** A shorthand alias for `LabeledSchemaColumn[N, O, T]` allowing reduced notation `N @|| T` in the component type chain. */
 	type @||[N <: Label, T] = LabeledSchemaColumn[N, T, O]
 
-	/** TypedMapping type of this schema, enforcing implementation of `SchemaMapping` of all components. */
+	/** Component type of this schema, enforcing implementation of `SchemaMapping` of all components. */
 	type Subschema[+L <: Chain,  V <: Chain, T] = SchemaMapping[L, V, T, O]
 
 	/** Fully typed list of components in this schema as a `Chain`. */
@@ -1043,7 +1045,7 @@ object MappingSchema {
 			if (component eq this)
 				extractor.asInstanceOf[ComponentExtractor[S, X, O]]
 			else
-				throw new IllegalArgumentException("TypedMapping $component is not a part of this empty mapping schema.")
+				throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping schema.")
 
 		override def unapply(subject :S): Option[@~] = Some(@~)
 

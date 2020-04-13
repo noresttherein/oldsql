@@ -832,7 +832,7 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 				}
 			}
 			fastSelectors.getOrElse(component, throw new IllegalArgumentException(
-				s"TypedMapping $component is not a part of mapping $this."
+				s"Component $component is not a part of mapping $this."
 			)).asInstanceOf[Selector[T]]
 	}
 
