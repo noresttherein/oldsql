@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, CompatibleMapping, ComponentExtractor, ConcreteMapping, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, CompatibleMapping, ConcreteMapping, MappingOf}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
@@ -30,7 +30,7 @@ import net.noresttherein.oldsql.slang._
   * any values lower in the assembly tree, but it is not enforced. In fact, implementing this behaviour is only possible
   * when the values are accessed in the descending order, with the mapping only requesting the values either for its
   * direct components, or via a path to the subcomponent. There's no generic way of discovering the path to a given
-  * (lifted) subcomponent of the associated mapping when asked directly. For example, when a mapping for class Person
+  * (export) subcomponent of the associated mapping when asked directly. For example, when a mapping for class Person
   * containing an address component asks directly for the value of 'street' column, instead of either specifying
   * the path `address \ street` or just the value of `address`, leaving the assembly to the address component,
   * there's no way of checking if there's a predefined value for address that should be used as a source of data for
@@ -100,13 +100,13 @@ trait ComponentValues[M <: Mapping] {
 	  * @param extractor the extractor for the required component of the associated mapping.
 	  */
 	def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] =
-		\(extractor).getValue(extractor.lifted)
+		\(extractor).getValue(extractor.export)
 
 	/** Return `ComponentValues` for the given component of the associated mapping. Returned object will delegate all
 	  * calls to this instance (or the parent instance of this mapping)
 	  * @param extractor the extractor for the required component of the associated mapping.
 	  */
-	def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type]
+	def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type]
 
 
 
@@ -157,7 +157,7 @@ trait ComponentValues[M <: Mapping] {
 	  * `:\`, `\\`, `values`, etc.). Each time a value/values are requested for a mapping/component, it will check
 	  * if the argument is equal to the mapping given here, and if so return this instance, otherwise itself.
 	  * This is useful when we want to preset component values for a component further down the mapping hierarchy,
-	  * without knowing its lifted representation. Can be combined with orElse to provide preset values for selected
+	  * without knowing its export representation. Can be combined with orElse to provide preset values for selected
 	  * subcomponents and fallback to default algorithm for all other.
 	  * @param mapping
 	  * @return
@@ -179,7 +179,7 @@ trait ComponentValues[M <: Mapping] {
 	  * @return
 	  */
 	def stick[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[M] =
-		\(extractor).stickTo[M](extractor.lifted) orElse this
+		\(extractor).stickTo[M](extractor.export) orElse this
 
 	/** A safer casting method which allows casting this instance, invariant regarding to the mapping type, to a higher
 	  * mapping type. Generally used to cast from a singleton-typed instance to the generic type instance.
@@ -383,24 +383,24 @@ object ComponentValues {
 
 		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {
 			val next = values \ extractor
-			val aliased = alias(extractor.lifted)
-			val predef = next.predefined(aliased.asInstanceOf[extractor.lifted.type])
+			val aliased = alias(extractor.export)
+			val predef = next.predefined(aliased.asInstanceOf[extractor.export.type])
 			if (predef.isDefined)
 				predef
 			else
-                extractor.lifted.optionally(
-	                new AliasedComponentValues[extractor.lifted.type](
-						alias.asInstanceOf[extractor.lifted.AnyComponent => extractor.lifted.AnyComponent],
+                extractor.export.optionally(
+	                new AliasedComponentValues[extractor.export.type](
+						alias.asInstanceOf[extractor.export.AnyComponent => extractor.export.AnyComponent],
 		                next
 					)
                 )
 		}
 
-		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] = {
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] = {
 			val vals = values \ extractor
-			if (vals eq values) crosscast[extractor.lifted.type]
-			else new AliasedComponentValues[extractor.lifted.type](
-				alias.asInstanceOf[extractor.lifted.AnyComponent => extractor.lifted.AnyComponent],
+			if (vals eq values) crosscast[extractor.export.type]
+			else new AliasedComponentValues[extractor.export.type](
+				alias.asInstanceOf[extractor.export.AnyComponent => extractor.export.AnyComponent],
 				vals
 			)
 		}
@@ -433,14 +433,14 @@ object ComponentValues {
 
 		override def apply[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :T =
 			overrides.get(extractor) orElse fallback.get(extractor) getOrElse {
-				throw new NoSuchElementException("value for component " + extractor.lifted + " in " + this)
+				throw new NoSuchElementException("value for component " + extractor.export + " in " + this)
 			}
 
 		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] =
 			overrides.get(extractor) orElse fallback.get(extractor)
 
-		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
-			new FallbackComponentValues[extractor.lifted.type](overrides \ extractor, fallback \ extractor)
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] =
+			new FallbackComponentValues[extractor.export.type](overrides \ extractor, fallback \ extractor)
 
 
 		override def compatible[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] = {
@@ -522,10 +522,10 @@ object ComponentValues {
 
 		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = extractor.get(value)
 
-		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] =
 			extractor.get(value) match {
-				case Some(v) => Predefined[extractor.lifted.type](v)
-				case _ => Empty[extractor.lifted.type]
+				case Some(v) => Predefined[extractor.export.type](v)
+				case _ => Empty[extractor.export.type]
 			}
 
 		override def compatible[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] =
@@ -545,12 +545,12 @@ object ComponentValues {
 	{
 		lazy val value :M#Subject = expr
 
-		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] =
 			extractor.requisite match { //todo: check for identity
-				case Some(pick) => new LazyPredefinedMappingValue[extractor.lifted.type](pick(value))
+				case Some(pick) => new LazyPredefinedMappingValue[extractor.export.type](pick(value))
 				case _ =>
 					val pick = extractor.optional :M#Subject => Option[T]
-					new LazyMappingValue[extractor.lifted.type](pick(value))
+					new LazyMappingValue[extractor.export.type](pick(value))
 			}
 
 	}
@@ -567,15 +567,15 @@ object ComponentValues {
 
 
 		override def apply[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :T = extractor(value getOrElse {
-			throw new NoSuchElementException("No value for component " + extractor.lifted + " in Empty")
+			throw new NoSuchElementException("No value for component " + extractor.export + " in Empty")
 		})
 
 		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] =
 			value flatMap extractor.optional
 
-		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] = {
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] = {
 			val pick = extractor.optional
-			new LazyMappingValue[extractor.lifted.type](value.flatMap(pick))
+			new LazyMappingValue[extractor.export.type](value.flatMap(pick))
 		}
 
 		override def compatible[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] =
@@ -595,8 +595,8 @@ object ComponentValues {
 			preset(root).flatMap(_.result(root))
 
 
-		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
-			preset[extractor.lifted.type](extractor.lifted) getOrElse crosscast[extractor.lifted.type]
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] =
+			preset[extractor.export.type](extractor.export) getOrElse crosscast[extractor.export.type]
 
 		override def compatible[C <: CompatibleMapping[M]](mapping: C): ComponentValues[C] =
 			preset[C](mapping) getOrElse crosscast[C]
@@ -638,19 +638,19 @@ object ComponentValues {
 		override def apply[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :T =
 			defined(extractor) match {
 				case Some(x) => x
-				case _ => extractor.lifted(crosscast[extractor.lifted.type])
+				case _ => extractor.export(crosscast[extractor.export.type])
 			}
 
 		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {
 			val predef = defined(extractor)
 			if (predef.isDefined) predef
-			else extractor.lifted.optionally(crosscast[extractor.lifted.type])
+			else extractor.export.optionally(crosscast[extractor.export.type])
 		}
 
-		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] =
 			defined(extractor) match {
-				case Some(t) => Predefined[extractor.lifted.type](t)
-				case _ => crosscast[extractor.lifted.type]
+				case Some(t) => Predefined[extractor.export.type](t)
+				case _ => crosscast[extractor.export.type]
 			}
 
 		override def compatible[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] =
@@ -671,7 +671,7 @@ object ComponentValues {
 		extends SelectedComponentValues[M]
 	{
 		protected override def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]): Option[T] =
-			if (components.contains(extractor.lifted)) extractor.get(value)
+			if (components.contains(extractor.export)) extractor.get(value)
 			else None
 
 		override def toString :String = components.mkString("Disassembled(" + value + ": ", ", ", ")")
@@ -682,7 +682,7 @@ object ComponentValues {
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]): Option[T] =
-			vals(extractor.lifted).crosstyped[T]
+			vals(extractor.export).crosstyped[T]
 
 		override def toString :String = "Custom(" + vals + ")"
 	}
@@ -693,7 +693,7 @@ object ComponentValues {
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {
-			val i = index(extractor.lifted)
+			val i = index(extractor.export)
 			if (i < 0) None
 			else vals(i).asInstanceOf[Option[T]]
 		}
@@ -720,8 +720,8 @@ object ComponentValues {
 
 		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = None
 
-		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.lifted.type] =
-			this.crosscast[extractor.lifted.type]
+		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] =
+			this.crosscast[extractor.export.type]
 
 
 		override def orElse(values: ComponentValues[M]): ComponentValues[M] = values

@@ -1,8 +1,8 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, ComponentExtractor, MappingOf}
-import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLReadForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, TypedMapping}
+import net.noresttherein.oldsql.schema.{ComponentExtractor, Mapping, RowSource, SQLReadForm}
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula.ComponentMatcher
 import net.noresttherein.oldsql.sql.MappingFormula.FromFormula.{FromMatcher, MatchFrom}
@@ -61,7 +61,7 @@ object MappingFormula {
 		{
 			val extractor = table(mapping)
 
-			override val readForm :SQLReadForm[S] = extractor.lifted.selectForm
+			override val readForm :SQLReadForm[S] = extractor.export.selectForm
 
 			override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[S] = matcher.component[T, M](this)
 

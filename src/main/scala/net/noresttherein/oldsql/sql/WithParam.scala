@@ -4,8 +4,8 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, FormMapping}
-import net.noresttherein.oldsql.schema.{ColumnForm, GenericMapping, Mapping, RootMapping, RowSource, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, ComponentExtractor, ConcreteMapping, MappingAlias}
+import net.noresttherein.oldsql.schema.{ColumnForm, ComponentExtractor, GenericMapping, Mapping, RootMapping, RowSource, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{ConcreteMapping, MappingAlias, MappingFrom, TypedMapping}
 import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
 import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, FromFormula, FromLast}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
@@ -174,7 +174,7 @@ object WithParam {
 		/** An extractor matching ComponentFormulas for components of this mapping, that is actual sql statement parameters. */
 		def ParamForm :Extractor[SQLFormula[_, _], SQLWriteForm[P]] = Extractor(
 			(sql :SQLFormula[_, _]) => unapply(sql).map {
-				extractor => extractor.lifted.queryForm compose extractor
+				extractor => extractor.export.queryForm compose extractor
 			}
 		)
 

@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
-import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, MappingAlias}
+import net.noresttherein.oldsql.schema.Mapping.MappingAlias
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, LabeledMapping}
 import net.noresttherein.oldsql.schema.support.LabeledMapping.Label
 
@@ -168,7 +168,7 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 
 
-	override def lift[T](component :Component[T]) :Component[T] = component
+	override def export[T](component :Component[T]) :Component[T] = component
 
 	override def apply[T](component :Component[T]) :Selector[T] =
 		if (component == this)

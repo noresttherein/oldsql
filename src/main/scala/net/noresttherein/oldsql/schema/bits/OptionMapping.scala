@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{Buff, GenericMapping, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor}
+import net.noresttherein.oldsql.schema.{Buff, ComponentExtractor, GenericMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.slang._
 
@@ -66,7 +66,7 @@ object OptionMapping {
 				getExtractor.asInstanceOf[Selector[T]]
 			else {
 				val selector = get(component)
-				ComponentExtractor(selector.lifted)(Extractor.fromOpt[S] andThen selector)
+				ComponentExtractor(selector.export)(Extractor.fromOpt[S] andThen selector)
 			}
 
 		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(getExtractor))

@@ -100,12 +100,12 @@ object MappingAdapter {
 		override def autoInserted :Unique[Component[_]] = egg.autoInserted
 
 
-		/** Refers to the adapted mapping `egg` to lift the passed component to its final representation, unless `component`
+		/** Refers to the adapted mapping `egg` to export the passed component to its final representation, unless `component`
 		  * is the `egg` itself, in which it is returned as-is.
 		  */
-		override def lift[X](component :Component[X]) :Component[X] =
+		override def export[X](component :Component[X]) :Component[X] =
 			if (component eq egg) component
-			else egg.lift(component)
+			else egg.export(component)
 
 	}
 

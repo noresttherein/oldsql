@@ -2,8 +2,8 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor, MappingOf}
-import net.noresttherein.oldsql.schema.{Buff, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingOf, TypedMapping}
+import net.noresttherein.oldsql.schema.{Buff, ComponentExtractor, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
 
@@ -87,22 +87,22 @@ object ComponentProxy {
 			if (component eq egg)
 				ComponentExtractor.ident(adaptEgg).asInstanceOf[Selector[T]]
 			else
-				ComponentExtractor[S, T, O](lift(component))(egg.apply(dealias(component)))
+				ComponentExtractor[S, T, O](export(component))(egg.apply(dealias(component)))
 
-		override def lift[T](component :Component[T]) :Component[T] =
+		override def export[T](component :Component[T]) :Component[T] =
 			if (component eq egg)
 				adaptEgg.asInstanceOf[Component[T]]
 			else
-				adapt(egg.lift(dealias(component)))
+				adapt(egg.export(dealias(component)))
 
-		private[this] def alias[T](component :egg.Component[T]) :Component[T] = adapt(egg.lift(component))
+		private[this] def alias[T](component :egg.Component[T]) :Component[T] = adapt(egg.export(component))
 
-		private[this] def column[T](component :egg.Component[T]) :Component[T] = adaptColumn(egg.lift(component))
+		private[this] def column[T](component :egg.Component[T]) :Component[T] = adaptColumn(egg.export(component))
 
 		/** A hook method left for subclasses to implement adapting of a component of the adapted mapping
-		  * to its 'lifted' form under this mapping. All column and component lists  of this instance contain
+		  * to its 'export' form under this mapping. All column and component lists  of this instance contain
 		  * components of `egg` (and `egg` itself) mapped with this method.
-		  * @param component a 'lifted' component of `egg`.
+		  * @param component a 'export' component of `egg`.
 		  */
 		protected def adapt[T](component :egg.Component[T]) :Component[T]
 
@@ -114,10 +114,10 @@ object ComponentProxy {
 		/** A hook method left for subclasses to implement the mapping of the adapted components back to their
 		  * originating components of the adapted mapping. Used in implementing `apply(component)` returning
 		  * the extractor for the component.
-		  * @param lifted a subcomponent of this instance; may be a component adapted from `egg` or a (sub)component
+		  * @param export a subcomponent of this instance; may be a component adapted from `egg` or a (sub)component
 		  *               of `egg` unchanged, or even `egg` itself.
 		  */
-		protected def dealias[T](lifted :Component[T]) :egg.Component[T]
+		protected def dealias[T](export :Component[T]) :egg.Component[T]
 
 		override def components :Unique[Component[_]] = egg.components.map(alias(_))
 		override def subcomponents :Unique[Component[_]] = egg.subcomponents.map(alias(_))
@@ -159,7 +159,7 @@ object ComponentProxy {
 	abstract class EagerDeepProxy[+M <: MappingOf[S], S, O](protected override val egg :M)
 		extends DeepProxy[S, O] with MappingNest[M]
 	{
-		private[this] val lifted = mutable.Map[Mapping, ComponentExtractor[S, _, O]]()
+		private[this] val exports = mutable.Map[Mapping, ComponentExtractor[S, _, O]]()
 		private[this] val originals = mutable.Map[Mapping.MappingFrom[O], Mapping]()
 
 		override val columns :Unique[Component[_]] = egg.columns.map(alias(_, true))
@@ -172,43 +172,46 @@ object ComponentProxy {
 		override val components :Unique[Component[_]] = egg.components.map(alias(_, false))
 		override val subcomponents :Unique[Component[_]] = egg.subcomponents.map(alias(_, false))
 
-
 		{
 			val adapted = adaptEgg
-			lifted.put(adapted, ComponentExtractor.ident[S, O](adapted))
+			exports.put(adapted, ComponentExtractor.ident[S, O](adapted))
 			originals.put(adapted, egg)
 			oldsql.publishMutable()
 		}
 
+
 		private[this] def alias[T](component :egg.Component[T], column :Boolean) :Component[T] =
-			lifted.getOrElse(component, {
+			exports.getOrElse(component, {
 				val base :egg.Selector[T] =
 					if (egg eq component)
 						ComponentExtractor.ident[S, egg.Origin](egg).asInstanceOf[egg.Selector[T]]
 					else
 	                    egg.apply(component)
-				val lifted =
-					if (column) adaptColumn(base.lifted)
-					else adapt(base.lifted)
-				val selector = ComponentExtractor[S, T, O](lifted)(base)
-				this.lifted.put(component, selector)
-				this.lifted.put(base.lifted, selector)
-				if (!originals.contains(lifted))
-					originals.put(lifted, base.lifted)
+				val export =
+					if (column) adaptColumn(base.export)
+					else adapt(base.export)
+				val selector = ComponentExtractor[S, T, O](export)(base)
+				this.exports.put(component, selector)
+				this.exports.put(base.export, selector)
+				if (!originals.contains(export))
+					originals.put(export, base.export)
 				selector
-			}).lifted.asInstanceOf[Component[T]]
+			}).export.asInstanceOf[Component[T]]
 
-		override def lift[T](component :Component[T]) :Component[T] = apply(component).lifted
+
+		override def export[T](component :Component[T]) :Component[T] = apply(component).export
+
 
 		override def apply[T](component :Component[T]) :Selector[T] =
-			lifted.getOrElse(component, { //if component is not the public version, we know nothing about it
-				val comp = egg.lift(component.asInstanceOf[egg.Component[T]])
-				lifted.getOrElse(comp,
+			exports.getOrElse(component, { //if component is not the public version, we know nothing about it
+				val comp = egg.export(component.asInstanceOf[egg.Component[T]])
+				exports.getOrElse(comp,
 					throw new NoSuchElementException(
 						s"TypedMapping $comp of $egg (public version of $component) is not on the mapping's subcomponents list."
 					)
 				)
 			}).asInstanceOf[Selector[T]]
+
 
 		protected override def dealias[T](component :Component[T]) :egg.Component[T] =
 			originals.getOrElse(component, component).asInstanceOf[egg.Component[T]]

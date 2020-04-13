@@ -4,7 +4,8 @@ import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.collection.Chain.{~, MapChain}
 import net.noresttherein.oldsql.morsels.generic.{GenericFun, Self}
 import net.noresttherein.oldsql.schema.support.LazyMapping
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, ComponentExtractor}
+import net.noresttherein.oldsql.schema.ComponentExtractor
+import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Map, Seq}

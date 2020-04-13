@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, BuffMappingFailureException, NoInsert, NoQuery, NoSelect, NoUpdate, Ignored}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, MappingReadForm, MappingWriteForm, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm, MappingOf}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -92,13 +92,13 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 		protected[MappingSupport] def init() :Unit = composite.synchronized {
 			initComponents += this
 			initSubcomponents += this
-			columns foreach { liftSubcomponent(_, true) }
-			subcomponents foreach { c => liftSubcomponent(c, false) } //or should it be components?
+			columns foreach { exportSubcomponent(_, true) }
+			subcomponents foreach { c => exportSubcomponent(c, false) } //or should it be components?
 		}
 
 
 
-		protected[MappingSupport] def liftSubcomponent[U](subcomponent :Component[U], column :Boolean) :ComponentMapping[U] =
+		protected[MappingSupport] def exportSubcomponent[U](subcomponent :Component[U], column :Boolean) :ComponentMapping[U] =
 			subcomponent match {
 				case mine :MappingSupport[_, _]#ComponentMapping[_] if mine belongsTo composite =>
 					mine.asInstanceOf[ComponentMapping[U]]
@@ -140,14 +140,14 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 											s"$composite does not have an sqlName."
 									)
 								val name = columnPrefix + subcomponent.sqlName.get
-								new LiftedColumn[U](subcomponent, subextractor, name, subbuffs)
+								new ExportColumn[U](subcomponent, subextractor, name, subbuffs)
 
 							case _ =>
-								new LiftedComponent[U](subcomponent, subextractor, columnPrefix, subbuffs)
+								new ExportComponent[U](subcomponent, subextractor, columnPrefix, subbuffs)
 						}
 						initSelectors = initSelectors.updated(subcomponent, lifted.selector)
 						lifted.selector
-					}).lifted.asInstanceOf[ComponentMapping[U]]
+					}).export.asInstanceOf[ComponentMapping[U]]
 				}
 			}
 
@@ -190,29 +190,29 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 
 	/** A proxy class for non-direct subcomponents of the enclosing `MappingSupport` which incorporates any column prefix
 	  * and buffs defined in it and any other enclosing components into the adapted component.
-	  * It serves at the same time as its own `ComponentExtractor` and the lifted 'effective' version of the component.
-	  * Its components are at the same time the lifted components of the enclosing mapping.
+	  * It serves at the same time as its own `ComponentExtractor` and the export 'effective' version of the component.
+	  * Its components are at the same time the export components of the enclosing mapping.
 	  */
-	private class LiftedComponent[T](target :Component[T], val extractor :Extractor[S, T],
+	private class ExportComponent[T](target :Component[T], val extractor :Extractor[S, T],
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
 		extends EagerDeepProxy[Component[T], T, O](target) with ComponentMapping[T]
 	{
 		def adapted :Component[T] = egg
 
 		protected[MappingSupport] override def init() :Unit = composite.synchronized {
-			initSubcomponents += this //don't lift subcomponents, don't include in the composite.components list.
+			initSubcomponents += this //don't export subcomponents, don't include in the composite.components list.
 		}
 
 		override def canEqual(that :Any) :Boolean = that match {
-			case comp :MappingSupport[_, _]#LiftedComponent[_] => comp belongsTo composite
+			case comp :MappingSupport[_, _]#ExportComponent[_] => comp belongsTo composite
 			case _ => false
 		}
 
 		override protected def adapt[X](component :egg.Component[X]) :Component[X] =
-			liftSubcomponent(component, false)
+			exportSubcomponent(component, false)
 
 		override protected def adaptColumn[X](component :egg.Component[X]) :Component[X] =
-			liftSubcomponent(component, true)
+			exportSubcomponent(component, true)
 
 		override def toString :String = "^" + egg + "^"
 
@@ -220,8 +220,8 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 
 
 
-	private class LiftedColumn[T](target :Component[T], extractor :Extractor[S, T], name :String, buffs :Seq[Buff[T]])
-		extends LiftedComponent[T](target, extractor, name, buffs)
+	private class ExportColumn[T](target :Component[T], extractor :Extractor[S, T], name :String, buffs :Seq[Buff[T]])
+		extends ExportComponent[T](target, extractor, name, buffs)
 	{
 		protected[MappingSupport] override def init() :Unit = composite.include(this)
 	}
@@ -263,11 +263,11 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 	  *               All columns accessed through this instance methods will be affected, not only when viewed
 	  *               from parent mappings. A column which is defined within a subcomponent of this component
 	  *               will not show the prefix however when viewed in the scope of that component - only
-	  *               the lifted proxy present on `this.columns` will. Note that the `columnPrefix` property
+	  *               the export proxy present on `this.columns` will. Note that the `columnPrefix` property
 	  *               of this component will be the concatenation of the column prefix defined by the enclosing
 	  *               mapping and this prefix.
 	  * @param opts   buffs specific to this component. This list will be extended with buffs inherited
-	  *               from the enclosing schema. The lifted versions of all subcomponents of this component will
+	  *               from the enclosing schema. The export versions of all subcomponents of this component will
 	  *               inherit these buffs.
 	  * @tparam T value type of this component.
 	  */
@@ -304,11 +304,11 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 	  *               All columns accessed through this instance methods will be affected, not only when viewed
 	  *               from parent mappings. A column which is defined within a subcomponent of this component
 	  *               will not show the prefix however when viewed in the scope of that component - only
-	  *               the lifted proxy present on `this.columns` will. Note that the `columnPrefix` property
+	  *               the export proxy present on `this.columns` will. Note that the `columnPrefix` property
 	  *               of this component will be the concatenation of the column prefix defined by the enclosing
 	  *               mapping and this prefix.
 	  * @param opts   buffs specific to this component. This list will be extended with buffs inherited
-	  *               from the enclosing schema. The lifted versions of all subcomponents of this component will
+	  *               from the enclosing schema. The export versions of all subcomponents of this component will
 	  *               inherit these buffs.
 	  * @tparam T value type of this component.
 	  */
@@ -326,16 +326,16 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 
 
 	/** An adapter allowing embedding of any other component, regardless of the `O` type, as part of this mapping.
-	  * The embedded component is not exposed to the outside. The components of the embedded mapping are lifted
+	  * The embedded component is not exposed to the outside. The components of the embedded mapping are export
 	  * to components of the enclosing mapping by incorporating the `columnPrefix` and `buffs` given here (including
 	  * those inherited from the enclosing mapping). At the same time, they form the components of this instance exposed
 	  * in its component and column lists.
 	  * @param body the embedded component.
 	  * @param extractor the extractor for the value of this component.
-	  * @param columnPrefix the prefix string prepended to the names of all (lifted) columns of `body`.
+	  * @param columnPrefix the prefix string prepended to the names of all (export) columns of `body`.
 	  *                     The value of `columnPrefix` of the enclosing mapping is ''not'' prepended automatically
 	  *                     to this value - it should be done by the caller if required.
-	  * @param buffs the buffs attached to this component, inherited by all of its lifted subcomponents. The buffs
+	  * @param buffs the buffs attached to this component, inherited by all of its export subcomponents. The buffs
 	  *              of the enclosing mapping are ''not'' automatically added to this list - it should be done
 	  *              by the caller if required.
 	  * @tparam T the value type of this component.
@@ -348,14 +348,14 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 
 		protected[MappingSupport] override def init() :Unit = composite.synchronized {
 			initComponents += this
-			initSubcomponents += this //don't lift subcomponents as its done by EagerDeepProxy
+			initSubcomponents += this //don't export subcomponents as its done by EagerDeepProxy
 		}
 
 		protected override def adapt[X](component :egg.Component[X]) :Component[X] =
-			liftSubcomponent(component.asInstanceOf[Component[X]], false)
+			exportSubcomponent(component.asInstanceOf[Component[X]], false)
 
 		protected override def adaptColumn[X](component :egg.Component[X]) :Component[X] =
-			liftSubcomponent(component.asInstanceOf[Component[X]], true)
+			exportSubcomponent(component.asInstanceOf[Component[X]], true)
 
 
 		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
@@ -421,7 +421,7 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 
 	/** Embeds any component under this instance. This method creates a component exposing the wrapped `component`
 	  * through its `body` property as `component.type`. The wrapper component has a single 'phantom' subcomponent,
-	  * being the passed component; each subcomponent of `component` receives a lifted version exposed as a subcomponent
+	  * being the passed component; each subcomponent of `component` receives a export version exposed as a subcomponent
 	  * of the wrapper on its `subcomponents` list (and, for columns, all applicable column lists).
  	  * @param component a mapping embedded as a component in the enclosing mapping.
 	  * @param value a getter function returning the value of this component for a given subject value of this mapping.
@@ -698,7 +698,7 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 
 
 	/** Renames a column of this mapping. The column might be either directly declared by this mapping or
-	  * any of its subcomponents preceding this call. The new column will have the buffs of its lifted version,
+	  * any of its subcomponents preceding this call. The new column will have the buffs of its export version,
 	  * as would be returned by `apply(column)`. It is not required that `column` is an instance of
 	  * `ColumnMapping` or that it upholds its invariants: only that it declares exactly one column
 	  * and has non empty `sqlName`. This means that adapted/mapped columns are accepted.
@@ -719,36 +719,36 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 		val current = initSelectors.getOrElse(column, throw new NoSuchElementException(
 			s"Cannot rename column $column as it is not a part of mapping $this"
 		)).asInstanceOf[Selector[T]]
-		val lifted = current.lifted
-		val extract = Extractor(current.optional, current.requisite) //don't retain the reference to lifted
+		val export = current.export
+		val extract = Extractor(current.optional, current.requisite) //don't retain the reference to export
 
 		val lists = initComponents::initSubcomponents::initColumns::initSelectable::initQueryable::
 			initUpdatable::initInsertable::initAutoInsert::initAutoUpdate::Nil
 
 		val replacement = column match {
 			case col :ColumnMapping[T, O] =>
-				val replacement = new ColumnComponent[T](extract, name, lifted.buffs)(col.form) {
-					override def init() :Unit = () //we'll replace the lifted column with this manually
+				val replacement = new ColumnComponent[T](extract, name, export.buffs)(col.form) {
+					override def init() :Unit = () //we'll replace the export column with this manually
 				}
 				lists foreach { list => //swap the replaced component with the renamed version
 					val uninitialized = list.uninitialized
-					val i = uninitialized.indexOf(lifted)
+					val i = uninitialized.indexOf(export)
 					if (i >= 0)
 						uninitialized(i) = replacement
 				}
 				replacement
 
 			case _ =>
-				val adapted = lifted match {
-					case lift :MappingSupport[_, _]#LiftedComponent[_] => lift.adapted.asInstanceOf[Component[T]]
-					case _ => lifted //wtf???
+				val adapted = export match {
+					case lift :MappingSupport[_, _]#ExportComponent[_] => lift.adapted.asInstanceOf[Component[T]]
+					case _ => export //wtf???
 				}
 
-				val replacement = new RenamedColumn(name, adapted, extract, lifted.buffs)
+				val replacement = new RenamedColumn(name, adapted, extract, export.buffs)
 
 				def includeColumn(list :LateInitComponents, col :Component[_]) :Unit = {
 					val uninitialized = list.uninitialized
-					val i = uninitialized.indexOf(lifted)
+					val i = uninitialized.indexOf(export)
 					if (i >= 0)
 						uninitialized.insert(i + 1, col.asInstanceOf[ComponentMapping[_]])
 					else
@@ -767,30 +767,30 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 				}
 
 				val subs = initSubcomponents.uninitialized
-				var i = subs.indexOf(lifted)
-				assert(i >= 0, s"Cannot rename column $column (from $lifted) of mapping $this as it is not on the subcomponents list")
+				var i = subs.indexOf(export)
+				assert(i >= 0, s"Cannot rename column $column (from $export) of mapping $this as it is not on the subcomponents list")
 
 				subs(i) = replacement
 				replacement.subcomponents.foreach { c =>
 					i += 1; subs.insert(i, c.asInstanceOf[ComponentMapping[_]])
 				}
 
-				i = initComponents.uninitialized.indexOf(lifted)
+				i = initComponents.uninitialized.indexOf(export)
 				if (i >= 0)
 					initComponents.uninitialized(i) = replacement
 				replacement
 		}
 
-		val old = lifted.subcomponents
+		val old = export.subcomponents
 		lists foreach { list =>
 			list.uninitialized.filterInPlace(!old.contains(_))
 		}
 
 		//we now need to find all versions of the replaced component (as components of some subcomponent)
-		//and replace their mapping from lifted to replacement
+		//and replace their mapping from export to replacement
 		val selector = selectorFor(replacement)
 		initSelectors = initSelectors map { lift =>
-			if (lift._2.lifted == lifted) lift._1 -> selector
+			if (lift._2.export == export) lift._1 -> selector
 			else lift
 		}
 
@@ -811,11 +811,11 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
 
 
 
-	override def lift[T](component :Component[T]) :Component[T] = component match {
+	override def export[T](component :Component[T]) :Component[T] = component match {
 		case lifted :MappingSupport[_, _]#ComponentMapping[_] if lifted belongsTo this =>
 			lifted.asInstanceOf[Component[T]]
 		case _ =>
-			apply(component).lifted
+			apply(component).export
 	}
 
 	override def apply[T](component :Component[T]) :Selector[T] = component match {
@@ -1142,7 +1142,7 @@ trait MappingSupport[S, O] extends StaticMapping[S, O] { composite =>
   * class is embedded in the mapping. As it is the latter version of the component which is used by the framework
   * to create any SQL statements, and thus also by the `Pieces`, but typically the original component as defined
   * is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces` implementation
-  * substitutes any component passed to it with its lifted representation before looking for its value.
+  * substitutes any component passed to it with its export representation before looking for its value.
   */
 trait RootMappingSupport[S, O] extends MappingSupport[S, O] with RootMapping[S, O]
 

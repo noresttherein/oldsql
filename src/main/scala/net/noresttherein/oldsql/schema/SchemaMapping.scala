@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, Chain
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor, MappingAlias}
+import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, MappingAlias}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.MappingSchema.{FlatMappedMappingSchema, FlatMappingSchema, GetSchemaComponent, MappedMappingSchema, MappingSchemaGuts, NonEmptySchema, SchemaComponentLabel, SchemaInlining}

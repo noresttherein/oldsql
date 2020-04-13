@@ -2,8 +2,8 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.schema.{Buff, Mapping, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor, MappingOf}
+import net.noresttherein.oldsql.schema.{Buff, ComponentExtractor, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingOf, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException

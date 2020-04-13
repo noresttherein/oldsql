@@ -76,13 +76,13 @@ object CustomizedMapping {
 
 	private def withoutBuff[T, O](mapping :TypedMapping[_, O], component :TypedMapping[T, O], remove :BuffType,
 	                              builder :Builder[Substitution[_, O], Substitutions[O]]) :Unit =
-		mapping.lift(component) match {
+		mapping.export(component) match {
 			case column :ColumnMapping[_, O] =>
 				if (remove.enabled(column))
 					builder += new Substitution(column, column.withBuffs(column.buffs.filter(remove.disabled)))
 			case lifted =>
 				lifted.subcomponents foreach { sub =>
-					val comp = mapping.lift(sub).asInstanceOf[TypedMapping[Any, O]]
+					val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
 					if (remove.enabled(comp))
 						builder += new Substitution(comp, BuffedMapping(comp, comp.buffs.filter(remove.disabled) :_*))
 				}
@@ -102,13 +102,13 @@ object CustomizedMapping {
 
 	private def withBuff[T, O](mapping :TypedMapping[_, O], component :TypedMapping[T, O], has :BuffType, add :FlagBuffType,
 	                           builder :Builder[Substitution[_, O], Substitutions[O]]) :Unit =
-		mapping.lift(component) match {
+		mapping.export(component) match {
 			case column :ColumnMapping[_, O] =>
 				if (add.disabled(column) && has.enabled(column))
 					builder += new Substitution(column, column.withBuffs(add[T] +: column.buffs))
 			case lifted =>
 				lifted.subcomponents foreach { sub =>
-					val comp = mapping.lift(sub).asInstanceOf[TypedMapping[Any, O]]
+					val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
 					if (add.disabled(comp) && has.enabled(comp))
 						builder += new Substitution[Any, O](comp, BuffedMapping(comp, add[Any] +: comp.buffs :_*))
 				}

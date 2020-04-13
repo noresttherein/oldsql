@@ -4,11 +4,11 @@ import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{Chain, Record, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.|#
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, GenericMapping, StaticMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ComponentExtractor, GenericMapping, StaticMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{BaseColumn, LabeledColumn}
 import net.noresttherein.oldsql.schema.bits.RecordSchema.RecordMapping.{GetComponent, RecordComponents}
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ComponentExtractor}
+import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.bits.RecordSchema.{FlatMappedRecordSchema, MappedRecordSchema, Name, RecordMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.MappedMapping.FlatMappedMapping

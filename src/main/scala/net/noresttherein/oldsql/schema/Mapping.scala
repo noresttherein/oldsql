@@ -3,9 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Mapping.{ComponentExtractor, ConcreteMapping, MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{ConcreteMapping, MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.support.{LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
@@ -57,9 +55,9 @@ import scala.annotation.implicitNotFound
   * subcomponents (such as making them read-only). This means that a component being part of a larger mapping can
   * exist in several versions: as declared in its own implementation, the final, effective version as used by
   * an SQL statement, and possibly any number in between. The effective, 'public' version of each component is
-  * referred to as a ''lifted'' component, and only those public, lifted instances must appear in the components
+  * referred to as a ''export'' component, and only those public, export instances must appear in the components
   * (and columns) lists declared as part of this generic interface (as opposed to the declarations of individual
-  * components). It is important to be furthermore aware that a component instance may be public/'lifted'
+  * components). It is important to be furthermore aware that a component instance may be public/'export'
   * from a point of view of the enclosing mapping, but not the root mapping. The library performs this translation
   * automatically when passing on the `Pieces` with selected values and several base classes exist fully handling
   * this translation under scenes, but it is important to remember when implementing custom `Mapping`s
@@ -121,7 +119,7 @@ trait Mapping { mapping :ConcreteMapping =>
 	type Pieces = ComponentValues[_ >: this.type <: Component[Subject]]
 
 	/** An extractor of the value for some component of this mapping with the subject type `T`, which carries
-	  * additionally the lifted version of that component (from the point of view of this mapping).
+	  * additionally the export version of that component (from the point of view of this mapping).
 	  */
 	type Selector[T] = ComponentExtractor[Subject, T, Origin]
 
@@ -141,25 +139,25 @@ trait Mapping { mapping :ConcreteMapping =>
 
 	/** Adapts the given subcomponent (a component being the end of some path of components starting with this instance)
 	  * to its public form as present in the `subcomponents` and `components` list. For every valid transitive
-	  * subcomponent of this mapping, there is exactly one equal to its lifted form on the `subcomponents` list.
+	  * subcomponent of this mapping, there is exactly one equal to its export form on the `subcomponents` list.
 	  * This process can modify the mapping definition by changing names of the columns (prefixing them) and updating
 	  * their buffs by cascading the buffs present on this instance.
-	  * By default it returns the `lifted` property of the selector for the component returned by
+	  * By default it returns the `export` property of the selector for the component returned by
 	  * [[net.noresttherein.oldsql.schema.Mapping#apply[T](component:TypedMapping[T]) apply(component)]].
 	  */
-	def lift[T](component :Component[T]) :Component[T] = apply(component).lifted
+	def export[T](component :Component[T]) :Component[T] = apply(component).export
 
 	/** Adapts the given column of one of the transitive subcomponents of this instance to the form present
 	  * in the `columns` list (and others). For every column of every subcomponent of this instance, there is
-	  * exactly one equal to its lifted version on the `columns` list. This process can change the name and buffs
+	  * exactly one equal to its export version on the `columns` list. This process can change the name and buffs
 	  * of the column, reflecting additional information present in this mapping.
 	  * By default this is an identity operation as no adaptation of subcomponents takes place.
 	  */
-//	def lift[T](column :Column[T]) :Column[T] = column
+//	def export[T](column :Column[T]) :Column[T] = column
 
 
 
-	/** Retrieves the [[net.noresttherein.oldsql.schema.Mapping.ComponentExtractor ComponentExtractor]]
+	/** Retrieves the [[net.noresttherein.oldsql.schema.ComponentExtractor ComponentExtractor]]
 	  * for the given component.
 	  * @throws NoSuchElementException if `component` is not a subcomponent of this mapping.
 	  */
@@ -386,7 +384,7 @@ trait Mapping { mapping :ConcreteMapping =>
 	def columnString :String = columns.mkString(toString + "{", ", ", "}")
 
 	def debugString :String = {
-		/** Use recursion to print the ''lifted'' (by this mapping) version of every subcomponent.
+		/** Use recursion to print the ''export'' (by this mapping) version of every subcomponent.
 		  * @param ident whitespace prefix to start every new line with
 		  * @param wasColumn was the last printed component a sibling column, meaning we should print this column inline
 		  * @return true if `mapping` is a column.
@@ -408,12 +406,12 @@ trait Mapping { mapping :ConcreteMapping =>
 						res.delete(res.length - 2, res.length)
 						res ++= ")"
 					}
-					res ++= "{" //lift and print {components}
+					res ++= "{" //export and print {components}
 					if (mapping.components.isEmpty)
 						res ++= "}"
 					else {
 						res ++= "\n"
-						(false /: mapping.components.map(lift(_)))(
+						(false /: mapping.components.map(export(_)))(
 							(wasColumn, comp) => rec(comp, res, ident + "  ", wasColumn)
 						)
 						res ++= "\n"  ++= ident ++= "}"
@@ -423,7 +421,7 @@ trait Mapping { mapping :ConcreteMapping =>
 		val res = new StringBuilder
 		rec(this, res)
 		res.toString
-//		components.map(c => lift(c).debugString).mkString("\n" + toString + "{\n", "; ", "\n}")
+//		components.map(c => export(c).debugString).mkString("\n" + toString + "{\n", "; ", "\n}")
 	}
 
 }
@@ -531,12 +529,12 @@ trait GenericMapping[S, O] extends ConcreteMapping { self =>
   * final representation included on the mapping's component/column lists. As it is the latter version of the component
   * which is used by the framework to create any SQL statements, and thus also by the `Pieces`, but typically
   * the former is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces`
-  * implementation substitutes any component passed to it with its lifted representation before looking for its value.
+  * implementation substitutes any component passed to it with its export representation before looking for its value.
   *
   */
 trait RootMapping[S, O] extends GenericMapping[S, O] {
 	override def optionally(pieces :Pieces) :Option[S] =
-		super.optionally(pieces.aliased { c => apply[c.Subject](c).lifted })
+		super.optionally(pieces.aliased { c => apply[c.Subject](c).export })
 
 	//todo:
 //	def mappingName :String
@@ -690,195 +688,6 @@ object Mapping {
 
 
 
-	//todo: move out of mapping
-	/** A `ComponentExtractor` describes the parent-child relationship between a mapping and its component.
-	  * It serves three functions:
-	  *   - provides a means of extracting the value of the component from the value of the parent;
-	  *   - retrieves the value of a component from `ComponentValues`;
-	  *   - provides the canonical, 'lifted' version of the component, that is the version with any wholesale
-	  *     modifications declared in the parent mapping (or some other mapping on the path to the subcomponent),
-	  *     applied to the original version of the component. This includes buffs and column prefix declarations
-	  *     defined for all subcomponents of a mapping.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](TypedMapping[T] ]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
-	  */
-	trait ComponentExtractor[-S, T, O] extends Extractor[S, T] {
-		//todo: rename exported
-		val lifted :TypedMapping[T, O]
-
-		override def compose[X](extractor :Extractor[X, S]) :ComponentExtractor[X, T, O] = extractor match {
-			case _ :IdentityExtractor[_] => this.asInstanceOf[ComponentExtractor[X, T, O]]
-
-			case const :ConstantExtractor[_, S] => try {
-				ComponentExtractor.const(lifted)(apply(const.constant))
-			} catch {
-				case _ :Exception => ComponentExtractor.opt(lifted)(const.getter andThen optional)
-			}
-
-			case req :RequisiteExtractor[X, S] =>
-				ComponentExtractor.opt(lifted)(req.getter andThen optional)
-
-			case _ :EmptyExtractor[_, _] =>
-				ComponentExtractor.none[T, O](lifted)
-
-			case _ =>
-				val first = extractor.optional; val second = optional
-				ComponentExtractor.opt(lifted)(first(_) flatMap second)
-		}
-
-		override def compose[X](first :X => S) :ComponentExtractor[X, T, O] =
-			ComponentExtractor.opt(lifted)(first andThen optional)
-
-		def andThen[Y](selector :ComponentExtractor[T, Y, O]) :ComponentExtractor[S, Y, O] =
-			selector compose this
-
-		override def toString :String = "Extractor(" + lifted + ")"
-	}
-
-
-
-	object ComponentExtractor {
-		def apply[S, T, O](component :TypedMapping[T, O], pick :S => Option[T], surepick :Option[S => T]) :ComponentExtractor[S, T, O] =
-			surepick match {
-				case Some(sure) => req(component)(sure)
-				case _ => opt(component)(pick)
-			}
-
-		def apply[S, T, O](component :TypedMapping[T, O])(extractor :Extractor[S, T]) :ComponentExtractor[S, T, O] =
-			extractor match {
-				case _ :IdentityExtractor[_] => ident(component).asInstanceOf[ComponentExtractor[S, T, O]]
-				case c :ConstantExtractor[_, T] => const(component)(c.constant)
-				case requisite :RequisiteExtractor[S, T] => new RequisiteComponent(component, requisite.getter)
-				case _ :EmptyExtractor[_, _] => none(component)
-				case _ => new OptionalComponent(component, extractor.optional) //todo: FromOptionExtractor
-			}
-
-
-
-		def req[S, T, O](component :TypedMapping[T, O])(requisite :S => T) :ComponentExtractor[S, T, O] =
-			new RequisiteComponent[S, T, O](component, requisite)
-
-		def opt[S, T, O](component :TypedMapping[T, O])(selector :S => Option[T]) :ComponentExtractor[S, T, O] =
-			new OptionalComponent[S, T, O](component, selector)
-
-		def ident[T, O](component :TypedMapping[T, O]) :ComponentExtractor[T, T, O] =
-			new IdentityComponent[T, O](component)
-
-		def const[T, O](component :TypedMapping[T, O])(value :T) :ComponentExtractor[Any, T, O] =
-			new ConstantComponent[T, O](component, value)
-
-		def none[T, O](component :TypedMapping[T, O]) :ComponentExtractor[Any, T, O] =
-			new EmptyComponent(component)
-
-
-
-		def unapply[S, T, O](selector :ComponentExtractor[S, T, O]) :Option[(S => Option[T], Option[S => T], TypedMapping[T, O])] =
-			Some(selector.optional, selector.requisite, selector.lifted)
-
-
-
-		class OptionalComponent[S, T, O](val lifted :TypedMapping[T, O], override val optional :S => Option[T])
-			extends ComponentExtractor[S, T, O] with OptionalExtractor[S, T]
-		{
-			override def get(x :S) :Option[T] = optional(x)
-
-			override def toString :String = "Optional(" + lifted + ")"
-		}
-
-
-
-		class RequisiteComponent[-S, T, O](final val lifted :TypedMapping[T, O], override val getter :S => T)
-			extends ComponentExtractor[S, T, O] with RequisiteExtractor[S, T]
-		{
-			override def apply(x :S) :T = getter(x)
-
-			override def compose[X](extractor :X =?> S) :ComponentExtractor[X, T, O] = extractor match {
-				case _ :IdentityExtractor[_] => this.asInstanceOf[ComponentExtractor[X, T, O]]
-				case _ :ConstantExtractor[_, _] => super.compose(extractor)
-				case req :RequisiteExtractor[X, S] =>
-					new RequisiteComponent[X, T, O](lifted, req.getter andThen getter)
-				case _ =>
-					val first = extractor.optional
-					new OptionalComponent[X, T, O](lifted, first(_).map(getter))
-			}
-
-			override def compose[W](extractor :RequisiteExtractor[W, S]) :RequisiteComponent[W, T, O] = extractor match {
-				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[W, T, O]]
-				case const :ConstantExtractor[_, S] => try {
-					new ConstantComponent[T, O](lifted, getter(const.constant))
-				} catch {
-					case _ :Exception => new RequisiteComponent[W, T, O](lifted, extractor.getter andThen getter)
-				}
-				case _ =>
-					new RequisiteComponent[W, T, O](lifted, extractor.getter andThen getter)
-			}
-
-			override def compose[W](req :W => S) :RequisiteComponent[W, T, O] =
-				new RequisiteComponent[W, T, O](lifted, req andThen getter)
-
-			override def toString :String = "Requisite(" + lifted + ")"
-		}
-
-
-
-		class IdentityComponent[S, O](component :TypedMapping[S, O])
-			extends RequisiteComponent[S, S, O](component, identity[S]) with IdentityExtractor[S]
-		{
-			override def compose[W](extractor :W =?> S) :ComponentExtractor[W, S, O] = extractor match {
-				case comp :ComponentExtractor[_, _, _] if comp.lifted == lifted =>
-					comp.asInstanceOf[ComponentExtractor[W, S, O]]
-
-				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[W, S, O]]
-
-				case c :ConstantExtractor[_, _] => const(lifted)(c.constant.asInstanceOf[S])
-
-				case e :RequisiteExtractor[_, _] => req(lifted)(e.getter.asInstanceOf[W => S])
-
-				case _ => opt(lifted)(extractor.optional)
-			}
-
-			override def compose[W](extractor :RequisiteExtractor[W, S]) :RequisiteComponent[W, S, O] = extractor match {
-				case comp :RequisiteComponent[_, _, _] => comp.asInstanceOf[RequisiteComponent[W, S, O]]
-				case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteComponent[W, S, O]]
-				case _ => new RequisiteComponent[W, S, O](lifted, extractor.getter)
-			}
-
-			override def compose[W](req :W => S) = new RequisiteComponent[W, S, O](lifted, req)
-
-			override def toString :String = "Identity(" + lifted + ")"
-		}
-
-
-
-		class ConstantComponent[S, O](component :TypedMapping[S, O], const :S)
-			extends RequisiteComponent[Any, S, O](component, (_ :Any) => const) with ConstantExtractor[Any, S]
-		{
-			override def constant :S = const
-
-			override def compose[W](extractor :W =?> Any) :ComponentExtractor[W, S, O] = this
-
-			override def compose[W](extractor :RequisiteExtractor[W, Any]) :RequisiteComponent[W, S, O] = this
-
-			override def compose[W](req :W => Any) :RequisiteComponent[W, S, O] = this
-
-			override def toString :String = "Const(" + component + "=" + constant + ")"
-		}
-
-
-
-		class EmptyComponent[T, O](component :TypedMapping[T, O])
-			extends OptionalComponent[Any, T, O](component, Extractor.none.optional) with EmptyExtractor[Any, T]
-		{
-			override def compose[W](extractor :W =?> Any) :EmptyComponent[T, O] = this
-
-			override def compose[W](req :W => Any) :EmptyComponent[T, O] = this
-
-			override def toString :String = "Empty(" + component + ")"
-		}
-
-
-	}
-
 
 
 
@@ -973,7 +782,7 @@ object Mapping {
 			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
 			val columnValues = columnArray.map { c => i += 1; read(c).opt(i - 1)(res) }
 			val pieces = ComponentValues(mapping) { comp =>
-				val idx = columns.indexOf(mapping.lift(comp))
+				val idx = columns.indexOf(mapping.export(comp))
 				if (idx >= 0) columnValues(idx)
 				else None
 			}
@@ -982,7 +791,7 @@ object Mapping {
 
 		override def nullValue: S = mapping.nullValue getOrElse {
 			mapping.apply(ComponentValues(mapping :mapping.type) { comp =>
-				val lifted = mapping.lift(comp)
+				val lifted = mapping.export(comp)
 				if (columns.contains(lifted))
 					Some(read(lifted).nullValue)
 				else None
@@ -1008,7 +817,7 @@ object Mapping {
 
 
 		def select[S, O](mapping :TypedMapping[S, O], components :Unique[MappingFrom[O]]) :SQLReadForm[S] = {
-			val columns = components.map(mapping.lift(_)).flatMap(_.selectable)
+			val columns = components.map(mapping.export(_)).flatMap(_.selectable)
 
 			if (columns.exists(NoSelect.enabled))
 				throw new IllegalArgumentException(
@@ -1168,7 +977,7 @@ object Mapping {
 				throw new IllegalArgumentException(
 					s"Can't create a write form for $mapping using $components: $prohibit buff present among selection"
 				)
-			val extra = components.flatMap(mapping.lift(_).columns.toSeq.filter(prohibit.disabled) ++ mandatory.Enabled(mapping))
+			val extra = components.flatMap(mapping.export(_).columns.toSeq.filter(prohibit.disabled) ++ mandatory.Enabled(mapping))
 			new MappingWriteForm[S, O](mapping, extra, mandatory, write)
 		}
 
