@@ -39,13 +39,23 @@ trait Buff[T] {
 	  * with values it creates a new buff of the same type carrying the mapped value. Certain buffs, in particular
 	  * audit buffs, do not support this operation and will throw an `UnsupportedOperationException`.
 	  */
-	def map[X](there :T => X) :Buff[X]
+	def map[X](f :T => X) :Buff[X]
+
+	/** Adapts this buff for a component type derived from this buff's type parameter. This method is used for
+	  * conveying attached buffs from a mapping to its components and is responsible for implementing the rules
+	  * of which buff types are inherited by 'export' versions of components from their parent mappings.
+	  * As such, it can return an empty option even in cases where `map` would return successfully and can
+	  * even return a buff of a different type than this instance. By default, flag buffs return themselves and buffs
+	  * with constant values create a new buff of the same type carrying the mapped value. Certain buffs, in particular
+	  * audit buffs, do not support this operation and will return `None`. This method should not throw exceptions.
+	  */
+	def cascade[X](f :T => X) :Option[Buff[X]] = Some(map(f))
 
 	/** Adapts this buff for a new component type. For flag buffs, this is an identity operation; for buffs
 	  * with values it creates a new buff of the same type carrying the mapped value. This method
 	  * differs from `map` in that it also works for `AuditBuff` instances.
 	  */
-	def bimap[X](there :T => X, back :X => T) :Buff[X]
+	def bimap[X](there :T => X, back :X => T) :Buff[X] = map(there)
 
 
 
@@ -136,8 +146,7 @@ object Buff {
 	/** A buff marking a component or column which does not exist in the database and will not be used as part
 	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,
 	  * the provided expression is used as its value. This can be useful during schema migrations, when a mapping
-	  * might need to cover several versions of the schema, or if it is reused for several similar tables.
-	  */
+	  * might need to cover several versions of the schema, or if it is reused for several similar tables. */
 	case object Virtual extends ComboBuffType(ExtraSelect, ReadOnly, NoQuery) with GeneratedBuffType
 
 
@@ -367,6 +376,10 @@ object Buff {
 			buffs.collectFirst { case buff if buff is this => buff }
 		def test[T](column :MappingOf[T]) :Option[Buff[T]] = test(column.buffs)
 
+		def ||(other :BuffType) :BuffType = other match {
+			case combo :ComboBuffType => new DisjunctionBuffType(this +: combo.implied)
+			case _ => new DisjunctionBuffType(Seq(this, other))
+		}
 
 		override val toString :String = this.innerClassName
 
@@ -411,10 +424,36 @@ object Buff {
 		override def test[T](buffs :Seq[Buff[T]]) :Option[Buff[T]] = None
 	}
 
+	/** A special `Buff` factory producing buffs which are ignored and not recognized by any other buff types. */
+	object NeutralBuff extends FlagBuffType
+
+
+
+	/** A `Buff` type which implies other, more general buffs (has strictly more specific implications).
+	  * Attaching a `Buff` of this type to a component is roughly equivalent to attaching buffs of the types
+	  * listed in the constructor.
+	  */
+	class ComboBuffType(val implied :BuffType*) extends BuffType {
+		override def implies(other :BuffType) :Boolean =
+			other == this || implied.exists(_.implies(other))
+
+		override def ||(other :BuffType) :BuffType = other match {
+			case combo :ComboBuffType => new DisjunctionBuffType(implied ++: combo.implied)
+			case _ => new DisjunctionBuffType(implied :+ other)
+		}
+	}
+
+	private class DisjunctionBuffType(buffs :Seq[BuffType]) extends ComboBuffType(buffs :_*) {
+		override val toString = buffs.mkString(" || ")
+	}
+
+
+
 
 
 	private class FlagBuff[T](val buffType :FlagBuffType) extends Buff[T] {
 		override def map[X](there :T => X) :FlagBuff[X] = this.asInstanceOf[FlagBuff[X]]
+		override def cascade[X](there :T => X) :Some[Buff[X]] = Some(this.asInstanceOf[FlagBuff[X]])
 		override def bimap[X](there :T => X, back :X => T) :FlagBuff[X] = this.asInstanceOf[FlagBuff[X]]
 	}
 
@@ -457,20 +496,6 @@ object Buff {
 
 
 
-	/** A `Buff` type which implies other, more general buffs (has strictly more specific implications).
-	  * Attaching a `Buff` of this type to a component is roughly equivalent to attaching buffs of the types
-	  * listed in the constructor.
-	  */
-	class ComboBuffType(val implied :BuffType*) extends BuffType {
-		override def implies(other: BuffType): Boolean =
-			other == this || implied.exists(_.implies(other))
-
-		override def test[T](buff: Buff[T]): Option[Buff[T]] =
-			buff.is(this) ifTrue buff
-	}
-
-
-
 	/** A `FlagBuffType` which implies other flags (is equivalent to having them declared alongside it). */
 	class ComboFlag(implied :FlagBuffType*) extends ComboBuffType(implied:_*) with FlagBuffType {
 		override def implies(other :BuffType) :Boolean = super[ComboBuffType].implies(other)
@@ -488,7 +513,7 @@ object Buff {
 	trait ValuedBuff[T] extends Buff[T] {
 		override def map[X](there :T => X) :ValuedBuff[X]
 
-		override def bimap[X](there :T => X, back :X => T) :ValuedBuff[X]
+		override def bimap[X](there :T => X, back :X => T) :ValuedBuff[X] = map(there)
 
 		def value :T
 
@@ -534,12 +559,12 @@ object Buff {
 		protected[this] def classTag :ClassTag[_] = implicitly[ClassTag[ValuedBuff[Any]]]
 
 		object Value {
-			@inline def unapply[T](option :Buff[T]) :Option[T] = test(option).map(_.value)
-			@inline def unapply[T](options :Seq[Buff[T]]) :Option[T] = test(options).map(_.value)
+			@inline def unapply[T](buff :Buff[T]) :Option[T] = test(buff).map(_.value)
+			@inline def unapply[T](buffs :Seq[Buff[T]]) :Option[T] = test(buffs).map(_.value)
 			@inline def unapply[T](mapping :MappingOf[T]) :Option[T] = test(mapping).map(_.value)
 
-			@inline def apply[T](option :Buff[T]) :Option[T] = unapply(option)
-			@inline def apply[T](options :Seq[Buff[T]]) :Option[T] = unapply(options)
+			@inline def apply[T](buff :Buff[T]) :Option[T] = unapply(buff)
+			@inline def apply[T](buffs :Seq[Buff[T]]) :Option[T] = unapply(buffs)
 			@inline def apply[T](mapping :MappingOf[T]) :Option[T] = unapply(mapping)
 		}
 
@@ -564,7 +589,9 @@ object Buff {
 
 		override def map[X](there: T => X): ConstantBuff[X] = buffType(there(value))
 
-		override def bimap[X](there: T => X, back :X => T) :ConstantBuff[X] = buffType(there(value))
+		override def cascade[X](there :T => X) :Option[ConstantBuff[X]] = Some(buffType(there(value)))
+
+		override def bimap[X](there :T => X, back :X => T) :ValuedBuff[X] = buffType(there(value))
 
 		override def equals(that: Any): Boolean = that match {
 			case o :ConstantBuff[_] => (o eq this) || o.canEqual(this) && o.value==value && o.buffType == buffType
@@ -609,6 +636,9 @@ object Buff {
 		def value :T = generator
 
 		override def map[X](there :T => X) :GeneratedBuff[X] = buffType(there(generator))
+
+		/** Returns `None` */
+		override def cascade[X](there :T => X) :Option[Buff[X]] = None //Some(buffType(there(generator)))
 
 		override def bimap[X](there :T => X, back :X => T) :GeneratedBuff[X] = buffType(there(generator))
 
@@ -661,8 +691,11 @@ object Buff {
 		override def map[X](there :T => X) :AuditBuff[X] =
 			throw new UnsupportedOperationException(toString + ".map: AuditBuff can't be mapped unidirectionally.")
 
+		override def cascade[X](f :T => X) :Option[Nothing] = None
+
 		override def bimap[X](there :T => X, back :X => T) :AuditBuff[X] =
 			new AuditBuff[X](buffType, back andThen substitute andThen there)
+
 
 		override def equals(that :Any) :Boolean = that match {
 			case sub :AuditBuff[_] => (sub eq this) || sub.buffType == buffType && sub.substitute == substitute
@@ -725,8 +758,11 @@ object Buff {
 		override def map[X](there :T => X) :Nothing =
 			throw new UnsupportedOperationException(toString + ".map: ManagedBuff can't be mapped unidirectionally.")
 
+		override def cascade[X](there :T => X) :Option[Nothing] = None
+
 		override def bimap[X](there :T => X, back :X => T) :ManagedBuff[X] =
 			new ManagedBuff(buffType, there(init), back andThen substitute andThen there)
+
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef => this eq self

@@ -56,7 +56,8 @@ object OptionMapping {
 
 
 		override lazy val buffs :Seq[Buff[Option[S]]] =
-			get.buffs.map(_.map(Option(_))) ++ (ExplicitSelect.enabled(get) ifTrue ExplicitSelect[Option[S]](None))
+			get.buffs.map(_.bimap(Option(_), (_:Option[S]).get)) ++
+				(ExplicitSelect.enabled(get) ifTrue ExplicitSelect[Option[S]](None))
 
 
 		private def getExtractor :Selector[S] = ComponentExtractor(get)(Extractor.fromOpt)

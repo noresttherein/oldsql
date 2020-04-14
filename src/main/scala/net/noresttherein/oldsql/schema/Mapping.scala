@@ -91,7 +91,7 @@ import scala.annotation.implicitNotFound
   * missing type parameters, which are not unified even with `m.Subject`/`m.Origin` itself, leading to a lot of issues.
   * This can be circumvented with implicit parameters, but at the cost of additional complexity.
   * @see [[net.noresttherein.oldsql.schema.GenericMapping]]
-  * @see [[net.noresttherein.oldsql.schema.MappingSupport]]
+  * @see [[net.noresttherein.oldsql.schema.MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
 trait Mapping { mapping :ConcreteMapping =>
@@ -359,7 +359,7 @@ trait Mapping { mapping :ConcreteMapping =>
 
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
 	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
-	  * `NullValue.value` will be returned.
+	  * `NullValue.value` will b;;e returned.
 	  */
 	def map[X](there :Subject => X, back :X => Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
 		MappedMapping[this.type, Subject, X, Origin](this, there, back)
@@ -441,13 +441,13 @@ trait Mapping { mapping :ConcreteMapping =>
   * Doing so is the most convenient way to achieve it and provides implementations of several methods which could
   * not be done without
   *
-  * @tparam O marker type used to distinguish between several instances of the same mapping class, but coming from
-  *           different sources (especially different aliases for a table occurring more then once in a join).
-  *           At the same time, it adds additional type safety by ensuring that only components of mappings included
-  *           in a query can be used in the creation of SQL expressions used by that query.
-  * @tparam S the subject type, that is the type of objects read and written to a particular table (or a view, query,
+  * @tparam S The subject type, that is the type of objects read and written to a particular table (or a view, query,
   *           or table fragment).
-  */ //todo: if type parameter `O` stays, it should be last, so that type inferer can infer TypedMapping[S, _] type functor
+  * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
+  *           but coming from different sources (especially different aliases for a table occurring more then once
+  *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
+  *           included in a query can be used in the creation of SQL expressions used by that query.
+  */
 trait GenericMapping[S, O] extends ConcreteMapping { self =>
 	type Origin = O
 	type Subject = S

@@ -16,11 +16,11 @@ class BuffedMapping[+M <: TypedMapping[S, O], S, O](override val egg :M, overrid
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
 {
 	override protected def adapt[T](component :egg.Component[T]) :Component[T] =
-		new BuffedMapping(component, schema.mapBuffs(this)(egg(component)))
+		new BuffedMapping(component, schema.cascadeBuffs(this)(egg(component)))
 
 	protected override def adaptColumn[T](component :egg.Component[T]) :Component[T] = component match {
 		case column :ColumnMapping[T, O] =>
-			column.withBuffs(schema.mapBuffs(this)(egg(component)))
+			column.withBuffs(schema.cascadeBuffs(this)(egg(component)))
 		case _ =>
 			adapt(component)
 	}

@@ -77,7 +77,7 @@ object playground extends App {
 	println(record("key2"))
 	println(record("key2") = "value2")
 	println(record("key5") = 5)
-	//	implicit class SomeTable[O](val name :String) extends MappingSupport[O, Int] {
+	//	implicit class SomeTable[O](val name :String) extends MappingFrame[O, Int] {
 //		override protected def construct(implicit pieces :Pieces) :Int = 1
 //	}
 //

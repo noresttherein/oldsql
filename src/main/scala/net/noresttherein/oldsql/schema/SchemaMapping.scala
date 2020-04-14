@@ -1192,6 +1192,8 @@ object MappingSchema {
 
 	}
 
+
+
 	private[MappingSchema] class FlatMappedMappingSchema[C <: Chain, R <: Chain, S, O]
 			(override val schema :MappingSchema[C, R, S, O], constructor :R => Option[S])
 		extends ShallowAdapter[TypedMapping[R, O], R, S, O] with SchemaMapping[C, R, S, O]

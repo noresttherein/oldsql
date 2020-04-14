@@ -278,12 +278,12 @@ object ColumnMapping {
 		override val isNullable :Boolean = super.isNullable
 
 		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
-			new StandardColumn[X, O](name, buffs.map(_.map(there)))(
+			new StandardColumn[X, O](name, buffs.map(_.bimap(there, back)))(
 				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
 			)
 
 		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
-			new StandardColumn[X, O](name, schema.flatMapBuffs(this)(there))(
+			new StandardColumn[X, O](name, schema.flatMapBuffs(this)(there, back))(
 				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 			)
 	}
@@ -301,13 +301,13 @@ object ColumnMapping {
 			new LabeledColumn[N, S, O](buffs)(new ValueOf(name), form)
 
 		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :LabeledColumn[N, X, O] =
-			new LabeledColumn[N, X, O](buffs.map(_.map(there)))(
+			new LabeledColumn[N, X, O](buffs.map(_.bimap(there, back)))(
 				implicitly[ValueOf[N]],
 				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
 			)
 
 		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :LabeledColumn[N, X, O] =
-			new LabeledColumn[N, X, O](schema.flatMapBuffs(this)(there))(
+			new LabeledColumn[N, X, O](schema.flatMapBuffs(this)(there, back))(
 				implicitly[ValueOf[N]],
 				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 			)
@@ -327,12 +327,12 @@ object ColumnMapping {
 		override def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[S, O] = new NumberedColumn(number, name, buffs)
 
 		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :NumberedColumn[X, O] =
-			new NumberedColumn[X, O](number, name, buffs.map(_.map(there)))(
+			new NumberedColumn[X, O](number, name, buffs.map(_.bimap(there, back)))(
 				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
 			)
 
 		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :NumberedColumn[X, O] =
-			new NumberedColumn[X, O](number, name, schema.flatMapBuffs(this)(there))(
+			new NumberedColumn[X, O](number, name, schema.flatMapBuffs(this)(there, back))(
 				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 			)
 

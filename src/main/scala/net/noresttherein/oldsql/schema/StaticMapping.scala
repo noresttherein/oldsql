@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.slang._
 
 
-
+//todo: MappingFrame
 /**
   * @author Marcin Mościcki
   */

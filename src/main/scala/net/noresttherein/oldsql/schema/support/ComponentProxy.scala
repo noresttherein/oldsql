@@ -162,6 +162,8 @@ object ComponentProxy {
 		private[this] val exports = mutable.Map[Mapping, ComponentExtractor[S, _, O]]()
 		private[this] val originals = mutable.Map[Mapping.MappingFrom[O], Mapping]()
 
+		preInit()
+
 		override val columns :Unique[Component[_]] = egg.columns.map(alias(_, true))
 		override val selectable :Unique[Component[_]] = columnsWithout(NoSelect)
 		override val queryable :Unique[Component[_]] = columnsWithout(NoQuery)
@@ -212,6 +214,8 @@ object ComponentProxy {
 				)
 			}).asInstanceOf[Selector[T]]
 
+		/** Method called from the `EagerDeepProxy` constructor before any component lists are initialized. */
+		protected def preInit(): Unit = ()
 
 		protected override def dealias[T](component :Component[T]) :egg.Component[T] =
 			originals.getOrElse(component, component).asInstanceOf[egg.Component[T]]

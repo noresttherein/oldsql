@@ -16,10 +16,10 @@ import scala.reflect.runtime.universe.TypeTag
 /**
   * @author Marcin Mościcki
   */
-trait ReflectedMapping[S, O] extends MappingSupport[S, O] { composite =>
+trait ReflectedMapping[S, O] extends MappingFrame[S, O] { composite =>
 	protected implicit val subjectType :TypeTag[S]
 
-	private def selectorProperty[T](component :ComponentMapping[T]) :PropertyPath[S, T] =
+	private def selectorProperty[T](component :FrameComponent[T]) :PropertyPath[S, T] =
 		try {
 			component.extractor.requisite.map(PropertyPath.property(_)) getOrElse
 				PropertyPath.property(component.extractor.optional.andThen(_.get))
@@ -35,11 +35,11 @@ trait ReflectedMapping[S, O] extends MappingSupport[S, O] { composite =>
 		override def toString :String = "Extractor(" + property + "=" + export + ")"
 	}
 
-	override protected def selectorFor[T](component :ComponentMapping[T]) :ExtractorProperty[T] =
+	override protected def selectorFor[T](component :FrameComponent[T]) :ExtractorProperty[T] =
 		component.extractor match {
 			case _ :IdentityExtractor[_] => //fixme: doomed to fail - PropertyPath will throw up
 				new IdentityComponent[S, O](component.asInstanceOf[Component[S]]) with ExtractorProperty[S] {
-					override val property = selectorProperty(component.asInstanceOf[ComponentMapping[S]])
+					override val property = selectorProperty(component.asInstanceOf[FrameComponent[S]])
 				}.asInstanceOf[ExtractorProperty[T]]
 
 			case const :ConstantExtractor[_, _] => //fixme: doomed to fail - PropertyPath will throw up

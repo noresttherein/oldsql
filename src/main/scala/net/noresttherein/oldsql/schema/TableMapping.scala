@@ -6,7 +6,7 @@ import scala.reflect.runtime.universe.TypeTag
 /**
   * @author Marcin Mościcki
   */
-abstract class AbstractTableMapping[S, O](val tableName :String) extends RootMappingSupport[S, O] {
+abstract class AbstractTableMapping[S, O](val tableName :String) extends RootMappingFrame[S, O] {
 	override val sqlName = Some(tableName)
 }
 
