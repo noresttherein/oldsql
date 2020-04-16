@@ -3,6 +3,8 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, MappingAlias}
 
 
+
+//todo: Relation?
 /**
   * @author Marcin Mościcki
   */
@@ -21,6 +23,8 @@ trait RowSource[M[O] <: MappingFrom[O]] {
 
 
 object RowSource {
+	type AnyRowSource = RowSource[M] forSome { type M[O] <: MappingFrom[O] }
+
 
 	def apply[M[O] <: MappingFrom[O], A](name :String, template :M[A])
 	                                    (implicit alias :MappingAlias[M[A], A, M[Any], Any]) :RowSource[M] =

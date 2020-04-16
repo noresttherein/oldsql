@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.{ConcreteMapping, MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.support.{LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, OptionMapping}
 import net.noresttherein.oldsql.schema.MappingPath.SelfPath
 import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 import scala.annotation.implicitNotFound
 
@@ -94,7 +94,7 @@ import scala.annotation.implicitNotFound
   * @see [[net.noresttherein.oldsql.schema.MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
-trait Mapping { mapping :ConcreteMapping =>
+trait Mapping {
 	/** The mapped entity type. */
 	type Subject
 
@@ -448,7 +448,7 @@ trait Mapping { mapping :ConcreteMapping =>
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
   */
-trait GenericMapping[S, O] extends ConcreteMapping { self =>
+trait GenericMapping[S, O] extends Mapping { self =>
 	type Origin = O
 	type Subject = S
 
@@ -550,7 +550,7 @@ object Mapping {
 
 	@inline
 	implicit def mappingSelfPath[M <: Mapping, X <: TypedMapping[S, O], S, O]
-	                            (mapping :M)(implicit help :IsBoth[M, X, TypedMapping[S, O]]) :SelfPath[X, S, O] =
+	                            (mapping :M)(implicit help :Conforms[M, X, TypedMapping[S, O]]) :SelfPath[X, S, O] =
 		SelfPath.typed[X, S, O](mapping)
 
 
@@ -644,19 +644,22 @@ object Mapping {
 	  * their `Mapping` type parameter to have definitions of both or one of `Origin` and `Subject`.
 	  * Unfortunately, declaring `[M &lt;: TypedMapping[_, _]]` leads to `M#Origin`, `M#Subject` being instantiated
 	  * early as unique types, not unifiable with types `O, S` where `C &lt;: TypedMapping[S, O]]` is the type argument
-	  * for `M`. Somewhat counterintuitively, `[M &lt;: ConcreteMapping]` on the other hand, leads to
+	  * for `M`. Somewhat counterintuitively, `[M &lt;: Mapping]` on the other hand, leads to
 	  * `M#Origin =:= O` and `M#Subject =:= S` in the same circumstances. While the generic class/method will
 	  * likely need to resort to casting down `M#Subject` to `m.Subject` for some `m :M`, in the interface at least
-	  * it provides type safety. The only exception would be `M =:= ConcreteMapping` itself, so we simply warn
+	  * it provides type safety. The only exception would be `M =:= Mapping` itself, so we simply warn
 	  * against any references to it by the client application.
 	  */
-	sealed trait ConcreteMapping extends Mapping
+//	sealed trait Mapping extends Mapping
 
 
 
-	type MappingOf[S] = ConcreteMapping { type Subject = S }
-	type MappingFrom[O] = ConcreteMapping { type Origin = O }
-	type TypedMapping[S, O] = ConcreteMapping { type Origin = O; type Subject = S }
+	type MappingOf[S] = Mapping { type Subject = S }
+	type MappingFrom[O] = Mapping { type Origin = O }
+	type TypedMapping[S, O] = Mapping { type Origin = O; type Subject = S }
+	type ConcreteMapping[O] = TypedMapping[_, O]
+
+//	type MappingKind[O] = m[O] forSome { type m[A] <: MappingFrom[A] }
 
 //	type MappingFrom[O] = { type T[S] = TypedMapping[S, O] }
 //	type MappingOf[S] = { type T[O] = TypedMapping[S, O] }
@@ -669,7 +672,7 @@ object Mapping {
 //	type TypedSingleton[S, O] = TypedMapping[S, O] with Singleton //Mapping with Singleton { type Origin = O; type Subject = S }
 
 
-	type CompatibleMapping[M <: Mapping] = ConcreteMapping {
+	type CompatibleMapping[M <: Mapping] = Mapping {
 		type Origin = M#Origin
 		type Subject = M#Subject
 	}
@@ -678,15 +681,10 @@ object Mapping {
 //		type Subject = M#Subject
 //	}
 
-	type ConcreteSubclass[M <: ConcreteMapping] = M {
+	type ConcreteSubclass[M <: Mapping] = M {
 		type Origin = M#Origin
 		type Subject = M#Subject
 	}
-
-
-
-
-
 
 
 
@@ -852,10 +850,10 @@ object Mapping {
 
 
 	private class MappingWriteForm[S, O] private (
-		                                             mapping :TypedMapping[S, O],
-		                                             columns :Unique[MappingFrom[O]],
-		                                             substitute :ValuedBuffType,
-		                                             write :MappingFrom[O] => SQLWriteForm[_])
+             mapping :TypedMapping[S, O],
+             columns :Unique[MappingFrom[O]],
+             substitute :ValuedBuffType,
+             write :MappingFrom[O] => SQLWriteForm[_])
 		extends SQLWriteForm[S]
 	{
 //		private[this] val extras = columns.map(substitute.Value.unapply(_))(breakOut) :IndexedSeq[Option[Any]]

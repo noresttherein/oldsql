@@ -274,10 +274,10 @@ object SQLWriteForm extends ScalaWriteForms {
 	  * in the exact order they appear. The 'position' argument of every form after the last is increased by the sum
 	  * of `writtenColumns` of all preceding forms.
 	  */
-	def chain[T](forms :Seq[SQLWriteForm[T]]) :SQLWriteForm[T] = forms match {
+	def combine[T](forms :SQLWriteForm[T]*) :SQLWriteForm[T] = forms match {
 		case Seq() => empty
 		case Seq(form) => form
-		case _ => new WriteFormChain(forms)
+		case _ => new CombinedWriteForm(forms)
 	}
 
 	def seq[T](items :Seq[SQLWriteForm[T]]) :SQLWriteForm[Seq[T]] = new SeqWriteFormImpl[T](items)
@@ -624,7 +624,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-	private class WriteFormChain[-T](val forms :Seq[SQLWriteForm[T]]) extends SQLWriteForm[T] with CompositeWriteForm[T] {
+	private class CombinedWriteForm[-T](val forms :Seq[SQLWriteForm[T]]) extends SQLWriteForm[T] with CompositeWriteForm[T] {
 		override val writtenColumns :Int = super.writtenColumns
 
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = {

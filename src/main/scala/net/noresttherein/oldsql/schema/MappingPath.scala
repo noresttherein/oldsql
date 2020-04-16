@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, MappingOf}
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, ConcatPath, SelfPath}
 import net.noresttherein.oldsql.slang.InferTypeParams
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
@@ -28,11 +28,11 @@ trait MappingPath[-X <: MappingOf[S], +Y <: TypedMapping[T, O], S, T, O] { self 
 		\(next :MappingPath[Y, Z, T, U, O])
 
 	def \[M <: Mapping, Z <: TypedMapping[U, O], U]
-	     (component :M)(implicit hint :IsBoth[M, Z, TypedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
+	     (component :M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
 		this \ (end \ component)
 
 	def :\[U](component :TypedMapping[U, O]) :MappingPath[X, component.type, S, U, O] =
-		\[component.type, component.type, U](component :component.type)(IsBoth[component.type])
+		\[component.type, component.type, U](component :component.type)(Conforms[component.type])
 
 
 
@@ -94,14 +94,14 @@ object MappingPath {
 
 
 		override def \[M <: Mapping, Z <: TypedMapping[U, O], U]
-		             (component :M)(implicit hint :IsBoth[M, Z, TypedMapping[U, O]]) :ComponentPath[X, Z, S, U, O] =
+		             (component :M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]]) :ComponentPath[X, Z, S, U, O] =
 		{
 			val c = hint(component)
 			ComponentPath.typed[X, Z, S, U, O](c)(extractor andThen end(c))
 		}
 
 		override def :\[U](component :TypedMapping[U, O]) :ComponentPath[X, component.type, S, U, O] =
-			\[component.type, component.type, U](component :component.type)(IsBoth[component.type])
+			\[component.type, component.type, U](component :component.type)(Conforms[component.type])
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentPath[_, _, _, _, _]]
@@ -115,7 +115,7 @@ object MappingPath {
 	object ComponentPath {
 
 		def apply[P <: Mapping, X <: TypedMapping[S, O], C <: Mapping, Y <: TypedMapping[T, O], S, T, O]
-		         (parent :P, component :C)(implicit parentType :IsBoth[P, X, TypedMapping[S, O]], childType :IsBoth[C, Y, TypedMapping[O, T]])
+		         (parent :P, component :C)(implicit parentType :Conforms[P, X, TypedMapping[S, O]], childType :Conforms[C, Y, TypedMapping[T, O]])
 			:ComponentPath[X, Y, S, T, O] =
 		{ 
 			val c = childType(component)
@@ -123,7 +123,7 @@ object MappingPath {
 		}
 
 //		def apply[M <: Mapping, X <: TypedMapping[O, S], Y <: TypedMapping[O, T], O, S, T]
-//		         (component :M)(extractor :S =?> T)(implicit hint :IsBoth[M, Y, TypedMapping[O, T]]) :ComponentPath[X, Y, O, S, T] =
+//		         (component :M)(extractor :S =?> T)(implicit hint :Conforms[M, Y, TypedMapping[O, T]]) :ComponentPath[X, Y, O, S, T] =
 //			typed[X, Y, O, S, T](hint(component).left)(extractor)
 
 		private[MappingPath] def typed[X <: TypedMapping[S, O], Y <: TypedMapping[T, O], S, T, O]
@@ -166,7 +166,7 @@ object MappingPath {
 	object SelfPath {
 		@inline 
 		implicit def apply[M, X <: TypedMapping[S, O], S, O]
-		                  (mapping :M)(implicit typeHint :IsBoth[M, X, TypedMapping[S, O]]) :SelfPath[X, S, O] =
+		                  (mapping :M)(implicit typeHint :Conforms[M, X, TypedMapping[S, O]]) :SelfPath[X, S, O] =
 			typed[X, S, O](mapping)
 
 		def typed[X <: TypedMapping[S, O], S, O](mapping :X) :SelfPath[X, S, O] = new SelfPath[X, S, O] {

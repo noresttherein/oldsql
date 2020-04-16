@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
@@ -53,7 +53,7 @@ object PrefixedMapping {
 
 
 	def generic[X <: Mapping, M <: TypedMapping[S, O], S, O]
-	           (prefix :String, component :X)(implicit hint :IsBoth[X, M, TypedMapping[O, S]]) :Adapted[M] =
+	           (prefix :String, component :X)(implicit hint :Conforms[X, M, TypedMapping[S, O]]) :Adapted[M] =
 		new PrefixedMapping[M, S, O](prefix, component)
 
 }

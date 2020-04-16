@@ -2,24 +2,29 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.collection.Chain.@~
+import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
+import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyRelationIn
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 
 
-/** An empty source, serving both as a source for expressions not needing any input tables
-  * (like 'SELECT _ ''from'' DUAL' in Oracle) and terminator element for Join lists
-  * (by default any chain of Join[_, _] classes is eventually terminated by a Dual instance).
+/** An empty ''from'' clause, serving both as a base for SQL expressions not needing any input tables
+  * (like 'SELECT _ ''from'' DUAL' in Oracle) and a terminator element for `With` lists
+  * (any chain of `With` classes is eventually terminated by a `Dual` instance).
   */
 class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	def this() = this(True())
 
-	override type LastMapping = Nothing
+	override type LastMapping[O] = Nothing
 	override type LastTable[-F <: FromClause] = Nothing
+	override type FromLast = Dual
+	override type This = Dual
 
 	override def lastTable :Nothing = throw new NoSuchElementException("Dual.lastTable")
+//	override def last[M[O] <: MappingFrom[O]] :Nothing = throw new NoSuchElementException("Dual.lastTable")
 
 	override type Generalized = Dual
 
@@ -33,60 +38,22 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	override def row :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
+	override def tableStack :LazyList[AnyRelationIn[Dual]] = LazyList.empty
+
+	override type SubselectRow = @~
+
+	override def subselectRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+
+	override def subselectTableStack :LazyList[AnyRelationIn[Dual]] = LazyList.empty
 
 	override def size = 0
 
-
-/*
-	override type LastMapping = Nothing
-	override type LastTable[F <: FromClause] = Nothing //JoinedTable[S, Nothing]
+	override type JoinFilter[T[O] <: MappingFrom[O]] = Nothing
 
 
-	override def lastTable = throw new NoSuchElementException("Dual.last")
+//	protected override def filter[U >: Dual <: FromClause](condition :BooleanFormula[U]) :Dual =
+//		if (condition == True()) this else new Dual(condition)
 
-	override def allTables = Seq()
-
-	override def toTableStream = Stream.empty
-
-	override def toUntypedTableStream = Stream.empty
-
-	override def subselectTableStream = Stream.empty
-
-	override def headTable = throw new NoSuchElementException("Dual.head")
-
-	override def mappings = Seq()
-
-	override def size = 0
-
-	override def occurrences(mapping: Mapping): Int = 0
-
-
-	override def filterBy[S >: this.type <: FromClause](filter: BooleanFormula[S]): S =
-		if (filter==filteredBy) this
-		else new Dual(filteredBy).asInstanceOf[S]
-
-
-	override def row: HListFormula[Dual, HNil] = SQLHNil
-
-	override def joinAny(source: FromClause): source.type = source
-
-
-	override def plant(prefix :PartialFunction[TableFormula[this.type, _<:Mapping], ComponentPath[_<:Mapping, _<:Mapping]]) : Dual = this
-
-	override def plantMatching(prefix: ComponentPath[_ <: Mapping, _ <: Mapping]): Dual = this
-
-
-	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): SubselectFrom[O] =
-		throw new UnsupportedOperationException(s"Can't transplant $this onto $target")
-
-
-	override def substitute[T](table: TableFormula[this.type, _<:Mapping[T]], value: T): Dual = this
-*/
-
-
-
-	//	override def selectOne[T <: Mapping, C <: Mapping](mapping: (JoinedTables[this.type]) => ComponentFormula[this.type, T, C]): SelectMapping[Dual, C] =
-	//		throw new UnsupportedOperationException(s"select from Dual")
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]
@@ -111,8 +78,8 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 
 /** An empty row source, serving both as a source for expressions not needing any input tables
-  * (like 'SELECT _ ''from'' DUAL' in Oracle) and terminator element for Join lists
-  * (by default any chain of Join[_, _] classes is eventually terminated by a Dual instance).
+  * (like 'SELECT _ ''from'' DUAL' in Oracle) and terminator element for With lists
+  * (by default any chain of With[_, _] classes is eventually terminated by a Dual instance).
   */
 object Dual extends Dual {
 	def unapply(source :FromClause) :Boolean = source.isInstanceOf[Dual]

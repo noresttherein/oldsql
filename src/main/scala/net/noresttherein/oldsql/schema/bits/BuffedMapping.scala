@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 /**
@@ -33,6 +33,6 @@ class BuffedMapping[+M <: TypedMapping[S, O], S, O](override val egg :M, overrid
 object BuffedMapping {
 	//todo: withBuffs method on Mapping
 	def apply[X <: Mapping, M <: TypedMapping[S, O], S, O](mapping :X, buffs :Buff[S]*)
-	                                                      (implicit infer :IsBoth[X, M, TypedMapping[S, O]]) :MappingAdapter[M, S, O] =
+	                                                      (implicit infer :Conforms[X, M, TypedMapping[S, O]]) :MappingAdapter[M, S, O] =
 		new BuffedMapping[M, S, O](mapping, buffs)
 }

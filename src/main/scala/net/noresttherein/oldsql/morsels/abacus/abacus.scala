@@ -6,8 +6,9 @@ package net.noresttherein.oldsql.morsels
 package object abacus {
 	type INT = Int with Singleton
 
-	final class Plus[A <: INT, B <: INT] private extends (A => B) {
-		override def apply(a :A) :B = (a + 1).asInstanceOf[B]
+	final class Plus[N <: INT :ValueOf, M <: INT :ValueOf] {
+		val n = valueOf[N]
+		val m = valueOf[M]
 	}
 
 	object Plus {

@@ -1,9 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.{ConcreteMapping, MappingAlias}
 import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
-import net.noresttherein.oldsql.schema.support.MappingAdapter.AdaptedAs
 import net.noresttherein.oldsql.schema.support.MappingNest.OpenNest
 
 
@@ -11,7 +9,7 @@ import net.noresttherein.oldsql.schema.support.MappingNest.OpenNest
 /** Skeletal base trait for mappings enclosing another mapping `egg`. It is the root of the hierarchy of various
   * proxies, adapters and mapped mappings.
   */
-trait MappingNest[+M <: Mapping] extends Mapping { this :ConcreteMapping =>
+trait MappingNest[+M <: Mapping] extends Mapping { this :Mapping =>
 	protected val egg :M
 
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
@@ -37,7 +35,7 @@ trait MappingNest[+M <: Mapping] extends Mapping { this :ConcreteMapping =>
 
 object MappingNest {
 
-	trait OpenNest[+M <: ConcreteMapping] extends MappingNest[M] { this :ConcreteMapping =>
+	trait OpenNest[+M <: Mapping] extends MappingNest[M] { this :Mapping =>
 		override val egg :M
 	}
 
@@ -48,7 +46,7 @@ object MappingNest {
 
 
 
-trait MappingAdapter[+M <: ConcreteMapping, S, O] extends GenericMapping[S, O] with OpenNest[M] {
+trait MappingAdapter[+M <: Mapping, S, O] extends GenericMapping[S, O] with OpenNest[M] {
 	override val egg :M
 
 //	override def map[X](there :S => X, back :X => S) :egg.type AdaptedAs X =
@@ -65,13 +63,13 @@ trait MappingAdapter[+M <: ConcreteMapping, S, O] extends GenericMapping[S, O] w
 
 object MappingAdapter {
 
-	type Adapted[M <: ConcreteMapping] = MappingAdapter[M, M#Subject, M#Origin]
-	type AdaptedAs[M <: ConcreteMapping, T] = MappingAdapter[M, T, M#Origin]
-	type AdaptedFor[M <: ConcreteMapping, O] = MappingAdapter[M, M#Subject, O]
+	type Adapted[M <: Mapping] = MappingAdapter[M, M#Subject, M#Origin]
+	type AdaptedAs[M <: Mapping, T] = MappingAdapter[M, T, M#Origin]
+	type AdaptedFor[M <: Mapping, O] = MappingAdapter[M, M#Subject, O]
 
 
 
-//	implicit def MappingAdapterAlias[X <: ConcreteMapping, A, Y <: ConcreteMapping, S, B]
+//	implicit def MappingAdapterAlias[X <: Mapping, A, Y <: Mapping, S, B]
 //	                                (implicit alias :MappingAlias[X, A, Y, B])
 //			:MappingAlias[MappingAdapter[X, S, A], A, MappingAdapter[X, S, B], B] =
 

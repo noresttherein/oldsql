@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 class RenamedMapping[M <: TypedMapping[S, O], S, O](name :String, override val egg :M)
@@ -43,7 +43,7 @@ object RenamedMapping {
 		new RenamedMapping[mapping.type, S, O](name, mapping)
 
 	def generic[M <: Mapping, C <: TypedMapping[S, O], S, O]
-	           (name :String, mapping :M)(implicit types :IsBoth[M, C, TypedMapping[S, O]]) :Adapted[C] =
+	           (name :String, mapping :M)(implicit types :Conforms[M, C, TypedMapping[S, O]]) :Adapted[C] =
 		new RenamedMapping[C, S, O](name, mapping)
 
 

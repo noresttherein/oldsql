@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, CompatibleMapping, ConcreteMapping, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, CompatibleMapping, MappingOf}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
@@ -227,14 +227,14 @@ object ComponentValues {
 	  * can supply a `Map` as an argument.
 	  * @param values factory of values for components, should always return the value of the type correct for the component argument!
 	  */
-	def apply[M <: ConcreteMapping](values :MappingFrom[M#Origin] => Option[_]) :ComponentValues[M] =
+	def apply[M <: Mapping](values :MappingFrom[M#Origin] => Option[_]) :ComponentValues[M] =
 		new CustomComponentValues[M](values)
 
 	/** An empty instance, returning always None or throwing NoSuchElementException.
 	  * This is the generic version of the method, use the ComponentValuesFactory to get the singleton-typed one
 	  * by calling `ComponentValues(mapping)(..)` instead.
 	  */
-	def Empty[M <: ConcreteMapping] :ComponentValues[M] = empty.crosscast[M]
+	def Empty[M <: Mapping] :ComponentValues[M] = empty.crosscast[M]
 
 	/** An empty instance, returning always None or throwing a `NoSuchElementException`.
 	  * This is the generic version of the method, use the ComponentValuesFactory to get the singleton-typed one
@@ -242,7 +242,7 @@ object ComponentValues {
 	  * @param source a description of the original source which created this instance for more helpful message in
 	  *               thrown exceptions
 	  */
-	def Empty[M <: ConcreteMapping](source : =>String) :ComponentValues[M] = new EmptyValues[M](source)
+	def Empty[M <: Mapping](source : =>String) :ComponentValues[M] = new EmptyValues[M](source)
 
 	/** Create ComponentValues for the given mapping and its value. All values returned by this instance will use
 	  * the path to the requested component to pick (disassemble) the value from the given argument. Please not that,
@@ -251,14 +251,14 @@ object ComponentValues {
 	  * the `ComponentValuesFactory` to get the singleton-typed one by calling `ComponentValues(mapping)(..)` instead.
 	  * @param value result, top-level value.
 	  */
-	def Predefined[M <: ConcreteMapping](value :M#Subject) :ComponentValues[M] =
+	def Predefined[M <: Mapping](value :M#Subject) :ComponentValues[M] =
 		new ExplicitMappingValue[M](value)
 
 	/** Similar to Predefined[M](mapping, value), but the value is not computed until actually needed. The expression
 	  * will be evaluated at most once. This is the generic version of the method, use the `ComponentValuesFactory`
 	  * to get the singleton-typed one by calling `ComponentValues(mapping)(..)` instead.
 	  */
-	def Lazy[M <: ConcreteMapping](value: =>M#Subject) :ComponentValues[M] =
+	def Lazy[M <: Mapping](value: =>M#Subject) :ComponentValues[M] =
 		new LazyPredefinedMappingValue[M](value)
 
 	/** Create a lazy, predefined instance using the value of the given expression for the component.
@@ -266,7 +266,7 @@ object ComponentValues {
 	  * default value for when the first choice couldn't be obtained. This is the generic version of the method, use
 	  * the `ComponentValuesFactory` to get the singleton-typed one by calling `ComponentValues(mapping)(..)` instead.
 	  */
-	def Fallback[M <: ConcreteMapping](value: => Option[M#Subject]) :ComponentValues[M] =
+	def Fallback[M <: Mapping](value: => Option[M#Subject]) :ComponentValues[M] =
 		new LazyMappingValue[M](value)
 
 
@@ -277,7 +277,7 @@ object ComponentValues {
 	/** Factory for `ComponentValues` statically associated with the given mapping (will return
 	  * `ComponentValues[mapping.type]`). Should be the first choice for obtaining `ComponentValues` instances.
 	  */
-	@inline def apply(mapping :ConcreteMapping) :ComponentValuesFactory[mapping.type] =
+	@inline def apply(mapping :Mapping) :ComponentValuesFactory[mapping.type] =
 		new ComponentValuesFactory[mapping.type](mapping)
 
 	/** A generic version of `apply(mapping :Mapping)`, which will return `ComponentValues` associated with the
@@ -289,7 +289,7 @@ object ComponentValues {
 	  * @tparam M
 	  * @return
 	  */
-	@inline def generic[M <: ConcreteMapping](mapping :M) :ComponentValuesFactory[M] =
+	@inline def generic[M <: Mapping](mapping :M) :ComponentValuesFactory[M] =
 		new ComponentValuesFactory[M](mapping)
 
 
@@ -298,7 +298,7 @@ object ComponentValues {
 	  * @param mapping associated mapping
 	  * @tparam M static type parameter of returned ComponentValues instances.
 	  */
-	final class ComponentValuesFactory[M <: ConcreteMapping](val mapping :M) extends AnyVal {
+	final class ComponentValuesFactory[M <: Mapping](val mapping :M) extends AnyVal {
 
 		/** Returns `ComponentValues` based on a predefined mapping result. The values for all components will be
 		  * obtained by disassembling (picking) their value from the argument based on the function specified by
@@ -630,7 +630,7 @@ object ComponentValues {
 	  * @tparam M type of the target mapping defining the components for which this instance contains values.
 	  *           In non-abstract cases the singleton type of the mapping object used for assembly
 	  */
-	trait SelectedComponentValues[M <: ConcreteMapping] extends ComponentValues[M] {
+	trait SelectedComponentValues[M <: Mapping] extends ComponentValues[M] {
 		override def predefined(root: M): Option[M#Subject] = None
 
 		override def result(root: M): Option[M#Subject] = root.assemble(crosscast[root.type])
@@ -666,7 +666,7 @@ object ComponentValues {
 
 
 
-	private class SelectedDisassembledComponentValues[M <: ConcreteMapping]
+	private class SelectedDisassembledComponentValues[M <: Mapping]
 	                                                 (value :M#Subject, components :Unique[MappingFrom[M#Origin]])
 		extends SelectedComponentValues[M]
 	{
@@ -678,7 +678,7 @@ object ComponentValues {
 	}
 
 
-	private class CustomComponentValues[M <: ConcreteMapping](vals :MappingFrom[M#Origin] => Option[_])
+	private class CustomComponentValues[M <: Mapping](vals :MappingFrom[M#Origin] => Option[_])
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]): Option[T] =
@@ -689,7 +689,7 @@ object ComponentValues {
 
 
 
-	private class IndexedComponentValues[M <: ConcreteMapping](vals :Seq[Option[Any]], index :MappingFrom[M#Origin] => Int)
+	private class IndexedComponentValues[M <: Mapping](vals :Seq[Option[Any]], index :MappingFrom[M#Origin] => Int)
 		extends SelectedComponentValues[M]
 	{
 		override protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {

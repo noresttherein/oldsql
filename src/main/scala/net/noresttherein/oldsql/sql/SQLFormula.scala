@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnReadForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SelectFrom, SubselectFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectFrom}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ConversionMatcher, OrNull}
 import net.noresttherein.oldsql.sql.SQLCondition.{CaseCondition, ConditionMatcher, Equality}
@@ -14,8 +14,9 @@ import net.noresttherein.oldsql.sql.SQLTerm.{BoundParameter, CaseTerm, False, SQ
 import net.noresttherein.oldsql.sql.SQLTuple.{CaseTuple, SeqTuple, TupleMatcher}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
-import net.noresttherein.oldsql.sql.MappingFormula.{CaseMapping, FromFormula, MappingMatcher}
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql.MappingFormula.{CaseMapping, JoinedRelation, MappingMatcher}
+import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyJoinedRelation
 
 import scala.reflect.ClassTag
 
@@ -110,11 +111,11 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 
 	def isFree :Boolean = freeValue.isDefined
 
-	/** An SQL formula is said to be ''grounded in `FromFormula`s F1,...,FN'' if it can be evaluated based on the
+	/** An SQL formula is said to be ''grounded in `JoinedRelation`s F1,...,FN'' if it can be evaluated based on the
 	  * collective column set represented by mappings of sources of those formulas. In other words, it depends
 	  * only on those parts of the ''from'' clause.
 	  */
-	def isGroundedIn(tables :Iterable[FromFormula[_, _]]) :Boolean
+	def isGroundedIn(tables :Iterable[AnyJoinedRelation]) :Boolean
 
 /*
 	def evaluate(values :RowValues[F]) :V = get(values) getOrElse {
@@ -181,7 +182,7 @@ object SQLFormula {
 		protected def parts :Seq[SQLFormula[F, _]]
 
 
-		override def isGroundedIn(tables: Iterable[FromFormula[_, _]]): Boolean =
+		override def isGroundedIn(tables: Iterable[AnyJoinedRelation]): Boolean =
 			parts.forall(_.isGroundedIn(tables))
 
 		override protected def reverseCollect[X](fun: PartialFunction[SQLFormula[_ <: FromClause, _], X], acc: List[X]): List[X] =
@@ -244,8 +245,8 @@ object SQLFormula {
 
 
 
-	@inline implicit def SQLFormulaExtension[X, E[-S <: FromClause, X] <: SQLFormula[S, X], F <: FromClause, T]
-	                                        (e :X)(implicit infer :IsBoth[X, E[F, T], SQLFormula[F, T]])
+	@inline implicit def SQLFormulaExtension[X, E[-S <: FromClause, V] <: SQLFormula[S, V], F <: FromClause, T]
+	                                        (e :X)(implicit infer :Conforms[X, E[F, T], SQLFormula[F, T]])
 			:SQLFormulaExtension[E, F, T] =
 		new SQLFormulaExtension[E, F, T](e)
 

@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 import scala.collection.mutable.Builder
 
@@ -33,22 +33,22 @@ object CustomizedMapping {
 
 	def select[M <: TypedMapping[S, O], S, O]
 	          (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
-              (implicit inferS :IsBoth[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
+              (implicit inferS :Conforms[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
 		customize(source, include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
 
 	def query[M <: TypedMapping[S, O], S, O]
 	         (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
-	         (implicit inferS :IsBoth[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
+	         (implicit inferS :Conforms[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
 		customize(source, include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
 
 	def update[M <: TypedMapping[S, O], S, O]
 	          (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
-              (implicit inferS :IsBoth[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
+              (implicit inferS :Conforms[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
 		customize(source, include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
 
 	def insert[M <: TypedMapping[S, O], S, O]
 	          (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
-              (implicit inferS :IsBoth[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
+              (implicit inferS :Conforms[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
 		customize(source, include, NoInsert, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
 
 

@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedA
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.{MappedMapping, MappingAdapter, PrefixedMapping}
 import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 import scala.collection.AbstractSeq
 import scala.collection.mutable.{Builder, ListBuffer}

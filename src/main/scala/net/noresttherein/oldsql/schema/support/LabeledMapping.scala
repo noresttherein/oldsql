@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.GenericMapping
+import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
 import net.noresttherein.oldsql.schema.support.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, ConcreteMapping, MappingAlias}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAlias, TypedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, ShallowAdapter}
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
@@ -20,14 +20,14 @@ trait LabeledMapping[N <: Label, S, O] extends GenericMapping[S, O]
 object LabeledMapping {
 	type Label = String with Singleton
 
-	sealed trait @:[N <: Label, M <: ConcreteMapping] extends Adapted[M] with LabeledMapping[N, M#Subject, M#Origin] {
+	sealed trait @:[N <: Label, M <: Mapping] extends Adapted[M] with LabeledMapping[N, M#Subject, M#Origin] {
 		def label :N
 	}
 
 
 
 	def apply[N <: Label, M <: TypedMapping[S, O], S, O]
-	         (label :N, mapping :M)(implicit infer :IsBoth[M, M, TypedMapping[S, O]]) :N @: M =
+	         (label :N, mapping :M)(implicit infer :Conforms[M, M, TypedMapping[S, O]]) :N @: M =
 		new MappingLabel[N, M, S, O](mapping)(new ValueOf[N](label))
 
 
@@ -36,7 +36,7 @@ object LabeledMapping {
 			:MappingAlias[LabeledMapping[N, S, A], A, LabeledMapping[N, S, B], B] =
 		MappingAlias()
 
-	implicit def LabeledMappingAdapterAlias[N <: Label, M <: ConcreteMapping, A, R <: ConcreteMapping, B]
+	implicit def LabeledMappingAdapterAlias[N <: Label, M <: Mapping, A, R <: Mapping, B]
 	                                       (implicit alias :MappingAlias[M, A, R, B]) :MappingAlias[N @: M, A, N @: R, B] =
 		labeled => (labeled.label @: alias(labeled.egg).asInstanceOf[TypedMapping[Any, Any]]).asInstanceOf[N @: R]
 

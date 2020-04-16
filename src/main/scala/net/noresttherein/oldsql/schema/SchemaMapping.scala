@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.schema.support.MappedMapping.FlatMappedMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.{BaseColumn, LabeledColumn}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.LabeledMapping.{Label, MappingLabel}
-import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 import scala.annotation.{implicitNotFound, tailrec}
 import scala.reflect.runtime.universe.TypeTag
@@ -502,8 +502,8 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends GenericMapping[R, O] 
 	  * @param value an extractor returning the value of this component for the subject type `S` of an owning mapping.
 	  */
 	def comp[X <: Mapping, M <: Subschema[L, V, T], L <: Chain, V <: Chain, T]
-	        (component :X, value :Extractor[S, T])
-	        (implicit types :IsBoth[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, S, O] =
+	        (component :X, value :Extractor[S, T]) //todo: this Conforms is unnecessary, M <: Subschema[_, _, T] will be enough
+	        (implicit types :Conforms[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, S, O] =
 		new NonEmptySchema[C, M, R, T, S, O](this, component,
 			ComponentExtractor(component, value.optional, value.requisite)
 		)
@@ -514,7 +514,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends GenericMapping[R, O] 
 	  */
 	def comp[X <: Mapping, M <: Subschema[L, V, T], L <: Chain, V <: Chain, T]
             (value :S => T, component :X)
-            (implicit types :IsBoth[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, S, O] =
+            (implicit types :Conforms[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, S, O] =
 		new NonEmptySchema[C, M, R, T, S, O](this, types(component), ComponentExtractor.req(types(component))(value))
 
 	/** Appends the given component to this schema.
@@ -525,7 +525,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends GenericMapping[R, O] 
 	  */
 	def optcomp[X <: Mapping, M <: Subschema[L, V, T], L <: Chain, V <: Chain, T]
 	           (value :S => Option[T], component :X)
-	           (implicit types :IsBoth[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, S, O] =
+	           (implicit types :Conforms[X, M, Subschema[L, V, T]]) :MappingSchema[C ~ M, R ~ T, S, O] =
 		new NonEmptySchema[C, M, R, T, S, O](this, types(component), ComponentExtractor.opt(types(component))(value))
 
 
@@ -972,7 +972,7 @@ object MappingSchema {
 			                           M <: SchemaMapping[MC, MR, T, O], MC <: Chain, MR <: Chain, T, S, O,
 		                               SC <: Chain,  SR <: Chain, IC <: Chain, IR <: Chain]
 		                              (implicit prefix :SchemaInlining[C, R, S, O, PC, PR],
-		                               hint :IsBoth[M, M, SchemaMapping[MC, MR, T, O]],
+		                               hint :Conforms[M, M, SchemaMapping[MC, MR, T, O]],
 		                               inline :SchemaInlining[MC, MR, T, O, SC, SR],
 		                               concat :ColumnSchemaConcat[PC, PR, SC, SR, S, O, IC, IR])
 				:SchemaInlining[C ~ M, R ~ T, S, O, IC, IR] =
