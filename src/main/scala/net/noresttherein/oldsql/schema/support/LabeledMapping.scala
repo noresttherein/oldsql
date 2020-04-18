@@ -18,6 +18,7 @@ trait LabeledMapping[N <: Label, S, O] extends GenericMapping[S, O]
 
 
 object LabeledMapping {
+	/** A type of string literals used to label mappings on the type level for ease of access. */
 	type Label = String with Singleton
 
 	sealed trait @:[N <: Label, M <: Mapping] extends Adapted[M] with LabeledMapping[N, M#Subject, M#Origin] {

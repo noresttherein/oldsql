@@ -4,6 +4,8 @@ import net.noresttherein.oldsql.morsels.Origin.{@#, Index}
 import net.noresttherein.oldsql.morsels.abacus.INT
 import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, Mapping, MappingSchema}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
+import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaMapping
+import net.noresttherein.oldsql.schema.support.LabeledMapping
 import net.noresttherein.oldsql.sql.FromClause
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 
@@ -44,6 +46,12 @@ object playground extends App {
 //		MappingSchema[O, Human].comp(_.gun, guns[O]).comp(_.backup, guns[O]).comp(_.secondBackup, guns[O])
 
 	class Humans[O] extends AbstractSchemaMapping(humans[O]) {
+		val gun = schema / 0
+		val backup = schema / 1
+		val second = schema / 2
+		gun :LabeledMapping["gun", Gun, O]
+		backup :LabeledMapping["backup", Gun, O]
+		second :LabeledMapping["second", Gun, O]
 		override protected def construct(implicit pieces :Pieces) :Human =
 			Human(!"gun", !"backup", !"second")
 	}
