@@ -1,10 +1,14 @@
-package net.noresttherein.oldsql.schema.support
+package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.schema.Mapping
+import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+
+
+
 
 
 class RenamedMapping[M <: TypedMapping[S, O], S, O](name :String, override val egg :M)

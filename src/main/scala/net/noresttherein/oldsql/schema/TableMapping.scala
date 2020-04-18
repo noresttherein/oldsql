@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.schema
 
 
+import net.noresttherein.oldsql.schema.support.{ReflectedMapping, RootMappingFrame}
+
 import scala.reflect.runtime.universe.TypeTag
 
 /**

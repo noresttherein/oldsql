@@ -1,12 +1,13 @@
-package net.noresttherein.oldsql.schema.support
+package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.{Buff, ComponentExtractor, Mapping, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingOf, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
+import net.noresttherein.oldsql.schema.support.MappingAdapter
 
 import scala.util.Try
 

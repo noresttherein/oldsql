@@ -1,13 +1,13 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.model.PropertyPath
-import net.noresttherein.oldsql.model.PropertyPath.{==>, PropertyReflectionException}
-import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.model.PropertyPath.PropertyReflectionException
+import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ComponentExtractor
 import net.noresttherein.oldsql.schema.ComponentExtractor.{ConstantComponent, EmptyComponent, IdentityComponent, RequisiteComponent}
-import net.noresttherein.oldsql.slang._
 
 import scala.reflect.runtime.universe.TypeTag
+
 
 
 
@@ -66,5 +66,3 @@ trait ReflectedMapping[S, O] extends MappingFrame[S, O] { composite =>
 
 
 }
-
-

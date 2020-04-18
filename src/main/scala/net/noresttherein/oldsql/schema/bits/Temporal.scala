@@ -16,9 +16,9 @@ final class Temporal[T](val now :()=>T)
 
 sealed abstract class DefaultTemporalImplicits {
 
-	implicit final val SQLDate = new Temporal(() => new sql.Date(Platform.currentTime))
-	implicit final val SQLTime = new Temporal(() => new sql.Time(Platform.currentTime))
-	implicit final val SQLTimestamp = new Temporal(() => new sql.Timestamp(Platform.currentTime))
+	implicit final val SQLDate = new Temporal(() => new sql.Date(System.currentTimeMillis))
+	implicit final val SQLTime = new Temporal(() => new sql.Time(System.currentTimeMillis))
+	implicit final val SQLTimestamp = new Temporal(() => new sql.Timestamp(System.currentTimeMillis))
 
 	implicit final val JavaDate = new Temporal(() => new util.Date)
 

@@ -2,12 +2,12 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.morsels.abacus.{INT, Inc}
-import net.noresttherein.oldsql.schema.{GenericMapping, Mapping, RowSource, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, MappingFrom, MappingOf, TypedMapping}
-import net.noresttherein.oldsql.schema.support.LabeledMapping
-import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, INT}
+import net.noresttherein.oldsql.schema.{bits, GenericMapping, Mapping, RowSource, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginProjection, TypedMapping}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
+import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.FromClause.GetTableByIndex.GetTableByNegativeIndex
@@ -291,7 +291,7 @@ object FromClause {
 	/** A wrapper type adapting the labeled mapping type `L @: M` to a form with a single-argument type constructor
 	  * accepting the `Origin` type for use in `With` classes and other types accepting such a type constructor:
 	  * `Dual With (Humans As "humans")#T` (where `Humans[O] &lt;: MappingFrom[O]`).
-	  * @see [[net.noresttherein.oldsql.schema.support.LabeledMapping.@:]]
+	  * @see [[bits.LabeledMapping.@:]]
 	  */
 	type As[M[O] <: MappingFrom[O], L <: Label] = { type T[O] = L @: M[O] }
 

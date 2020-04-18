@@ -12,6 +12,10 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import scala.collection.mutable.Builder
 
 
+
+
+
+
 /**
   * @author Marcin Mościcki
   */

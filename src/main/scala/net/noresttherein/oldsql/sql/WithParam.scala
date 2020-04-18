@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.support.{EmptyMapping, FormMapping}
 import net.noresttherein.oldsql.schema.{ColumnForm, ComponentExtractor, GenericMapping, Mapping, RootMapping, RowSource, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, MappingFrom, TypedMapping}
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
-import net.noresttherein.oldsql.schema.support.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
 import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}

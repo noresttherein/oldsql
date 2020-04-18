@@ -8,10 +8,11 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, INT}
 import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
-import net.noresttherein.oldsql.schema.support.{ConstantMapping, LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
+import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.MappingSchema.{ExtensibleNonEmptySchema, FlatMappedMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, MappedMappingSchema, MappingSchemaGuts, SchemaComponentLabel, SchemaFlattening}
-import net.noresttherein.oldsql.schema.support.LabeledMapping.{Label, MappingLabel}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, MappingLabel}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, LabeledSchemaMapping, SchemaColumn}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 import scala.annotation.{implicitNotFound, tailrec}

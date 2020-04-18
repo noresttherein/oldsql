@@ -1,9 +1,8 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.support
 
+import net.noresttherein.oldsql.schema.GenericMapping
 import net.noresttherein.oldsql.slang._
 
-
-//todo: MappingFrame
 /**
   * @author Marcin Mościcki
   */
@@ -13,16 +12,16 @@ trait StaticMapping[S, O] extends GenericMapping[S, O] {
 	/** Performs the assembly of this mapping's subject from the components. This method is called in a double-dispatch
 	  * from `optionally`/`apply`, which should be used by external mappings, as they are responsible for
 	  * introducing default values and any manipulation of the final values. The standard implementation
-	  * invokes [[net.noresttherein.oldsql.schema.StaticMapping.construct construct(pieces)]] as long as
-	  * [[net.noresttherein.oldsql.schema.StaticMapping.isDefined isDefined(pieces)]] returns `true`. Additionally,
+	  * invokes [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct(pieces)]] as long as
+	  * [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined(pieces)]] returns `true`. Additionally,
 	  * all `NoSuchElementException` exceptions (thrown by default by components `apply` method when no value can
 	  * be assembled or is predefined) are caught and result in returning `None`. All other exceptions,
 	  * including `NullPointerException` which may result from unavailable columns, are propagated. Subclasses should
 	  * override those methods instead of `assemble`.
 	  * @return `Some(construct(pieces))` if `isDefined(pieces)` returns `true` or `None` if it returns `false` or
 	  *        a `NoSuchElementException` is caught.
-	  * @see [[net.noresttherein.oldsql.schema.StaticMapping.construct construct]]
-	  * @see [[net.noresttherein.oldsql.schema.StaticMapping.isDefined isDefined]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined]]
 	  */
 	override def assemble(pieces: Pieces): Option[S] =
 		try {
@@ -53,8 +52,8 @@ trait StaticMapping[S, O] extends GenericMapping[S, O] {
 	  *             Address(country, city, zip, street, no)
 	  *     }
 	  * }}}
-	  * @see [[net.noresttherein.oldsql.schema.StaticMapping.isDefined isDefined]]
-	  * @see [[net.noresttherein.oldsql.schema.StaticMapping.assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.assemble assemble]]
 	  */
 	protected def construct(implicit pieces :Pieces) :S
 
@@ -65,8 +64,8 @@ trait StaticMapping[S, O] extends GenericMapping[S, O] {
 	  * primarily with the thought of outer joins where all columns of a table can carry `null` values.
 	  * For this reason, it simply always returns `true`, but entity tables override it with a check of availability
 	  * of the primary key. The subclasses are free to implement any condition here.
-	  * @see [[net.noresttherein.oldsql.schema.StaticMapping.construct construct]]
-	  * @see [[net.noresttherein.oldsql.schema.StaticMapping.assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.assemble assemble]]
 	  */
 	protected def isDefined(pieces :Pieces) :Boolean = true
 
@@ -81,4 +80,3 @@ trait StaticMapping[S, O] extends GenericMapping[S, O] {
 
 
 }
-

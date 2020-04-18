@@ -6,13 +6,14 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.abacus.INT
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
-import net.noresttherein.oldsql.schema.support.LabeledMapping.{Label, MappingLabel}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, MappingLabel}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
-import net.noresttherein.oldsql.schema.support.MappedMapping.FlatMappedMapping
-import net.noresttherein.oldsql.schema.support.{LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
+import net.noresttherein.oldsql.schema.bits.MappedMapping.FlatMappedMapping
+import net.noresttherein.oldsql.schema.support.{LazyMapping, MappingAdapter, StaticMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
 import net.noresttherein.oldsql.schema.MappingSchema.{FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, SchemaComponentLabel, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaMapping, MappedSchemaMapping, SchemaMappingLabel}
+import net.noresttherein.oldsql.schema.bits.{LabeledMapping, MappedMapping}
 
 
 
@@ -408,7 +409,7 @@ object SchemaMapping {
 
 /** Base trait for `SchemaMapping` implementations which need individual access to their components during
   * the construction process. This class extends `StaticMapping`, meaning that within its
-  * [[net.noresttherein.oldsql.schema.StaticMapping#construct construct(Pieces)]] method components are implicitly
+  * [[StaticMapping#construct construct(Pieces)]] method components are implicitly
   * converted into their values, allowing their direct use as arguments for the subject's constructor.
   * Note that accepting a `MappingSchema` as the parameter, all type parameters of this class can be usually inferred
   * automatically:
@@ -424,7 +425,7 @@ object SchemaMapping {
   * As the major motivation for picking this class, rather than mapping a `SchemaMapping` with a factory method
   * for the subject type, is free access to the components in the schema and/or more readable code in presence
   * of many columns of the same type, this class offers additional support for labeled components (classes
-  * extending [[net.noresttherein.oldsql.schema.support.LabeledMapping LabeledMapping]]). While `MappingSchema`
+  * extending [[net.noresttherein.oldsql.schema.bits.LabeledMapping LabeledMapping]]). While `MappingSchema`
   * already provides methods for retrieving such components based on their attached label, this class goes one step
   * further and enriches `String` literals with methods for both retrieving a component or its selector ''and'' its
   * value, providing implicit `ComponentValues` for the mapping are available. These are written as:

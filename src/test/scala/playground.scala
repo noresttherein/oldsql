@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.morsels.abacus.INT
 import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, Mapping, MappingSchema}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaMapping
-import net.noresttherein.oldsql.schema.support.LabeledMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.sql.FromClause
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 

@@ -1,11 +1,10 @@
-package net.noresttherein.oldsql.schema.support
+package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
-import net.noresttherein.oldsql.schema.support.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, TypedMapping}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, ShallowAdapter}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 

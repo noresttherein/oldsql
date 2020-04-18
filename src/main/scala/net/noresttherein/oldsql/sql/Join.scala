@@ -1,16 +1,12 @@
 package net.noresttherein.oldsql.sql
 
 
-import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, MappingFrom, TypedMapping}
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
-import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.sql.FromClause.{As, JoinedTables, SubselectFrom}
-import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.sql.InnerJoin.AnyInnerJoin
 import net.noresttherein.oldsql.sql.ProperJoin.AnyProperJoin
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation

@@ -1,22 +1,22 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Buff.{AutoGen, AutoInsert, AutoUpdate, BuffMappingFailureException, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ComponentExtractor, GenericMapping, RootMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingOf, MappingReadForm, MappingWriteForm}
-import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.Mapping.MappingOf
+import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.support.{MappedMapping, MappingAdapter, PrefixedMapping}
+import net.noresttherein.oldsql.schema.bits.{MappedMapping, PrefixedMapping}
 import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 import scala.collection.AbstractSeq
-import scala.collection.mutable.{Builder, ListBuffer}
+import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe.TypeTag
 
 
@@ -259,7 +259,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  *             from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
 	  *             to subcomponents of this component.
 	  * @tparam T value type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.MappingFrame.BaseOptionalComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseOptionalComponent]]
 	  */
 	abstract class BaseComponent[T](value :S => T, opts :Buff[T]*) extends FrameComponent[T] {
 		protected[schema] override val extractor :Extractor[S, T] = Extractor.req(value)
@@ -298,7 +298,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  *             from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
 	  *             to subcomponents of this component.
 	  * @tparam T value type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.MappingFrame.BaseComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseComponent]]
 	  */
 	abstract class BaseOptionalComponent[T](value :S => Option[T], opts :Buff[T]*)
 		extends OptionalComponent[T]
@@ -1102,8 +1102,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  * unless a subclass decides to initialize a component manually by its `include()` method. It can then
 	  * use this method before the call to `include()` in order to preserve the order of component definition
 	  * on all column/component lists.
-	  * @see [[net.noresttherein.oldsql.schema.MappingFrame.initPreceding[T](value:T) initPreceding(value)]]
-	  * @see [[net.noresttherein.oldsql.schema.MappingFrame.FrameComponent.include() FrameComponent.include()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initPreceding[T](value:T) initPreceding(value)]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.FrameComponent.include() FrameComponent.include()]]
 	  */
 	protected final def initPreceding() :Unit = synchronized {
 		delayedInits.foreach(_.include())
@@ -1113,7 +1113,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	/** An ease-of-life variant of no-argument `initPreceding()` which returns the given argument after finishing
 	  * the initialization of all already defined components. It allows to 'inject' the initialization as an intermediate
 	  * step into any expression.
-	  * @see [[net.noresttherein.oldsql.schema.MappingFrame.initPreceding() initPreceding()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initPreceding() initPreceding()]]
 	  */
 	@inline protected final def initPreceding[T](value :T) :T = { initPreceding(); value }
 
@@ -1129,10 +1129,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 	/** Tests if the component lists of this instance have already been initialized and can not be changed any further.
 	  * This happens either when any of the column/component lists of this instance are accessed, or when a subclass
-	  * manually triggers the initialization by a call to [[net.noresttherein.oldsql.schema.MappingFrame.initialize() initialize()]].
+	  * manually triggers the initialization by a call to [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]].
 	  * Any attempt to create new components after this happens will result in `IllegalStateException` thrown
 	  * by the constructor.
-	  * @see [[net.noresttherein.oldsql.schema.MappingFrame.initialize() initialize()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]]
 	  */
 	protected final def isInitialized :Boolean = initComponents.isInitialized
 
@@ -1149,7 +1149,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  * It is triggered automatically the first time any of the component lists of this instance is accessed, but
 	  * can be also called explicitly by a subclass. It is idempotent and synchronized, meaning any calls after
 	  * the first one are ignored.
-	  * @see [[net.noresttherein.oldsql.schema.MappingFrame.finalizeInitialization()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.finalizeInitialization()]]
 	  */
 	protected final def initialize() :Unit =
 		if (!isInitialized) synchronized {
@@ -1177,7 +1177,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 	/** A hook method called by `initialize()` after component lists are initialized. By default it does nothing,
 	  * but subclasses may override it to implement any additional initialization steps they require.
-	  * @see [[net.noresttherein.oldsql.schema.MappingFrame.initialize() initialize()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]]
 	  */
 	protected def finalizeInitialization() :Unit = ()
 
@@ -1301,7 +1301,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
   * declaring a column prefix to be added to all its columns as well as additional buffs which should be inherited
   * by all of its subcomponents (including columns), the component, as defined, can be a different instance from its
   * final representation included on the mapping's component/column lists. This is in particular necessary if a
-  * component not extending the inner [[net.noresttherein.oldsql.schema.MappingFrame.FrameComponent FrameComponent]]
+  * component not extending the inner [[net.noresttherein.oldsql.schema.support.MappingFrame.FrameComponent FrameComponent]]
   * class is embedded in the mapping. As it is the latter version of the component which is used by the framework
   * to create any SQL statements, and thus also by the `Pieces`, but typically the original component as defined
   * is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces` implementation

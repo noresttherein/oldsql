@@ -6,11 +6,11 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.abacus.INT
 import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
-import net.noresttherein.oldsql.schema.support.{LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
-import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, OptionMapping}
+import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.MappingPath.SelfPath
-import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.support.MappingFrame
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent
@@ -93,7 +93,7 @@ import scala.annotation.implicitNotFound
   * missing type parameters, which are not unified even with `m.Subject`/`m.Origin` itself, leading to a lot of issues.
   * This can be circumvented with implicit parameters, but at the cost of additional complexity.
   * @see [[net.noresttherein.oldsql.schema.GenericMapping]]
-  * @see [[net.noresttherein.oldsql.schema.MappingFrame]]
+  * @see [[MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
 trait Mapping {
