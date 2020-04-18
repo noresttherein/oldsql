@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
 import net.noresttherein.oldsql.schema.support.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Mapping.{MappingAlias, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, ShallowAdapter}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
@@ -32,12 +32,13 @@ object LabeledMapping {
 
 
 
-	implicit def LabeledMappingAlias[N <: Label, S, A, B]
-			:MappingAlias[LabeledMapping[N, S, A], A, LabeledMapping[N, S, B], B] =
-		MappingAlias()
+	implicit def LabeledMappingProjection[N <: Label, S, A, B]
+			:OriginProjection[LabeledMapping[N, S, A], A, LabeledMapping[N, S, B], B] =
+		OriginProjection()
 
-	implicit def LabeledMappingAdapterAlias[N <: Label, M <: Mapping, A, R <: Mapping, B]
-	                                       (implicit alias :MappingAlias[M, A, R, B]) :MappingAlias[N @: M, A, N @: R, B] =
+	implicit def LabeledMappingAdapterProjection[N <: Label, M <: Mapping, A, R <: Mapping, B]
+	                                            (implicit alias :OriginProjection[M, A, R, B])
+			:OriginProjection[N @: M, A, N @: R, B] =
 		labeled => (labeled.label @: alias(labeled.egg).asInstanceOf[TypedMapping[Any, Any]]).asInstanceOf[N @: R]
 
 

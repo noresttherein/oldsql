@@ -1,5 +1,8 @@
 package net.noresttherein.oldsql.morsels
 
+import net.noresttherein.oldsql.morsels.abacus.{Inc, INT}
+
+
 /**
   * @author Marcin Mościcki
   */
@@ -13,20 +16,39 @@ trait Origin extends Any {
 
 object Origin {
 
-	final class Alias[S](val alias :String) extends AnyVal with Origin {
-		override def toString :String = "Alias(" + alias + ")"
+	sealed trait UniqueOrigin {
+		type O <: Origin
 	}
 
-	def Alias[S <: String with Singleton :ValueOf] = new Alias[S](valueOf[S])
+	implicit def Unique :UniqueOrigin = new UniqueOrigin { type T = Origin }
 
 
-	sealed trait Unique {
-		type T <: Origin
+
+	/** A wrapper over an `Int` with a literal type used for indexing on the type level by parameterizing with ##[N]. */
+	type @#[N <: INT] = I forSome { type I <: Index[N] }
+/*
+	class @#[+N <: INT](val n :N) {
+		def this()(implicit value :ValueOf[N]) = this(value.value)
+
+		def ++[I >: N <: INT, O <: INT](implicit inc :Inc[I, O]): @#[O] = new @#[O](inc.n)
+		def --[M <: INT, I >: N <: INT](implicit inc :Inc[M, I]): @#[M] = new @#[M](inc.m :M)
 	}
 
-	implicit def Unique :Unique = new Unique { type T = Origin }
+	object @# {
+		@inline def apply[N <: INT: @#]: @#[N] = implicitly[@#[N]]
+
+		@inline def apply[N <: INT](n :N): @#[N] = new @#[N](n)
+
+		implicit def literal[N <: INT :ValueOf]: @#[N] = new @#[N]
+
+		def unique[N <: INT :ValueOf]: @#[_ <: INT] = new @#[N]
+	}
+*/
+
+
 
 	trait Index[I] extends Any with Origin
+
 
 
 	final class NextIndex[N, M](val index :Int) extends AnyVal with Index[M] {
@@ -102,5 +124,11 @@ object Origin {
 	type _20 = Index[20]
 	final val _20: _20 = Index[20]
 
+	type _21 = Index[21]
+	final val _21: _21 = Index[21]
+
+	type _22 = Index[22]
+	final val _22: _22 = Index[22]
 
 }
+

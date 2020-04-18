@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * The given mapping doesn't have to represent a table at this point - it might be for example a table component
   * to be 'planted' in a particular table at a later point. This is the root of the class hierarchy of non-empty
   * ''from'' clauses: this includes both [[net.noresttherein.oldsql.sql.ProperJoin proper]] joins
-  * (inner, left outer, right outer), synthetic combined from clauses of a
+  * (inner, left outer, right outer), synthetic combined ''from'' clauses of a
   * [[net.noresttherein.oldsql.sql.Subselect subselect]] and its outer select, as well as non-SQL sources of values
   * used in SQL select statements, such as statement [[net.noresttherein.oldsql.sql.WithParam parameters]].
   *
@@ -41,11 +41,13 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.Subselect]]
   * @see [[net.noresttherein.oldsql.sql.WithParam]]
   */
-abstract class With[+L <: FromClause, R[O] <: MappingFrom[O]] protected
-                   (val left :L, protected[this] val table :JoinedRelation[FromClause With R, R, Alias] forSome { type Alias },
-                    protected[this] val joinCondition :BooleanFormula[L With R])
+trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 	extends FromClause
-{ join =>
+{
+	val left :L
+	val table :JoinedRelation[FromClause With R, R, _]
+	protected[this] val joinCondition :BooleanFormula[L With R]
+
 
 	protected def copy(filter :BooleanFormula[L With R]) :This
 
@@ -54,12 +56,11 @@ abstract class With[+L <: FromClause, R[O] <: MappingFrom[O]] protected
 
 	type JoinRight[+F <: FromClause] <: F With R
 
-	override type This >: this.type <: L With R //{
+	override type This >: this.type <: L With R
 
 	override type Generalized = left.Generalized With R
 
 	override def generalized :Generalized = this.asInstanceOf[Generalized]
-
 
 
 	override type LastMapping[O] = R[O]
@@ -111,14 +112,14 @@ abstract class With[+L <: FromClause, R[O] <: MappingFrom[O]] protected
 	def on(condition :left.JoinFilter[R]) :JoinRight[left.This] = left.filterJoined(condition, this)
 
 
-	def whereLast(filter :JoinedRelation[FromClause With R, R, _] => BooleanFormula[FromClause With R]) :This =
-		copy(joinCondition && filter(table))
+	def whereLast(filter :JoinedRelation[FromClause With R, R, _ <: -1] => BooleanFormula[FromClause With R]) :This =
+		copy(joinCondition && filter(table.asInstanceOf[JoinedRelation[FromClause With R, R, -1]])) //todo: cast...
 
 	def where[F >: L <: FromClause](filter :JoinedTables[F With R] => BooleanFormula[F With R]) :This =
 		copy(joinCondition && filter(new JoinedTables[F With R](this)))
 
-	//	protected override def filter(condition :BooleanFormula[Generalized]) :This =
-	//		copy(joinCondition && condition)
+//	protected override def filter(condition :BooleanFormula[Generalized]) :This =
+//		copy(joinCondition && condition)
 
 
 
@@ -153,7 +154,7 @@ object With {
 	  * and the the mapping on the right side representing a table or some table proxy.
 	  */
 	def apply[L[O] <: MappingFrom[O], R[O] <: MappingFrom[O]]
-	(left :RowSource[L], right :RowSource[R]) :From[L] InnerJoin R =
+	         (left :RowSource[L], right :RowSource[R]) :From[L] InnerJoin R =
 		InnerJoin(left, right)
 
 	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L InnerJoin R =

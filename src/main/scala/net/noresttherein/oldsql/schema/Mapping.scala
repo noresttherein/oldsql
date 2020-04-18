@@ -3,6 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.morsels.abacus.INT
 import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.support.{LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
@@ -12,6 +13,7 @@ import net.noresttherein.oldsql.schema.MappingPath.SelfPath
 import net.noresttherein.oldsql.schema.support.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent
 
 import scala.annotation.implicitNotFound
 
@@ -101,9 +103,27 @@ trait Mapping {
 
 	/** A phantom marker type denoting the origin of this mapping. It is used to statically distinguish between
 	  * different instances of the same mapping class, but mapping different portions of the result set -
-	  * in particular, work as aliased names for repeated occurrence of a table and its components in a joined query.
+	  * in particular, they work like aliases for repeated occurrence of a table and its components in a joined query.
 	  * In addition, it is used by the SQL DSL to ensure that an SQL expression refers only to components
 	  * coming from the one particular query, preventing accidental use of other, non-joined mappings.
+	  * This type should ''not'' be used for other purposes, keep values or be interpreted in any way, such as actual
+	  * alias names for joined tables. All concrete `Mapping` implementations are expected to take `Origin`
+	  * as a type parameter (by convention, and to leverage scala's partial kind unification, the last one).
+	  * Casting a `Mapping` to a different `Origin` should be safe. It is possible however for a `Mapping` type to
+	  * have other type parameters which depend on the `Origin` type, in which case simple projection on that
+	  * parameter alone will not work. This is the case for example with
+	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]], which lists all its components
+	  * in a type parameter, which may require additional casting. For that reason,
+	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] companion implicit is introduced.
+	  * The library will not cast a `Mapping` directly, but rely on existence of that implicit
+	  * (or a `Mapping` factory [[net.noresttherein.oldsql.schema.RowSource RowSource]]. Default implicit value for
+	  * the former will cast any `MappingFrom[X]` to `MappingFrom[Y]`, which will be in most cases unsuitable.
+	  * If you wish to declare that your `MappingFrom[X]` subtype can be safely projected from one origin to another,
+	  * introduce an implicit `OriginProjection` in implicit scope (such as in the mapping's companion object).
+	  * It will be delegated to for such projections, even when it is a no-op cast (as it should be). The simplest
+	  * method however is to extend either [[net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin OfFreeOrigin]]
+	  * or [[net.noresttherein.oldsql.schema.Mapping.FreeOriginMapping]] which will introduce such an implicit
+	  * automatically.
 	  */
 	type Origin
 
@@ -165,14 +185,21 @@ trait Mapping {
 
 
 
-	/** Direct component mappings of this mapping, including any top-level columns. Always empty for columns. */
+	/** Direct component mappings of this mapping, including any top-level columns. Always empty for columns.
+	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
+	  * or mapped components and aliases for other components of the `Mapping`. For all non-column components however
+	  * this list will cover all columns defined by the mapping.
+	  */
 	def components :Unique[Component[_]]
 
 	/** All transitive components of this mapping (i.e. components/columns declared by it's components or
 	  * other subcomponents), or all that this mapping cares to expose, as instances of this.Component[_].
-	  * This list should include all selectable columns. It is typically defined by recursive ''flat mapping''
+	  * This list should include all mapped columns. It is typically defined by recursive ''flat mapping''
 	  * over the `components` list and including the direct components themselves. This list is always empty
 	  * for columns, thus ending any similar recursion.
+	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
+	  * or mapped components and aliases for other components of the `Mapping`. For all non-column components however
+	  * this list will cover all columns defined by the mapping.
 	  */
 	def subcomponents :Unique[Component[_]]
 
@@ -439,7 +466,7 @@ trait Mapping {
   * related types are available. While extending it is not currently strictly required and the library just demands
   * that the two member types are defined on a `Mapping` via the  `TypedMapping[S, O]` type alias narrowing the `Mapping`,
   * Doing so is the most convenient way to achieve it and provides implementations of several methods which could
-  * not be done without
+  * not be done without.
   *
   * @tparam S The subject type, that is the type of objects read and written to a particular table (or a view, query,
   *           or table fragment).
@@ -447,6 +474,7 @@ trait Mapping {
   *           but coming from different sources (especially different aliases for a table occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
+  *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
   */
 trait GenericMapping[S, O] extends Mapping { self =>
 	type Origin = O
@@ -497,6 +525,8 @@ trait GenericMapping[S, O] extends Mapping { self =>
 			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
 		}
 
+	//fixme: a huge issue here: buffs can cascade, but it generally will be the original implementation (without buffs)
+	//fixme: which will be used for assembly. What are we going to do about it?
 	override def optionally(pieces: Pieces): Option[S] = //todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
 		pieces.result(this) map { res => (res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) } } orElse
 			OptionalSelect.Value(this) orElse ExtraSelect.Value(this)
@@ -555,6 +585,11 @@ object Mapping {
 
 
 
+//	implicit def mappingSQLFormula[M[A] <: MappingFrom[A], I <: INT :ValueOf](mapping :M[_ <: Index[I]]) :FreeComponent[M, @#[I]] =
+//		new FreeComponent(mapping, valueOf[I])
+
+
+
 	/** Adds a right-associative method `@:` to any `Mapping` with well defined `Origin` and `Subject` types,
 	  * which attaches a label type to it by wrapping it in `L @: M`.
 	  */
@@ -570,24 +605,25 @@ object Mapping {
 
 
 
+
 	/** Adds a `withOrigin[B]()` method to any `Mapping` with a well defined `Origin` type, which substitutes its origin
 	  * to type `B`.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingAlias]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection]]
 	  */
 	implicit class MappingAliasing[M <: Mapping](private val self :M) extends AnyVal {
 		/** Substitutes the `Origin` type of this mapping to type `B`. Follow this method call with `()`
 		  * to apply the result and infer the result type. The returned mapping type is provided by an implicit
-		  * [[net.noresttherein.oldsql.schema.Mapping.MappingAlias MappingAlias]], see its documentation for
+		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]], see its documentation for
 		  * more information.
 		  */
-		@inline def withOrigin[B] = new ApplyMappingAliasing[M, B](self)
+		@inline def withOrigin[B] = new ApplyOriginProjection[M, B](self)
 	}
 
 	/** An applicable wrapper over mapping `M` which converts it to `Origin` type `B` by the use of an implicit
-	  * [[net.noresttherein.oldsql.schema.Mapping.MappingAlias MappingAlias]].
+	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]].
 	  */
-	class ApplyMappingAliasing[M <: Mapping, B](private val self :M) extends AnyVal {
-		@inline def apply[A, R <: Mapping]()(implicit alias :MappingAlias[M, A, R, B]) :R = alias(self)
+	class ApplyOriginProjection[M <: Mapping, B](private val self :M) extends AnyVal {
+		@inline def apply[A, R <: Mapping]()(implicit alias :OriginProjection[M, A, R, B]) :R = alias(self)
 	}
 
 
@@ -599,43 +635,76 @@ object Mapping {
 	  * your custom mapping class be retained in the aliased type, provide your own implicit value of this class
 	  * in the mapping companion's object (or another related scope, with the option of explicit import).
 	  * In most cases, such as with `GenericMapping[S, O]`, this is a simple erased casting
-	  * `(_ :M[A]).asInstanceOf[M[B]]`. A convenience method `MappingAlias[M, A, B]() :MappingAlias[M[A], A, M[B], B]`
+	  * `(_ :M[A]).asInstanceOf[M[B]]`. A convenience method `OriginProjection[M, A, B]() :OriginProjection[M[A], A, M[B], B]`
 	  * can be then used for the implicit value. Furthermore, if the `Origin` type parameter is the last type parameter
 	  * of the class, all type parameters can be inferred from the expected return type:
 	  * {{{
 	  *     abstract class Table[E, O] extends GenericMapping[E, O]
 	  *
-	  *     implicit def TableAlias[A, B] :MappingAlias[Table[E, A], A, Table[E, B], B] = MappingAlias()
+	  *     implicit def TableAlias[A, B] :OriginProjection[Table[E, A], A, Table[E, B], B] = OriginProjection()
 	  * }}}
 	  *
 	  * Note however that this conversion should replace all occurrences of the origin type `A` with `B` in the
 	  * aliased type's definition. If the type refers to its `Origin` in its other type arguments, those arguments
 	  * should be rewritten, too: in that case the above example is not sufficient.
+	  * Alternatively, a `Mapping` can extend [[net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin OfFreeOrigin]]
+	  * (or [[net.noresttherein.oldsql.schema.Mapping.FreeOriginMapping]] to declare that they can be safely cast
+	  * from one origin type (which must be their last type parameter) to another.
+	  * This automatically will introduce an implicit `MappingAlias[M[X1, X2,..., A], A, M[X1, X2, ..., B], B]`.
 	  */
 	@implicitNotFound("Cannot alias mapping ${X} from origin ${A} as ${Y} from ${B}. " +
 	                  "If the aliased mapping type depends on the Origin type, provide your own implicit aliasing" +
-	                  "MappingAlias[X, A, Y, B] in the mapping's companion object.")
-	abstract class MappingAlias[-X <: Mapping, A, +Y <: Mapping, B] extends (X => Y)
+	                  "OriginProjection[X, A, Y, B] in the mapping's companion object.")
+	abstract class OriginProjection[-X <: Mapping, A, +Y <: Mapping, B] extends (X => Y)
 
-//	def MappingAlias[M <: MappingFrom[O], O, AM <: MappingFrom[A], A](alias :M => AM) :MappingAlias[M, O, AM, A] =
+//	def OriginProjection[M <: MappingFrom[O], O, AM <: MappingFrom[A], A](alias :M => AM) :OriginProjection[M, O, AM, A] =
 //		alias(_)
 
-	@inline def MappingAlias[M[O] <: MappingFrom[O], A, B]() :MappingAlias[M[A], A, M[B], B] = AnyAlias()
+	@inline def OriginProjection[M[O] <: MappingFrom[O], A, B]() :OriginProjection[M[A], A, M[B], B] = AnyOrigin()
 
 
-	private[oldsql] def AnyAlias[M <: MappingFrom[O], O, AM <: MappingFrom[A], A]() =
-		CastingAlias.asInstanceOf[MappingAlias[M, O, AM, A]]
+	private[oldsql] def AnyOrigin[M <: MappingFrom[O], O, AM <: MappingFrom[A], A]() =
+		CastingProjection.asInstanceOf[OriginProjection[M, O, AM, A]]
 
-	private[this] final val CastingAlias :MappingAlias[Mapping, Any, Mapping, Any] = mapping => mapping
+	private[this] final val CastingProjection :OriginProjection[Mapping, Any, Mapping, Any] = mapping => mapping
 
-	@inline implicit def BaseMappingAlias[O, A] :MappingAlias[MappingFrom[O], O, MappingFrom[A], A] =
-		AnyAlias()
+	@inline implicit def BaseMappingProjection[O, A] :OriginProjection[MappingFrom[O], O, MappingFrom[A], A] =
+		AnyOrigin()
 
-	@inline implicit def TypedMappingAlias[S, O, A] :MappingAlias[TypedMapping[S, O], O, TypedMapping[S, A], A] =
-		AnyAlias()
+	@inline implicit def TypedMappingProjection[S, O, A] :OriginProjection[TypedMapping[S, O], O, TypedMapping[S, A], A] =
+		AnyOrigin()
 
-	@inline implicit def GenericMappingAlias[S, O, A] :MappingAlias[GenericMapping[S, O], O, GenericMapping[S, A], A] =
-		AnyAlias()
+	@inline implicit def GenericMappingProjection[S, O, A] :OriginProjection[GenericMapping[S, O], O, GenericMapping[S, A], A] =
+		AnyOrigin()
+
+	@inline implicit def FreeOriginProjection[M[O] <: OfFreeOrigin[O], A, B] :OriginProjection[M[A], A, M[B], B] =
+		AnyOrigin()
+
+
+	/** A marker `Mapping` base trait declaring that extending classes can be safely cast from one `O` type argument
+	  * to another and that it substitutes all references to the `Origin` member types in all its fields and
+	  * other type parameters. Extending this trait will automatically introduce a
+	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] implicit value to perform the
+	  * projection. There is a subtype `FreeOriginMapping[S, O]` which can  be used as a replacement base type
+	  * for `GenericMapping` which performs the same function.
+	  */
+	trait OfFreeOrigin[O] extends Mapping {
+		type Origin = O
+	}
+
+	/** A base trait for mappings which do not interpret their origin type in any way, in particular never handle
+	  * any values of that type, and casting of which from their `Origin` type parameter (which must come last)
+	  * to another is safe and completely converts the mapping to another origin, i.e. replaces all occurrences
+	  * of the old origin with the new one.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping#Origin]]
+	  */
+	trait FreeOriginMapping[S, O] extends GenericMapping[S, O] with OfFreeOrigin[O] {
+		override type Origin = O
+	}
+
+
 
 	/** This is an implementation artifact which may disappear from the library without notice. ''Do not use
 	  * it in the client code''.
@@ -653,9 +722,15 @@ object Mapping {
 //	sealed trait Mapping extends Mapping
 
 
-
+	/** Narrowing of the `Mapping` trait to subtypes which define the `Subject` type as `S`. */
 	type MappingOf[S] = Mapping { type Subject = S }
+
+	/** Narrowing of the `Mapping` trait to subtypes which define the `Origin` type as `O`.
+	  * While mapping types are expected to have the `Origin` as a free type parameter, conversion from one
+	  * origin type to another may require more
+	  */
 	type MappingFrom[O] = Mapping { type Origin = O }
+	/** Narrowing of the `Mapping` trait to subtypes which define the `Subject` type as `S` and `Origin` as `O`. */
 	type TypedMapping[S, O] = Mapping { type Origin = O; type Subject = S }
 	type ConcreteMapping[O] = TypedMapping[_, O]
 

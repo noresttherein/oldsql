@@ -4,6 +4,7 @@ import java.{lang => j}
 
 import net.noresttherein.oldsql.model.Restraint.Comparison
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, NegatedRestrictive}
+import net.noresttherein.oldsql.model.types.ArithmeticSupport.MappedArithmeticSupport
 import net.noresttherein.oldsql.model.types.LiteralSupport.MappedLiteral
 import net.noresttherein.oldsql.model.types.OrderingSupport.MappedOrdering
 
@@ -70,8 +71,8 @@ object types {
 
 
 
-	/** Type class for types which can be translated to an SQL expressions. */
-	trait LiteralSupport[V] extends Serializable with implicits {
+	/** Type class for types which have a predefined translation to SQL expressions for atomic values. */
+	sealed trait LiteralSupport[V] extends Serializable with implicits {
 		@inline def imap[O](f :O=>V) :LiteralSupport[O] = new MappedLiteral[V, O](f)(this)
 	}
 
@@ -112,6 +113,12 @@ object types {
 		//todo: case sensitive/insensitive
 		implicit object OfString extends OrderingSupport[String] {
 			override def compare(x :String, y :String) :Int = x compare y
+
+			def noCase :OrderingSupport[String] = OfStringNoCase
+		}
+
+		object OfStringNoCase extends OrderingSupport[String] {
+			override def compare(x :String, y :String) :Int = x compareToIgnoreCase y
 		}
 
 
@@ -125,7 +132,7 @@ object types {
 
 
 	//todo: temporary stub
-	trait ArithmeticSupport[T] extends LiteralSupport[T] with Serializable {
+	sealed trait ArithmeticSupport[T] extends LiteralSupport[T] with Serializable {
 		def plus(x :T, y :T) :T
 		def minus(x :T, y :T) :T
 		def times(x :T, y :T) :T
@@ -133,6 +140,9 @@ object types {
 		def rem(x :T, y :T) :T
 
 		def negate(x :T) :T
+
+		def map[O](lift :T => O)(lower :O => T) :ArithmeticSupport[O] =
+			new MappedArithmeticSupport[T, O](lift, lower)(this)
 	}
 
 	object ArithmeticSupport {
@@ -144,6 +154,18 @@ object types {
 			case _ => None
 		}
 
+
+
+		class MappedArithmeticSupport[X, Y](lift :X => Y, lower :Y => X)(implicit backing :ArithmeticSupport[X])
+			extends ArithmeticSupport[Y]
+		{
+			override def plus(x :Y, y :Y) :Y = lift(backing.plus(lower(x), lower(y)))
+			override def minus(x :Y, y :Y) :Y = lift(backing.minus(lower(x), lower(y)))
+			override def times(x :Y, y :Y) :Y = lift(backing.times(lower(x), lower(y)))
+			override def div(x :Y, y :Y) :Y = lift(backing.div(lower(x), lower(y)))
+			override def rem(x :Y, y :Y) :Y = lift(backing.div(lower(x), lower(y)))
+			override def negate(x :Y) :Y = lift(backing.negate(lower(x)))
+		}
 
 		implicit def integralArithmetic[T :Integral] :ArithmeticSupport[T] = new ArithmeticSupport[T] {
 			private[this] val numeric = implicitly[Integral[T]]

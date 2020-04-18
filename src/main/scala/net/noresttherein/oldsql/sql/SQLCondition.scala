@@ -4,6 +4,8 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.SQLCondition.Comparison.{CaseComparison, ComparisonMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.Equality.{CaseEquality, EqualityMatcher}
+import net.noresttherein.oldsql.sql.SQLCondition.Inequality.InequalityMatcher
+import net.noresttherein.oldsql.sql.SQLCondition.OrderComparison.OrderComparisonMatcher
 import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 
@@ -18,45 +20,126 @@ trait SQLCondition[-F <: FromClause] extends CompositeFormula[F, Boolean] with C
 
 
 
+
+
+
 object SQLCondition {
+	//todo: like, in, exists
 	//todo: uniform naming convention for classes.
-	trait Comparison[-F <: FromClause, T] extends SQLCondition[F] {
+
+	trait Comparison[-F <: FromClause, T] extends SQLCondition[F] with CompositeFormula[F, Boolean] {
 		val left :SQLFormula[F, T]
 		val right :SQLFormula[F, T]
 		def symbol :String
+
+		protected override def parts :Seq[SQLFormula[F, T]] = left::right::Nil
+
+		override def toString :String = left + " " + symbol + " " + right
 	}
 
 
 
 	object Comparison {
 
-		type ComparisonMatcher[+F <: FromClause, +Y[X]] = EqualityMatcher[F, Y]
+		final val LT = "<"
+		final val LTE = "<="
+		final val GT = ">"
+		final val GTE = ">="
+		final val EQ = "="
+		final val NEQ = "<>"
 
-		type MatchComparison[+F <: FromClause, +Y[X]] = CaseEquality[F, Y]
+
+		def apply[F <: FromClause, T :SQLOrdering]
+		         (left :SQLFormula[F, T], symbol :String, right :SQLFormula[F, T]) :Comparison[F, T] =
+			symbol match {
+				case EQ => Equality(left, right)
+				case NEQ =>Inequality(left, right)
+				case _ => OrderComparison(left, symbol, right)
+			}
+
+
+		def unapply[F <: FromClause](f :SQLFormula[F, _]) :Option[(SQLFormula[F, T], String, SQLFormula[F, T])] forSome { type T } =
+			f match {
+				case compare :Comparison[F @unchecked, t] =>
+					Some((compare.left, compare.symbol, compare.right))
+			}
+
+
+
+		trait ComparisonMatcher[+F <: FromClause, +Y[X]]
+			extends OrderComparisonMatcher[F, Y] with EqualityMatcher[F, Y] with InequalityMatcher[F, Y]
+
+		type MatchComparison[+F <: FromClause, +Y[X]] = ComparisonMatcher[F, Y]
 
 		trait CaseComparison[+F <: FromClause, +Y[X]] extends MatchComparison[F, Y] {
 			def comparison[X](f :Comparison[F, X]) :Y[Boolean]
 
+			override def order[X](f :OrderComparison[F, X]) :Y[Boolean] = comparison(f)
+
 			override def equality[X](f :Equality[F, X]) :Y[Boolean] = comparison(f)
 
+			override def inequality[X](f :Inequality[F, X]) :Y[Boolean] = comparison(f)
 		}
-		//todo: ordering comparisons and like
+
 	}
+
+
+
+
+
+
+	case class OrderComparison[-F <: FromClause, T]
+	                          (ordering :SQLOrdering[T], left :SQLFormula[F, T], symbol :String, right :SQLFormula[F, T])
+		extends Comparison[F, T]
+	{
+		import Comparison._
+
+		override def freeValue :Option[Boolean] =
+			for (l <- left.freeValue; r <- right.freeValue)
+				yield ordering.compare(l, r) match {
+					case 0 => symbol == EQ || symbol == LTE || symbol == GTE
+					case n if n < 0 => symbol == LT || symbol == LTE || symbol == NEQ
+					case _ => symbol == GT || symbol == GTE || symbol == NEQ
+				}
+
+		override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :SQLFormula[S, Boolean] =
+			new OrderComparison(ordering, mapper(left), symbol, mapper(right))
+
+		override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[Boolean] = matcher.order(this)
+	}
+
+
+
+	object OrderComparison {
+		def apply[F <: FromClause, T](left :SQLFormula[F, T], symbol :String, right :SQLFormula[F, T])
+		                             (implicit ordering :SQLOrdering[T]) =
+			new OrderComparison(ordering, left, symbol, right)
+
+		trait OrderComparisonMatcher[+F <: FromClause, +Y[X]] {
+			def order[X](f :OrderComparison[F, X]) :Y[Boolean]
+		}
+
+		type MatchOrderComparison[+F <: FromClause, +Y[X]] = OrderComparisonMatcher[F, Y]
+
+		type CaseOrderComparison[+F <: FromClause, +Y[X]] = OrderComparisonMatcher[F, Y]
+
+	}
+
+
+
 
 
 
 	case class Equality[-F <: FromClause, T](left :SQLFormula[F, T], right :SQLFormula[F, T])
 		extends Comparison[F, T]
 	{
-		protected override def parts :Seq[SQLFormula[F, T]] = Seq(left, right)
-
 		override def freeValue :Option[Boolean] =
 			for (l <- left.freeValue; r <- right.freeValue) yield l == r
 
 //		override def get(values :RowValues[F]) :Option[Boolean] =
 //			for (l <- left.get(values); r <- right.get(values)) yield l == r
 
-		def symbol = "="
+		override def symbol :String = Comparison.EQ
 
 
 
@@ -64,7 +147,6 @@ object SQLCondition {
 
 		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = Equality(mapper(left), mapper(right))
 
-		override def toString = s"$left == $right"
 	}
 
 
@@ -77,6 +159,39 @@ object SQLCondition {
 		type MatchEquality[+F <: FromClause, +Y[X]] = EqualityMatcher[F, Y]
 
 		type CaseEquality[+F <: FromClause, +Y[X]] = EqualityMatcher[F, Y]
+	}
+
+
+
+	case class Inequality[-F <: FromClause, T](left :SQLFormula[F, T], right :SQLFormula[F, T])
+		extends Comparison[F, T]
+	{
+		override def freeValue :Option[Boolean] =
+			for (l <- left.freeValue; r <- right.freeValue) yield l != r
+
+		//		override def get(values :RowValues[F]) :Option[Boolean] =
+		//			for (l <- left.get(values); r <- right.get(values)) yield l == r
+
+		override def symbol :String = Comparison.NEQ
+
+
+
+		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Boolean] = matcher.inequality(this)
+
+		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = Inequality(mapper(left), mapper(right))
+
+	}
+
+
+
+	object Inequality {
+		trait InequalityMatcher[+F <: FromClause, +Y[X]] {
+			def inequality[X](f :Inequality[F, X]) :Y[Boolean]
+		}
+
+		type MatchInequality[+F <: FromClause, +Y[X]] = InequalityMatcher[F, Y]
+
+		type CaseInequality[+F <: FromClause, +Y[X]] = InequalityMatcher[F, Y]
 	}
 
 

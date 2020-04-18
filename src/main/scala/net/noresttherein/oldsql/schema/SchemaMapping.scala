@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, Chain
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, MappingAlias}
+import net.noresttherein.oldsql.schema.Mapping.{TypedMapping, OriginProjection}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LabeledMapping, LazyMapping, MappedMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.MappingSchema.{FlatMappedMappingSchema, FlatMappingSchema, GetSchemaComponent, MappedMappingSchema, MappingSchemaGuts, NonEmptySchema, SchemaComponentLabel, SchemaInlining}
@@ -175,31 +175,32 @@ object SchemaMapping {
 		def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :SchemaColumn[S, O] =
 			new BaseColumn[S, O](name, buffs) with SchemaColumn[S, O]
 
-		implicit def SchemaColumnAlias[S, A, B] :MappingAlias[SchemaColumn[S, A], A, SchemaColumn[S, B], B] =
-			MappingAlias()
+		implicit def SchemaColumnProjection[S, A, B] :OriginProjection[SchemaColumn[S, A], A, SchemaColumn[S, B], B] =
+			OriginProjection()
+
 	}
 
 
 
-	implicit def SchemaMappingAlias[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
-                 (implicit alias :MappingAlias[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B])
-			:MappingAlias[SchemaMapping[AC, R, S, A], A, SchemaMapping[BC, R, S, B], B] =
-		Mapping.AnyAlias()
+	implicit def SchemaMappingProjection[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+                 (implicit alias :OriginProjection[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B])
+			:OriginProjection[SchemaMapping[AC, R, S, A], A, SchemaMapping[BC, R, S, B], B] =
+		Mapping.AnyOrigin()
 
-	implicit def FlatSchemaMappingAlias[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
-                 (implicit alias :MappingAlias[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
-			:MappingAlias[FlatSchemaMapping[AC, R, S, A], A, FlatSchemaMapping[BC, R, S, B], B] =
-		Mapping.AnyAlias()
+	implicit def FlatSchemaMappingProjection[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+                 (implicit alias :OriginProjection[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
+			:OriginProjection[FlatSchemaMapping[AC, R, S, A], A, FlatSchemaMapping[BC, R, S, B], B] =
+		Mapping.AnyOrigin()
 
-	implicit def LabeledSchemaMappingAlias[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
-	             (implicit alias :MappingAlias[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B])
-			:MappingAlias[LabeledSchemaMapping[N, AC, R, S, A], A, LabeledSchemaMapping[N, BC, R, S, B], B] =
-		Mapping.AnyAlias()
+	implicit def LabeledSchemaMappingProjection[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+	             (implicit alias :OriginProjection[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B])
+			:OriginProjection[LabeledSchemaMapping[N, AC, R, S, A], A, LabeledSchemaMapping[N, BC, R, S, B], B] =
+		Mapping.AnyOrigin()
 
-	implicit def LabeledFlatSchemaMappingAlias[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
-	             (implicit alias :MappingAlias[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
-			:MappingAlias[LabeledFlatSchemaMapping[N, AC, R, S, A], A, LabeledFlatSchemaMapping[N, BC, R, S, B], B] =
-		Mapping.AnyAlias()
+	implicit def LabeledFlatSchemaMappingProjection[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+	             (implicit alias :OriginProjection[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
+			:OriginProjection[LabeledFlatSchemaMapping[N, AC, R, S, A], A, LabeledFlatSchemaMapping[N, BC, R, S, B], B] =
+		Mapping.AnyOrigin()
 
 
 
@@ -263,9 +264,9 @@ object SchemaMapping {
 		def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
 			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O]
 
-		implicit def LabeledSchemaColumnAlias[N <: Label, S, A, B]
-				:MappingAlias[LabeledSchemaColumn[N, S, A], A, LabeledSchemaColumn[N, S, B], B] =
-			MappingAlias()
+		implicit def LabeledSchemaColumnProjection[N <: Label, S, A, B]
+				:OriginProjection[LabeledSchemaColumn[N, S, A], A, LabeledSchemaColumn[N, S, B], B] =
+			OriginProjection()
 	}
 
 
@@ -885,37 +886,37 @@ object MappingSchema {
 
 
 
-	implicit def MappingSchemaAlias[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
-	                               (implicit alias :ComponentChainAlias[AC, S, A, BC, B])
-			:MappingAlias[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B] =
-		Mapping.AnyAlias()
+	implicit def MappingSchemaProjection[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+	                                    (implicit alias :ComponentChainProjection[AC, S, A, BC, B])
+			:OriginProjection[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B] =
+		Mapping.AnyOrigin()
 
-	implicit def FlatMappingSchemaAlias[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
-	                                   (implicit alias :ComponentChainAlias[AC, S, A, BC, B])
-			:MappingAlias[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B] =
-		Mapping.AnyAlias()
+	implicit def FlatMappingSchemaProjection[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
+	                                        (implicit alias :ComponentChainProjection[AC, S, A, BC, B])
+			:OriginProjection[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B] =
+		Mapping.AnyOrigin()
 
 
 
 	@implicitNotFound("Cannot alias component chain ${AC} from origin ${A}\nas ${BC} from origin ${B}:\n" +
-	                  "no implicit ComponentChainAlias[${AC}, ${S}, ${A}, ${BC}, ${B}].\n" +
-		              "Most likely reason is MappingAlias implicit conflict for one of the components. " +
-		              "See net.noresttherein.oldsql.schema.Mapping.MappingAlias class documentation for more information.")
-	final class ComponentChainAlias[-AC <: Chain, S, A, +BC <: Chain, B] extends (AC => BC) {
+	                  "no implicit ComponentChainProjection[${AC}, ${S}, ${A}, ${BC}, ${B}].\n" +
+		              "Most likely reason is OriginProjection implicit conflict for one of the components. " +
+		              "See net.noresttherein.oldsql.schema.Mapping.OriginProjection class documentation for more information.")
+	final class ComponentChainProjection[-AC <: Chain, S, A, +BC <: Chain, B] extends (AC => BC) {
 		override def apply(components :AC) :BC = components.asInstanceOf[BC]
 	}
 
-	object ComponentChainAlias {
-		private[this] val alias :ComponentChainAlias[Chain, Any, Any, Chain, Any] = new ComponentChainAlias
+	object ComponentChainProjection {
+		private[this] val alias :ComponentChainProjection[Chain, Any, Any, Chain, Any] = new ComponentChainProjection
 
-		implicit def emptyComponentChainAlias[S, A, B] :ComponentChainAlias[@~, S, A, @~, B] =
-			alias.asInstanceOf[ComponentChainAlias[@~, S, A, @~, B]]
+		implicit def emptyComponentChainProjection[S, A, B] :ComponentChainProjection[@~, S, A, @~, B] =
+			alias.asInstanceOf[ComponentChainProjection[@~, S, A, @~, B]]
 
-		implicit def componentChainAlias[AC <: Chain, AM <: Mapping, S, A, BC <: Chain, BM <: Mapping, B]
-		                                (implicit init :ComponentChainAlias[AC, S, A, BC, B],
-		                                 last :MappingAlias[AM, A, BM, B])
-				:ComponentChainAlias[AC ~ AM, S, A, BC ~ BM, B] =
-			init.asInstanceOf[ComponentChainAlias[AC ~ AM, S, A, BC ~ BM, B]]
+		implicit def componentChainProjection[AC <: Chain, AM <: Mapping, S, A, BC <: Chain, BM <: Mapping, B]
+		                                     (implicit init :ComponentChainProjection[AC, S, A, BC, B],
+		                                      last :OriginProjection[AM, A, BM, B])
+				:ComponentChainProjection[AC ~ AM, S, A, BC ~ BM, B] =
+			init.asInstanceOf[ComponentChainProjection[AC ~ AM, S, A, BC ~ BM, B]]
 	}
 
 

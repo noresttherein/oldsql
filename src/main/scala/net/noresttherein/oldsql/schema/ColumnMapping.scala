@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
-import net.noresttherein.oldsql.schema.Mapping.MappingAlias
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, LabeledMapping}
 import net.noresttherein.oldsql.schema.support.LabeledMapping.Label
 
@@ -254,13 +254,13 @@ object ColumnMapping {
 
 
 
-	implicit def ColumnAlias[S, A, B] :MappingAlias[ColumnMapping[S, A], A, ColumnMapping[S, B], B] = MappingAlias()
+	implicit def ColumnProjection[S, A, B] :OriginProjection[ColumnMapping[S, A], A, ColumnMapping[S, B], B] = OriginProjection()
 
-	implicit def LabeledColumnAlias[N <: Label, S, A, B] :MappingAlias[LabeledColumn[N, S, A], A, LabeledColumn[N, S, B], B] =
-		MappingAlias()
+	implicit def LabeledColumnProjection[N <: Label, S, A, B] :OriginProjection[LabeledColumn[N, S, A], A, LabeledColumn[N, S, B], B] =
+		OriginProjection()
 
-	implicit def NumberedColumn[S, A, B] :MappingAlias[NumberedColumn[S, A], A, NumberedColumn[S, B], B] =
-		MappingAlias()
+	implicit def NumberedColumnProjection[S, A, B] :OriginProjection[NumberedColumn[S, A], A, NumberedColumn[S, B], B] =
+		OriginProjection()
 
 
 

@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, FormMapping}
 import net.noresttherein.oldsql.schema.{ColumnForm, ComponentExtractor, GenericMapping, Mapping, RootMapping, RowSource, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAlias, MappingFrom, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, MappingFrom, TypedMapping}
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
 import net.noresttherein.oldsql.schema.support.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
@@ -34,17 +34,20 @@ import net.noresttherein.oldsql.sql.WithParam.{FromParam, ParamSource}
   * @see [[net.noresttherein.oldsql.sql.WithParam.FromParam]]
   */
 sealed trait WithParam[+F <: FromClause, X] extends With[F, ParamSource[X]#Row] {
+
 	@inline final def from :F = left
 
-//	def mapping :P = table.mapping
 	override type This >: this.type <: F WithParam X
+	override type JoinRight[+L <: FromClause] = L WithParam X
+
 	override type Outer = Nothing
+
 
 	override def outer = throw new UnsupportedOperationException(s"WithParam($this).outer")
 
 
 
-	override type SubselectRow = left.SubselectRow ~ X //R[table.Origin]#Subject
+	override type SubselectRow = left.SubselectRow ~ X
 
 	override def subselectRow :ChainTuple[this.type, SubselectRow] = //todo:
 		left.subselectRow.asInstanceOf[ChainTuple[this.type, left.SubselectRow]] ~ table.upcast
@@ -64,27 +67,48 @@ sealed trait WithParam[+F <: FromClause, X] extends With[F, ParamSource[X]#Row] 
 object WithParam {
 
 	type <=[L <: FromClause, X] = WithParam[L, X]
-//	type <==[L <: FromClause, X] = WithParam[L, X]
 
 
 	def apply[F <: FromClause, X](from :F, source :ParamSource[X]) :F WithParam X =
-		new JoinParam[F, X](from, LastRelation(source, from.size))
+		WithParam[F, X](from, LastRelation(source, from.size), True())
 
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
 	trait ParamFactory[X] extends Any {
 		def apply[F <: FromClause](from :F)(implicit form :SQLForm[X]) :F WithParam X =
-			new JoinParam(from, LastRelation(ParamSource[X](), from.size))
+			WithParam(from, LastRelation(ParamSource[X](), from.size), True())
 
 		def apply[F <: FromClause](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
-			new JoinParam(from, LastRelation(ParamSource[X](name), from.size))
+			WithParam(from, LastRelation(ParamSource[X](name), from.size), True())
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T])(implicit form :SQLForm[X]) :From[T] WithParam X =
-			new JoinParam(From(from), LastRelation(ParamSource[X](), 1))
+			WithParam(From(from), LastRelation(ParamSource[X](), 1), True())
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T], name :String)(implicit form :SQLForm[X]) :From[T] WithParam X =
-			new JoinParam(From(from), LastRelation(ParamSource[X](name), 1))
+			WithParam(From(from), LastRelation(ParamSource[X](name), 1), True())
 	}
+
+
+
+	private[sql] def apply[L <: FromClause, X]
+	                      (from :L, param :LastRelation[ParamSource[X]#Row, _],
+	                       filter :BooleanFormula[L With ParamSource[X]#Row]) :L WithParam X =
+		new WithParam[L, X] {
+			override val left = from
+			override val table = param
+			override val joinCondition = filter
+
+			override type This = L WithParam X
+
+			override def copy[F <: FromClause](left :F, filter :BooleanFormula[Super[F, X]]) :F WithParam X =
+				WithParam(left, table, filter)
+
+			override def copy(filter :BooleanFormula[L With ParamSource[X]#Row]) :This =
+				WithParam[L, X](left, table, filter) //todo:
+
+		}
+
+	private type Super[+F <: FromClause, X] = F With ParamSource[X]#Row
 
 
 
@@ -230,33 +254,14 @@ object WithParam {
 
 
 
-		implicit def ParamMappingAlias[P, A, B] :MappingAlias[FromParam[P, A], A, FromParam[P, B], B] =
-			MappingAlias()
+		implicit def FromParamProjection[P, A, B] :OriginProjection[FromParam[P, A], A, FromParam[P, B], B] =
+			OriginProjection()
 	}
 
 
 
 	type AnyParamJoin = WithParam[_ <: FromClause, _]
 
-
-
-	private type Super[+F <: FromClause, X] = F With ParamSource[X]#Row
-
-	private class JoinParam[F <: FromClause, X]
-	                       (from :F, param :JoinedRelation[Super[FromClause, X], ParamSource[X]#Row, _],
-	                        cond :BooleanFormula[Super[F, X]] = True())
-		extends With[F, ParamSource[X]#Row](from, param, cond) with WithParam[F, X]
-	{
-		override def copy[L <: FromClause](left :L, filter :BooleanFormula[Super[L, X]]) :L WithParam X =
-			new JoinParam(left, table, filter)
-
-		override def copy(filter :BooleanFormula[F With ParamSource[X]#Row]) :This =
-			new JoinParam(from, table, filter)
-
-		override type JoinRight[+L <: FromClause] = L WithParam X
-		override type This = JoinParam[F, X]
-
-	}
 
 
 }

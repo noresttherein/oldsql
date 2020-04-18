@@ -154,6 +154,10 @@ object Chain extends ChainFactory {
 
 
 
+	implicit val EmptyOrdering :Ordering[@~] = (x : @~, y : @~) => 0
+
+
+
 	@implicitNotFound("Type ${U} is not an upper bound of elements in chain ${C}.")
 	sealed class UpperBound[C <: Chain, +U] private[collection] ()
 
@@ -500,6 +504,15 @@ trait ChainFactory extends ChainFactoryBase {
 		new ChainConcat[P, S Link L, C Link L] {
 			override def apply(prefix :P, suffix :Link[S, L]) = link(init(prefix, suffix.init), suffix.last)
 		}
+
+
+
+	implicit def Order[I <: Type :Ordering, L <: Item :Ordering] :Ordering[I Link L] =
+		(left :I Link L, right :I Link L) => Ordering[I].compare(left.init, right.init) match {
+			case 0 => Ordering[L].compare(left.last, right.last)
+			case n => n
+		}
+
 }
 
 

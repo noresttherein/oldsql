@@ -5,7 +5,8 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, TypedMap
 import net.noresttherein.oldsql.schema.{ComponentExtractor, Mapping, RowSource, SQLReadForm}
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula.ComponentMatcher
-import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyJoinedRelation, RelationMatcher, MatchRelation}
+import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent.FreeComponentMatcher
+import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyJoinedRelation, MatchRelation, RelationMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.{Formula, FormulaMatcher}
 
 
@@ -16,6 +17,8 @@ trait MappingFormula[-F <: FromClause, M <: Mapping] extends SQLFormula[F, M#Sub
 	type Subject = M#Subject
 	def upcast :SQLFormula[F, Subject] = this
 	def mapping :M
+
+//	def mapping(from :FromClause) :M
 }
 
 
@@ -24,6 +27,45 @@ trait MappingFormula[-F <: FromClause, M <: Mapping] extends SQLFormula[F, M#Sub
 
 
 object MappingFormula {
+
+
+	/** An expression evaluating to a component mapping of an undetermined at this point relation. It needs to be
+	  * resolved by the `Origin` type of the component before the formula can be used.
+	  */
+	class FreeComponent[M[A] <: MappingFrom[A], O](val mapping :M[O], val offset :Int)
+		extends MappingFormula[FromClause, M[O]]
+	{
+		type Origin = O
+
+		override def readForm :SQLReadForm[Subject] = mapping.selectForm
+
+
+		override def applyTo[Y[+X]](matcher :FormulaMatcher[FromClause, Y]) :Y[M[O]#Subject] =
+			matcher.freeComponent(this)
+
+
+		override def isGroundedIn(tables :Iterable[AnyJoinedRelation]) :Boolean = false
+
+		override def isomorphic(expression :Formula[_]) :Boolean = ???
+
+		override private[oldsql] def equivalent(expression :Formula[_]) = ???
+	}
+
+
+
+	object FreeComponent {
+		trait FreeComponentMatcher[+F <: FromClause, +Y[X]] {
+			def freeComponent[M[A] <: MappingFrom[A], O](component :FreeComponent[M, O]) :Y[M[O]#Subject]
+		}
+
+		type MatchFreeComponent[+F <: FromClause, +Y[X]] = FreeComponentMatcher[F, Y]
+
+		type CaseFreeComponent[+F <: FromClause, +Y[X]] = FreeComponentMatcher[F, Y]
+	}
+
+
+
+
 
 
 	trait ComponentFormula[-F <: FromClause, T[A] <: MappingFrom[A], M[A] <: MappingFrom[A], O]
@@ -168,7 +210,8 @@ object MappingFormula {
 
 
 
-	trait MappingMatcher[+F <: FromClause, +Y[X]] extends RelationMatcher[F, Y] with ComponentMatcher[F, Y]
+	trait MappingMatcher[+F <: FromClause, +Y[X]]
+		extends RelationMatcher[F, Y] with ComponentMatcher[F, Y] with FreeComponentMatcher[F, Y]
 
 	type MatchMapping[+F <: FromClause, +Y[X]] = MappingMatcher[F, Y]
 
@@ -180,6 +223,9 @@ object MappingFormula {
 
 		override def component[T[A] <: MappingFrom[A], M[A] <: MappingFrom[A], O]
 		                      (f :ComponentFormula[F, T, M, O]) :Y[M[O]#Subject] =
+			mapping(f)
+
+		override def freeComponent[M[A] <: MappingFrom[A], O](f :FreeComponent[M, O]) :Y[M[O]#Subject] =
 			mapping(f)
 	}
 

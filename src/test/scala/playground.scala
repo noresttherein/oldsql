@@ -1,7 +1,11 @@
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
+import net.noresttherein.oldsql.morsels.Origin.{@#, Index}
+import net.noresttherein.oldsql.morsels.abacus.INT
 import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, Mapping, MappingSchema}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
+import net.noresttherein.oldsql.sql.FromClause
+import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 
 
 
@@ -9,13 +13,17 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
   * @author Marcin Mościcki
   */
 object playground extends App {
-	trait UpperBound[O]
-	trait High[F[O] <: UpperBound[O]]
-	trait Lower[O] extends UpperBound[O]
+	type I = Index[N] forSome { type N <: INT }
+	type M = GenericMapping[_, I] forSome { type I <: INT }
+//	implicitly[MappingFrom[_ <: -1] <:< MappingFrom[-1]]
+	val m :GenericMapping[_, _ <: T] = ???
+	trait T
+	m :GenericMapping[_, T]
 
-	type T <: High[f] forSome { type f[O] <: UpperBound[O] }
-	def high(h :T) = ???
-
+//	val m :GenericMapping[Int, _ <: -1] = ???
+//	m :GenericMapping[Int, Index[-1]]
+//	val bool = m <= m
+//	bool :BooleanFormula[FromClause]
 //	high(new High[Lower] {})
 	class J[L, R <: Mapping] {
 		def as[A <: String with Singleton, M[O] <: MappingFrom[O]](alias :A)(implicit ev: R <:< M[_]) :J[L, M[A]] = ???

@@ -70,8 +70,8 @@ object MappingAdapter {
 
 
 //	implicit def MappingAdapterAlias[X <: Mapping, A, Y <: Mapping, S, B]
-//	                                (implicit alias :MappingAlias[X, A, Y, B])
-//			:MappingAlias[MappingAdapter[X, S, A], A, MappingAdapter[X, S, B], B] =
+//	                                (implicit alias :OriginProjection[X, A, Y, B])
+//			:OriginProjection[MappingAdapter[X, S, A], A, MappingAdapter[X, S, B], B] =
 
 	/** Base trait for mappings which adapt another proxy from the same source `O`. Declares a single component,
 	  * the embedded `egg` mapping, with all its components and subcomponents (and columns in particular)

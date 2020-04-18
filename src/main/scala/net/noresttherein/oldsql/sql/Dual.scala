@@ -11,10 +11,10 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 
 
 /** An empty ''from'' clause, serving both as a base for SQL expressions not needing any input tables
-  * (like 'SELECT _ ''from'' DUAL' in Oracle) and a terminator element for `With` lists
-  * (any chain of `With` classes is eventually terminated by a `Dual` instance).
+  * (like 'SELECT _ FROM DUAL' in Oracle) and an initial element for `With` lists
+  * (any chain of `With` classes starts by joining with `Dual`).
   */
-class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
+class Dual private (val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	def this() = this(True())
 

@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectFrom}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ConversionMatcher, OrNull}
-import net.noresttherein.oldsql.sql.SQLCondition.{CaseCondition, ConditionMatcher, Equality}
+import net.noresttherein.oldsql.sql.SQLCondition.{CaseCondition, Comparison, ConditionMatcher, Equality, Inequality}
 import net.noresttherein.oldsql.sql.LogicalFormula.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, Formula, FormulaMatcher, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
@@ -42,9 +42,26 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 		this === value.?
 
 	def ===[S <: F, O, X](that :SQLFormula[S, O])(implicit lift :SQLTypePromotion[V, O, X]) :BooleanFormula[S] =
-		new Equality(lift.left(this), lift.right(that))
+		Equality(lift.left(this), lift.right(that))
 
+	def <>[S <: F, O, X](that :SQLFormula[S, O])(implicit lift :SQLTypePromotion[V, O, X]) :BooleanFormula[S] =
+		Inequality(lift.left(this), lift.right(that))
 
+	def <=[S <: F, O, X](that :SQLFormula[S, O])
+	                    (implicit lift :SQLTypePromotion[V, O, X], ordering :SQLOrdering[X]) :BooleanFormula[S] =
+		Comparison(lift.left(this), Comparison.LTE, lift.right(that))
+
+	def <[S <: F, O, X](that :SQLFormula[S, O])
+	                   (implicit lift :SQLTypePromotion[V, O, X], ordering :SQLOrdering[X]) :BooleanFormula[S] =
+		Comparison(lift.left(this), Comparison.LT, lift.right(that))
+
+	def >=[S <: F, O, X](that :SQLFormula[S, O])
+	                    (implicit lift :SQLTypePromotion[V, O, X], ordering :SQLOrdering[X]) :BooleanFormula[S] =
+		Comparison(lift.left(this), Comparison.GTE, lift.right(that))
+
+	def >[S <: F, O, X](that :SQLFormula[S, O])
+	                   (implicit lift :SQLTypePromotion[V, O, X], ordering :SQLOrdering[X]) :BooleanFormula[S] =
+		Comparison(lift.left(this), Comparison.GT, lift.right(that))
 
 //	def in [S <: F, U >: V, O, X](that :SeqTuple[S, O])(implicit lift :SQLTypePromotion[U, O, X]) :BooleanFormula[S] =
 //		new In[S, X](lift.left(this), SeqTuple(that.parts.map(lift.right.apply[S])))
@@ -150,7 +167,40 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 
 
 
+
+
+
 object SQLFormula {
+
+	@inline implicit def SQLFormulaExtension[X, E[-S <: FromClause, V] <: SQLFormula[S, V], F <: FromClause, T]
+	                                        (e :X)(implicit infer :Conforms[X, E[F, T], SQLFormula[F, T]])
+			:SQLFormulaExtension[E, F, T] =
+		new SQLFormulaExtension[E, F, T](e)
+
+
+	class SQLFormulaExtension[E[-S <: FromClause, X] <: SQLFormula[S, X], F <: FromClause, T](private val self :E[F, T])
+		extends AnyVal
+	{
+		//		@inline def asPartOf[S <: FromClause](implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
+		//		@inline def asPartOf[S <: FromClause](from :S)(implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
+	}
+
+
+
+
+
+
+	implicit def implicitTerm[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
+
+	implicit def asPartOfExtendingSource[F <: FromClause, FF <: FromClause, T]
+	                                    (expression :SQLFormula[F, T])(implicit ev :F ExtendedBy FF) :SQLFormula[FF, T] =
+		ev(expression)
+
+
+
+
+
+
 	/** An upper type bound of all `SQLFormula[_, T]` instances. */
 	type Formula[T] = SQLFormula[Nothing, T]
 
@@ -239,35 +289,6 @@ object SQLFormula {
 		}
 
 	}
-
-
-
-
-
-
-	@inline implicit def SQLFormulaExtension[X, E[-S <: FromClause, V] <: SQLFormula[S, V], F <: FromClause, T]
-	                                        (e :X)(implicit infer :Conforms[X, E[F, T], SQLFormula[F, T]])
-			:SQLFormulaExtension[E, F, T] =
-		new SQLFormulaExtension[E, F, T](e)
-
-
-	class SQLFormulaExtension[E[-S <: FromClause, X] <: SQLFormula[S, X], F <: FromClause, T](private val self :E[F, T])
-		extends AnyVal
-	{
-//		@inline def asPartOf[S <: FromClause](implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
-//		@inline def asPartOf[S <: FromClause](from :S)(implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
-	}
-
-
-
-
-
-
-	implicit def implicitTerm[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
-
-	implicit def asPartOfExtendingSource[F <: FromClause, FF <: FromClause, T]
-	                                    (expression :SQLFormula[F, T])(implicit ev :F ExtendedBy FF) :SQLFormula[FF, T] =
-		ev(expression)
 
 
 
