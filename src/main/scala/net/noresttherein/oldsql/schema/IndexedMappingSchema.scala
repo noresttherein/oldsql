@@ -6,9 +6,10 @@ import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema, MappedFlatMappingSchema, MappedMappingSchema, MappingSchemaGuts}
+import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema, FlatMappedMappingSchema, MappedMappingSchema}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.IndexedMappingSchema.{FlatIndexedMappingSchema, MappedFlatIndexedMappingSchema, MappedIndexedMappingSchema, NonEmptyIndexedSchema}
+import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
+import net.noresttherein.oldsql.schema.IndexedMappingSchema.{FlatIndexedMappingSchema, FlatMappedIndexMappingSchema, MappedIndexedMappingSchema, NonEmptyIndexedSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.IndexedSchemaMapping.FlatIndexedSchemaMapping
 
@@ -20,7 +21,6 @@ import net.noresttherein.oldsql.schema.IndexedSchemaMapping.FlatIndexedSchemaMap
   * @author Marcin Mościcki
   */
 trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends MappingSchema[C, R, S, O] {
-	this :MappingSchemaGuts[C, R, S, O] =>
 
 
 	/** Appends the given component to this schema.
@@ -100,11 +100,23 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	  */
 	def col[N <: Label, T :ColumnForm](name :N, value :S => T, buffs :Buff[T]*)
 			:IndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
+		col(name, name, value, buffs:_*)
+
+	/** Appends to this schema a new column labeled with a string different from its name.
+	  * @param label the label used to access the column in the schema.
+	  * @param name the name of the column.
+	  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
+	  * @param buffs a vararg list of buffs modifying the handling of the column.
+	  * @tparam N the singleton type of the string literal used as the column name.
+	  * @tparam T the mapped column type.
+	  */
+	def col[N <: Label, T :ColumnForm](label :N, name :String, value :S => T, buffs :Buff[T]*)
+			:IndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
 	{
-		val column = LabeledSchemaColumn[N, T, O](name, buffs:_*)
+		val column = LabeledSchemaColumn[N, T, O](label, name, buffs:_*)
 		new NonEmptyIndexedSchema[N, C, N @|| T, R, T, S, O](
 			this, column, ComponentExtractor(column)(Extractor.req(value))
-		)(new ValueOf(name))
+		)(new ValueOf(label))
 	}
 
 	/** Appends a new column labeled with its name to this schema.
@@ -116,11 +128,23 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	  */
 	def optcol[N <: Label, T :ColumnForm](name :N, value :S => Option[T], buffs :Buff[T]*)
 			:IndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
+		optcol[N, T](name, name, value, buffs :_*)
+
+	/** Appends to this schema a new column labeled with a string different from its name.
+	  * @param label a string literal used to access the column in the schema.
+	  * @param name the name of the column.
+	  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
+	  * @param buffs a vararg list of buffs modifying the handling of the column.
+	  * @tparam N the singleton type of the string literal used as the column name.
+	  * @tparam T the mapped column type.
+	  */
+	def optcol[N <: Label, T :ColumnForm](label :N, name :String, value :S => Option[T], buffs :Buff[T]*)
+			:IndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
 	{
-		val column = LabeledSchemaColumn[N, T, O](name, buffs:_*)
+		val column = LabeledSchemaColumn[N, T, O](label, name, buffs:_*)
 		new NonEmptyIndexedSchema[N, C, N @|| T, R, T, S, O](
 			this, column, ComponentExtractor(column)(Extractor(value))
-		)(new ValueOf(name))
+		)(new ValueOf(label))
 	}
 
 
@@ -164,7 +188,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
 	  */
 	override def flatMap(constructor :R => Option[S]) :IndexedSchemaMapping[C, R, S, O] =
-		new MappedFlatIndexedMappingSchema[C, R, S, O](this, constructor)
+		new FlatMappedIndexMappingSchema[C, R, S, O](this, constructor)
 
 	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
@@ -202,24 +226,34 @@ object IndexedMappingSchema {
 
 	trait FlatIndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O]
 		extends FlatMappingSchema[C, R, S, O] with IndexedMappingSchema[C, R, S, O]
-	{ outer :MappingSchemaGuts[C, R, S, O] =>
+	{ outer =>
 
 		override def col[N <: Label, T :ColumnForm](name :N, value :S => T, buffs :Buff[T]*)
 				:FlatIndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
+			col[N, T](name, name, value, buffs :_*)
+
+		override def col[N <: Label, T :ColumnForm](label :N, name :String, value :S => T, buffs :Buff[T]*)
+				:FlatIndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
 		{
-			val column = LabeledSchemaColumn[N, T, O](name, buffs:_*)
+			val column = LabeledSchemaColumn[N, T, O](label, name, buffs:_*)
 			new FlatNonEmptyIndexedSchema[N, C, N @|| T, R, T, S, O](
 				this, column, ComponentExtractor(column)(Extractor.req(value))
-			)(new ValueOf(name))
+			)(new ValueOf(label))
 		}
+
+
 
 		override def optcol[N <: Label, T :ColumnForm](name :N, value :S => Option[T], buffs :Buff[T]*)
 				:FlatIndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
+			optcol(name, name, value, buffs:_*)
+
+		override def optcol[N <: Label, T :ColumnForm](label :N, name :String, value :S => Option[T], buffs :Buff[T]*)
+				:FlatIndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
 		{
-			val column = LabeledSchemaColumn[N, T, O](name, buffs:_*)
+			val column = LabeledSchemaColumn[N, T, O](label, name, buffs:_*)
 			new FlatNonEmptyIndexedSchema[N, C, N @|| T, R, T, S, O](
 				this, column, ComponentExtractor(column)(Extractor(value))
-			)(new ValueOf(name))
+			)(new ValueOf(label))
 		}
 
 
@@ -233,7 +267,7 @@ object IndexedMappingSchema {
 			map { row :R => row.feedTo(constructor) }
 
 		override def flatMap(constructor :R => Option[S]) :FlatIndexedSchemaMapping[C, R, S, O] =
-			new MappedFlatMappingSchema[C, R, S, O](this, constructor) with FlatIndexedSchemaMapping[C, R, S, O] {
+			new FlatMappedMappingSchema[C, R, S, O](this, constructor) with FlatIndexedSchemaMapping[C, R, S, O] {
 				override val schema = outer
 			}
 
@@ -308,9 +342,10 @@ object IndexedMappingSchema {
 
 
 
-	private[schema] class MappedFlatIndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O]
+	private[schema] class FlatMappedIndexMappingSchema[+C <: Chain, R <: LiteralIndex, S, O]
 	                      (override val schema :IndexedMappingSchema[C, R, S, O], constructor :R => Option[S])
-		extends MappedFlatMappingSchema[C, R, S, O](schema, constructor) with IndexedSchemaMapping[C, R, S, O]
+		extends FlatMappedMappingSchema[C, R, S, O](schema, constructor) with IndexedSchemaMapping[C, R, S, O]
+
 
 }
 
@@ -346,7 +381,10 @@ object IndexedSchemaMapping {
 
 
 abstract class AbstractIndexedSchemaMapping[+C <: Chain, I <: LiteralIndex, S, O]
-                                           (override val schema :IndexedMappingSchema[C, I, S, O])
-	extends AbstractSchemaMapping[C, I, S, O](schema) with IndexedSchemaMapping[C, I, S, O]
+                                           (contents :IndexedMappingSchema[C, I, S, O])
+	extends AbstractSchemaMapping[C, I, S, O](contents) with IndexedSchemaMapping[C, I, S, O]
+{
+	implicit override val schema :IndexedMappingSchema[C, I, S, O] = contents
+}
 
 

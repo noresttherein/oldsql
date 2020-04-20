@@ -81,12 +81,12 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  * with the full list of its columns. The new mapping will delegate its assembly to this instance, and the
 	  * values of replaced components will be assembled from the column values.
 	  */
-	def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
-	           (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
-		new ShallowProxy[S, O] with FlatSchemaMapping[IC, IL, S, O] {
-			override val schema = flatterer(outer.schema)
-			protected override val egg = outer
-		}
+//	def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
+//	           (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
+//		new ShallowProxy[S, O] with FlatSchemaMapping[IC, IL, S, O] {
+//			override val schema = flatterer(outer.schema)
+//			protected override val egg = outer
+//		}
 
 
 
@@ -189,19 +189,6 @@ object SchemaMapping {
 	  * between the two. */
 	def apply[S, O] :ExtensibleFlatMappingSchema[@~, @~, S, O] = EmptySchema[S, O]
 
-	/** A single-column schema mapping and a column of a schema mapping at the same time. */
-	trait SchemaColumn[S, O] extends FlatSchemaMapping[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] with ColumnMapping[S, O]
-	                            with FreeOriginMapping[S, O]
-	{
-		override val schema :FlatMappingSchema[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] =
-			MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
-	}
-
-	object SchemaColumn {
-		def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :SchemaColumn[S, O] =
-			new BaseColumn[S, O](name, buffs) with SchemaColumn[S, O]
-	}
-
 
 
 	implicit def SchemaMappingProjection[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
@@ -229,6 +216,21 @@ object SchemaMapping {
 
 
 
+	/** A single-column schema mapping and a column of a schema mapping at the same time. */
+	trait SchemaColumn[S, O] extends FlatSchemaMapping[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] with ColumnMapping[S, O]
+		with FreeOriginMapping[S, O]
+	{
+		override val schema :FlatMappingSchema[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] =
+			MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
+	}
+
+	object SchemaColumn {
+		def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :SchemaColumn[S, O] =
+			new BaseColumn[S, O](name, buffs) with SchemaColumn[S, O]
+	}
+
+
+
 	/** A `SchemaMapping` variant which uses a `FlatSchemaMapping`, that is the component list `C` contains only
 	  * `SchemaColumn`s. Note that the column chain `C` includes all columns of the columns in the mapping
 	  * and thus might not be reflective of the select clause of a select statement for the subject type, or
@@ -237,9 +239,9 @@ object SchemaMapping {
 	trait FlatSchemaMapping[+C <: Chain, R <: Chain, S, O] extends SchemaMapping[C, R, S, O] { outer =>
 		override val schema :FlatMappingSchema[C, R, S, O]
 
-		override def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
-		                    (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
-			this.asInstanceOf[FlatSchemaMapping[IC, IL, S, O]]
+//		override def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
+//		                    (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
+//			this.asInstanceOf[FlatSchemaMapping[IC, IL, S, O]]
 
 
 
@@ -255,7 +257,7 @@ object SchemaMapping {
 
 		override def flatMap[X](there :S => Option[X], back :X => Option[S])
 		                       (implicit nulls :NullValue[X]) :SchemaMapping[C, R, X, O] =
-			new FlatMappedSchemaMapping[C, R, S, X, O](this, there, back)
+			new FlatMappedFlatSchemaMapping[C, R, S, X, O](this, there, back)
 
 	}
 
@@ -283,7 +285,10 @@ object SchemaMapping {
 	}
 
 	object LabeledSchemaColumn {
-		def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
+		@inline def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
+			apply(name, name, buffs:_*)
+
+		def apply[N <: Label, S :ColumnForm, O](label :N, name :String, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
 			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O]
 
 //		implicit def LabeledSchemaColumnProjection[N <: Label, S, A, B]
@@ -432,15 +437,15 @@ object SchemaMapping {
   * already provides methods for retrieving such components based on their attached label, this class goes one step
   * further and enriches `String` literals with methods for both retrieving a component or its selector ''and'' its
   * value, providing implicit `ComponentValues` for the mapping are available. These are written as:
-  *   - `~"favoritePizza` for the component labeled `"favoritePizza"` itself,
+  *   - `"favoritePizza".^` for the component labeled `"favoritePizza"` itself,
   *   - `"favoritePizza".?>` for the `ComponentExtractor` for the labeled component,
-  *   - `!"favoritePizza"` for the value of the component labeled `"favoritePizza"` within the `construct` method,
-  *   - `"favoritePizza".?` for the value of such labeled component in an `Option` when within the `construct` method.
+  *   - `~"favoritePizza"` for the value of the component labeled `"favoritePizza"` within the `construct` method,
+  *   - `"favoritePizza".?` for the value of such a labeled component in an `Option` when within the `construct` method.
   * {{{
   *     class Humans[O] extends AbstractSchemaMapping(
   *         MappingSchema[Human, O].lbl("favoritePizza", _.favoritePizza).lbl("agricolaRecord", _.agricolaRecord)
   *     ){
-  *         override def construct(implicit pieces :Pieces) :Human = Human(!"favoritePizza", !"agricolaRecord")
+  *         override def construct(implicit pieces :Pieces) :Human = Human(~"favoritePizza", ~"agricolaRecord")
   *     }
   * }}}
   *

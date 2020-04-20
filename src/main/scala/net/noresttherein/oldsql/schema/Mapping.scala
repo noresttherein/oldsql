@@ -478,8 +478,12 @@ trait Mapping {
   *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
   */
 trait GenericMapping[S, O] extends Mapping { self =>
-	type Origin = O
-	type Subject = S
+	override type Origin = O
+	override type Subject = S
+	//to shut IntelliJ up:
+//	override type Selector[T] = ComponentExtractor[S, T, O]
+//	override type Component[T] = Mapping.TypedMapping[T, O]
+//	override type Column[T] = ColumnMapping[T, O]
 
 	def buffs :Seq[Buff[S]] = Nil
 

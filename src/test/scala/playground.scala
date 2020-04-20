@@ -62,7 +62,7 @@ object playground extends App {
 		backup :LabeledMapping["backup", Gun, O]
 		second :LabeledMapping["second", Gun, O]
 		override protected def construct(implicit pieces :Pieces) :Human =
-			Human(!"gun", !"backup", !"second")
+			Human(~"gun", ~"backup", ~"second")
 	}
 
 
