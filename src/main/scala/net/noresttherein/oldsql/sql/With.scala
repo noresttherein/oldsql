@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.~
+import net.noresttherein.oldsql.morsels.Origin.##
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.schema.RowSource
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
@@ -93,7 +94,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 	  * and a following mapping `T`, and the formula for the mapping `T`, being the last relation in the join,
 	  * and returning the join condition for the two relations as a `BooleanFormula` for the join clause. */
 	override type JoinFilter[T[O] <: MappingFrom[O]] =
-		(JoinedRelation[FromClause With R With T, R, _ <: -2], JoinedRelation[FromClause With T, T, _ <: -1])
+		(JoinedRelation[FromClause With R With T, R, ##[-2]], JoinedRelation[FromClause With T, T, ##[-1]])
 			=> BooleanFormula[FromClause With R With T]
 
 
@@ -112,8 +113,8 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 	def on(condition :left.JoinFilter[R]) :JoinRight[left.This] = left.filterJoined(condition, this)
 
 
-	def whereLast(filter :JoinedRelation[FromClause With R, R, _ <: -1] => BooleanFormula[FromClause With R]) :This =
-		copy(joinCondition && filter(table.asInstanceOf[JoinedRelation[FromClause With R, R, -1]])) //todo: cast...
+	def whereLast(filter :JoinedRelation[FromClause With R, R, ##[-1]] => BooleanFormula[FromClause With R]) :This =
+		copy(joinCondition && filter(table.asInstanceOf[JoinedRelation[FromClause With R, R, ##[-1]]])) //todo: cast...
 
 	def where[F >: L <: FromClause](filter :JoinedTables[F With R] => BooleanFormula[F With R]) :This =
 		copy(joinCondition && filter(new JoinedTables[F With R](this)))

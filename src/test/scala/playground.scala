@@ -1,13 +1,13 @@
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
-import net.noresttherein.oldsql.morsels.Origin.{@#, Index}
+import net.noresttherein.oldsql.morsels.Origin.Rank
 import net.noresttherein.oldsql.morsels.abacus.INT
 import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, Mapping, MappingSchema}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
-import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaMapping
+import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaComponent
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
-import net.noresttherein.oldsql.sql.FromClause
-import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
+import net.noresttherein.oldsql.sql.{FromClause, SQLOrdering}
+import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, SQLTypePromotion}
 
 
 
@@ -15,17 +15,26 @@ import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
   * @author Marcin Mościcki
   */
 object playground extends App {
-	type I = Index[N] forSome { type N <: INT }
-	type M = GenericMapping[_, I] forSome { type I <: INT }
+	type I = Rank[N] forSome { type N <: INT }
+//	type M = GenericMapping[_, I] forSome { type I <: INT }
 //	implicitly[MappingFrom[_ <: -1] <:< MappingFrom[-1]]
-	val m :GenericMapping[_, _ <: T] = ???
+	val m :GenericMapping[Int, _ <: Rank[-1]] = ???
+//	trait T
+//	m :GenericMapping[_, Rank[-1]]
+	val i = Rank.of[m.Origin]
+	Mapping.mappingSQLFormula(m) <= m
+	trait M[A, T] {
+		type TT = T
+	}
 	trait T
-	m :GenericMapping[_, T]
+//	implicitly[M[_ <: -1] <:< M[-1]]
+//	val m :M[_, _ <: -1] = ???
+//	m :M[_, -1]
 
 //	val m :GenericMapping[Int, _ <: -1] = ???
-//	m :GenericMapping[Int, Index[-1]]
-//	val bool = m <= m
-//	bool :BooleanFormula[FromClause]
+//	m :GenericMapping[Int, Rank[-1]]
+	val bool = m <= m
+	bool :BooleanFormula[FromClause]
 //	high(new High[Lower] {})
 	class J[L, R <: Mapping] {
 		def as[A <: String with Singleton, M[O] <: MappingFrom[O]](alias :A)(implicit ev: R <:< M[_]) :J[L, M[A]] = ???

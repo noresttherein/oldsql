@@ -4,6 +4,7 @@ import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.abacus.INT
+import net.noresttherein.oldsql.morsels.Origin.Rank
 import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
@@ -585,8 +586,9 @@ object Mapping {
 
 
 
-//	implicit def mappingSQLFormula[M[A] <: MappingFrom[A], I <: INT :ValueOf](mapping :M[_ <: Index[I]]) :FreeComponent[M, @#[I]] =
-//		new FreeComponent(mapping, valueOf[I])
+	implicit def mappingSQLFormula[M[A] <: MappingFrom[A], O, I <: Rank[N], N <: INT]
+	                              (mapping :M[O])(implicit nudge :Conforms[O, _ <: Rank[N], Rank[N]], value :ValueOf[N]) :FreeComponent[M, O] =
+		new FreeComponent(mapping, valueOf[N])
 
 
 
@@ -655,7 +657,9 @@ object Mapping {
 	@implicitNotFound("Cannot alias mapping ${X} from origin ${A} as ${Y} from ${B}. " +
 	                  "If the aliased mapping type depends on the Origin type, provide your own implicit aliasing" +
 	                  "OriginProjection[X, A, Y, B] in the mapping's companion object.")
-	abstract class OriginProjection[-X <: Mapping, A, +Y <: Mapping, B] extends (X => Y)
+	abstract class OriginProjection[-X <: Mapping, A, +Y <: Mapping, B] {
+		def apply(mapping :X) :Y
+	}
 
 //	def OriginProjection[M <: MappingFrom[O], O, AM <: MappingFrom[A], A](alias :M => AM) :OriginProjection[M, O, AM, A] =
 //		alias(_)

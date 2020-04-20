@@ -294,6 +294,9 @@ object ColumnMapping {
 	                                                     (implicit named :ValueOf[N], override val form :ColumnForm[S])
 		extends LabeledMapping[N, S, O] with ColumnMapping[S, O]
 	{
+		def this(name :N, buffs :Seq[Buff[S]])(implicit form :ColumnForm[S]) =
+			this(buffs)(new ValueOf(name), form)
+
 		override val name :N = named.value
 		override val isNullable :Boolean = super.isNullable
 

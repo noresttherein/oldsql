@@ -5,14 +5,14 @@ import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.abacus.INT
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection
+import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, OfFreeOrigin, OriginProjection}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, MappingLabel}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.bits.MappedMapping.FlatMappedMapping
 import net.noresttherein.oldsql.schema.support.{LazyMapping, MappingAdapter, StaticMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
-import net.noresttherein.oldsql.schema.MappingSchema.{FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, SchemaComponentLabel, SchemaFlattening}
-import net.noresttherein.oldsql.schema.SchemaMapping.{FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaMapping, MappedSchemaMapping, SchemaMappingLabel}
+import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, ExtensibleFlatMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, SchemaComponentLabels, SchemaFlattening}
+import net.noresttherein.oldsql.schema.SchemaMapping.{FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaComponent, MappedSchemaMapping, SchemaComponentLabel}
 import net.noresttherein.oldsql.schema.bits.{LabeledMapping, MappedMapping}
 
 
@@ -41,7 +41,7 @@ import net.noresttherein.oldsql.schema.bits.{LabeledMapping, MappedMapping}
   *     }}}
   *
   * Additionally, any `SchemaMapping` can be labeled with a `String` literal type using the `@:` and `:@` methods,
-  * creating a [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaMapping LabeledSchemaMapping]]
+  * creating a [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaComponent LabeledSchemaComponent]]
   * (or [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn LabeledSchemaColumn]]).
   * Components labeled in this way can be retrieved from the schema or this mapping using
   * [[net.noresttherein.oldsql.schema.SchemaMapping#/ this / label]] and
@@ -51,7 +51,7 @@ import net.noresttherein.oldsql.schema.bits.{LabeledMapping, MappedMapping}
   *                                                 .comp(_.backup, "backup" @: GunSchema[O])
   *                                                 .comp(_.secondBackup, "backup2" @: GunSchema[O]).map(Human.apply)
   *     val human = HumanSchema["human"]
-  *     val firstGun = human / "gun" //:LabeledSchemaMapping[_, @~ ~ String ~ String ~ String, Human, "human"]
+  *     val firstGun = human / "gun" //:LabeledSchemaComponent[_, @~ ~ String ~ String ~ String, Human, "human"]
   *
   *     val backupExtractor = human("gun")
   *     def backupGun(human :Human) = backupExtractor(human)
@@ -93,7 +93,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	/** Attaches a label type to this mapping, being the singleton type of the given string literal.
 	  * A labeled component can be retrieved from the schema using its
 	  * [[net.noresttherein.oldsql.schema.MappingSchema.apply[N<:Label] apply(label)]] method, or `String` extension
-	  * methods provided by [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabel SchemaComponentLabel]]'s
+	  * methods provided by [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabels SchemaComponentLabels]]'s
 	  * methods, available in [[net.noresttherein.oldsql.schema.AbstractSchemaMapping AbstractSchemaMapping]]'s
 	  * subclasses.
 	  * Note that this method can sometimes lead the compiler to erroneously infer a unique singleton type for the label,
@@ -101,18 +101,18 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  * the `:@` method instead, which takes the type parameter instead of the singleton value.
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.:@]]
 	  */
-	def @:[N <: Label](label :N) :LabeledSchemaMapping[N, C, R, S, O] =
-		new SchemaMappingLabel[N, SchemaMapping[C, R, S, O], C, R, S, O](label, this)
+	def @:[N <: Label](label :N) :LabeledSchemaComponent[N, C, R, S, O] =
+		new SchemaComponentLabel[N, SchemaMapping[C, R, S, O], C, R, S, O](label, this)
 
 	/** Attaches a label type to this mapping, being the singleton type of the given string literal.
 	  * A labeled component can be retrieved from the schema using its
 	  * [[net.noresttherein.oldsql.schema.MappingSchema#apply[N](label:N) apply(label)]] method, or `String` extension
-	  * methods provided by [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabel SchemaComponentLabel]]'s
+	  * methods provided by [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabels SchemaComponentLabels]]'s
 	  * methods, available in [[net.noresttherein.oldsql.schema.AbstractSchemaMapping AbstractSchemaMapping]]'s
 	  * subclasses.
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.@:]]
 	  */
-	def :@[N <: Label :ValueOf] :LabeledSchemaMapping[N, C, R, S, O] = valueOf[N] @: this
+	def :@[N <: Label :ValueOf] :LabeledSchemaComponent[N, C, R, S, O] = valueOf[N] @: this
 
 
 	override def apply[T](component :Component[T]) :Selector[T] =
@@ -184,8 +184,15 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 
 object SchemaMapping {
 
-	/** A single-column schema mapping */
-	trait SchemaColumn[S, O] extends FlatSchemaMapping[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] with ColumnMapping[S, O] {
+	/** Starts the process of building a `MappingSchema` and then a `SchemaMapping` by chained calls to component
+	  * factory methods. This is the same as `MappingSchema[S, O]` and exists to somewhat alleviate the confusion
+	  * between the two. */
+	def apply[S, O] :ExtensibleFlatMappingSchema[@~, @~, S, O] = EmptySchema[S, O]
+
+	/** A single-column schema mapping and a column of a schema mapping at the same time. */
+	trait SchemaColumn[S, O] extends FlatSchemaMapping[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] with ColumnMapping[S, O]
+	                            with FreeOriginMapping[S, O]
+	{
 		override val schema :FlatMappingSchema[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] =
 			MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
 	}
@@ -193,10 +200,6 @@ object SchemaMapping {
 	object SchemaColumn {
 		def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :SchemaColumn[S, O] =
 			new BaseColumn[S, O](name, buffs) with SchemaColumn[S, O]
-
-		implicit def SchemaColumnProjection[S, A, B] :OriginProjection[SchemaColumn[S, A], A, SchemaColumn[S, B], B] =
-			OriginProjection()
-
 	}
 
 
@@ -213,12 +216,12 @@ object SchemaMapping {
 
 	implicit def LabeledSchemaMappingProjection[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
 			(implicit alias :OriginProjection[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B])
-			:OriginProjection[LabeledSchemaMapping[N, AC, R, S, A], A, LabeledSchemaMapping[N, BC, R, S, B], B] =
+			:OriginProjection[LabeledSchemaComponent[N, AC, R, S, A], A, LabeledSchemaComponent[N, BC, R, S, B], B] =
 		Mapping.AnyOrigin()
 
 	implicit def LabeledFlatSchemaMappingProjection[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
 			(implicit alias :OriginProjection[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
-			:OriginProjection[LabeledFlatSchemaMapping[N, AC, R, S, A], A, LabeledFlatSchemaMapping[N, BC, R, S, B], B] =
+			:OriginProjection[LabeledFlatSchemaComponent[N, AC, R, S, A], A, LabeledFlatSchemaComponent[N, BC, R, S, B], B] =
 		Mapping.AnyOrigin()
 
 
@@ -240,10 +243,10 @@ object SchemaMapping {
 
 
 
-		override def @:[N <: Label](label :N) :LabeledFlatSchemaMapping[N, C, R, S, O] =
-			new FlatSchemaMappingLabel[N, FlatSchemaMapping[C, R, S, O], C, R, S, O](label, this)
+		override def @:[N <: Label](label :N) :LabeledFlatSchemaComponent[N, C, R, S, O] =
+			new FlatSchemaComponentLabel[N, FlatSchemaMapping[C, R, S, O], C, R, S, O](label, this)
 
-		override def :@[N <: Label :ValueOf] :LabeledFlatSchemaMapping[N, C, R, S, O] = valueOf[N] @: this
+		override def :@[N <: Label :ValueOf] :LabeledFlatSchemaComponent[N, C, R, S, O] = valueOf[N] @: this
 
 
 
@@ -261,11 +264,11 @@ object SchemaMapping {
 
 
 
-	trait LabeledSchemaMapping[N <: Label, +C <: Chain, R <: Chain, S, O]
+	trait LabeledSchemaComponent[N <: Label, +C <: Chain, R <: Chain, S, O]
 		extends SchemaMapping[C, R, S, O] with LabeledMapping[N, S, O]
 
-	trait LabeledFlatSchemaMapping[N <: Label, +C <: Chain, R <: Chain, S, O]
-		extends FlatSchemaMapping[C, R, S, O] with LabeledSchemaMapping[N, C, R, S, O]
+	trait LabeledFlatSchemaComponent[N <: Label, +C <: Chain, R <: Chain, S, O]
+		extends FlatSchemaMapping[C, R, S, O] with LabeledSchemaComponent[N, C, R, S, O]
 
 
 
@@ -273,7 +276,7 @@ object SchemaMapping {
 
 
 	trait LabeledSchemaColumn[N <: Label, S, O]
-		extends SchemaColumn[S, O] with LabeledFlatSchemaMapping[N, @~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O]
+		extends SchemaColumn[S, O] with LabeledFlatSchemaComponent[N, @~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O]
 	{
 		override val schema :FlatMappingSchema[@~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O] =
 			MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
@@ -283,9 +286,9 @@ object SchemaMapping {
 		def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
 			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O]
 
-		implicit def LabeledSchemaColumnProjection[N <: Label, S, A, B]
-		:OriginProjection[LabeledSchemaColumn[N, S, A], A, LabeledSchemaColumn[N, S, B], B] =
-			OriginProjection()
+//		implicit def LabeledSchemaColumnProjection[N <: Label, S, A, B]
+//				:OriginProjection[LabeledSchemaColumn[N, S, A], A, LabeledSchemaColumn[N, S, B], B] =
+//			OriginProjection()
 	}
 
 
@@ -293,25 +296,25 @@ object SchemaMapping {
 
 
 
-	private class SchemaMappingLabel[N <: Label, M <: SchemaMapping[C, R, S, O], +C <: Chain, R <: Chain, S, O]
+	private class SchemaComponentLabel[N <: Label, M <: SchemaMapping[C, R, S, O], +C <: Chain, R <: Chain, S, O]
 	                                (label :N, egg :M)
-		extends MappingLabel[N, M, S, O](label, egg) with LabeledSchemaMapping[N, C, R, S, O]
+		extends MappingLabel[N, M, S, O](label, egg) with LabeledSchemaComponent[N, C, R, S, O]
 	{
 		override val schema = egg.schema
 
-		override def @:[L <: Label](label :L) :LabeledSchemaMapping[L, C, R, S, O] =
-			new SchemaMappingLabel[L, M, C, R, S, O](label, egg)
+		override def @:[L <: Label](label :L) :LabeledSchemaComponent[L, C, R, S, O] =
+			new SchemaComponentLabel[L, M, C, R, S, O](label, egg)
 
 	}
 
-	private class FlatSchemaMappingLabel[N <: Label, M <: FlatSchemaMapping[C, R, S, O], +C <: Chain, R <: Chain, S, O]
+	private class FlatSchemaComponentLabel[N <: Label, M <: FlatSchemaMapping[C, R, S, O], +C <: Chain, R <: Chain, S, O]
 	                                    (label :N, egg :M)
-		extends SchemaMappingLabel[N, M, C, R, S, O](label, egg) with LabeledFlatSchemaMapping[N, C, R, S, O]
+		extends SchemaComponentLabel[N, M, C, R, S, O](label, egg) with LabeledFlatSchemaComponent[N, C, R, S, O]
 	{
 		override val schema = egg.schema
 
-		override def @:[L <: Label](label :L) :LabeledFlatSchemaMapping[L, C, R, S, O] =
-			new FlatSchemaMappingLabel[L, M, C, R, S, O](label, egg)
+		override def @:[L <: Label](label :L) :LabeledFlatSchemaComponent[L, C, R, S, O] =
+			new FlatSchemaComponentLabel[L, M, C, R, S, O](label, egg)
 	}
 
 
@@ -448,7 +451,7 @@ object SchemaMapping {
   * @tparam R a `Chain` containing the types of all components in `C` in their exact order, forming a 'row schema'.
   * @tparam S the subject type of this mapping.
   * @tparam O a label type serving to distinguish statically between mappings of the same class but mapping
-  * @see [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabel]]
+  * @see [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabels]]
   */
 abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :MappingSchema[C, R, S, O])
 	extends SchemaMapping[C, R, S, O] with StaticMapping[S, O] with LazyMapping[S, O]
@@ -465,8 +468,8 @@ abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :Ma
 	  * (such as within this mapping's `construct` method).
 	  */
 	@inline
-	implicit protected[this] def accessByLabel[N <: Label](label :N) :SchemaComponentLabel[C, R, Pieces, N, S, O] =
-		new SchemaComponentLabel[C, R, Pieces, N, S, O](label)
+	implicit protected[this] def accessByLabel[N <: Label](label :N) :SchemaComponentLabels[C, R, Pieces, N, S, O] =
+		new SchemaComponentLabels[C, R, Pieces, N, S, O](label)
 
 }
 

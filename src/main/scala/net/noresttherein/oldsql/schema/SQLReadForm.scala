@@ -2,14 +2,13 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{ResultSet, SQLException}
 
-import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, Record}
+import net.noresttherein.oldsql.collection.{Chain, ChainMap, LiteralIndex, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.LiteralIndex.&~
+import net.noresttherein.oldsql.collection.ChainMap.&~
+import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
-import net.noresttherein.oldsql.schema.SQLForm.{NullValue}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, Tuple2ReadForm}
 import net.noresttherein.oldsql.slang._
 
@@ -340,12 +339,26 @@ object SQLReadForm extends ScalaReadForms {
 			override protected val last = l
 		}
 
-	/** Provides an implicit form for the heterogeneous map indexed by literal types (`LiteralIndex`) `I &~ L`
+	/** Provides an implicit form for the heterogeneous map indexed by literal types (`LiteralIndex`) `I |~ L`
 	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
 	  */
 	implicit def LiteralIndexReadForm[I <: LiteralIndex :SQLReadForm, K <: Singleton :ValueOf, V :SQLReadForm]
+			:SQLReadForm[I |~ (K :~ V)] =
+		new ChainIndexReadForm[|~, :~, I, K, V] {
+			protected override val init = SQLReadForm[I]
+			protected override val value = SQLReadForm[V]
+			protected override val key = valueOf[K]
+
+			protected[this] override def cons(init :I, value :V) = init |~ key :~ value
+			protected override def symbol = "|~"
+		}
+
+	/** Provides an implicit form for the heterogeneous map indexed by literal types (`ChainMap`) `I &~ L`
+	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
+	  */
+	implicit def ChainMapReadForm[I <: ChainMap :SQLReadForm, K <: Singleton :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I &~ (K, V)] =
-		new LiteralIndexReadForm[&~, I, K, V] {
+		new ChainIndexReadForm[&~, Tuple2, I, K, V] {
 			override protected val init = SQLReadForm[I]
 			override protected val value = SQLReadForm[V]
 			override protected val key = valueOf[K]
@@ -359,7 +372,7 @@ object SQLReadForm extends ScalaReadForms {
 	  */
 	implicit def RecordReadForm[I <: Record :SQLReadForm, K <: String with Singleton :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I |# (K, V)] =
-		new LiteralIndexReadForm[|#, I, K, V] {
+		new ChainIndexReadForm[|#, Tuple2, I, K, V] {
 			override protected val init = SQLReadForm[I]
 			override protected val value = SQLReadForm[V]
 			override protected val key = valueOf[K]
@@ -753,8 +766,8 @@ object SQLReadForm extends ScalaReadForms {
 
 
 
-	private[schema] trait LiteralIndexReadForm[C[+A <: I, +B <: (K, V)] <: A &~ B, I <: LiteralIndex, K <: Singleton, V]
-		extends SQLReadForm[I C (K, V)]
+	private[schema] trait ChainIndexReadForm[C[+A <: I, +B <: E[K, V]] <: A ~ B, E[+A <: Singleton, +B], I <: Chain, K <: Singleton, V]
+		extends SQLReadForm[I C E[K, V]]
 	{
 		protected val init :SQLReadForm[I]
 		protected val value :SQLReadForm[V]
@@ -762,18 +775,18 @@ object SQLReadForm extends ScalaReadForms {
 
 		override val readColumns :Int = init.readColumns + value.readColumns
 
-		protected[this] def cons(init :I, value :V) :I C (K, V)
+		protected[this] def cons(init :I, value :V) :I C E[K, V]
 
-		override def opt(position :Int)(res :ResultSet) :Option[I C (K, V)] =
+		override def opt(position :Int)(res :ResultSet) :Option[I C E[K, V]] =
 			for (i <- init.opt(position)(res); v <- value.opt(position + init.readColumns)(res))
 				yield cons(i, v)
 
-		override val nullValue :I C (K, V) = cons(init.nullValue, value.nullValue)
+		override val nullValue :I C E[K, V] = cons(init.nullValue, value.nullValue)
 
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
-			case index :LiteralIndexReadForm[_, _, _, _] if index canEqual this =>
+			case index :ChainIndexReadForm[_, _, _, _, _] if index canEqual this =>
 				index.key == key && index.value == value && index.init == init
 			case _ => false
 		}
@@ -784,10 +797,6 @@ object SQLReadForm extends ScalaReadForms {
 
 		override def toString :String = init.toString + symbol + "(" + key + "->" + value + ")"
 	}
-
-
-
-
 
 
 

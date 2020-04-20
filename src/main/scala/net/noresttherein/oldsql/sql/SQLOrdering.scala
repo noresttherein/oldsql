@@ -30,6 +30,8 @@ sealed trait SQLOrdering[X] extends Ordering[X] {
 
 object SQLOrdering {
 
+	def apply[X :SQLOrdering] :SQLOrdering[X] = implicitly[SQLOrdering[X]]
+
 	private class MappedSQLOrdering[X, Y](lower :Y => X)(implicit order :SQLOrdering[X]) extends SQLOrdering[Y] {
 		override def compare(x :Y, y :Y) :Int = order.compare(lower(x), lower(y))
 	}

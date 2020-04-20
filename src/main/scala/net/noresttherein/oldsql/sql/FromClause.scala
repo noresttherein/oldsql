@@ -3,6 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, INT}
+import net.noresttherein.oldsql.morsels.Origin.{##, Rank}
 import net.noresttherein.oldsql.schema.{bits, GenericMapping, Mapping, RowSource, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
@@ -182,14 +183,14 @@ trait FromClause {
 	  * types are known.
 	  */
 	type JoinFilter[T[O] <: MappingFrom[O]] <:
-		(JoinedRelation[FromLast With T, LastMapping, _ <: -2], JoinedRelation[FromClause With T, T, _ <: -1])
+		(JoinedRelation[FromLast With T, LastMapping, ##[-2]], JoinedRelation[FromClause With T, T, ##[-1]])
 			=> BooleanFormula[FromLast With T]
 
 	private[sql] def filterJoined[T[O] <: MappingFrom[O]](filter :JoinFilter[T], next :FromClause With T)
 			:next.JoinRight[This] =
 		next.copy[This](this, filter( //todo: get rid of casts for origin
-			lastTable.asInstanceOf[JoinedRelation[FromLast, LastMapping, -2]].asPartOf[FromLast, FromLast With T],
-			next.lastTable.asInstanceOf[JoinedRelation[FromClause With T, T, -1]]
+			lastTable.asInstanceOf[JoinedRelation[FromLast, LastMapping, ##[-2]]].asPartOf[FromLast, FromLast With T],
+			next.lastTable.asInstanceOf[JoinedRelation[FromClause With T, T, ##[-1]]]
 		))
 
 
@@ -392,21 +393,21 @@ object FromClause {
 
 	implicit class JoinedTables[F <: FromClause](private val self :F) extends AnyVal {
 
-		def of[E](implicit get :BySubject.Get[F, E]) :get.T[_ <: get.I] = get(self).mapping
+		def of[E](implicit get :BySubject.Get[F, E]) :get.T[get.O] = get(self).mapping
 
-		def apply[A <: String with Singleton](alias :A)(implicit get :ByLabel.Get[F, A]) :get.T[_ <: get.I] =
+		def apply[A <: String with Singleton](alias :A)(implicit get :ByLabel.Get[F, A]) :get.T[get.O] =
 			get(self).mapping
 
-		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :M[_ <: get.I] =
+		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :M[get.O] =
 			get(self).mapping
 
 
-		def apply[N <: INT](n :N)(implicit get :GetTableByIndex[F, N]) :get.T[_ <: get.I] = get(self).mapping
+		def apply[N <: INT](n :N)(implicit get :GetTableByIndex[F, N]) :get.T[get.O] = get(self).mapping
 
 
-		def last(implicit get :GetTableByNegativeIndex[F, -1]) :get.T[_ <: -1] = get(self).mapping
+		def last(implicit get :GetTableByNegativeIndex[F, -1]) :get.T[##[-1]] = get(self).mapping
 
-		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :get.T[_ <: -2] = get(self).mapping
+		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :get.T[##[-2]] = get(self).mapping
 
 //		def param[N <: String with Singleton](name :N)(implicit get :GetTableByPredicate[F, ByOrigin, N])
 
@@ -416,23 +417,22 @@ object FromClause {
 
 	class JoinedRelations[F <: FromClause](private val self :F) extends AnyVal {
 
-		def of[E](implicit get :BySubject.Get[F, E]) :JoinedRelation[F, get.T, _ <: get.I] = get(self)
+		def of[E](implicit get :BySubject.Get[F, E]) :JoinedRelation[F, get.T, get.O] = get(self)
 
-		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :JoinedRelation[F, M, _ <: get.I] =
+		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :JoinedRelation[F, M, get.O] =
 			get(self)
 
 		def apply[A <: String with Singleton]
-		         (alias :A)(implicit get :ByLabel.Get[F, A]) :JoinedRelation[F, get.T, _ <: get.I] =
+		         (alias :A)(implicit get :ByLabel.Get[F, A]) :JoinedRelation[F, get.T, get.O] =
 			get(self)
 
 
-		def apply[N <: INT](n :N)(implicit get :GetTableByIndex[F, N]) :JoinedRelation[F, get.T, _ <: get.I] =
+		def apply[N <: INT](n :N)(implicit get :GetTableByIndex[F, N]) :JoinedRelation[F, get.T, get.O] =
 			get(self)
 
+		def last(implicit get :GetTableByNegativeIndex[F, -1]) :JoinedRelation[F, get.T, ##[-1]] = get(self)
 
-		def last(implicit get :GetTableByNegativeIndex[F, -1]) :JoinedRelation[F, get.T, _ <: -1] = get(self)
-
-		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :JoinedRelation[F, get.T, _ <: -2] = get(self)
+		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :JoinedRelation[F, get.T, ##[-2]] = get(self)
 
 //		def param[N <: String with Singleton](name :N)(implicit get :GetTableByPredicate[F, ByOrigin, N])
 
@@ -472,12 +472,14 @@ object FromClause {
 		/** The ''negative'' index of the found relation: that's `-1` for the last relation in the clause
 		  * and decreases going left. */
 		type I <: INT
+		/** A unique origin type with the negative index of the relation encoded in it. */
+		type O = ##[I]
 
 		/** The mapping type of the relation at index `N`. */
 		type T[O] <: MappingFrom[O]
 
 		/** Getter for the relation from the input `FromClause`. */
-		def apply(from :F) :JoinedRelation[F, T, _ <: I]
+		def apply(from :F) :JoinedRelation[F, T, ##[I]]
 	}
 
 
@@ -495,8 +497,8 @@ object FromClause {
 			new GetTableByNegativeIndex[FromClause With M, -1] {
 				override type T[O] = M[O]
 
-				override def apply(from :FromClause With M) :JoinedRelation[FromClause With M, M, _ <: -1] =
-					from.lastTable.asInstanceOf[JoinedRelation[FromClause With M, M, -1]] //todo: fix Origin
+				override def apply(from :FromClause With M) :JoinedRelation[FromClause With M, M, ##[-1]] =
+					from.lastTable.asInstanceOf[JoinedRelation[FromClause With M, M, Rank[I]]] //todo: fix Origin
 			}
 
 
@@ -506,8 +508,8 @@ object FromClause {
 			new GetTableByNegativeIndex[L With R, N] {
 				override type T[O] = get.T[O]
 
-				override def apply(from :L With R) :JoinedRelation[L With R, T, _ <: N] =
-					get(from.left).asInstanceOf[JoinedRelation[L, T, N]].asPartOf //todo: Origin
+				override def apply(from :L With R) :JoinedRelation[L With R, T, ##[N]] =
+					get(from.left).asInstanceOf[JoinedRelation[L, T, ##[N]]].asPartOf //todo: Origin
 			}
 
 
@@ -515,8 +517,8 @@ object FromClause {
 		@implicitNotFound("Can't get relation at the (non-negative) index ${N} in ${F}. Either ${N} < 0, " +
 		                  "or ${N} is greater or equal than the number of relations in the FROM clause, " +
 		                  "or the exact number of relations in the FROM clause is not known.")
-		sealed abstract class GetTableByPositiveIndex[-F <: FromClause, N <: INT, I <: INT] extends GetTableByIndex[F, N] {
-			type I = INT
+		sealed abstract class GetTableByPositiveIndex[-F <: FromClause, N <: INT, M <: INT] extends GetTableByIndex[F, N] {
+			type I = M
 		}
 
 		implicit def lastPositive[L <: FromClause, R[O] <: MappingFrom[O], N <: INT]
@@ -526,7 +528,7 @@ object FromClause {
 				override type T[O] = R[O]
 
 				override def apply(from :L With R) =
-					from.lastTable.asInstanceOf[JoinedRelation[L With R, R, N]] //todo: Origin
+					from.lastTable.asInstanceOf[JoinedRelation[L With R, R, Rank[-1]]] //todo: Origin
 			}
 
 		implicit def previousPositive[L <: FromClause, R[O] <: MappingFrom[O], N <: INT, I <: INT, J <: INT]
@@ -536,7 +538,7 @@ object FromClause {
 				type T[O] = get.T[O]
 
 				override def apply(from :L With R) =
-					get(from.left).asInstanceOf[JoinedRelation[L, T, I]].asPartOf
+					get(from.left).asInstanceOf[JoinedRelation[L, T, O]].asPartOf
 			}
 
 	}
@@ -577,13 +579,13 @@ object FromClause {
 		@implicitNotFound("Cannot find a mapping for key type ${X} in the clause ${F}.")
 		sealed abstract class Found[-F <: FromClause, X, I <: INT] {
 			/** The negative index of the relation. */
-			def offset :I
+			def shift :I
 
 			/** The accessed `Mapping` type. */
 			type T[O] <: MappingFrom[O]
 
 			/** Getter for the matching relation. */
-			def apply(from :F) :JoinedRelation[F, T, _ <: I]
+			def apply(from :F) :JoinedRelation[F, T, ##[I]]
 		}
 
 		implicit def last[M[O] <: MappingFrom[O], X](implicit pred :Predicate[M, X])
@@ -592,9 +594,9 @@ object FromClause {
 				override type T[O] = M[O]
 
 				override def apply(from :FromClause With M) = //todo: Origin
-					from.lastTable.asInstanceOf[JoinedRelation[FromClause With M, M, -1]]
+					from.lastTable.asInstanceOf[JoinedRelation[FromClause With M, M, Rank[-1]]]
 
-				override def offset = -1 : -1
+				override def shift = -1 : -1
 			}
 
 		implicit def previous[L <: FromClause, R[O] <: MappingFrom[O], X, I <: INT, J <: INT]
@@ -604,9 +606,9 @@ object FromClause {
 				override type T[O] = get.T[O]
 
 				override def apply(from :L With R) = //todo: Origin
-					get(from.left).asInstanceOf[JoinedRelation[L, T, I]].asPartOf
+					get(from.left).asInstanceOf[JoinedRelation[L, T, Rank[I]]].asPartOf
 
-				override val offset = minus.m
+				override val shift = minus.m
 			}
 
 
@@ -623,15 +625,17 @@ object FromClause {
 		abstract class Get[-F <: FromClause, X] {
 			/** The ''negative'' index of the accessed relation, starting with `-1` for the rightmost relation in `F`.*/
 			type I <: INT
+			/** A unique origin type with the negative index of the relation encoded in it. */
+			type O = ##[I]
 
 			/** The last mapping type matching `X` in `F`. */
 			type T[O] <: MappingFrom[O]
 
 			/** The negative index of the found relation, starting with `-1` and decreasing from right to left. */
-			def offset :I
+			def shift :I
 
 			/** Returns the found relation from the input `FromClause`. */
-			def apply(from :F) :JoinedRelation[F, T, _ <: I]
+			def apply(from :F) :JoinedRelation[F, T, ##[I]]
 		}
 	}
 
@@ -646,7 +650,7 @@ object FromClause {
 			implicit def satisfies[M[A] <: TypedMapping[S, A], S] :Predicate[M, S] = report[M, S]
 
 			/** An implicit accessor object for the last relation in `F` with `Subject` type `S`.
-			  * The type and index of the relation are returned as members `T[O]` and `I`/ `offset :I`. */
+			  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`. */
 			@implicitNotFound("No relation with Subject type ${S} in the from clause ${F}:\n" +
 			                  "no implicit value for BySubject.Found[${F}, ${S}].")
 			sealed abstract class Get[-F <: FromClause, S] extends super.Get[F, S]
@@ -656,10 +660,10 @@ object FromClause {
 					:Get[F, S] { type T[O] = found.T[O]; type I = N } =
 				new Get[F, S] {
 					override type I = N
-					override def offset = found.offset
+					override def shift = found.shift
 
 					override type T[O] = found.T[O]
-					override def apply(from :F) :JoinedRelation[F, T, _ <: I] = found(from)
+					override def apply(from :F) :JoinedRelation[F, T, ##[I]] = found(from)
 				}
 		}
 
@@ -683,10 +687,10 @@ object FromClause {
 					:Get[F, A] { type T[O] = found.T[O]; type I = N } =
 				new Get[F, A] {
 					override type I = N
-					override def offset = found.offset
+					override def shift = found.shift
 
 					override type T[O] = found.T[O]
-					override def apply(from :F) :JoinedRelation[F, T, _ <: I] = found(from)
+					override def apply(from :F) :JoinedRelation[F, T, ##[I]] = found(from)
 				}
 		}
 
@@ -701,15 +705,18 @@ object FromClause {
 			implicit def satisfies[M[A] <: MappingFrom[A]] :Predicate[M, M[Any]] = report[M, M[Any]]
 
 			/** An implicit accessor object for the last relation in `F` with `Mapping` type `M[_]`.
-			  * The type and index of the relation are returned as members `T[O]` and `I`/ `offset :I`. */
+			  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`. */
 			@implicitNotFound("No relation with type constructor ${M} in the from clause ${F}:\n" +
 			                  "no implicit value for ByTypeConstructor.Found[${F}, ${M}].")
 			sealed abstract class Get[-F <: FromClause, M[O] <: MappingFrom[O]] {
 				type I <: INT
+				/** A unique origin type with the negative index of the relation encoded in it. */
+				type O = ##[I]
 				type T[O] = M[O]
 
-				def apply(from :F) :JoinedRelation[F, M, _ <: I]
-				def offset :I
+
+				def apply(from :F) :JoinedRelation[F, M, ##[I]]
+				def shift :I
 			}
 
 			implicit def Get[F <: FromClause, M[O] <: MappingFrom[O], N <: INT]
@@ -717,7 +724,7 @@ object FromClause {
 				new Get[F, M] {
 					override type I = N
 					override def apply(from :F) = found(from)
-					override def offset = found.offset
+					override def shift = found.shift
 				}
 		}
 

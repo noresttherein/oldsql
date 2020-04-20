@@ -2,9 +2,10 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
-import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, Record}
+import net.noresttherein.oldsql.collection.{Chain, ChainMap, LiteralIndex, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.LiteralIndex.&~
+import net.noresttherein.oldsql.collection.ChainMap.&~
+import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -295,8 +296,11 @@ object SQLWriteForm extends ScalaWriteForms {
 	implicit def ChainWriteForm[I <: Chain, L](implicit t :SQLWriteForm[I], h :SQLWriteForm[L]) :SQLWriteForm[I ~ L] =
 		new ChainWriteForm(t, h)
 
-	implicit def LiteralIndexWriteForm[I <: LiteralIndex :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I &~ (K, V)] =
+	implicit def LiteralIndexWriteForm[I <: LiteralIndex :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I |~ (K :~ V)] =
 		new LiteralIndexWriteForm(SQLWriteForm[I], SQLWriteForm[V])
+
+	implicit def ChainMapWriteForm[I <: ChainMap :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I &~ (K, V)] =
+		new ChainMapWriteForm(SQLWriteForm[I], SQLWriteForm[V])
 
 	implicit def RecordWriteForm[I <: Record :SQLWriteForm, K <: String with Singleton, V :SQLWriteForm] :SQLWriteForm[I |# (K, V)] =
 		new RecordWriteForm(SQLWriteForm[I], SQLWriteForm[V])
@@ -786,12 +790,29 @@ object SQLWriteForm extends ScalaWriteForms {
 
 	private[schema] class LiteralIndexWriteForm[-I <: LiteralIndex, -K <: Singleton, -V]
 	                                           (protected val init :SQLWriteForm[I], protected val value :SQLWriteForm[V])
+		extends GenericChainWriteForm[|~, I, K :~ V]
+	{
+		override protected val last :SQLWriteForm[K :~ V] = value.unmap(_.value)
+
+		override def equals(that :Any) :Boolean = that match {
+			case other :LiteralIndexWriteForm[_, _, _] =>
+				(other eq this) || (other canEqual this) && init == other.init && value == other.value
+			case _ => false
+		}
+
+		override protected def symbol :String = "|~"
+	}
+
+
+
+	private[schema] class ChainMapWriteForm[-I <: ChainMap, -K <: Singleton, -V]
+	                                       (protected val init :SQLWriteForm[I], protected val value :SQLWriteForm[V])
 		extends GenericChainWriteForm[&~, I, (K, V)]
 	{
 		override protected val last :SQLWriteForm[(K, V)] = value.unmap(_._2)
 
 		override def equals(that :Any) :Boolean = that match {
-			case other :LiteralIndexWriteForm[_, _, _] =>
+			case other :ChainMapWriteForm[_, _, _] =>
 				(other eq this) || (other canEqual this) && init == other.init && value == other.value
 			case _ => false
 		}
