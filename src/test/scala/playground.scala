@@ -15,36 +15,6 @@ import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, SQLTypePromotion
   * @author Marcin Mościcki
   */
 object playground extends App {
-	type I = Rank[N] forSome { type N <: INT }
-//	type M = GenericMapping[_, I] forSome { type I <: INT }
-//	implicitly[MappingFrom[_ <: -1] <:< MappingFrom[-1]]
-	val m :GenericMapping[Int, _ <: Rank[-1]] = ???
-//	trait T
-//	m :GenericMapping[_, Rank[-1]]
-	val i = Rank.of[m.Origin]
-	Mapping.mappingSQLFormula(m) <= m
-	trait M[A, T] {
-		type TT = T
-	}
-	trait T
-//	implicitly[M[_ <: -1] <:< M[-1]]
-//	val m :M[_, _ <: -1] = ???
-//	m :M[_, -1]
-
-//	val m :GenericMapping[Int, _ <: -1] = ???
-//	m :GenericMapping[Int, Rank[-1]]
-	val bool = m <= m
-	bool :BooleanFormula[FromClause]
-//	high(new High[Lower] {})
-	class J[L, R <: Mapping] {
-		def as[A <: String with Singleton, M[O] <: MappingFrom[O]](alias :A)(implicit ev: R <:< M[_]) :J[L, M[A]] = ???
-	}
-//	abstract class C[O] extends GenericMapping[O, Int]
-//	val alias = new J[C[Any], C[Any]] as "ala"
-//	alias :J[C[Any], C["ala"]]
-	abstract class C extends GenericMapping[Int, Any]
-	val alias = new J[C, C] as "ala"
-	alias :J[C, GenericMapping[Int, "ala"]]
 
 	case class Gun(make :String, model :String, caliber :Double)
 	case class Human(gun :Gun, backup :Gun, secondBackup :Gun)

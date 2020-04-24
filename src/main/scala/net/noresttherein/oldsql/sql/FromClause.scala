@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.FromClause.GetTableByIndex.GetTableByNegativeIndex
 import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByLabel, BySubject, ByTypeConstructor}
-import net.noresttherein.oldsql.sql.FromClause.JoinedTables
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyRelationIn
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, Formula}
@@ -75,7 +75,7 @@ trait FromClause {
 	  * type `F` containing this instance in its 'tail'. In other words, this projects the type of the last element
 	  * of this clause to an extending row source.
 	  */
-	type LastTable[-F <: FromClause] <: JoinedRelation[F, LastMapping, _]
+	type LastTable[F <: FromClause] <: JoinedRelation[F, LastMapping]
 
 	type FromLast >: this.type <: FromClause
 
@@ -138,12 +138,16 @@ trait FromClause {
 	  * of appearance. It will contain entries for all mappings in this clause, including parameter mappings
 	  * and mappings listed in this clause's `Outer` prefix (if this clause is a subselect clause).
 	  */
-	def row :ChainTuple[this.type, Row]
+	def row :ChainTuple[Generalized, Row] = row(ExtendedBy.itself)
+
+	def row[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, Row]
 
 	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#row]]
 	  */
-	def tableStack :LazyList[AnyRelationIn[this.type]]
+	def tableStack :LazyList[AnyRelationIn[Generalized]] = tableStack(ExtendedBy.itself)
+
+	def tableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]]
 
 
 	/** Subject types of all mappings in this clause following the `Outer` prefix, concatenated into a heterogeneous list.
@@ -162,15 +166,18 @@ trait FromClause {
 	  * the most recent `subselect` 'join', marking the first relation following the `Outer` clause prefix.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Outer]]
 	  */
-	def subselectRow :ChainTuple[this.type, SubselectRow]
+	def subselectRow :ChainTuple[Generalized, SubselectRow] = subselectRow(ExtendedBy.itself)
+
+	def subselectRow[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow]
 
 	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance, ending
 	  * with the first relation following the `Outer` prefix. If this is not a subselect clause (no `Subselect` 'joins'
 	  * are present in this clause and `Outer =:= FromClause`), all relations are included.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#row]]
 	  */
-	def subselectTableStack :LazyList[AnyRelationIn[this.type]]
+	def subselectTableStack :LazyList[AnyRelationIn[Generalized]] = subselectTableStack(ExtendedBy.itself)
 
+	def subselectTableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]]
 
 
 
@@ -183,15 +190,12 @@ trait FromClause {
 	  * types are known.
 	  */
 	type JoinFilter[T[O] <: MappingFrom[O]] <:
-		(JoinedRelation[FromLast With T, LastMapping, ##[-2]], JoinedRelation[FromClause With T, T, ##[-1]])
+		(JoinedRelation[FromLast With T, LastMapping], JoinedRelation[FromClause With T, T])
 			=> BooleanFormula[FromLast With T]
 
 	private[sql] def filterJoined[T[O] <: MappingFrom[O]](filter :JoinFilter[T], next :FromClause With T)
 			:next.JoinRight[This] =
-		next.copy[This](this, filter( //todo: get rid of casts for origin
-			lastTable.asInstanceOf[JoinedRelation[FromLast, LastMapping, ##[-2]]].asPartOf[FromLast, FromLast With T],
-			next.lastTable.asInstanceOf[JoinedRelation[FromClause With T, T, ##[-1]]]
-		))
+		next.copy[This](this, filter(lastTable.extend[T], next.lastTable))
 
 
 
@@ -393,21 +397,21 @@ object FromClause {
 
 	implicit class JoinedTables[F <: FromClause](private val self :F) extends AnyVal {
 
-		def of[E](implicit get :BySubject.Get[F, E]) :get.T[get.O] = get(self).mapping
+		def of[E](implicit get :BySubject.Get[F, E]) :get.T[get.J] = get(self).mapping
 
-		def apply[A <: String with Singleton](alias :A)(implicit get :ByLabel.Get[F, A]) :get.T[get.O] =
+		def apply[A <: String with Singleton](alias :A)(implicit get :ByLabel.Get[F, A]) :get.T[get.J] =
 			get(self).mapping
 
-		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :M[get.O] =
+		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :M[get.J] =
 			get(self).mapping
 
 
-		def apply[N <: INT](n :N)(implicit get :GetTableByIndex[F, N]) :get.T[get.O] = get(self).mapping
+		def apply[N <: INT](n :N)(implicit get :GetTableByIndex[F, N]) :get.T[get.J] = get(self).mapping
 
 
-		def last(implicit get :GetTableByNegativeIndex[F, -1]) :get.T[##[-1]] = get(self).mapping
+		def last(implicit get :GetTableByNegativeIndex[F, -1]) :get.T[get.J] = get(self).mapping
 
-		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :get.T[##[-2]] = get(self).mapping
+		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :get.T[get.J] = get(self).mapping
 
 //		def param[N <: String with Singleton](name :N)(implicit get :GetTableByPredicate[F, ByOrigin, N])
 
@@ -417,22 +421,22 @@ object FromClause {
 
 	class JoinedRelations[F <: FromClause](private val self :F) extends AnyVal {
 
-		def of[E](implicit get :BySubject.Get[F, E]) :JoinedRelation[F, get.T, get.O] = get(self)
+		def of[E](implicit get :BySubject.Get[F, E]) :JoinedRelation[get.J, get.T] = get(self)
 
-		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :JoinedRelation[F, M, get.O] =
+		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :JoinedRelation[get.J, M] =
 			get(self)
 
 		def apply[A <: String with Singleton]
-		         (alias :A)(implicit get :ByLabel.Get[F, A]) :JoinedRelation[F, get.T, get.O] =
+		         (alias :A)(implicit get :ByLabel.Get[F, A]) :JoinedRelation[get.J, get.T] =
 			get(self)
 
 
-		def apply[N <: INT](n :N)(implicit get :GetTableByIndex[F, N]) :JoinedRelation[F, get.T, get.O] =
+		def apply[N <: INT](n :N)(implicit get :GetTableByIndex[F, N]) :JoinedRelation[get.J, get.T] =
 			get(self)
 
-		def last(implicit get :GetTableByNegativeIndex[F, -1]) :JoinedRelation[F, get.T, ##[-1]] = get(self)
+		def last(implicit get :GetTableByNegativeIndex[F, -1]) :JoinedRelation[get.J, get.T] = get(self)
 
-		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :JoinedRelation[F, get.T, ##[-2]] = get(self)
+		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :JoinedRelation[get.J, get.T] = get(self)
 
 //		def param[N <: String with Singleton](name :N)(implicit get :GetTableByPredicate[F, ByOrigin, N])
 
@@ -443,24 +447,41 @@ object FromClause {
 
 
 
-	@implicitNotFound("Failed counting the tables in ${F}. Either the FROM clause is not fully instantiated " +
-		              "or the expected number ${N} is incorrect.")
-	sealed class TableCount[-F <: FromClause, N <: INT] private ()
+	@implicitNotFound("Can't calculate the size of the clause ${F}. Either the FROM clause is not fully instantiated " +
+		              "or the expected number ${N} is incorrect. Missing implicit: FromClauseSize[${F}, ${N}].")
+	class FromClauseSize[-F <: FromClause, N <: INT] private (val size :N) //extends AnyVal //AnyVal crashes scalac
 
-	object TableCount {
-		implicit val DualCount :TableCount[Dual, 0] = new TableCount[Dual, 0]
+	object FromClauseSize {
+		implicit val DualCount :FromClauseSize[Dual, 0] = new FromClauseSize[Dual, 0](0)
 
-		implicit def moreTables[L <: FromClause, R[O] <: MappingFrom[O], N <: INT, M <: INT]
-		                       (implicit count :TableCount[L, N], plus :Inc[N, M]) :TableCount[L With R, M] =
-			count.asInstanceOf[TableCount[L With R, M]]
+		implicit def moreTables[L <: FromClause, R[O] <: MappingFrom[O], M <: INT, N <: INT]
+		                       (implicit count :FromClauseSize[L, M], plus :Inc[M, N]) :FromClauseSize[L With R, N] =
+			new FromClauseSize[L With R, N](plus.n)
 	}
 
 
 
-	@implicitNotFound("Cannot get ${N}-th relation of ${F}. \n" +
-		              "Either ${N} >= size (where size is the number of relations in the FROM clause),\n" +
-		              "or -${N} is greater the number of relations in the instantiated suffix of the FROM clause,\n" +
-		              "or ${N} >= 0 and the size is not known (the clause type starts with FromClause and not Dual/From.")
+	@implicitNotFound("Failed counting tables in the clause ${F}. " + //AnyVal crashes scalac
+	                  "Is ${N} the number of mappings listed by its definition? Missing implicit: TableCount[${F}, ${N}].")
+	class TableCount[F <: FromClause, N <: INT] private[FromClause] (val count :N) //extends AnyVal//must be invariant
+
+	sealed abstract class UnspecifiedTableCount {
+		implicit val fromClauseHasZero :TableCount[FromClause, 0] = new TableCount[FromClause, 0](0)
+	}
+
+	object TableCount extends UnspecifiedTableCount {
+		implicit val dualHasZero :TableCount[Dual, 0] = new TableCount[Dual, 0](0)
+
+		implicit def forOneTableMore[F <: FromClause, T[O] <: MappingFrom[O], M <: INT, N <: INT]
+		                            (implicit count :TableCount[F, M], inc :Inc[M, N]) :TableCount[F With T, N] =
+			new TableCount[F With T, N](inc.n)
+	}
+
+
+
+
+
+
 	/** Implicit resolution of the `N`-th relation in the ''from'' clause `F`. This works both for positive numbers,
 	  * indexed from zero and going from left to right (in which case `F` must be complete), and negative -
 	  * indexed from `-1` and going from right to left (which is available always, but which index changes with
@@ -468,18 +489,28 @@ object FromClause {
 	  * @tparam F the input `FromClause`.
 	  * @tparam N index of the desired relation as a literal `Int` type.
 	  */
+	@implicitNotFound("Cannot get ${N}-th relation of ${F}. \n" +
+		              "Either ${N} >= size (where size is the number of relations in the FROM clause),\n" +
+		              "or -${N} is greater the number of relations in the instantiated suffix of the FROM clause,\n" +
+		              "or ${N} >= 0 and the size is not known (the clause type starts with FromClause and not Dual/From.")
 	sealed abstract class GetTableByIndex[-F <: FromClause, N <: INT] {
 		/** The ''negative'' index of the found relation: that's `-1` for the last relation in the clause
 		  * and decreases going left. */
 		type I <: INT
-		/** A unique origin type with the negative index of the relation encoded in it. */
+//		/** A unique origin type with the negative index of the relation encoded in it. */
 		type O = ##[I]
+		type J >: F <: FromClause
 
 		/** The mapping type of the relation at index `N`. */
 		type T[O] <: MappingFrom[O]
 
+		val stretch :FromClause With T ExtendedBy J
+
+
 		/** Getter for the relation from the input `FromClause`. */
-		def apply(from :F) :JoinedRelation[F, T, ##[I]]
+		def apply(from :F) :JoinedRelation[J, T] = table(from).extend(stretch)
+
+		def table(from :F) :JoinedRelation[FromClause With T, T]
 	}
 
 
@@ -493,23 +524,28 @@ object FromClause {
 
 
 		implicit def lastNegative[M[O] <: MappingFrom[O]]
-				:GetTableByNegativeIndex[FromClause With M, -1] { type T[O] = M[O] } =
+				:GetTableByNegativeIndex[FromClause With M, -1] { type T[O] = M[O]; type J = FromClause With M } =
 			new GetTableByNegativeIndex[FromClause With M, -1] {
 				override type T[O] = M[O]
+				type J = FromClause With M
 
-				override def apply(from :FromClause With M) :JoinedRelation[FromClause With M, M, ##[-1]] =
-					from.lastTable.asInstanceOf[JoinedRelation[FromClause With M, M, Rank[I]]] //todo: fix Origin
+				override val stretch = implicitly[J ExtendedBy J]
+
+				override def table(from :FromClause With M) :JoinedRelation[FromClause With M, M] =
+					from.lastTable
 			}
 
 
 		implicit def previousNegative[L <: FromClause, R[O] <: MappingFrom[O], N <: INT, M <: INT]
 		                             (implicit minus :Inc[N, M], get :GetTableByNegativeIndex[L, M])
-				:GetTableByNegativeIndex[L With R, N] { type T[O] = get.T[O] } =
+				:GetTableByNegativeIndex[L With R, N] { type T[O] = get.T[O]; type J = get.J With R } =
 			new GetTableByNegativeIndex[L With R, N] {
 				override type T[O] = get.T[O]
+				override type J = get.J With R
 
-				override def apply(from :L With R) :JoinedRelation[L With R, T, ##[N]] =
-					get(from.left).asInstanceOf[JoinedRelation[L, T, ##[N]]].asPartOf //todo: Origin
+				override val stretch = get.stretch.stretch[R]
+
+				override def table(from :L With R) :JoinedRelation[FromClause With T, T] = get.table(from.left)
 			}
 
 
@@ -522,23 +558,27 @@ object FromClause {
 		}
 
 		implicit def lastPositive[L <: FromClause, R[O] <: MappingFrom[O], N <: INT]
-		                         (implicit count :TableCount[L, N])
-				:GetTableByPositiveIndex[L With R, N, -1] { type T[O] = R[O] } =
+		                         (implicit count :FromClauseSize[L, N])
+				:GetTableByPositiveIndex[L With R, N, -1] { type T[O] = R[O]; type J = FromClause With R } =
 			new GetTableByPositiveIndex[L With R, N, -1] {
 				override type T[O] = R[O]
+				override type J = FromClause With R
 
-				override def apply(from :L With R) =
-					from.lastTable.asInstanceOf[JoinedRelation[L With R, R, Rank[-1]]] //todo: Origin
+				override val stretch = implicitly[J ExtendedBy J]
+
+				override def table(from :L With R) = from.lastTable
 			}
 
 		implicit def previousPositive[L <: FromClause, R[O] <: MappingFrom[O], N <: INT, I <: INT, J <: INT]
 		                             (implicit get :GetTableByPositiveIndex[L, N, J], minus :Inc[I, J])
-				:GetTableByPositiveIndex[L With R, N, I] { type T[O] = get.T[O] } =
+				:GetTableByPositiveIndex[L With R, N, I] { type T[O] = get.T[O]; type J = get.J With R } =
 			new GetTableByPositiveIndex[L With R, N, I] {
-				type T[O] = get.T[O]
+				override type T[O] = get.T[O]
+				override type J = get.J With R
 
-				override def apply(from :L With R) =
-					get(from.left).asInstanceOf[JoinedRelation[L, T, O]].asPartOf
+				override val stretch = get.stretch.stretch[R]
+
+				override def table(from :L With R) = get.table(from.left)
 			}
 
 	}
@@ -578,37 +618,48 @@ object FromClause {
 		  */
 		@implicitNotFound("Cannot find a mapping for key type ${X} in the clause ${F}.")
 		sealed abstract class Found[-F <: FromClause, X, I <: INT] {
-			/** The negative index of the relation. */
-			def shift :I
-
 			/** The accessed `Mapping` type. */
 			type T[O] <: MappingFrom[O]
 
+			type J >: F <: FromClause
+
+			/** The negative index of the relation. */
+			def shift :I
+
+			val stretch :FromClause With T ExtendedBy J
+
 			/** Getter for the matching relation. */
-			def apply(from :F) :JoinedRelation[F, T, ##[I]]
+			def apply(from :F) :JoinedRelation[J, T] = table(from).extend(stretch)
+
+			def table(from :F) :JoinedRelation[FromClause With T, T]
 		}
 
 		implicit def last[M[O] <: MappingFrom[O], X](implicit pred :Predicate[M, X])
-				:Found[FromClause With M, X, -1] { type T[O] = M[O] } =
+				:Found[FromClause With M, X, -1] { type T[O] = M[O]; type J = FromClause With M } =
 			new Found[FromClause With M, X, -1] {
 				override type T[O] = M[O]
+				override type J = FromClause With M
 
-				override def apply(from :FromClause With M) = //todo: Origin
-					from.lastTable.asInstanceOf[JoinedRelation[FromClause With M, M, Rank[-1]]]
+				override val stretch = implicitly[J ExtendedBy J]
 
 				override def shift = -1 : -1
+
+				override def table(from :FromClause With M) =
+					from.lastTable
 			}
 
 		implicit def previous[L <: FromClause, R[O] <: MappingFrom[O], X, I <: INT, J <: INT]
 		                     (implicit get :Found[L, X, J], minus :Inc[I, J])
-				:Found[L With R, X, I] { type T[O] = get.T[O] } =
+				:Found[L With R, X, I] { type T[O] = get.T[O]; type J = get.J With R } =
 			new Found[L With R, X, I] {
 				override type T[O] = get.T[O]
+				override type J = get.J With R
 
-				override def apply(from :L With R) = //todo: Origin
-					get(from.left).asInstanceOf[JoinedRelation[L, T, Rank[I]]].asPartOf
+				override val stretch = get.stretch.stretch[R]
 
 				override val shift = minus.m
+
+				override def table(from :L With R) = get.table(from.left)
 			}
 
 
@@ -631,11 +682,13 @@ object FromClause {
 			/** The last mapping type matching `X` in `F`. */
 			type T[O] <: MappingFrom[O]
 
+			type J >: F <: FromClause
+
 			/** The negative index of the found relation, starting with `-1` and decreasing from right to left. */
 			def shift :I
 
 			/** Returns the found relation from the input `FromClause`. */
-			def apply(from :F) :JoinedRelation[F, T, ##[I]]
+			def apply(from :F) :JoinedRelation[J, T]
 		}
 	}
 
@@ -657,13 +710,14 @@ object FromClause {
 
 			implicit def Get[F <: FromClause, S, N <: INT]
 			                (implicit found :Found[F, S, N] { type T[O] <: TypedMapping[S, O] })
-					:Get[F, S] { type T[O] = found.T[O]; type I = N } =
+					:Get[F, S] { type T[O] = found.T[O]; type J = found.J; type I = N } =
 				new Get[F, S] {
 					override type I = N
-					override def shift = found.shift
-
+					override type J = found.J
 					override type T[O] = found.T[O]
-					override def apply(from :F) :JoinedRelation[F, T, ##[I]] = found(from)
+
+					override def shift = found.shift
+					override def apply(from :F) :JoinedRelation[J, T] = found(from)
 				}
 		}
 
@@ -684,13 +738,14 @@ object FromClause {
 
 			implicit def Get[F <: FromClause, A <: Label, N <: INT]
 			                (implicit found :Found[F, A, N] { type T[O] <: LabeledMapping[A, _, O] })
-					:Get[F, A] { type T[O] = found.T[O]; type I = N } =
+					:Get[F, A] { type T[O] = found.T[O]; type J = found.J; type I = N } =
 				new Get[F, A] {
 					override type I = N
-					override def shift = found.shift
-
 					override type T[O] = found.T[O]
-					override def apply(from :F) :JoinedRelation[F, T, ##[I]] = found(from)
+					override type J = found.J
+
+					override def shift = found.shift
+					override def apply(from :F) :JoinedRelation[J, T] = found(from)
 				}
 		}
 
@@ -713,18 +768,20 @@ object FromClause {
 				/** A unique origin type with the negative index of the relation encoded in it. */
 				type O = ##[I]
 				type T[O] = M[O]
+				type J >: F <: FromClause
 
-
-				def apply(from :F) :JoinedRelation[F, M, ##[I]]
+				def apply(from :F) :JoinedRelation[J, M]
 				def shift :I
 			}
 
 			implicit def Get[F <: FromClause, M[O] <: MappingFrom[O], N <: INT]
-			                (implicit found :Found[F, M[Any], N] { type T[O] = M[O] }) :Get[F, M] { type I = N } =
+			                (implicit found :Found[F, M[Any], N] { type T[O] = M[O] })
+					:Get[F, M] { type J = found.J; type I = N } =
 				new Get[F, M] {
 					override type I = N
-					override def apply(from :F) = found(from)
+					override type J = found.J
 					override def shift = found.shift
+					override def apply(from :F) = found(from)
 				}
 		}
 
@@ -746,11 +803,58 @@ object FromClause {
 		                    (implicit left :RowOf[L, S]) :RowOf[L With R, S ~ R[_]#Subject] =
 			new RowOf[L With R, S ~ R[_]#Subject] {
 				override def apply(join :L With R) =
-					left(join.left).asPartOf(join) ~ join.lastTable// :MappingFormula[FromClause With R, R])
+					left(join.left).stretch(join) ~ join.lastTable// :MappingFormula[FromClause With R, R])
 			}
 	}
 
 
+
+
+
+
+	type ReverseTables[F <: FromClause, R <: FromClause] = ReversedClause[F, Dual, R]
+
+	@implicitNotFound("Cannot reverse the order of mappings in the FROM clause {$F}: Either it is an incomplete type " +
+	                  "or (${A}) With (${R}) is not the result. Missing implicit for ReversedClause[${F}, ${A}, ${R}].")
+	class ReversedClause[F <: FromClause, A <: FromClause, R <: FromClause]
+
+	object ReversedClause {
+		private[this] val instance = new ReversedClause[Dual, Dual, Dual]
+
+		implicit def reversedEnd[A <: FromClause] :ReversedClause[Dual, A, A] = instance.asInstanceOf[ReversedClause[Dual, A, A]]
+
+		def reversed[F <: FromClause, T[O] <: MappingFrom[O], A <: FromClause, R <: FromClause]
+		            (implicit reversed :ReversedClause[F, A With T, R]) :ReversedClause[F With T, A, R] =
+			reversed.asInstanceOf[ReversedClause[F With T, A, R]]
+	}
+
+
+
+
+
+
+	abstract class FromExtension { suffix =>
+		type F[P <: FromClause] <: FromClause
+		def extension[P <: FromClause] :P ExtendedBy F[P]
+
+		def stretch[T[O] <: MappingFrom[O]] :FromExtension { type F[P <: FromClause] = suffix.F[P With T] } =
+			new FromExtension {
+				override type F[P <: FromClause] = suffix.F[P With T]
+
+				override def extension[P <: FromClause] =
+					suffix.extension[P With T].stretchFront
+			}
+	}
+
+	object FromExtension {
+		def apply[R[O] <: MappingFrom[O]] :FromExtension { type F[P <: FromClause] = P With R } =
+			new FromExtension {
+				override type F[P <: FromClause] = P With R
+
+				override def extension[P <: FromClause] = implicitly[P ExtendedBy (P With R)]
+			}
+
+	}
 
 
 
@@ -762,15 +866,20 @@ object FromClause {
 	  * extension and is not to be treated as a generalized subtyping hierarchy.
 	  */
 	@implicitNotFound("FromClause ${F} is not a prefix of the clause ${S} (ignoring join kinds).")
-	class ExtendedBy[F <: FromClause, -S <: FromClause] private(private[sql] val length :Int) extends AnyVal {
-		def apply[T[O] <: MappingFrom[O], A](table :JoinedRelation[F, T, A]) :JoinedRelation[S, T, A] =
-			table.asInstanceOf[JoinedRelation[S, T, A]]
+	class ExtendedBy[F <: FromClause, -S <: FromClause] private (val length :Int) extends AnyVal {
 
-		 def apply[E[-R <: FromClause , X] <: SQLFormula[R, X], T](expression :E[F, T]) :E[S, T] =
-			expression.asInstanceOf[E[S, T]]
+		def stretch[R[O] <: MappingFrom[O]] :F ExtendedBy (S With R) = new ExtendedBy(length + 1)
 
-		def apply[T <: Chain](expression :ChainTuple[F, T]) :ChainTuple[S, T] =
-			expression.asInstanceOf[ChainTuple[S, T]]
+		def stretchFront[L <: FromClause, R[O] <: MappingFrom[O]](implicit front :F <:< (L With R)) :L ExtendedBy S =
+			new ExtendedBy(length + 1)
+//		def apply[T[O] <: MappingFrom[O]](table :JoinedRelation[F, T]) :JoinedRelation[S, T] =
+//			table.asInstanceOf[JoinedRelation[S, T]]
+//
+//		 def apply[E[-R <: FromClause , X] <: SQLFormula[R, X], T](expression :E[F, T]) :E[S, T] =
+//			expression.asInstanceOf[E[S, T]]
+//
+//		def apply[T <: Chain](expression :ChainTuple[F, T]) :ChainTuple[S, T] =
+//			expression.asInstanceOf[ChainTuple[S, T]]
 //		def apply[T](expression :SQLFormula[F, T]) :SQLFormula[S, T] =
 //			expression.asInstanceOf[SQLFormula[S, T]]
 //
@@ -783,10 +892,13 @@ object FromClause {
 
 		implicit def itself[F <: FromClause] :ExtendedBy[F, F] = instance.asInstanceOf[F ExtendedBy F]
 
-		implicit def join[S <: FromClause, L <: FromClause, R[A] <: MappingFrom[A]]
-		                 (implicit ev :S ExtendedBy L) :ExtendedBy[S, L With R] =
+		implicit def extend[S <: FromClause, L <: FromClause, R[A] <: MappingFrom[A]]
+		                 (implicit ev :S ExtendedBy L) :S ExtendedBy (L With R) =
 			new ExtendedBy(ev.length + 1)
 	}
+
+
+
 
 
 
@@ -796,3 +908,5 @@ object FromClause {
 
 
 }
+
+

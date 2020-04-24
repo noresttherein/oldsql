@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.LogicalFormula.AND.{ANDMatcher, CaseAND}
 import net.noresttherein.oldsql.sql.LogicalFormula.NOT.{CaseNOT, NOTMatcher}
 import net.noresttherein.oldsql.sql.LogicalFormula.OR.{CaseOR, ORMatcher}
@@ -40,6 +41,9 @@ object LogicalFormula {
 
 		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = //todo: casts are bad
 			NOT(mapper(formula).asInstanceOf[BooleanFormula[S]])
+
+		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :BooleanFormula[S] =
+			NOT(formula.stretch[U, S])
 	}
 
 
@@ -97,6 +101,9 @@ object LogicalFormula {
 		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = //todo: casting is bad
 			new AND(parts.map(mapper(_).asInstanceOf[BooleanFormula[S]]))
 
+
+		override def stretch[U <: F, S <: FromClause](implicit ev :ExtendedBy[U, S]) :BooleanFormula[S] =
+			AND(parts.map(_.stretch[U, S]))
 
 		override def toString :String = parts.reverse.mkString("(", " and ", ")")
 	}
@@ -166,6 +173,10 @@ object LogicalFormula {
 
 		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = //todo: casts are bad!
 			new OR(parts.map(mapper(_).asInstanceOf[BooleanFormula[S]]))
+
+
+		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :BooleanFormula[S] =
+			OR(parts.map(_.stretch[U, S]))
 
 		override def toString :String = parts.reverse.mkString("(", ") or (", ")")
 	}

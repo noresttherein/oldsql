@@ -5,9 +5,9 @@ import net.noresttherein.oldsql.morsels.Origin.##
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.schema.RowSource
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
-import net.noresttherein.oldsql.sql.FromClause.JoinedTables
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation
-import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyRelationIn
+import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
@@ -46,7 +46,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 	extends FromClause
 {
 	val left :L
-	val table :JoinedRelation[FromClause With R, R, _]
+	val table :LastRelation[R]
 	protected[this] val joinCondition :BooleanFormula[L With R]
 
 
@@ -65,10 +65,10 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 
 
 	override type LastMapping[O] = R[O]
-	override type LastTable[-F <: FromClause] = JoinedRelation[F, R, _]
+	override type LastTable[F <: FromClause] = JoinedRelation[F, R]
 
 	override type FromLast = FromClause With R
-	override def lastTable :JoinedRelation[FromClause With R, R, _] = table
+	override def lastTable :JoinedRelation[FromClause With R, R] = table
 
 	def right :RowSource[R] = lastTable.source
 
@@ -82,11 +82,11 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 
 	override type Row = left.Row ~ table.Subject
 
-	override def row :ChainTuple[this.type, Row] = //todo:
-		left.row.asInstanceOf[ChainTuple[this.type, left.Row]] ~ table.upcast
+	override def row[E <: FromClause](extension :Generalized ExtendedBy E) :ChainTuple[E, Row] =
+		left.row(extension.stretchFront[left.Generalized, R]) ~ table.upcast.stretch(extension)
 
-	override def tableStack :LazyList[AnyRelationIn[this.type]] =
-		table #:: left.tableStack.asInstanceOf[LazyList[AnyRelationIn[this.type]]]
+	override def tableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]] =
+		table.extend(stretch) #:: left.tableStack(stretch.stretchFront[left.Generalized, R])
 
 
 
@@ -94,7 +94,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 	  * and a following mapping `T`, and the formula for the mapping `T`, being the last relation in the join,
 	  * and returning the join condition for the two relations as a `BooleanFormula` for the join clause. */
 	override type JoinFilter[T[O] <: MappingFrom[O]] =
-		(JoinedRelation[FromClause With R With T, R, ##[-2]], JoinedRelation[FromClause With T, T, ##[-1]])
+		(JoinedRelation[FromClause With R With T, R], JoinedRelation[FromClause With T, T])
 			=> BooleanFormula[FromClause With R With T]
 
 
@@ -113,8 +113,8 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 	def on(condition :left.JoinFilter[R]) :JoinRight[left.This] = left.filterJoined(condition, this)
 
 
-	def whereLast(filter :JoinedRelation[FromClause With R, R, ##[-1]] => BooleanFormula[FromClause With R]) :This =
-		copy(joinCondition && filter(table.asInstanceOf[JoinedRelation[FromClause With R, R, ##[-1]]])) //todo: cast...
+	def whereLast(filter :JoinedRelation[FromClause With R, R] => BooleanFormula[FromClause With R]) :This =
+		copy(joinCondition && filter(table))
 
 	def where[F >: L <: FromClause](filter :JoinedTables[F With R] => BooleanFormula[F With R]) :This =
 		copy(joinCondition && filter(new JoinedTables[F With R](this)))

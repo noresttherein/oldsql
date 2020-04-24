@@ -3,10 +3,12 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.sql.AutoConversionFormula.PromotionConversion.{CasePromotion, PromotionMatcher}
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
 
 
@@ -104,6 +106,14 @@ object AutoConversionFormula {
 
 		override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[U] = matcher.promotion(this)
 
+
+		override def stretch[M[O] <: MappingFrom[O]] :SQLFormula[F With M, U] =
+			new PromotionConversion[F With M, T, U](expr.stretch[M])
+
+		override def stretch[G <: F, S <: FromClause](implicit ev :G ExtendedBy S) :SQLFormula[S, U] =
+			new PromotionConversion[S, T, U](expr.stretch[G, S])
+
+
 		override def name :String = lift.toString
 
 		override def sameAs(that :Formula[_]) :Boolean = that match {
@@ -153,6 +163,12 @@ object AutoConversionFormula {
 		extends PromotionConversion[F, T, U](expr) with ColumnFormula[F, U]
 	{
 		override def readForm :ColumnReadForm[U] = expr.readForm.mapNull(convert) //todo: NullValue?
+
+		override def stretch[M[O] <: MappingFrom[O]] :ColumnFormula[F With M, U] =
+			new ColumnPromotionConversion[F With M, T, U](expr.stretch[M])
+
+		override def stretch[G <: F, S <: FromClause](implicit ev :G ExtendedBy S) :ColumnFormula[S, U] =
+			new ColumnPromotionConversion[S, T, U](expr.stretch[G, S])
 
 	}
 

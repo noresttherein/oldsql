@@ -3,10 +3,10 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{Mapping, RowSource, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, MappingFrom, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.sql.FromClause.{As, JoinedTables, SubselectFrom}
+import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, JoinedTables, SubselectFrom}
 import net.noresttherein.oldsql.sql.InnerJoin.AnyInnerJoin
 import net.noresttherein.oldsql.sql.ProperJoin.AnyProperJoin
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation
@@ -32,7 +32,7 @@ trait Join[+L <: FromClause, R[O] <: MappingFrom[O]] extends With[L, R] { self =
 	def copy[F <: FromClause, T[O] <: MappingFrom[O]]
 	        (left :F, right :RowSource[T], filter: BooleanFormula[F With T]) :F LikeJoin T
 
-	def copy[T[O] <: MappingFrom[O]](right :LastRelation[T, _], filter :BooleanFormula[L With T]) :JoinLeft[T]
+	def copy[T[O] <: MappingFrom[O]](right :LastRelation[T], filter :BooleanFormula[L With T]) :JoinLeft[T]
 
 
 	type LikeJoin[+F <: FromClause, T[O] <: MappingFrom[O]] <: (F Join T) {
@@ -52,9 +52,8 @@ trait Join[+L <: FromClause, R[O] <: MappingFrom[O]] extends With[L, R] { self =
 	  * @return a new join isomorphic with this instance, but with a new last table (not equal to this.last).
 	  */
 	def as[A <: Label](alias :A) :L LikeJoin (R As A)#T = {
-		val aliased = (alias @: table.mapping.asInstanceOf[TypedMapping[Any, Any]]).asInstanceOf[A @: R[Any]]
 		val source = FromClause.AliasedSource[R, A](table.source, alias)
-		copy(LastRelation[(R As A)#T, Any](source, aliased, table.index), ???) //todo
+		copy(LastRelation[(R As A)#T](source), ???) //todo: filter on label
 	}
 
 
@@ -119,12 +118,11 @@ sealed trait ProperJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends Join[L
 
 	override type SubselectRow = left.SubselectRow ~ table.Subject //R[table.Origin]#Subject
 
-	override def subselectRow :ChainTuple[this.type, SubselectRow] = //todo:
-		left.subselectRow.asInstanceOf[ChainTuple[this.type, left.SubselectRow]] ~ table.upcast
+	override def subselectRow[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow] =
+		left.subselectRow(stretch.stretchFront[left.Generalized, R]) ~ table.upcast.stretch(stretch)
 
-	override def subselectTableStack :LazyList[AnyRelationIn[this.type]] =
-		table #:: left.subselectTableStack.asInstanceOf[LazyList[AnyRelationIn[this.type]]]
-
+	override def subselectTableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]] =
+		table.extend(stretch) #:: left.subselectTableStack(stretch.stretchFront[left.Generalized, R])
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[AnyProperJoin]
@@ -189,7 +187,7 @@ sealed trait InnerJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends ProperJ
 	                 (left :F, right :RowSource[T], filter :BooleanFormula[F With T]) :F InnerJoin T =
 		left match {
 			case Dual() => From(right, filter.asInstanceOf[BooleanFormula[Dual With T]]).asInstanceOf[F InnerJoin T]
-			case _ => InnerJoin(left, LastRelation(right, left.size), filter)
+			case _ => InnerJoin(left, LastRelation(right), filter)
 		}
 
 
@@ -212,17 +210,17 @@ object InnerJoin {
 	  */
 	def apply[L[O] <: MappingFrom[O], R[O] <: MappingFrom[O]]
 	         (left :RowSource[L], right :RowSource[R]) :From[L] InnerJoin R =
-		apply(From[L](left), LastRelation[R, Any](right, 1))
+		apply(From[L](left), LastRelation[R](right))
 
 	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L InnerJoin R =
-		apply(left, LastRelation[R, Any](right, 1))
+		apply(left, LastRelation[R](right))
 
 	private[sql] def apply[L <: FromClause, R[O] <: MappingFrom[O]]
 	                      (left :L, right :RowSource[R], filter :BooleanFormula[L With R]) :L InnerJoin R =
-		apply(left, LastRelation[R, Any](right, 1), filter)
+		apply(left, LastRelation[R](right), filter)
 
 	private[sql] def apply[L <: FromClause, R[O] <: MappingFrom[O]]
-	                      (prefix :L, next :LastRelation[R, _], filter :BooleanFormula[L With R] = True()) :L InnerJoin R =
+	                      (prefix :L, next :LastRelation[R], filter :BooleanFormula[L With R] = True()) :L InnerJoin R =
 		prefix match {
 			case Dual => From(next, filter.asInstanceOf[BooleanFormula[Dual With R]]).asInstanceOf[L InnerJoin R]
 			case _ => newJoin(prefix, next)(filter)
@@ -230,7 +228,7 @@ object InnerJoin {
 
 
 
-	private def newJoin[R[O] <: MappingFrom[O]](prefix :FromClause, next :LastRelation[R, _])
+	private def newJoin[R[O] <: MappingFrom[O]](prefix :FromClause, next :LastRelation[R])
 	                                           (filter :BooleanFormula[prefix.type With R])
 			:InnerJoin[prefix.type, R] =
 		new CrossJoin[prefix.type, R] {
@@ -245,7 +243,7 @@ object InnerJoin {
 				newJoin(left, table)(filter)
 
 			override def copy[T[O] <: MappingFrom[O]]
-			                 (right :LastRelation[T, _], filter :BooleanFormula[left.type With T])
+			                 (right :LastRelation[T], filter :BooleanFormula[left.type With T])
 					:(left.type with left.This) InnerJoin T =
 				newJoin(left, right)(filter)
 
@@ -284,11 +282,11 @@ sealed trait LeftJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends ProperJo
 	override type This >: this.type <: L LeftJoin R
 
 	override def copy[F <: FromClause](left :F, filter :BooleanFormula[F With R]) :F LeftJoin R =
-		LeftJoin(left, LastRelation(table.source, left.size), filter)
+		LeftJoin(left, LastRelation(table.source), filter)
 
 	override def copy[F <: FromClause, T[O] <: MappingFrom[O]]
 	                 (left :F, right :RowSource[T], filter :BooleanFormula[F With T]) :F LeftJoin T =
-		LeftJoin(left, LastRelation(right, left.size), filter)
+		LeftJoin(left, LastRelation(right), filter)
 
 
 
@@ -308,14 +306,14 @@ object LeftJoin {
 	  */
 	def apply[L[O] <: MappingFrom[O], R[O] <: MappingFrom[O]]
 	         (left :RowSource[L], right :RowSource[R]) :From[L] LeftJoin R =
-		apply(From[L](left), LastRelation[R, Any](right, 1))
+		apply(From[L](left), LastRelation[R](right))
 
 	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L LeftJoin R =
-		apply(left, LastRelation(right, left.size))
+		apply(left, LastRelation(right))
 
 
-	private[sql] def apply[L <: FromClause, R[A] <: MappingFrom[A], O]
-	                      (prefix :L, next :LastRelation[R, O], filter :BooleanFormula[L With R] = True()) :L LeftJoin R =
+	private[sql] def apply[L <: FromClause, R[A] <: MappingFrom[A]]
+	                      (prefix :L, next :LastRelation[R], filter :BooleanFormula[L With R] = True()) :L LeftJoin R =
 		new LeftJoin[L, R] {
 			override val left = prefix
 			override val table = next
@@ -328,7 +326,7 @@ object LeftJoin {
 				LeftJoin(left :left.type, table, filter)
 
 			override def copy[T[A] <: MappingFrom[A]]
-			                 (right :LastRelation[T, _], filter :BooleanFormula[L With T]) :JoinLeft[T] =
+			                 (right :LastRelation[T], filter :BooleanFormula[L With T]) :JoinLeft[T] =
 				LeftJoin(left :left.type, right, filter)
 
 
@@ -366,11 +364,11 @@ sealed trait RightJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends ProperJ
 
 
 	override def copy[F <: FromClause](left :F, filter :BooleanFormula[F With R]) :F RightJoin R =
-		RightJoin(left, LastRelation(right, left.size), filter)
+		RightJoin(left, LastRelation(right), filter)
 
 	override def copy[F <: FromClause, T[O] <: MappingFrom[O]]
 	                 (left :F, right :RowSource[T], filter :BooleanFormula[F With T]) :F RightJoin T =
-		RightJoin(left, LastRelation(right, left.size), filter)
+		RightJoin(left, LastRelation(right), filter)
 
 
 	protected override def joinType = "right join"
@@ -389,15 +387,15 @@ object RightJoin {
 	  */
 	def apply[L[O] <: MappingFrom[O], R[O] <: MappingFrom[O]]
 	         (left :RowSource[L], right :RowSource[R]) :From[L] RightJoin R =
-		RightJoin(From(left), LastRelation(right, 1), True())
+		RightJoin(From(left), LastRelation(right), True())
 
 	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L RightJoin R =
-		RightJoin(left, LastRelation(right, left.size), True())
+		RightJoin(left, LastRelation(right), True())
 
 
 
 	private[sql] def apply[L <: FromClause, R[O] <: MappingFrom[O]]
-	                      (prefix :L, next :LastRelation[R, _], filter :BooleanFormula[L With R]) :L RightJoin R =
+	                      (prefix :L, next :LastRelation[R], filter :BooleanFormula[L With R]) :L RightJoin R =
 		new RightJoin[L, R] {
 			override val left = prefix
 			override val table = next
@@ -410,7 +408,7 @@ object RightJoin {
 				RightJoin(left, table, filter)
 
 			override def copy[T[O] <: MappingFrom[O]]
-			                 (right :LastRelation[T, _], filter :BooleanFormula[L With T]) :JoinLeft[T] =
+			                 (right :LastRelation[T], filter :BooleanFormula[L With T]) :JoinLeft[T] =
 				RightJoin(left, right, filter)
 
 		}
@@ -444,7 +442,7 @@ object RightJoin {
   * in larger clauses like `From[Children] Join Daemons`.
   */
 final class From[T[O] <: MappingFrom[O]] protected
-          (override val table :JoinedRelation[FromClause With T, T, _],
+          (override val table :JoinedRelation[FromClause With T, T],
            override protected[this] val joinCondition :BooleanFormula[Dual With T] = True())
 	extends InnerJoin[Dual, T]
 {
@@ -452,7 +450,7 @@ final class From[T[O] <: MappingFrom[O]] protected
 
 	protected override def copy(filter :BooleanFormula[Dual With T]) :From[T] = new From(table, filter)
 
-	override def copy[M[O] <: MappingFrom[O]](right :LastRelation[M, _], filter :BooleanFormula[Dual With M]) :From[M] =
+	override def copy[M[O] <: MappingFrom[O]](right :LastRelation[M], filter :BooleanFormula[Dual With M]) :From[M] =
 		new From(right)
 
 
@@ -487,13 +485,13 @@ final class From[T[O] <: MappingFrom[O]] protected
 object From {
 
 	def apply[M[O] <: MappingFrom[O]](source :RowSource[M]) :From[M] =
-		new From(LastRelation[M, Any](source, 0))
+		new From(LastRelation[M](source))
 
 	private[sql] def apply[M[O] <: MappingFrom[O]](source :RowSource[M], filter: BooleanFormula[Dual With M]) :From[M] =
-		new From(LastRelation(source, 0), filter)
+		new From(LastRelation(source), filter)
 
 	private[sql] def apply[M[O] <: MappingFrom[O]]
-	                      (table :JoinedRelation[FromClause With M, M, _], filter :BooleanFormula[Dual With M]) :From[M] =
+	                      (table :JoinedRelation[FromClause With M, M], filter :BooleanFormula[Dual With M]) :From[M] =
 		new From(table, filter)
 
 

@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLCondition.Comparison.{CaseComparison, ComparisonMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.Equality.{CaseEquality, EqualityMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.Inequality.InequalityMatcher
@@ -105,6 +106,10 @@ object SQLCondition {
 		override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :SQLFormula[S, Boolean] =
 			new OrderComparison(ordering, mapper(left), symbol, mapper(right))
 
+
+		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :OrderComparison[S, T] =
+			OrderComparison[S, T](ordering, left.stretch[U, S], symbol, right.stretch[U, S])
+
 		override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[Boolean] = matcher.order(this)
 	}
 
@@ -147,6 +152,8 @@ object SQLCondition {
 
 		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = Equality(mapper(left), mapper(right))
 
+		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :Equality[S, T] =
+			Equality(left.stretch[U, S], right.stretch[U, S])
 	}
 
 
@@ -180,6 +187,8 @@ object SQLCondition {
 
 		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = Inequality(mapper(left), mapper(right))
 
+		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :Inequality[S, T] =
+			Inequality[S, T](left.stretch[U, S], right.stretch[U, S])
 	}
 
 

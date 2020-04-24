@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SubselectFrom}
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyRelationIn
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -38,13 +38,24 @@ class Dual private (val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	override def row :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
+	override def row[E <: FromClause](stretch :Dual ExtendedBy E) :ChainTuple[E, @~] =
+		ChainTuple.EmptyChain
+
 	override def tableStack :LazyList[AnyRelationIn[Dual]] = LazyList.empty
+
+	override def tableStack[E <: FromClause](stretch :Dual ExtendedBy E) :LazyList[AnyRelationIn[E]] = LazyList.empty
 
 	override type SubselectRow = @~
 
 	override def subselectRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
+	override def subselectRow[E <: FromClause](stretch :Dual ExtendedBy E) :ChainTuple[E, @~] =
+		ChainTuple.EmptyChain
+
 	override def subselectTableStack :LazyList[AnyRelationIn[Dual]] = LazyList.empty
+
+	override def subselectTableStack[E <: FromClause](stretch :Dual ExtendedBy E) :LazyList[AnyRelationIn[E]] =
+		LazyList.empty
 
 	override def size = 0
 

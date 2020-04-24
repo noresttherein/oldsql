@@ -112,13 +112,16 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 	def opt :SQLFormula[F, Option[V]] = OrNull(this)
 
 	//todo: rename to stretch
+
+	def stretch[T[O] <: MappingFrom[O]] :SQLFormula[F With T, V] = stretch[F, F With T]
+
 	/** Treat this expression as an expression of a source extending (i.e. containing additional tables) the source `F`
 	  * this expression is grounded in. */
-	def asPartOf[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :SQLFormula[S, V] = ev(this)
+	def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :SQLFormula[S, V]
 
 	/** Treat this expression as an expression of a source extending (i.e. containing additional tables) the source `F`
 	  * this expression is grounded in */
-	def asPartOf[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] = ev(this)
+	def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] = stretch[U, S]
 
 	/** If this expression is a ground formula - not dependent on `F` or free parameters -
 	  * which value can be determined at this point, return its value. */
@@ -181,8 +184,8 @@ object SQLFormula {
 	class SQLFormulaExtension[E[-S <: FromClause, X] <: SQLFormula[S, X], F <: FromClause, T](private val self :E[F, T])
 		extends AnyVal
 	{
-		//		@inline def asPartOf[S <: FromClause](implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
-		//		@inline def asPartOf[S <: FromClause](from :S)(implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
+		//		@inline def stretch[S <: FromClause](implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
+		//		@inline def stretch[S <: FromClause](from :S)(implicit extension :F ExtendedBy S) :E[S, T] = extension(self)
 	}
 
 
@@ -194,7 +197,7 @@ object SQLFormula {
 
 	implicit def asPartOfExtendingSource[F <: FromClause, FF <: FromClause, T]
 	                                    (expression :SQLFormula[F, T])(implicit ev :F ExtendedBy FF) :SQLFormula[FF, T] =
-		ev(expression)
+		expression.stretch[F, FF]
 
 
 
@@ -217,12 +220,15 @@ object SQLFormula {
 
 		override def opt :ColumnFormula[F, Option[V]] = OrNull(this)
 
-		override def asPartOf[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnFormula[S, V] =
-			ev(this)
+		override def stretch[M[O] <: MappingFrom[O]] :ColumnFormula[F With M, V] = stretch[F, F With M]
 
-		override def asPartOf[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V] =
-			ev(this)
+		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnFormula[S, V]
+
+		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V] =
+			stretch[U, S]
 	}
+
+
 
 
 

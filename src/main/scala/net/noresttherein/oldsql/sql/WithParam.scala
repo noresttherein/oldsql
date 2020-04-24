@@ -6,10 +6,10 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.support.{EmptyMapping, FormMapping}
 import net.noresttherein.oldsql.schema.{ColumnForm, ComponentExtractor, GenericMapping, Mapping, RootMapping, RowSource, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, MappingFrom, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.FromClause.SubselectFrom
+import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, SubselectFrom}
 import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
@@ -49,11 +49,13 @@ sealed trait WithParam[+F <: FromClause, X] extends With[F, ParamSource[X]#Row] 
 
 	override type SubselectRow = left.SubselectRow ~ X
 
-	override def subselectRow :ChainTuple[this.type, SubselectRow] = //todo:
-		left.subselectRow.asInstanceOf[ChainTuple[this.type, left.SubselectRow]] ~ table.upcast
+	override def subselectRow[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow] =
+		left.subselectRow(stretch.stretchFront[left.Generalized, ParamSource[X]#Row]) ~ table.upcast.stretch(stretch)
 
-	override def subselectTableStack :LazyList[AnyRelationIn[this.type]] =
-		table #:: left.subselectTableStack.asInstanceOf[LazyList[AnyRelationIn[this.type]]]
+	override def subselectTableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]] =
+		table.extend(stretch) #:: left.subselectTableStack(stretch.stretchFront[left.Generalized, ParamSource[X]#Row])
+
+
 
 	protected override def joinType :String = "with"
 
@@ -68,30 +70,33 @@ object WithParam {
 
 	type <=[L <: FromClause, X] = WithParam[L, X]
 
+	type ?:[N <: Label, X] = { type P[O] = ParamSource[X]#Row[O] }
+
+
 
 	def apply[F <: FromClause, X](from :F, source :ParamSource[X]) :F WithParam X =
-		WithParam[F, X](from, LastRelation(source, from.size), True())
+		WithParam[F, X](from, LastRelation(source), True())
 
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
 	trait ParamFactory[X] extends Any {
 		def apply[F <: FromClause](from :F)(implicit form :SQLForm[X]) :F WithParam X =
-			WithParam(from, LastRelation(ParamSource[X](), from.size), True())
+			WithParam(from, LastRelation(ParamSource[X]()), True())
 
 		def apply[F <: FromClause](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
-			WithParam(from, LastRelation(ParamSource[X](name), from.size), True())
+			WithParam(from, LastRelation(ParamSource[X](name)), True())
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T])(implicit form :SQLForm[X]) :From[T] WithParam X =
-			WithParam(From(from), LastRelation(ParamSource[X](), 1), True())
+			WithParam(From(from), LastRelation(ParamSource[X]()), True())
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T], name :String)(implicit form :SQLForm[X]) :From[T] WithParam X =
-			WithParam(From(from), LastRelation(ParamSource[X](name), 1), True())
+			WithParam(From(from), LastRelation(ParamSource[X](name)), True())
 	}
 
 
 
 	private[sql] def apply[L <: FromClause, X]
-	                      (from :L, param :LastRelation[ParamSource[X]#Row, _],
+	                      (from :L, param :LastRelation[ParamSource[X]#Row],
 	                       filter :BooleanFormula[L With ParamSource[X]#Row]) :L WithParam X =
 		new WithParam[L, X] {
 			override val left = from

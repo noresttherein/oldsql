@@ -4,6 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyJoinedRelation
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, Formula, FormulaMatcher}
@@ -29,7 +30,15 @@ trait SQLTerm[T] extends SQLFormula[FromClause, T] {
 
 	override def isGroundedIn(tables: Iterable[AnyJoinedRelation]): Boolean = freeValue.isDefined
 
+
+
 //	override def get(values :RowValues[FromClause]) :Option[T] = freeValue
+	override def stretch[M[O] <: MappingFrom[O]] :SQLTerm[T] = this
+
+	override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :SQLTerm[T] = this
+
+	override def stretch[U <: FromClause, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLTerm[T] = this
+
 }
 
 
@@ -38,7 +47,6 @@ trait SQLTerm[T] extends SQLFormula[FromClause, T] {
 
 
 abstract class MultiColumnTerms {
-
 
 	implicit class TermFormulas[T :SQLForm](val term :T) {
 		def ? = BoundParameter(term)
@@ -54,6 +62,15 @@ object SQLTerm extends MultiColumnTerms {
 	trait ColumnTerm[T] extends SQLTerm[T] with ColumnFormula[FromClause, T] {
 		override def readForm :ColumnReadForm[T]
 		override def writeForm :ColumnWriteForm[Unit]
+
+		override def stretch[M[O] <: MappingFrom[O]] :ColumnTerm[T] = this
+
+		override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnTerm[T] =
+			this
+
+		override def stretch[U <: FromClause, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnTerm[T] =
+			this
+
 	}
 
 
@@ -127,6 +144,7 @@ object SQLTerm extends MultiColumnTerms {
 			case other :ColumnLiteral[_] if other canEqual this => other.value == value && other.readForm == readForm
 			case _ => false
 		}
+
 	}
 
 

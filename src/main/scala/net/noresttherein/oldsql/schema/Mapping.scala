@@ -14,6 +14,8 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingFrame
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql.FromClause
+import net.noresttherein.oldsql.sql.FromClause.TableCount
 import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent
 
 import scala.annotation.implicitNotFound
@@ -590,10 +592,14 @@ object Mapping {
 
 
 
-	implicit def mappingSQLFormula[M[A] <: MappingFrom[A], O, I <: Rank[N], N <: INT]
-	                              (mapping :M[O])(implicit nudge :Conforms[O, _ <: Rank[N], Rank[N]], value :ValueOf[N]) :FreeComponent[M, O] =
-		new FreeComponent(mapping, valueOf[N])
-
+//	implicit def mappingSQLFormula[M[A] <: MappingFrom[A], O, I <: Rank[N], N <: INT]
+//	                              (mapping :M[O])(implicit nudge :Conforms[O, _ <: Rank[N], Rank[N]], value :ValueOf[N]) :FreeComponent[M, O] =
+//		new FreeComponent(mapping, valueOf[N])
+	implicit def mappingSQLFormula[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[X, A], X, N <: INT]
+                                  (mapping :C)
+                                  (implicit conforms :Conforms[C, M[F], TypedMapping[X, F]], offset :TableCount[F, N])
+			:FreeComponent[F, M, X] =
+		new FreeComponent[F, M, X](mapping, offset.count - 1)
 
 
 	/** Adds a right-associative method `@:` to any `Mapping` with well defined `Origin` and `Subject` types,

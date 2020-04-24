@@ -4,6 +4,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.RowSource
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
@@ -36,7 +37,7 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 
 	override def copy[L <: FromClause, R[O] <: MappingFrom[O]]
 	                 (left :L, right :RowSource[R], filter :BooleanFormula[L With R]) :L Subselect R =
-		Subselect(left, LastRelation(right, size), filter)
+		Subselect(left, LastRelation(right), filter)
 
 	override def copy[C <: FromClause](left :C, filter :BooleanFormula[C With T]) :JoinRight[C] =
 		Subselect(left, table, filter)
@@ -52,11 +53,11 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 
 	override type SubselectRow = @~ ~ table.Subject
 
-	override def subselectRow :ChainTuple[this.type, SubselectRow] =
-		ChainTuple.EmptyChain ~ table.upcast
+	override def subselectRow[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, @~ ~ table.Subject] =
+		ChainTuple.EmptyChain ~ table.upcast.stretch(stretch)
 
-	override def subselectTableStack :LazyList[AnyRelationIn[this.type]] =
-		table #:: LazyList.empty
+	override def subselectTableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]] =
+		table.extend(stretch) #:: LazyList.empty
 
 
 
@@ -72,17 +73,17 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 object Subselect {
 	def apply[L[O] <: MappingFrom[O], R[O] <: MappingFrom[O]]
 	         (left :RowSource[L], right :RowSource[R]) :From[L] Subselect R =
-		Subselect(From(left), LastRelation(right, 1), True())
+		Subselect(From(left), LastRelation(right), True())
 
 	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L Subselect R =
-		Subselect(left, LastRelation(right, left.size), True())
+		Subselect(left, LastRelation(right), True())
 
 //	private[sql] def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L Subselect R =
 //		new SubselectClause[L, R](left, LastRelation(right, left.size))
 
 
 	private[sql] def apply[L <: FromClause, R[O] <: MappingFrom[O]]
-	                      (prefix :L, next :JoinedRelation[FromClause With R, R, _], filter :BooleanFormula[L With R]) :L Subselect R =
+	                      (prefix :L, next :JoinedRelation[FromClause With R, R], filter :BooleanFormula[L With R]) :L Subselect R =
 		new Subselect[L, R] {
 			override val left = prefix
 			override val table = next
@@ -96,7 +97,7 @@ object Subselect {
 
 
 			override def copy[T[O] <: MappingFrom[O]]
-			                 (right :LastRelation[T, _], filter :BooleanFormula[L With T]) :L Subselect T =
+			                 (right :LastRelation[T], filter :BooleanFormula[L With T]) :L Subselect T =
 				Subselect(left, right, filter)
 
 		}
