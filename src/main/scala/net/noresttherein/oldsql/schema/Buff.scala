@@ -594,7 +594,8 @@ object Buff {
 		override def bimap[X](there :T => X, back :X => T) :ValuedBuff[X] = buffType(there(value))
 
 		override def equals(that: Any): Boolean = that match {
-			case o :ConstantBuff[_] => (o eq this) || o.canEqual(this) && o.value==value && o.buffType == buffType
+			case self :AnyRef if self eq this => true
+			case o :ConstantBuff[_] if o.canEqual(this) => o.value == value && o.buffType == buffType
 			case _ => false
 		}
 

@@ -99,7 +99,7 @@ import scala.annotation.implicitNotFound
   * @see [[MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
-trait Mapping {
+sealed trait Mapping {
 	/** The mapped entity type. */
 	type Subject
 
@@ -776,6 +776,39 @@ object Mapping {
 	type ConcreteSubclass[M <: Mapping] = M {
 		type Origin = M#Origin
 		type Subject = M#Subject
+	}
+
+
+
+
+
+
+	/** Skeletal base trait for mappings enclosing another mapping `egg`. It is the root of the hierarchy of various
+	  * proxies, adapters and mapped mappings.
+	  */
+	trait MappingNest[+M <: Mapping] extends Mapping { this :Mapping =>
+		protected val egg :M
+
+		override def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case proxy :MappingNest[_] => canEqual(proxy) && proxy.canEqual(this) && egg == proxy.egg
+			case _ => false
+		}
+
+		override def hashCode :Int = egg.hashCode
+
+
+		override def sqlName :Option[String] = egg.sqlName
+
+		override def toString :String = egg.toString
+	}
+
+
+
+	trait OpenNest[+M <: Mapping] extends MappingNest[M] { this :Mapping =>
+		override val egg :M
 	}
 
 

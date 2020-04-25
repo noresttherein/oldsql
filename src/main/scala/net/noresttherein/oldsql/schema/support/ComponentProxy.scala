@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Mapping.{MappingOf, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingNest, MappingOf, TypedMapping}
 import net.noresttherein.oldsql.schema.{Buff, ComponentExtractor, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}

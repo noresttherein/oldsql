@@ -2,45 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
-import net.noresttherein.oldsql.schema.support.MappingNest.OpenNest
-
-
-
-/** Skeletal base trait for mappings enclosing another mapping `egg`. It is the root of the hierarchy of various
-  * proxies, adapters and mapped mappings.
-  */
-trait MappingNest[+M <: Mapping] extends Mapping { this :Mapping =>
-	protected val egg :M
-
-	override def canEqual(that :Any) :Boolean = that.getClass == getClass
-
-	override def equals(that :Any) :Boolean = that match {
-		case self :AnyRef if self eq this => true
-		case proxy :MappingNest[_] => canEqual(proxy) && proxy.canEqual(this) && egg == proxy.egg
-		case _ => false
-	}
-
-	override def hashCode :Int = egg.hashCode
-
-
-	override def sqlName :Option[String] = egg.sqlName
-
-	override def toString :String = egg.toString
-}
-
-
-
-
-
-
-object MappingNest {
-
-	trait OpenNest[+M <: Mapping] extends MappingNest[M] { this :Mapping =>
-		override val egg :M
-	}
-
-}
-
+import net.noresttherein.oldsql.schema.Mapping.{MappingNest, OpenNest}
 
 
 
