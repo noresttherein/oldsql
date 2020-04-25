@@ -42,13 +42,10 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.Subselect]]
   * @see [[net.noresttherein.oldsql.sql.WithParam]]
   */
-trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
-	extends FromClause
-{
+trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =>
 	val left :L
 	val table :LastRelation[R]
 	protected[this] val joinCondition :BooleanFormula[L With R]
-
 
 	protected def copy(filter :BooleanFormula[L With R]) :This
 
@@ -56,6 +53,8 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 
 
 	type JoinRight[+F <: FromClause] <: F With R
+
+	protected def self :JoinRight[left.type]
 
 	override type This >: this.type <: L With R
 
@@ -110,18 +109,21 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] //protected
 	  *         returned by the passed filter function.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#JoinFilter]]
 	  */
-	def on(condition :left.JoinFilter[R]) :JoinRight[left.This] = left.filterJoined(condition, this)
+	def on(condition :left.JoinFilter[R]) :JoinRight[left.This] = {
+		val joinFilter = condition(left.lastTable.extend[R], table)
+		val grounded = SQLScribe.groundFreeComponents[left.type With R, Boolean](self)(joinFilter)
+		copy[left.type](left, joinCondition && grounded)
+	}
 
 
-	def whereLast(filter :JoinedRelation[FromClause With R, R] => BooleanFormula[FromClause With R]) :This =
-		copy(joinCondition && filter(table))
+	def whereLast(condition :JoinedRelation[FromClause With R, R] => BooleanFormula[FromClause With R]) :This =
+		copy(joinCondition && SQLScribe.groundFreeComponents(this)(condition(table)))
 
-	def where[F >: L <: FromClause](filter :JoinedTables[F With R] => BooleanFormula[F With R]) :This =
-		copy(joinCondition && filter(new JoinedTables[F With R](this)))
 
-//	protected override def filter(condition :BooleanFormula[Generalized]) :This =
-//		copy(joinCondition && condition)
-
+	def where[F >: L <: FromClause](condition :JoinedTables[F With R] => BooleanFormula[F With R]) :This = {
+		val cond = condition(new JoinedTables[F With R](this))
+		copy(joinCondition && SQLScribe.groundFreeComponents(this)(cond))
+	}
 
 
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
@@ -175,5 +177,6 @@ object With {
 
 
 	type AnyWith = With[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
+
 
 }

@@ -46,5 +46,8 @@ object Origin {
 	}
 
 	def unique :Unique = new Unique {}
+
+
+
 }
 

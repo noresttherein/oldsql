@@ -6,15 +6,21 @@ import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.LogicalFormula.AND.{ANDMatcher, CaseAND}
 import net.noresttherein.oldsql.sql.LogicalFormula.NOT.{CaseNOT, NOTMatcher}
 import net.noresttherein.oldsql.sql.LogicalFormula.OR.{CaseOR, ORMatcher}
-import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, CompositeFormula, FormulaMatcher}
+import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, CompositeColumnFormula, CompositeFormula, FormulaMatcher}
+import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.sql.SQLTerm.{False, True}
 
 
 
 /** Base trait for SQL formulas implementing Boolean algebra. */
-trait LogicalFormula[-F <: FromClause] extends CompositeFormula[F, Boolean] with BooleanFormula[F] {
+trait LogicalFormula[-F <: FromClause] extends CompositeColumnFormula[F, Boolean] {
 	override def readForm :ColumnReadForm[Boolean] = ColumnForm[Boolean]
+
+
+	override def applyTo[Y[X]](matcher :FormulaMatcher[F, Y]) :Y[Boolean] =
+		applyTo(matcher :ColumnFormulaMatcher[F, Y])
+
 }
 
 
@@ -37,10 +43,9 @@ object LogicalFormula {
 			formula
 
 
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Boolean] = matcher.not(this)
+		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.not(this)
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = //todo: casts are bad
-			NOT(mapper(formula).asInstanceOf[BooleanFormula[S]])
+		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = NOT(mapper(formula))
 
 		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :BooleanFormula[S] =
 			NOT(formula.stretch[U, S])
@@ -50,7 +55,7 @@ object LogicalFormula {
 
 	object NOT {
 		trait NOTMatcher[+F <: FromClause, +Y[X]] {
-			def not(f :NOT[F]) :Y[Boolean]
+			def not(e :NOT[F]) :Y[Boolean]
 		}
 
 		type MatchNOT[+F <: FromClause, +Y[X]] = NOTMatcher[F, Y]
@@ -96,10 +101,9 @@ object LogicalFormula {
 
 
 
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Boolean] = matcher.and(this)
+		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.and(this)
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = //todo: casting is bad
-			new AND(parts.map(mapper(_).asInstanceOf[BooleanFormula[S]]))
+		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = new AND(parts.map(mapper(_)))
 
 
 		override def stretch[U <: F, S <: FromClause](implicit ev :ExtendedBy[U, S]) :BooleanFormula[S] =
@@ -122,7 +126,7 @@ object LogicalFormula {
 
 
 		trait ANDMatcher[+F <: FromClause, +Y[X]] {
-			def and(f :AND[F]) :Y[Boolean]
+			def and(e :AND[F]) :Y[Boolean]
 		}
 
 		type MatchAND[+F <: FromClause, +Y[X]] = ANDMatcher[F, Y]
@@ -169,10 +173,9 @@ object LogicalFormula {
 
 
 
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Boolean] = matcher.or(this)
+		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.or(this)
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = //todo: casts are bad!
-			new OR(parts.map(mapper(_).asInstanceOf[BooleanFormula[S]]))
+		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = new OR(parts.map(mapper(_)))
 
 
 		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :BooleanFormula[S] =
@@ -188,7 +191,7 @@ object LogicalFormula {
 		def apply[F <: FromClause](conditions :BooleanFormula[F]*) :OR[F] = new OR(conditions.toList.reverse)
 
 		trait ORMatcher[+F <: FromClause, +Y[X]] {
-			def or(f :OR[F]) :Y[Boolean]
+			def or(e :OR[F]) :Y[Boolean]
 		}
 
 		type MatchOR[+F <: FromClause, +Y[X]] = ORMatcher[F, Y]
@@ -207,13 +210,13 @@ object LogicalFormula {
 	trait MatchLogical[+F <: FromClause, +Y[X]] extends CaseNOT[F, Y] with CaseAND[F, Y] with CaseOR[F, Y]
 
 	trait CaseLogical[+F <: FromClause, +Y[X]] extends LogicalMatcher[F, Y] with MatchLogical[F, Y] {
-		def logical(f :LogicalFormula[F]) :Y[Boolean]
+		def logical(e :LogicalFormula[F]) :Y[Boolean]
 
-		override def not(f :NOT[F]) :Y[Boolean] = logical(f)
+		override def not(e :NOT[F]) :Y[Boolean] = logical(e)
 
-		override def and(f :AND[F]) :Y[Boolean] = logical(f)
+		override def and(e :AND[F]) :Y[Boolean] = logical(e)
 
-		override def or(f :OR[F]) :Y[Boolean] = logical(f)
+		override def or(e :OR[F]) :Y[Boolean] = logical(e)
 
 	}
 

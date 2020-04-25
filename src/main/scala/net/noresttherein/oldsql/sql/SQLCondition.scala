@@ -7,15 +7,15 @@ import net.noresttherein.oldsql.sql.SQLCondition.Comparison.{CaseComparison, Com
 import net.noresttherein.oldsql.sql.SQLCondition.Equality.{CaseEquality, EqualityMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.Inequality.InequalityMatcher
 import net.noresttherein.oldsql.sql.SQLCondition.OrderComparison.OrderComparisonMatcher
-import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeFormula, Formula, FormulaMatcher}
-import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
+import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CompositeColumnFormula, CompositeFormula}
+import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher
 
 
 
 
 
 
-trait SQLCondition[-F <: FromClause] extends CompositeFormula[F, Boolean] with ColumnFormula[F, Boolean] {
+trait SQLCondition[-F <: FromClause] extends CompositeColumnFormula[F, Boolean] {
 	override def readForm :ColumnReadForm[Boolean] = ColumnForm[Boolean]
 }
 
@@ -73,13 +73,13 @@ object SQLCondition {
 		type MatchComparison[+F <: FromClause, +Y[X]] = ComparisonMatcher[F, Y]
 
 		trait CaseComparison[+F <: FromClause, +Y[X]] extends MatchComparison[F, Y] {
-			def comparison[X](f :Comparison[F, X]) :Y[Boolean]
+			def comparison[X](e :Comparison[F, X]) :Y[Boolean]
 
-			override def order[X](f :OrderComparison[F, X]) :Y[Boolean] = comparison(f)
+			override def order[X](e :OrderComparison[F, X]) :Y[Boolean] = comparison(e)
 
-			override def equality[X](f :Equality[F, X]) :Y[Boolean] = comparison(f)
+			override def equality[X](e :Equality[F, X]) :Y[Boolean] = comparison(e)
 
-			override def inequality[X](f :Inequality[F, X]) :Y[Boolean] = comparison(f)
+			override def inequality[X](e :Inequality[F, X]) :Y[Boolean] = comparison(e)
 		}
 
 	}
@@ -103,14 +103,16 @@ object SQLCondition {
 					case _ => symbol == GT || symbol == GTE || symbol == NEQ
 				}
 
-		override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :SQLFormula[S, Boolean] =
+
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :BooleanFormula[S] =
 			new OrderComparison(ordering, mapper(left), symbol, mapper(right))
 
 
+		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] =
+			matcher.order(this)
+
 		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :OrderComparison[S, T] =
 			OrderComparison[S, T](ordering, left.stretch[U, S], symbol, right.stretch[U, S])
-
-		override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[Boolean] = matcher.order(this)
 	}
 
 
@@ -121,7 +123,7 @@ object SQLCondition {
 			new OrderComparison(ordering, left, symbol, right)
 
 		trait OrderComparisonMatcher[+F <: FromClause, +Y[X]] {
-			def order[X](f :OrderComparison[F, X]) :Y[Boolean]
+			def order[X](e :OrderComparison[F, X]) :Y[Boolean]
 		}
 
 		type MatchOrderComparison[+F <: FromClause, +Y[X]] = OrderComparisonMatcher[F, Y]
@@ -148,9 +150,9 @@ object SQLCondition {
 
 
 
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Boolean] = matcher.equality(this)
+		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = Equality(mapper(left), mapper(right))
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = Equality(mapper(left), mapper(right))
+		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.equality(this)
 
 		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :Equality[S, T] =
 			Equality(left.stretch[U, S], right.stretch[U, S])
@@ -160,7 +162,7 @@ object SQLCondition {
 
 	object Equality {
 		trait EqualityMatcher[+F <: FromClause, +Y[X]] {
-			def equality[X](f :Equality[F, X]) :Y[Boolean]
+			def equality[X](e :Equality[F, X]) :Y[Boolean]
 		}
 
 		type MatchEquality[+F <: FromClause, +Y[X]] = EqualityMatcher[F, Y]
@@ -183,9 +185,9 @@ object SQLCondition {
 
 
 
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Boolean] = matcher.inequality(this)
+		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = Inequality(mapper(left), mapper(right))
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = Inequality(mapper(left), mapper(right))
+		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.inequality(this)
 
 		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :Inequality[S, T] =
 			Inequality[S, T](left.stretch[U, S], right.stretch[U, S])
@@ -195,7 +197,7 @@ object SQLCondition {
 
 	object Inequality {
 		trait InequalityMatcher[+F <: FromClause, +Y[X]] {
-			def inequality[X](f :Inequality[F, X]) :Y[Boolean]
+			def inequality[X](e :Inequality[F, X]) :Y[Boolean]
 		}
 
 		type MatchInequality[+F <: FromClause, +Y[X]] = InequalityMatcher[F, Y]

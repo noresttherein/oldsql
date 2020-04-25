@@ -599,7 +599,11 @@ object Mapping {
                                   (mapping :C)
                                   (implicit conforms :Conforms[C, M[F], TypedMapping[X, F]], offset :TableCount[F, N])
 			:FreeComponent[F, M, X] =
-		new FreeComponent[F, M, X](mapping, offset.count - 1)
+		if (offset.count <= 0)
+			throw new IllegalArgumentException(
+				s"Can't convert mapping $mapping to a SQL formula as its Origin type has zero tables.")
+		else
+			new FreeComponent[F, M, X](mapping, offset.count - 1)
 
 
 	/** Adds a right-associative method `@:` to any `Mapping` with well defined `Origin` and `Subject` types,
@@ -744,14 +748,13 @@ object Mapping {
 	  * origin type to another may require more
 	  */
 	type MappingFrom[O] = Mapping { type Origin = O }
+
 	/** Narrowing of the `Mapping` trait to subtypes which define the `Subject` type as `S` and `Origin` as `O`. */
 	type TypedMapping[S, O] = Mapping { type Origin = O; type Subject = S }
+
 	type ConcreteMapping[O] = TypedMapping[_, O]
 
-//	type MappingKind[O] = m[O] forSome { type m[A] <: MappingFrom[A] }
-
-//	type MappingFrom[O] = { type T[S] = TypedMapping[S, O] }
-//	type MappingOf[S] = { type T[O] = TypedMapping[S, O] }
+	type MappingSubject[S] = { type M[O] = TypedMapping[S, O] }
 
 
 

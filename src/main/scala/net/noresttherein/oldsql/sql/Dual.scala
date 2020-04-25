@@ -10,6 +10,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 
 
+
 /** An empty ''from'' clause, serving both as a base for SQL expressions not needing any input tables
   * (like 'SELECT _ FROM DUAL' in Oracle) and an initial element for `With` lists
   * (any chain of `With` classes starts by joining with `Dual`).
@@ -24,15 +25,18 @@ class Dual private (val filteredBy :BooleanFormula[Dual]) extends FromClause {
 	override type This = Dual
 
 	override def lastTable :Nothing = throw new NoSuchElementException("Dual.lastTable")
-//	override def last[M[O] <: MappingFrom[O]] :Nothing = throw new NoSuchElementException("Dual.lastTable")
+
 
 	override type Generalized = Dual
 
 	override def generalized :Dual = this
 
+
 	override type Outer = FromClause
 
 	override def outer :Dual = this //throw new NoSuchElementException(s"No outer source for Dual")
+
+
 
 	override type Row = @~
 
@@ -44,6 +48,8 @@ class Dual private (val filteredBy :BooleanFormula[Dual]) extends FromClause {
 	override def tableStack :LazyList[AnyRelationIn[Dual]] = LazyList.empty
 
 	override def tableStack[E <: FromClause](stretch :Dual ExtendedBy E) :LazyList[AnyRelationIn[E]] = LazyList.empty
+
+
 
 	override type SubselectRow = @~
 
@@ -57,13 +63,11 @@ class Dual private (val filteredBy :BooleanFormula[Dual]) extends FromClause {
 	override def subselectTableStack[E <: FromClause](stretch :Dual ExtendedBy E) :LazyList[AnyRelationIn[E]] =
 		LazyList.empty
 
+
+
 	override def size = 0
 
 	override type JoinFilter[T[O] <: MappingFrom[O]] = Nothing
-
-
-//	protected override def filter[U >: Dual <: FromClause](condition :BooleanFormula[U]) :Dual =
-//		if (condition == True()) this else new Dual(condition)
 
 
 

@@ -78,26 +78,25 @@ object Subselect {
 	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L Subselect R =
 		Subselect(left, LastRelation(right), True())
 
-//	private[sql] def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L Subselect R =
-//		new SubselectClause[L, R](left, LastRelation(right, left.size))
-
 
 	private[sql] def apply[L <: FromClause, R[O] <: MappingFrom[O]]
 	                      (prefix :L, next :JoinedRelation[FromClause With R, R], filter :BooleanFormula[L With R]) :L Subselect R =
-		new Subselect[L, R] {
+		new Subselect[prefix.type, R] {
 			override val left = prefix
 			override val table = next
 			override val joinCondition = filter
 
-			override type JoinLeft[T[A] <: MappingFrom[A]] = L Subselect T
-			override type This = L Subselect R
+			override type JoinLeft[T[A] <: MappingFrom[A]] = left.type Subselect T
+			override type This = left.type Subselect R
 
-			override def copy(filter :BooleanFormula[L With R]) :This =
+			override def self :left.type Subselect R = this
+
+			override def copy(filter :BooleanFormula[left.type With R]) :This =
 				Subselect(left, table, filter)
 
 
 			override def copy[T[O] <: MappingFrom[O]]
-			                 (right :LastRelation[T], filter :BooleanFormula[L With T]) :L Subselect T =
+			                 (right :LastRelation[T], filter :BooleanFormula[left.type With T]) :left.type Subselect T =
 				Subselect(left, right, filter)
 
 		}

@@ -4,12 +4,15 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeFormula, Formula, FormulaMatcher}
+import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeColumnFormula, CompositeFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.sql.AutoConversionFormula.ColumnPromotionConversion.ColumnPromotionMatcher
 import net.noresttherein.oldsql.sql.AutoConversionFormula.PromotionConversion.{CasePromotion, PromotionMatcher}
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
+import net.noresttherein.oldsql.sql.SQLScribe.ColumnScribe
 
 
 
@@ -31,7 +34,7 @@ trait AutoConversionFormula[-F <: FromClause, S, T] extends CompositeFormula[F, 
 
 
 
-	override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[T] = matcher.conversion(this)
+	override def applyTo[Y[X]](matcher: FormulaMatcher[F, Y]): Y[T] = matcher.conversion(this)
 
 
 
@@ -72,26 +75,12 @@ trait AutoConversionFormula[-F <: FromClause, S, T] extends CompositeFormula[F, 
 
 object AutoConversionFormula {
 
-	//	def apply[F <: FromClause, X, Y](f :SQLFormula[F, X])(map :X=>Y) :AutoConversionFormula[F, X, Y] =
-	//		new CustomConversionFormula(f, map)
-
-
-
-	/*
-		case class OrNull[-F <: FromClause, T](expr :SQLFormula[F, T]) extends AutoConversionFormula[F, T, Option[T]] {
-
-			override def convert(s: T): Option[T] = Option(s)
-
-			override def name = "Option"
-
-			override def map[S <: FromClause](mapper: SQLRewriter[F, S]) = OrNull(mapper(expr))
-		}
-	*/
 	def OrNull[F <: FromClause, T](expr :SQLFormula[F, T]) :SQLFormula[F, Option[T]] =
 		PromotionConversion(expr, Lift.option[T])
 
 	def OrNull[F <: FromClause, T](expr :ColumnFormula[F, T]) :ColumnFormula[F, Option[T]] =
 		new ColumnPromotionConversion[F, T, Option[T]](expr)
+
 
 
 	class PromotionConversion[-F <: FromClause, T, U] protected[AutoConversionFormula]
@@ -100,11 +89,11 @@ object AutoConversionFormula {
 	{
 		override def convert(s :T) :U = lift(s)
 
-		override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :SQLFormula[S, U] =
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :SQLFormula[S, U] =
 			new PromotionConversion(mapper(expr))
 
 
-		override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[U] = matcher.promotion(this)
+		override def applyTo[Y[X]](matcher :FormulaMatcher[F, Y]) :Y[U] = matcher.promotion(this)
 
 
 		override def stretch[M[O] <: MappingFrom[O]] :SQLFormula[F With M, U] =
@@ -145,13 +134,17 @@ object AutoConversionFormula {
 
 
 
-		trait PromotionMatcher[+F <: FromClause, +Y[X]] {
-			def promotion[T, U](promotion :PromotionConversion[F, T, U]) :Y[U]
+		trait PromotionMatcher[+F <: FromClause, +Y[X]] extends ColumnPromotionMatcher[F, Y] {
+			def promotion[T, U](e :PromotionConversion[F, T, U]) :Y[U]
+//			override def promotion[T, U](e :ColumnPromotionConversion[F, T, U]) :Y[U]
 		}
 
 		type MatchPromotion[+F <: FromClause, +Y[X]] = PromotionMatcher[F, Y]
 
-		type CasePromotion[+F <: FromClause, +Y[X]] = PromotionMatcher[F, Y]
+		trait CasePromotion[+F <: FromClause, +Y[X]] extends PromotionMatcher[F, Y] {
+			override def promotion[T, U](e :ColumnPromotionConversion[F, T, U]) :Y[U] =
+				promotion(e :PromotionConversion[F, T, U])
+		}
 
 
 	}
@@ -160,9 +153,14 @@ object AutoConversionFormula {
 
 	class ColumnPromotionConversion[-F <: FromClause, T, U] private[AutoConversionFormula]
 			(override val expr :ColumnFormula[F, T])(implicit lift :Lift[T, U])
-		extends PromotionConversion[F, T, U](expr) with ColumnFormula[F, U]
+		extends PromotionConversion[F, T, U](expr) with CompositeColumnFormula[F, U]
 	{
 		override def readForm :ColumnReadForm[U] = expr.readForm.mapNull(convert) //todo: NullValue?
+
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, U] =
+			new ColumnPromotionConversion(mapper(expr))
+
+		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[U] = matcher.promotion(this)
 
 		override def stretch[M[O] <: MappingFrom[O]] :ColumnFormula[F With M, U] =
 			new ColumnPromotionConversion[F With M, T, U](expr.stretch[M])
@@ -172,6 +170,17 @@ object AutoConversionFormula {
 
 	}
 
+
+
+	object ColumnPromotionConversion {
+		trait ColumnPromotionMatcher[+F <: FromClause, +Y[X]] {
+			def promotion[T, U](e :ColumnPromotionConversion[F, T, U]) :Y[U]
+		}
+
+		type MatchColumnPromotion[+F <: FromClause, +Y[X]] = ColumnPromotionMatcher[F, Y]
+
+		type CaseColumnPromotion[+F <: FromClause, +Y[X]] = ColumnPromotionMatcher[F, Y]
+	}
 	/*
 		case class CustomConversionFormula[-F <: FromClause, X, Y](expr :SQLFormula[F, X], map :X=>Y)
 			extends AutoConversionFormula[F, X, Y]
@@ -193,16 +202,16 @@ object AutoConversionFormula {
 	trait ConversionMatcher[+F <: FromClause, +Y[X]]
 		extends PromotionMatcher[F, Y] //with SingleRowMatcher[F, Y] with MultipleRowsMatcher[F, Y]
 	{
-		def conversion[Z, X](f :AutoConversionFormula[F, Z, X]) :Y[X]
+		def conversion[Z, X](e :AutoConversionFormula[F, Z, X]) :Y[X]
 	}
 
 	trait MatchConversion[+F <: FromClause, +Y[X]]
 		extends ConversionMatcher[F, Y] with CasePromotion[F, Y] //with CaseRow[F, Y] with CaseRows[F, Y]
 
 	trait CaseConversion[+F <: FromClause, +Y[X]] extends MatchConversion[F, Y] {
-		def conversion[Z, X](f :AutoConversionFormula[F, Z, X]) :Y[X]
+		def conversion[Z, X](e :AutoConversionFormula[F, Z, X]) :Y[X]
 
-		override def promotion[T, U](promotion :PromotionConversion[F, T, U]) :Y[U] = conversion(promotion)
+		override def promotion[T, U](e :PromotionConversion[F, T, U]) :Y[U] = conversion(e)
 
 //		override def row[X](f :SelectAsRow[F, X]) :Y[X] = conversion(f)
 //

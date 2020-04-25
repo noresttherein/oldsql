@@ -70,9 +70,9 @@ object SQLTuple {
 
 
 
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Seq[T]] = matcher.seq(this)
+		override def applyTo[Y[X]](matcher: FormulaMatcher[F, Y]): Y[Seq[T]] = matcher.seq(this)
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]) =
+		override def map[S <: FromClause](mapper: SQLScribe[F, S]) =
 			SeqTuple(inOrder.map(mapper(_)))
 
 		override def stretch[U <: F, S <: FromClause](implicit ev :ExtendedBy[U, S]) =
@@ -92,7 +92,7 @@ object SQLTuple {
 
 
 		trait SeqMatcher[+F <: FromClause, +Y[X]] {
-			def seq[X](f :SeqTuple[F, X]) :Y[Seq[X]]
+			def seq[X](e :SeqTuple[F, X]) :Y[Seq[X]]
 		}
 
 		type MatchSeq[+F <: FromClause, +Y[X]] = SeqMatcher[F, Y]
@@ -119,9 +119,9 @@ object SQLTuple {
 
 		def toSeq :Seq[SQLFormula[F, _]] = parts
 
-		override def applyTo[Y[+X]](matcher :FormulaMatcher[F, Y]) :Y[T] = matcher.chain(this)
+		override def applyTo[Y[X]](matcher :FormulaMatcher[F, Y]) :Y[T] = matcher.chain(this)
 
-		override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :ChainTuple[S, T]
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T]
 
 
 		override def stretch[M[O] <: MappingFrom[O]] :ChainTuple[F With M, T] =
@@ -142,7 +142,7 @@ object SQLTuple {
 	object ChainTuple {
 
 		trait ChainMatcher[+F <: FromClause, +Y[X]] {
-			def chain[X <: Chain](f :ChainTuple[F, X]) :Y[X]
+			def chain[X <: Chain](e :ChainTuple[F, X]) :Y[X]
 		}
 
 		type CaseChain[+F <: FromClause, +Y[X]] = ChainMatcher[F, Y]
@@ -151,7 +151,7 @@ object SQLTuple {
 			def chainHead[T <: Chain, H](tail :ChainTuple[F, T], head :SQLFormula[F, H]) :Y[T ~ H]
 			def emptyChain :Y[@~]
 
-			override def chain[X <: Chain](f :ChainTuple[F, X]) :Y[X] = (f match {
+			override def chain[X <: Chain](e :ChainTuple[F, X]) :Y[X] = (e match {
 				case ChainHead(tail, head) => chainHead(tail, head)
 				case _ => emptyChain
 			}).asInstanceOf[Y[X]]
@@ -172,7 +172,7 @@ object SQLTuple {
 			override def freeValue :Option[T ~ H] =
 				for (t <- init.freeValue; h <- last.freeValue) yield t ~ h
 
-			override def map[S <: FromClause](mapper :SQLRewriter[F, S]) :ChainTuple[S, T ~ H] =
+			override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T ~ H] =
 				init.map(mapper) ~ mapper(last)
 
 			override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T ~ H] =
@@ -190,7 +190,7 @@ object SQLTuple {
 
 			override val freeValue :Option[@~] = Some(@~)
 
-			override def map[S <: FromClause](mapper :SQLRewriter[FromClause, S]) :ChainTuple[S, @~] = this
+			override def map[S <: FromClause](mapper :SQLScribe[FromClause, S]) :ChainTuple[S, @~] = this
 
 			override def stretch[M[O] <: MappingFrom[O]] = this
 
@@ -210,11 +210,11 @@ object SQLTuple {
 
 
 	trait CaseTuple[+F <: FromClause, +Y[X]] extends TupleMatcher[F, Y] with MatchTuple[F, Y] {
-		def tuple[X](f: SQLTuple[F, X]): Y[X]
+		def tuple[X](e: SQLTuple[F, X]): Y[X]
 
-		override def chain[X <: Chain](f :ChainTuple[F, X]) :Y[X] = tuple(f)
+		override def chain[X <: Chain](e :ChainTuple[F, X]) :Y[X] = tuple(e)
 
-		override def seq[X](f: SeqTuple[F, X]): Y[Seq[X]] = tuple(f)
+		override def seq[X](e: SeqTuple[F, X]): Y[Seq[X]] = tuple(e)
 
 	}
 

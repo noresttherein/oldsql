@@ -98,20 +98,23 @@ object WithParam {
 	private[sql] def apply[L <: FromClause, X]
 	                      (from :L, param :LastRelation[ParamSource[X]#Row],
 	                       filter :BooleanFormula[L With ParamSource[X]#Row]) :L WithParam X =
-		new WithParam[L, X] {
+		new WithParam[from.type, X] {
 			override val left = from
 			override val table = param
 			override val joinCondition = filter
 
-			override type This = L WithParam X
+			override type This = left.type WithParam X
+			override def self :left.type WithParam X = this
 
 			override def copy[F <: FromClause](left :F, filter :BooleanFormula[Super[F, X]]) :F WithParam X =
 				WithParam(left, table, filter)
 
-			override def copy(filter :BooleanFormula[L With ParamSource[X]#Row]) :This =
-				WithParam[L, X](left, table, filter) //todo:
+			override def copy(filter :BooleanFormula[left.type With ParamSource[X]#Row]) :This =
+				WithParam[left.type, X](left, table, filter)
 
 		}
+
+
 
 	private type Super[+F <: FromClause, X] = F With ParamSource[X]#Row
 

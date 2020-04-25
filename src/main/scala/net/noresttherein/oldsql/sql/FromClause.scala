@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.{bits, GenericMapping, Mapping, RowSource
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
-import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.bits.{ChainMapping, LabeledMapping}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.FromClause.GetTableByIndex.GetTableByNegativeIndex
@@ -77,6 +77,7 @@ trait FromClause {
 	  */
 	type LastTable[F <: FromClause] <: JoinedRelation[F, LastMapping]
 
+	/** The supertype of this instance containing only the last relation mapping joined with `FromClause` or `Dual`. */
 	type FromLast >: this.type <: FromClause
 
 	/** Last relation in this clause when treated as a list, if any. */
@@ -192,10 +193,6 @@ trait FromClause {
 	type JoinFilter[T[O] <: MappingFrom[O]] <:
 		(JoinedRelation[FromLast With T, LastMapping], JoinedRelation[FromClause With T, T])
 			=> BooleanFormula[FromLast With T]
-
-	private[sql] def filterJoined[T[O] <: MappingFrom[O]](filter :JoinFilter[T], next :FromClause With T)
-			:next.JoinRight[This] =
-		next.copy[This](this, filter(lastTable.extend[T], next.lastTable))
 
 
 
@@ -329,7 +326,6 @@ object FromClause {
 		@inline def tables :JoinedTables[F] = new JoinedTables[F](self)
 
 		@inline def formulas :JoinedRelations[F] = new JoinedRelations[F](self)
-//		def row(implicit row :RowOf[F, F#Row]) :ChainTuple[F, F#Row] = row(self)
 
 
 
@@ -343,12 +339,22 @@ object FromClause {
 		                (table :T[A])(implicit alias :OriginProjection[T[A], A, T[Any], Any]) :F InnerJoin T =
 			join(RowSource(table))
 
+		@inline def join[C <: FromClause, R <: FromClause]
+		                (other :C)(implicit joined :JoinAll.FirstInner.JoinClauses[F, C, R]) :R =
+			joined(self, other)
+
+
 
 		@inline def leftJoin[T[O] <: MappingFrom[O]](table :RowSource[T]) :F LeftJoin T = LeftJoin(self, table)
 
 		@inline def leftJoin[T[O] <: MappingFrom[O], A]
 		                    (table :T[A])(implicit alias :OriginProjection[T[A], A, T[Any], Any]) :F LeftJoin T =
 			LeftJoin(self, RowSource(table))
+
+		@inline def leftJoin[C <: FromClause, R <: FromClause]
+		                    (other :C)(implicit joined :JoinAll.FirstLeft.JoinClauses[F, C, R]) :R =
+			joined(self, other)
+
 
 
 		@inline def rightJoin[T[O] <: MappingFrom[O]](table :RowSource[T]) :F RightJoin T = RightJoin(self, table)
@@ -357,12 +363,22 @@ object FromClause {
 		                     (table :T[A])(implicit alias :OriginProjection[T[A], A, T[Any], Any]) :F RightJoin T =
 			RightJoin(self, RowSource(table))
 
+		@inline def rightJoin[C <: FromClause, R <: FromClause]
+		                     (other :C)(implicit joined :JoinAll.FirstInner.JoinClauses[F, C, R]) :R =
+			joined(self, other)
+
+
 
 		@inline def outerJoin[T[O] <: MappingFrom[O]](table :RowSource[T]) :F LeftJoin T = LeftJoin(self, table)
 
 		@inline def outerJoin[T[O] <: MappingFrom[O], A]
 		                     (table :T[A])(implicit alias :OriginProjection[T[A], A, T[Any], Any]) :F LeftJoin T =
 			LeftJoin(self, RowSource(table))
+
+		@inline def outerJoin[C <: FromClause, R <: FromClause]
+		                     (other :C)(implicit joined :JoinAll.FirstLeft.JoinClauses[F, C, R]) :R =
+			joined(self, other)
+
 
 
 		@inline def subselect[T[O] <: MappingFrom[O]](table :RowSource[T]) :F Subselect T =
@@ -371,6 +387,10 @@ object FromClause {
 		@inline def subselect[T[O] <: MappingFrom[O], A]
 		                     (table :T[A])(implicit alias :OriginProjection[T[A], A, T[Any], Any]) :F Subselect T =
 			Subselect(self, RowSource(table))
+
+		@inline def subselect[C <: FromClause, R <: FromClause]
+		                     (other :C)(implicit joined :JoinAll.FirstSubselect.JoinClauses[F, C, R]) :R =
+			joined(self, other)
 
 
 
@@ -792,19 +812,56 @@ object FromClause {
 
 
 
-	@implicitNotFound("${R} is not the row type for FromClause ${F}. The most common reason is partial definition " +
-	                  "of the clause type (not starting with Dual or From)")
-	abstract class RowOf[-F <: FromClause, R <: Chain] extends (F => ChainTuple[F, R])
+	sealed abstract class JoinWithDual {
+		type Joined[F <: FromClause, S <: FromClause, R <: FromClause]
 
-	object RowOf {
-		implicit val EmptyRow :RowOf[Dual, @~] = { _ => ChainTuple.EmptyChain }
+		@inline implicit def joinDual[F <: FromClause] :Joined[F, Dual, F] = dual[F]
 
-		implicit def joinRow[L <: FromClause, R[A] <: TypedMapping[_, A], S <: Chain]
-		                    (implicit left :RowOf[L, S]) :RowOf[L With R, S ~ R[_]#Subject] =
-			new RowOf[L With R, S ~ R[_]#Subject] {
-				override def apply(join :L With R) =
-					left(join.left).stretch(join) ~ join.lastTable// :MappingFormula[FromClause With R, R])
-			}
+		protected def dual[F <: FromClause] :Joined[F, Dual, F]
+	}
+
+
+
+	class JoinAll[W[+L <: FromClause, R[O] <: MappingFrom[O]] <: Join[L, R]] private (start :Dual W MappingFrom)
+		extends JoinWithDual
+	{
+
+		type Joined[F <: FromClause, S <: FromClause, R <: FromClause] = JoinClauses[F, S, R]
+
+		@implicitNotFound("Can't join FROM clauses ${F} and ${S}. The second clause type must not be abstract. " +
+			              "Missing implicit JoinAll[${F}, ${S}, ${R}].")
+		abstract class JoinClauses[F <: FromClause, S <: FromClause, R <: FromClause] {
+			def apply(first :F, second :S) :R
+		}
+
+
+
+		protected override def dual[F <: FromClause] :JoinClauses[F, Dual, F] =
+			(first :F, _ :Dual) => first
+
+		implicit def joinFirst[L <: FromClause, R[O] <: MappingFrom[O]]
+				:JoinClauses[L, Dual With R, W[Dual, MappingFrom]#LikeJoin[L, R]] =
+			(first :L, second :Dual With R) =>
+				start.copy(first, second.right, second.condition.asInstanceOf[BooleanFormula[L With R]])
+
+		implicit def joinNext[F <: FromClause, S <: FromClause, J <: L With R, L <: FromClause, R[O] <: MappingFrom[O],
+		                      E <: FromClause]
+		                     (implicit joinLeft :JoinClauses[F, L, E], conforms :Conforms[S, J, L With R])
+				:JoinClauses[F, S, J#JoinRight[E]] =
+			(first :F, second :S) => //we can simply cast the condition as it works on any clause with J as its suffix
+				second.copy(joinLeft(first, second.left), second.condition.asInstanceOf[BooleanFormula[E With R]])
+
+	}
+
+
+
+	object JoinAll {
+		private[this] val dummy = RowSource(ChainMapping[Any] :MappingFrom[Any])
+
+		val FirstLeft = new JoinAll[LeftJoin](LeftJoin(Dual, dummy))
+		val FirstRight = new JoinAll[RightJoin](RightJoin(Dual, dummy))
+		val FirstInner = new JoinAll[InnerJoin](InnerJoin(Dual, dummy))
+		val FirstSubselect = new JoinAll[Subselect](Subselect(Dual, dummy))
 	}
 
 
@@ -899,12 +956,6 @@ object FromClause {
 
 
 
-
-
-
-	sealed trait UniqueOrigin extends Any { type T }
-
-	implicit def UniqueOrigin :UniqueOrigin = new UniqueOrigin { type T = UniqueOrigin }
 
 
 }
