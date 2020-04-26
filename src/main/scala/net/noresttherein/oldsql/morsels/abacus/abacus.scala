@@ -9,12 +9,12 @@ import scala.annotation.implicitNotFound
   */
 package object abacus {
 	/** Int literals which can be used as types and have their values obtained implicitly. */
-	type INT = Int with Singleton
+	type Numeral = Int with Singleton
 
 	/** Attests that `N + 1 == M`  */
 	@implicitNotFound("Can't add 1 to ${N}. Either the result is not ${M} or we ran out of integers, sorry. " +
 		              "You can always introduce your own as a hack fix.")
-	final class Inc[M <: INT :ValueOf, N <: INT :ValueOf] {
+	final class Inc[M <: Numeral :ValueOf, N <: Numeral :ValueOf] {
 		val m :M = valueOf[M]
 		val n :N = valueOf[N]
 	}
@@ -75,20 +75,20 @@ package object abacus {
 	/** Attests that `A + B == C`. */
 	@implicitNotFound("Can't add ${A} and ${B}. Either the result does not equal ${C} or, more likely, we ran out of numbers." +
 	                  "You can introduce your own implicit Sum[A, B, C] as a fix if the match adds up.")
-	sealed abstract class Sum[A <: INT, B <: INT, C <: INT] extends ((A, B) => C)
+	sealed abstract class Sum[A <: Numeral, B <: Numeral, C <: Numeral] extends ((A, B) => C)
 
 	object Sum {
-		private[this] val sum = new Sum[INT, INT, INT] {
-			override def apply(a :INT, b :INT) = (a + b).asInstanceOf[INT]
+		private[this] val sum = new Sum[Numeral, Numeral, Numeral] {
+			override def apply(a :Numeral, b :Numeral) = (a + b).asInstanceOf[Numeral]
 		}
 
-		private[abacus] def apply[A <: INT, B <: INT, C <: INT]() :Sum[A, B, C] = sum.asInstanceOf[Sum[A, B, C]]
+		private[abacus] def apply[A <: Numeral, B <: Numeral, C <: Numeral]() :Sum[A, B, C] = sum.asInstanceOf[Sum[A, B, C]]
 
 //		implicit val ZeroSum :Sum[0, 0, 0] = Sum[0, 0, 0]
-		implicit def plusZero[A <: INT] :Sum[A, 0, A] = Sum()
-//		implicit def zeroPlus[A <: INT] :Sum[0, A, A] = Sum[0, A, A]()
+		implicit def plusZero[A <: Numeral] :Sum[A, 0, A] = Sum()
+//		implicit def zeroPlus[A <: Numeral] :Sum[0, A, A] = Sum[0, A, A]()
 
-		implicit def induction[A <: INT, N <: INT, M <: INT, S <: INT, T <: INT]
+		implicit def induction[A <: Numeral, N <: Numeral, M <: Numeral, S <: Numeral, T <: Numeral]
 		                      (implicit sum :Sum[A, N, S], incOperand :Inc[N, M], incSum :Inc[S, T]) :Sum[A, M, T] =
 			Sum()
 

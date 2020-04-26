@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, Chain
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.abacus.{Inc, INT}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping, MappingAdapter}
@@ -134,7 +134,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 	  * @tparam T the subject type of the returned component.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema./]]
 	  */
-	def apply[I <: INT, T](idx :I)(implicit get :GetSchemaComponent[C, R, Component[T], I, T, O])
+	def apply[I <: Numeral, T](idx :I)(implicit get :GetSchemaComponent[C, R, Component[T], I, T, O])
 			:ComponentExtractor[S, T, O] =
 		get.extractor(this, idx)
 
@@ -145,7 +145,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 	  * @tparam T the subject type of the returned component.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
 	  */
-	def /[M <: Component[T], I <: INT, T](idx :I)(implicit get :GetSchemaComponent[C, R, M, I, T, O]) :M =
+	def /[M <: Component[T], I <: Numeral, T](idx :I)(implicit get :GetSchemaComponent[C, R, M, I, T, O]) :M =
 		get(this, idx)
 
 
@@ -756,7 +756,7 @@ object MappingSchema {
 
 
 	@implicitNotFound("No component ${M} <: TypedMapping[${T}, ${O}] present at index ${I} in the schema ${C}\n(with values ${R}).")
-	sealed abstract class GetSchemaComponent[-C <: Chain, R <: Chain, +M <: TypedMapping[T, O], I <: INT, T, O] {
+	sealed abstract class GetSchemaComponent[-C <: Chain, R <: Chain, +M <: TypedMapping[T, O], I <: Numeral, T, O] {
 		def apply[S](schema :MappingSchema[C, R, S, O], idx :I) :M
 		def extractor[S](schema :MappingSchema[C, R, S, O], idx :I) :ComponentExtractor[S, T, O]
 	}
@@ -770,7 +770,7 @@ object MappingSchema {
 					schema.extractor(schema.last)
 			}
 
-		implicit def last[C <: Chain, R <: Chain, M <: TypedMapping[T, O], I <: INT, J <: INT, T, O]
+		implicit def last[C <: Chain, R <: Chain, M <: TypedMapping[T, O], I <: Numeral, J <: Numeral, T, O]
 		                 (implicit inc :Inc[I, J], get :GetSchemaComponent[C, R, _, I, _, O])
 				:GetSchemaComponent[C ~ M, R ~ T, M, J, T, O] =
 			new GetSchemaComponent[C ~ M, R ~ T, M, J, T, O] {
@@ -779,7 +779,7 @@ object MappingSchema {
 					schema.extractor(schema.last)
 			}
 
-		implicit def previous[C <: Chain, R <: Chain, M <: TypedMapping[T, O], X, I <: INT, T, O]
+		implicit def previous[C <: Chain, R <: Chain, M <: TypedMapping[T, O], X, I <: Numeral, T, O]
 		                     (implicit get :GetSchemaComponent[C, R, M, I, T, O])
 				:GetSchemaComponent[C ~ TypedMapping[X, O], R ~ X, M, I, T, O] =
 			new GetSchemaComponent[C ~ TypedMapping[X, O], R ~ X, M, I, T, O] {

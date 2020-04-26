@@ -315,7 +315,7 @@ trait JDBCTypes extends SQLTypes {
 
 		protected override def read(column: Int)(res: ResultSet): Int = res.getInt(column)
 
-		override def toString = "INT"
+		override def toString = "Numeral"
 	}
 
 	implicit case object JavaIntForm extends NullableJDBCForm[JInt](INTEGER) {

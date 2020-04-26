@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.abacus.INT
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, OfFreeOrigin, OriginProjection}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, MappingLabel}
@@ -153,7 +153,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  * @tparam T the subject type of the returned component.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema./]]
 	  */
-	def apply[I <: INT, T](idx :I)(implicit get :GetSchemaComponent[C, R, Component[T], I, T, O])
+	def apply[I <: Numeral, T](idx :I)(implicit get :GetSchemaComponent[C, R, Component[T], I, T, O])
 			:ComponentExtractor[S, T, O] =
 		get.extractor(schema, idx)
 
@@ -164,7 +164,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  * @tparam T the subject type of the returned component.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
 	  */
-	def /[M <: Component[T], I <: INT, T](idx :I)(implicit get :GetSchemaComponent[C, R, M, I, T, O]) :M =
+	def /[M <: Component[T], I <: Numeral, T](idx :I)(implicit get :GetSchemaComponent[C, R, M, I, T, O]) :M =
 		get(schema, idx)
 
 

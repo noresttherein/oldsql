@@ -1,7 +1,7 @@
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Origin.Rank
-import net.noresttherein.oldsql.morsels.abacus.INT
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, Mapping, MappingSchema}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaComponent

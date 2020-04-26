@@ -44,7 +44,6 @@ trait EmptyMapping[S, O] extends GenericMapping[S, O] {
 
 
 
-
 class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
 	private[this] val result = Some(subject)
 
@@ -56,6 +55,9 @@ class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
 
 	override def toString :String = "Const(" + subject + ")"
 }
+
+
+
 
 
 

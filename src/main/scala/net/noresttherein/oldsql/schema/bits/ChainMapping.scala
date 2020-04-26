@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.abacus.INT
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping}
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ComponentExtractor, MappingSchema, SchemaMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedMappingSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatMappingSchema, MappedMappingSchema, NonEmptySchema, SchemaFlattening}
@@ -97,12 +97,12 @@ object ChainMapping {
 			super./[M, N, T](label)
 
 
-		override def apply[I <: INT, T]
+		override def apply[I <: Numeral, T]
 		                  (idx :I)(implicit get :GetSchemaComponent[C, R, Component[T], I, T, O])
 				:ComponentExtractor[R, T, O] =
 			super.apply[I, T](idx)
 
-		override def /[M <: Component[T], I <: INT, T]
+		override def /[M <: Component[T], I <: Numeral, T]
 		              (idx :I)(implicit get :MappingSchema.GetSchemaComponent[C, R, M, I, T, O]) :M =
 			super./[M, I, T](idx)
 

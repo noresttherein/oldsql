@@ -69,7 +69,8 @@ object ComponentProxy {
 
 
 
-		override def assemble(pieces :Pieces) :Option[S] = egg.optionally(pieces.compatible[egg.type](egg))
+		override def assemble(pieces :Pieces) :Option[S] = //use egg.assemble, not optionally to bypass any existing
+			egg.assemble(pieces.compatible[egg.type](egg)) //buffs, using those from the proxy
 
 
 		override def toString :String = "->" + egg
@@ -140,7 +141,8 @@ object ComponentProxy {
 
 
 
-		override def assemble(pieces :Pieces) :Option[S] = egg.optionally(pieces.asInstanceOf[egg.Pieces])
+		override def assemble(pieces :Pieces) :Option[S] = //use egg.assemble to bypass buffs on the egg
+			egg.assemble(pieces.asInstanceOf[egg.Pieces]) //and use only those on the proxy
 
 
 		override def toString :String = "->>" + egg

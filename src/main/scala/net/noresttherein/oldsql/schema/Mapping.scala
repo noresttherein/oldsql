@@ -3,8 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.morsels.abacus.INT
-import net.noresttherein.oldsql.morsels.Origin.Rank
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
@@ -389,7 +388,7 @@ sealed trait Mapping {
 
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
 	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
-	  * `NullValue.value` will b;;e returned.
+	  * `NullValue.value` will be returned.
 	  */
 	def map[X](there :Subject => X, back :X => Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
 		MappedMapping[this.type, Subject, X, Origin](this, there, back)
@@ -429,7 +428,7 @@ sealed trait Mapping {
 					res ++= column.debugString
 					true
 				case _ =>
-					res ++= "\n" ++= ident ++= mapping.toString //print basic mappping info
+					res ++= "\n" ++= ident ++= mapping.toString //print basic mapping info
 					if (mapping.buffs.nonEmpty) { //print (buffs)
 						res ++= "("
 						mapping.buffs.foreach(res ++= _.toString ++= ", ")
@@ -532,8 +531,6 @@ trait GenericMapping[S, O] extends Mapping { self =>
 			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
 		}
 
-	//fixme: a huge issue here: buffs can cascade, but it generally will be the original implementation (without buffs)
-	//fixme: which will be used for assembly. What are we going to do about it?
 	override def optionally(pieces: Pieces): Option[S] = //todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
 		pieces.result(this) map { res => (res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) } } orElse
 			OptionalSelect.Value(this) orElse ExtraSelect.Value(this)
@@ -559,6 +556,9 @@ trait GenericMapping[S, O] extends Mapping { self =>
 
 
 
+
+
+
 /** A `Mapping` subclass which, in its `optionally` (and indirectly `apply`) method, declares aliasing
   * of its components on the passed `Pieces`. Some mappings (and possibly their components) allow
   * declaring a column prefix to be added to all its columns, as well as additional buffs, which should be inherited
@@ -573,9 +573,6 @@ trait RootMapping[S, O] extends GenericMapping[S, O] {
 	override def optionally(pieces :Pieces) :Option[S] =
 		super.optionally(pieces.aliased { c => apply[c.Subject](c).export })
 
-	//todo:
-//	def mappingName :String
-//	override def sqlName = Some(mappingName)
 }
 
 
@@ -592,18 +589,19 @@ object Mapping {
 
 
 
-//	implicit def mappingSQLFormula[M[A] <: MappingFrom[A], O, I <: Rank[N], N <: INT]
+//	implicit def mappingSQLFormula[M[A] <: MappingFrom[A], O, I <: Rank[N], N <: Numeral]
 //	                              (mapping :M[O])(implicit nudge :Conforms[O, _ <: Rank[N], Rank[N]], value :ValueOf[N]) :FreeComponent[M, O] =
 //		new FreeComponent(mapping, valueOf[N])
-	implicit def mappingSQLFormula[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[X, A], X, N <: INT]
+	implicit def mappingSQLFormula[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[X, A], X, N <: Numeral]
                                   (mapping :C)
                                   (implicit conforms :Conforms[C, M[F], TypedMapping[X, F]], offset :TableCount[F, N])
 			:FreeComponent[F, M, X] =
 		if (offset.count <= 0)
 			throw new IllegalArgumentException(
-				s"Can't convert mapping $mapping to a SQL formula as its Origin type has zero tables.")
+				s"Can't convert mapping $mapping to an SQL formula as its Origin type has zero tables.")
 		else
 			new FreeComponent[F, M, X](mapping, offset.count - 1)
+
 
 
 	/** Adds a right-associative method `@:` to any `Mapping` with well defined `Origin` and `Subject` types,
@@ -901,6 +899,10 @@ object Mapping {
 		private[this] val columnArray = columns.toArray
 		override val readColumns: Int = (0 /: columns)(_ + read(_).readColumns)
 
+//		private[this] val audits = SelectAudit.Audit(mapping)
+//		private[this] val optional = OptionalSelect.unapply(mapping)
+//		private[this] val extra = ExtraSelect.unapply(mapping)
+
 		override def opt(position: Int)(res: ResultSet): Option[S] = {
 			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
 			val columnValues = columnArray.map { c => i += 1; read(c).opt(i - 1)(res) }
@@ -909,10 +911,12 @@ object Mapping {
 				if (idx >= 0) columnValues(idx)
 				else None
 			}
+//			mapping.assemble(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
+//				optional.map(_.value) orElse extra.map(_.value)
 			mapping.optionally(pieces)
 		}
 
-		override def nullValue: S = mapping.nullValue getOrElse {
+		override lazy val nullValue: S = mapping.nullValue getOrElse {
 			mapping.apply(ComponentValues(mapping :mapping.type) { comp =>
 				val lifted = mapping.export(comp)
 				if (columns.contains(lifted))

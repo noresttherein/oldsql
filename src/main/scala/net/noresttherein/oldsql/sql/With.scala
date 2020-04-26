@@ -40,7 +40,7 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.RightJoin]]
   * @see [[net.noresttherein.oldsql.sql.From]]
   * @see [[net.noresttherein.oldsql.sql.Subselect]]
-  * @see [[net.noresttherein.oldsql.sql.WithParam]]
+  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
 trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =>
 	val left :L

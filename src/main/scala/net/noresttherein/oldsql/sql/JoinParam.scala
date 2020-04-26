@@ -3,62 +3,72 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.support.{EmptyMapping, FormMapping}
-import net.noresttherein.oldsql.schema.{ColumnForm, ComponentExtractor, GenericMapping, Mapping, RootMapping, RowSource, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection, TypedMapping}
-import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
+import net.noresttherein.oldsql.schema.support.FormMapping
+import net.noresttherein.oldsql.schema.{ColumnForm, ComponentExtractor, RowSource, SQLForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection}
+import net.noresttherein.oldsql.schema.RowSource.{AnyRowSource, NamedSource}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, SubselectFrom}
-import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, JoinedRelation}
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
-import net.noresttherein.oldsql.sql.WithParam.{FromParam, ParamSource}
+import net.noresttherein.oldsql.sql.JoinParam.ParamFrom
+import net.noresttherein.oldsql.sql.JoinParam.ParamSource.AnyParamSource
 
 
 
 
 
-/** A specialized join class which joins the source on its left side with an artificial mapping `O ?: X`
-  * to denote and track usage of a query parameter `X`. This makes it possible to filter on the given from clause
-  * using values unknown at this time that can be obtained by applying an arbitrary scala function to `X`.
+
+
+
+/** A specialized join class which joins the source on its left side with a synthetic mapping
+  * `M[O] &lt;: FromParam[X, O]`, representing a query parameter `X`. It allows to filter a the given from clause
+  * using values unknown at this time, which can be obtained by applying an arbitrary scala function to `X`.
+  * The mapping, aside from representing the parameter value itself, can also be used to create additional
+  * subcomponents with values derived from the parameter value, which can be used in an `SQLFormula` as any other
+  * component. The type constructor for a parameter mapping with type `X` is `ParamSource[X]#Row` and
+  * `NamedParamSource[N, X]#Row` for a mapping labeled with a string literal `N &lt;: String with Singleton`.
+  * This join is typically written in an abbreviated form `FromClause WithParam X` (or `FromClause <=? X`)
+  * and `FromClause JoinParam ("name" ?: X)#T` for the parameter named with a string literal.
   * This class declares its `Outer` clause as `Nothing` (rather than the `Outer` of the left side) to ensure
   * neither it nor any its extension does not conform to `FromClause.SubselectFrom[F#Outer]`, thus preventing
   * it from being used as a part of a subselect of the outer clause, which would hide the existence of a parameter
   * and make its outer source appear not parameterized.
   *
   * @tparam F the actual from clause of the parameterized select statement.
-  * @tparam X parameter type
-  * @see [[net.noresttherein.oldsql.sql.WithParam.FromParam]]
+  * @tparam M synthetic `FromParam` mapping which subject is the parameter type.
+  * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
+  * @see [[net.noresttherein.oldsql.sql.JoinParam.WithParam]]
   */
-sealed trait WithParam[+F <: FromClause, X] extends With[F, ParamSource[X]#Row] {
+sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M] {
+	type Param = M[FromLast]#Subject
 
 	@inline final def from :F = left
 
-	override type This >: this.type <: F WithParam X
-	override type JoinRight[+L <: FromClause] = L WithParam X
+	override type This >: this.type <: F JoinParam M
+	override type JoinRight[+L <: FromClause] <: L JoinParam M
 
 	override type Outer = Nothing
 
 
-	override def outer = throw new UnsupportedOperationException(s"WithParam($this).outer")
+	override def outer = throw new UnsupportedOperationException(s"JoinParam[$this].outer")
 
 
 
-	override type SubselectRow = left.SubselectRow ~ X
+	override type SubselectRow = left.SubselectRow ~ Param
 
 	override def subselectRow[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow] =
-		left.subselectRow(stretch.stretchFront[left.Generalized, ParamSource[X]#Row]) ~ table.upcast.stretch(stretch)
+		left.subselectRow(stretch.stretchFront[left.Generalized, M]) ~ table.upcast.stretch(stretch)
 
 	override def subselectTableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]] =
-		table.extend(stretch) #:: left.subselectTableStack(stretch.stretchFront[left.Generalized, ParamSource[X]#Row])
+		table.extend(stretch) #:: left.subselectTableStack(stretch.stretchFront[left.Generalized, M])
 
 
-
-	protected override def joinType :String = "with"
-
+	protected override def joinType = "param"
 }
 
 
@@ -66,57 +76,77 @@ sealed trait WithParam[+F <: FromClause, X] extends With[F, ParamSource[X]#Row] 
 
 
 
-object WithParam {
 
-	type <=[L <: FromClause, X] = WithParam[L, X]
 
-	type ?:[N <: Label, X] = { type P[O] = ParamSource[X]#Row[O] }
+
+object JoinParam {
+
+	/** An alias for `JoinParam` accepting the parameter type as the second (right) argument, hiding the
+	  * `FromParam[X, _]` from the type signature.
+	  */
+	type WithParam[+F <: FromClause, X] = JoinParam[F, ParamSource[X]#Row]
+	type <=?[+F <: FromClause, X] = WithParam[F, X]
+
+	/** A type wrapper for the type constructor of parameter mappings with string literals as names, present in their
+	  * type signature.
+	  */
+	type ?:[N <: Label, X] = { type T[O] = LabeledFromParam[N, X, O] }
+
+	implicit def ?:[N <: Label](name :N) = new method_?:[N](name)
+
+	class method_?:[N <: Label](private val name :N) extends AnyVal {
+		/** Creates a synthetic `RowSource` of the given name, creating named parameter mappings. */
+		def ?:[X :SQLForm] :NamedParamSource[N, X] = new NamedParamSource[N, X](name)
+	}
 
 
 
 	def apply[F <: FromClause, X](from :F, source :ParamSource[X]) :F WithParam X =
-		WithParam[F, X](from, LastRelation(source), True())
+		JoinParam[F, ParamSource[X]#Row](from, LastRelation(source), True())
+
+	def apply[F <: FromClause, N <: Label, X](from :F, source :NamedParamSource[N, X]) :F JoinParam (N ?: X)#T =
+		JoinParam[F, (N ?: X)#T](from, LastRelation(source), True())
 
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
 	trait ParamFactory[X] extends Any {
 		def apply[F <: FromClause](from :F)(implicit form :SQLForm[X]) :F WithParam X =
-			WithParam(from, LastRelation(ParamSource[X]()), True())
+			JoinParam(from, LastRelation(ParamSource[X]()), True())
 
 		def apply[F <: FromClause](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
-			WithParam(from, LastRelation(ParamSource[X](name)), True())
+			JoinParam(from, LastRelation(ParamSource[X](name)), True())
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T])(implicit form :SQLForm[X]) :From[T] WithParam X =
-			WithParam(From(from), LastRelation(ParamSource[X]()), True())
+			JoinParam(From(from), LastRelation(ParamSource[X]()), True())
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T], name :String)(implicit form :SQLForm[X]) :From[T] WithParam X =
-			WithParam(From(from), LastRelation(ParamSource[X](name)), True())
+			JoinParam(From(from), LastRelation(ParamSource[X](name)), True())
 	}
 
 
 
-	private[sql] def apply[L <: FromClause, X]
-	                      (from :L, param :LastRelation[ParamSource[X]#Row],
-	                       filter :BooleanFormula[L With ParamSource[X]#Row]) :L WithParam X =
-		new WithParam[from.type, X] {
+	private[sql] def apply[L <: FromClause, M[O] <: ParamFrom[O]]
+	                      (from :L, param :LastRelation[M],
+	                       filter :BooleanFormula[L With M]) :L JoinParam M =
+		new JoinParam[from.type, M] {
 			override val left = from
 			override val table = param
 			override val joinCondition = filter
 
-			override type This = left.type WithParam X
-			override def self :left.type WithParam X = this
+			override type This = left.type JoinParam M
+			override type JoinRight[+C <: FromClause] = C JoinParam M
+			override def self :left.type JoinParam M = this
 
-			override def copy[F <: FromClause](left :F, filter :BooleanFormula[Super[F, X]]) :F WithParam X =
-				WithParam(left, table, filter)
+			override def copy[F <: FromClause](left :F, filter :BooleanFormula[F With M]) :F JoinParam M =
+				JoinParam[F, M](left, table, filter)
 
-			override def copy(filter :BooleanFormula[left.type With ParamSource[X]#Row]) :This =
-				WithParam[left.type, X](left, table, filter)
+			override def copy(filter :BooleanFormula[left.type With M]) :This =
+				JoinParam[left.type, M](left, table, filter)
 
 		}
 
 
 
-	private type Super[+F <: FromClause, X] = F With ParamSource[X]#Row
 
 
 
@@ -133,15 +163,34 @@ object WithParam {
 
 
 
-	class ParamSource[X](val name :String)(implicit val form :SQLForm[X])
-		extends RowSource[({ type T[O] = FromParam[X, O] })#T]
+	abstract class GenericParamSource[X, M[O] <: FromParam[X, O]](val name :String)(implicit val form :SQLForm[X])
+		extends RowSource[M]
 	{
-		override type Row[O] = FromParam[X, O]
-
-		override def apply[O] :FromParam[X, O] = new FromParam[X, O](name)
+//		override type Row[O] = FromParam[X, O]
 
 		override def sql :String = name + "?:" + form
+
+
+		def canEqual(that :Any) :Boolean = that.isInstanceOf[AnyParamSource]
+
+		override def equals(that :Any) :Boolean = that match {
+			case other :AnyParamSource =>
+				(other eq this) || other.canEqual(this) && other.name == name && other.form == form
+			case _ => false
+		}
+
+		override def hashCode :Int = name.hashCode * 31 + form.hashCode
 	}
+
+
+
+	class ParamSource[X :SQLForm](param :String)
+		extends GenericParamSource[X, ({ type T[O] = FromParam[X, O] })#T](param)
+	{
+		override def apply[O] :FromParam[X, O] = new FromParam[X, O](name)
+	}
+
+
 
 	object ParamSource {
 		def apply[X :SQLForm](name :String) :ParamSource[X] = new ParamSource[X](name)
@@ -152,6 +201,16 @@ object WithParam {
 			case param :ParamSource[_] => Some(param.form -> param.name)
 			case _ => None
 		}
+
+		type AnyParamSource = GenericParamSource[_, M] forSome { type M[O] <: FromParam[_, O] }
+	}
+
+
+
+	class NamedParamSource[N <: Label, X :SQLForm](override val name :N)
+		extends GenericParamSource[X, (N ?: X)#T](name) with NamedSource[N, (N ?: X)#T]
+	{
+		override def apply[O] :LabeledFromParam[N, X, O] = new LabeledFromParam[N, X, O](name)
 	}
 
 
@@ -167,6 +226,12 @@ object WithParam {
 
 
 
+	type ParamFrom[O] = AnyParam with MappingFrom[O]
+
+	sealed trait AnyParam
+
+
+
 	/** A `Mapping` instance representing a query parameter the value of which is not known. While the `BoundParameter`
 	  * formula can be used to represent a statement parameter, its value must be known when the formula is created.
 	  * By representing a statement parameter as a mapping that can be used in the same way as table mappings
@@ -178,8 +243,8 @@ object WithParam {
 	  * @tparam P the parameter type needed to prepare statements using this mapping in their sources.
 	  * @tparam O a marker type serving as a unique alias for this mapping within a `FromClause`.
 	  */
-	class FromParam[P, O] private[WithParam](val name :String)(implicit sqlForm :SQLForm[P])
-		extends ParamMapping[P, P, O] //with FromParam
+	class FromParam[P, O] private[JoinParam](val name :String)(implicit sqlForm :SQLForm[P])
+		extends ParamMapping[P, P, O] with AnyParam
 	{ This =>
 
 		def this()(implicit form :SQLForm[P]) = this("?")
@@ -212,11 +277,7 @@ object WithParam {
 
 		def apply[T :SQLForm](pick :P => T) :Component[T] = new ParamComponent[T](pick)
 
-//		def opt[T :SQLForm](pick :P => Option[T]) :TypedMapping[T] = new TypedMapping[T](Extractor(pick))
-
 		def col[T :ColumnForm](pick :P => T) :Component[T] = apply(pick)
-
-//		def optcol[T :ColumnForm](pick :P => Option[T]) :TypedMapping[T] = opt(pick)
 
 
 
@@ -229,7 +290,7 @@ object WithParam {
 		}
 
 
-		override def toString = s":$name"
+		override def toString :String = name + ":" + form
 
 
 
@@ -245,6 +306,9 @@ object WithParam {
 		)
 
 	}
+
+
+
 
 
 
@@ -265,6 +329,15 @@ object WithParam {
 		implicit def FromParamProjection[P, A, B] :OriginProjection[FromParam[P, A], A, FromParam[P, B], B] =
 			OriginProjection()
 	}
+
+
+
+
+
+
+	class LabeledFromParam[N <: Label, X :SQLForm, O](override val name :N)
+		extends FromParam[X, O](name) with LabeledMapping[N, X, O]
+
 
 
 
