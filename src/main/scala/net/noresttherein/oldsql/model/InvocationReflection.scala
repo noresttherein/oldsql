@@ -14,7 +14,7 @@ import net.bytebuddy.implementation.bind.annotation.{Origin, RuntimeType, This}
 import net.bytebuddy.implementation.FixedValue
 import net.bytebuddy.implementation.MethodCall.invoke
 import net.bytebuddy.matcher.ElementMatchers.{isConstructor, not}
-import net.noresttherein.oldsql.model.PropertyPath.PropertyReflectionException
+import net.noresttherein.oldsql.model.PropertyPath.{IdentityProperty, PropertyReflectionException}
 
 import scala.annotation.tailrec
 import scala.reflect.runtime.universe.{runtimeMirror, typeOf, Symbol, TermName, Type, TypeTag}
@@ -65,25 +65,38 @@ private[model] object InvocationReflection {
 					if (mock == res)
 						(result += trace).result
 					else
-						throw new PropertyReflectionException(s"Value returned by the function ($res) is not the value returned by the last method call.")
+						throw new PropertyReflectionException(
+							s"Value returned by the function ($res) is not the value returned by the last method call.")
 				else
 					retrace(next, trace.returns, result += trace)
 			}
 
 			val traceField = root.getClass.getField(TraceFieldName)
 			if (traceField == null)
-				throw new PropertyReflectionException(s"Mock created for the argument type does not have the trace field $TraceFieldName: $root. $BugInfo")
-			val trace = traceField.get(root).asInstanceOf[Trace]
-			if (trace == null)
-				throw new PropertyReflectionException(s"Function doesn't call any (non final) methods on its argument.")
+				throw new PropertyReflectionException(
+					s"Mock created for the argument type does not have the trace field $TraceFieldName: $root. $BugInfo")
 
-			retrace(trace, typeOf[S], List.newBuilder)
+			val trace = traceField.get(root).asInstanceOf[Trace]
+
+			if (trace == null)
+				if (if (typeOf[S] <:< typeOf[AnyVal]) root == res else root.asInstanceOf[AnyRef] eq res.asInstanceOf[AnyRef])
+					Nil
+				else
+					throw new PropertyReflectionException(
+						s"Function doesn't call any (non final) methods on its argument.")
+			else
+				retrace(trace, typeOf[S], List.newBuilder)
 
 		} catch {
 			case e :ClassCastException =>
-				throw new PropertyReflectionException(errorMsg(s"Couldn't create a mock of the correct class (likely due to an abstract return type of a method).\n${e.getMessage}"), e)
+				throw new PropertyReflectionException(errorMsg(
+					s"Couldn't create a mock of the correct class (likely due to an abstract return type of a method).\n${e.getMessage}"),
+				e)
 			case e :ScalaReflectionException =>
-				throw new PropertyReflectionException(errorMsg(s"Couldn't determine class for an abstract type. Either a return type of last method call is not fully instantiated in the place of method declaration or you have found a bug.\n${e.getMessage}"), e)
+				throw new PropertyReflectionException(errorMsg(
+					s"Couldn't determine class for an abstract type. Either a return type of last method call " +
+					s"is not fully instantiated in the place of method declaration or you have found a bug.\n${e.getMessage}"),
+				e)
 			case e :Exception =>
 				throw new PropertyReflectionException(errorMsg(e.toString), e)
 		}
@@ -209,12 +222,12 @@ private[model] object InvocationReflection {
 		if (preset != null) //first try values for common classes like Option, String, Int, etc.
 			preset //todo: mark for the future if we failed to provide a result.
 		else if (clazz.isInterface) //todo: abstract methods!!!
-			     new ByteBuddy().subclass(clazz).name(clazz.getName + MockClassNameSuffix)
-				     .make().load(getClass.getClassLoader).getLoaded
+		     new ByteBuddy().subclass(clazz).name(clazz.getName + MockClassNameSuffix)
+			     .make().load(getClass.getClassLoader).getLoaded
 		else if ((clazz.getModifiers & ABSTRACT) != 0)
-			     instrumentedInstance(clazz)
+		     instrumentedInstance(clazz)
 		else { //the class is not abstract, so we'll just try all constructors to see if one works
-			val constructors = clazz.getConstructors.sortBy(_.getParameterCount).toStream //list of public constructors
+			val constructors = clazz.getConstructors.sortBy(_.getParameterCount).to(LazyList) //list of public constructors
 			if (constructors.isEmpty)
 				instrumentedInstance(clazz, PROTECTED) //resort to instrumenting a subclass
 			else
@@ -228,7 +241,7 @@ private[model] object InvocationReflection {
 
 
 
-	/** Finds a constructor of `clazz` with the lowest number of arguments at least one access modifier from `modifiers`
+	/** Finds a constructor of `clazz` with the lowest number of arguments with at least one access modifier from `modifiers`
 	  * and instruments a subclass calling that constructor. The instrumented instance will '''not''' be a traced instance.
 	  * @param clazz the class to mock, can't be final.
 	  * @param modifiers bitwise or of access modifiers (at least one of `PUBLIC` and `PROTECTED`).
