@@ -34,10 +34,13 @@ package object schema {
 
 
 	private[schema] def cascadeBuffs[S, X](mapping :MappingOf[S])(map :S =?> X) :Seq[Buff[X]] =
-		mapping.buffs.flatMap(buff => buff.cascade(map.requisite getOrElse {
+		cascadeBuffs[S, X](mapping.buffs, mapping.toString)(map)
+
+	private[schema] def cascadeBuffs[S, X](buffs :Seq[Buff[S]], owner: =>String)(map :S =?> X) :Seq[Buff[X]] =
+		buffs.flatMap(buff => buff.cascade(map.requisite getOrElse {
 			s :S => map.get(s) getOrElse {
 				throw new BuffMappingFailureException(
-					s"Failed cascading buff $buff of mapping $mapping: no value returned for $s by $map")
+					s"Failed cascading buff $buff from $owner: no value returned for $s by $map")
 			}
 		}))
 

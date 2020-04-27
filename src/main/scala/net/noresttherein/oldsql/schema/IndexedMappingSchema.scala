@@ -307,10 +307,10 @@ object IndexedMappingSchema {
 		protected override def link(init :R, last :T) :R |~ (N :~ T) = init |~ label :~ last
 
 		override def compose[X](extractor :X => S) :NonEmptyIndexedSchema[N, C, M, R, T, X, O] =
-			new NonEmptyIndexedSchema[N, C, M, R, T, X, O](init compose extractor, last, this.extractor compose extractor)
+			new NonEmptyIndexedSchema[N, C, M, R, T, X, O](init compose extractor, component, this.extractor compose extractor)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyIndexedSchema[N, C, M, R, T, X, O] =
-			new NonEmptyIndexedSchema[N, C, M, R, T, X, O](init compose extractor, last, this.extractor compose extractor)
+			new NonEmptyIndexedSchema[N, C, M, R, T, X, O](init compose extractor, component, this.extractor compose extractor)
 	}
 
 

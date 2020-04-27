@@ -143,7 +143,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 							throw new IllegalStateException(
 								s"$this.buffs is null: overrides with a val must happen before any component declarations!")
 
-						val subbuffs = subcomponent.buffs :++ schema.cascadeBuffs(this)(fromMe)
+						val subbuffs = subcomponent.buffs :++
+							schema.cascadeBuffs(buffs, composite.toString + "/" + this)(fromMe)
 
 						val selector = subcomponent match {
 							case column :ColumnMapping[_, _] =>
@@ -1043,17 +1044,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	protected def conveyBuffs[T](extractor :Extractor[S, T], component: => String = "") :Seq[Buff[T]] =
 		if (buffs == null)
 			throw new IllegalStateException(s"$this.buffs is null: overrides must happen before any component declarations.")
-		else //todo: move to schema.cascadeBuffs
-	        extractor.requisite.map(pick => buffs.flatMap(_.cascade(pick))) getOrElse {
-		        val pick = extractor.optional
-		        buffs.flatMap { buff =>
-			        buff.cascade { s => pick(s) getOrElse {
-				        throw new BuffMappingFailureException(
-					        s"Can't apply buff $buff of $this to subcomponent '$component': selector function returned no value for $s."
-				        )
-			        }}
-		        }
-	        }
+		else
+			schema.cascadeBuffs(buffs, toString + " to subcomponent '" + component + "'")(extractor)
 
 
 

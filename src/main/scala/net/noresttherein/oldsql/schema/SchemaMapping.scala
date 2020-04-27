@@ -191,9 +191,17 @@ object SchemaMapping {
 
 	/** Starts the process of building a `MappingSchema` and then a `SchemaMapping` by chained calls to component
 	  * factory methods. This is the same as `MappingSchema[S, O]` and exists to somewhat alleviate the confusion
-	  * between the two. */
+	  * between the two.
+	  */
 	def apply[S, O] :ExtensibleFlatMappingSchema[@~, @~, S, O] = EmptySchema[S, O]
 
+	/** Starts the process of building a `MappingSchema` and then a `SchemaMapping` by chained calls to component
+	  * factory methods. This is the same as `MappingSchema[O](buffs)` and exists to somewhat alleviate the confusion
+	  * between the two.
+	  * @param buffs a list of buffs for the built `SchemaMapping`, inherited by all columns and supporting components
+	  *              of the created schema.
+	  */
+	def apply[S, O](buffs :Buff[S]*) :ExtensibleFlatMappingSchema[@~, @~, S, O] = EmptySchema[S, O](buffs)
 
 
 //	implicit class SchemaMappingMethods[]
@@ -393,7 +401,7 @@ object SchemaMapping {
 
 
 	private class SchemaComponentLabel[N <: Label, M <: SchemaMapping[C, R, S, O], +C <: Chain, R <: Chain, S, O]
-	                                (label :N, egg :M)
+	                                  (label :N, egg :M)
 		extends MappingLabel[N, M, S, O](label, egg) with LabeledSchemaComponent[N, C, R, S, O]
 	{
 		override val schema = egg.schema
@@ -404,7 +412,7 @@ object SchemaMapping {
 	}
 
 	private class FlatSchemaComponentLabel[N <: Label, M <: FlatSchemaMapping[C, R, S, O], +C <: Chain, R <: Chain, S, O]
-	                                    (label :N, egg :M)
+	                                      (label :N, egg :M)
 		extends SchemaComponentLabel[N, M, C, R, S, O](label, egg) with LabeledFlatSchemaComponent[N, C, R, S, O]
 	{
 		override val schema = egg.schema
@@ -569,6 +577,19 @@ abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :Ma
 
 }
 
+
+
+
+
+
+/** A 'flat' variant of [[net.noresttherein.oldsql.schema.AbstractSchemaMapping AbstractSchemaMapping]]
+  * (with only columns as components).
+  */
+abstract class AbstractFlatSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :FlatMappingSchema[C, R, S, O])
+	extends AbstractSchemaMapping[C, R, S, O](contents) with FlatSchemaMapping[C, R, S, O]
+{
+	implicit override val schema :FlatMappingSchema[C, R, S, O] = contents
+}
 
 
 

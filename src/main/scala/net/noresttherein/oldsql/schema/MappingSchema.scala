@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
+import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingFrom, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, MappingAdapter, StableMapping}
@@ -53,6 +54,8 @@ import scala.reflect.runtime.universe.TypeTag
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping]]
   */
 trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, O] { outer =>
+
+	protected val outerBuffs :Seq[Buff[S]] = Nil
 
 	/** A shorthand alias for `SchemaColumn[O, T]` allowing reduced notation in the component type chain.
 	  * At the same time it removes troublesome occurrences of the
@@ -215,7 +218,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
 	  */
 	def map(constructor :R => S) :SchemaMapping[C, R, S, O] =
-		new MappedMappingSchema[C, R, S, O](this, constructor)
+		new MappedMappingSchema[C, R, S, O](this, constructor, outerBuffs)
 
 	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
@@ -242,7 +245,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
 	  */
 	def flatMap(constructor :R => Option[S]) :SchemaMapping[C, R, S, O] =
-		new FlatMappedMappingSchema[C, R, S, O](this, constructor)
+		new FlatMappedMappingSchema[C, R, S, O](this, constructor, outerBuffs)
 
 	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
@@ -261,13 +264,17 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 
 	protected[schema] def schemaExtractors :List[(Component[_], Selector[_])]
 
-	protected[schema] def ownerExtractors :List[(Component[_], ComponentExtractor[S, _, O])]
+	protected[schema] def outerExtractors :List[(Component[_], ComponentExtractor[S, _, O])]
 
 	protected[schema] def componentsReversed :List[Component[_]]
 
 	protected[schema] def subcomponentsReversed :List[Component[_]]
 
 	protected[schema] def columnsReversed :List[Column[_]]
+
+	protected[schema] def component :Component[_]
+
+	protected[schema] def init :MappingSchema[_, _, S, O]
 }
 
 
@@ -276,9 +283,53 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 
 
 object MappingSchema {
+	//todo: examples in the doc.
 
-
+	/** An empty `MappingSchema` which can be expanded by appending new columns and components.
+	  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
+	  * creating a `SchemaMapping`.
+	  * @tparam S the subject type of a `SchemaMapping` over this schema. All components in the schema have
+	  *           extractors which retrieve their value from this type.
+	  * @tparam O an arbitrary marker 'origin' type used to differentiate between separate instances of the same class.
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.ExtensibleFlatMappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
+	  */
 	def apply[S, O] :ExtensibleFlatMappingSchema[@~, @~, S, O] = EmptySchema[S, O]
+
+
+	/** An empty `MappingSchema` which can be expanded by appending new columns and components.
+	  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
+	  * creating a `SchemaMapping`. This no-arg, no-parenthesis method can be followed by an argument list
+	  * with a variable number of buffs for the built mapping, which will be inherited by all columns and chosen
+	  * components appended to the created schema. With the separation of the factory method into a separate
+	  * applicable object the subject type `S` can be inferred from the provided buffs.
+	  * @return an applicable object accepting a sequence of buffs and returning an empty, extensible mapping schema.
+	  * @tparam S the subject type of a `SchemaMapping` over this schema. All components in the schema have
+	  *           extractors which retrieve their value from this type.
+	  * @tparam O an arbitrary marker 'origin' type used to differentiate between separate instances of the same class.
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.ExtensibleFlatMappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
+	  */
+	def apply[O] :MappingSchemaBuilder[O] = new MappingSchemaBuilder[O] {}
+
+
+
+	/** A simple factory of empty mapping schema instances.  */
+	trait MappingSchemaBuilder[O] extends Any {
+		/** An empty `MappingSchema` which can be expanded by appending new columns and components.
+		  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
+		  * creating a `SchemaMapping`.
+		  * @return an applicable object accepting a sequence of buffs and returning an empty, extensible mapping schema.
+		  * @tparam S the subject type of a `SchemaMapping` over this schema. All components in the schema have
+		  *           extractors which retrieve their value from this type.
+		  * @see [[net.noresttherein.oldsql.schema.MappingSchema]]
+		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.ExtensibleFlatMappingSchema]]
+		  * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
+		  */
+		def apply[S](buffs :Buff[S]*) :ExtensibleFlatMappingSchema[@~, @~, S, O] = EmptySchema[S, O](buffs)
+	}
 
 
 
@@ -289,12 +340,12 @@ object MappingSchema {
 		/** The last component on the list - same as `last` but more readable in code like `schema.prev.prev()`. */
 		def apply() :L = last
 
-		/** The last component on the list. */ //the exact type arguments aren't important, only the component type
-		def last :L = self.asInstanceOf[BaseNonEmptySchema[Chain, ~, Any, I, L, R, L#Subject, T, S, O]].last
+		/** The last component on the list. */
+		def last :L = self.component.asInstanceOf[L]
 
 		/** The schema for the chain `I`, containing all components of this schema except for the last one. */
 		def prev :MappingSchema[I, R, S, O] =
-			self.asInstanceOf[BaseNonEmptySchema[Chain, ~, Any, I, L, R, L#Subject, T, S, O]].init
+			self.init.asInstanceOf[MappingSchema[I, R, S, O]]
 
 
 
@@ -326,7 +377,7 @@ object MappingSchema {
 		extends AnyVal
 	{
 		/** The schema for the chain `I`, containing all components of this schema except for the last one. */
-		def prev :FlatMappingSchema[I, R, S, O] = self.asInstanceOf[FlatNonEmptySchema[I, L, R, T, S, O]].init
+		def prev :FlatMappingSchema[I, R, S, O] = self.init.asInstanceOf[FlatMappingSchema[I, R, S, O]]
 	}
 
 
@@ -392,17 +443,19 @@ object MappingSchema {
 
 
 		override def map(constructor :R => S) :FlatSchemaMapping[C, R, S, O] =
-			new MappedFlatMappingSchema[C, R, S, O](this, constructor)
+			new MappedFlatMappingSchema[C, R, S, O](this, constructor, outerBuffs)
 
 		override def map[F](constructor :F)(implicit apply :ChainApplication[R, F, S]) :FlatSchemaMapping[C, R, S, O] =
 			map { row :R => row.feedTo(constructor) }
 
 		override def flatMap(constructor :R => Option[S]) :FlatSchemaMapping[C, R, S, O] =
-			new FlatMappedFlatMappingSchema[C, R, S, O](this, constructor)
+			new FlatMappedFlatMappingSchema[C, R, S, O](this, constructor, outerBuffs)
 
 		override def flatMap[F](constructor :F)(implicit apply :ChainApplication[R, F, Option[S]]) :FlatSchemaMapping[C, R, S, O] =
 			flatMap { row :R => row feedTo constructor }
 
+
+		protected[schema] override def init :FlatMappingSchema[_, _, S, O]
 	}
 
 
@@ -417,17 +470,36 @@ object MappingSchema {
 	  */
 	trait ExtensibleMappingSchema[+C <: Chain, R <: Chain, S, O] extends MappingSchema[C, R, S, O] {
 
-		/** Appends the given component to this schema.
+		protected[schema] def conveyBuffs[T](extractor :S => T) :Seq[Buff[T]] =
+			outerBuffs.flatMap(_.cascade(extractor))
+
+		protected[schema] def conveyBuffs[T](extractor :S =?> T) :Seq[Buff[T]] =
+			schema.cascadeBuffs(outerBuffs, toString)(extractor)
+
+		/** Appends a new component to this schema. The component will inherit all buffs associated
+		  * with the outer mapping for subject `S` which where given to this schema at initialization.
+		  * @param value an extractor function returning the value of this component from the subject type `S` of
+		  *              an owning mapping.
+		  * @param component constructor function for the component accepting the buffs which should be bestowed
+		  *                  to the included component instance.
+		  */
+		def comp[L <: Chain, V <: Chain, T](value :S => T)(component :Seq[Buff[T]] => Subschema[L, V, T])
+				:ExtensibleMappingSchema[C ~ |*|[L, V, T], R ~ T, S, O] =
+			comp(value, component(conveyBuffs(value)))
+
+		/** Appends the given component to this schema. This component will not inherit any buffs associated
+		  * with this instance and its outer mapping.
 		  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
 		  * @param value an extractor returning the value of this component for the subject type `S` of an owning mapping.
 		  */
 		def comp[L <: Chain, V <: Chain, T](component :Subschema[L, V, T], value :Extractor[S, T])
 				:ExtensibleMappingSchema[C ~ |*|[L, V, T], R ~ T, S, O] =
-			new ExtensibleNonEmptySchema[C, |*|[L, V, T], R, T, S, O](this, component,
-				ComponentExtractor(component, value.optional, value.requisite)
+			new ExtensibleNonEmptySchema[C, |*|[L, V, T], R, T, S, O](
+				this, component, ComponentExtractor(component, value.optional, value.requisite)
 			)
 
-		/** Appends the given component to this schema.
+		/** Appends the given component to this schema. The component will not inherit any buffs associated
+		  * with this instance and its outer mapping.
 		  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
 		  * @param value a function returning the value of this component for the subject type `S` of an owning mapping.
 		  */
@@ -437,7 +509,21 @@ object MappingSchema {
 				this, component, ComponentExtractor.req(component)(value)
 			)
 
-		/** Appends the given component to this schema.
+
+
+		/** Appends a new component to this schema. The component will inherit all buffs associated
+		  * with the outer mapping for subject `S` which where given to this schema at initialization.
+		  * @param value an extractor function returning the value of this component from the subject type `S` of
+		  *              an owning mapping.
+		  * @param component constructor function for the component accepting the buffs which should be bestowed
+		  *                  to the included component instance.
+		  */
+		def optcomp[L <: Chain, V <: Chain, T](value :S => Option[T])(component :Seq[Buff[T]] => Subschema[L, V, T])
+				:ExtensibleMappingSchema[C ~ |*|[L, V, T], R ~ T, S, O] =
+			optcomp(value, component(conveyBuffs(Extractor(value))))
+
+		/** Appends the given component to this schema. The component will not inherit any buffs associated
+		  * with this instance and its outer mapping.
 		  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
 		  * @param value a function returning the value of this component for the subject type `S` of an owning mapping
 		  *              as an `Option`. Whenever `None` is returned, a null values are written to the database for all
@@ -450,6 +536,19 @@ object MappingSchema {
 			)
 
 
+
+		/** Appends a new labeled component to this schema. The component will inherit all buffs associated
+		  * with the outer mapping for subject `S` which where given to this schema at initialization.
+		  * @param label a string literal identifying the created component within this instance.
+		  * @param value an extractor function returning the value of this component from the subject type `S` of
+		  *              an owning mapping.
+		  * @param component constructor function for the component accepting the buffs which should be bestowed
+		  *                  to the included component instance.
+		  */
+		def comp[N <: Label, L <: Chain, V <: Chain, T]
+		        (label :N, value :S => T)(component :Seq[Buff[T]] => Subschema[L, V, T])
+				:ExtensibleMappingSchema[C ~ @|*|[N, L, V, T], R ~ T, S, O] =
+			comp(value, component(conveyBuffs(value)).:@[N](new ValueOf(label)))
 
 		/** Appends the given component to this schema.
 		  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
@@ -471,6 +570,22 @@ object MappingSchema {
 				this, component, ComponentExtractor.req(component)(value)
 			)
 
+
+
+
+		/** Appends a new labeled component to this schema. The component will inherit all buffs associated
+		  * with the outer mapping for subject `S` which where given to this schema at initialization.
+		  * @param label a string literal identifying the created component within this instance.
+		  * @param value an extractor function returning the value of this component from the subject type `S` of
+		  *              an owning mapping.
+		  * @param component constructor function for the component accepting the buffs which should be bestowed
+		  *                  to the included component instance.
+		  */
+		def optcomp[N <: Label, L <: Chain, V <: Chain, T]
+		           (label :N, value :S => Option[T])(component :Seq[Buff[T]] => Subschema[L, V, T])
+				:ExtensibleMappingSchema[C ~ @|*|[N, L, V, T], R ~ T, S, O] =
+			optcomp(value, label @: component(conveyBuffs(Extractor(value))))
+
 		/** Appends the given component to this schema.
 		  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
 		  * @param value a function returning the value of this component for the subject type `S` of an owning mapping
@@ -486,35 +601,44 @@ object MappingSchema {
 
 
 		/** Appends a new column component to this schema. Full static type of the column will be encoded in the
-		  * component chain of the returned schema.
+		  * component chain of the returned schema. The column will not inherit the buffs associated with this schema.
 		  */
 		protected def col[M <: SchemaColumn[T, O], T](column :M, value :S =?> T)
 				:ExtensibleMappingSchema[C ~ M, R ~ T, S, O] =
 			new ExtensibleNonEmptySchema[C, M, R, T, S, O](this, column,
 				ComponentExtractor(column, value.optional, value.requisite))
 
-		/** Appends a new column to this schema with the given name. */
+		/** Appends a new column to this schema with the given name. The column will have the buffs
+		  * specified here, followed by any buffs conveyed by this schema, given to it at its initialization.
+		  */
 		def col[T :ColumnForm](name :String, value :S => T, buffs :Buff[T]*)
 				:ExtensibleMappingSchema[C ~ ||[T], R ~ T, S, O] =
-			col(SchemaColumn[T, O](name, buffs :_*), Extractor.req(value))
+			col(SchemaColumn[T, O](name, buffs :++ conveyBuffs(value) :_*), Extractor.req(value))
 
 		/** Appends a new column to this schema with the name being the reflected name of the zero-argument method
-		  * called on the argument by the extractor function `value`.
+		  * called on the argument by the extractor function `value`. The column will receive the buffs specified here,
+		  * followed by any buffs conveyed by this schema, given to it at its initialization.
 		  * @param value a function returning a single property of the enclosing mapping's subject `S`.
 		  */
 		def col[T :ColumnForm](value :S => T, buffs :Buff[T]*)(implicit tpe :TypeTag[S])
 				:ExtensibleMappingSchema[C ~ ||[T], R ~ T, S, O] =
 			col(PropertyPath.nameOf(value), value, buffs :_*)
 
-		/** Appends a new column of the given name to this schema.
+		/** Appends a new column of the given name to this schema. The column will receive the buffs specified here,
+		  * followed by any buffs conveyed by this schema, given to it at its initialization.
 		  * @param value a function returning the value for the column from the enclosing mapping's subject `S`.
 		  */
 		def optcol[T :ColumnForm](name :String, value :S => Option[T], buffs :Buff[T]*)
 				:ExtensibleMappingSchema[C ~ ||[T], R ~ T, S, O] =
-			col(SchemaColumn[T, O](name, buffs:_*), Extractor(value))
+		{
+			val extractor = Extractor(value)
+			val column = SchemaColumn[T, O](name, buffs :++ conveyBuffs(extractor) :_*)
+			col(column, extractor)
+		}
 
 		/** Appends a new column to this schema with the name being the reflected name of the zero-argument method
-		  * called on the argument by the extractor function `value`.
+		  * called on the argument by the extractor function `value`. The column will receive the buffs specified here,
+		  * followed by any buffs conveyed by this schema, given to it at its initialization.
 		  * @param value a function returning a single property of the enclosing mapping's subject `S`.
 		  */
 		def optcol[T :ColumnForm](value :S => Option[T], buffs :Buff[T]*)(implicit tpe :TypeTag[S])
@@ -523,7 +647,8 @@ object MappingSchema {
 
 
 
-		/** Appends a new column labeled with its name to this schema.
+		/** Appends a new column labeled with its name to this schema.  The column will receive the buffs
+		  * specified here, followed by any buffs conveyed by this schema, given to it at its initialization.
 		  * @param name a string literal with the name of the column.
 		  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
 		  * @param buffs a vararg list of buffs modifying the handling of the column.
@@ -532,9 +657,11 @@ object MappingSchema {
 		  */
 		def lbl[N <: Label, T :ColumnForm](name :N, value :S => T, buffs :Buff[T]*)
 				:ExtensibleMappingSchema[C ~ (N @|| T), R ~ T, S, O] =
-			col(LabeledSchemaColumn[N, T, O](name, buffs:_*), Extractor.req(value))
+			lbl(name, name, value, buffs :_*)
 
 		/** Appends to this schema a new column labeled with a string different from its name.
+		  * The column will receive the buffs specified here, followed by any buffs conveyed by this schema,
+		  * given to it at its initialization.
 		  * @param label the label used to access the column in the schema.
 		  * @param name the name of the column.
 		  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
@@ -544,11 +671,15 @@ object MappingSchema {
 		  */
 		def lbl[N <: Label, T :ColumnForm](label :N, name :String, value :S => T, buffs :Buff[T]*)
 				:ExtensibleMappingSchema[C ~ (N @|| T), R ~ T, S, O] =
-			col(LabeledSchemaColumn[N, T, O](label, name, buffs :_*), Extractor.req(value))
+		{
+			val column = LabeledSchemaColumn[N, T, O](label, name, buffs :++ conveyBuffs(value) :_*)
+			col(column, Extractor.req(value))
+		}
 
 
 
-		/** Appends a new column labeled with its name to this schema.
+		/** Appends a new column labeled with its name to this schema.  The column will receive the buffs
+		  * specified here, followed by any buffs conveyed by this schema, given to it at its initialization.
 		  * @param name a string literal with the name of the column.
 		  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
 		  * @param buffs a vararg list of buffs modifying the handling of the column.
@@ -557,9 +688,11 @@ object MappingSchema {
 		  */
 		def optlbl[N <: Label, T :ColumnForm](name :N, value :S => Option[T], buffs :Buff[T]*)
 				:ExtensibleMappingSchema[C ~ (N @|| T), R ~ T, S, O] =
-			col(LabeledSchemaColumn[N, T, O](name, buffs:_*), Extractor(value))
+			optlbl(name, name, value, buffs:_*)
 
 		/** Appends to this schema a new column labeled with a string different from its name.
+		  * The column will receive the buffs specified here, followed by any buffs conveyed by this schema,
+		  * given to it at its initialization.
 		  * @param label a string literal used to access the column in the schema.
 		  * @param name the name of the column.
 		  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
@@ -569,9 +702,10 @@ object MappingSchema {
 		  */
 		def optlbl[N <: Label, T :ColumnForm](label :N, name :String, value :S => Option[T], buffs :Buff[T]*)
 				:ExtensibleMappingSchema[C ~ (N @|| T), R ~ T, S, O] =
-			col(LabeledSchemaColumn[N, T, O](label, name, buffs:_*), Extractor(value))
-
-
+		{
+			val extractor = Extractor(value)
+			col(LabeledSchemaColumn[N, T, O](label, name, buffs :++ conveyBuffs(extractor) :_*), extractor)
+		}
 
 	}
 
@@ -630,7 +764,6 @@ object MappingSchema {
 		override def optlbl[N <: Label, T :ColumnForm](label :N, name :String, value :S => Option[T], buffs :Buff[T]*)
 				:ExtensibleFlatMappingSchema[C ~ (N @|| T), R ~ T, S, O] =
 			col(LabeledSchemaColumn[N, T, O](label, name, buffs :_*), Extractor(value))
-
 
 	}
 
@@ -861,9 +994,14 @@ object MappingSchema {
 		override def compose[X](extractor :X =?> S) :EmptySchema[X, O] =
 			this.asInstanceOf[EmptySchema[X, O]]
 
+
+		protected[schema] override def component :Nothing = throw new NoSuchElementException("EmptySchema.last")
+
+		protected[schema] override def init :Nothing = throw new NoSuchElementException("EmptySchema.init")
+
 		protected[schema] override def schemaExtractors :List[Nothing] = Nil
 
-		protected[schema] override def ownerExtractors :List[Nothing] = Nil
+		protected[schema] override def outerExtractors :List[Nothing] = Nil
 
 		protected[schema] override def componentsReversed :List[Nothing] = Nil
 
@@ -874,7 +1012,7 @@ object MappingSchema {
 
 
 
-	private[schema] class ExtensibleEmptySchema[S, O]
+	private[schema] class ExtensibleEmptySchema[S, O](protected override val outerBuffs :Seq[Buff[S]] = Nil)
 		extends EmptySchema[S, O] with ExtensibleFlatMappingSchema[@~, @~, S, O]
 
 
@@ -883,6 +1021,9 @@ object MappingSchema {
 		private[this] val empty = new ExtensibleEmptySchema[Any, Any]
 
 		def apply[S, O] :ExtensibleFlatMappingSchema[@~, @~, S, O] = empty.asInstanceOf[ExtensibleEmptySchema[S, O]]
+
+		def apply[S, O](buffs :Seq[Buff[S]]) :ExtensibleFlatMappingSchema[@~, @~, S, O] =
+			new ExtensibleEmptySchema[S, O](buffs)
 
 		def unapply(schema :MappingSchema[_, _, _, _]) :Boolean = schema.isInstanceOf[EmptySchema[_, _]]
 	}
@@ -895,7 +1036,7 @@ object MappingSchema {
 	  * of the last component `T` into a larger chain `R L U`, where `L` is the type constructor of the link for
 	  * the particular chain type `I`.
 	  * @param init the schema for the preceding components in the chain.
-	  * @param last the last component in the chain, associated with this
+	  * @param component the last component in the chain, associated with this.
 	  * @param extractor extracts the value of the last component from the subject of th owning mapping.
 	  * @param lastValue extracts the value of the last component from the chain which is the subject of this mapping.
 	  * @tparam I the upper bound of the chain variant which this schema's subject(s) conform to; it is the upper bound
@@ -915,11 +1056,11 @@ object MappingSchema {
 	  */
 	private[schema] abstract class BaseNonEmptySchema[I <: Chain, L[+A <: I, +B <: E] <: A ~ B, E,
 	                                                  +C <: Chain, +M <: TypedMapping[T, O], R <: I, T, U <: E, S, O]
-	                                                 (val init :MappingSchema[C, R, S, O], val last :M,
+	                                                 (override val init :MappingSchema[C, R, S, O], override val component :M,
 	                                                  val extractor :ComponentExtractor[S, T, O], lastValue :R L U => T)
 		extends MappingSchema[C ~ M, R L U, S, O] with StableMapping[R L U, O]
 	{
-		override def members :C ~ M = init.members ~ last
+		override def members :C ~ M = init.members ~ component
 
 		override def unapply(subject :S) :Option[R L U] =
 			for (i <- init.unapply(subject); l <- extractor.get(subject)) yield link(i, l)
@@ -934,19 +1075,19 @@ object MappingSchema {
 
 
 
-		private[this] val extractors = Lazy(ownerExtractors.toMap)
+		private[this] val extractors = Lazy(outerExtractors.toMap)
 
-		protected[schema] override def ownerExtractors :List[(init.Component[_], ComponentExtractor[S, _, O])] =
-			(last -> extractor) :: (init -> ComponentExtractor.opt(init)(init.unapply)) ::
-				last.subcomponents.toList.map { comp => (comp, last(comp) compose extractor) } reverse_:::
-				init.ownerExtractors
+		protected[schema] override def outerExtractors :List[(init.Component[_], ComponentExtractor[S, _, O])] =
+			(component -> extractor) :: (init -> ComponentExtractor.opt(init)(init.unapply)) ::
+				component.subcomponents.toList.map { comp => (comp, component(comp) compose extractor) } reverse_:::
+				init.outerExtractors
 
 		override def extractor[X](component :Component[X]) :ComponentExtractor[S, X, O] =
-			if (component eq last) extractor.asInstanceOf[ComponentExtractor[S, X, O]]
+			if (component eq component) extractor.asInstanceOf[ComponentExtractor[S, X, O]]
 			else extractors.get(component).asInstanceOf[ComponentExtractor[S, X, O]]
 
 		override def extractor[X](column :Column[X]) :ColumnExtractor[S, X, O] =
-			if (column eq last) extractor.asInstanceOf[ColumnExtractor[S, X, O]]
+			if (column eq component) extractor.asInstanceOf[ColumnExtractor[S, X, O]]
 			else extractors.get(column).asInstanceOf[ColumnExtractor[S, X, O]]
 
 
@@ -954,11 +1095,11 @@ object MappingSchema {
 		//these are extractors from the subject of this mapping, R ~ T, rather than S
 		private[this] val selectors = Lazy(schemaExtractors.toMap)
 		private[this] val initSelector = ComponentExtractor.req(init) { vs :(R L U) => vs.init }
-		private[this] val lastSelector = ComponentExtractor.req(last)(lastValue)
+		private[this] val lastSelector = ComponentExtractor.req(component)(lastValue)
 
 		protected[schema] override def schemaExtractors :List[(Component[_], Selector[_])] =
-			(last -> lastSelector) :: (init, initSelector) ::
-				last.subcomponents.toList.map { comp => (comp, last(comp) compose lastSelector) } reverse_:::
+			(component -> lastSelector) :: (init, initSelector) ::
+				component.subcomponents.toList.map { comp => (comp, component(comp) compose lastSelector) } reverse_:::
 				init.schemaExtractors.map { case (comp, sel) => (comp, sel compose initSelector) }
 
 		override def apply[X](component :Component[X]) :Selector[X] =
@@ -972,15 +1113,15 @@ object MappingSchema {
 			Unique.Lazy(componentsReversed.reverse)
 
 		override protected[schema] def componentsReversed :List[Component[_]] =
-			last :: init.subcomponentsReversed
+			component :: init.subcomponentsReversed
 
 		override protected[schema] def subcomponentsReversed :List[Component[_]] =
-			last :: last.subcomponents.toList reverse_::: init :: init.subcomponentsReversed
+			component :: component.subcomponents.toList reverse_::: init :: init.subcomponentsReversed
 
 		override val subcomponents :Unique[Component[_]] = Unique.Lazy(subcomponentsReversed.reverse)
 
 		protected[schema] override def columnsReversed :List[Column[_]] =
-			last.columns.toList reverse_::: init.columnsReversed
+			component.columns.toList reverse_::: init.columnsReversed
 
 		override val columns :Unique[Column[_]] = Unique.Lazy(columnsReversed.reverse)
 
@@ -1010,8 +1151,11 @@ object MappingSchema {
 
 
 	private[schema] class ExtensibleNonEmptySchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, S, O]
-                          (init :MappingSchema[C, R, S, O], last :M, extractor :ComponentExtractor[S, T, O])
+                          (init :ExtensibleMappingSchema[C, R, S, O], last :M, extractor :ComponentExtractor[S, T, O])
 		extends NonEmptySchema[C, M, R, T, S, O](init, last, extractor) with ExtensibleMappingSchema[C ~ M, R ~ T, S, O]
+	{
+		protected override val outerBuffs :Seq[Buff[S]] = init.outerBuffs
+	}
 
 
 
@@ -1021,20 +1165,23 @@ object MappingSchema {
 	private[schema] class FlatNonEmptySchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, S, O]
 	                                        (override val init :FlatMappingSchema[C, R, S, O], next :M,
 	                                         get :ComponentExtractor[S, T, O])
-		extends ExtensibleNonEmptySchema[C, M, R, T, S, O](init, next, get) with FlatMappingSchema[C ~ M, R ~ T, S, O]
+		extends NonEmptySchema[C, M, R, T, S, O](init, next, get) with FlatMappingSchema[C ~ M, R ~ T, S, O]
 	{
 		override def compose[X](extractor :X => S) :FlatNonEmptySchema[C, M, R, T, X, O] =
-			new FlatNonEmptySchema[C, M, R, T, X, O](init compose extractor, last, this.extractor compose extractor)
+			new FlatNonEmptySchema[C, M, R, T, X, O](init compose extractor, component, this.extractor compose extractor)
 
 		override def compose[X](extractor :X =?> S) :FlatNonEmptySchema[C, M, R, T, X, O] =
-			new FlatNonEmptySchema[C, M, R, T, X, O](init compose extractor, last, this.extractor compose extractor)
+			new FlatNonEmptySchema[C, M, R, T, X, O](init compose extractor, component, this.extractor compose extractor)
 	}
 
 
 
 	private[schema] class ExtensibleFlatNonEmptySchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, S, O]
-	                      (init :FlatMappingSchema[C, R, S, O], next :M, get :ComponentExtractor[S, T, O])
+	                      (init :ExtensibleFlatMappingSchema[C, R, S, O], next :M, get :ComponentExtractor[S, T, O])
 		extends FlatNonEmptySchema[C, M, R, T, S, O](init, next, get) with ExtensibleFlatMappingSchema[C ~ M, R ~ T, S, O]
+	{
+		protected override val outerBuffs :Seq[Buff[S]] = init.outerBuffs
+	}
 
 
 
@@ -1042,7 +1189,8 @@ object MappingSchema {
 
 
 	private[schema] class MappedMappingSchema[+C <: Chain, R <: Chain, S, O]
-	                                         (override val schema :MappingSchema[C, R, S, O], constructor :R => S)
+	                      (override val schema :MappingSchema[C, R, S, O], constructor :R => S,
+	                       override val buffs :Seq[Buff[S]] = Nil)
 		extends ShallowAdapter[TypedMapping[R, O], R, S, O] with SchemaMapping[C, R, S, O]
 	{
 		override protected val egg = schema
@@ -1063,7 +1211,8 @@ object MappingSchema {
 
 
 	private[schema] class FlatMappedMappingSchema[+C <: Chain, R <: Chain, S, O]
-			              (override val schema :MappingSchema[C, R, S, O], constructor :R => Option[S])
+			              (override val schema :MappingSchema[C, R, S, O], constructor :R => Option[S],
+			               override val buffs :Seq[Buff[S]] = Nil)
 		extends ShallowAdapter[TypedMapping[R, O], R, S, O] with SchemaMapping[C, R, S, O]
 	{
 		override protected val egg = schema
@@ -1081,14 +1230,16 @@ object MappingSchema {
 
 
 	private[schema] class MappedFlatMappingSchema[+C <: Chain, R <: Chain, S, O]
-	                      (override val schema :FlatMappingSchema[C, R, S, O], constructor :R => S)
-		extends MappedMappingSchema[C, R, S, O](schema, constructor) with FlatSchemaMapping[C, R, S, O]
+	                      (override val schema :FlatMappingSchema[C, R, S, O], constructor :R => S,
+	                       buffs :Seq[Buff[S]] = Nil)
+		extends MappedMappingSchema[C, R, S, O](schema, constructor, buffs) with FlatSchemaMapping[C, R, S, O]
 
 
 
 	private[schema] class FlatMappedFlatMappingSchema[+C <: Chain, R <: Chain, S, O]
-	                      (override val schema :FlatMappingSchema[C, R, S, O], constructor :R => Option[S])
-		extends FlatMappedMappingSchema[C, R, S, O](schema, constructor) with FlatSchemaMapping[C, R, S, O]
+	                      (override val schema :FlatMappingSchema[C, R, S, O], constructor :R => Option[S],
+	                       buffs :Seq[Buff[S]] = Nil)
+		extends FlatMappedMappingSchema[C, R, S, O](schema, constructor, buffs) with FlatSchemaMapping[C, R, S, O]
 
 
 }

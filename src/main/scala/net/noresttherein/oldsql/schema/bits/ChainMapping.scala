@@ -66,7 +66,7 @@ trait ChainMapping[+C <: Chain, R <: Chain, O] extends BaseChainMapping[C, R, O]
 
 
 	private[schema] def asPrefix[T] :MappingSchema[C, R, R ~ T, O] =
-		new ChainPrefixSchema[C, R, R ~ T, O](this)
+		new ChainPrefixSchema[C, R, R, R ~ T, O](this)
 
 }
 
@@ -144,7 +144,7 @@ object ChainMapping {
 
 
 		private[schema] override def asPrefix[T] :FlatMappingSchema[C, R, R ~ T, O] =
-			new FlatChainPrefixSchema[C, R, R ~ T, O](this)
+			new FlatChainPrefixSchema[C, R, R, R ~ T, O](this)
 	}
 
 
@@ -179,35 +179,42 @@ object ChainMapping {
 
 
 
-	/** Adapts a `ChainMapping` to a `MappingSchema` of a `Chain` longer by one entry. */
-	private[schema] class ChainPrefixSchema[+C <: Chain, R <: Chain, S <: R ~ Any, O]
-	                                       (protected val egg :MappingSchema[C, R, R, O])
+	/** Adapts a `MappingSchema` with the owning mapping's subject type `T &lt;: Chain` to a `MappingSchema` 
+	  * with outer subject type being a `Chain` longer by one entry. This is essentially a component
+	  * mapping for a prefix chain `R` of a chain `S`.
+	  * @tparam C the chain with all components in this schema.
+	  * @tparam R the subject chain type of this schema, a prefix of the chain `T`.
+	  * @tparam T the outer subject type of the extended schema, the init of the outer subject type of this mapping.
+	  * @tparam S the outer subject type of this schema.           
+	  */
+	private[schema] class ChainPrefixSchema[+C <: Chain, R <: Chain, T <: Chain, S <: T ~ Any, O]
+	                                       (protected val egg :MappingSchema[C, R, T, O])
 		extends MappingSchema[C, R, S, O] with ShallowProxy[R, O]
 	{
-
 		override def members :C = egg.members
 
 		override def extractor[X](component :Component[X]) :ComponentExtractor[S, X, O] =
-			egg.extractor(component) compose prefix[R]
+			egg.extractor(component) compose prefix[T]
 
 		override def extractor[X](column :Column[X]) :ComponentExtractor.ColumnExtractor[S, X, O] =
-			egg.extractor(column) compose prefix[R]
+			egg.extractor(column) compose prefix[T]
 
-		override def unapply(subject :S) :Option[R] = Some(subject.init)
+		override def unapply(subject :S) :Option[R] = egg.unapply(subject.init)
 
-		override def disassemble(subject :S) :R = subject.init
+		override def disassemble(subject :S) :R = egg.disassemble(subject.init)
 
 		override def compose[X](extractor :X => S) :MappingSchema[C, R, X, O] =
-			egg compose (extractor andThen prefix[R])
+			egg compose (extractor andThen prefix[T])
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[C, R, X, O] =
-			egg compose (extractor andThen prefix[R])
+			egg compose (extractor andThen prefix[T])
 
 		override protected[schema] def schemaExtractors :List[(Component[_], Selector[_])] = egg.schemaExtractors
 
-		override protected[schema] def ownerExtractors :List[(Component[_], ComponentExtractor[S, _, O])] =
-			egg.ownerExtractors map { case (c, ex) =>
-				c -> ComponentExtractor[S, Any, O](ex.export.asInstanceOf[Component[Any]])(ex.asInstanceOf[R =?> Any] compose prefix[R])
+		override protected[schema] def outerExtractors :List[(Component[_], ComponentExtractor[S, _, O])] =
+			egg.outerExtractors map { case (c, ex) =>
+				val export = ex.export.asInstanceOf[Component[Any]]
+				c -> ComponentExtractor[S, Any, O](export)(ex.asInstanceOf[T =?> Any] compose prefix[T])
 			}
 
 
@@ -217,21 +224,33 @@ object ChainMapping {
 
 		override protected[schema] def columnsReversed :List[Column[_]] = egg.columnsReversed
 
+		override protected[schema] def component :Component[_] = egg.component
+		
+		override protected[schema] def init :MappingSchema[_, _, S, O] =
+			egg.init.compose(prefix[T])
+		
+			
+
+		
+		
 		override def optionally(pieces :Pieces) :Option[R] = egg.optionally(pieces.compatible(egg))
 
 	}
 
 
 
-	private[schema] class FlatChainPrefixSchema[+C <: Chain, R <: Chain, S <: R ~ Any, O]
-	                                           (protected override val egg :FlatMappingSchema[C, R, R, O])
-		extends ChainPrefixSchema[C, R, S, O](egg) with FlatMappingSchema[C, R, S, O]
+	private[schema] class FlatChainPrefixSchema[+C <: Chain, R <: Chain, T <: Chain, S <: T ~ Any, O]
+	                                           (protected override val egg :FlatMappingSchema[C, R, T, O])
+		extends ChainPrefixSchema[C, R, T, S, O](egg) with FlatMappingSchema[C, R, S, O]
 	{
 		override def compose[X](extractor :X => S) :FlatMappingSchema[C, R, X, O] =
-			egg compose (extractor andThen prefix[R])
+			egg compose (extractor andThen prefix[T])
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[C, R, X, O] =
-			egg compose (extractor andThen prefix[R])
+			egg compose (extractor andThen prefix[T])
+		
+		override protected[schema] def init :FlatMappingSchema[_, _, S, O] =
+			egg.init.compose(prefix[T])
 	}
 
 

@@ -65,7 +65,7 @@ trait RecordMapping[+C <: Chain, R <: Record, O] extends BaseChainMapping[C, R, 
 
 
 	private[schema] def asPrefix[T <: Record.Item] :MappingSchema[C, R, R |# T, O] =
-		new ChainPrefixSchema[C, R, R |# T, O](this)
+		new ChainPrefixSchema[C, R, R, R |# T, O](this)
 
 }
 
@@ -110,7 +110,7 @@ object RecordMapping {
 
 
 		private[schema] override def asPrefix[T <: Item] :FlatMappingSchema[C, R, R |# T, O] =
-			new FlatChainPrefixSchema[C, R, R |# T, O](this)
+			new FlatChainPrefixSchema[C, R, R, R |# T, O](this)
 	}
 
 
@@ -130,11 +130,11 @@ object RecordMapping {
 		override protected def link(init :R, last :T) :R |# (K #> T) = init |# key #> last
 
 		override def compose[X](extractor :X => S) :MappingSchema[C ~ M, R |# (K #> T), X, O] =
-			new NonEmptyRecordSchema[C, M, R, K, T, X, O](init.compose(extractor), key, last,
+			new NonEmptyRecordSchema[C, M, R, K, T, X, O](init.compose(extractor), key, component,
 			                                              this.extractor compose extractor)
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[C ~ M, R |# (K #> T), X, O] =
-			new NonEmptyRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
+			new NonEmptyRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, component,
 			                                              this.extractor compose extractor)
 
 	}
@@ -142,17 +142,17 @@ object RecordMapping {
 
 
 	private class NonEmptyFlatRecordSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Record, K <: Key, T, S, O]
-	                                      (first :MappingSchema[C, R, S, O], key :K, next :M,
+	                                      (override val init :FlatMappingSchema[C, R, S, O], key :K, next :M,
 	                                       extract :ComponentExtractor[S, T, O])
-		extends NonEmptyRecordSchema[C, M, R, K, T, S, O](first, key, next, extract)
+		extends NonEmptyRecordSchema[C, M, R, K, T, S, O](init, key, next, extract)
 			with FlatMappingSchema[C ~ M, R |# (K #> T), S, O]
 	{
 		override def compose[X](extractor :X => S) :FlatMappingSchema[C ~ M, R |# (K #> T), X, O] =
-			new NonEmptyFlatRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
+			new NonEmptyFlatRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, component,
 			                                                  this.extractor compose extractor)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[C ~ M, R |# (K #> T), X, O] =
-			new NonEmptyFlatRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
+			new NonEmptyFlatRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, component,
 			                                                  this.extractor compose extractor)
 	}
 
