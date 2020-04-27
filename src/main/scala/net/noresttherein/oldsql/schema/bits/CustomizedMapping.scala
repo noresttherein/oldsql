@@ -23,8 +23,11 @@ class CustomizedMapping[+M <: TypedMapping[S, O], S, O] private
                        (override val egg :M, substitutions :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component])
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
 {
-	override protected def adapt[T](component :egg.Component[T]) :Component[T] =
+	protected override def adapt[T](component :egg.Component[T]) :Component[T] =
 		substitutions.getOrElse(component, component)
+
+	protected override def adaptColumn[T](column :egg.Column[T]) :Column[T] =
+		substitutions.getOrElse(column, column).asInstanceOf[Column[T]]
 }
 
 
@@ -34,6 +37,7 @@ class CustomizedMapping[+M <: TypedMapping[S, O], S, O] private
 object CustomizedMapping {
 	private type Substitution[X, O] = Entry[MappingFrom[O]#Component, MappingFrom[O]#Component, X]
 	private type Substitutions[O] = NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component]
+
 
 	def select[M <: TypedMapping[S, O], S, O]
 	          (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
@@ -96,9 +100,16 @@ object CustomizedMapping {
 					builder += new Substitution(column, column.withBuffs(column.buffs.filter(remove.disabled)))
 			case lifted =>
 				lifted.subcomponents foreach { sub =>
-					val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
-					if (disabled.disabled(comp) && remove.enabled(comp))
-						builder += new Substitution(comp, BuffedMapping(comp, comp.buffs.filter(remove.disabled) :_*))
+					sub match {
+						case column :ColumnMapping[_, O] =>
+							val col = mapping.export(column)
+							if (disabled.disabled(col) && remove.enabled(col))
+								builder += new Substitution(col, col.withBuffs(col.buffs.filter(remove.disabled)))
+						case _ =>
+							val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
+							if (disabled.disabled(comp) && remove.enabled(comp))
+								builder += new Substitution(comp, BuffedMapping(comp, comp.buffs.filter(remove.disabled) :_*))
+					}
 				}
 
 		}
@@ -124,9 +135,16 @@ object CustomizedMapping {
 					builder += new Substitution(column, column.withBuffs(add[T] +: column.buffs))
 			case lifted =>
 				lifted.subcomponents foreach { sub =>
-					val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
-					if (add.disabled(comp) && enabled.enabled(comp))
-						builder += new Substitution[Any, O](comp, BuffedMapping(comp, add[Any] +: comp.buffs :_*))
+					sub match {
+						case column :ColumnMapping[_, O] =>
+							val col = mapping.export(column).asInstanceOf[ColumnMapping[Any, O]]
+							if (add.disabled(col) && enabled.enabled(col))
+								builder += new Substitution[Any, O](col, col.withBuffs(add[Any] +: col.buffs))
+						case _ =>
+							val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
+							if (add.disabled(comp) && enabled.enabled(comp))
+								builder += new Substitution[Any, O](comp, BuffedMapping(comp, add[Any] +: comp.buffs :_*))
+					}
 				}
 
 		}

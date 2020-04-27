@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping}
+import net.noresttherein.oldsql.schema.support.{ConstantMapping, StableMapping}
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ComponentExtractor, MappingSchema, SchemaMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedMappingSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatMappingSchema, MappedMappingSchema, NonEmptySchema, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedSchemaMapping, SchemaColumn}
@@ -20,6 +20,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 
 
 
+/** A mapping for `Chain` heterogeneous lists which is a `SchemaMapping` and its own `MappingSchema` at the same time. */
 trait ChainMapping[+C <: Chain, R <: Chain, O] extends BaseChainMapping[C, R, O] {
 
 	override val schema :ChainMapping[C, R, O] = this
@@ -189,6 +190,9 @@ object ChainMapping {
 		override def extractor[X](component :Component[X]) :ComponentExtractor[S, X, O] =
 			egg.extractor(component) compose prefix[R]
 
+		override def extractor[X](column :Column[X]) :ComponentExtractor.ColumnExtractor[S, X, O] =
+			egg.extractor(column) compose prefix[R]
+
 		override def unapply(subject :S) :Option[R] = Some(subject.init)
 
 		override def disassemble(subject :S) :R = subject.init
@@ -211,7 +215,7 @@ object ChainMapping {
 
 		override protected[schema] def subcomponentsReversed :List[Component[_]] = egg.subcomponentsReversed
 
-		override protected[schema] def columnsReversed :List[Component[_]] = egg.columnsReversed
+		override protected[schema] def columnsReversed :List[Column[_]] = egg.columnsReversed
 
 		override def optionally(pieces :Pieces) :Option[R] = egg.optionally(pieces.compatible(egg))
 

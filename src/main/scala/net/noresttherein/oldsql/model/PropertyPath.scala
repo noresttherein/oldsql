@@ -31,7 +31,7 @@ import scala.reflect.runtime.universe._
   * considered equal to the overriden property in the super class - this may or may not be desirable;
   * on one hand, we would expect that since both calls will return the same value for the same argument,
   * they should be equal; on another, static result type may be different and invoking a `PropertyPath[S, Int]` on a value
-  * of `T>:S` may throw a  `ClassCastException` (or other), even if the underlying property is declared/first defined
+  * of `T >: S` may throw a  `ClassCastException` (or other), even if the underlying property is declared/first defined
   * in class `T`, while an equal `PropertyPath[T, Int]` / `PropertyPath[T, Any]` may not.
   * This decision was made as it was designed to facilitate the creation of property mappings where such coalescence
   * is performed, rather than be a generic reflection mechanism. If this might be an issue, check the `definedFor`
@@ -48,7 +48,7 @@ import scala.reflect.runtime.universe._
   * @tparam Y return type of the property.
   * @author Marcin Mościcki
   */
-sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val definedFor :Type, final val fun :X=>Y)  {
+sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val definedFor :Type, final val fun :X => Y)  {
 
 	/** Concatenated names of all methods called by fun/this instance on its argument, separated by '.'. */
 	def name :String
@@ -74,10 +74,12 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
 	/** Return an instance representing chained call of properties in this instance, followed by invoking the calls
 	  * specified by suffix on the return value.
 	  */
-	def andThen[YY >: Y, Z](suffix :YY=>Z)(implicit tag :TypeTag[YY]) :PropertyPath[X, Z] = this andThen PropertyPath(suffix)
+	def andThen[YY >: Y, Z](suffix :YY=>Z)(implicit tag :TypeTag[YY]) :PropertyPath[X, Z] =
+		this andThen PropertyPath(suffix)
 
 	/** Return an instance representing chained property call of properties specified by prefix, followed by this chain. */
-	def compose[Z :TypeTag](prefix :Z=>X) :PropertyPath[Z, Y] = PropertyPath(prefix) andThen this
+	def compose[Z :TypeTag](prefix :Z=>X) :PropertyPath[Z, Y] =
+		PropertyPath(prefix) andThen this
 
 	/** Is this instance a proper prefix of the given property chain, meaning when invoked on the same argument XX,
 	  * property will make make the same calls as this instance, followed by at least one more chained property getter.
@@ -108,7 +110,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
 
 
 
-/** Reflection mechanism, which, given a function `X=>Y`, investigates what methods are called on the argument `X`
+/** Reflection mechanism, which, given a function `X => Y`, investigates what methods are called on the argument `X`
   * to return value `Y`. It is intended to create identifiers for class properties (zero argument methods), including
   * chained properties of the form `(_:Company).department.director.favouritePony`. When given a function of this form,
   * a `PropertyPath` can be created which will list all methods called and provide a String representation of the call
@@ -142,7 +144,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
   *     Implementation will try its best to provide non-null and not-mocked arguments as well as try several
   *     super constructors before giving up;
   *   - cycles between constructors can cause exceptions;
-  *   - the constructor's shouldn't allocate large structures or claim resources, otherwise leaks
+  *   - the constructors shouldn't allocate large structures or claim resources, otherwise leaks
   *     (or at least bottlenecks) can occur.
   *   - reliance on a large number of varying injected arguments can lead to potentially creating huge graphs of
   *     mock classes and instances in an attempt to trace the call;

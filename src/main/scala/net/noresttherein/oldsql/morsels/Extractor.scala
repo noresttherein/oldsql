@@ -52,6 +52,9 @@ trait Extractor[-X, +Y] {
 
 	def compose[W](req :W => X) :Extractor[W, Y] = Extractor(req andThen optional)
 
+	def composeOpt[W](f :W => Option[X]) :Extractor[W, Y] = {
+		val opt = optional; Extractor(f(_) flatMap opt)
+	}
 
 
 	override def toString :String = "Extractor@" + System.identityHashCode(this)
@@ -201,6 +204,9 @@ object Extractor {
 
 		override def compose[W](req :W => X) :RequisiteExtractor[W, Y] = Extractor.req(req andThen getter)
 
+		override def composeOpt[W](f :W => Option[X]) :Extractor[W, Y] = {
+			val get = getter; Extractor(f(_) map get)
+		}
 
 		override def toString :String = "Requisite@" + System.identityHashCode(this)
 	}
@@ -224,6 +230,7 @@ object Extractor {
 		override def andThen[Z](extractor :RequisiteExtractor[X, Z]) :RequisiteExtractor[X, Z] = extractor
 		override def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, X] = extractor
 		override def compose[W](req :W => X) :RequisiteExtractor[W, X] = Extractor.req(req)
+		override def composeOpt[W](f :W => Option[X]) :Extractor[W, X] = Extractor(f)
 
 		override def toString = "Identity"
 	}
@@ -253,7 +260,7 @@ object Extractor {
 			case _ => try {
 				const(extractor(constant))
 			} catch {
-				case _ :Exception => super.andThen(extractor)
+				case _ :Exception => Extractor(this.getter andThen extractor.optional)
 			}
 		}
 
@@ -261,19 +268,21 @@ object Extractor {
 			try {
 				const(extractor(constant))
 			} catch {
-				case _ :Exception => super.andThen(extractor)
+				case _ :Exception => Extractor.req(this.getter andThen extractor.getter)
 			}
+
+
+		override def compose[W](extractor :W =?> X) :W =?> Y = extractor match {
+			case _ :RequisiteExtractor[_, _] => this.asInstanceOf[ConstantExtractor[W, Y]]
+			case _ :EmptyExtractor[_, _] => none
+			case _ => composeOpt(extractor.optional)
+		}
 
 		override def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, Y] =
 			this.asInstanceOf[RequisiteExtractor[W, Y]]
 
 		override def compose[W](req :W => X) :RequisiteExtractor[W, Y] = this.asInstanceOf[RequisiteExtractor[W, Y]]
 
-		override def compose[W](extractor :W =?> X) :W =?> Y = extractor match {
-			case _ :RequisiteExtractor[_, _] => this.asInstanceOf[ConstantExtractor[W, Y]]
-			case _ :EmptyExtractor[W, X] => none
-			case _ => extractor andThen this
-		}
 
 		override def toString :String = "Const(" + constant + ")"
 	}
@@ -293,6 +302,8 @@ object Extractor {
 		override def andThen[Z](extractor :Y =?> Z) :X =?> Z = none
 		override def compose[W](extractor :W =?> X) :W =?> Y = none 
 		override def compose[W](req :W => X) :W =?> Y = none
+		override def composeOpt[W](f :W => Option[X]) :W =?> Y = none
+
 
 		override def toString :String = "Empty"
 	}

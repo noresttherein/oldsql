@@ -3,10 +3,11 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
-import net.noresttherein.oldsql.schema.ColumnMapping.NumberedColumn
+import net.noresttherein.oldsql.schema.ColumnMapping.{LiteralColumn, NumberedColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
+import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
 
 
 
@@ -32,21 +33,21 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 	final def subcomponents :Unique[Component[_]] = Unique.empty
 
 	/** Returns `Unique(this)`. */
-	final def columns :Unique[Component[S]] = Unique(this)
+	final def columns :Unique[Column[S]] = Unique(this)
 
-	final override def selectable :Unique[Component[S]] = selfUnless(NoSelect)
-	final override def queryable :Unique[Component[S]] = selfUnless(NoQuery)
-	final override def updatable :Unique[Component[S]] = selfUnless(NoUpdate)
-	final override def autoUpdated :Unique[Component[S]] = selfIf(AutoUpdate)
- 	final override def insertable :Unique[Component[S]] = selfUnless(NoInsert)
-	final override def autoInserted :Unique[Component[S]] = selfIf(AutoInsert)
+	final override def selectable :Unique[Column[S]] = selfUnless(NoSelect)
+	final override def queryable :Unique[Column[S]] = selfUnless(NoQuery)
+	final override def updatable :Unique[Column[S]] = selfUnless(NoUpdate)
+	final override def autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
+ 	final override def insertable :Unique[Column[S]] = selfUnless(NoInsert)
+	final override def autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
 
 	/** An empty `Unique` if the given buff is ''disabled'' (not attached), or a singleton `Unique(this)` otherwise. */
-	protected def selfUnless(buff :BuffType) :Unique[Component[S]] =
+	protected def selfUnless(buff :BuffType) :Unique[Column[S]] =
 		if (buff.enabled(buffs)) Unique.empty else Unique(this)
 
 	/** An empty `Unique` if the given buff is ''enabled'' (attached), or a singleton `Unique(this)` otherwise. */
-	protected def selfIf(buff :BuffType) :Unique[Component[S]] =
+	protected def selfIf(buff :BuffType) :Unique[Column[S]] =
 		if (buff.disabled(buffs)) Unique.empty else Unique(this)
 
 
@@ -85,7 +86,7 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 			}
 
 	}
-	
+
 	override def queryForm :SQLWriteForm[S] = ExtraQuery.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
 		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
@@ -94,12 +95,12 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 			if (audits.isEmpty) form
 			else form.unmap(audits.reduce(_ andThen _))
 	}
-	
+
 	override def updateForm :SQLWriteForm[S] = ExtraUpdate.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
 		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
 		case _ =>
-			val audits = UpdateAudit.Audit(buffs) 
+			val audits = UpdateAudit.Audit(buffs)
 			if (audits.isEmpty) form
 			else form.unmap(audits.reduce(_ andThen _))
 	}
@@ -170,12 +171,22 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 	override def export[T](component :Component[T]) :Component[T] = component
 
+	override def export[T](column :Column[T]) :Column[T] = column
+
 	override def apply[T](component :Component[T]) :Selector[T] =
 		if (component == this)
 			ComponentExtractor.ident[S, O](this).asInstanceOf[Selector[T]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $component is not a subcomponent of column $column. The only subcomponent of a column is the column itself."
+			)
+
+	override def apply[T](column :Column[T]) :ColumnExtractor[S, T, O] =
+		if (column == this)
+			ComponentExtractor.ident[S, O](this).asInstanceOf[ColumnExtractor[S, T, O]]
+		else
+			throw new IllegalArgumentException(
+				s"Mapping $column is not a column of column $column. The only subcomponent of a column is the column itself."
 			)
 
 
@@ -193,6 +204,8 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 				case res => res
 			}
 
+	override def nullValue :Option[S] = form.nulls.toOption
+
 
 
 	protected def isNullable :Boolean = Nullable.enabled(buffs)
@@ -200,6 +213,7 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 
 	def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[S, O] = ColumnMapping(name, opts:_*)(form)
+
 
 	override def renamed(name :String) :ColumnMapping[S, O] = ColumnMapping(name, buffs:_*)(form)
 
@@ -210,7 +224,28 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 	override def qualified(prefix :String) :ColumnMapping[S, O] =
 		prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
 
+
 	def numbered(index :Int) :NumberedColumn[S, O] = new NumberedColumn[S, O](index, name, buffs)(form)
+
+
+
+	/** Attaches a label to this column, transforming it into a `LabeledColumn`.
+	  * This does not change the name of the column.
+	  */
+	def @:[N <: Label](label :Label) :LabeledColumn[N, S, O] =
+		new StandardColumn[S, O](name, buffs)(form) with LabeledColumn[N, S, O]
+
+
+
+	override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
+		new StandardColumn[X, O](name, buffs.map(_.bimap(there, back)))(
+			if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
+		)
+
+	override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
+		new StandardColumn[X, O](name, schema.flatMapBuffs(this)(there, back))(
+			if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
+		)
 
 
 
@@ -246,17 +281,17 @@ object ColumnMapping {
 	def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :ColumnMapping[S, O] =
 		new StandardColumn(name, buffs)
 
-	def apply[N <: String with Singleton :ValueOf, S :ColumnForm, O](buffs :Buff[S]*) :LabeledColumn[N, S, O] =
-		new LabeledColumn[N, S, O](buffs)
+	def apply[N <: String with Singleton :ValueOf, S :ColumnForm, O](buffs :Buff[S]*) :LiteralColumn[N, S, O] =
+		new LiteralColumn[N, S, O](buffs)
 
-	def labeled[N <: String with Singleton, S :ColumnForm, O](label :N, buffs :Buff[S]*) :LabeledColumn[N, S, O] =
-		new LabeledColumn[N, S, O](buffs)(new ValueOf(label), ColumnForm[S])
+	def labeled[N <: String with Singleton, S :ColumnForm, O](label :N, buffs :Buff[S]*) :LiteralColumn[N, S, O] =
+		new LiteralColumn[N, S, O](buffs)(new ValueOf(label), ColumnForm[S])
 
 
 
 	implicit def ColumnProjection[S, A, B] :OriginProjection[ColumnMapping[S, A], A, ColumnMapping[S, B], B] = OriginProjection()
 
-	implicit def LabeledColumnProjection[N <: Label, S, A, B] :OriginProjection[LabeledColumn[N, S, A], A, LabeledColumn[N, S, B], B] =
+	implicit def LabeledColumnProjection[N <: Label, S, A, B] :OriginProjection[LiteralColumn[N, S, A], A, LiteralColumn[N, S, B], B] =
 		OriginProjection()
 
 	implicit def NumberedColumnProjection[S, A, B] :OriginProjection[NumberedColumn[S, A], A, NumberedColumn[S, B], B] =
@@ -290,9 +325,9 @@ object ColumnMapping {
 
 
 
-	class LabeledColumn[N <: String with Singleton, S, O](override val buffs :Seq[Buff[S]] = Nil)
+	class LiteralColumn[N <: String with Singleton, S, O](override val buffs :Seq[Buff[S]] = Nil)
 	                                                     (implicit named :ValueOf[N], override val form :ColumnForm[S])
-		extends LabeledMapping[N, S, O] with ColumnMapping[S, O]
+		extends LabeledColumn[N, S, O]
 	{
 		def this(name :N, buffs :Seq[Buff[S]])(implicit form :ColumnForm[S]) =
 			this(buffs)(new ValueOf(name), form)
@@ -300,22 +335,22 @@ object ColumnMapping {
 		override val name :N = named.value
 		override val isNullable :Boolean = super.isNullable
 
-		override def withBuffs(buffs :Seq[Buff[S]]) :LabeledColumn[N, S, O] =
-			new LabeledColumn[N, S, O](buffs)(new ValueOf(name), form)
+		override def withBuffs(buffs :Seq[Buff[S]]) :LiteralColumn[N, S, O] =
+			new LiteralColumn[N, S, O](buffs)(new ValueOf(name), form)
 
-		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :LabeledColumn[N, X, O] =
-			new LabeledColumn[N, X, O](buffs.map(_.bimap(there, back)))(
+		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :LiteralColumn[N, X, O] =
+			new LiteralColumn[N, X, O](buffs.map(_.bimap(there, back)))(
 				implicitly[ValueOf[N]],
 				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
 			)
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :LabeledColumn[N, X, O] =
-			new LabeledColumn[N, X, O](schema.flatMapBuffs(this)(there, back))(
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :LiteralColumn[N, X, O] =
+			new LiteralColumn[N, X, O](schema.flatMapBuffs(this)(there, back))(
 				implicitly[ValueOf[N]],
 				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 			)
 
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LabeledColumn[_, _, _]]
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LiteralColumn[_, _, _]]
 
 	}
 

@@ -5,15 +5,17 @@ import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, OfFreeOrigin, OriginProjection}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, MappingLabel}
-import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, OriginProjection}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn, MappingLabel}
 import net.noresttherein.oldsql.schema.bits.MappedMapping.FlatMappedMapping
-import net.noresttherein.oldsql.schema.support.{LazyMapping, MappingAdapter, StaticMapping}
+import net.noresttherein.oldsql.schema.support.{MappingAdapter, StableMapping, StaticMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, ExtensibleFlatMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, SchemaComponentLabels, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaComponent, MappedSchemaMapping, SchemaComponentLabel}
 import net.noresttherein.oldsql.schema.bits.{LabeledMapping, MappedMapping}
+import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn.LabeledAdaptedSchemaColumn
+import net.noresttherein.oldsql.schema.SchemaMapping.SchemaColumn.{AdaptedSchemaColumn, SchemaColumnLike}
+import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 
 
 
@@ -81,18 +83,18 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  * with the full list of its columns. The new mapping will delegate its assembly to this instance, and the
 	  * values of replaced components will be assembled from the column values.
 	  */
-//	def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
-//	           (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
-//		new ShallowProxy[S, O] with FlatSchemaMapping[IC, IL, S, O] {
-//			override val schema = flatterer(outer.schema)
-//			protected override val egg = outer
-//		}
+	def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
+	           (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
+		new ShallowProxy[S, O] with FlatSchemaMapping[IC, IL, S, O] {
+			override val schema = flatterer(outer.schema)
+			protected override val egg = outer
+		}
 
 
 
 	/** Attaches a label type to this mapping, being the singleton type of the given string literal.
 	  * A labeled component can be retrieved from the schema using its
-	  * [[net.noresttherein.oldsql.schema.MappingSchema.apply[N<:Label] apply(label)]] method, or `String` extension
+	  * [[net.noresttherein.oldsql.schema.MappingSchema.apply apply(label)]] method, or `String` extension
 	  * methods provided by [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabels SchemaComponentLabels]]'s
 	  * methods, available in [[net.noresttherein.oldsql.schema.AbstractSchemaMapping AbstractSchemaMapping]]'s
 	  * subclasses.
@@ -120,6 +122,8 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 			ComponentExtractor.req(schema)(schema.disassemble _).asInstanceOf[Selector[T]]
 		else
 			schema.extractor(component)
+
+	override def apply[T](column :Column[T]) :ColumnSelector[T] = schema.extractor(column)
 
 
 
@@ -175,6 +179,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	override def flatMap[X](there :S => Option[X], back :X => Option[S])
 	                       (implicit nulls :NullValue[X]) :SchemaMapping[C, R, X, O] =
 		new FlatMappedSchemaMapping[C, R, S, X, O](this, there, back)
+
 }
 
 
@@ -190,6 +195,8 @@ object SchemaMapping {
 	def apply[S, O] :ExtensibleFlatMappingSchema[@~, @~, S, O] = EmptySchema[S, O]
 
 
+
+//	implicit class SchemaMappingMethods[]
 
 	implicit def SchemaMappingProjection[AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
 			(implicit alias :OriginProjection[MappingSchema[AC, R, S, A], A, MappingSchema[BC, R, S, B], B])
@@ -217,17 +224,60 @@ object SchemaMapping {
 
 
 	/** A single-column schema mapping and a column of a schema mapping at the same time. */
-	trait SchemaColumn[S, O] extends FlatSchemaMapping[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] with ColumnMapping[S, O]
+	trait SchemaColumn[S, O] extends SchemaColumnLike[SchemaColumn[S, O], S, S, O]
 		with FreeOriginMapping[S, O]
 	{
-		override val schema :FlatMappingSchema[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] =
-			MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
+		override def @:[N <: Label](label :N) :LabeledSchemaColumn[N, S, O] =
+			LabeledSchemaColumn(label, name, buffs :_*)(form)
+
+		override def :@[N <: Label :ValueOf] :LabeledSchemaColumn[N, S, O] =
+			LabeledSchemaColumn(valueOf[N], name, buffs:_*)(form)
 	}
 
+
+
 	object SchemaColumn {
+
 		def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :SchemaColumn[S, O] =
-			new BaseColumn[S, O](name, buffs) with SchemaColumn[S, O]
+			new BaseColumn[S, O](name, buffs) with SchemaColumn[S, O] {
+
+				override val schema :FlatMappingSchema[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] =
+					MappingSchema[S, O].col(this, Extractor.ident[S])
+			}
+
+
+
+		trait SchemaColumnLike[+C <: SchemaColumn[_, O], T, S, O]
+			extends ColumnMapping[S, O] with FlatSchemaMapping[@~ ~ C, @~ ~ T, S, O]
+		{
+			override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :SchemaColumnLike[C, T, X, O] =
+				new AdaptedSchemaColumn[C, T, X, O](schema compose back)(
+					form.bimap(there)(back)(if (nulls == null) form.nulls.map(there) else nulls)
+				)
+
+			override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X])
+					:SchemaColumnLike[C, T, X, O] =
+				new AdaptedSchemaColumn[C, T, X, O](schema compose Extractor(back))(
+					form.biflatMap(there)(back)(if (nulls == null) form.nulls.flatMap(there) else nulls)
+				)
+		}
+
+
+
+		class AdaptedSchemaColumn[+C <: SchemaColumn[_, O], T, S, O]
+		                        (override val schema :FlatMappingSchema[@~ ~ C, @~ ~ T, S, O])
+		                        (implicit override val form :ColumnForm[S])
+			extends SchemaColumnLike[C, T, S, O]
+		{
+			protected val column = schema.last
+			override def name :String = column.name
+		}
+
+
 	}
+
+
+
 
 
 
@@ -239,9 +289,9 @@ object SchemaMapping {
 	trait FlatSchemaMapping[+C <: Chain, R <: Chain, S, O] extends SchemaMapping[C, R, S, O] { outer =>
 		override val schema :FlatMappingSchema[C, R, S, O]
 
-//		override def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
-//		                    (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
-//			this.asInstanceOf[FlatSchemaMapping[IC, IL, S, O]]
+		override def flatten[U >: C <: Chain, IC <: Chain, IL <: Chain]
+		                    (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IL]) :FlatSchemaMapping[IC, IL, S, O] =
+			this.asInstanceOf[FlatSchemaMapping[IC, IL, S, O]]
 
 
 
@@ -278,22 +328,63 @@ object SchemaMapping {
 
 
 	trait LabeledSchemaColumn[N <: Label, S, O]
-		extends SchemaColumn[S, O] with LabeledFlatSchemaComponent[N, @~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O]
+		extends SchemaColumn[S, O] //with SchemaColumnLike[LabeledSchemaColumn[N, S, O], S, S, O]
+		   with LabeledFlatSchemaComponent[N, @~ ~ SchemaColumn[S, O], @~ ~ S, S, O]
 	{
-		override val schema :FlatMappingSchema[@~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O] =
-			MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
+		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X])
+				:LabeledAdaptedSchemaColumn[N, S, X, O] =
+			new LabeledAdaptedSchemaColumn(schema compose back)(
+				form.bimap(there)(back)(if (nulls == null) form.nulls.map(there) else nulls)
+			)
+
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X])
+				:LabeledAdaptedSchemaColumn[N, S, X, O] =
+			new LabeledAdaptedSchemaColumn(schema compose Extractor(back))(
+				form.biflatMap(there)(back)(if (nulls == null) form.nulls.flatMap(there) else nulls)
+			)
 	}
+
+
 
 	object LabeledSchemaColumn {
 		@inline def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
 			apply(name, name, buffs:_*)
 
 		def apply[N <: Label, S :ColumnForm, O](label :N, name :String, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
-			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O]
+			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O] {
+				override val schema :FlatMappingSchema[@~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O] =
+					MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
+			}
 
 //		implicit def LabeledSchemaColumnProjection[N <: Label, S, A, B]
 //				:OriginProjection[LabeledSchemaColumn[N, S, A], A, LabeledSchemaColumn[N, S, B], B] =
 //			OriginProjection()
+
+
+
+		class LabeledAdaptedSchemaColumn[N <: Label, T, S, O]
+		                               (schema :FlatMappingSchema[@~ ~ SchemaColumn[T, O], @~ ~ T, S, O])
+		                               (implicit sqlForm :ColumnForm[S])
+			extends AdaptedSchemaColumn[SchemaColumn[T, O], T, S, O](schema) with LabeledColumn[N, S, O]
+			   with LabeledFlatSchemaComponent[N, @~ ~ SchemaColumn[T, O], @~ ~ T, S, O]
+		{
+
+			override def @:[L <: Label](label :L) :LabeledAdaptedSchemaColumn[L, T, S, O] =
+				new LabeledAdaptedSchemaColumn[L, T, S, O](schema)
+
+			override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X])
+					:LabeledAdaptedSchemaColumn[N, T, X, O] =
+				new LabeledAdaptedSchemaColumn[N, T, X, O](schema compose back)(
+					form.bimap(there)(back)(if (nulls == null) form.nulls.map(there) else nulls)
+				)
+
+			override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X])
+					:LabeledAdaptedSchemaColumn[N, T, X, O] =
+				new LabeledAdaptedSchemaColumn[N, T, X, O](schema compose Extractor(back))(
+					form.biflatMap(there)(back)(if (nulls == null) form.nulls.flatMap(there) else nulls)
+				)
+
+		}
 	}
 
 
@@ -327,41 +418,41 @@ object SchemaMapping {
 
 
 
-	private[schema] class MappedSchemaMapping[+C <: Chain, R <: Chain, S, T, O]
-	                                         (override val egg :SchemaMapping[C, R, S, O],
-	                                          override val map :S => T, override val unmap :T => S)
-	                                         (implicit override val nulls :NullValue[T])
-		extends MappedMapping[SchemaMapping[C, R, S, O], S, T, O] with MappingAdapter[SchemaMapping[C, R, S, O], T, O]
-			with SchemaMapping[C, R, T, O]
+	private[schema] class MappedSchemaMapping[+C <: Chain, R <: Chain, T, S, O]
+	                                         (override val egg :SchemaMapping[C, R, T, O],
+	                                          override val map :T => S, override val unmap :S => T)
+	                                         (implicit override val nulls :NullValue[S])
+		extends MappedMapping[SchemaMapping[C, R, T, O], T, S, O] with MappingAdapter[SchemaMapping[C, R, T, O], S, O]
+			with SchemaMapping[C, R, S, O]
 	{
-		override val schema :MappingSchema[C, R, T, O] = egg.schema compose unmap
+		override val schema :MappingSchema[C, R, S, O] = egg.schema compose unmap
 
-		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappedSchemaMapping[C, R, S, X, O] =
-			new MappedSchemaMapping[C, R, S, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
+		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappedSchemaMapping[C, R, T, X, O] =
+			new MappedSchemaMapping[C, R, T, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
 
-		override def flatMap[X](there :T => Option[X], back :X => Option[T])
-		                       (implicit nulls :NullValue[X]) :FlatMappedSchemaMapping[C, R, S, X, O] =
-			new FlatMappedSchemaMapping[C, R, S, X, O](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])
+		                       (implicit nulls :NullValue[X]) :FlatMappedSchemaMapping[C, R, T, X, O] =
+			new FlatMappedSchemaMapping[C, R, T, X, O](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
 	}
 
 
 
-	private[schema] class FlatMappedSchemaMapping[+C <: Chain, R <: Chain, S, T, O]
-	                                             (mapping :SchemaMapping[C, R, S, O],
-	                                              assemble :S => Option[T], disassemble :T => Option[S])
-	                                             (implicit override val nulls :NullValue[T])
-		extends FlatMappedMapping[SchemaMapping[C, R, S, O], S, T, O](mapping, assemble, disassemble, nulls)
-			with MappingAdapter[SchemaMapping[C, R, S, O], T, O] with SchemaMapping[C, R, T, O]
+	private[schema] class FlatMappedSchemaMapping[+C <: Chain, R <: Chain, T, S, O]
+	                                             (mapping :SchemaMapping[C, R, T, O],
+	                                              assemble :T => Option[S], disassemble :S => Option[T])
+	                                             (implicit override val nulls :NullValue[S])
+		extends FlatMappedMapping[SchemaMapping[C, R, T, O], T, S, O](mapping, assemble, disassemble, nulls)
+			with MappingAdapter[SchemaMapping[C, R, T, O], S, O] with SchemaMapping[C, R, S, O]
 	{
-		override val schema :MappingSchema[C, R, T, O] = egg.schema compose Extractor(unmap)
+		override val schema :MappingSchema[C, R, S, O] = egg.schema compose Extractor(unmap)
 
-		override def map[X](there :T => X, back :X => T)
-		                   (implicit nulls :NullValue[X]) :FlatMappedSchemaMapping[C, R, S, X, O] =
-			new FlatMappedSchemaMapping[C, R, S, X, O](egg, map(_) map there, back andThen unmap)(mapNulls(there))
+		override def map[X](there :S => X, back :X => S)
+		                   (implicit nulls :NullValue[X]) :FlatMappedSchemaMapping[C, R, T, X, O] =
+			new FlatMappedSchemaMapping[C, R, T, X, O](egg, map(_) map there, back andThen unmap)(mapNulls(there))
 
-		override def flatMap[X](there :T => Option[X], back :X => Option[T])
-		                       (implicit nulls :NullValue[X]) :FlatMappedSchemaMapping[C, R, S, X, O] =
-			new FlatMappedSchemaMapping[C, R, S, X, O](egg, map(_) flatMap there, back(_) flatMap unmap)(flatMapNulls(there))
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])
+		                       (implicit nulls :NullValue[X]) :FlatMappedSchemaMapping[C, R, T, X, O] =
+			new FlatMappedSchemaMapping[C, R, T, X, O](egg, map(_) flatMap there, back(_) flatMap unmap)(flatMapNulls(there))
 	}
 
 
@@ -369,41 +460,41 @@ object SchemaMapping {
 
 
 
-	private[schema] class MappedFlatSchemaMapping[+C <: Chain, R <: Chain, S, T, O]
-	                                             (override val egg :FlatSchemaMapping[C, R, S, O],
-	                                              override val map :S => T, override val unmap :T => S)
-	                                             (implicit override val nulls :NullValue[T])
-		extends MappedMapping[FlatSchemaMapping[C, R, S, O], S, T, O] with MappingAdapter[FlatSchemaMapping[C, R, S, O], T, O]
-			with FlatSchemaMapping[C, R, T, O]
+	private[schema] class MappedFlatSchemaMapping[+C <: Chain, R <: Chain, T, S, O]
+	                                             (override val egg :FlatSchemaMapping[C, R, T, O],
+	                                              override val map :T => S, override val unmap :S => T)
+	                                             (implicit override val nulls :NullValue[S])
+		extends MappedMapping[FlatSchemaMapping[C, R, T, O], T, S, O] with MappingAdapter[FlatSchemaMapping[C, R, T, O], S, O]
+			with FlatSchemaMapping[C, R, S, O]
 	{
-		override val schema :FlatMappingSchema[C, R, T, O] = egg.schema compose unmap
+		override val schema :FlatMappingSchema[C, R, S, O] = egg.schema compose unmap
 
-		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappedFlatSchemaMapping[C, R, S, X, O] =
-			new MappedFlatSchemaMapping[C, R, S, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
+		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappedFlatSchemaMapping[C, R, T, X, O] =
+			new MappedFlatSchemaMapping[C, R, T, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
 
-		override def flatMap[X](there :T => Option[X], back :X => Option[T])
-		                       (implicit nulls :NullValue[X]) :FlatMappedFlatSchemaMapping[C, R, S, X, O] =
-			new FlatMappedFlatSchemaMapping[C, R, S, X, O](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])
+		                       (implicit nulls :NullValue[X]) :FlatMappedFlatSchemaMapping[C, R, T, X, O] =
+			new FlatMappedFlatSchemaMapping[C, R, T, X, O](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
 	}
 
 
 
-	private[schema] class FlatMappedFlatSchemaMapping[+C <: Chain, R <: Chain, S, T, O]
-	                                                 (override val egg :FlatSchemaMapping[C, R, S, O],
-	                                                  assemble :S => Option[T], disassemble :T => Option[S])
-	                                                 (implicit override val nulls :NullValue[T])
-		extends FlatMappedMapping[FlatSchemaMapping[C, R, S, O], S, T, O](egg, assemble, disassemble, nulls)
-			with MappingAdapter[FlatSchemaMapping[C, R, S, O], T, O] with FlatSchemaMapping[C, R, T, O]
+	private[schema] class FlatMappedFlatSchemaMapping[+C <: Chain, R <: Chain, T, S, O]
+	                                                 (override val egg :FlatSchemaMapping[C, R, T, O],
+	                                                  assemble :T => Option[S], disassemble :S => Option[T])
+	                                                 (implicit override val nulls :NullValue[S])
+		extends FlatMappedMapping[FlatSchemaMapping[C, R, T, O], T, S, O](egg, assemble, disassemble, nulls)
+			with MappingAdapter[FlatSchemaMapping[C, R, T, O], S, O] with FlatSchemaMapping[C, R, S, O]
 	{
-		override val schema :FlatMappingSchema[C, R, T, O] = egg.schema compose Extractor(unmap)
+		override val schema :FlatMappingSchema[C, R, S, O] = egg.schema compose Extractor(unmap)
 
-		override def map[X](there :T => X, back :X => T)
-		                   (implicit nulls :NullValue[X]) :FlatMappedFlatSchemaMapping[C, R, S, X, O] =
-			new FlatMappedFlatSchemaMapping[C, R, S, X, O](egg, map(_) map there, back andThen unmap)(mapNulls(there))
+		override def map[X](there :S => X, back :X => S)
+		                   (implicit nulls :NullValue[X]) :FlatMappedFlatSchemaMapping[C, R, T, X, O] =
+			new FlatMappedFlatSchemaMapping[C, R, T, X, O](egg, map(_) map there, back andThen unmap)(mapNulls(there))
 
-		override def flatMap[X](there :T => Option[X], back :X => Option[T])
-		                       (implicit nulls :NullValue[X]) :FlatMappedFlatSchemaMapping[C, R, S, X, O] =
-			new FlatMappedFlatSchemaMapping[C, R, S, X, O](egg, map(_) flatMap there, back(_) flatMap unmap)(flatMapNulls(there))
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])
+		                       (implicit nulls :NullValue[X]) :FlatMappedFlatSchemaMapping[C, R, T, X, O] =
+			new FlatMappedFlatSchemaMapping[C, R, T, X, O](egg, map(_) flatMap there, back(_) flatMap unmap)(flatMapNulls(there))
 	}
 
 
@@ -459,13 +550,13 @@ object SchemaMapping {
   * @see [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabels]]
   */
 abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :MappingSchema[C, R, S, O])
-	extends SchemaMapping[C, R, S, O] with StaticMapping[S, O] with LazyMapping[S, O]
+	extends SchemaMapping[C, R, S, O] with StaticMapping[S, O] with StableMapping[S, O]
 {
 	implicit val schema :MappingSchema[C, R, S, O] = contents
 
 	override val components :Unique[Component[_]] = schema.components
 	override val subcomponents :Unique[Component[_]] = schema.subcomponents
-	override val columns :Unique[Component[_]] = schema.columns
+	override val columns :Unique[Column[_]] = schema.columns
 
 
 	/** Implicitly extends string literals with methods getting from the schema the (last) component

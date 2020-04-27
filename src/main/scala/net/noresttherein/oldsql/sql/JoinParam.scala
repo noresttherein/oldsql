@@ -4,11 +4,12 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.support.FormMapping
-import net.noresttherein.oldsql.schema.{ColumnForm, ComponentExtractor, RowSource, SQLForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentExtractor, RowSource, SQLForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection}
 import net.noresttherein.oldsql.schema.RowSource.{AnyRowSource, NamedSource}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
@@ -273,6 +274,17 @@ object JoinParam {
 				throw new IllegalArgumentException(s"Mapping $component is not a part of parameter mapping $this")
 		}
 
+/*
+		override def apply[T](column :Column[T]) :ColumnExtractor[P, T, O] = column match {
+//			case self :AnyRef if self eq this =>
+//				extractor.asInstanceOf[ComponentExtractor[P, T, O]]
+			case mapping :FromParam[_, _]#ParamComponent[_] if mapping.root eq this =>
+				mapping.asInstanceOf[ParamComponent[T]].extractor
+			case _ =>
+				throw new IllegalArgumentException(s"Mapping $column is not a part of parameter mapping $this")
+		}
+*/
+
 
 
 		def apply[T :SQLForm](pick :P => T) :Component[T] = new ParamComponent[T](pick)
@@ -288,6 +300,15 @@ object JoinParam {
 			override def extractor :ComponentExtractor[P, T, O] = ComponentExtractor.req(this)(pick)
 			override def toString = s"$This[$form]"
 		}
+/*
+		private class ParamColumn[T :ColumnForm](pick :P => T)
+			extends ParamComponent[T](pick) with ColumnMapping[T, O]
+		{
+			override def extractor :ColumnExtractor[P, T, O] = ComponentExtractor.req(this)(pick)
+
+			override def name :String = ???
+		}
+*/
 
 
 		override def toString :String = name + ":" + form

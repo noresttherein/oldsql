@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.schema.IndexedSchemaMapping.FlatIndexedSchemaMap
   * @author Marcin Mościcki
   */
 trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends MappingSchema[C, R, S, O] {
-
+	//todo: make flatten work
 
 	/** Appends the given component to this schema.
 	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.

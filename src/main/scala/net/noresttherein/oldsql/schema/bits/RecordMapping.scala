@@ -13,7 +13,10 @@ import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema, MappedFlatMappingSchema}
 
 
-/**
+/** A mapping of `Record` instances - maps indexed on the type level with string literals.
+  * It is a `SchemaMapping` and its own `MappingSchema` at the same time. The keys of the record are not mapped;
+  * the component corresponding to each entry maps only the value, with its key being provided by the component
+  * on assembly.
   * @author Marcin Mościcki
   */
 trait RecordMapping[+C <: Chain, R <: Record, O] extends BaseChainMapping[C, R, O] {

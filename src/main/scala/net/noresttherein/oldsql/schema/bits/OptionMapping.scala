@@ -60,17 +60,27 @@ object OptionMapping {
 				(ExplicitSelect.enabled(get) ifTrue ExplicitSelect[Option[S]](None))
 
 
-		private def getExtractor :Selector[S] = ComponentExtractor(get)(Extractor.fromOpt)
+		private val eggExtractor :Selector[S] = ComponentExtractor(get)(Extractor.fromOpt)
 
 		override def apply[T](component :Component[T]) :Selector[T] =
 			if (component eq get)
-				getExtractor.asInstanceOf[Selector[T]]
+				eggExtractor.asInstanceOf[Selector[T]]
 			else {
 				val selector = get(component)
 				ComponentExtractor(selector.export)(Extractor.fromOpt[S] andThen selector)
 			}
 
-		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(getExtractor))
+		override def apply[T](column :Column[T]) :ColumnSelector[T] =
+			if (column eq get)
+				eggExtractor.asInstanceOf[ColumnSelector[T]]
+			else {
+				val selector = get(column)
+				ComponentExtractor(selector.export)(Extractor.fromOpt[S] andThen selector)
+			}
+
+
+
+		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(eggExtractor))
 
 		override val nullValue = Some(None)
 

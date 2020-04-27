@@ -12,8 +12,9 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 class PrefixedMapping[M <: TypedMapping[S, O], S, O](val prefix :String, override val egg :M)
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O] //Adapted[M]
 {
-	override protected def adapt[T](component :Component[T]) :Component[T] = component.prefixed(prefix)
+	protected override def adapt[T](component :Component[T]) :Component[T] = component.prefixed(prefix)
 
+	protected override def adaptColumn[T](column :Column[T]) :Column[T] = column.prefixed(prefix)
 
 	override def qualified(prefix :String) :Adapted[M] =
 		if (prefix.length == 0) this

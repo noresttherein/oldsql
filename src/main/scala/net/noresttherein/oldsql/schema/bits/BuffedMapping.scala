@@ -18,12 +18,8 @@ class BuffedMapping[+M <: TypedMapping[S, O], S, O](override val egg :M, overrid
 	override protected def adapt[T](component :egg.Component[T]) :Component[T] =
 		new BuffedMapping(component, schema.cascadeBuffs(this)(egg(component)))
 
-	protected override def adaptColumn[T](component :egg.Component[T]) :Component[T] = component match {
-		case column :ColumnMapping[T, O] =>
-			column.withBuffs(schema.cascadeBuffs(this)(egg(component)))
-		case _ =>
-			adapt(component)
-	}
+	protected override def adaptColumn[T](column :egg.Column[T]) :Column[T] =
+		column.withBuffs(schema.cascadeBuffs(this)(egg(column)))
 
 //	override def toString :String = buffs.mkString(mapping.toString + "(", ",", ")")
 }
@@ -31,8 +27,10 @@ class BuffedMapping[+M <: TypedMapping[S, O], S, O](override val egg :M, overrid
 
 
 object BuffedMapping {
-	//todo: withBuffs method on Mapping
+
 	def apply[X <: Mapping, M <: TypedMapping[S, O], S, O](mapping :X, buffs :Buff[S]*)
-	                                                      (implicit infer :Conforms[X, M, TypedMapping[S, O]]) :MappingAdapter[M, S, O] =
+	                                                      (implicit infer :Conforms[X, M, TypedMapping[S, O]])
+			:MappingAdapter[M, S, O] =
 		new BuffedMapping[M, S, O](mapping, buffs)
+
 }

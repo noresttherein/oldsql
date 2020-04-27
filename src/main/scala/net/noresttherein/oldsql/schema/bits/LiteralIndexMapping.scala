@@ -13,7 +13,9 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LiteralIndexMapping.NonEmptyIndexMapping
 
 
-/**
+/** A mapping for `LiteralIndex` maps indexed on type level with literal types.
+  * It is a `SchemaMapping` and its own `MappingSchema` at the same time, with the values individual components
+  * in the schema being the values in the index at the corresponding positions.
   * @author Marcin Mościcki
   */
 trait LiteralIndexMapping[+C <: Chain, R <: LiteralIndex, O] extends BaseChainMapping[C, R, O] {

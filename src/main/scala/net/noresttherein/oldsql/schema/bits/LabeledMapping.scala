@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
+import net.noresttherein.oldsql.schema.{ColumnMapping, GenericMapping, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
@@ -19,6 +19,10 @@ trait LabeledMapping[N <: Label, S, O] extends GenericMapping[S, O]
 object LabeledMapping {
 	/** A type of string literals used to label mappings on the type level for ease of access. */
 	type Label = String with Singleton
+
+	trait LabeledColumn[N <: Label, S, O] extends ColumnMapping[S, O] with LabeledMapping[N, S, O]
+
+
 
 	sealed trait @:[N <: Label, M <: Mapping] extends Adapted[M] with LabeledMapping[N, M#Subject, M#Origin] {
 		def label :N

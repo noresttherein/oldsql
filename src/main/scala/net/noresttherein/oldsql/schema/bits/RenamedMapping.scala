@@ -51,13 +51,17 @@ object RenamedMapping {
 		new RenamedMapping[C, S, O](name, mapping)
 
 
-
+	//todo: remove this once the column refactor is complete
 	class DeeplyRenamedMapping[S, O](name :String, column :TypedMapping[S, O])
 		extends EagerDeepProxy[TypedMapping[S, O], S, O](column)
 	{
 		override val sqlName = Some(name)
 
 		protected override def adapt[T](component :egg.Component[T]) :Component[T] = component.renamed(name)
+
+		protected override def adaptColumn[T](column :egg.Column[T]) :Column[T] = column.renamed(name)
+
+
 
 		override def equals(that :Any) :Boolean = that match {
 			case other :DeeplyRenamedMapping[_, _] =>

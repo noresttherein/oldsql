@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackComponentValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, CompatibleMapping, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{CompatibleMapping, MappingFrom, MappingOf, TypedMapping}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
@@ -50,7 +50,7 @@ import net.noresttherein.oldsql.slang._
   *           In non-abstract cases the singleton type of the mapping object used for assembly
   */
 trait ComponentValues[M <: Mapping] {
-
+	//todo: parameterize it with Subject instead of the mapping, should be sufficient and eliminate casting
 	/** Compute the value for the root mapping, either using a predefined value or delegating to the mapping's assembly
 	  * method. It is not the top-level function - use either `mapping.apply()` or no-argument `apply()` on dedicated
 	  * subclasses, as the mapping should always have the last say in the result. This is implemented by a triple
@@ -93,6 +93,11 @@ trait ComponentValues[M <: Mapping] {
 		get(extractor) getOrElse {
 			throw new NoSuchElementException("No value for " + extractor + " in " + this)
 		}
+//
+//	def apply[T](root :M, component :TypedMapping[T, M#Origin]) :T = {
+//		val selector = root.apply(component.asInstanceOf[root.Component[T]])
+//		apply(selector.asInstanceOf[ComponentExtractor[M#Subject, T, M#Origin]])
+//	}
 
 	/** Return the value for the given component or `None` if it can't be obtained in any way (predefined, assembly or
 	  * default). Should be equivalent to component.optionally(this :\ component), rather than return a value directly
@@ -102,6 +107,11 @@ trait ComponentValues[M <: Mapping] {
 	def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] =
 		\(extractor).getValue(extractor.export)
 
+//	def get[T](root :M, component :TypedMapping[T, M#Origin]) :Option[T] = {
+//		val selector = root.apply(component.asInstanceOf[root.Component[T]])
+//		get(selector.asInstanceOf[ComponentExtractor[M#Subject, T, M#Origin]])
+//	}
+//
 	/** Return `ComponentValues` for the given component of the associated mapping. Returned object will delegate all
 	  * calls to this instance (or the parent instance of this mapping)
 	  * @param extractor the extractor for the required component of the associated mapping.
@@ -641,11 +651,26 @@ object ComponentValues {
 				case _ => extractor.export(crosscast[extractor.export.type])
 			}
 
+
+//		override def apply[T](root :M, component :TypedMapping[T, M#Origin]) :T =
+//			defined(root, component) match {
+//				case Some(x) => x
+//				case _ => component(crosscast[component.type])
+//			}
+
+
 		override def get[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T] = {
 			val predef = defined(extractor)
 			if (predef.isDefined) predef
 			else extractor.export.optionally(crosscast[extractor.export.type])
 		}
+
+//		override def get[T](root :M, component :TypedMapping[T, M#Origin]) :Option[T] = {
+//			val predef = defined(root, component)
+//			if (predef.isDefined) predef
+//			else component.optionally(crosscast[component.type])
+//		}
+
 
 		override def \[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :ComponentValues[extractor.export.type] =
 			defined(extractor) match {
@@ -655,6 +680,13 @@ object ComponentValues {
 
 		override def compatible[C <: CompatibleMapping[M]](mapping :C) :ComponentValues[C] =
 			crosscast[C]
+
+
+
+//		protected def defined[T](root :M, component :TypedMapping[T, M#Origin]) :Option[T] = {
+//			val selector = root.apply(component.asInstanceOf[root.Component[T]])
+//			defined(selector.asInstanceOf[ComponentExtractor[M#Subject, T, M#Origin]])
+//		}
 
 		protected def defined[T](extractor :ComponentExtractor[M#Subject, T, M#Origin]) :Option[T]
 

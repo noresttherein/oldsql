@@ -6,13 +6,14 @@ import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
-import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, OriginProjection, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingFrom, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
-import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping, MappingAdapter}
+import net.noresttherein.oldsql.schema.support.{ConstantMapping, MappingAdapter, StableMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.{ExtensibleNonEmptySchema, FlatMappedMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, MappedMappingSchema, SchemaFlattening}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, MappingLabel}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, LabeledSchemaComponent, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 import scala.annotation.{implicitNotFound, tailrec}
@@ -35,9 +36,9 @@ import scala.reflect.runtime.universe.TypeTag
   * `assemble` method, where components in this schema can be individually accessed, without constructing
   * an intermediate chain of values. There is an automatically available implicit conversion from non-empty
   * schemas (where `C` and `R` are not empty) which add methods for retrieving its components:
-  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaComponentAccessor#last last]],
-  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaComponentAccessor#apply apply()]],
-  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaComponentAccessor#prev prev]].
+  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaMethods#last last]],
+  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaMethods#apply apply()]],
+  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaMethods#prev prev]].
   *
   * @tparam C a `Chain` listing the types of all components in this schema. All components must implement
   *           `SchemaMapping[_, _, _, O]`.
@@ -88,16 +89,16 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 
 
 
-	/** Transforms this schema into an equivalent `FlatMappingSchema` by recursively replacing each component in the
-	  * chain `C` with its columns. This process loses all information about replaced components and the new schema
-	  * does not reference this instance in any way other than using the same column instances. It is however
-	  * intended to be used as part of inlining of the enclosing mapping, which will retain the references to
-	  * all components and use them for the assembly exactly as the enclosing mapping.
-	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.flatten]]
-	  */
-	def flatten[U >: C <: Chain, IC <: Chain, IR <: Chain]
-	          (implicit inliner :SchemaFlattening[U, R, S, O, IC, IR]) :FlatMappingSchema[IC, IR, S, O] =
-		inliner(this)
+//	/** Transforms this schema into an equivalent `FlatMappingSchema` by recursively replacing each component in the
+//	  * chain `C` with its columns. This process loses all information about replaced components and the new schema
+//	  * does not reference this instance in any way other than using the same column instances. It is however
+//	  * intended to be used as part of inlining of the enclosing mapping, which will retain the references to
+//	  * all components and use them for the assembly exactly as the enclosing mapping.
+//	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping#flatten]]
+//	  */
+//	def flatten[U >: C <: Chain, IC <: Chain, IR <: Chain]
+//	          (implicit inliner :SchemaFlattening[U, R, S, O, IC, IR]) :FlatMappingSchema[IC, IR, S, O] =
+//		inliner(this)
 
 
 
@@ -155,6 +156,12 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 	  * the value from the chain of subject types of all components in the schema.
 	  */
 	def extractor[X](component :Component[X]) :ComponentExtractor[S, X, O]
+
+	/** The extractor returning the value for the given column from the enclosing mapping's subject type `S`.
+	  * Note that this is different from the extractor returned by `this(column)`, as the latter retrieves
+	  * the value from the chain of subject types of all components in the schema.
+	  */
+	def extractor[X](column :Column[X]) :ColumnExtractor[S, X, O]
 
 
 
@@ -260,7 +267,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 
 	protected[schema] def subcomponentsReversed :List[Component[_]]
 
-	protected[schema] def columnsReversed :List[Component[_]]
+	protected[schema] def columnsReversed :List[Column[_]]
 }
 
 
@@ -276,23 +283,45 @@ object MappingSchema {
 
 
 	/** Methods allowing positional access of the components listed on `I ~ L` by a `MappingSchema`.  */
-	implicit class MappingSchemaComponentAccessor[I <: Chain, L <: TypedMapping[T, O], R <: Chain, T, S, O]
+	implicit class MappingSchemaMethods[I <: Chain, L <: TypedMapping[_, O], R <: Chain, T, S, O]
 	                                             (private val self :MappingSchema[I ~ L, R ~ T, S, O]) extends AnyVal
 	{
 		/** The last component on the list - same as `last` but more readable in code like `schema.prev.prev()`. */
 		def apply() :L = last
 
-		/** The last component on the list. */
-		def last :L = self.asInstanceOf[NonEmptySchema[I, L, R, T, S, O]].last
+		/** The last component on the list. */ //the exact type arguments aren't important, only the component type
+		def last :L = self.asInstanceOf[BaseNonEmptySchema[Chain, ~, Any, I, L, R, L#Subject, T, S, O]].last
 
 		/** The schema for the chain `I`, containing all components of this schema except for the last one. */
-		def prev :MappingSchema[I, R, S, O] = self.asInstanceOf[NonEmptySchema[I, L, R, T, S, O]].init
+		def prev :MappingSchema[I, R, S, O] =
+			self.asInstanceOf[BaseNonEmptySchema[Chain, ~, Any, I, L, R, L#Subject, T, S, O]].init
+
+
+
+		/** Transforms this schema into an equivalent `FlatMappingSchema` by recursively replacing each component in the
+		  * chain `C` with its columns. This process loses all information about replaced components and the new schema
+		  * does not reference this instance in any way other than using the same column instances. It is however
+		  * intended to be used as part of inlining of the enclosing mapping, which will retain the references to
+		  * all components and use them for the assembly exactly as the enclosing mapping.
+		  * This method is extracted from the schema class to an extension method to avoid conflict with the like
+		  * method in `SchemaMapping` for `ChainMapping` and similar classes which implement both `SchemaMapping`
+		  * and `MappingSchema` traits.
+		  * @see [[net.noresttherein.oldsql.schema.SchemaMapping#flatten]]
+		  */
+		def flatten[IC <: Chain, IR <: Chain]
+		           (implicit inliner :SchemaFlattening[I ~ L, R ~ T, S, O, IC, IR]) :FlatMappingSchema[IC, IR, S, O] =
+			self match {
+				case flat :FlatMappingSchema[_, _, _, _] => flat.asInstanceOf[FlatMappingSchema[IC, IR, S, O]]
+				case _ => inliner(self)
+			}
+
+
 	}
 
 
 
 	/** Methods allowing positional access of the components listed on `I ~ L` by a `MappingSchema`.  */
-	implicit class FlatMappingSchemaComponentAccessor[I <: Chain, L <: TypedMapping[T, O], R <: Chain, T, S, O]
+	implicit class FlatMappingSchemaMethods[I <: Chain, L <: TypedMapping[T, O], R <: Chain, T, S, O]
 	                                                 (private val self :FlatMappingSchema[I ~ L, R ~ T, S, O])
 		extends AnyVal
 	{
@@ -350,9 +379,9 @@ object MappingSchema {
 	/** A `MappingSchema` where every component is a column (extending the `SchemaColumn` interface). */
 	trait FlatMappingSchema[+C <: Chain, R <: Chain, S, O] extends MappingSchema[C, R, S, O] { outer =>
 
-		override def flatten[U >: C <: Chain, IC <: Chain, IR <: Chain]
-		                    (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IR]) :FlatMappingSchema[IC, IR, S, O] =
-			this.asInstanceOf[FlatMappingSchema[IC, IR, S, O]]
+//		override def flatten[U >: C <: Chain, IC <: Chain, IR <: Chain]
+//		                    (implicit flatterer :SchemaFlattening[U, R, S, O, IC, IR]) :FlatMappingSchema[IC, IR, S, O] =
+//			this.asInstanceOf[FlatMappingSchema[IC, IR, S, O]]
 
 
 
@@ -564,7 +593,7 @@ object MappingSchema {
 		override def col[M <: SchemaColumn[T, O], T](column :M, value :S =?> T)
 				:ExtensibleFlatMappingSchema[C ~ M, R ~ T, S, O] =
 			new ExtensibleFlatNonEmptySchema[C, M, R, T, S, O](this, column,
-				                                     ComponentExtractor(column, value.optional, value.requisite))
+				                             ComponentExtractor(column, value.optional, value.requisite))
 
 		override def col[T :ColumnForm](name :String, value :S => T, buffs :Buff[T]*)
 				:ExtensibleFlatMappingSchema[C ~ ||[T], R ~ T, S, O] =
@@ -681,12 +710,17 @@ object MappingSchema {
 
 
 
+
+
+
 	@implicitNotFound("Cannot inline schema ${C}\n (with subject type ${R}).\n Possible reasons: " +
 	                  "the types are not fully known; subject types don't match the component types; " +
 	                  "the result cannot be unified with result types ${IC} (${IR}).")
 	abstract class SchemaFlattening[C <: Chain, R <: Chain, S, O, IC <: Chain, IR <: Chain] private[MappingSchema] {
 		def apply(schema :MappingSchema[C, R, S, O]) :ExtensibleFlatMappingSchema[IC, IR, S, O]
 	}
+
+
 
 	sealed abstract class ComponentSchemaFlattening {
 
@@ -721,7 +755,11 @@ object MappingSchema {
 				override def apply(schema :MappingSchema[C ~ M, R ~ T, S, O]) =
 					init(schema.prev).col(schema.last, schema.extractor(schema.last))
 			}
+
 	}
+
+
+
 
 
 
@@ -752,6 +790,9 @@ object MappingSchema {
 					get.extractor(schema.prev, label)
 			}
 	}
+
+
+
 
 
 
@@ -807,6 +848,9 @@ object MappingSchema {
 			else
 				throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping schema.")
 
+		override def extractor[X](column :Column[X]) :ColumnExtractor[S, X, O] =
+			throw new IllegalArgumentException(s"Column $column is not a part of this empty mapping schema.")
+
 		override def unapply(subject :S): Option[@~] = Some(@~)
 
 		override def disassemble(subject :S): @~ = @~
@@ -825,7 +869,7 @@ object MappingSchema {
 
 		protected[schema] override def subcomponentsReversed :List[Component[_]] = Nil
 
-		protected[schema] override def columnsReversed :List[Component[_]] = Nil
+		protected[schema] override def columnsReversed :List[Column[_]] = Nil
 	}
 
 
@@ -873,7 +917,7 @@ object MappingSchema {
 	                                                  +C <: Chain, +M <: TypedMapping[T, O], R <: I, T, U <: E, S, O]
 	                                                 (val init :MappingSchema[C, R, S, O], val last :M,
 	                                                  val extractor :ComponentExtractor[S, T, O], lastValue :R L U => T)
-		extends MappingSchema[C ~ M, R L U, S, O] with LazyMapping[R L U, O]
+		extends MappingSchema[C ~ M, R L U, S, O] with StableMapping[R L U, O]
 	{
 		override def members :C ~ M = init.members ~ last
 
@@ -901,6 +945,11 @@ object MappingSchema {
 			if (component eq last) extractor.asInstanceOf[ComponentExtractor[S, X, O]]
 			else extractors.get(component).asInstanceOf[ComponentExtractor[S, X, O]]
 
+		override def extractor[X](column :Column[X]) :ColumnExtractor[S, X, O] =
+			if (column eq last) extractor.asInstanceOf[ColumnExtractor[S, X, O]]
+			else extractors.get(column).asInstanceOf[ColumnExtractor[S, X, O]]
+
+
 
 		//these are extractors from the subject of this mapping, R ~ T, rather than S
 		private[this] val selectors = Lazy(schemaExtractors.toMap)
@@ -915,6 +964,8 @@ object MappingSchema {
 		override def apply[X](component :Component[X]) :Selector[X] =
 			selectors.get(component).asInstanceOf[Selector[X]]
 
+		override def apply[X](column :Column[X]) :ColumnSelector[X] =
+			selectors.get(column).asInstanceOf[ColumnSelector[X]]
 
 
 		override val components :Unique[Component[_]] = //Unique[Component[_]](init, last)
@@ -928,10 +979,10 @@ object MappingSchema {
 
 		override val subcomponents :Unique[Component[_]] = Unique.Lazy(subcomponentsReversed.reverse)
 
-		protected[schema] override def columnsReversed :List[Component[_]] =
+		protected[schema] override def columnsReversed :List[Column[_]] =
 			last.columns.toList reverse_::: init.columnsReversed
 
-		override val columns :Unique[Component[_]] = Unique.Lazy(columnsReversed.reverse)
+		override val columns :Unique[Column[_]] = Unique.Lazy(columnsReversed.reverse)
 
 	}
 
@@ -1000,6 +1051,9 @@ object MappingSchema {
 		override def apply[T](component :Component[T]) =
 			if (component eq schema) schemaExtractor.asInstanceOf[Selector[T]]
 			else schema.extractor(component)
+
+		override def apply[T](column :Column[T]) :ColumnSelector[T] =
+			schema.extractor(column)
 
 		override def assemble(pieces :Pieces) :Option[S] =
 			pieces.get(schemaExtractor) map constructor

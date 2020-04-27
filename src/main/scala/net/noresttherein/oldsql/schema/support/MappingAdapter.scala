@@ -43,30 +43,36 @@ object MappingAdapter {
 	  * all mapping details of the `egg` intact.
 	  * @tparam M the type of the adapted mapping, exposed to subclasses by the `egg` `val`.
 	  * @tparam O a discriminator tag marking components from the same source.
-	  * @tparam S the subject type of the adapted mapping `M`.
-	  * @tparam T the subject type of this mapping.
+	  * @tparam T the subject type of the adapted mapping `M`.
+	  * @tparam S the subject type of this mapping.
 	  */
-	trait ShallowAdapter[+M <: Mapping.TypedMapping[S, O], S, T, O] extends GenericMapping[T, O] with MappingNest[M] {
+	trait ShallowAdapter[+M <: Mapping.TypedMapping[T, O], T, S, O] extends GenericMapping[S, O] with MappingNest[M] {
 
 		override def components :Unique[Component[_]] = Unique(egg)
-		override def subcomponents :Unique[Component[_]] = egg.subcomponents //fixme: does not include egg
+		override def subcomponents :Unique[Component[_]] = egg.subcomponents
 
-		override def columns :Unique[Component[_]] = egg.columns
-		override def selectable :Unique[Component[_]] = egg.selectable
-		override def queryable :Unique[Component[_]] = egg.queryable
-		override def updatable :Unique[Component[_]] = egg.updatable
-		override def autoUpdated :Unique[Component[_]] = egg.autoUpdated
-		override def insertable :Unique[Component[_]] = egg.insertable
-		override def autoInserted :Unique[Component[_]] = egg.autoInserted
+		override def columns :Unique[Column[_]] = egg.columns
+		override def selectable :Unique[Column[_]] = egg.selectable
+		override def queryable :Unique[Column[_]] = egg.queryable
+		override def updatable :Unique[Column[_]] = egg.updatable
+		override def autoUpdated :Unique[Column[_]] = egg.autoUpdated
+		override def insertable :Unique[Column[_]] = egg.insertable
+		override def autoInserted :Unique[Column[_]] = egg.autoInserted
 
 
-		/** Refers to the adapted mapping `egg` to export the passed component to its final representation, unless `component`
-		  * is the `egg` itself, in which it is returned as-is.
+		/** Refers to the adapted mapping `egg` to export the passed component to its final representation,
+		  * unless `component` is the `egg` itself, in which it is returned as-is.
 		  */
 		override def export[X](component :Component[X]) :Component[X] =
 			if (component eq egg) component
 			else egg.export(component)
 
+		/** Refers to the adapted mapping `egg` to export the passed component to its final representation,
+		  * unless `column` is the `egg` itself, in which it is returned as-is.
+		  */
+		override def export[X](column :Column[X]) :Column[X] =
+			if (column eq egg) column
+			else egg.export(column)
 	}
 
 }
