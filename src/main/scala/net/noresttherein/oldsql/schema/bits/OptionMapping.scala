@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{Buff, ComponentExtractor, GenericMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, MappingExtract, GenericMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.slang._
@@ -60,22 +60,22 @@ object OptionMapping {
 				(ExplicitSelect.enabled(get) ifTrue ExplicitSelect[Option[S]](None))
 
 
-		private val eggExtractor :Selector[S] = ComponentExtractor(get)(Extractor.fromOpt)
+		private val eggExtractor :Extract[S] = MappingExtract(get)(Extractor.fromOpt)
 
-		override def apply[T](component :Component[T]) :Selector[T] =
+		override def apply[T](component :Component[T]) :Extract[T] =
 			if (component eq get)
-				eggExtractor.asInstanceOf[Selector[T]]
+				eggExtractor.asInstanceOf[Extract[T]]
 			else {
 				val selector = get(component)
-				ComponentExtractor(selector.export)(Extractor.fromOpt[S] andThen selector)
+				MappingExtract(selector.export)(Extractor.fromOpt[S] andThen selector)
 			}
 
-		override def apply[T](column :Column[T]) :ColumnSelector[T] =
+		override def apply[T](column :Column[T]) :ExtractColumn[T] =
 			if (column eq get)
-				eggExtractor.asInstanceOf[ColumnSelector[T]]
+				eggExtractor.asInstanceOf[ExtractColumn[T]]
 			else {
 				val selector = get(column)
-				ComponentExtractor(selector.export)(Extractor.fromOpt[S] andThen selector)
+				MappingExtract(selector.export)(Extractor.fromOpt[S] andThen selector)
 			}
 
 

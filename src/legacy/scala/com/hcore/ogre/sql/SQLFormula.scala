@@ -1510,7 +1510,7 @@ object SQLFormula {
 		  * @param subcomponent function returning a component of the mapping associated with this table.
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
-		def apply[X<:C#AnyComponent](subcomponent :C=>X) :ComponentFormula[R, T, X] =
+		def apply[X<:C#Component[_]](subcomponent :C=>X) :ComponentFormula[R, T, X] =
 			ComponentFormula(table, path(subcomponent))
 
 		/** Create an SQL formula for the given component of  this mapping. If the component is not a single column, it will be
@@ -1521,7 +1521,7 @@ object SQLFormula {
 		  * @param subcomponent function returning a component of the mapping associated with this table.
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
-		def \ [X<:C#AnyComponent](subcomponent :C=>X) :ComponentFormula[R, T, X] = apply(subcomponent)
+		def \ [X<:C#Component[_]](subcomponent :C=>X) :ComponentFormula[R, T, X] = apply(subcomponent)
 
 
 		/** Create an SQL formula for the given component of this mapping. If the subcomponent is not a single column, it will be

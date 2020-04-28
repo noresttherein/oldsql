@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.{Chain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#, Item, Key}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ComponentExtractor, MappingSchema}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -124,7 +124,7 @@ object RecordMapping {
 
 	private class NonEmptyRecordSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Record, K <: Key, T, S, O]
 	                                  (first :MappingSchema[C, R, S, O], key :K, next :M,
-	                                   extract :ComponentExtractor[S, T, O])
+	                                   extract :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[Record, |#, Item, C, M, R, T, K #> T, S, O](first, next, extract, _.last._2)
 	{
 		override protected def link(init :R, last :T) :R |# (K #> T) = init |# key #> last
@@ -143,7 +143,7 @@ object RecordMapping {
 
 	private class NonEmptyFlatRecordSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Record, K <: Key, T, S, O]
 	                                      (override val init :FlatMappingSchema[C, R, S, O], key :K, next :M,
-	                                       extract :ComponentExtractor[S, T, O])
+	                                       extract :MappingExtract[S, T, O])
 		extends NonEmptyRecordSchema[C, M, R, K, T, S, O](init, key, next, extract)
 			with FlatMappingSchema[C ~ M, R |# (K #> T), S, O]
 	{
@@ -164,7 +164,7 @@ object RecordMapping {
 	                                   (prefix :RecordMapping[C, R, O], key :K, next :M)
 		extends NonEmptyRecordSchema[C, M, R, K, T, R |# (K #> T), O](
 		                             prefix.asPrefix[K #> T], key, next,
-		                             ComponentExtractor.req(next)((row :R |# (K #> T)) => row.last._2))
+		                             MappingExtract.req(next)((row :R |# (K #> T)) => row.last._2))
 		   with RecordMapping[C ~ M, R |# (K #> T), O]
 
 
@@ -173,7 +173,7 @@ object RecordMapping {
 	                                       (prefix :FlatRecordMapping[C, R, O], key :K, next :M)
 		extends NonEmptyFlatRecordSchema[C, M, R, K, T, R |# (K #> T), O](
 		                                 prefix.asPrefix[K #> T], key, next,
-		                                 ComponentExtractor.req(next)((row :R |# (K #> T)) => row.last._2))
+		                                 MappingExtract.req(next)((row :R |# (K #> T)) => row.last._2))
 		   with FlatRecordMapping[C ~ M, R |# (K #> T), O]
 
 

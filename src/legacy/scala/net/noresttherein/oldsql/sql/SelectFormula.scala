@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValu
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.AllColumns
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component}
+import net.noresttherein.oldsql.schema.Mapping.{Component[_], Component}
 import net.noresttherein.oldsql.sql.FromClause.{ParamSource, RowValues, SelectFrom, SubselectFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CaseFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter

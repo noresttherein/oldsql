@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, FlatChainPrefixSchema, NonEmptyChainMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ComponentExtractor, MappingSchema, SchemaMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema, SchemaMapping}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema, MappedFlatMappingSchema, MappedMappingSchema, NonEmptySchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn}
@@ -119,7 +119,7 @@ object LiteralIndexMapping {
 
 	private class NonEmptyIndexSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
 	                                 (first :MappingSchema[C, R, S, O], key :K, next :M,
-	                                  extract :ComponentExtractor[S, T, O])
+	                                  extract :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[LiteralIndex, |~, Item, C, M, R, T, K :~ T, S, O](first, next, extract, _.last.value)
 	{
 		override protected def link(init :R, last :T) :R |~ (K :~ T) = init |~ key :~ last
@@ -138,7 +138,7 @@ object LiteralIndexMapping {
 
 	private class NonEmptyFlatIndexSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
 	                                     (override val init :FlatMappingSchema[C, R, S, O], key :K, next :M,
-	                                      extract :ComponentExtractor[S, T, O])
+	                                      extract :MappingExtract[S, T, O])
 		extends NonEmptyIndexSchema[C, M, R, K, T, S, O](init, key, next, extract)
 		   with FlatMappingSchema[C ~ M, R |~ (K :~ T), S, O]
 	{
@@ -159,7 +159,7 @@ object LiteralIndexMapping {
 	                                  (prefix :LiteralIndexMapping[C, R, O], key :K, next :M)
 		extends NonEmptyIndexSchema[C, M, R, K, T, R |~ (K :~ T), O](
 		                            prefix.asPrefix[K :~ T], key, next,
-		                            ComponentExtractor.req(next)((row :R |~ (K :~ T)) => row.last.value))
+		                            MappingExtract.req(next)((row :R |~ (K :~ T)) => row.last.value))
 		   with LiteralIndexMapping[C ~ M, R |~ (K :~ T), O]
 
 
@@ -168,7 +168,7 @@ object LiteralIndexMapping {
 	                                      (prefix :FlatLiteralIndexMapping[C, R, O], key :K, next :M)
 		extends NonEmptyFlatIndexSchema[C, M, R, K, T, R |~ (K :~ T), O](
 		                                prefix.asPrefix[K :~ T], key, next,
-		                                ComponentExtractor.req(next)((row :R |~ (K :~ T)) => row.last.value))
+		                                MappingExtract.req(next)((row :R |~ (K :~ T)) => row.last.value))
 		   with FlatLiteralIndexMapping[C ~ M, R |~ (K :~ T), O]
 	
 	

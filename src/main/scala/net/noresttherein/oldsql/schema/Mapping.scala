@@ -4,14 +4,14 @@ import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.Mapping.{MappingReadForm, MappingWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingReadForm, MappingWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.MappingPath.SelfPath
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingFrame
-import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
@@ -141,26 +141,26 @@ sealed trait Mapping {
 	  */
 	type Pieces = ComponentValues[_ >: this.type <: Component[Subject]]
 
-	/** An extractor of the value for some component of this mapping with the subject type `T`, which carries
+	/** An extract of the value for some component of this mapping with the subject type `T`, which carries
 	  * additionally the export version of that component (from the point of view of this mapping).
 	  */
-	type Selector[T] = ComponentExtractor[Subject, T, Origin]
+	type Extract[T] = MappingExtract[Subject, T, Origin]
 
-	/** An extractor of the value for some column of this mapping with the subject type `T`, which carries
+	/** An extract of the value for some column of this mapping with the subject type `T`, which carries
 	  * additionally the export version of that column (from the point of view of this mapping).
 	  */
-	type ColumnSelector[T] = ColumnExtractor[Subject, T, Origin]
+	type ExtractColumn[T] = ColumnExtract[Subject, T, Origin] //todo: think of a better naming conflict resolution here
 
-	type AnyComponent = Component[_]
+	type AnyComponent = MappingFrom[Origin]
 
 	/** Any mapping with the same origin marker type, making it a supertype of all valid component types of this mapping. */
-	type Component[T] = Mapping.TypedMapping[T, Origin]
+	type Component[T] = TypedMapping[T, Origin]
 
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin marker type
 	  * as this instance and thus a valid subcomponent type of this mapping.
 	  */
 	type Column[T] = ColumnMapping[T, Origin]
-	
+
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin type
 	  * as this instance and thus a valid subcomponent type of this mapping.
 	  */
@@ -188,13 +188,17 @@ sealed trait Mapping {
 
 
 
-	/** Retrieves the [[net.noresttherein.oldsql.schema.ComponentExtractor ComponentExtractor]]
+	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]]
 	  * for the given component.
 	  * @throws NoSuchElementException if `component` is not a subcomponent of this mapping.
 	  */
-	def apply[T](component :Component[T]) :Selector[T]
+	def apply[T](component :Component[T]) :Extract[T]
 
-	def apply[T](column :Column[T]) :ColumnSelector[T]
+	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract ColumnExtract]]
+	  * for the given column.
+	  * @throws NoSuchElementException if `column` is not a subcomponent of this mapping.
+	  */
+	def apply[T](column :Column[T]) :ExtractColumn[T]
 
 
 
@@ -494,10 +498,14 @@ sealed trait Mapping {
 trait GenericMapping[S, O] extends Mapping { self =>
 	override type Origin = O
 	override type Subject = S
-	//to shut IntelliJ up:
-//	override type Selector[T] = ComponentExtractor[S, T, O]
-//	override type Component[T] = Mapping.TypedMapping[T, O]
-//	override type Column[T] = ColumnMapping[T, O]
+	//for nicer compiler output
+	override type Extract[T] = MappingExtract[S, T, O]
+	override type ExtractColumn[T] = ColumnExtract[S, T, O]
+	override type AnyComponent = MappingFrom[O]
+	override type Component[T] = TypedMapping[T, O]
+	override type Column[T] = ColumnMapping[T, O]
+
+
 
 	def buffs :Seq[Buff[S]] = Nil
 
@@ -525,16 +533,16 @@ trait GenericMapping[S, O] extends Mapping { self =>
 
 
 
-	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		CustomizedMapping.select(this :this.type, include, exclude)
 
-	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		CustomizedMapping.query(this :this.type, include, exclude)
 
-	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		CustomizedMapping.update(this :this.type, include, exclude)
 
-	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		CustomizedMapping.insert(this :this.type, include, exclude)
 
 
@@ -583,6 +591,7 @@ trait GenericMapping[S, O] extends Mapping { self =>
   *
   */
 trait RootMapping[S, O] extends GenericMapping[S, O] {
+
 	override def optionally(pieces :Pieces) :Option[S] =
 		super.optionally(pieces.aliased { c => apply(c).export })
 
@@ -839,7 +848,7 @@ object Mapping {
 		def read[S](mapping :MappingOf[S]) :SQLReadForm[S] =
 			MappingReadForm[S, mapping.Origin](mapping, apply(mapping :mapping.type))
 
-		def write[S](mapping :MappingOf[S])(forms :mapping.AnyComponent => SQLForm[_]) :SQLWriteForm[S] =
+		def write[S](mapping :MappingOf[S])(forms :mapping.Component[_] => SQLForm[_]) :SQLWriteForm[S] =
 			MappingWriteForm[S, mapping.Origin](mapping, apply(mapping :mapping.type), forms)
 	}
 
@@ -1102,7 +1111,7 @@ object Mapping {
 			custom(mapping, components, NoInsert, ExtraInsert, write)
 
 		def defaultInsert[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
-			default(mapping)(NoInsert, ExtraInsert, (_:mapping.AnyComponent).insertForm)
+			default(mapping)(NoInsert, ExtraInsert, (_:mapping.Component[_]).insertForm)
 
 		def fullInsert[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
 			full(mapping :mapping.type)(mapping.insertable, ExtraInsert, _.insertForm)
@@ -1124,13 +1133,13 @@ object Mapping {
 		}
 
 		private def default[S](mapping :MappingOf[S])(filterNot :BuffType, mandatory :ValuedBuffType,
-		                                              write :mapping.AnyComponent => SQLWriteForm[_]) :SQLWriteForm[S] = {
+		                                              write :mapping.Component[_] => SQLWriteForm[_]) :SQLWriteForm[S] = {
 			val columns = filterNot.Disabled(mapping) ++ mandatory.Enabled(mapping)
 			new MappingWriteForm[S, mapping.Origin](mapping, columns, mandatory, write)
 		}
 
-		private def full[S](mapping :MappingOf[S])(columns :Unique[mapping.AnyComponent], extra :ValuedBuffType,
-		                                           write :mapping.AnyComponent => SQLWriteForm[_]) :SQLWriteForm[S] =
+		private def full[S](mapping :MappingOf[S])(columns :Unique[mapping.Component[_]], extra :ValuedBuffType,
+		                                           write :mapping.Component[_] => SQLWriteForm[_]) :SQLWriteForm[S] =
 			new MappingWriteForm[S, mapping.Origin](mapping, columns ++ extra.Enabled(mapping), extra, write)
 
 	}

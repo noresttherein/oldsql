@@ -1,13 +1,13 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{Buff, ComponentExtractor, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, MappingExtract, Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.support.MappingAdapter
-import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
 
 import scala.util.Try
 
@@ -21,20 +21,20 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 	protected def map :T => S
 	protected def unmap :S => T
 
-	override def apply[X](component :Component[X]) :Selector[X] =
+	override def apply[X](component :Component[X]) :Extract[X] =
 		if (component eq egg)
-			eggSelector.asInstanceOf[Selector[X]]
+			eggSelector.asInstanceOf[Extract[X]]
 		else
-			ComponentExtractor(component)(egg(component) compose unmap)
+			MappingExtract(component)(egg(component) compose unmap)
 
-	override def apply[X](column :Column[X]) :ColumnExtractor[S, X, O] =
+	override def apply[X](column :Column[X]) :ColumnExtract[S, X, O] =
 		if (column eq egg)
-			eggSelector.asInstanceOf[ColumnExtractor[S, X, O]]
+			eggSelector.asInstanceOf[ColumnExtract[S, X, O]]
 		else
-			ComponentExtractor(column)(egg(column) compose unmap)
+			MappingExtract(column)(egg(column) compose unmap)
 
 
-	private[this] val eggSelector :Selector[T] = ComponentExtractor.req(egg)(unmap)
+	private[this] val eggSelector :Extract[T] = MappingExtract.req(egg)(unmap)
 
 
 
@@ -184,20 +184,20 @@ object MappedMapping {
 
 
 
-		override def apply[X](component :Component[X]) :Selector[X] =
+		override def apply[X](component :Component[X]) :Extract[X] =
 			if (component eq egg)
-				eggSelector.asInstanceOf[Selector[X]]
+				eggSelector.asInstanceOf[Extract[X]]
 			else
-				ComponentExtractor(component)(egg(component) composeOpt unmap)
+				MappingExtract(component)(egg(component) composeOpt unmap)
 
 
-		override def apply[X](column :Column[X]) :ColumnExtractor[S, X, O] =
+		override def apply[X](column :Column[X]) :ColumnExtract[S, X, O] =
 			if (column eq egg)
-				eggSelector.asInstanceOf[ColumnExtractor[S, X, O]]
+				eggSelector.asInstanceOf[ColumnExtract[S, X, O]]
 			else
-				ComponentExtractor(column)(egg(column) composeOpt unmap)
+				MappingExtract(column)(egg(column) composeOpt unmap)
 
-		private[this] val eggSelector :Selector[T] = ComponentExtractor.opt(egg)(unmap)
+		private[this] val eggSelector :Extract[T] = MappingExtract.opt(egg)(unmap)
 
 
 

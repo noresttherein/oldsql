@@ -117,17 +117,17 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	def :@[N <: Label :ValueOf] :LabeledSchemaComponent[N, C, R, S, O] = valueOf[N] @: this
 
 
-	override def apply[T](component :Component[T]) :Selector[T] =
+	override def apply[T](component :Component[T]) :Extract[T] =
 		if (component eq schema)
-			ComponentExtractor.req(schema)(schema.disassemble _).asInstanceOf[Selector[T]]
+			MappingExtract.req(schema)(schema.disassemble _).asInstanceOf[Extract[T]]
 		else
-			schema.extractor(component)
+			schema.extract(component)
 
-	override def apply[T](column :Column[T]) :ColumnSelector[T] = schema.extractor(column)
+	override def apply[T](column :Column[T]) :ExtractColumn[T] = schema.extract(column)
 
 
 
-	/** Returns the `ComponentExtractor` for the component labeled with the given string literal in the schema.
+	/** Returns the `MappingExtract` for the component labeled with the given string literal in the schema.
 	  * If more than one component with the same label exist, the last occurrence is selected.
 	  * @param label a `String` literal, or the value returned by `valueOf[N]` in generic code.
 	  * @tparam N the string singleton type of the label key.
@@ -135,7 +135,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping./]]
 	  */
 	def apply[N <: Label, T](label :N)(implicit get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O])
-			:Selector[T] =
+			:Extract[T] =
 		get.extractor(schema, label)
 
 	/** Returns the component labeled with the given string literal in the schema. If more than one component with
@@ -151,15 +151,15 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 
 
 
-	/** Returns the `ComponentExtractor` for the component at the given position in the schema.
+	/** Returns the `MappingExtract` for the component at the given position in the schema.
 	  * @param idx an `Int` literal, or the value returned by `valueOf[N]` in generic code.
 	  * @tparam I the `Int` literal type of the label key.
 	  * @tparam T the subject type of the returned component.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema./]]
 	  */
 	def apply[I <: Numeral, T](idx :I)(implicit get :GetSchemaComponent[C, R, Component[T], I, T, O])
-			:ComponentExtractor[S, T, O] =
-		get.extractor(schema, idx)
+			:MappingExtract[S, T, O] =
+		get.extract(schema, idx)
 
 	/** Returns the component at the given position in the schema.
 	  * @param idx an `Int` literal, or the value returned by `valueOf[N]` in generic code.
@@ -361,7 +361,7 @@ object SchemaMapping {
 		def apply[N <: Label, S :ColumnForm, O](label :N, name :String, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
 			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O] {
 				override val schema :FlatMappingSchema[@~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O] =
-					MappingSchema[S, O].col(this, ComponentExtractor.ident[S, O](this))
+					MappingSchema[S, O].col(this, MappingExtract.ident[S, O](this))
 			}
 
 //		implicit def LabeledSchemaColumnProjection[N <: Label, S, A, B]
@@ -537,7 +537,7 @@ object SchemaMapping {
   * further and enriches `String` literals with methods for both retrieving a component or its selector ''and'' its
   * value, providing implicit `ComponentValues` for the mapping are available. These are written as:
   *   - `"favoritePizza".^` for the component labeled `"favoritePizza"` itself,
-  *   - `"favoritePizza".?>` for the `ComponentExtractor` for the labeled component,
+  *   - `"favoritePizza".?>` for the `MappingExtract` for the labeled component,
   *   - `~"favoritePizza"` for the value of the component labeled `"favoritePizza"` within the `construct` method,
   *   - `"favoritePizza".?` for the value of such a labeled component in an `Option` when within the `construct` method.
   * {{{

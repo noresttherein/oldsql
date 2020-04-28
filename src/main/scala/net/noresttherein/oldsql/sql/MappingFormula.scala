@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, MappingSubject, TypedMapping}
-import net.noresttherein.oldsql.schema.{ComponentExtractor, Mapping, RowSource, SQLReadForm}
+import net.noresttherein.oldsql.schema.{MappingExtract, Mapping, RowSource, SQLReadForm}
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula.ComponentMatcher
 import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent.FreeComponentMatcher
@@ -91,7 +91,7 @@ object MappingFormula {
 		def source :RowSource[T] = from.source
 
 		def mapping :M[O]
-		def extractor :ComponentExtractor[T[O]#Subject, M[O]#Subject, O] //= table(mapping)
+		def extractor :MappingExtract[T[O]#Subject, M[O]#Subject, O] //= table(mapping)
 
 //		override def parts = from::Nil
 
@@ -125,11 +125,11 @@ object MappingFormula {
 
 
 		def unapply[F <: FromClause, X](e :SQLFormula[F, X])
-				:Option[(AnyJoinedRelation, ComponentExtractor[_, X, _])] =
+				:Option[(AnyJoinedRelation, MappingExtract[_, X, _])] =
 			e match {
 				case component :ComponentFormula[_, _, _, _] => Some((
 					component.from.asInstanceOf[JoinedRelation[FromClause, MappingSubject[Any]#M]],
-					component.extractor.asInstanceOf[ComponentExtractor[_, X, _]]
+					component.extractor.asInstanceOf[MappingExtract[_, X, _]]
 				))
 				case _ => None
 			}
@@ -178,7 +178,7 @@ object MappingFormula {
 
 		override def from :JoinedRelation[F, T] = this
 		override def table :T[F] = mapping
-		override val extractor = ComponentExtractor.ident(table.asInstanceOf[TypedMapping[T[F]#Subject, F]])
+		override val extractor = MappingExtract.ident(table.asInstanceOf[TypedMapping[T[F]#Subject, F]])
 
 		override def readForm :SQLReadForm[Subject] = mapping.selectForm
 

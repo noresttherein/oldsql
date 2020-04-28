@@ -4,12 +4,12 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.support.FormMapping
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentExtractor, RowSource, SQLForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, MappingExtract, RowSource, SQLForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection}
 import net.noresttherein.oldsql.schema.RowSource.{AnyRowSource, NamedSource}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
@@ -221,7 +221,7 @@ object JoinParam {
 
 	sealed abstract class ParamMapping[P, X, O] protected(implicit sqlForm :SQLForm[X]) extends FormMapping[X, O] {
 		def root :FromParam[P, O]
-		def extractor :ComponentExtractor[P, X, O]
+		def extractor :MappingExtract[P, X, O]
 		def derivedForm :SQLWriteForm[P] = form compose extractor
 	}
 
@@ -251,7 +251,7 @@ object JoinParam {
 		def this()(implicit form :SQLForm[P]) = this("?")
 
 		override def root :FromParam[P, O] = this
-		override def extractor :ComponentExtractor[P, P, O] = ComponentExtractor.ident(this)
+		override def extractor :MappingExtract[P, P, O] = MappingExtract.ident(this)
 		override def derivedForm :SQLWriteForm[P] = form
 
 
@@ -265,9 +265,9 @@ object JoinParam {
 
 
 
-		override def apply[T](component :Component[T]) :ComponentExtractor[P, T, O] = component match {
+		override def apply[T](component :Component[T]) :MappingExtract[P, T, O] = component match {
 			case self :AnyRef if self eq this =>
-				extractor.asInstanceOf[ComponentExtractor[P, T, O]]
+				extractor.asInstanceOf[MappingExtract[P, T, O]]
 			case mapping :FromParam[_, _]#ParamComponent[_] if mapping.root eq this =>
 				mapping.asInstanceOf[ParamComponent[T]].extractor
 			case _ =>
@@ -275,9 +275,9 @@ object JoinParam {
 		}
 
 /*
-		override def apply[T](column :Column[T]) :ColumnExtractor[P, T, O] = column match {
+		override def apply[T](column :Column[T]) :ColumnExtract[P, T, O] = column match {
 //			case self :AnyRef if self eq this =>
-//				extractor.asInstanceOf[ComponentExtractor[P, T, O]]
+//				extractor.asInstanceOf[MappingExtract[P, T, O]]
 			case mapping :FromParam[_, _]#ParamComponent[_] if mapping.root eq this =>
 				mapping.asInstanceOf[ParamComponent[T]].extractor
 			case _ =>
@@ -297,14 +297,14 @@ object JoinParam {
 			extends ParamMapping[P, T, O]
 		{
 			override def root :FromParam[P, O] = This
-			override def extractor :ComponentExtractor[P, T, O] = ComponentExtractor.req(this)(pick)
+			override def extractor :MappingExtract[P, T, O] = MappingExtract.req(this)(pick)
 			override def toString = s"$This[$form]"
 		}
 /*
 		private class ParamColumn[T :ColumnForm](pick :P => T)
 			extends ParamComponent[T](pick) with ColumnMapping[T, O]
 		{
-			override def extractor :ColumnExtractor[P, T, O] = ComponentExtractor.req(this)(pick)
+			override def extractor :ColumnExtract[P, T, O] = MappingExtract.req(this)(pick)
 
 			override def name :String = ???
 		}
@@ -316,7 +316,7 @@ object JoinParam {
 
 
 		def unapply[X](expr :SQLFormula[_, X]) :Option[ParamMapping[P, X, O]] = expr match {
-			case ComponentFormula(_, ComponentExtractor(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
+			case ComponentFormula(_, MappingExtract(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
 				Some(comp.asInstanceOf[ParamMapping[P, X, O]])
 			case _ => None
 		}
@@ -337,7 +337,7 @@ object JoinParam {
 		def apply[P, N <: String with Singleton](name :N)(implicit form :SQLForm[P]) :FromParam[P, N] =
 			new FromParam(name)
 
-		def unapply[X](expr :SQLFormula[_, X]) :Option[(FromParam[P, O], ComponentExtractor[P, X, O])] forSome { type P; type O } =
+		def unapply[X](expr :SQLFormula[_, X]) :Option[(FromParam[P, O], MappingExtract[P, X, O])] forSome { type P; type O } =
 			expr match {
 				case ComponentFormula(_, extractor) if extractor.export.isInstanceOf[ParamMapping[_, _, _]] =>
 					val param = extractor.export.asInstanceOf[ParamMapping[Any, X, Any]]

@@ -4,8 +4,8 @@ import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.model.PropertyPath.{==>, ReflectedPropertyPath}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{ColumnMapping, ComponentExtractor}
-import net.noresttherein.oldsql.schema.ComponentExtractor.{ColumnExtractor, ComponentExtractorTemplate, ConstantColumn, ConstantComponent, ConstantComponentTemplate, EmptyColumn, EmptyComponent, EmptyComponentTemplate, IdentityColumn, IdentityComponent, IdentityComponentTemplate, OptionalComponent, RequisiteColumn, RequisiteComponent, RequisiteComponentTemplate}
+import net.noresttherein.oldsql.schema.{ColumnMapping, MappingExtract}
+import net.noresttherein.oldsql.schema.MappingExtract.{ColumnExtract, MappingExtractTemplate, ConstantColumn, ConstantExtract, ConstantExtractTemplate, EmptyColumn, EmptyExtract, EmptyExtractTemplate, IdentityColumn, IdentityExtract, IdentityExtractTemplate, OptionalExtract, RequisiteColumn, RequisiteExtract, RequisiteExtractTemplate}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.bits.ComponentProperty.{ColumnProperty, ConstantProperty, EmptyProperty, OptionalProperty, RequisiteProperty}
 
@@ -17,20 +17,20 @@ import scala.reflect.runtime.universe
 
 
 
-/** A `ComponentExtractor` carrying the reflected form of its function as a `PropertyPath`.
+/** A `MappingExtract` carrying the reflected form of its function as a `PropertyPath`.
   * @see [[net.noresttherein.oldsql.schema.bits.ComponentProperty.ColumnProperty]]
-  * @see [[net.noresttherein.oldsql.schema.ComponentExtractor]]
+  * @see [[net.noresttherein.oldsql.schema.MappingExtract]]
   * @see [[net.noresttherein.oldsql.model.PropertyPath]]
   * @author Marcin Mościcki
   */
-trait ComponentProperty[-S, T, O] extends ComponentExtractor[S, T, O] {
+trait ComponentProperty[-S, T, O] extends MappingExtract[S, T, O] {
 	val property :PropertyPath[S, T]
 	def argumentType :Type
 	protected[this] implicit def tag :TypeTag[S]
 
 
 
-	override def andThen[Y](extractor :ComponentExtractor[T, Y, O]) :ComponentProperty[S, Y, O] = extractor match {
+	override def andThen[Y](extractor :MappingExtract[T, Y, O]) :ComponentProperty[S, Y, O] = extractor match {
 		case _ :IdentityExtractor[_] =>
 			if (extractor.export == export) this.asInstanceOf[ComponentProperty[S, Y, O]]
 			else requisite match {
@@ -50,7 +50,7 @@ trait ComponentProperty[-S, T, O] extends ComponentExtractor[S, T, O] {
 
 		case none :EmptyProperty[Y @unchecked, O @unchecked] => none
 
-		case none :EmptyComponent[Y @unchecked, O @unchecked] => ComponentProperty.none(none.export)
+		case none :EmptyExtract[Y @unchecked, O @unchecked] => ComponentProperty.none(none.export)
 
 		case sure :RequisiteExtractor[T @unchecked, Y @unchecked] => requisite match {
 			case Some(req) => ComponentProperty.req(extractor.export)(req andThen sure.getter)
@@ -68,8 +68,8 @@ trait ComponentProperty[-S, T, O] extends ComponentExtractor[S, T, O] {
 
 
 
-	override def andThen[Y](extractor :ColumnExtractor[T, Y, O]) :ColumnProperty[S, Y, O] =
-		andThen(extractor :ComponentExtractor[T, Y, O]).asInstanceOf[ColumnProperty[S, Y, O]]
+	override def andThen[Y](extractor :ColumnExtract[T, Y, O]) :ColumnProperty[S, Y, O] =
+		andThen(extractor :MappingExtract[T, Y, O]).asInstanceOf[ColumnProperty[S, Y, O]]
 
 
 
@@ -77,7 +77,7 @@ trait ComponentProperty[-S, T, O] extends ComponentExtractor[S, T, O] {
 	def compose[X, LS <: S](extractor :ComponentProperty[X, LS, O]) :ComponentProperty[X, T, O] =
 		extractor andThen this
 
-	override def compose[X](extractor :X =?> S) :ComponentExtractor[X, T, O] = extractor match {
+	override def compose[X](extractor :X =?> S) :MappingExtract[X, T, O] = extractor match {
 		case prop :ComponentProperty[X @unchecked, S @unchecked, _] => compose(prop)
 		case _ => super.compose(extractor)
 	}
@@ -209,16 +209,16 @@ object ComponentProperty {
 
 
 
-	trait ColumnProperty[-S, T, O] extends ColumnExtractor[S, T, O] with ComponentProperty[S, T, O] {
+	trait ColumnProperty[-S, T, O] extends ColumnExtract[S, T, O] with ComponentProperty[S, T, O] {
 
 		override def compose[X, LS <: S](extractor :ComponentProperty[X, LS, O]) :ColumnProperty[X, T, O] =
 			extractor andThen this
 
-		override def compose[X](extractor :X =?> S) :ColumnExtractor[X, T, O] = extractor match {
+		override def compose[X](extractor :X =?> S) :ColumnExtract[X, T, O] = extractor match {
 			case property :ComponentProperty[X @unchecked, S @unchecked, O @unchecked] =>
 				property andThen this
 			case _ =>
-				super[ColumnExtractor].compose(extractor)
+				super[ColumnExtract].compose(extractor)
 		}
 	}
 
@@ -229,12 +229,12 @@ object ComponentProperty {
 
 	private class OptionalProperty[-S, T, O](component :TypedMapping[T, O], f :S => Option[T])
 	                                (implicit protected[this] val tag :TypeTag[S])
-		extends OptionalComponent[S, T, O](component, f) with ComponentProperty[S, T, O]
+		extends OptionalExtract[S, T, O](component, f) with ComponentProperty[S, T, O]
 	{
 		override val property = prop(f)
 		override val argumentType = typeOf[S]
 
-		override def andThen[Y](extractor :ComponentExtractor[T, Y, O]) :ComponentProperty[S, Y, O] = extractor match {
+		override def andThen[Y](extractor :MappingExtract[T, Y, O]) :ComponentProperty[S, Y, O] = extractor match {
 			case _ :IdentityExtractor[Y @unchecked] =>
 				if (extractor.export == export) this.asInstanceOf[ComponentProperty[S, Y, O]]
 				else ComponentProperty.opt(extractor.export)(optional.asInstanceOf[S => Option[Y]])
@@ -264,12 +264,12 @@ object ComponentProperty {
 
 
 
-	private trait RequisitePropertyTemplate[-S, T, O] extends RequisiteComponent[S, T, O] with ComponentProperty[S, T, O] {
+	private trait RequisitePropertyTemplate[-S, T, O] extends RequisiteExtract[S, T, O] with ComponentProperty[S, T, O] {
 
 		override val property :ReflectedPropertyPath[S, T] = PropertyPath.property(getter)
 		override val argumentType :Type = typeOf[S]
 
-		override def andThen[Y](extractor :ComponentExtractor[T, Y, O]) :ComponentProperty[S, Y, O] = extractor match {
+		override def andThen[Y](extractor :MappingExtract[T, Y, O]) :ComponentProperty[S, Y, O] = extractor match {
 			case requisite :RequisiteExtractor[T @unchecked, Y @unchecked] => requisite match {
 
 				case _ :IdentityExtractor[_] =>
@@ -296,7 +296,7 @@ object ComponentProperty {
 
 	private class RequisiteProperty[-S, T, O](component :TypedMapping[T, O], f :S => T)
 	                                 (implicit protected[this] val tag :TypeTag[S])
-		extends RequisiteComponent[S, T, O](component, f) with RequisitePropertyTemplate[S, T, O]
+		extends RequisiteExtract[S, T, O](component, f) with RequisitePropertyTemplate[S, T, O]
 
 
 
@@ -312,7 +312,7 @@ object ComponentProperty {
 
 	private class IdentityProperty[T, O](component :TypedMapping[T, O])
 	                                    (implicit protected[this] val tag :TypeTag[T])
-		extends IdentityComponent[T, O](component) with ComponentProperty[T, T, O]
+		extends IdentityExtract[T, O](component) with ComponentProperty[T, T, O]
 		   with RequisitePropertyTemplate[T, T, O]
 	{
 		override def toString :String = "Identity(" + export + "=" + property + ")"
@@ -335,7 +335,7 @@ object ComponentProperty {
 
 
 	private class ConstantProperty[T, O](component :TypedMapping[T, O], constant :T)
-		extends ConstantComponent[T, O](component, constant) with ComponentProperty[Any, T, O]
+		extends ConstantExtract[T, O](component, constant) with ComponentProperty[Any, T, O]
 		   with RequisitePropertyTemplate[Any, T, O]
 	{
 		protected[this] implicit override def tag :TypeTag[Any] = typeTag[Any]
@@ -359,7 +359,7 @@ object ComponentProperty {
 
 
 	private class EmptyProperty[T, O](component :TypedMapping[T, O])
-		extends EmptyComponent[T, O](component) with ComponentProperty[Any, T, O]
+		extends EmptyExtract[T, O](component) with ComponentProperty[Any, T, O]
 	{
 		override val property = prop(optional) //fixme: PropertyPath will throw up
 		override val argumentType = typeOf[Any]

@@ -25,12 +25,12 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 
 	/** Appends the given component to this schema.
 	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
-	  * @param value an extractor returning the value of this component for the subject type `S` of an owning mapping.
+	  * @param value an extract returning the value of this component for the subject type `S` of an owning mapping.
 	  */
 	def comp[N <: Label :ValueOf, L <: Chain, V <: Chain, T](component :LabeledSubschema[N, L, V, T], value :Extractor[S, T])
 			:IndexedMappingSchema[C ~ @|*|[N, L, V, T], R |~ (N :~ T), S, O] =
 		new NonEmptyIndexedSchema[N, C, @|*|[N, L, V, T], R, T, S, O](
-			this, component, ComponentExtractor(component, value.optional, value.requisite)
+			this, component, MappingExtract(component, value.optional, value.requisite)
 		)
 
 	/** Appends the given component to this schema.
@@ -40,7 +40,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	def comp[N <: Label :ValueOf, L <: Chain, V <: Chain, T](value :S => T, component :LabeledSubschema[N, L, V, T])
 			:IndexedMappingSchema[C ~ @|*|[N, L, V, T], R |~ (N :~ T), S, O] =
 		new NonEmptyIndexedSchema[N, C, @|*|[N, L, V, T], R, T, S, O](
-			this, component, ComponentExtractor.req(component)(value)
+			this, component, MappingExtract.req(component)(value)
 		)
 
 	/** Appends the given component to this schema.
@@ -52,19 +52,19 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	def optcomp[N <: Label :ValueOf, L <: Chain, V <: Chain, T](value :S => Option[T], component :LabeledSubschema[N, L, V, T])
 			:IndexedMappingSchema[C ~ @|*|[N, L, V, T], R |~ (N :~ T), S, O] =
 		new NonEmptyIndexedSchema[N, C, @|*|[N, L, V, T], R, T, S, O](
-			this, component, ComponentExtractor.opt(component)(value)
+			this, component, MappingExtract.opt(component)(value)
 		)
 
 
 
 	/** Appends the given component to this schema.
 	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
-	  * @param value an extractor returning the value of this component for the subject type `S` of an owning mapping.
+	  * @param value an extract returning the value of this component for the subject type `S` of an owning mapping.
 	  */
 	def comp[N <: Label, L <: Chain, V <: Chain, T](label :N, component :Subschema[L, V, T], value :Extractor[S, T])
 			:IndexedMappingSchema[C ~ @|*|[N, L, V, T], R |~ (N :~ T), S, O] =
 		new NonEmptyIndexedSchema[N, C, @|*|[N, L, V, T], R, T, S, O](
-			this, label @: component, ComponentExtractor(component, value.optional, value.requisite)
+			this, label @: component, MappingExtract(component, value.optional, value.requisite)
 		)(new ValueOf[N](label))
 
 	/** Appends the given component to this schema.
@@ -74,7 +74,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	def comp[N <: Label, L <: Chain, V <: Chain, T](label :N, value :S => T, component :Subschema[L, V, T])
 			:IndexedMappingSchema[C ~ @|*|[N, L, V, T], R |~ (N :~ T), S, O] =
 		new NonEmptyIndexedSchema[N, C, @|*|[N, L, V, T], R, T, S, O](
-			this, label @: component, ComponentExtractor.req(component)(value)
+			this, label @: component, MappingExtract.req(component)(value)
 		)(new ValueOf(label))
 
 	/** Appends the given component to this schema.
@@ -86,14 +86,14 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	def optcomp[N <: Label, L <: Chain, V <: Chain, T](label :N, value :S => Option[T], component :Subschema[L, V, T])
 			:IndexedMappingSchema[C ~ @|*|[N, L, V, T], R |~ (N :~ T), S, O] =
 		new NonEmptyIndexedSchema[N, C, @|*|[N, L, V, T], R, T, S, O](
-			this, label @: component, ComponentExtractor.opt(component)(value)
+			this, label @: component, MappingExtract.opt(component)(value)
 		)(new ValueOf(label))
 
 
 
 	/** Appends a new column labeled with its name to this schema.
 	  * @param name a string literal with the name of the column.
-	  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
+	  * @param value an extract function returning the value for the column from the enclosing mapping's subject `S`.
 	  * @param buffs a vararg list of buffs modifying the handling of the column.
 	  * @tparam N the singleton type of the string literal used as the column name.
 	  * @tparam T the mapped column type.
@@ -105,7 +105,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	/** Appends to this schema a new column labeled with a string different from its name.
 	  * @param label the label used to access the column in the schema.
 	  * @param name the name of the column.
-	  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
+	  * @param value an extract function returning the value for the column from the enclosing mapping's subject `S`.
 	  * @param buffs a vararg list of buffs modifying the handling of the column.
 	  * @tparam N the singleton type of the string literal used as the column name.
 	  * @tparam T the mapped column type.
@@ -115,13 +115,13 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	{
 		val column = LabeledSchemaColumn[N, T, O](label, name, buffs:_*)
 		new NonEmptyIndexedSchema[N, C, N @|| T, R, T, S, O](
-			this, column, ComponentExtractor(column)(Extractor.req(value))
+			this, column, MappingExtract(column)(Extractor.req(value))
 		)(new ValueOf(label))
 	}
 
 	/** Appends a new column labeled with its name to this schema.
 	  * @param name a string literal with the name of the column.
-	  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
+	  * @param value an extract function returning the value for the column from the enclosing mapping's subject `S`.
 	  * @param buffs a vararg list of buffs modifying the handling of the column.
 	  * @tparam N the singleton type of the string literal used as the column name.
 	  * @tparam T the mapped column type.
@@ -133,7 +133,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	/** Appends to this schema a new column labeled with a string different from its name.
 	  * @param label a string literal used to access the column in the schema.
 	  * @param name the name of the column.
-	  * @param value an extractor function returning the value for the column from the enclosing mapping's subject `S`.
+	  * @param value an extract function returning the value for the column from the enclosing mapping's subject `S`.
 	  * @param buffs a vararg list of buffs modifying the handling of the column.
 	  * @tparam N the singleton type of the string literal used as the column name.
 	  * @tparam T the mapped column type.
@@ -143,7 +143,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	{
 		val column = LabeledSchemaColumn[N, T, O](label, name, buffs:_*)
 		new NonEmptyIndexedSchema[N, C, N @|| T, R, T, S, O](
-			this, column, ComponentExtractor(column)(Extractor(value))
+			this, column, MappingExtract(column)(Extractor(value))
 		)(new ValueOf(label))
 	}
 
@@ -152,7 +152,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 
 
 
-	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
 	  * before writing to the database, and the function specified here for assembling its subject from the
 	  * chain of subjects of all top-level components of this schema.
@@ -163,7 +163,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	override def map(constructor :R => S) :IndexedSchemaMapping[C, R, S, O] =
 		new MappedIndexedMappingSchema[C, R, S, O](this, constructor)
 
-	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
 	  * before writing to the database, and the function specified here for assembling its subject from the
 	  * chain of subjects of all top-level components of this schema. This will result in slightly more efficient
@@ -178,7 +178,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 
 
 
-	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
 	  * before writing to the database, and the function specified here for assembling its subject from the
 	  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may
@@ -190,7 +190,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	override def flatMap(constructor :R => Option[S]) :IndexedSchemaMapping[C, R, S, O] =
 		new FlatMappedIndexMappingSchema[C, R, S, O](this, constructor)
 
-	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
 	  * before writing to the database, and the function specified here for assembling its subject from the
 	  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
@@ -237,7 +237,7 @@ object IndexedMappingSchema {
 		{
 			val column = LabeledSchemaColumn[N, T, O](label, name, buffs:_*)
 			new FlatNonEmptyIndexedSchema[N, C, N @|| T, R, T, S, O](
-				this, column, ComponentExtractor(column)(Extractor.req(value))
+				this, column, MappingExtract(column)(Extractor.req(value))
 			)(new ValueOf(label))
 		}
 
@@ -252,7 +252,7 @@ object IndexedMappingSchema {
 		{
 			val column = LabeledSchemaColumn[N, T, O](label, name, buffs:_*)
 			new FlatNonEmptyIndexedSchema[N, C, N @|| T, R, T, S, O](
-				this, column, ComponentExtractor(column)(Extractor(value))
+				this, column, MappingExtract(column)(Extractor(value))
 			)(new ValueOf(label))
 		}
 
@@ -297,7 +297,7 @@ object IndexedMappingSchema {
 	private[schema] class NonEmptyIndexedSchema[N <: Label :ValueOf, +C <: Chain, +M <: TypedMapping[T, O],
 	                                            R <: LiteralIndex, T, S, O]
 	                                           (override val init :IndexedMappingSchema[C, R, S, O],
-	                                            component :M, selector :ComponentExtractor[S, T, O])
+	                                            component :M, selector :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[LiteralIndex, |~, Label :~ Any, C, M, R, T, N :~ T, S, O](
 		                           init, component, selector, _.last.value)
 		   with IndexedMappingSchema[C ~ M, R |~ (N :~ T), S, O]
@@ -318,7 +318,7 @@ object IndexedMappingSchema {
 	private[schema] class FlatNonEmptyIndexedSchema[N <: Label :ValueOf, +C <: Chain, +M <: TypedMapping[T, O],
 	                                                R <: LiteralIndex, T, S, O]
 	                                               (override val init :FlatIndexedMappingSchema[C, R, S, O],
-	                                                last :M, extractor :ComponentExtractor[S, T, O])
+	                                                last :M, extractor :MappingExtract[S, T, O])
 		extends NonEmptyIndexedSchema[N, C, M, R, T, S, O](init, last, extractor)
 		   with FlatIndexedMappingSchema[C ~ M, R |~ (N :~ T), S, O]
 	{

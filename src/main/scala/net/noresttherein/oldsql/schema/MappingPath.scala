@@ -61,7 +61,7 @@ object MappingPath {
 //	private def typed[X <: MappingOf[S], Y <: TypedMapping[O, T], O, S, T](component :Y)(extract :S =?> T) :MappingPath[X, Y, O, S, T] =
 //		new MappingPath[X, Y, O, S, T] {
 //			override val end = component
-//			override val extractor = extract
+//			override val extract = extract
 //		}
 
 	
@@ -123,8 +123,8 @@ object MappingPath {
 		}
 
 //		def apply[M <: Mapping, X <: TypedMapping[O, S], Y <: TypedMapping[O, T], O, S, T]
-//		         (component :M)(extractor :S =?> T)(implicit hint :Conforms[M, Y, TypedMapping[O, T]]) :ComponentPath[X, Y, O, S, T] =
-//			typed[X, Y, O, S, T](hint(component).left)(extractor)
+//		         (component :M)(extract :S =?> T)(implicit hint :Conforms[M, Y, TypedMapping[O, T]]) :ComponentPath[X, Y, O, S, T] =
+//			typed[X, Y, O, S, T](hint(component).left)(extract)
 
 		private[MappingPath] def typed[X <: TypedMapping[S, O], Y <: TypedMapping[T, O], S, T, O]
 		                              (component :Y)(extract :S =?> T) :ComponentPath[X, Y, S, T, O] =

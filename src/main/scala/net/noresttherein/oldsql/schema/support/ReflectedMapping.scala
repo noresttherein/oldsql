@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.model.PropertyPath.PropertyReflectionException
 import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.ComponentExtractor
-import net.noresttherein.oldsql.schema.ComponentExtractor.{ColumnExtractor, ComponentExtractorTemplate, ConstantColumn, ConstantComponent, EmptyColumn, EmptyComponent, IdentityColumn, IdentityComponent, OptionalColumn, RequisiteColumn, RequisiteComponent, RequisiteComponentTemplate}
+import net.noresttherein.oldsql.schema.MappingExtract
+import net.noresttherein.oldsql.schema.MappingExtract.{ColumnExtract, MappingExtractTemplate, ConstantColumn, ConstantExtract, EmptyColumn, EmptyExtract, IdentityColumn, IdentityExtract, OptionalColumn, RequisiteColumn, RequisiteExtract, RequisiteExtractTemplate}
 import net.noresttherein.oldsql.schema.bits.ComponentProperty
 import net.noresttherein.oldsql.schema.bits.ComponentProperty.ColumnProperty
 

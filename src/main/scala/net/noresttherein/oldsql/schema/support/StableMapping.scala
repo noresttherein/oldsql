@@ -39,8 +39,8 @@ trait SelectorCache[S, O] extends GenericMapping[S, O] {
 
 	private[this] val selectors = Lazy {
 		def entry[T](component :Component[T]) =
-			new NaturalMap.Entry[Component, Selector, T](component, super.apply(component))
-		val builder = NaturalMap.newBuilder[Component, Selector]
+			new NaturalMap.Entry[Component, Extract, T](component, super.apply(component))
+		val builder = NaturalMap.newBuilder[Component, Extract]
 		for (c <- subcomponents)
 			builder += entry(c)
 		builder.result()
@@ -48,9 +48,9 @@ trait SelectorCache[S, O] extends GenericMapping[S, O] {
 
 	private[this] val columnSelectors = Lazy {
 		def entry[T](column :Column[T]) =
-			new NaturalMap.Entry[Column, ColumnSelector, T](column, super.apply(column))
+			new NaturalMap.Entry[Column, ExtractColumn, T](column, super.apply(column))
 
-		val builder = NaturalMap.newBuilder[Column, ColumnSelector]
+		val builder = NaturalMap.newBuilder[Column, ExtractColumn]
 		for (c <- columns)
 			builder += entry(c)
 		builder.result()
@@ -58,8 +58,8 @@ trait SelectorCache[S, O] extends GenericMapping[S, O] {
 
 
 
-	abstract override def apply[T](component :Component[T]) :Selector[T] = selectors.get(component)
+	abstract override def apply[T](component :Component[T]) :Extract[T] = selectors.get(component)
 
-	abstract override def apply[T](column :Column[T]) :ColumnSelector[T] = columnSelectors.get(column)
+	abstract override def apply[T](column :Column[T]) :ExtractColumn[T] = columnSelectors.get(column)
 
 }

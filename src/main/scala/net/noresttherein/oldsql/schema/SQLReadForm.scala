@@ -156,7 +156,7 @@ trait SQLReadForm[+T] {
 
 
 	/** Maps the value of `T` read by this form to `X` in order to obtain a form for `X`.
-	  * This will call `mapNull` or `flatMapNull` based on whether the extractor is a `RequisiteExtractor`.
+	  * This will call `mapNull` or `flatMapNull` based on whether the extract is a `RequisiteExtractor`.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#mapNull]]
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#flatMapNull]]
 	  */

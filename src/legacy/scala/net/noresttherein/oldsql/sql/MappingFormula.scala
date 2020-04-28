@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.Mapping.{AnyComponent, Component, ComponentExtractor, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{Component[_], Component, ComponentExtractor, TypedMapping}
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, MappingPath, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{NoQuery, NoSelect}
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, SelfPath}

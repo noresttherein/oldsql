@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, StableMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ComponentExtractor, MappingSchema, SchemaMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema, SchemaMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedMappingSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatMappingSchema, MappedMappingSchema, NonEmptySchema, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedSchemaMapping, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
@@ -90,7 +90,7 @@ object ChainMapping {
 
 		override def apply[N <: Label, T]
 		                  (label :N)(implicit get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O])
-				:Selector[T] =
+				:Extract[T] =
 			super.apply(label)
 
 		override def /[M <: LabeledMapping[N, T, O], N <: Label, T]
@@ -100,7 +100,7 @@ object ChainMapping {
 
 		override def apply[I <: Numeral, T]
 		                  (idx :I)(implicit get :GetSchemaComponent[C, R, Component[T], I, T, O])
-				:ComponentExtractor[R, T, O] =
+				:MappingExtract[R, T, O] =
 			super.apply[I, T](idx)
 
 		override def /[M <: Component[T], I <: Numeral, T]
@@ -164,7 +164,7 @@ object ChainMapping {
 	private class NonEmptyChainMapping[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, O]
 	                                  (prefix :ChainMapping[C, R, O], next :M)
 		extends NonEmptySchema[C, M, R, T, R ~ T, O](
-				               prefix.asPrefix[T], next, ComponentExtractor.req(next)((row :R ~ T) => row.last))
+				               prefix.asPrefix[T], next, MappingExtract.req(next)((row :R ~ T) => row.last))
 		   with ChainMapping[C ~ M, R ~ T, O]
 
 
@@ -172,7 +172,7 @@ object ChainMapping {
 	private class NonEmptyFlatChainMapping[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, O]
 	                                      (prefix :FlatChainMapping[C, R, O], next :M)
 		extends FlatNonEmptySchema[C, M, R, T, R ~ T, O](
-		                       prefix.asPrefix[T], next, ComponentExtractor.req(next)((row :R ~ T) => row.last))
+		                       prefix.asPrefix[T], next, MappingExtract.req(next)((row :R ~ T) => row.last))
 		   with FlatChainMapping[C ~ M, R ~ T, O]
 
 
@@ -193,11 +193,11 @@ object ChainMapping {
 	{
 		override def members :C = egg.members
 
-		override def extractor[X](component :Component[X]) :ComponentExtractor[S, X, O] =
-			egg.extractor(component) compose prefix[T]
+		override def extract[X](component :Component[X]) :MappingExtract[S, X, O] =
+			egg.extract(component) compose prefix[T]
 
-		override def extractor[X](column :Column[X]) :ComponentExtractor.ColumnExtractor[S, X, O] =
-			egg.extractor(column) compose prefix[T]
+		override def extract[X](column :Column[X]) :MappingExtract.ColumnExtract[S, X, O] =
+			egg.extract(column) compose prefix[T]
 
 		override def unapply(subject :S) :Option[R] = egg.unapply(subject.init)
 
@@ -209,12 +209,12 @@ object ChainMapping {
 		override def compose[X](extractor :X =?> S) :MappingSchema[C, R, X, O] =
 			egg compose (extractor andThen prefix[T])
 
-		override protected[schema] def schemaExtractors :List[(Component[_], Selector[_])] = egg.schemaExtractors
+		override protected[schema] def schemaExtracts :List[(Component[_], Extract[_])] = egg.schemaExtracts
 
-		override protected[schema] def outerExtractors :List[(Component[_], ComponentExtractor[S, _, O])] =
-			egg.outerExtractors map { case (c, ex) =>
+		override protected[schema] def outerExtracts :List[(Component[_], MappingExtract[S, _, O])] =
+			egg.outerExtracts map { case (c, ex) =>
 				val export = ex.export.asInstanceOf[Component[Any]]
-				c -> ComponentExtractor[S, Any, O](export)(ex.asInstanceOf[T =?> Any] compose prefix[T])
+				c -> MappingExtract[S, Any, O](export)(ex.asInstanceOf[T =?> Any] compose prefix[T])
 			}
 
 

@@ -38,8 +38,8 @@ sealed trait AnyMapping { mapping => //this :Mapping[_] =>
 	//todo: rename to Ego
 	type ResultType
 	type Values = ComponentValues[this.type]
-	type AnyComponent = Component[_]
-	type Component[T] <: Mapping[T] //with AnyComponent
+	type Component[_] = Component[_]
+	type Component[T] <: Mapping[T] //with Component[_]
 
 
 	def modifiers :Seq[MappingExtension[ResultType]]
@@ -134,20 +134,20 @@ sealed trait AnyMapping { mapping => //this :Mapping[_] =>
 		}
 	}
 
-//	def apply[C<:AnyComponent](component :this.type=>C) :ComponentPath[this.type, C]
+//	def apply[C<:Component[_]](component :this.type=>C) :ComponentPath[this.type, C]
 
 	implicit def \\ [X](component :Component[X]) :TypedComponentPath[this.type, component.type, X]
 
 
 
 
-//	def \\ [C<:AnyComponent](component : this.type=>C) :ComponentPath[this.type, C] = {
+//	def \\ [C<:Component[_]](component : this.type=>C) :ComponentPath[this.type, C] = {
 //		val comp = component(this).asInstanceOf[Component[Any]]
 //		(this \\ comp).asInstanceOf[ComponentPath[this.type, C]]
 //	}
 
 
-//	implicit def nestedPath[C<:AnyComponent, X<:Mapping](path :ComponentPath[C, X]) :ComponentPath[this.type, X] =
+//	implicit def nestedPath[C<:Component[_], X<:Mapping](path :ComponentPath[C, X]) :ComponentPath[this.type, X] =
 //		(this :this.type) \: path
 
 
@@ -262,7 +262,7 @@ object Mapping {
 	class ReferenceContext[M<:AnyMapping](val forger :Forger, val path :MappingPath[_<:AnyMapping, M]) {
 		def this(mapping :M) = this(new Forger, ComponentPath.self(mapping))
 
-		def :\ (comp :M#AnyComponent) :ReferenceContext[comp.type] =
+		def :\ (comp :M#Component[_]) :ReferenceContext[comp.type] =
 			new ReferenceContext(forger, path :\ comp)
 
 		def \\[X<:AnyMapping] (path :MappingPath[M, X]) = new ReferenceContext[X](forger, this.path++path)

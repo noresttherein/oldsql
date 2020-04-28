@@ -859,7 +859,7 @@ object RowSource {
 		def table = this
 		def path = ComponentPath.self(mapping)
 
-		override def apply[C<:M#AnyComponent](component :M => C) :ComponentFormula[S, M, C] =
+		override def apply[C<:M#Component[_]](component :M => C) :ComponentFormula[S, M, C] =
 			ComponentFormula[S, M, C](this, ComponentPath.direct[M, C](mapping, component(mapping)))
 
 
@@ -943,7 +943,7 @@ object RowSource {
 		  * @param member proof that M is indeed a part of the underlying join
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
-		def apply[C<:M#AnyComponent](component :M => C)(implicit member :M JoinedIn (_>:S)) :ComponentFormula[S, M, C] =
+		def apply[C<:M#Component[_]](component :M => C)(implicit member :M JoinedIn (_>:S)) :ComponentFormula[S, M, C] =
 			t \ component
 
 		/** Create an SQL expression for the given component of  this mapping. If the component is not a single column, it will be
@@ -955,7 +955,7 @@ object RowSource {
 		  * @param member proof that M is indeed a part of the underlying join
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
-		def \ [C<:M#AnyComponent](component :M => C)(implicit member :M JoinedIn (_>:S)) :ComponentFormula[S, M, C] =
+		def \ [C<:M#Component[_]](component :M => C)(implicit member :M JoinedIn (_>:S)) :ComponentFormula[S, M, C] =
 			apply(component)
 
 

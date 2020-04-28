@@ -95,13 +95,13 @@ object CustomizedMapping {
 				throw new IllegalArgumentException(
 					s"Can't include component $component off $mapping as it has the $disabled buff."
 				)
-			case column :ColumnMapping[_, O] =>
+			case column :ColumnMapping[_, O @unchecked] =>
 				if (remove.enabled(column))
 					builder += new Substitution(column, column.withBuffs(column.buffs.filter(remove.disabled)))
 			case lifted =>
 				lifted.subcomponents foreach { sub =>
 					sub match {
-						case column :ColumnMapping[_, O] =>
+						case column :ColumnMapping[_, O @unchecked] =>
 							val col = mapping.export(column)
 							if (disabled.disabled(col) && remove.enabled(col))
 								builder += new Substitution(col, col.withBuffs(col.buffs.filter(remove.disabled)))
@@ -130,13 +130,13 @@ object CustomizedMapping {
 	                           enabled :BuffType, add :FlagBuffType,
 	                           builder :Builder[Substitution[_, O], Substitutions[O]]) :Unit =
 		mapping.export(component) match {
-			case column :ColumnMapping[_, O] =>
+			case column :ColumnMapping[_, O @unchecked] =>
 				if (add.disabled(column) && enabled.enabled(column))
 					builder += new Substitution(column, column.withBuffs(add[T] +: column.buffs))
 			case lifted =>
 				lifted.subcomponents foreach { sub =>
 					sub match {
-						case column :ColumnMapping[_, O] =>
+						case column :ColumnMapping[_, O @unchecked] =>
 							val col = mapping.export(column).asInstanceOf[ColumnMapping[Any, O]]
 							if (add.disabled(col) && enabled.enabled(col))
 								builder += new Substitution[Any, O](col, col.withBuffs(add[Any] +: col.buffs))

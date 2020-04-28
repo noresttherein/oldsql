@@ -49,8 +49,8 @@ trait JDBCTypes extends SQLTypes {
 			case _ :sql.Time => TimeForm
 			case _ :Array[Byte] => BytesForm
 			case _ :sql.Blob => BlobForm
-			case _ :sql.Clob => ClobForm
 			case _ :sql.NClob => NClobForm
+			case _ :sql.Clob => ClobForm
 			case _ :URL => URLForm
 			case _ :ByteArrayInputStream => BinaryStreamForm
 //			case _ :InputStream => BinaryStreamForm

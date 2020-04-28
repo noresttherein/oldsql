@@ -2,8 +2,8 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.{GenericMapping, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.ComponentExtractor
-import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
+import net.noresttherein.oldsql.schema.MappingExtract
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
 
 
 /**
@@ -11,10 +11,10 @@ import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
   */
 trait EmptyMapping[S, O] extends GenericMapping[S, O] {
 
-	override def apply[T](component :Component[T]) :Selector[T] =
+	override def apply[T](component :Component[T]) :Extract[T] =
 		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")
 
-	override def apply[T](column :Column[T]) :ColumnExtractor[S, T, O] =
+	override def apply[T](column :Column[T]) :ColumnExtract[S, T, O] =
 		throw new IllegalArgumentException(s"Column $column is not a part of this empty mapping: $this.")
 	
 	

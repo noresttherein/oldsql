@@ -3,10 +3,10 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingNest, MappingOf, TypedMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, ComponentExtractor, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, MappingExtract, GenericMapping, Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
-import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
 
 import scala.collection.mutable
 
@@ -38,19 +38,19 @@ object ComponentProxy {
 		protected override val egg :Component[S]
 
 
-		override def apply[T](component :Component[T]) :Selector[T] =
+		override def apply[T](component :Component[T]) :Extract[T] =
 			(if (component eq egg)
-				 ComponentExtractor.ident(egg)
+				 MappingExtract.ident(egg)
 			 else
 				 egg(component)
-			).asInstanceOf[Selector[T]]
+			).asInstanceOf[Extract[T]]
 		
-		override def apply[T](column :Column[T]) :ColumnExtractor[S, T, O] =
+		override def apply[T](column :Column[T]) :ColumnExtract[S, T, O] =
 			(if (column eq egg)
-				ComponentExtractor.ident(column)
+				MappingExtract.ident(column)
 			else
 				 egg(column)
-			).asInstanceOf[ColumnExtractor[S, T, O]]
+			).asInstanceOf[ColumnExtract[S, T, O]]
 
 
 		
@@ -95,19 +95,19 @@ object ComponentProxy {
 	/** A skeleton trait for a mapping proxy which needs to adapt every component of the proxied mapping. */
 	trait DeepProxy[S, O] extends ComponentProxy[S, O] {
 
-		override def apply[T](component :Component[T]) :Selector[T] =
+		override def apply[T](component :Component[T]) :Extract[T] =
 			if (component.isInstanceOf[ColumnMapping[_, _]])
 				apply(component.asInstanceOf[Column[T]])
 			else if (component eq egg)
-				ComponentExtractor.ident(adaptEgg).asInstanceOf[Selector[T]]
+				MappingExtract.ident(adaptEgg).asInstanceOf[Extract[T]]
 			else
-				ComponentExtractor[S, T, O](export(component))(egg.apply(dealias(component)))
+				MappingExtract[S, T, O](export(component))(egg.apply(dealias(component)))
 
-		override def apply[T](column :Column[T]) :ColumnExtractor[S, T, O] =
+		override def apply[T](column :Column[T]) :ColumnExtract[S, T, O] =
 			if (column eq egg)
-				ComponentExtractor.ident(adaptEgg.asInstanceOf[Column[S]]).asInstanceOf[ColumnExtractor[S, T, O]]
+				MappingExtract.ident(adaptEgg.asInstanceOf[Column[S]]).asInstanceOf[ColumnExtract[S, T, O]]
 			else
-				ComponentExtractor[S, T, O](export(column))(egg.apply(dealias(column)))
+				MappingExtract[S, T, O](export(column))(egg.apply(dealias(column)))
 		
 
 
@@ -153,7 +153,7 @@ object ComponentProxy {
 
 		/** A hook method left for subclasses to implement the mapping of the adapted components back to their
 		  * originating components of the adapted mapping. Used in implementing `apply(component)` returning
-		  * the extractor for the component.
+		  * the extract for the component.
 		  * @param export a subcomponent of this instance; may be a component adapted from `egg` or a (sub)component
 		  *               of `egg` unchanged, or even `egg` itself.
 		  */
@@ -206,7 +206,7 @@ object ComponentProxy {
 	abstract class EagerDeepProxy[+M <: MappingOf[S], S, O](protected override val egg :M)
 		extends DeepProxy[S, O] with MappingNest[M]
 	{
-		private[this] val exports = mutable.Map[Mapping, ComponentExtractor[S, _, O]]()
+		private[this] val exports = mutable.Map[Mapping, MappingExtract[S, _, O]]()
 		private[this] val originals = mutable.Map[MappingFrom[O], Mapping]()
 
 		preInit()
@@ -223,7 +223,7 @@ object ComponentProxy {
 
 		{
 			val adapted = adaptEgg
-			exports.put(adapted, ComponentExtractor.ident[S, O](adapted))
+			exports.put(adapted, MappingExtract.ident[S, O](adapted))
 			originals.put(adapted, egg)
 			oldsql.publishMutable()
 		}
@@ -237,23 +237,23 @@ object ComponentProxy {
 						val column = col.asInstanceOf[egg.Column[T]]
 						val (base, export) =
 							if (egg eq component)
-								ComponentExtractor.ident(column).asInstanceOf[egg.Selector[T]] ->
+								MappingExtract.ident(column).asInstanceOf[egg.Extract[T]] ->
 									adaptEgg.asInstanceOf[Column[T]]
 							else {
 	                            val base = egg.apply(column)
 								(base, adaptColumn(base.export))
 							}
-						(base, export, ComponentExtractor(export)(base))
+						(base, export, MappingExtract(export)(base))
 					case _ =>
 						val (base, export) =
 							if (egg eq component)
-								ComponentExtractor.ident(component).asInstanceOf[egg.Selector[T]] ->
+								MappingExtract.ident(component).asInstanceOf[egg.Extract[T]] ->
 									adaptEgg.asInstanceOf[Component[T]]
 							else {
 								val base = egg.apply(component)
 								(base, adapt(base.export))
 							}
-						(base, export, ComponentExtractor(export)(base))
+						(base, export, MappingExtract(export)(base))
 				}
 				this.exports.put(component, selector)
 				this.exports.put(base.export, selector)
@@ -275,7 +275,7 @@ object ComponentProxy {
 
 
 
-		override def apply[T](component :Component[T]) :Selector[T] =
+		override def apply[T](component :Component[T]) :Extract[T] =
 			exports.getOrElse(component, { //if component is not the export version, we know nothing about it
 				val comp = egg.export(component.asInstanceOf[egg.Component[T]])
 				exports.getOrElse(comp,
@@ -283,10 +283,10 @@ object ComponentProxy {
 						s"Component $comp of $egg (export version of $component) is not on the mapping's subcomponents list."
 					)
 				)
-			}).asInstanceOf[Selector[T]]
+			}).asInstanceOf[Extract[T]]
 
-		override def apply[T](column :Column[T]) :ColumnExtractor[S, T, O] =
-			apply(column :Component[T]).asInstanceOf[ColumnExtractor[S, T, O]]
+		override def apply[T](column :Column[T]) :ColumnExtract[S, T, O] =
+			apply(column :Component[T]).asInstanceOf[ColumnExtract[S, T, O]]
 
 
 

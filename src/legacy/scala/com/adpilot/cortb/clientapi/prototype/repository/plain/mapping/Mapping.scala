@@ -19,9 +19,9 @@ import OptionOps._
 
 trait AnyMapping {
 	type ResultType
-	type AnyComponent <: AnyMapping
-	type AnyColumn <: AnyComponent
-	type Component[T] <: ComponentMapping[ResultType, T] with AnyComponent
+	type Component[_] <: AnyMapping
+	type AnyColumn <: Component[_]
+	type Component[T] <: ComponentMapping[ResultType, T] with Component[_]
 	type Column[T] <: ColumnMapping[ResultType, T] with Component[T] with AnyColumn
 
 
@@ -31,7 +31,7 @@ trait AnyMapping {
 	def selectable :Seq[Column[_]]
 
 
-	def valuesFor(component :AnyComponent) :ColumnValues => ColumnValues
+	def valuesFor(component :Component[_]) :ColumnValues => ColumnValues
 }
 
 
@@ -40,7 +40,7 @@ trait Mapping[E] extends GetResult[E] with AnyMapping { self =>
 	type ResultType = E
 	type Component[T] <: ComponentMapping[E, T]
 	type Column[T] <: ColumnMapping[E, T] with Component[T]
-	type AnyComponent = Component[_]
+	type Component[_] = Component[_]
 	type AnyColumn = Column[_]
 
 

@@ -7,13 +7,23 @@ import net.noresttherein.oldsql.schema.ColumnMapping.{LiteralColumn, NumberedCol
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
-import net.noresttherein.oldsql.schema.ComponentExtractor.ColumnExtractor
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
 
 
 
 
 
 
+/** A `Mapping` representing a single SQL column of a table or select result.
+  * It is special in that it is atomic, the smallest building block in the `Mapping` component hierarchy.
+  * Columns are never assembled (their `assemble` method returns `None`) but must be present in `ComponentValues`
+  * for the mapping to produce a value. Additionally, it can never have any components (or subcomponents),
+  * but it is its own column to maintain the invariant that the `columns` property always returns the complete list
+  * of columns comprising any mapping. As follows, the rest of the column lists are either empty or contain
+  * this sole instance itself, depending on the presence of specific buffs. Unlike other mapping implementations,
+  * which are adaptable by operations such as mapping and prefixing, transformation methods on columns
+  * return a new instance, using the form (and, where suitable, buffs and name) of the original as their basis.
+  */
 trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 	/** Returns `Some(this.name)`. */
@@ -58,6 +68,9 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 	  */
 	def form :ColumnForm[S]
 
+	/*** `this.form` adapted to a `SQLReadForm` by incorporating behaviour modifications caused by applied buffs.
+	  * This includes default values from buffs like `OptionalSelect`, transformations from `AuditBuff`s and similar
+	  */
 	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLReadForm.const(x)
 		case Some(buff) => SQLReadForm.eval(buff.value)
@@ -87,6 +100,9 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 	}
 
+	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
+	  * and `ExtraQuery`.
+	  */
 	override def queryForm :SQLWriteForm[S] = ExtraQuery.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
 		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
@@ -96,6 +112,9 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 			else form.unmap(audits.reduce(_ andThen _))
 	}
 
+	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
+	  * and `ExtraUpdate`.
+	  */
 	override def updateForm :SQLWriteForm[S] = ExtraUpdate.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
 		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
@@ -105,6 +124,9 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 			else form.unmap(audits.reduce(_ andThen _))
 	}
 
+	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
+	  * and `ExtraInsert`.
+	  */
 	override def insertForm :SQLWriteForm[S] = ExtraInsert.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
 		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
@@ -173,17 +195,17 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 	override def export[T](column :Column[T]) :Column[T] = column
 
-	override def apply[T](component :Component[T]) :Selector[T] =
+	override def apply[T](component :Component[T]) :Extract[T] =
 		if (component == this)
-			ComponentExtractor.ident[S, O](this).asInstanceOf[Selector[T]]
+			MappingExtract.ident[S, O](this).asInstanceOf[Extract[T]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $component is not a subcomponent of column $column. The only subcomponent of a column is the column itself."
 			)
 
-	override def apply[T](column :Column[T]) :ColumnExtractor[S, T, O] =
+	override def apply[T](column :Column[T]) :ColumnExtract[S, T, O] =
 		if (column == this)
-			ComponentExtractor.ident[S, O](this).asInstanceOf[ColumnExtractor[S, T, O]]
+			MappingExtract.ident[S, O](this).asInstanceOf[ColumnExtract[S, T, O]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $column is not a column of column $column. The only subcomponent of a column is the column itself."
@@ -212,6 +234,9 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 
 
+	/** A new column, with the same name, form (and optionally other properties), but with the buffs replaced by
+	  * the provided list.
+	  */
 	def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[S, O] = ColumnMapping(name, opts:_*)(form)
 
 

@@ -69,7 +69,7 @@ trait MappingPath[X<:AnyMapping, Y<:AnyMapping] {
 	def splitWhere(fun :MappingPath[_, _]=>Boolean) :(MappingPath[X, M], MappingPath[M, Y]) forSome { type M<:AnyMapping }
 
 
-	def apply[C<:Y#AnyComponent](subcomponent :Y=>C) :MappingPath[X, C] = this \ subcomponent
+	def apply[C<:Y#Component[_]](subcomponent :Y=>C) :MappingPath[X, C] = this \ subcomponent
 
 
 	def \: (mapping :AnyMapping)(implicit ev : X<:<mapping.Component[_]) :MappingPath[mapping.type, Y]
@@ -80,11 +80,11 @@ trait MappingPath[X<:AnyMapping, Y<:AnyMapping] {
 
 
 
-	def \ [C<:Y#AnyComponent](subcomponent :Y=>C) :MappingPath[X, C]
+	def \ [C<:Y#Component[_]](subcomponent :Y=>C) :MappingPath[X, C]
 
 
 
-	def :+ [C<:Y#AnyComponent](subcomponent :C) :MappingPath[X, C] =
+	def :+ [C<:Y#Component[_]](subcomponent :C) :MappingPath[X, C] =
 		(this :\ subcomponent.asInstanceOf[Y#Component[Any]]).asInstanceOf[X\~\C]
 
 	def +: [M<:AnyMapping](mapping :M)(implicit ev :X<:<M#Component[_]) :MappingPath[M, Y] =
@@ -197,7 +197,7 @@ object MappingPath {
 		}
 
 
-		def \ [C<:Y#AnyComponent](subcomponent :Y=>C) :MappingPath[X, C] = {
+		def \ [C<:Y#Component[_]](subcomponent :Y=>C) :MappingPath[X, C] = {
 			val first = end
 			val next = subcomponent(end).asInstanceOf[first.Component[Any]]
 			val tail = (first \\ next).asInstanceOf[TypedPath[Y, next.type, Any]]

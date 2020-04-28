@@ -29,13 +29,13 @@ object MappedMapping {
 
 		def reverseMorphism :MappingMorphism[M, this.type]
 
-		def apply[C<:M#AnyComponent](component :M=>C) :C
+		def apply[C<:M#Component[_]](component :M=>C) :C
 	}
 	
 	trait DedicatedMappedMapping[V, T, M<:Mapping[T]]
 		extends MappingSubstitute[V, T, M]
 	{
-//		override def apply[C <: M#AnyComponent](component: M => C): C =
+//		override def apply[C <: M#Component[_]](component: M => C): C =
 //			component(adaptee)
 
 		override def modifiers = adaptee.modifiers.map(_.map(toResultType))
@@ -80,7 +80,7 @@ object MappedMapping {
 	trait GenericMappedMapping[V, T, M<:TypedMapping[T]]
 		extends GenericMappingSubstitute[V, M] with MappedAs[M, V]
 	{ substitute =>
-		override def apply[C <: M#AnyComponent](component: M => C): C =
+		override def apply[C <: M#Component[_]](component: M => C): C =
 			component(adaptee)
 
 		override def modifiers = adaptee.modifiers.map(_.map(toResultType))

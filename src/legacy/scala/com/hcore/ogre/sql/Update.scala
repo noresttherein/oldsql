@@ -545,7 +545,7 @@ object Update {
 		  * @return an update template with the same table and 'where' clause as this instance, and containing setters
 		  *         specified by this.assignments prepended by all updatable columns of all components in the argument list.
 		  */
-		def set(components :(T=>T#AnyComponent)*) :UpdateWhereEntityTemplate[T, E] =
+		def set(components :(T=>T#Component[_])*) :UpdateWhereEntityTemplate[T, E] =
 			set(components.map(_(table)))
 
 		/** Create a template based on this instance, with the set clause containing assignments for all updatable by default

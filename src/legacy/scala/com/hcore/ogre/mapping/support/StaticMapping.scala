@@ -257,7 +257,7 @@ trait StaticMapping[E] extends Mapping[E] { composite =>
 
 
 	@inline
-	final def apply[C<:AnyComponent](component :this.type=>C) :ComponentPath[this.type, C] =
+	final def apply[C<:Component[_]](component :this.type=>C) :ComponentPath[this.type, C] =
 		SelfPath(this :this.type) \ component
 
 

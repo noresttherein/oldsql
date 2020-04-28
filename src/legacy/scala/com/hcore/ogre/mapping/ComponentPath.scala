@@ -95,7 +95,7 @@ sealed trait ComponentPath[X<:AnyMapping, Y<:AnyMapping] extends MappingPath[X, 
 
 
 
-	override def apply[C<:Y#AnyComponent](subcomponent :Y=>C) :ComponentPath[X, C] = this \ subcomponent
+	override def apply[C<:Y#Component[_]](subcomponent :Y=>C) :ComponentPath[X, C] = this \ subcomponent
 
 	def \: (mapping :AnyMapping)(implicit ev : X<:<mapping.Component[_]) :ComponentPath[mapping.type, Y]
 
@@ -103,11 +103,11 @@ sealed trait ComponentPath[X<:AnyMapping, Y<:AnyMapping] extends MappingPath[X, 
 	def :\ [Q](subcomponent :Y#Component[Q]) :TypedComponentPath[X, subcomponent.type, Q]
 
 
-	def \ [C<:Y#AnyComponent](subcomponent :Y=>C) :ComponentPath[X, C]
+	def \ [C<:Y#Component[_]](subcomponent :Y=>C) :ComponentPath[X, C]
 
 
 
-	override def :+[C <: Y#AnyComponent](subcomponent: C): ComponentPath[X, C] =
+	override def :+[C <: Y#Component[_]](subcomponent: C): ComponentPath[X, C] =
 		(this :\ subcomponent.asInstanceOf[Y#Component[Any]]).asInstanceOf[X\**\C]
 
 
@@ -154,11 +154,11 @@ object ComponentPath {
 
 
 
-	def apply[M<:AnyMapping, C<:M#AnyComponent](mapping :M, component :C) :ComponentPath[M, C] =
+	def apply[M<:AnyMapping, C<:M#Component[_]](mapping :M, component :C) :ComponentPath[M, C] =
 		direct(mapping, component)
 
-	def direct[M<:AnyMapping, C<:M#AnyComponent](mapping :M, component :C) :ComponentPath[M, C] =
-		(mapping \\ component.asInstanceOf[mapping.AnyComponent]).asInstanceOf[M \**\ C]
+	def direct[M<:AnyMapping, C<:M#Component[_]](mapping :M, component :C) :ComponentPath[M, C] =
+		(mapping \\ component.asInstanceOf[mapping.Component[_]]).asInstanceOf[M \**\ C]
 
 	def self[M<:AnyMapping](mapping :M) :ComponentPath[M, M] =
 		new SelfPath[Mapping[Any], Any](mapping.asInstanceOf[Mapping[Any]]).asInstanceOf[M \**\ M]
@@ -305,7 +305,7 @@ object ComponentPath {
 		}
 
 
-		override def \ [C<:Y#AnyComponent](subcomponent :Y=>C) :ComponentPath[X, C] = {
+		override def \ [C<:Y#Component[_]](subcomponent :Y=>C) :ComponentPath[X, C] = {
 			val first = end
 			val next = subcomponent(end).asInstanceOf[first.Component[Any]]
 			val tail = (first \\ next).asInstanceOf[TypedComponentPath[Y, next.type, Any]]
@@ -464,7 +464,7 @@ object ComponentPath {
 		override def ++:[W<:AnyMapping](prefix :ComponentPath[W, M]) :TypedComponentPath[W, M, T] = prefix.asInstanceOf[TypedComponentPath[W, M, T]]
 
 
-		override def \[C <: M#AnyComponent](subcomponent: (M) => C): ComponentPath[M, C] =
+		override def \[C <: M#Component[_]](subcomponent: (M) => C): ComponentPath[M, C] =
 			(mapping \\ subcomponent(mapping).asInstanceOf[mapping.Component[_]]).asInstanceOf[M\**\C]
 
 		override def :\[Q](subcomponent: M#Component[Q]): TypedComponentPath[M, subcomponent.type, Q] =

@@ -35,14 +35,14 @@ object MappingResult {
 
 		def get :E = result.get
 
-		def get[C<:M#AnyComponent](component :C) :component.ResultType
+		def get[C<:M#Component[_]](component :C) :component.ResultType
 
-		def pick[C<:M#AnyComponent](component :C) :ComponentResult[C]
+		def pick[C<:M#Component[_]](component :C) :ComponentResult[C]
 
 
-		def map [C<:M#AnyComponent](component :M=>C) :ComponentResult[C] = this \ component
+		def map [C<:M#Component[_]](component :M=>C) :ComponentResult[C] = this \ component
 
-		def \ [C<:M#AnyComponent](component :M=>C) :ComponentResult[C]
+		def \ [C<:M#Component[_]](component :M=>C) :ComponentResult[C]
 
 //		def :\ [T](component :M#Component[T]) :MappingResult[component.type, T] = pick(component)
 	}
@@ -54,11 +54,11 @@ object MappingResult {
 	
 	
 	trait ComponentResult[M<:AnyMapping] extends AnyMappingResult[M, M#ResultType] {
-		def :\ (component :M#AnyComponent) :ComponentResult[component.type]
+		def :\ (component :M#Component[_]) :ComponentResult[component.type]
 
-		def apply(component :M#AnyComponent) :component.ResultType = (this :\ component).get
+		def apply(component :M#Component[_]) :component.ResultType = (this :\ component).get
 
-//		override def get[C <: M#AnyComponent](component: C): component.ResultType = (this :\ component).get
+//		override def get[C <: M#Component[_]](component: C): component.ResultType = (this :\ component).get
 	}
 
 
@@ -74,19 +74,19 @@ object MappingResult {
 			else Some(value)
 
 
-		def pick[C<:M#AnyComponent](component: C): ComponentResult[C] =
+		def pick[C<:M#Component[_]](component: C): ComponentResult[C] =
 			new ComponentResultImpl[C](component, valuesFor(component))
 
-		override def get[C <: M#AnyComponent](component: C): component.ResultType =
-			component.assemble(mapping.valuesFor(component.asInstanceOf[mapping.AnyComponent])(vals)).asInstanceOf[component.ResultType]
+		override def get[C <: M#Component[_]](component: C): component.ResultType =
+			component.assemble(mapping.valuesFor(component.asInstanceOf[mapping.Component[_]])(vals)).asInstanceOf[component.ResultType]
 
-		override def \ [C<:M#AnyComponent](component :M=>C) :ComponentResult[C] = {
+		override def \ [C<:M#Component[_]](component :M=>C) :ComponentResult[C] = {
 			val comp = component(mapping)
 			new ComponentResultImpl(comp, valuesFor(comp))
 		}
 
-		protected def valuesFor(c :M#AnyComponent) :ColumnValues =
-			mapping.valuesFor(c.asInstanceOf[mapping.AnyComponent])(vals)
+		protected def valuesFor(c :M#Component[_]) :ColumnValues =
+			mapping.valuesFor(c.asInstanceOf[mapping.Component[_]])(vals)
 
 	}
 
@@ -105,7 +105,7 @@ object MappingResult {
 	{
 		protected[MappingResult] def value :M#ResultType = mapping.assemble(vals)
 
-		def :\ (component :M#AnyComponent) :ComponentResult[component.type] =
+		def :\ (component :M#Component[_]) :ComponentResult[component.type] =
 			new ComponentResultImpl[component.type](component, valuesFor(component))
 
 	}
