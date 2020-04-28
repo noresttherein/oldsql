@@ -78,6 +78,8 @@ object Extractor {
 
 	def apply[X, Y](extract :X => Option[Y]) :Extractor[X, Y] = new OptionalAdapter(extract)
 
+	def opt[X, Y](extract :X => Option[Y]) :Extractor[X, Y] = new OptionalAdapter(extract)
+
 	def req[X, Y](extract :X => Y) :RequisiteExtractor[X, Y] = new RequisiteAdapter(extract)
 
 	def const[Y](result :Y) :ConstantExtractor[Any, Y] = new ConstantAdapter[Y](result)
@@ -91,9 +93,9 @@ object Extractor {
 
 
 
-	def fromOpt[X] :Extractor[Option[X], X] = opt.asInstanceOf[Extractor[Option[X], X]]
+	def fromOpt[X] :Extractor[Option[X], X] = option.asInstanceOf[Extractor[Option[X], X]]
 
-	private[this] val opt = new OptionExtractor[Any]
+	private[this] val option = new OptionExtractor[Any]
 
 
 

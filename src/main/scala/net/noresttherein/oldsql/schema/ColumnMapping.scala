@@ -249,6 +249,7 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 
 
+/*
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnMapping[_, _]]
 
 	override def equals(that :Any) :Boolean = that match {
@@ -259,6 +260,7 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 	}
 
 	override def hashCode :Int = (buffs.hashCode * 31 + name.hashCode) * 31 + form.hashCode
+*/
 
 
 
@@ -350,7 +352,7 @@ object ColumnMapping {
 				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 			)
 
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LiteralColumn[_, _, _]]
+//		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LiteralColumn[_, _, _]]
 
 	}
 
@@ -375,6 +377,7 @@ object ColumnMapping {
 			)
 
 
+/*
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[NumberedColumn[_, _]]
 
 		override def equals(that :Any) :Boolean = that match {
@@ -385,6 +388,7 @@ object ColumnMapping {
 		}
 
 		override def hashCode :Int = super.hashCode * 31 + number.##
+*/
 	}
 
 }

@@ -61,7 +61,7 @@ object LabeledMapping {
 		}
 		override def hashCode :Int = egg.hashCode * 31 + label.hashCode
 
-		override def toString :String = "'" + label + "'@:" + egg
+		override def toString :String = "'" + label + "@:" + egg
 
 	}
 
