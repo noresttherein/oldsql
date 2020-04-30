@@ -78,7 +78,7 @@ trait ConnectedMapping[E] extends StaticMapping[E] { table =>
 //			MappingReferenceFactory.Lazy(new ForeignKeyInverseReferenceFactory[K, O, C, T, X](foreignKey, foreignKey.end.referenceFactory))
 //		) with MandatoryComponent[Reference[C]]
 //	{
-//		override protected def selector: (E) => Reference[C] = value
+//		override protected def extract: (E) => Reference[C] = value
 //	}
 
 }

@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection}
 import net.noresttherein.oldsql.schema.RowSource.{AnyRowSource, NamedSource}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
@@ -275,7 +275,7 @@ object JoinParam {
 		}
 
 /*
-		override def apply[T](column :Column[T]) :ColumnExtract[P, T, O] = column match {
+		override def apply[T](column :Column[T]) :ColumnMappingExtract[P, T, O] = column match {
 //			case self :AnyRef if self eq this =>
 //				extractor.asInstanceOf[MappingExtract[P, T, O]]
 			case mapping :FromParam[_, _]#ParamComponent[_] if mapping.root eq this =>
@@ -304,7 +304,7 @@ object JoinParam {
 		private class ParamColumn[T :ColumnForm](pick :P => T)
 			extends ParamComponent[T](pick) with ColumnMapping[T, O]
 		{
-			override def extractor :ColumnExtract[P, T, O] = MappingExtract.req(this)(pick)
+			override def extractor :ColumnMappingExtract[P, T, O] = MappingExtract.req(this)(pick)
 
 			override def name :String = ???
 		}

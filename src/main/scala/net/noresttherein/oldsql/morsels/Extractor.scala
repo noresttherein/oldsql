@@ -9,8 +9,12 @@ import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtra
   *   - differentiation between 'requisite' extractors, i.e. functions `X=>Some[Y]`;
   *   - composition of extractors (by default via flattening) which is aware of requisite and identity extractors
   *     and create a suitable (more effective) composition with them.
-  * Note that this is a ''SAM'' type, meaning a compatible function expression in a position where an `Extractor`
-  * is expected will be converted to one by the compiler.
+  * It is not a ''SAM'' type or a function itself, but subtypes
+  * [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]] and
+  * [[net.noresttherein.oldsql.morsels.Extractor.OptionalExtractor OptionalExtractor]] are,
+  * meaning a compatible function expression in a position where they are expected types,
+  * such as [[net.noresttherein.oldsql.morsels.Extractor.Requisite.apply Requisite(...)]] and
+  * [[net.noresttherein.oldsql.morsels.Extractor.Optional.apply Optional(...)]], will be converted to one by the compiler.
   * @see [[net.noresttherein.oldsql.morsels.Extractor.=?> =?>]]
   * @see [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]]
   * @author Marcin Mościcki
@@ -67,6 +71,9 @@ trait Extractor[-X, +Y] {
 
 
 object Extractor {
+	/** A type alias for [[net.noresttherein.oldsql.morsels.Extractor Extractor]], allowing concise writing it
+	  * in the infix function format `X =?> Y`.
+	  */
 	type =?>[-X, +Y] = Extractor[X, Y]
 
 
@@ -152,6 +159,9 @@ object Extractor {
 
 
 
+	/** The default `Extractor` implementation which can fail to produce a value for the argument.
+	  * It is a 'SAM' type, leaving only the `get` method to be implemented by subclasses.
+	  */
 	trait OptionalExtractor[-X, +Y] extends Extractor[X, Y] {
 		override def apply(x :X) :Y = get(x) getOrElse {
 			throw new NoSuchElementException("No value for " + this + " in " + x)
@@ -172,6 +182,9 @@ object Extractor {
 
 
 
+	/** An `Extractor` which will always succeed in producing a value for each argument.
+	  * It is a 'SAM' type, leaving only the `apply` method to be implemented by subclasses.
+	  */
 	trait RequisiteExtractor[-X, +Y] extends Extractor[X, Y] {
 		def getter :X => Y = apply
 		override def optional :X => Some[Y] = (x :X) => Some(apply(x))
@@ -218,6 +231,7 @@ object Extractor {
 
 
 
+	/** An identity function as a `RequisiteExtractor`. */
 	trait IdentityExtractor[X] extends RequisiteExtractor[X, X] {
 		override val getter :X => X = identityGetter.asInstanceOf[X => X]
 		override def optional :X => Some[X] = identityOptional.asInstanceOf[X => Some[X]]
@@ -246,6 +260,7 @@ object Extractor {
 
 
 
+	/** An `Extractor` ignoring its arguments and always returning the same value.  */
 	trait ConstantExtractor[-X, +Y] extends RequisiteExtractor[X, Y] {
 		def constant :Y
 		//declarations final to assure both functions and method use erased arguments and hence can be cast to Any =>
@@ -294,6 +309,7 @@ object Extractor {
 
 
 
+	/** An `Extractor` which never produces any value, always returning `None` from its `get` method. */
 	trait EmptyExtractor[-X, +Y] extends Extractor[X, Y] {
 		override val optional :Any => Option[Nothing] = emptyOptional
 		override def requisite :Option[Any => Nothing] = None

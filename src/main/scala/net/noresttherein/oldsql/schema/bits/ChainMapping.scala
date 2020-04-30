@@ -1,19 +1,21 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.support.{ConstantMapping, StableMapping}
+import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping}
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema, SchemaMapping}
-import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedMappingSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatMappingSchema, MappedMappingSchema, NonEmptySchema, SchemaFlattening}
+import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedSchemaMapping, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 
 
 
@@ -111,7 +113,7 @@ object ChainMapping {
 
 
 		def map[S](assemble :R => S, disassemble :S => R) :SchemaMapping[C, R, S, O] =
-			new MappedMappingSchema[C, R, S, O](this compose disassemble, assemble)
+			new MappedSchema[C, R, S, O](this compose disassemble, assemble)
 
 //		def flatMap[S](assemble :R => Option[S])(disassemble :S => Option[R]) :MappingSchema[C, R, S, O] =
 //			new FlatMappedMappingSchema[C, R, S, O](this compose disassemble, assemble)
@@ -139,7 +141,7 @@ object ChainMapping {
 
 
 		override def map[S](assemble :R => S, disassemble :S => R) :FlatSchemaMapping[C, R, S, O] =
-			new MappedFlatMappingSchema[C, R, S, O](this compose disassemble, assemble)
+			new MappedFlatSchema[C, R, S, O](this compose disassemble, assemble)
 
 
 
@@ -191,17 +193,41 @@ object ChainMapping {
 	                                       (protected val egg :MappingSchema[C, R, T, O])
 		extends MappingSchema[C, R, S, O] with ShallowProxy[R, O]
 	{
-		override def members :C = egg.members
 
-		override def extract[X](component :Component[X]) :MappingExtract[S, X, O] =
-			egg.extract(component) compose prefix[T]
+		override def optionally(pieces :Pieces) :Option[R] = egg.optionally(pieces.compatible(egg))
 
-		override def extract[X](column :Column[X]) :MappingExtract.ColumnExtract[S, X, O] =
-			egg.extract(column) compose prefix[T]
 
 		override def unapply(subject :S) :Option[R] = egg.unapply(subject.init)
 
 		override def disassemble(subject :S) :R = egg.disassemble(subject.init)
+
+
+
+		override def members :C = egg.members
+
+		override def last[M <: Component[_]](implicit nonEmpty :C <:< (Chain ~ M)) :M = egg.members.last
+
+		override def prev[I <: Chain, V <: Chain]
+		                 (implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any)) :MappingSchema[I, V, S, O] =
+			egg.prev compose prefix[T]
+
+
+
+		override def extract[X](component :Component[X]) :MappingExtract[S, X, O] =
+			egg.extract(component) compose prefix[T]
+
+		override def extract[X](column :Column[X]) :ColumnMappingExtract[S, X, O] =
+			egg.extract(column) compose prefix[T]
+
+
+
+		override val outerExtracts :NaturalMap[Component, OuterExtract] =
+			egg.outerExtracts.map(schema.composeExtractAssoc(this, prefix[T])(_))
+
+		override val outerColumnExtracts :NaturalMap[Column, OuterColumnExtract] =
+			egg.outerColumnExtracts.map(schema.composeColumnExtractAssoc(this, prefix[T])(_))
+
+
 
 		override def compose[X](extractor :X => S) :MappingSchema[C, R, X, O] =
 			egg compose (extractor andThen prefix[T])
@@ -209,13 +235,6 @@ object ChainMapping {
 		override def compose[X](extractor :X =?> S) :MappingSchema[C, R, X, O] =
 			egg compose (extractor andThen prefix[T])
 
-		override protected[schema] def schemaExtracts :List[(Component[_], Extract[_])] = egg.schemaExtracts
-
-		override protected[schema] def outerExtracts :List[(Component[_], MappingExtract[S, _, O])] =
-			egg.outerExtracts map { case (c, ex) =>
-				val export = ex.export.asInstanceOf[Component[Any]]
-				c -> MappingExtract[S, Any, O](export)(ex.asInstanceOf[T =?> Any] compose prefix[T])
-			}
 
 
 		override protected[schema] def componentsReversed :List[Component[_]] = egg.componentsReversed
@@ -223,17 +242,6 @@ object ChainMapping {
 		override protected[schema] def subcomponentsReversed :List[Component[_]] = egg.subcomponentsReversed
 
 		override protected[schema] def columnsReversed :List[Column[_]] = egg.columnsReversed
-
-		override protected[schema] def component :Component[_] = egg.component
-		
-		override protected[schema] def init :MappingSchema[_, _, S, O] =
-			egg.init.compose(prefix[T])
-		
-			
-
-		
-		
-		override def optionally(pieces :Pieces) :Option[R] = egg.optionally(pieces.compatible(egg))
 
 	}
 
@@ -248,9 +256,11 @@ object ChainMapping {
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[C, R, X, O] =
 			egg compose (extractor andThen prefix[T])
-		
-		override protected[schema] def init :FlatMappingSchema[_, _, S, O] =
-			egg.init.compose(prefix[T])
+
+		override def prev[I <: Chain, V <: Chain]
+		                 (implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any)) :FlatMappingSchema[I, V, S, O] =
+			egg.prev.compose(prefix[T])
+
 	}
 
 

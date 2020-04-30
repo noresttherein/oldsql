@@ -14,7 +14,7 @@ class PrefixedMapping[M <: TypedMapping[S, O], S, O](val prefix :String, overrid
 {
 	protected override def adapt[T](component :Component[T]) :Component[T] = component.prefixed(prefix)
 
-	protected override def adaptColumn[T](column :Column[T]) :Column[T] = column.prefixed(prefix)
+	protected override def adapt[T](column :Column[T]) :Column[T] = column.prefixed(prefix)
 
 	override def qualified(prefix :String) :Adapted[M] =
 		if (prefix.length == 0) this

@@ -2,11 +2,13 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.MappingExtract.{ColumnExtract, MappingExtractTemplate, ConstantExtract, RequisiteExtract}
+import net.noresttherein.oldsql.schema.MappingExtract.{ColumnMappingExtract, MappingExtractTemplate, ConstantExtract, RequisiteExtract}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 
 
 
+//todo: rename to GenericExtract, type it with the export component type and type alias to MappingExtract
+//todo: ColumnExtract then can become also just a type alias
 /** A `MappingExtract` describes the parent-child relationship between a mapping and its component.
   * It serves three functions:
   *   - provides a means of extracting the value of the component from the value of the parent;
@@ -26,7 +28,7 @@ trait MappingExtract[-S, T, O]
 	def andThen[Y](selector :MappingExtract[T, Y, O]) :MappingExtract[S, Y, O] =
 		selector compose this
 
-	def andThen[Y](selector :ColumnExtract[T, Y, O]) :ColumnExtract[S, Y, O] =
+	def andThen[Y](selector :ColumnMappingExtract[T, Y, O]) :ColumnMappingExtract[S, Y, O] =
 		selector compose this
 
 
@@ -63,7 +65,7 @@ object MappingExtract {
 		}
 
 	def apply[S, T, O](column :ColumnMapping[T, O], pick :S => Option[T], surepick :Option[S => T])
-			:ColumnExtract[S, T, O] =
+			:ColumnMappingExtract[S, T, O] =
 		surepick match {
 			case Some(sure) => req(column)(sure)
 			case _ => opt(column)(pick)
@@ -78,9 +80,9 @@ object MappingExtract {
 			case _ => opt(component)(extractor.optional) //todo: FromOptionExtractor
 		}
 
-	def apply[S, T, O](column :ColumnMapping[T, O])(extractor :Extractor[S, T]) :ColumnExtract[S, T, O] =
+	def apply[S, T, O](column :ColumnMapping[T, O])(extractor :Extractor[S, T]) :ColumnMappingExtract[S, T, O] =
 		extractor match {
-			case _ :IdentityExtractor[_] => ident(column).asInstanceOf[ColumnExtract[S, T, O]]
+			case _ :IdentityExtractor[_] => ident(column).asInstanceOf[ColumnMappingExtract[S, T, O]]
 			case c :ConstantExtractor[_, T @unchecked] => const(column)(c.constant)
 			case requisite :RequisiteExtractor[S @unchecked, T @unchecked] => req(column)(requisite.getter)
 			case _ :EmptyExtractor[_, _] => none(column)
@@ -97,7 +99,7 @@ object MappingExtract {
 				new OptionalExtract[S, T, O](component, selector)
 		}
 
-	def opt[S, T, O](column :ColumnMapping[T, O])(selector :S => Option[T]) :ColumnExtract[S, T, O] =
+	def opt[S, T, O](column :ColumnMapping[T, O])(selector :S => Option[T]) :ColumnMappingExtract[S, T, O] =
 		new OptionalColumn[S, T, O](column, selector)
 
 
@@ -109,7 +111,7 @@ object MappingExtract {
 				new RequisiteExtract[S, T, O](component, requisite)
 		}
 
-	def req[S, T, O](column :ColumnMapping[T, O])(requisite :S => T) :ColumnExtract[S, T, O] =
+	def req[S, T, O](column :ColumnMapping[T, O])(requisite :S => T) :ColumnMappingExtract[S, T, O] =
 		new RequisiteColumn[S, T, O](column, requisite)
 
 
@@ -121,7 +123,7 @@ object MappingExtract {
 				new IdentityExtract[T, O](component)
 		}
 
-	def ident[T, O](column :ColumnMapping[T, O]) :ColumnExtract[T, T, O] =
+	def ident[T, O](column :ColumnMapping[T, O]) :ColumnMappingExtract[T, T, O] =
 		new IdentityColumn[T, O](column)
 
 
@@ -133,7 +135,7 @@ object MappingExtract {
 				new ConstantExtract[T, O](component, value)
 		}
 
-	def const[T, O](column :ColumnMapping[T, O])(value :T) :ColumnExtract[Any, T, O] =
+	def const[T, O](column :ColumnMapping[T, O])(value :T) :ColumnMappingExtract[Any, T, O] =
 		new ConstantColumn[T, O](column, value)
 
 
@@ -145,7 +147,7 @@ object MappingExtract {
 				new EmptyExtract(component)
 		}
 
-	def none[T, O](column :ColumnMapping[T, O]) :ColumnExtract[Any, T, O] =
+	def none[T, O](column :ColumnMapping[T, O]) :ColumnMappingExtract[Any, T, O] =
 		new EmptyColumn(column)
 
 
@@ -331,12 +333,12 @@ object MappingExtract {
 
 
 
-	trait ColumnExtract[-S, T, O] extends MappingExtract[S, T, O]
-		with MappingExtractTemplate[S, T, O, ({ type E[-X] = ColumnExtract[X, T, O] })#E]
+	trait ColumnMappingExtract[-S, T, O] extends MappingExtract[S, T, O]
+		with MappingExtractTemplate[S, T, O, ({ type E[-X] = ColumnMappingExtract[X, T, O] })#E]
 	{
 		override val export :ColumnMapping[T, O]
 
-		protected[schema] override def opt[X](f :X => Option[T]) :ColumnExtract[X, T, O] =
+		protected[schema] override def opt[X](f :X => Option[T]) :ColumnMappingExtract[X, T, O] =
 			MappingExtract.opt(export)(f)
 
 		protected[schema] override def req[X](f :X => T) :RequisiteColumn[X, T, O] =
@@ -345,7 +347,7 @@ object MappingExtract {
 		protected[schema] override def const[X](constant :T) :RequisiteColumn[X, T, O] =
 			new ConstantColumn[T, O](export, constant)
 
-		protected[schema] override def none[X] :ColumnExtract[X, T, O] =
+		protected[schema] override def none[X] :ColumnMappingExtract[X, T, O] =
 			MappingExtract.none(export)
 	}
 
@@ -364,7 +366,7 @@ object MappingExtract {
 
 
 	private[schema] class OptionalColumn[-S, T, O](override val export :ColumnMapping[T, O], optional :S => Option[T])
-		extends OptionalExtract[S, T, O](export, optional) with ColumnExtract[S, T, O]
+		extends OptionalExtract[S, T, O](export, optional) with ColumnMappingExtract[S, T, O]
 
 
 
@@ -380,8 +382,8 @@ object MappingExtract {
 
 
 	private[schema] class RequisiteColumn[-S, T, O](override val export :ColumnMapping[T, O], pick :S => T)
-		extends RequisiteExtract[S, T, O](export, pick) with ColumnExtract[S, T, O]
-		   with RequisiteExtractTemplate[S, T, O, ({ type E[-X] = ColumnExtract[X, T, O] })#E,
+		extends RequisiteExtract[S, T, O](export, pick) with ColumnMappingExtract[S, T, O]
+		   with RequisiteExtractTemplate[S, T, O, ({ type E[-X] = ColumnMappingExtract[X, T, O] })#E,
 			                                      ({ type R[-X] = RequisiteColumn[X, T, O] })#R]
 
 
@@ -395,7 +397,7 @@ object MappingExtract {
 
 	private[schema] class IdentityColumn[T, O](column :ColumnMapping[T, O])
 		extends RequisiteColumn[T, T, O](column, identity[T])
-		   with IdentityExtractTemplate[T, O, ({ type E[-X] = ColumnExtract[X, T, O] })#E,
+		   with IdentityExtractTemplate[T, O, ({ type E[-X] = ColumnMappingExtract[X, T, O] })#E,
 			                                  ({ type R[-X] = RequisiteColumn[X, T, O] })#R]
 
 
@@ -409,7 +411,7 @@ object MappingExtract {
 
 	private[schema] class ConstantColumn[T, O](column :ColumnMapping[T, O], override val constant :T)
 		extends RequisiteColumn[Any, T, O](column, (_ :Any) => constant)
-		   with ConstantExtractTemplate[T, O, ({ type E[-X] = ColumnExtract[X, T, O] })#E,
+		   with ConstantExtractTemplate[T, O, ({ type E[-X] = ColumnMappingExtract[X, T, O] })#E,
 		                                      ({ type R[-X] = RequisiteColumn[X, T, O] })#R]
 
 
@@ -422,7 +424,7 @@ object MappingExtract {
 
 	private[schema] class EmptyColumn[T, O](column :ColumnMapping[T, O])
 		extends OptionalColumn[Any, T, O](column, Extractor.none.optional)
-		   with EmptyExtractTemplate[T, O, ({ type E[-X] = ColumnExtract[X, T, O] })#E]
+		   with EmptyExtractTemplate[T, O, ({ type E[-X] = ColumnMappingExtract[X, T, O] })#E]
 
 
 }

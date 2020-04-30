@@ -1,15 +1,16 @@
 package net.noresttherein.oldsql.schema
 
+import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.{Chain, Unique}
+import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, OriginProjection}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn, MappingLabel}
 import net.noresttherein.oldsql.schema.bits.MappedMapping.FlatMappedMapping
-import net.noresttherein.oldsql.schema.support.{MappingAdapter, StableMapping, StaticMapping}
-import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
+import net.noresttherein.oldsql.schema.support.{LazyMapping, MappingAdapter, StaticMapping}
+import net.noresttherein.oldsql.schema.ColumnMapping.{BaseColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, ExtensibleFlatMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, SchemaComponentLabels, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaComponent, MappedSchemaMapping, SchemaComponentLabel}
 import net.noresttherein.oldsql.schema.bits.{LabeledMapping, MappedMapping}
@@ -75,6 +76,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
   * @author Marcin Mościcki
   */
 trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] { outer =>
+
 	/** The container of components of this mapping, itself being a mapping for the chain of values of said components. */
 	val schema :MappingSchema[C, R, S, O]
 
@@ -123,7 +125,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 		else
 			schema.extract(component)
 
-	override def apply[T](column :Column[T]) :ExtractColumn[T] = schema.extract(column)
+//	override def apply[T](column :Column[T]) :ExtractColumn[T] = schema.extract(column)
 
 
 
@@ -222,7 +224,7 @@ object SchemaMapping {
 		Mapping.AnyOrigin()
 
 	implicit def LabeledFlatSchemaMappingProjection[N <: Label, AC <: Chain, R <: Chain, S, A, BC <: Chain, B]
-			(implicit alias :OriginProjection[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
+	             (implicit alias :OriginProjection[FlatMappingSchema[AC, R, S, A], A, FlatMappingSchema[BC, R, S, B], B])
 			:OriginProjection[LabeledFlatSchemaComponent[N, AC, R, S, A], A, LabeledFlatSchemaComponent[N, BC, R, S, B], B] =
 		Mapping.AnyOrigin()
 
@@ -247,7 +249,7 @@ object SchemaMapping {
 	object SchemaColumn {
 
 		def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :SchemaColumn[S, O] =
-			new BaseColumn[S, O](name, buffs) with SchemaColumn[S, O] {
+			new StandardColumn[S, O](name, buffs) with SchemaColumn[S, O] {
 
 				override val schema :FlatMappingSchema[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] =
 					MappingSchema[S, O].col(this, Extractor.ident[S])
@@ -280,7 +282,6 @@ object SchemaMapping {
 			protected val column = schema.last
 			override def name :String = column.name
 		}
-
 
 	}
 
@@ -359,7 +360,7 @@ object SchemaMapping {
 			apply(name, name, buffs:_*)
 
 		def apply[N <: Label, S :ColumnForm, O](label :N, name :String, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
-			new BaseColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O] {
+			new StandardColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O] {
 				override val schema :FlatMappingSchema[@~ ~ LabeledSchemaColumn[N, S, O], @~ ~ S, S, O] =
 					MappingSchema[S, O].col(this, MappingExtract.ident[S, O](this))
 			}
@@ -472,8 +473,8 @@ object SchemaMapping {
 	                                             (override val egg :FlatSchemaMapping[C, R, T, O],
 	                                              override val map :T => S, override val unmap :S => T)
 	                                             (implicit override val nulls :NullValue[S])
-		extends MappedMapping[FlatSchemaMapping[C, R, T, O], T, S, O] with MappingAdapter[FlatSchemaMapping[C, R, T, O], S, O]
-			with FlatSchemaMapping[C, R, S, O]
+		extends MappedMapping[FlatSchemaMapping[C, R, T, O], T, S, O]
+		   with MappingAdapter[FlatSchemaMapping[C, R, T, O], S, O] with FlatSchemaMapping[C, R, S, O]
 	{
 		override val schema :FlatMappingSchema[C, R, S, O] = egg.schema compose unmap
 
@@ -534,7 +535,7 @@ object SchemaMapping {
   * of many columns of the same type, this class offers additional support for labeled components (classes
   * extending [[net.noresttherein.oldsql.schema.bits.LabeledMapping LabeledMapping]]). While `MappingSchema`
   * already provides methods for retrieving such components based on their attached label, this class goes one step
-  * further and enriches `String` literals with methods for both retrieving a component or its selector ''and'' its
+  * further and enriches `String` literals with methods for both retrieving a component or its extract ''and'' its
   * value, providing implicit `ComponentValues` for the mapping are available. These are written as:
   *   - `"favoritePizza".^` for the component labeled `"favoritePizza"` itself,
   *   - `"favoritePizza".?>` for the `MappingExtract` for the labeled component,
@@ -558,9 +559,13 @@ object SchemaMapping {
   * @see [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabels]]
   */
 abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :MappingSchema[C, R, S, O])
-	extends SchemaMapping[C, R, S, O] with StaticMapping[S, O] with StableMapping[S, O]
+	extends SchemaMapping[C, R, S, O] with StaticMapping[S, O] with LazyMapping[S, O]
 {
 	implicit val schema :MappingSchema[C, R, S, O] = contents
+
+	override val extracts :NaturalMap[Component, Extract] = schema.outerExtracts
+	override val columnExtracts :NaturalMap[Column, ColumnExtract] =
+		oldsql.schema.selectColumnExtracts(this)(extracts)
 
 	override val components :Unique[Component[_]] = schema.components
 	override val subcomponents :Unique[Component[_]] = schema.subcomponents

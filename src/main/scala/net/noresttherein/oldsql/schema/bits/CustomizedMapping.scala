@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.NaturalMap.{-#>, Entry}
+import net.noresttherein.oldsql.collection.NaturalMap.{-#>, Assoc}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
@@ -26,7 +26,7 @@ class CustomizedMapping[+M <: TypedMapping[S, O], S, O] private
 	protected override def adapt[T](component :egg.Component[T]) :Component[T] =
 		substitutions.getOrElse(component, component)
 
-	protected override def adaptColumn[T](column :egg.Column[T]) :Column[T] =
+	protected override def adapt[T](column :egg.Column[T]) :Column[T] =
 		substitutions.getOrElse(column, column).asInstanceOf[Column[T]]
 }
 
@@ -35,7 +35,7 @@ class CustomizedMapping[+M <: TypedMapping[S, O], S, O] private
 
 
 object CustomizedMapping {
-	private type Substitution[X, O] = Entry[MappingFrom[O]#Component, MappingFrom[O]#Component, X]
+	private type Substitution[X, O] = Assoc[MappingFrom[O]#Component, MappingFrom[O]#Component, X]
 	private type Substitutions[O] = NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component]
 
 

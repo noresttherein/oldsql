@@ -95,8 +95,8 @@ trait ComponentValues[M <: Mapping] {
 		}
 //
 //	def apply[T](root :M, component :TypedMapping[T, M#Origin]) :T = {
-//		val selector = root.apply(component.asInstanceOf[root.Component[T]])
-//		apply(selector.asInstanceOf[MappingExtract[M#Subject, T, M#Origin]])
+//		val extract = root.apply(component.asInstanceOf[root.Component[T]])
+//		apply(extract.asInstanceOf[MappingExtract[M#Subject, T, M#Origin]])
 //	}
 
 	/** Return the value for the given component or `None` if it can't be obtained in any way (predefined, assembly or
@@ -108,8 +108,8 @@ trait ComponentValues[M <: Mapping] {
 		\(extractor).getValue(extractor.export)
 
 //	def get[T](root :M, component :TypedMapping[T, M#Origin]) :Option[T] = {
-//		val selector = root.apply(component.asInstanceOf[root.Component[T]])
-//		get(selector.asInstanceOf[MappingExtract[M#Subject, T, M#Origin]])
+//		val extract = root.apply(component.asInstanceOf[root.Component[T]])
+//		get(extract.asInstanceOf[MappingExtract[M#Subject, T, M#Origin]])
 //	}
 //
 	/** Return `ComponentValues` for the given component of the associated mapping. Returned object will delegate all
@@ -684,8 +684,8 @@ object ComponentValues {
 
 
 //		protected def defined[T](root :M, component :TypedMapping[T, M#Origin]) :Option[T] = {
-//			val selector = root.apply(component.asInstanceOf[root.Component[T]])
-//			defined(selector.asInstanceOf[MappingExtract[M#Subject, T, M#Origin]])
+//			val extract = root.apply(component.asInstanceOf[root.Component[T]])
+//			defined(extract.asInstanceOf[MappingExtract[M#Subject, T, M#Origin]])
 //		}
 
 		protected def defined[T](extractor :MappingExtract[M#Subject, T, M#Origin]) :Option[T]

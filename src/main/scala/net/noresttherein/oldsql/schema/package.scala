@@ -1,8 +1,11 @@
 package net.noresttherein.oldsql
 
+import net.noresttherein.oldsql.collection.NaturalMap
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
-import net.noresttherein.oldsql.schema.Mapping.MappingOf
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, TypedMapping}
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 import net.noresttherein.oldsql.slang._
 
 /**
@@ -43,6 +46,74 @@ package object schema {
 					s"Failed cascading buff $buff from $owner: no value returned for $s by $map")
 			}
 		}))
+
+
+
+
+
+
+	private[schema] def selectColumnExtracts[S, O]
+	                    (mapping :TypedMapping[S, O])
+	                    (extracts :NaturalMap[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract])
+			:NaturalMap[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract] =
+		selectColumnExtracts(mapping.toString)(extracts)
+
+
+	private[schema] def selectColumnExtracts[S, O]
+	                    (mapping: => String)
+	                    (extracts :NaturalMap[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract])
+			:NaturalMap[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract] =
+	{
+		def castToColumn[T](entry :Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T]) = 
+			entry._1 match {
+				case column :ColumnMapping[T @unchecked, O @unchecked] => entry._2 match {
+					case extract :ColumnMappingExtract[S @unchecked, T @unchecked, O @unchecked] =>
+						Some(Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](column, extract))
+					case err =>
+						throw new IllegalStateException(s"Extract for column $column of $mapping is not a ColumnExtract: $err.")
+				}
+				case _ => None
+			}
+		
+		extracts.flatMap(castToColumn(_))
+	}
+
+
+
+//	@inline def extractAssoc[S, T, O]
+//	                        (mapping :TypedMapping[S, O], comp :TypedMapping[T, O], extract :MappingExtract[S, T, O])
+//			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
+//		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](comp, extract)
+//
+//	@inline def extractAssoc[S, T, O]
+//	                        (mapping :TypedMapping[S, O], col :ColumnMapping[T, O], extract :ColumnExtract[S, T, O])
+//			:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
+//		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](col, extract)
+
+	@inline def composeExtractAssoc[S, X, T, O](extractor :MappingExtract[S, X, O])
+	                                           (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
+			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
+		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
+
+	@inline def composeExtractAssoc[S, X, T, O](mapping :MappingFrom[O], f : S => X)
+	                                           (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
+			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
+		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](entry._1, entry._2 compose f)
+
+
+	@inline def composeColumnExtractAssoc[S, X, T, O]
+	                                     (extractor :MappingExtract[S, X, O])
+	                                     (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
+			:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
+		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
+
+	@inline def composeColumnExtractAssoc[S, X, T, O]
+	                                     (mapping :MappingFrom[O], f : S => X)
+	                                     (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
+	:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
+		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose f)
+
+
 
 
 	private[schema] def prefixOption(prefix :String) :Option[String] = prefix.length > 0 ifTrue prefix

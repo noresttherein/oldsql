@@ -1,13 +1,14 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, NaturalMapBase}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.{LiteralColumn, NumberedColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 
 
 
@@ -37,6 +38,57 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 	  */
 	def name :String
 
+
+
+	override def assemble(pieces: Pieces): Option[S] = None
+
+	override def optionally(pieces :Pieces) :Option[S] =
+		if (isNullable)
+			pieces.result(this)
+		else
+			pieces.result(this) match {
+				case Some(null) =>
+					throw new NullPointerException("Read a null value for a non-nullable column " + name +
+						". Flag the column with Buff.Nullable to explicitly allow nulls.")
+				case res => res
+			}
+
+	override def nullValue :Option[S] = form.nulls.toOption
+
+
+
+	override def apply[T](component :Component[T]) :Extract[T] =
+		if (component == this)
+			MappingExtract.ident[S, O](this).asInstanceOf[Extract[T]]
+		else
+			throw new IllegalArgumentException(
+				s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
+			)
+
+	override def apply[T](column :Column[T]) :ColumnExtract[T] =
+		if (column == this)
+			MappingExtract.ident[S, O](this).asInstanceOf[ColumnExtract[T]]
+		else
+			throw new IllegalArgumentException(
+				s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
+			)
+
+
+
+	override def columnExtracts :NaturalMap[Column, ColumnExtract] =
+		NaturalMap.single[Column, ColumnExtract, S](this, MappingExtract.ident(this))
+
+	override def extracts :NaturalMap[Component, ColumnExtract] =
+		NaturalMap.single[Component, ColumnExtract, S](this, MappingExtract.ident(this))
+
+
+
+	override def export[T](component :Component[T]) :Component[T] = component
+
+	override def export[T](column :Column[T]) :Column[T] = column
+
+
+
 	/** Returns `Unique.empty`. */
 	final def components :Unique[Component[_]] = Unique.empty
 	/** Returns `Unique.empty`. */
@@ -53,11 +105,11 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 	final override def autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
 
 	/** An empty `Unique` if the given buff is ''disabled'' (not attached), or a singleton `Unique(this)` otherwise. */
-	protected def selfUnless(buff :BuffType) :Unique[Column[S]] =
+	@inline protected final def selfUnless(buff :BuffType) :Unique[Column[S]] =
 		if (buff.enabled(buffs)) Unique.empty else Unique(this)
 
 	/** An empty `Unique` if the given buff is ''enabled'' (attached), or a singleton `Unique(this)` otherwise. */
-	protected def selfIf(buff :BuffType) :Unique[Column[S]] =
+	@inline protected final def selfIf(buff :BuffType) :Unique[Column[S]] =
 		if (buff.disabled(buffs)) Unique.empty else Unique(this)
 
 
@@ -190,46 +242,6 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 
 
-
-	override def export[T](component :Component[T]) :Component[T] = component
-
-	override def export[T](column :Column[T]) :Column[T] = column
-
-	override def apply[T](component :Component[T]) :Extract[T] =
-		if (component == this)
-			MappingExtract.ident[S, O](this).asInstanceOf[Extract[T]]
-		else
-			throw new IllegalArgumentException(
-				s"Mapping $component is not a subcomponent of column $column. The only subcomponent of a column is the column itself."
-			)
-
-	override def apply[T](column :Column[T]) :ColumnExtract[S, T, O] =
-		if (column == this)
-			MappingExtract.ident[S, O](this).asInstanceOf[ColumnExtract[S, T, O]]
-		else
-			throw new IllegalArgumentException(
-				s"Mapping $column is not a column of column $column. The only subcomponent of a column is the column itself."
-			)
-
-
-
-	override def assemble(pieces: Pieces): Option[S] = None
-
-	override def optionally(pieces :Pieces) :Option[S] =
-		if (isNullable)
-			pieces.result(this)
-		else
-			pieces.result(this) match {
-				case Some(null) =>
-					throw new NullPointerException("Read a null value for a non-nullable column " + name +
-						". Flag the column with Buff.Nullable to explicitly allow nulls.")
-				case res => res
-			}
-
-	override def nullValue :Option[S] = form.nulls.toOption
-
-
-
 	protected def isNullable :Boolean = Nullable.enabled(buffs)
 
 
@@ -326,6 +338,9 @@ object ColumnMapping {
 
 
 
+
+
+
 	class BaseColumn[S, O](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
 		extends ColumnMapping[S, O]
 	{
@@ -334,21 +349,49 @@ object ColumnMapping {
 
 
 
+
+
+
 	class StandardColumn[S, O](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
 		extends ColumnMapping[S, O]
 	{
 		override val isNullable :Boolean = super.isNullable
 
-		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
-			new StandardColumn[X, O](name, buffs.map(_.bimap(there, back)))(
-				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
-			)
+		override val selectForm :SQLReadForm[S] = super.selectForm
+		override val queryForm :SQLWriteForm[S] = super.queryForm
+		override val updateForm :SQLWriteForm[S] = super.updateForm
+		override val insertForm :SQLWriteForm[S] = super.insertForm
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
-			new StandardColumn[X, O](name, schema.flatMapBuffs(this)(there, back))(
-				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
-			)
+		private[this] val selfExtract = MappingExtract.ident(this)
+
+		override val extracts :NaturalMap[Component, ColumnExtract] =
+			NaturalMap.single[Component, ColumnExtract, S](this, selfExtract)
+
+		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
+			NaturalMap.single[Column, ColumnExtract, S](this, selfExtract)
+
+
+
+		override def apply[T](component :Component[T]) :Extract[T] =
+			if (component == this)
+				selfExtract.asInstanceOf[Extract[T]]
+			else
+				throw new IllegalArgumentException(
+					s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
+				)
+
+		override def apply[T](column :Column[T]) :ColumnExtract[T] =
+			if (column == this)
+				selfExtract.asInstanceOf[ColumnExtract[T]]
+			else
+				throw new IllegalArgumentException(
+					s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
+				)
+
 	}
+
+
+
 
 
 
@@ -380,6 +423,9 @@ object ColumnMapping {
 //		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LiteralColumn[_, _, _]]
 
 	}
+
+
+
 
 
 

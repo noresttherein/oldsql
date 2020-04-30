@@ -59,7 +59,7 @@ object RenamedMapping {
 
 		protected override def adapt[T](component :egg.Component[T]) :Component[T] = component.renamed(name)
 
-		protected override def adaptColumn[T](column :egg.Column[T]) :Column[T] = column.renamed(name)
+		protected override def adapt[T](column :egg.Column[T]) :Column[T] = column.renamed(name)
 
 
 

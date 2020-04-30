@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{PreparedStatement, ResultSet}
 
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingReadForm, MappingWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, 
 import net.noresttherein.oldsql.schema.MappingPath.SelfPath
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingFrame
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
@@ -149,7 +149,7 @@ sealed trait Mapping {
 	/** An extract of the value for some column of this mapping with the subject type `T`, which carries
 	  * additionally the export version of that column (from the point of view of this mapping).
 	  */
-	type ExtractColumn[T] = ColumnExtract[Subject, T, Origin] //todo: think of a better naming conflict resolution here
+	type ColumnExtract[T] = ColumnMappingExtract[Subject, T, Origin]
 
 	type AnyComponent = MappingFrom[Origin]
 
@@ -168,12 +168,108 @@ sealed trait Mapping {
 
 
 
+
+
+
+	/** Attempts to retrieve or assemble the value of `Subject` from the passed `ComponentValues` for this instance.
+	  * Standard implementation will test several sources together with `pieces` before giving up:
+	  * a ready value present for this mapping in the `pieces`, assembling the result from subcomponents and, finally,
+	  * a default coming from an attached `OptionalSelect` (or related). By default it forwards to
+	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and should stay consistent with it.
+	  * Mapping implementations for concrete domain model classes should typically override `assemble` instead of
+	  * this method directly.
+	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  */
+	def apply(pieces: Pieces): Subject =
+		optionally(pieces) getOrElse {
+			throw new NoSuchElementException(s"Can't assemble $this from $pieces.")
+		}
+
+	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
+	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
+	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.result result]] method
+	  * of `ComponentValues` (which, by default, will first check if it has a predefined value stored for this mapping,
+	  * and, only if not, forward to this instance's [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  * method which is responsible for the actual assembly of the subject from the values of the subcomponents,
+	  * recursively obtained from `pieces`.
+	  *
+	  * If all of the above fails, this method will check for a predefined value stored in an attached
+	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] (or related) buff if it exists.
+	  * Additionally, any `AuditBuff`s present can modify the returned value and subclasses are free to
+	  * handle other buffs or implement additional behaviour directly.
+	  *
+	  * Returning `None` signifies that the value of this mapping was not available in `pieces`, and is different
+	  * from a 'null' value explicitly retrieved by the query. The two sometimes will get conflated in practice
+	  * (which can be unavoidable). It is generally used for cases such as outer joins, or missing columns from
+	  * the select clause. It is therefore perfectly possible for `Some(null)` (or some other representation of the
+	  * `null` value for type `Subject`) to be returned. This approach is discouraged however, as it can possibly
+	  * cause `NullPointerException`s higher up the stack by mappings/forms not prepared to handle `null` values
+	  * (which is most common). Likewise, even if data for this mapping is missing, it may decide to return here some
+	  * default 'missing' value; it is ultimately always up to the mapping implementation to handle the matter.
+	  * The above distinction is complicated further by the fact that the mapped type `Subject` itself can be
+	  * an `Option` type, used to signify either or both of these cases.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  */
+	def optionally(pieces: Pieces): Option[Subject]
+
+	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
+	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
+	  * in [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] and should not be called directly.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply apply]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.value ComponentValues.value]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.getValue ComponentValues.getValue]]
+	  */
+	def assemble(pieces :Pieces) :Option[Subject]
+
+	def nullValue :Option[Subject] //todo: maybe instead of this problem just have non-null NullValue in forms?
+
+
+
+	/** Extract the value for the given component from the given `Subject` instance. */
+	def pick[T](component :Component[T], subject :Subject) :Option[T] = apply(component).get(subject)
+
+	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
+	def pick[T](component :Component[T], pieces :Pieces) :Option[T] = pieces.get(apply(component))
+
+	/** Extract the value for the given component from the given `Subject` instance. */
+	def apply[T](component :Component[T], subject :Subject) :T = apply(component)(subject)
+
+	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
+	def apply[T](component :Component[T], pieces :Pieces) :T = pieces(apply(component))
+
+
+
+
+
+
+	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]]
+	  * for the given component.
+	  * @throws NoSuchElementException if `component` is not a subcomponent of this mapping.
+	  */
+	def apply[T](component :Component[T]) :Extract[T] = extracts(component)
+
+	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract ColumnExtract]]
+	  * for the given column.
+	  * @throws NoSuchElementException if `column` is not a subcomponent of this mapping.
+	  */
+	def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
+
+
+
+	def extracts :NaturalMap[Component, Extract]
+
+	def columnExtracts :NaturalMap[Column, ColumnExtract]
+
+
+
 	/** Adapts the given subcomponent (a component being the end of some path of components starting with this instance)
 	  * to its public form as present in the `subcomponents` and `components` list. For every valid transitive
 	  * subcomponent of this mapping, there is exactly one equal to its export form on the `subcomponents` list.
 	  * This process can modify the mapping definition by changing names of the columns (prefixing them) and updating
 	  * their buffs by cascading the buffs present on this instance.
-	  * By default it returns the `export` property of the selector for the component returned by
+	  * By default it returns the `export` property of the extract for the component returned by
 	  * [[net.noresttherein.oldsql.schema.Mapping#apply[T](component:Component[T]) apply(component)]].
 	  */
 	def export[T](component :Component[T]) :Component[T] = apply(component).export
@@ -188,20 +284,6 @@ sealed trait Mapping {
 
 
 
-	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]]
-	  * for the given component.
-	  * @throws NoSuchElementException if `component` is not a subcomponent of this mapping.
-	  */
-	def apply[T](component :Component[T]) :Extract[T]
-
-	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract ColumnExtract]]
-	  * for the given column.
-	  * @throws NoSuchElementException if `column` is not a subcomponent of this mapping.
-	  */
-	def apply[T](column :Column[T]) :ExtractColumn[T]
-
-
-
 	/** Direct component mappings of this mapping, including any top-level columns. Always empty for columns.
 	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
 	  * or mapped components and aliases for other components of the `Mapping`. For all non-column components however
@@ -211,7 +293,7 @@ sealed trait Mapping {
 
 	/** All transitive components of this mapping (i.e. components/columns declared by it's components or
 	  * other subcomponents), or all that this mapping cares to expose, as instances of this.Component[_].
-	  * This list should include all mapped columns. It is typically defined by recursive ''flat mapping''
+	  * It is typically defined by recursive ''flat mapping''
 	  * over the `components` list and including the direct components themselves. This list is always empty
 	  * for columns, thus ending any similar recursion.
 	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
@@ -307,79 +389,15 @@ sealed trait Mapping {
 
 
 
-	/** Attempts to retrieve or assemble the value of `Subject` from the passed `ComponentValues` for this instance.
-	  * Standard implementation will test several sources together with `pieces` before giving up:
-	  * a ready value present for this mapping in the `pieces`, assembling the result from subcomponents and, finally,
-	  * a default coming from an attached `OptionalSelect` (or related). By default it forwards to
-	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and should stay consistent with it.
-	  * Mapping implementations for concrete domain model classes should typically override `assemble` instead of
-	  * this method directly.
-	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
-	  */
-	def apply(pieces: Pieces): Subject =
-		optionally(pieces) getOrElse {
-			throw new NoSuchElementException(s"Can't assemble $this from $pieces.")
-		}
-
-	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
-	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
-	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.result result]] method
-	  * of `ComponentValues` (which, by default, will first check if it has a predefined value stored for this mapping,
-	  * and, only if not, forward to this instance's [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
-	  * method which is responsible for the actual assembly of the subject from the values of the subcomponents,
-	  * recursively obtained from `pieces`.
-	  *
-	  * If all of the above fails, this method will check for a predefined value stored in an attached
-	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] (or related) buff if it exists.
-	  * Additionally, any `AuditBuff`s present can modify the returned value and subclasses are free to
-	  * handle other buffs or implement additional behaviour directly.
-	  *
-	  * Returning `None` signifies that the value of this mapping was not available in `pieces`, and is different
-	  * from a 'null' value explicitly retrieved by the query. The two sometimes will get conflated in practice
-	  * (which can be unavoidable). It is generally used for cases such as outer joins, or missing columns from
-	  * the select clause. It is therefore perfectly possible for `Some(null)` (or some other representation of the
-	  * `null` value for type `Subject`) to be returned. This approach is discouraged however, as it can possibly
-	  * cause `NullPointerException`s higher up the stack by mappings/forms not prepared to handle `null` values
-	  * (which is most common). Likewise, even if data for this mapping is missing, it may decide to return here some
-	  * default 'missing' value; it is ultimately always up to the mapping implementation to handle the matter.
-	  * The above distinction is complicated further by the fact that the mapped type `Subject` itself can be
-	  * an `Option` type, used to signify either or both of these cases.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
-	  */
-	def optionally(pieces: Pieces): Option[Subject]
-
-	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
-	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
-	  * in [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] and should not be called directly.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply apply]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.value ComponentValues.value]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.getValue ComponentValues.getValue]]
-	  */
-	def assemble(pieces :Pieces) :Option[Subject]
-
-	def nullValue :Option[Subject] //todo: maybe instead of this problem just have non-null NullValue in forms?
-
-
-	/** Extract the value for the given component from the given `Subject` instance. */
-	def pick[T](component :Component[T], subject :Subject) :Option[T] = apply(component).get(subject)
-
-	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
-	def pick[T](component :Component[T], pieces :Pieces) :Option[T] = pieces.get(apply(component))
-
-	/** Extract the value for the given component from the given `Subject` instance. */
-	def apply[T](component :Component[T], subject :Subject) :T = apply(component)(subject)
-
-	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
-	def apply[T](component :Component[T], pieces :Pieces) :T = pieces(apply(component))
-
-
-
 	/** The SQL/DDL-related name associated with this mapping. This must be defined for all column and table
 	  * mappings, but is typically empty in all other cases.
 	  */
 	def sqlName :Option[String] = None
+
+
+
+
+
 
 	/** An adapter of this mapping with the names of all its public columns prefixed with the given string.
 	  * This is equivalent to `prefixed(prefix + ".")` unless prefix is an empty string, in which case it is
@@ -394,6 +412,8 @@ sealed trait Mapping {
 	  * to the given name. */
 	def renamed(name :String) :Component[Subject]
 
+
+
 	/** Lifts this mapping by encapsulating the subject values in an `Option`. The created mapping will
 	  * always return `Some(x)` from its `optionally` and `assemble` methods, where `x` is the value returned by
 	  * the method of this instance. This means that `Some(None)` is returned when this component has no value
@@ -403,6 +423,7 @@ sealed trait Mapping {
 	  */
 	def inOption :OptionMapping[this.type, Subject, Origin] = OptionMapping(this)
 
+	//todo: map with extractors
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
 	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
 	  * `NullValue.value` will be returned.
@@ -500,14 +521,25 @@ trait GenericMapping[S, O] extends Mapping { self =>
 	override type Subject = S
 	//for nicer compiler output
 	override type Extract[T] = MappingExtract[S, T, O]
-	override type ExtractColumn[T] = ColumnExtract[S, T, O]
+	override type ColumnExtract[T] = ColumnMappingExtract[S, T, O]
 	override type AnyComponent = MappingFrom[O]
 	override type Component[T] = TypedMapping[T, O]
 	override type Column[T] = ColumnMapping[T, O]
 
 
 
-	def buffs :Seq[Buff[S]] = Nil
+	override def apply(pieces: Pieces): S =
+		optionally(pieces) getOrElse {
+			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
+		}
+
+	override def optionally(pieces: Pieces): Option[S] = //todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
+		pieces.result(this) map { res => (res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) } } orElse
+			OptionalSelect.Value(this) orElse ExtraSelect.Value(this)
+
+	def assemble(pieces :Pieces) :Option[S]
+
+	def nullValue :Option[S] = None
 
 
 
@@ -547,18 +579,10 @@ trait GenericMapping[S, O] extends Mapping { self =>
 
 
 
-	override def apply(pieces: Pieces): S =
-		optionally(pieces) getOrElse {
-			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
-		}
+	override def buffs :Seq[Buff[S]] = Nil
 
-	override def optionally(pieces: Pieces): Option[S] = //todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
-		pieces.result(this) map { res => (res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) } } orElse
-			OptionalSelect.Value(this) orElse ExtraSelect.Value(this)
 
-	def assemble(pieces :Pieces) :Option[S]
 
-	def nullValue :Option[S] = None
 
 
 	def qualified(prefix :String) :Component[S] =

@@ -1,13 +1,15 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{Buff, MappingExtract, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.support.MappingAdapter
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 
 import scala.util.Try
 
@@ -15,26 +17,44 @@ import scala.util.Try
 
 
 
-
+//todo: combine MappedMapping and FlatMappedMapping by use of extractors.
 trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAdapter[M, T, S, O] {
 	implicit protected def nulls :NullValue[S]
 	protected def map :T => S
 	protected def unmap :S => T
 
+
+
+/*
 	override def apply[X](component :Component[X]) :Extract[X] =
 		if (component eq egg)
-			eggSelector.asInstanceOf[Extract[X]]
+			eggExtract.asInstanceOf[Extract[X]]
 		else
 			MappingExtract(component)(egg(component) compose unmap)
 
 	override def apply[X](column :Column[X]) :ColumnExtract[S, X, O] =
 		if (column eq egg)
-			eggSelector.asInstanceOf[ColumnExtract[S, X, O]]
+			eggExtract.asInstanceOf[ColumnExtract[S, X, O]]
 		else
 			MappingExtract(column)(egg(column) compose unmap)
+*/
 
 
-	private[this] val eggSelector :Extract[T] = MappingExtract.req(egg)(unmap)
+
+	private[this] val eggExtract :Extract[T] = MappingExtract.req(egg)(unmap)
+
+	override val extracts :NaturalMap[Component, Extract] = {
+		def adapt[X](entry :Assoc[Component, egg.Extract, X]) :Assoc[Component, Extract, X] =
+			Assoc[Component, Extract, X](entry._1, entry._2 compose unmap)
+		egg.extracts.map(adapt(_)).updated(egg, eggExtract)
+	}
+
+	override val columnExtracts :NaturalMap[Column, ColumnExtract] = egg match {
+		case column :ColumnMapping[T @unchecked, O @unchecked] =>
+			NaturalMap.single[Column, ColumnExtract, T](column, eggExtract.asInstanceOf[ColumnExtract[T]])
+		case _ =>
+			egg.columnExtracts.map(schema.composeColumnExtractAssoc(eggExtract)(_))
+	}
 
 
 
@@ -69,7 +89,7 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 
 
 
-	override def assemble(values :Pieces) :Option[S] = values.get(eggSelector).map(map)
+	override def assemble(values :Pieces) :Option[S] = values.get(eggExtract).map(map)
 
 	override def nullValue :Option[S] =
 		if (nulls != null) nulls.toOption
@@ -95,7 +115,11 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 		else null
 
 
+
+	override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
+
 	override def toString :String = "Mapped(" + egg  + ")"
+
 }
 
 
@@ -146,6 +170,44 @@ object MappedMapping {
 
 		override def nullValue :Option[S] = nulls.toOption
 
+
+
+		override def assemble(values :Pieces) :Option[S] = values.get(eggExtract).flatMap(map)
+
+
+
+/*
+		override def apply[X](component :Component[X]) :Extract[X] =
+			if (component eq egg)
+				eggExtract.asInstanceOf[Extract[X]]
+			else
+				MappingExtract(component)(egg(component) composeOpt unmap)
+
+
+		override def apply[X](column :Column[X]) :ColumnExtract[S, X, O] =
+			if (column eq egg)
+				eggExtract.asInstanceOf[ColumnExtract[S, X, O]]
+			else
+				MappingExtract(column)(egg(column) composeOpt unmap)
+*/
+
+		private[this] val eggExtract :Extract[T] = MappingExtract.opt(egg)(unmap)
+
+		override val extracts :NaturalMap[Component, Extract] = {
+			def adapt[X](entry :Assoc[Component, egg.Extract, X]) =
+				Assoc[Component, Extract, X](entry._1, entry._2 composeOpt unmap)
+			egg.extracts.map(adapt(_)).updated(egg, eggExtract)
+		}
+
+		override val columnExtracts :NaturalMap[Column, ColumnExtract] = egg match {
+			case column :ColumnMapping[T @unchecked, O @unchecked] =>
+				NaturalMap.single[Column, ColumnExtract, T](column, eggExtract.asInstanceOf[ColumnExtract[T]])
+			case _ =>
+				egg.columnExtracts.map(schema.composeColumnExtractAssoc(eggExtract)(_))
+		}
+
+
+
 		override val components :Unique[Component[_]] = Unique(egg)
 
 
@@ -184,27 +246,6 @@ object MappedMapping {
 
 
 
-		override def apply[X](component :Component[X]) :Extract[X] =
-			if (component eq egg)
-				eggSelector.asInstanceOf[Extract[X]]
-			else
-				MappingExtract(component)(egg(component) composeOpt unmap)
-
-
-		override def apply[X](column :Column[X]) :ColumnExtract[S, X, O] =
-			if (column eq egg)
-				eggSelector.asInstanceOf[ColumnExtract[S, X, O]]
-			else
-				MappingExtract(column)(egg(column) composeOpt unmap)
-
-		private[this] val eggSelector :Extract[T] = MappingExtract.opt(egg)(unmap)
-
-
-
-		override def assemble(values :Pieces) :Option[S] = values.get(eggSelector).flatMap(map)
-
-
-
 		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
 			new FlatMappedMapping[M, T, X, O](egg, map(_) map there, back andThen unmap, mapNulls(there))
 
@@ -220,6 +261,8 @@ object MappedMapping {
 			if (nulls != null) nulls else this.nulls.flatMap(there)
 
 
+
+		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
 
 		override def toString :String = "Mapped(" + egg  + ")"
 

@@ -18,7 +18,7 @@ class BuffedMapping[+M <: TypedMapping[S, O], S, O](override val egg :M, overrid
 	override protected def adapt[T](component :egg.Component[T]) :Component[T] =
 		new BuffedMapping(component, schema.cascadeBuffs(this)(egg(component)))
 
-	protected override def adaptColumn[T](column :egg.Column[T]) :Column[T] =
+	protected override def adapt[T](column :egg.Column[T]) :Column[T] =
 		column.withBuffs(schema.cascadeBuffs(this)(egg(column)))
 
 //	override def toString :String = buffs.mkString(mapping.toString + "(", ",", ")")

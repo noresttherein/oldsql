@@ -1,8 +1,11 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.{GenericMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, GenericMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 
 
 /** A convenience base trait for simple mappings which initialize all column lists by filtering the result
@@ -11,7 +14,10 @@ import net.noresttherein.oldsql.schema.{GenericMapping, SQLReadForm, SQLWriteFor
   * [[net.noresttherein.oldsql.collection.Unique.delay]], which is thread safe, invokes the initializer at most once,
   * and doesn't incur any computational penalty once initialized.
   */
-trait StableMapping[S, O] extends GenericMapping[S, O] {
+trait LazyMapping[S, O] extends GenericMapping[S, O] {
+
+	override val columnExtracts :NaturalMap[Column, ColumnExtract] =
+		NaturalMap.Lazy(schema.selectColumnExtracts(this)(extracts))
 
 	override val subcomponents :Unique[Component[_]] = Unique.delay(components.flatMap { c => c +: c.components })
 
@@ -34,32 +40,32 @@ trait StableMapping[S, O] extends GenericMapping[S, O] {
 
 
 
-trait SelectorCache[S, O] extends GenericMapping[S, O] {
 
+trait StableMapping[S, O] extends GenericMapping[S, O] {
 
-	private[this] val selectors = Lazy {
-		def entry[T](component :Component[T]) =
-			new NaturalMap.Entry[Component, Extract, T](component, super.apply(component))
-		val builder = NaturalMap.newBuilder[Component, Extract]
-		for (c <- subcomponents)
-			builder += entry(c)
-		builder.result()
-	}
+	abstract override val extracts :NaturalMap[Component, Extract] = super.extracts
+	abstract override val columnExtracts :NaturalMap[Column, ColumnExtract] = super.columnExtracts
 
-	private[this] val columnSelectors = Lazy {
-		def entry[T](column :Column[T]) =
-			new NaturalMap.Entry[Column, ExtractColumn, T](column, super.apply(column))
+	abstract override val subcomponents :Unique[Component[_]] = super.subcomponents
+	abstract override val components :Unique[Component[_]] = super.components
 
-		val builder = NaturalMap.newBuilder[Column, ExtractColumn]
-		for (c <- columns)
-			builder += entry(c)
-		builder.result()
-	}
+	abstract override val columns :Unique[Column[_]] = super.columns //components.flatMap(_.columns)
 
+	override val selectable :Unique[Column[_]] = super.selectable
+	override val queryable :Unique[Column[_]] = super.queryable
+	override val updatable :Unique[Column[_]] = super.updatable
+	override val autoUpdated :Unique[Column[_]] = super.autoUpdated
+	override val insertable :Unique[Column[_]] = super.insertable
+	override val autoInserted :Unique[Column[_]] = super.autoInserted
 
-
-	abstract override def apply[T](component :Component[T]) :Extract[T] = selectors.get(component)
-
-	abstract override def apply[T](column :Column[T]) :ExtractColumn[T] = columnSelectors.get(column)
+	override val selectForm: SQLReadForm[S] = super.selectForm
+	override val queryForm :SQLWriteForm[S] = super.queryForm
+	override val updateForm :SQLWriteForm[S] = super.updateForm
+	override val insertForm :SQLWriteForm[S] = super.insertForm
 
 }
+
+
+
+
+

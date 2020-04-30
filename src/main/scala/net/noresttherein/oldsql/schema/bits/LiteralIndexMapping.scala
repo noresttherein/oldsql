@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, FlatChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema, SchemaMapping}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema, MappedFlatMappingSchema, MappedMappingSchema, NonEmptySchema}
+import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema, MappedFlatSchema, MappedSchema, NonEmptySchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LiteralIndexMapping.NonEmptyIndexMapping
@@ -100,7 +100,7 @@ object LiteralIndexMapping {
 
 
 		override def map[S](assemble :R => S, disassemble :S => R) :FlatSchemaMapping[C, R, S, O] =
-			new MappedFlatMappingSchema[C, R, S, O](this compose disassemble, assemble)
+			new MappedFlatSchema[C, R, S, O](this compose disassemble, assemble)
 
 
 
@@ -125,11 +125,11 @@ object LiteralIndexMapping {
 		override protected def link(init :R, last :T) :R |~ (K :~ T) = init |~ key :~ last
 
 		override def compose[X](extractor :X => S) :MappingSchema[C ~ M, R |~ (K :~ T), X, O] =
-			new NonEmptyIndexSchema[C, M, R, K, T, X, O](init.compose(extractor), key, component,
+			new NonEmptyIndexSchema[C, M, R, K, T, X, O](init.compose(extractor), key, last,
 			                                             this.extractor compose extractor)
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[C ~ M, R |~ (K :~ T), X, O] =
-			new NonEmptyIndexSchema[C, M, R, K, T, X, O](init compose extractor, key, component,
+			new NonEmptyIndexSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
 			                                             this.extractor compose extractor)
 
 	}
@@ -142,12 +142,17 @@ object LiteralIndexMapping {
 		extends NonEmptyIndexSchema[C, M, R, K, T, S, O](init, key, next, extract)
 		   with FlatMappingSchema[C ~ M, R |~ (K :~ T), S, O]
 	{
+
+		override def prev[P <: Chain, V <: Chain](implicit comps :C ~ M <:< (P ~ Any), vals :R |~ (K :~ T) <:< (V ~ Any))
+				:FlatMappingSchema[P, V, S, O] =
+			init.asInstanceOf[FlatMappingSchema[P, V, S, O]]
+
 		override def compose[X](extractor :X => S) :FlatMappingSchema[C ~ M, R |~ (K :~ T), X, O] =
-			new NonEmptyFlatIndexSchema[C, M, R, K, T, X, O](init compose extractor, key, component,
+			new NonEmptyFlatIndexSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
                                                              this.extractor compose extractor)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[C ~ M, R |~ (K :~ T), X, O] =
-			new NonEmptyFlatIndexSchema[C, M, R, K, T, X, O](init compose extractor, key, component,
+			new NonEmptyFlatIndexSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
 		                                                     this.extractor compose extractor)
 	}
 

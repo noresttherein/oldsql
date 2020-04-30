@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.model.PropertyPath.{==>, ReflectedPropertyPath}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.{ColumnMapping, MappingExtract}
-import net.noresttherein.oldsql.schema.MappingExtract.{ColumnExtract, MappingExtractTemplate, ConstantColumn, ConstantExtract, ConstantExtractTemplate, EmptyColumn, EmptyExtract, EmptyExtractTemplate, IdentityColumn, IdentityExtract, IdentityExtractTemplate, OptionalExtract, RequisiteColumn, RequisiteExtract, RequisiteExtractTemplate}
+import net.noresttherein.oldsql.schema.MappingExtract.{ColumnMappingExtract, MappingExtractTemplate, ConstantColumn, ConstantExtract, ConstantExtractTemplate, EmptyColumn, EmptyExtract, EmptyExtractTemplate, IdentityColumn, IdentityExtract, IdentityExtractTemplate, OptionalExtract, RequisiteColumn, RequisiteExtract, RequisiteExtractTemplate}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.bits.ComponentProperty.{ColumnProperty, ConstantProperty, EmptyProperty, OptionalProperty, RequisiteProperty}
 
@@ -68,7 +68,7 @@ trait ComponentProperty[-S, T, O] extends MappingExtract[S, T, O] {
 
 
 
-	override def andThen[Y](extractor :ColumnExtract[T, Y, O]) :ColumnProperty[S, Y, O] =
+	override def andThen[Y](extractor :ColumnMappingExtract[T, Y, O]) :ColumnProperty[S, Y, O] =
 		andThen(extractor :MappingExtract[T, Y, O]).asInstanceOf[ColumnProperty[S, Y, O]]
 
 
@@ -209,16 +209,16 @@ object ComponentProperty {
 
 
 
-	trait ColumnProperty[-S, T, O] extends ColumnExtract[S, T, O] with ComponentProperty[S, T, O] {
+	trait ColumnProperty[-S, T, O] extends ColumnMappingExtract[S, T, O] with ComponentProperty[S, T, O] {
 
 		override def compose[X, LS <: S](extractor :ComponentProperty[X, LS, O]) :ColumnProperty[X, T, O] =
 			extractor andThen this
 
-		override def compose[X](extractor :X =?> S) :ColumnExtract[X, T, O] = extractor match {
+		override def compose[X](extractor :X =?> S) :ColumnMappingExtract[X, T, O] = extractor match {
 			case property :ComponentProperty[X @unchecked, S @unchecked, O @unchecked] =>
 				property andThen this
 			case _ =>
-				super[ColumnExtract].compose(extractor)
+				super[ColumnMappingExtract].compose(extractor)
 		}
 	}
 

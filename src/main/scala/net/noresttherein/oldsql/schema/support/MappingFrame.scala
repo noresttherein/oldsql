@@ -1,11 +1,12 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{MutableNaturalMap, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, MappingExtract, GenericMapping, RootMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, GenericMapping, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
@@ -14,7 +15,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.{MappedMapping, PrefixedMapping, RenamedMapping}
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnExtract
+import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.AbstractSeq
@@ -44,73 +45,91 @@ import scala.reflect.runtime.universe.TypeTag
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
   */
-trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
+trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 	/** Base trait for all components of this mapping. Creating an instance automatically lists it within owning mapping
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.
 	  * This registering is delayed, as in most cases properties listing its subcomponents will not be initialized before
 	  * its constructor is over, so instead it adds itself only to a 'waiting list', which is processed and its contents
-	  * appropriately registered within the parent mapping once either this instance's `include()` method is called, parent
-	  * mapping explicitly requests initializing all waiting lists via its 'initialize()' method, or any of the parent
-	  * mapping component accessor methods are called. If for any reason this component is not fully initialized before
-	  * one of that happens, and exception will be thrown during its initialization. For this reasons, all components
-	  * should be created eagerly whenever possible - be very cautious with declaring members of this type as lazy val
-	  * or object. As a consequence of the above, simple creation of this instance registers it permanently with
-	  * the parent mapping - no other call is needed.
-	  * @tparam T value type of this component
+	  * appropriately registered within the parent mapping at a later time, when this instance's constructor returns.
+	  * This initialization is triggered as the result of a call to this instance's `include()` or `extract` methods,
+	  * the enclosing mapping explicitly requests initializing all components in the waiting lists via its
+	  * 'initPreceding()' method, or its own full initialization is triggered either explicitly, by its `initialize()`
+	  * method, or when any of its component/column lists are accessed. If for any reason this component is not fully
+	  * initialized before one of that happens (typically either because its constructor is called outside the enclosing
+	  * mapping's constructor or the mapping's component properties are accessed before all components are created),
+	  * an exception will be thrown during its initialization. For this reasons, all components should be created eagerly.
+	  * As a consequence of the above, simple creation of this instance registers it permanently with the enclosing
+	  * mapping - no other call is needed.
+	  *
+	  * There are two broad categories of instances: custom classes explicitly derived from it or one of its
+	  * subclasses, provided as base classes for that purpose, and wrappers of other mappings. The former are slightly
+	  * more efficient and are more concise to declare withing the enclosing mapping class, while the latter offers
+	  * more flexibility by allowing dynamic resolution of actual component implementations and their full reuse.
+	  * The best of both worlds can be achieved by simply mixing in this trait into a ready component class.
+	  *
+	  * @tparam T subject type of this component.
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.]]
 	  */
 	trait FrameComponent[T] extends GenericMapping[T, O] { self =>
 
 		/** Returns the value of this component in an option if an implicit `ComponentValues` instance 
 		  * for the enclosing composite mapping is present. 
 		  */
-		def ?(implicit values :composite.Pieces) :Option[T] = values.get(selector)
+		def ?(implicit values :frame.Pieces) :Option[T] = values.get(extract)
 
 
 
-		private[MappingFrame] def belongsTo(mapping :MappingFrame[_, _]) :Boolean = mapping eq composite
+		private[MappingFrame] def belongsTo(mapping :MappingFrame[_, _]) :Boolean = mapping eq frame
 
+
+		/** Extractor for the value of the component to be used before the component is fully initialized
+		  * and the `extract` property is computed. Typically given as the constructor parameter or initialized
+		  * in the constructor, it is used as the template for the `MappingExtract` for the component.
+		  */
 		protected[schema] def extractor :Extractor[S, T]
 
 		/** The `MappingExtract` for this component from the enclosing mapping.
 		  * The call to this method will trigger the initialization of this component if it was not initialized before.
 		  */
-		def selector :MappingExtract[S, T, O] = {
-			if (fastSelector == null) {
-				val s = safeSelector
+		def extract :frame.Extract[T] = {
+			if (fastExtract == null) {
+				val s = safeExtract
 				if (s != null)
-					fastSelector = s
+					fastExtract = s
 				else {
-					fastSelector = init()
-					safeSelector = fastSelector
+					include()
+					if (fastExtract == null)
+						throw new IllegalStateException(s"$this.extract called during initialization of the component.")
 				}
 			}
-			fastSelector
+			fastExtract
 		}
 
 		@volatile
-		private[this] var safeSelector :MappingExtract[S, T, O] = _
-		private[this] var fastSelector :MappingExtract[S, T, O] = _
+		private[this] var safeExtract :MappingExtract[S, T, O] = _
+		private[this] var fastExtract :MappingExtract[S, T, O] = _
 
 		private[this] var initialized = false
 
 		/** Manually trigger initialization of this instance within the enclosing mapping. */
-		private[MappingFrame] final def include() :this.type = synchronized {
+		private[MappingFrame] final def include() :this.type = frame.synchronized {
 			if (!initialized) {
 				initialized = true
-				fastSelector = init()
-				safeSelector = fastSelector
+				fastExtract = init()
+				safeExtract = fastExtract
 			}
 			this
 		}
 
 		/** Register itself and all its subcomponents within the parent mapping. This method will be called only once. */
-		protected[MappingFrame] def init() :MappingExtract[S, T, O] = composite.synchronized {
+		protected[MappingFrame] def init() :MappingExtract[S, T, O] = frame.synchronized {
 			initComponents += this
 			initSubcomponents += this
+			extracts foreach { exportExtract(_) }
 			columns foreach { col => exportColumn(col) }
 			subcomponents foreach { comp => exportSubcomponent(comp) }
-			selectorFor(this)
+			extractFor(this)
 		}
 
 
@@ -119,54 +138,61 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 		  * This method is called both during delayed initialization of standard components, and eagerly
 		  * by `ExportComponent` in its constructor. For this reason it should not touch any column/component lists.
 		  */
-		protected[MappingFrame] def exportColumn[U](column :Column[U]) :FrameColumn[U] =
-			exportSubcomponent(column).asInstanceOf[FrameColumn[U]]
+		protected[MappingFrame] def exportColumn[U](column :Column[U]) :Column[U] =
+			exportSubcomponent(column).asInstanceOf[Column[U]]
 
 		/** Lifts ('exports') a component of this component to the subcomponent of the enclosing composite `MappingFrame`.
 		  * This method is called both during delayed initialization of standard components, and eagerly
 		  * by `ExportComponent` in its constructor. For this reason it should not touch any column/component lists.
 		  */
-		protected[MappingFrame] def exportSubcomponent[U](subcomponent :Component[U]) :FrameComponent[U] =
-			subcomponent match {
-				case mine :MappingFrame[_, _]#FrameComponent[_] if mine belongsTo composite =>
-					mine.asInstanceOf[FrameComponent[U]]
+		protected[MappingFrame] def exportSubcomponent[U](subcomponent :Component[U]) :Component[U] =
+			frame.synchronized {
+				initExtracts.getOrElse[frame.Extract, U](subcomponent, exportExtract(apply(subcomponent))).export
+			}
 
-				case _ => composite.synchronized {
-					initSelectors.getOrElse(subcomponent, {
-						val fromMe = apply(subcomponent)
-						val fromComposite = extractor andThen fromMe
 
-						if (columnPrefix == null)
-							throw new IllegalStateException(
-								s"$this.columnPrefix is null: overrides with a val must happen before any component declarations!")
-						if (buffs == null)
-							throw new IllegalStateException(
-								s"$this.buffs is null: overrides with a val must happen before any component declarations!")
+		protected[MappingFrame] def exportExtract[U](sub :Assoc[Component, Extract, U]) :Unit = frame.synchronized {
+			initExtracts = initExtracts.updated(sub._1, exportExtract(sub._2))
+		}
 
-						val subbuffs = subcomponent.buffs :++
-							schema.cascadeBuffs(buffs, composite.toString + "/" + this)(fromMe)
 
-						val selector = subcomponent match {
-							case column :ColumnMapping[_, _] =>
-								val lifted = new ColumnComponent[U](
-									fromComposite, columnPrefix + column.name, subbuffs)(column.form
-								)
-								selectorFor(lifted)
-							case _ =>
-								val lifted = new ExportComponent[U](
-									subcomponent, fromComposite, columnPrefix, subbuffs
-								)
-								selectorFor(lifted)
-						}
-						initSelectors = initSelectors.updated(subcomponent, selector)
-						selector
-					}).export.asInstanceOf[FrameComponent[U]]
+
+		protected[MappingFrame] def exportExtract[U](subextract :MappingExtract[T, U, O]) :frame.Extract[U] =
+			frame.synchronized {
+				val subcomponent = subextract.export
+				initExtracts.get(subcomponent) getOrElse {
+					val fromFrame = subextract compose extractor
+
+					if (columnPrefix == null)
+						throw new IllegalStateException(
+							s"$this.columnPrefix is null: overrides with a val must happen before any component declarations!")
+					if (buffs == null)
+						throw new IllegalStateException(
+							s"$this.buffs is null: overrides with a val must happen before any component declarations!")
+
+					val subbuffs = subcomponent.buffs :++
+						schema.cascadeBuffs(buffs, frame.toString + "/" + this)(subextract)
+
+					val frameExtract = subcomponent match {
+						case column :ColumnMapping[_, _] =>
+							val lifted = new ColumnComponent[U](
+								fromFrame, columnPrefix + column.name, subbuffs)(column.form
+							)
+							extractFor(lifted)
+						case _ =>
+							val lifted = new ExportComponent[U](
+								subcomponent, fromFrame, columnPrefix, subbuffs
+							)
+
+							extractFor(lifted)
+					}
+					initExtracts = initExtracts.updated(subcomponent, frameExtract)
+					frameExtract
 				}
 			}
 
 
-
-		/** Buffs 'inherited' from the enclosing mapping. It uses the value selector `S=>T` to map all buffs applied
+		/** Buffs 'inherited' from the enclosing mapping. It uses the value extract `S => T` to map all buffs applied
 		  * to the enclosing mapping to adapt them to this value type. This means that if there are any
 		  * [[net.noresttherein.oldsql.schema.Buff.ValuedBuff ValuedBuff]]s among the inherited buffs, this component
 		  * must have a value for the value associated with that buff or an exception will be thrown - either
@@ -211,20 +237,22 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	{
 		def adapted :Component[T] = egg
 
-		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = {
+		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
 			initSubcomponents += this
-			initSelectors.getOrElse(target, selectorFor(this)).asInstanceOf[MappingExtract[S, T, O]]
+			extracts foreach { exportExtract(_) }
+			initExtracts.getOrElse[frame.Extract, T](target, extractFor(this))
 		}
 
-		override def canEqual(that :Any) :Boolean = that match {
-			case comp :MappingFrame[_, _]#ExportComponent[_] => comp belongsTo composite
-			case _ => false
-		}
+		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
+//		override def canEqual(that :Any) :Boolean = that match {
+//			case comp :MappingFrame[_, _]#ExportComponent[_] => comp belongsTo frame
+//			case _ => false
+//		}
 
 		override protected def adapt[X](component :egg.Component[X]) :Component[X] =
 			exportSubcomponent(component)
 
-		override protected def adaptColumn[X](column :egg.Column[X]) :Column[X] =
+		override protected def adapt[X](column :egg.Column[X]) :Column[X] =
 			exportColumn(column)
 
 		override def toString :String = "^" + egg + "^"
@@ -233,24 +261,75 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 
 
-	/** Base trait for components which have a value for all instances of `T`. */
+
+
+
+	/** Base trait for components which have a value for all instances of `T`. Subclasses are required to
+	  * implement the `pick` property with an extractor function `S => T`. It is primarily useful as a mixin for
+	  * ready component classes, while components specific to the enclosing mapping (and belonging
+	  * to their implementation) would benefit from extending one of its subtypes provided for that purpose.
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.ComponentFrame]]
+	  */
 	trait MandatoryComponent[T] extends FrameComponent[T] {
-		protected[schema] override def extractor :RequisiteExtractor[S, T] = Extractor.req(extract)
-		protected def extract :S => T
+		protected[schema] override def extractor :RequisiteExtractor[S, T] = Extractor.req(pick)
+		protected def pick :S => T
 	}
 
+
+
 	/** Base trait for components which might not have a value for all instances of `T` (such as properties declared
-	  * by some subclass of `T`. This is independent from the
-	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect ]]
-	  */
+	  * by some subclass of `T`. The component is considered not to be a part of the mapping for some owning entities
+	  * of type `S` and, in particular, the underlying columns are excluded from their updates and inserts.
+	  *
+	  * There are four broad cases when a certain value `T` might be unavailable for
+	  * the enclosing mapping's subject instance `S`:
+	  *   1. It is a property of type `Option[S]` or similar and signifies the lack of some attribute of the
+	  *      represented object from the domain model, in which case the option type itself can be considered
+	  *      the mapped value.
+	  *   1. The value is not present at a given lifecycle phase of the mapped entity, for example a database
+	  *      generated primary key.
+	  *   1. It is part of a different table.
+	  *   1. The column(s) with the value for the component is not included in every database query (for example,
+	  *      for efficiency reasons or because it is a part of a joined table) and therefore neither it is present
+	  *      when the entity is being updated. It is a case of value being missing on a given instance, rather than
+	  *      for the represented abstract (or real life) entity.
+	  *   1. It is a part of a denormalized relation and its existence depends on value(s) of other component(s).
+	  *      This is for example the case with mapping of a class with its subclasses to a single database table.
+	  *
+	  *  Of the above, the first case should use a
+	  *  [[net.noresttherein.oldsql.schema.support.MappingFrame.MandatoryComponent MandatoryComponent]] instance,
+	  *  while the last two are clear candidates for this type of the component. The second and third cases
+	  *  are less clear cut and can conceivably  use either of the approaches.
+	  *
+	  *  Note that while optional components will often be used in combination with the
+	  *  `OptionalSelect`/`OptionalInsert`/`OptionalUpdate` buffs, none of them is automatically implied.
+	  *
+	  * @see [[net.noresttherein.oldsql.schema.bits.OptionMapping]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.OptionalSelect]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitSelect]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.OptionalUpdate]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitUpdate]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.OptionalInsert]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitInsert]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseOptionalComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.OptionalComponentFrame]]
+	  */ //todo: should this come already with an OptionalInsert/Update/Select buff?
 	trait OptionalComponent[T] extends FrameComponent[T] {
-		protected[schema] override def extractor = Extractor(extract)
-		protected def extract :S => Option[T]
+		protected[schema] override def extractor = Extractor(pick)
+		protected def pick :S => Option[T]
 	}
+
+
 
 	trait ReadOnlyComponent[T] extends FrameComponent[T] {
 		protected[schema] override def extractor :Extractor[S, Nothing] = Extractor.none
 	}
+
+
+
+
+
 
 	/** Convenience base component class which initializes the extractor using the constructor argument getter.
 	  * @param value extractor function for the value of this component.
@@ -264,6 +343,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 		protected[schema] override val extractor :Extractor[S, T] = Extractor.req(value)
 		override val buffs :Seq[Buff[T]] = opts ++: inheritedBuffs
 	}
+
+
 
 	/** Convenience base class for components of this instance which themselves contain individually defined
 	  * static subcomponents.
@@ -285,8 +366,11 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	{
 		def this(value :S => T, buffs :Buff[T]*) = this(value, "", buffs)
 
-		final override val columnPrefix = composite.verifiedPrefix + prefix
+		final override val columnPrefix = frame.verifiedPrefix + prefix
 	}
+
+
+
 
 
 
@@ -326,7 +410,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	{
 		def this(value :S => Option[T], buffs :Buff[T]*) = this(value, "", buffs)
 
-		final override val columnPrefix = composite.verifiedPrefix + prefix
+		final override val columnPrefix = frame.verifiedPrefix + prefix
 	}
 
 
@@ -355,22 +439,23 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 		extends EagerDeepProxy[MappingOf[T], T, O](component) with FrameComponent[T]
 	{ nest =>
 
-		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = {
-			if (initSelectors contains component.asInstanceOf[Component[_]])
+		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
+			if (initExtracts contains component.asInstanceOf[Component[_]])
 				throw new IllegalArgumentException(
-					s"Can't embed mapping $component as a component of $composite as it is already present."
+					s"Can't embed mapping $component as a component of $frame as it is already present."
 				)
-			val selector = selectorFor(this)
-			initSelectors = initSelectors.updated(component.asInstanceOf[Component[_]], selector)
+			val extract = extractFor(this)
+			initExtracts = initExtracts.updated(component.asInstanceOf[Component[T]], extract)
+			component.extracts.asInstanceOf[NaturalMap[Component, Extract]] foreach { assoc => exportExtract(assoc) }
 			initComponents += this
 			initSubcomponents += this //don't export subcomponents as its done by EagerDeepProxy
-			selector
+			extract
 		}
 
 		protected override def adapt[X](component :egg.Component[X]) :Component[X] =
 			exportSubcomponent(component.asInstanceOf[Component[X]])
 
-		protected override def adaptColumn[X](component :egg.Column[X]) :Column[X] =
+		protected override def adapt[X](component :egg.Column[X]) :Column[X] =
 			exportColumn(component.asInstanceOf[Column[X]])
 
 
@@ -386,8 +471,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 
 	/** Base trait for columns of the enclosing `MappingFrame`. It is extended by all directly declared columns
-	  * as well as the export versions of transitive columns from its subcomponents. In general, there should be 
-	  * little need to extend your classes directly from it, as column functionality is limited and constructor methods 
+	  * as well as the export versions of transitive columns from its subcomponents. In general, there should be
+	  * little need to extend your classes directly from it, as column functionality is limited and constructor methods
 	  * provided within `MappingFrame` should be sufficient. As with the base `FrameComponent` trait, simple creation of
 	  * this instance schedules its registration within the parent mapping on the appropriate column lists, depending on
 	  * declared column options (buffs). It will also be registered on the subcomponents list, but not the one
@@ -397,11 +482,12 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  */
 	trait FrameColumn[T] extends FrameComponent[T] with ColumnMapping[T, O] {
 
-		override def selector :ColumnExtract[S, T, O] = super.selector.asInstanceOf[ColumnExtract[S, T, O]]
+		override def extract :frame.ColumnExtract[T] =
+			super.extract.asInstanceOf[ColumnMappingExtract[S, T, O]]
 
-		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = {
+		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
 			includeColumn(this)
-			selectorFor(this)
+			extractFor(this)
 		}
 	}
 
@@ -410,7 +496,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	/** A column declared directly under this mapping.
 	  * It automatically inherits the enclosing mapping's `columnPrefix` and buffs.
 	  */
-	protected class DirectColumn[T :ColumnForm](override val extractor :S =?> T, name :String, opts :Seq[Buff[T]])
+	protected class DirectColumn[T :ColumnForm]
+	                            (protected[schema] override val extractor :S =?> T, name :String, opts :Seq[Buff[T]])
 		extends StandardColumn[T, O](verifiedPrefix + name, opts ++ conveyBuffs(extractor, verifiedPrefix + name))
 		   with FrameColumn[T]
 	{
@@ -419,10 +506,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 		override val buffs :Seq[Buff[T]] = opts :++ inheritedBuffs
 
-		protected[MappingFrame] override def init() :ColumnExtract[S, T, O] = {
+		protected[MappingFrame] override def init() :ColumnMappingExtract[S, T, O] = frame.synchronized {
 			initComponents += this
-			composite.includeColumn(this)
-			selectorFor(this)
+			frame.includeColumn(this)
+			extractFor(this)
 		}
 	}
 
@@ -439,21 +526,21 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 		def this(value :S => T, name :String, buffs :Seq[Buff[T]])(implicit form :ColumnForm[T]) =
 			this(Extractor.req(value), name, buffs)
 
-		def this(pick :S => Option[T], surepick :Option[S=>T], name :String, buffs :Seq[Buff[T]])
+		def this(pick :S => Option[T], surepick :Option[S => T], name :String, buffs :Seq[Buff[T]])
 		        (implicit form :ColumnForm[T]) =
 			this(surepick map Extractor.req[S, T] getOrElse Extractor(pick), name, buffs)
 
-		protected[MappingFrame] override def init() :ColumnExtract[S, T, O] = {
-			composite.includeColumn(this)
-			selectorFor(this)
+		protected[MappingFrame] override def init() :ColumnMappingExtract[S, T, O] = frame.synchronized {
+			frame.includeColumn(this)
+			extractFor(this)
 		}
 	}
 
 
-	
-	
-	
-	
+
+
+
+
 	/** Embeds any component, regardless of its `Origin` type, directly under this instance.
 	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
 	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
@@ -555,13 +642,13 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	                   (component :M, extractor :S =?> T, fullPrefix :String, fullBuffs :Seq[Buff[T]]) :M =
 		synchronized {
 			initPreceding()
-			if (initSelectors contains component)
+			if (initExtracts contains component)
 				throw new IllegalArgumentException(s"Can't embed the component $component in $this for the second time.")
 
 			val export = new ExportComponent[T](component, extractor, fullPrefix, fullBuffs)
 			initComponents += export
 			initPreceding()
-			initSelectors = initSelectors.updated(component, export.selector)
+			initExtracts = initExtracts + (component, export.extract)
 			component
 		}
 
@@ -627,16 +714,18 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 
 	/** A builder adapting a given column template to a column of this `MappingFrame`. */
-	protected class ColumnCopist[T] private[MappingFrame](template :ColumnMapping[T, _], name :Option[String], buffs :Seq[Buff[T]]) {
+	protected class ColumnCopist[T] private[MappingFrame]
+	                            (template :ColumnMapping[T, _], name :Option[String], buffs :Seq[Buff[T]])
+	{
 		private[MappingFrame] def this(source :ColumnMapping[T, _]) = this(source, None, source.buffs)
 
 		template match {
-			case self :MappingFrame[_, _]#FrameComponent[_] if self.belongsTo(composite) =>
+			case self :MappingFrame[_, _]#FrameComponent[_] if self.belongsTo(frame) =>
 				if (buffs == null)
 					throw new IllegalStateException(s"$this.buffs is null: overrides must be defined before any components.")
 				if (verifiedPrefix.length > 0 || buffs.nonEmpty )
 					throw new IllegalArgumentException(
-						s"Can't use column $template of the same mapping $composite as the template for a new column."
+						s"Can't use column $template of the same mapping $frame as the template for a new column."
 					)
 			case _ =>
 		}
@@ -646,7 +735,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 		  * @param getter a function returning the value for this column from the mapped entity.
 		  * @return a new column, being a direct component of this mapping.
 		  */
-		def apply(getter :S => T) :Column[T] = composite.synchronized {
+		def apply(getter :S => T) :Column[T] = frame.synchronized {
 			val column = new ColumnComponent[T](getter, verifiedPrefix + (name getOrElse template.name), buffs)(template.form)
 			initPreceding()
 			initComponents += column
@@ -659,7 +748,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 		  *               returns `None`, the `nullValue` from the `ColumnForm` of the template column is used.
 		  * @return a new column, being a direct component of this mapping.
 		  */
-		def opt(getter :S => Option[T]) :Column[T] = composite.synchronized {
+		def opt(getter :S => Option[T]) :Column[T] = frame.synchronized {
 			val column = new ColumnComponent[T](getter, None, verifiedPrefix + (name getOrElse template.name), buffs)(template.form)
 			initPreceding()
 			initComponents += column
@@ -886,20 +975,20 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 					s"Cannot rename column $column which is an export component of the enclosing MappingFrame $this."
 				)
 			case _ =>
-				initSelectors.getOrElse(column, 
+				initExtracts.getOrElse(column,
 					throw new IllegalArgumentException(
 						s"Cannot rename column $column as it is not a part of mapping $this."
-				)).asInstanceOf[Extract[T]]
+				))
 		}
 		val export = current.export
-		val extract = Extractor(current.optional, current.requisite) //don't retain the reference to export
+		val extractor = Extractor(current.optional, current.requisite) //don't retain the reference to export
 
 		val lists = initComponents::initSubcomponents::initColumns::initSelectable::initQueryable::
 			initUpdatable::initInsertable::initAutoInsert::initAutoUpdate::Nil
 
-		val replacement = new ColumnComponent[T](extract, name, export.buffs)(column.form) {
+		val replacement = new ColumnComponent[T](extractor, name, export.buffs)(column.form) {
 			//we'll replace the export column with this manually
-			override def init() :ColumnExtract[S, T, O] = selectorFor(this)
+			override def init() :ColumnMappingExtract[S, T, O] = extractFor(this)
 		}
 
 		lists foreach { list => //swap the replaced component with the renamed version
@@ -911,13 +1000,14 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 		//we now need to find all versions of the replaced component (as components of some subcomponent)
 		//and replace their mapping from export to replacement
-		val selector = selectorFor(replacement)
-		initSelectors = initSelectors map { lift =>
-			if (lift._2.export == export) lift._1 -> selector
+		val extract = extractFor(replacement)
+		initExtracts = initExtracts map { lift =>
+			if (lift._2.export == export)
+				Assoc[Column, ColumnExtract, T](lift._1.asInstanceOf[Column[T]], extract)
 			else lift
 		}
 		//just to be sure in case equals is wonky and to trigger (empty) initialization
-		initSelectors = initSelectors.updated(column, replacement.selector) 
+		initExtracts = initExtracts + (column, replacement.extract)
 		replacement
 	}
 
@@ -930,13 +1020,13 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  * available `Pieces` for this mapping. This will work for both direct components and indirect subcomponents.
 	  */
 	implicit def valueOf[T](component :FrameComponent[T])(implicit pieces :Pieces) :T =
-		pieces(component.selector)
+		pieces(component.extract)
 
 
 
 
-	
-	
+
+
 	override def export[T](component :Component[T]) :Component[T] = component match {
 		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
 			export.asInstanceOf[Component[T]]
@@ -953,18 +1043,18 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 	override def apply[T](component :Component[T]) :Extract[T] = component match {
 		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
-			export.asInstanceOf[FrameComponent[T]].selector
+			export.asInstanceOf[FrameComponent[T]].extract
 		case _  =>
-			selectors.getOrElse(component,
+			extracts.getOrElse(component,
 				throw new IllegalArgumentException(s"Component $component is not a part of mapping $this.")
-			).asInstanceOf[Extract[T]]
+			)
 	}
 
-	override def apply[T](column :Column[T]) :ExtractColumn[T] = column match {
+	override def apply[T](column :Column[T]) :ColumnExtract[T] = column match {
 		case export :MappingFrame[_, _]#FrameColumn[_] if export belongsTo this =>
-			export.asInstanceOf[FrameColumn[T]].selector
-		case wonky :MappingFrame[_, _]#FrameComponent[_] if wonky belongsTo this => wonky.selector match {
-			case selector :ColumnExtract[S @unchecked, T @unchecked, O @unchecked] => selector
+			export.asInstanceOf[FrameColumn[T]].extract
+		case wonky :MappingFrame[_, _]#FrameComponent[_] if wonky belongsTo this => wonky.extract match {
+			case selector :ColumnMappingExtract[S @unchecked, T @unchecked, O @unchecked] => selector
 			case selector =>
 				throw new IllegalStateException(
 					s"Component $column of $this implements FrameComponent but not FrameColumn " +
@@ -972,43 +1062,45 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 				)
 		}
 		case _ =>
-			selectors.getOrElse(column,
+			columnExtracts.getOrElse(column,
 				throw new IllegalArgumentException(s"Column $column is not a part of mapping $this.")
-			).asInstanceOf[ExtractColumn[T]]
+			)
 	}
 
 
 
-	/** An hook point for subclasses to extend the functionality by providing a specialized selector
+	/** An hook point for subclasses to extend the functionality by providing a specialized extract
 	  * for the given component, offering additional features. This method is called once for every component
 	  * which is not a column (including subcomponents) when the component's initialization is being performed.
 	  */
-	protected def selectorFor[T](component :FrameComponent[T]) :Extract[T] =
+	protected def extractFor[T](component :FrameComponent[T]) :Extract[T] =
 		MappingExtract[S, T, O](component)(component.extractor)
 
-	/** A hook point for subclasses to extend the functionality by providing a specialized selector
+	/** A hook point for subclasses to extend the functionality by providing a specialized extract
 	  * for the given column, offering additional features. This method is called once for every column
 	  * (including export versions of non-direct columns) when the column's initialization is being performed.
 	  */
-	protected def selectorFor[T](column :FrameColumn[T]) :ExtractColumn[T] =
+	protected def extractFor[T](column :FrameColumn[T]) :ColumnExtract[T] =
 		MappingExtract[S, T, O](column)(column.extractor)
+/*
+	private[this] var initExtracts = MutableNaturalMap.freezable[Component, Extract]
+	private[this] var initColumnExtracts = MutableNaturalMap.freezable[Column, ColumnExtract]
 
-	private[this] var initSelectors = Map[Component[_], Extract[_]]()
-	@volatile private[this] var safeSelectors :Map[Component[_], Extract[_]] = _
-	private[this] var fastSelectors :Map[Component[_], Extract[_]] = _
 
-	private def selectors :Map[Component[_], Extract[_]] = {
-		if (fastSelectors == null) {
-			val initialized = safeSelectors
-			if (initialized != null)
-				fastSelectors = initialized
-			else {
-				initialize()
-				fastSelectors = safeSelectors
-			}
-		}
-		fastSelectors
+	override def extracts :NaturalMap[Component, Extract] = {
+		if (!isInitialized)
+			initialize()
+		initExtracts
 	}
+
+	override def extracts :NaturalMap[Column, ColumnExtract] = {
+		if (!isInitialized)
+			initialize()
+		initColumnExtracts
+	}
+*/
+
+
 
 
 
@@ -1070,6 +1162,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 
 
+
+
+
 	private def delayInit(c :FrameComponent[_]) :Unit = synchronized {
 		if (isInitialized)
 			throw new IllegalStateException(s"Cannot initialize mapping component $c on $this: components have already been exported.")
@@ -1087,12 +1182,24 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  * unless a subclass decides to initialize a component manually by its `include()` method. It can then
 	  * use this method before the call to `include()` in order to preserve the order of component definition
 	  * on all column/component lists.
+	  *
+	  * @throws IllegalStateException if reentered while a another call to `initPreceding` is present on the stack
+	  *                               as a result of being called from initialization code of a component or
+	  *                               if the mapping is already initialized.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initPreceding[T](value:T) initPreceding(value)]]
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.FrameComponent.include() FrameComponent.include()]]
 	  */
 	protected final def initPreceding() :Unit = synchronized {
+		if (initializationState == 2)
+			throw new IllegalStateException(
+				s"Cannot initialize component lists of $this: the mapping initialization is completed.")
+		if (initializationState == 1)
+			throw new IllegalStateException(
+				s"Cannot initialize component lists of $this: initPreceding is already in progress.")
+		initializationState = 1
 		delayedInits.foreach(_.include())
 		delayedInits.clear()
+		initializationState = 0
 	}
 
 	/** An ease-of-life variant of no-argument `initPreceding()` which returns the given argument after finishing
@@ -1111,6 +1218,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  */
 	private[this] val delayedInits = new ListBuffer[FrameComponent[_]]
 
+	//0 - uninitialized; 1 (temporary) initPreceding in progress; 2 - initialized
+	@volatile private[this] var initializationState = 0
+
+
 
 	/** Tests if the component lists of this instance have already been initialized and can not be changed any further.
 	  * This happens either when any of the column/component lists of this instance are accessed, or when a subclass
@@ -1119,7 +1230,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  * by the constructor.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]]
 	  */
-	protected final def isInitialized :Boolean = initComponents.isInitialized
+	protected final def isInitialized :Boolean = initializationState == 2
 
 	/** Finalizes the initialization of all already created, but not initialized components of this mapping,
 	  * assigning them to their respective component/column lists. The lists become frozen in the process,
@@ -1134,13 +1245,16 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  * It is triggered automatically the first time any of the component lists of this instance is accessed, but
 	  * can be also called explicitly by a subclass. It is idempotent and synchronized, meaning any calls after
 	  * the first one are ignored.
+	  * @throws IllegalStateException if called when the initialization is already in progress, but has not completed.
+	  *                               This can be in particular caused by calling from initialization of a component.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.finalizeInitialization()]]
 	  */
 	protected final def initialize() :Unit =
 		if (!isInitialized) synchronized {
 			if (!isInitialized) {
-				delayedInits.foreach(_.include())
-				delayedInits.clear()
+				initPreceding()
+//				delayedInits.foreach(_.include())
+//				delayedInits.clear()
 
 				initComponents.initialize()
 				initColumns.initialize()
@@ -1152,11 +1266,17 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 				initAutoUpdate.initialize()
 				initSubcomponents.initialize()
 
-				fastSelectors = initSelectors
-				safeSelectors = fastSelectors
-				initSelectors = null
+				fastExtracts = initExtracts
+				safeExtracts = fastExtracts
+				initExtracts = null
+
+				fastColumnExtracts = schema.selectColumnExtracts(this)(fastExtracts)
+				safeColumnExtracts = fastColumnExtracts
+
+
 
 				finalizeInitialization()
+				initializationState = 2
 			}
 		}
 
@@ -1166,6 +1286,41 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	  */
 	protected def finalizeInitialization() :Unit = ()
 
+
+
+	private[this] var initExtracts = NaturalMap.empty[Component, Extract]
+	@volatile private[this] var safeExtracts :NaturalMap[Component, Extract] = _
+	private[this] var fastExtracts :NaturalMap[Component, Extract] = _
+
+	final override def extracts :NaturalMap[Component, Extract] = {
+		if (fastExtracts == null) {
+			val initialized = safeExtracts
+			if (initialized != null)
+				fastExtracts = initialized
+			else {
+				initialize()
+				fastExtracts = safeExtracts
+			}
+		}
+		fastExtracts
+	}
+
+//	private[this] var initExtracts = NaturalMap.empty[Component, Extract]
+	@volatile private[this] var safeColumnExtracts :NaturalMap[Column, ColumnExtract] = _
+	private[this] var fastColumnExtracts :NaturalMap[Column, ColumnExtract] = _
+
+	final override def columnExtracts :NaturalMap[Column, ColumnExtract] = {
+		if (fastColumnExtracts == null) {
+			val initialized = safeColumnExtracts
+			if (initialized != null)
+				fastColumnExtracts = initialized
+			else {
+				initialize()
+				fastColumnExtracts = safeColumnExtracts
+			}
+		}
+		fastColumnExtracts
+	}
 
 
 	/** A sequence which works as a mutable buffer during initialization, but once it is completed requires
@@ -1193,7 +1348,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 		def +=(comp :C) :Unit =
 			if (isInitialized)
 				throw new IllegalStateException(
-					s"Can't enlist component $comp for $composite: the list of components has been already exported."
+					s"Can't enlist component $comp for $frame: the list of components has been already exported."
 				)
 			else
 				uninitialized += comp
@@ -1213,7 +1368,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 				cached = initialized
 				cached
 			} else {
-				composite.initialize()
+				frame.initialize()
 				uninitialized = null
 				cached = initialized
 				cached
@@ -1262,6 +1417,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 
 
 
+
+
+
 	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
 		MappedMapping[this.type, S, X, O](this, there, back)
 
@@ -1275,6 +1433,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { composite =>
 	override def prefixed(prefix :String) :Adapted[this.type] = PrefixedMapping(prefix, this)
 
 	override def renamed(name :String) :Adapted[this.type] = RenamedMapping.shallow(name, this)
+
 }
 
 

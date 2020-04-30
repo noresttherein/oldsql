@@ -1,9 +1,11 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{Buff, MappingExtract, GenericMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, GenericMapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.slang._
@@ -32,6 +34,45 @@ object OptionMapping {
 	{ box =>
 		val get :M = egg
 
+
+
+		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(eggExtract))
+
+		override val nullValue = Some(None)
+
+
+
+		private val eggExtract :Extract[S] = MappingExtract(get)(Extractor.fromOpt)
+
+/*
+		override def apply[T](component :Component[T]) :Extract[T] =
+			if (component eq get)
+				eggExtract.asInstanceOf[Extract[T]]
+			else {
+				val selector = get(component)
+				MappingExtract(selector.export)(Extractor.fromOpt[S] andThen selector)
+			}
+
+		override def apply[T](column :Column[T]) :ColumnExtract[T] =
+			if (column eq get)
+				eggExtract.asInstanceOf[ColumnExtract[T]]
+			else {
+				val selector = get(column)
+				MappingExtract(selector.export)(Extractor.fromOpt[S] andThen selector)
+			}
+*/
+		override val extracts :NaturalMap[Component, Extract] =
+			egg.extracts.map(schema.composeExtractAssoc(eggExtract)(_)).updated(egg, eggExtract)
+
+		override val columnExtracts :NaturalMap[Column, ColumnExtract] = egg match {
+			case column :ColumnMapping[S @unchecked, O @unchecked] =>
+				NaturalMap.single[Column, ColumnExtract, S](column, eggExtract.asInstanceOf[ColumnExtract[S]])
+			case _ =>
+				egg.columnExtracts.map(schema.composeColumnExtractAssoc(eggExtract)(_))
+		}
+
+
+
 		override val components :Unique[Component[_]] = Unique(get)
 		override val subcomponents :Unique[Component[_]] = get +: get.subcomponents
 
@@ -58,31 +99,6 @@ object OptionMapping {
 		override lazy val buffs :Seq[Buff[Option[S]]] =
 			get.buffs.map(_.bimap(Option(_), (_:Option[S]).get)) ++
 				(ExplicitSelect.enabled(get) ifTrue ExplicitSelect[Option[S]](None))
-
-
-		private val eggExtractor :Extract[S] = MappingExtract(get)(Extractor.fromOpt)
-
-		override def apply[T](component :Component[T]) :Extract[T] =
-			if (component eq get)
-				eggExtractor.asInstanceOf[Extract[T]]
-			else {
-				val selector = get(component)
-				MappingExtract(selector.export)(Extractor.fromOpt[S] andThen selector)
-			}
-
-		override def apply[T](column :Column[T]) :ExtractColumn[T] =
-			if (column eq get)
-				eggExtractor.asInstanceOf[ExtractColumn[T]]
-			else {
-				val selector = get(column)
-				MappingExtract(selector.export)(Extractor.fromOpt[S] andThen selector)
-			}
-
-
-
-		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(eggExtractor))
-
-		override val nullValue = Some(None)
 
 
 		override def sqlName :Option[String] = get.sqlName

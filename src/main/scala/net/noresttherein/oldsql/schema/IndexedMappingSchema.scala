@@ -6,10 +6,10 @@ import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema, FlatMappedMappingSchema, MappedMappingSchema}
+import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappedSchema, FlatMappingSchema, MappedSchema}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
-import net.noresttherein.oldsql.schema.IndexedMappingSchema.{FlatIndexedMappingSchema, FlatMappedIndexMappingSchema, MappedIndexedMappingSchema, NonEmptyIndexedSchema}
+import net.noresttherein.oldsql.schema.IndexedMappingSchema.{FlatIndexedMappingSchema, FlatMappedIndexSchema, MappedIndexedSchema, NonEmptyIndexedSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.IndexedSchemaMapping.FlatIndexedSchemaMapping
 
@@ -17,11 +17,16 @@ import net.noresttherein.oldsql.schema.IndexedSchemaMapping.FlatIndexedSchemaMap
 
 
 /** A [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] variant where all components are indexed
-  * with `String` literals for access in
+  * with `String` literals for access.
   * @author Marcin Mościcki
   */
 trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends MappingSchema[C, R, S, O] {
 	//todo: make flatten work
+
+//	override def prev[I <: Chain, V <: Chain](implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any))
+//			:IndexedMappingSchema[I, V, S, O]
+
+
 
 	/** Appends the given component to this schema.
 	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
@@ -161,7 +166,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
 	  */
 	override def map(constructor :R => S) :IndexedSchemaMapping[C, R, S, O] =
-		new MappedIndexedMappingSchema[C, R, S, O](this, constructor)
+		new MappedIndexedSchema[C, R, S, O](this, constructor)
 
 	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
@@ -188,7 +193,7 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
 	  */
 	override def flatMap(constructor :R => Option[S]) :IndexedSchemaMapping[C, R, S, O] =
-		new FlatMappedIndexMappingSchema[C, R, S, O](this, constructor)
+		new FlatMappedIndexSchema[C, R, S, O](this, constructor)
 
 	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
@@ -200,7 +205,8 @@ trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends Mapping
 	  *                    components as listed by the chain `R`.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.flatMap]]
 	  */
-	override def flatMap[F](constructor :F)(implicit apply :ChainApplication[R, F, Option[S]]) :IndexedSchemaMapping[C, R, S, O] =
+	override def flatMap[F](constructor :F)(implicit apply :ChainApplication[R, F, Option[S]])
+			:IndexedSchemaMapping[C, R, S, O] =
 		flatMap { row :R => row.feedTo(constructor) }
 
 
@@ -228,9 +234,15 @@ object IndexedMappingSchema {
 		extends FlatMappingSchema[C, R, S, O] with IndexedMappingSchema[C, R, S, O]
 	{ outer =>
 
+//		override def prev[I <: Chain, V <: Chain](implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any))
+//				:FlatIndexedMappingSchema[I, V, S, O]
+
+
+
 		override def col[N <: Label, T :ColumnForm](name :N, value :S => T, buffs :Buff[T]*)
 				:FlatIndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
 			col[N, T](name, name, value, buffs :_*)
+
 
 		override def col[N <: Label, T :ColumnForm](label :N, name :String, value :S => T, buffs :Buff[T]*)
 				:FlatIndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
@@ -247,6 +259,7 @@ object IndexedMappingSchema {
 				:FlatIndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
 			optcol(name, name, value, buffs:_*)
 
+
 		override def optcol[N <: Label, T :ColumnForm](label :N, name :String, value :S => Option[T], buffs :Buff[T]*)
 				:FlatIndexedMappingSchema[C ~ (N @|| T), R |~ (N :~ T), S, O] =
 		{
@@ -259,7 +272,7 @@ object IndexedMappingSchema {
 
 
 		override def map(constructor :R => S) :FlatIndexedSchemaMapping[C, R, S, O] =
-			new MappedIndexedMappingSchema[C, R, S, O](this, constructor) with FlatIndexedSchemaMapping[C, R, S, O] {
+			new MappedIndexedSchema[C, R, S, O](this, constructor) with FlatIndexedSchemaMapping[C, R, S, O] {
 				override val schema = outer
 			}
 
@@ -267,7 +280,7 @@ object IndexedMappingSchema {
 			map { row :R => row.feedTo(constructor) }
 
 		override def flatMap(constructor :R => Option[S]) :FlatIndexedSchemaMapping[C, R, S, O] =
-			new FlatMappedMappingSchema[C, R, S, O](this, constructor) with FlatIndexedSchemaMapping[C, R, S, O] {
+			new FlatMappedIndexSchema[C, R, S, O](this, constructor) with FlatIndexedSchemaMapping[C, R, S, O] {
 				override val schema = outer
 			}
 
@@ -287,6 +300,12 @@ object IndexedMappingSchema {
 
 
 	private[schema] class EmptyIndexedSchema[S, O] extends EmptySchema[S, O] with FlatIndexedMappingSchema[@~, @~, S, O] {
+
+
+//		override def prev[I <: Chain, V <: Chain](implicit comps : @~ <:< (I ~ Any), vals : @~ <:< (V ~ Any))
+//				:FlatIndexedMappingSchema[I, V, S, O] =
+//			throw new UnsupportedOperationException("EmptyIndexedSchema.prev")
+
 		override def compose[X](extractor :X => S) :EmptyIndexedSchema[X, O] = this.asInstanceOf[EmptyIndexedSchema[X, O]]
 
 		override def compose[X](extractor :X =?> S) :EmptyIndexedSchema[X, O] = this.asInstanceOf[EmptyIndexedSchema[X, O]]
@@ -306,6 +325,11 @@ object IndexedMappingSchema {
 
 		protected override def link(init :R, last :T) :R |~ (N :~ T) = init |~ label :~ last
 
+
+//		override def prev[P <: Chain, V <: Chain](implicit cs :C ~ M <:< (P ~ Any), vs :R |~ (N :~ T) <:< (V ~ Any))
+//				:IndexedMappingSchema[P, V, S, O] =
+//			init.asInstanceOf[IndexedMappingSchema[P, V, S, O]]
+
 		override def compose[X](extractor :X => S) :NonEmptyIndexedSchema[N, C, M, R, T, X, O] =
 			new NonEmptyIndexedSchema[N, C, M, R, T, X, O](init compose extractor, component, this.extractor compose extractor)
 
@@ -322,6 +346,12 @@ object IndexedMappingSchema {
 		extends NonEmptyIndexedSchema[N, C, M, R, T, S, O](init, last, extractor)
 		   with FlatIndexedMappingSchema[C ~ M, R |~ (N :~ T), S, O]
 	{
+
+		override def prev[P <: Chain, V <: Chain]
+		                 (implicit comps :C ~ M <:< (P ~ Any), vals :R |~ (N :~ T) <:< (V ~ Any))
+				:FlatMappingSchema[P, V, S, O] =
+			init.asInstanceOf[FlatMappingSchema[P, V, S, O]]
+
 		override def compose[X](extractor :X => S) :FlatNonEmptyIndexedSchema[N, C, M, R, T, X, O] =
 			new FlatNonEmptyIndexedSchema[N, C, M, R, T, X, O](init compose extractor, last,
 			                                                   this.extractor compose extractor)
@@ -336,15 +366,15 @@ object IndexedMappingSchema {
 
 
 
-	private[schema] class MappedIndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O]
+	private[schema] class MappedIndexedSchema[+C <: Chain, R <: LiteralIndex, S, O]
 	                      (override val schema :IndexedMappingSchema[C, R, S, O], constructor :R => S)
-		extends MappedMappingSchema[C, R, S, O](schema, constructor) with IndexedSchemaMapping[C, R, S, O]
+		extends MappedSchema[C, R, S, O](schema, constructor) with IndexedSchemaMapping[C, R, S, O]
 
 
 
-	private[schema] class FlatMappedIndexMappingSchema[+C <: Chain, R <: LiteralIndex, S, O]
+	private[schema] class FlatMappedIndexSchema[+C <: Chain, R <: LiteralIndex, S, O]
 	                      (override val schema :IndexedMappingSchema[C, R, S, O], constructor :R => Option[S])
-		extends FlatMappedMappingSchema[C, R, S, O](schema, constructor) with IndexedSchemaMapping[C, R, S, O]
+		extends FlatMappedSchema[C, R, S, O](schema, constructor) with IndexedSchemaMapping[C, R, S, O]
 
 
 }
@@ -364,6 +394,7 @@ trait IndexedSchemaMapping[+C <: Chain, I <: LiteralIndex, S, O] extends SchemaM
 
 
 object IndexedSchemaMapping {
+
 	@inline def apply[S, O] :FlatIndexedMappingSchema[@~, @~, S, O] = IndexedMappingSchema[S, O]
 
 

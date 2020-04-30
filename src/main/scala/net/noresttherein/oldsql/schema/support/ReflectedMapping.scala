@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.model.PropertyPath.PropertyReflectionException
 import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.MappingExtract
-import net.noresttherein.oldsql.schema.MappingExtract.{ColumnExtract, MappingExtractTemplate, ConstantColumn, ConstantExtract, EmptyColumn, EmptyExtract, IdentityColumn, IdentityExtract, OptionalColumn, RequisiteColumn, RequisiteExtract, RequisiteExtractTemplate}
+import net.noresttherein.oldsql.schema.MappingExtract.{ColumnMappingExtract, MappingExtractTemplate, ConstantColumn, ConstantExtract, EmptyColumn, EmptyExtract, IdentityColumn, IdentityExtract, OptionalColumn, RequisiteColumn, RequisiteExtract, RequisiteExtractTemplate}
 import net.noresttherein.oldsql.schema.bits.ComponentProperty
 import net.noresttherein.oldsql.schema.bits.ComponentProperty.ColumnProperty
 
@@ -22,10 +22,10 @@ trait ReflectedMapping[S, O] extends MappingFrame[S, O] { composite =>
 	protected implicit val subjectType :TypeTag[S]
 
 
-	override protected def selectorFor[T](component :FrameComponent[T]) :ComponentProperty[S, T, O] =
+	override protected def extractFor[T](component :FrameComponent[T]) :ComponentProperty[S, T, O] =
 		ComponentProperty(component)(component.extractor)
 
-	protected override def selectorFor[T](column :FrameColumn[T]) :ColumnProperty[S, T, O] =
+	protected override def extractFor[T](column :FrameColumn[T]) :ColumnProperty[S, T, O] =
 		ComponentProperty(column)(column.extractor)
 
 
