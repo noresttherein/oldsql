@@ -4,8 +4,8 @@ import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.morsels.Origin.{##, Rank}
-import net.noresttherein.oldsql.schema.{bits, GenericMapping, Mapping, RowSource, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginProjection, TypedMapping}
+import net.noresttherein.oldsql.schema.{bits, ColumnMapping, GenericMapping, Mapping, RowSource, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, MappingSubject, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.{ChainMapping, LabeledMapping}
@@ -14,11 +14,12 @@ import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.FromClause.GetTableByIndex.GetTableByNegativeIndex
 import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByLabel, BySubject, ByTypeConstructor}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
-import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation
+import net.noresttherein.oldsql.sql.MappingFormula.{FreeComponent, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyRelationIn
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, Formula}
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 import net.noresttherein.oldsql.sql.JoinParam.{FromParam, ParamSource, WithParam}
+import net.noresttherein.oldsql.sql.SQLTerm.True
 
 import scala.annotation.implicitNotFound
 
@@ -91,7 +92,8 @@ trait FromClause {
 
 
 	/** The type of this clause with all join kinds replaced with the root `With`. It forms the class of abstraction
-	  * of clauses with the same relations (and in the same order), which are considered equivalent for most purposes.
+	  * of clauses with the same relations (and in the same order), which are considered equivalent for many purposes,
+	  * in particular as the basis for SQL expressions `SQLFormula`.
 	  */
 	type Generalized <: FromLast
 
@@ -325,6 +327,62 @@ object FromClause {
 
 
 
+		@inline def naturalJoin[T[O] <: MappingFrom[O]]
+		                       (table :RowSource[T])(implicit last :GetTableByNegativeIndex[F, -1]) :F InnerJoin T =
+			InnerJoin(self, table) where naturalFilter[T]
+
+		@inline def naturalJoin[T[O] <: MappingFrom[O], A]
+		                       (table :T[A])(implicit last :GetTableByNegativeIndex[F, -1],
+		                                     alias :OriginProjection[T[A], A, T[Any], Any]) :F InnerJoin T =
+			InnerJoin(self, RowSource(table)) where naturalFilter[T]
+
+		@inline def leftNaturalJoin[T[O] <: MappingFrom[O]]
+		                           (table :RowSource[T])(implicit last :GetTableByNegativeIndex[F, -1]) :F LeftJoin T =
+			LeftJoin(self, table) where naturalFilter[T]
+
+		@inline def leftNaturalJoin[T[O] <: MappingFrom[O], A]
+		                           (table :T[A])(implicit last :GetTableByNegativeIndex[F, -1],
+		                                         alias :OriginProjection[T[A], A, T[Any], Any]) :F LeftJoin T =
+			LeftJoin(self, RowSource(table)) where naturalFilter[T]
+
+		@inline def rightNaturalJoin[T[O] <: MappingFrom[O]]
+		                            (table :RowSource[T])(implicit last :GetTableByNegativeIndex[F, -1]) :F RightJoin T =
+			RightJoin(self, table) where naturalFilter[T]
+
+		@inline def rightNaturalJoin[T[O] <: MappingFrom[O], A]
+		                            (table :T[A])(implicit last :GetTableByNegativeIndex[F, -1],
+		                                          alias :OriginProjection[T[A], A, T[Any], Any]) :F RightJoin T =
+			RightJoin(self, RowSource(table)) where naturalFilter[T]
+
+
+		
+		private def naturalFilter[T[O] <: MappingFrom[O]](tables :JoinedTables[F With T])
+		                                                 (implicit prev :GetTableByNegativeIndex[F With T, -2])
+				:BooleanFormula[F With T] =
+		{
+			val firstTable = tables.prev
+			val secondTable = tables.last
+
+			val firstColumns = firstTable.columns.map(c => c.name -> c).toMap
+			val secondColumns = secondTable.columns.map(c => c.name -> c).toMap
+			val common = firstColumns.keySet & secondColumns.keySet
+
+			val joins = common map { name =>
+
+				val first = firstColumns(name).asInstanceOf[ColumnMapping[Any, prev.J]]
+				val second = secondColumns(name).asInstanceOf[ColumnMapping[Any, F With T]]
+				if (first.form != second.form)
+					throw new IllegalArgumentException(s"Can't perform a natural join of $firstTable and $secondTable: " +
+							s"columns $first and $second have different types (form) ")
+
+				new FreeComponent[prev.J, MappingSubject[Any]#M, Any](first, 1) ===
+					new FreeComponent[F With T, MappingSubject[Any]#M, Any](second, 2)
+			}
+			(True[F With T]() /: joins)(_ && _)
+		}
+
+
+
 		@inline def subselect[T[O] <: MappingFrom[O]](table :RowSource[T]) :F Subselect T =
 			Subselect(self, table)
 
@@ -349,23 +407,23 @@ object FromClause {
 
 
 
-	implicit class JoinedTables[F <: FromClause](private val self :F) extends AnyVal {
+	implicit class JoinedTables[F <: FromClause](private val fromClause :F) extends AnyVal {
 
-		def of[E](implicit get :BySubject.Get[F, E]) :get.T[get.J] = get(self).mapping
+		def of[E](implicit get :BySubject.Get[F, E]) :get.T[get.J] = get(fromClause).mapping
 
 		def apply[A <: String with Singleton](alias :A)(implicit get :ByLabel.Get[F, A]) :get.T[get.J] =
-			get(self).mapping
+			get(fromClause).mapping
 
 		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :M[get.J] =
-			get(self).mapping
+			get(fromClause).mapping
 
 
-		def apply[N <: Numeral](n :N)(implicit get :GetTableByIndex[F, N]) :get.T[get.J] = get(self).mapping
+		def apply[N <: Numeral](n :N)(implicit get :GetTableByIndex[F, N]) :get.T[get.J] = get(fromClause).mapping
 
 
-		def last(implicit get :GetTableByNegativeIndex[F, -1]) :get.T[get.J] = get(self).mapping
+		def last(implicit get :GetTableByNegativeIndex[F, -1]) :get.T[get.J] = get(fromClause).mapping
 
-		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :get.T[get.J] = get(self).mapping
+		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :get.T[get.J] = get(fromClause).mapping
 
 	}
 
@@ -448,7 +506,7 @@ object FromClause {
 		  * and decreases going left. */
 		type I <: Numeral
 //		/** A unique origin type with the negative index of the relation encoded in it. */
-		type O = ##[I]
+//		type O = ##[I]
 		type J >: F <: FromClause
 
 		/** The mapping type of the relation at index `N`. */

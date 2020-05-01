@@ -22,19 +22,15 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * ''from'' clauses: this includes both [[net.noresttherein.oldsql.sql.ProperJoin proper]] joins
   * (inner, left outer, right outer), synthetic combined ''from'' clauses of a
   * [[net.noresttherein.oldsql.sql.Subselect subselect]] and its outer select, as well as non-SQL sources of values
-  * used in SQL select statements, such as statement [[net.noresttherein.oldsql.sql.WithParam parameters]].
+  * used in SQL select statements, such as statement [[net.noresttherein.oldsql.sql.JoinParam parameters]].
   *
   * Note that, as with all generic types taking exactly two arguments, it can be written in the infix notation:
   * `val usersGuns :From[Users] Join UserGuns Join Guns`. This class is covariant regarding its left side,
   * so a sequence of joined mappings `X0 J1 X1 J2 X2 .. JN XN &lt;: X0 Join X1 Join X2 ... Join XN`
   * if for all `JN &lt;: With`.
   *
-  * @param left a `FromClause` constituting a pre-existing joined list of relations - may be empty (`Dual`).
-  * @param table the right side of the join - representation of a table alias containing the joined mapping.
-  * @param joinCondition the join condition joining the right side to the left side. It is not the complete filter
-  *                      condition, as it doesn't include any join conditions defined in the left side of this join.
-  * @tparam L the left side of this join.
-  * @tparam R the right side of this join.
+  * @tparam L the left side of this join: a `FromClause` listing all preceding tables.
+  * @tparam R the right side of this join: a mapping type constructor for the last relation in this clause.
   * @see [[net.noresttherein.oldsql.sql.InnerJoin]]
   * @see [[net.noresttherein.oldsql.sql.LeftJoin]]
   * @see [[net.noresttherein.oldsql.sql.RightJoin]]
@@ -43,15 +39,22 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
 trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =>
+	/** A `FromClause` constituting a pre-existing joined list of relations - may be empty (`Dual`). */
 	val left :L
+
+	/** The right side of the join - representation of a table alias containing the joined mapping. */
 	val table :LastRelation[R]
+
+	/** the join condition joining the right side to the left side. It is not the complete filter
+	  * condition, as it doesn't include any join conditions defined in the left side of this join. */
 	protected[this] val joinCondition :BooleanFormula[L With R]
 
-	protected def copy(filter :BooleanFormula[L With R]) :This
-
-	def copy[F <: FromClause](left :F, filter :BooleanFormula[F With R] = True()) :JoinRight[F]
 
 
+	def copy[F <: FromClause](left :F, filter :BooleanFormula[F With R] = True) :JoinRight[F]
+
+
+	/** This type with the `FromClause` of the left side substituted for `F`. */
 	type JoinRight[+F <: FromClause] <: F With R
 
 	protected def self :JoinRight[left.type]
@@ -126,6 +129,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	}
 
 
+
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
 	override def equals(that :Any) :Boolean = that match {
@@ -141,7 +145,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	protected def joinType :String
 
 	override def toString :String =
-		left.toString + " " + joinType + " " + right + (if (condition == True()) "" else " on " + condition)
+		left.toString + " " + joinType + " " + right + (if (condition == True) "" else " on " + condition)
 
 }
 

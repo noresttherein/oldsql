@@ -344,7 +344,7 @@ object SQLTerm extends MultiColumnTerms {
 
 
 	object True extends ColumnLiteral[Boolean](true) {
-		def apply() :BooleanFormula[FromClause] = this
+		def apply[F <: FromClause]() :BooleanFormula[F] = this
 
 		def unapply(expression :SQLFormula[Nothing, _]) :Boolean = expression match {
 			case SQLLiteral(v :Boolean) => v
@@ -367,7 +367,7 @@ object SQLTerm extends MultiColumnTerms {
 
 
 	object False extends ColumnLiteral[Boolean](false) {
-		def apply() :BooleanFormula[FromClause] = this
+		def apply[F <: FromClause]() :BooleanFormula[F] = this
 
 		def unapply(expression :SQLFormula[Nothing, _]) :Boolean = expression match {
 			case SQLLiteral(v :Boolean) => !v

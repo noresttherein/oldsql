@@ -25,10 +25,6 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * selects, with any tables/mappings following its last occurrence in the type are exclusive to the deepest
   * subselect in the chain.
   *
-  * @param outer the tables of the outer select's ''from'' clause (possibly recursively inlined nesting).
-  * @param from first table in the from list of this subselect
-  * @param cond join condition joining this subselect (or rather, its first table) with outer select; may be expanded upon
-  *             when additional tables are added to this subselect join (i.e. this source is expanded).
   * @tparam F static type of outer select's source.
   * @tparam T Right side of this join - the first table of the ''from'' clause of the represented subselect.
   * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]]
@@ -73,10 +69,10 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 object Subselect {
 	def apply[L[O] <: MappingFrom[O], R[O] <: MappingFrom[O]]
 	         (left :RowSource[L], right :RowSource[R]) :From[L] Subselect R =
-		Subselect(From(left), LastRelation(right), True())
+		Subselect(From(left), LastRelation(right), True)
 
 	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L Subselect R =
-		Subselect(left, LastRelation(right), True())
+		Subselect(left, LastRelation(right), True)
 
 
 	private[sql] def apply[L <: FromClause, R[O] <: MappingFrom[O]]
@@ -90,9 +86,6 @@ object Subselect {
 			override type This = left.type Subselect R
 
 			override def self :left.type Subselect R = this
-
-			override def copy(filter :BooleanFormula[left.type With R]) :This =
-				Subselect(left, table, filter)
 
 
 			override def copy[T[O] <: MappingFrom[O]]

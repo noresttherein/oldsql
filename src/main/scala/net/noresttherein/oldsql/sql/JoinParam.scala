@@ -103,25 +103,25 @@ object JoinParam {
 
 
 	def apply[F <: FromClause, X](from :F, source :ParamSource[X]) :F WithParam X =
-		JoinParam[F, ParamSource[X]#Row](from, LastRelation(source), True())
+		JoinParam[F, ParamSource[X]#Row](from, LastRelation(source), True)
 
 	def apply[F <: FromClause, N <: Label, X](from :F, source :NamedParamSource[N, X]) :F JoinParam (N ?: X)#T =
-		JoinParam[F, (N ?: X)#T](from, LastRelation(source), True())
+		JoinParam[F, (N ?: X)#T](from, LastRelation(source), True)
 
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
 	trait ParamFactory[X] extends Any {
 		def apply[F <: FromClause](from :F)(implicit form :SQLForm[X]) :F WithParam X =
-			JoinParam(from, LastRelation(ParamSource[X]()), True())
+			JoinParam(from, LastRelation(ParamSource[X]()), True)
 
 		def apply[F <: FromClause](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
-			JoinParam(from, LastRelation(ParamSource[X](name)), True())
+			JoinParam(from, LastRelation(ParamSource[X](name)), True)
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T])(implicit form :SQLForm[X]) :From[T] WithParam X =
-			JoinParam(From(from), LastRelation(ParamSource[X]()), True())
+			JoinParam(From(from), LastRelation(ParamSource[X]()), True)
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T], name :String)(implicit form :SQLForm[X]) :From[T] WithParam X =
-			JoinParam(From(from), LastRelation(ParamSource[X](name)), True())
+			JoinParam(From(from), LastRelation(ParamSource[X](name)), True)
 	}
 
 
@@ -140,9 +140,6 @@ object JoinParam {
 
 			override def copy[F <: FromClause](left :F, filter :BooleanFormula[F With M]) :F JoinParam M =
 				JoinParam[F, M](left, table, filter)
-
-			override def copy(filter :BooleanFormula[left.type With M]) :This =
-				JoinParam[left.type, M](left, table, filter)
 
 		}
 
