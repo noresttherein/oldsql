@@ -95,7 +95,7 @@ object CompositeKin {
 
 		override def hashCode :Int = kin.hashCode * 31 + items.hashCode
 
-		override def toString :String = kin + "[" + items + "]"
+		override def toString :String = kin.toString + "[" + items + "]"
 	}
 
 	private case class SingletonKinWrapper[T](single :Kin[T]) extends BaseCompositeKin[T, T] {

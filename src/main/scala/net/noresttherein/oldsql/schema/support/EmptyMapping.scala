@@ -1,9 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{GenericMapping, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.MappingExtract
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
+import net.noresttherein.oldsql.schema.{ColumnMappingExtract, GenericMapping, SQLForm, SQLReadForm, SQLWriteForm}
 
 
 /**

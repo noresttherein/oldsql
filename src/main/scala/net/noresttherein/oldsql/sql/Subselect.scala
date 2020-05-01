@@ -87,6 +87,9 @@ object Subselect {
 
 			override def self :left.type Subselect R = this
 
+			override def copy(filter :BooleanFormula[left.type With R]) :This =
+				Subselect(left, table, filter)
+
 
 			override def copy[T[O] <: MappingFrom[O]]
 			                 (right :LastRelation[T], filter :BooleanFormula[left.type With T]) :left.type Subselect T =

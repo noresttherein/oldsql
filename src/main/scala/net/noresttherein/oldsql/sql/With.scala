@@ -49,7 +49,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	  * condition, as it doesn't include any join conditions defined in the left side of this join. */
 	protected[this] val joinCondition :BooleanFormula[L With R]
 
-
+	protected def copy(filter :BooleanFormula[L With R]) :This
 
 	def copy[F <: FromClause](left :F, filter :BooleanFormula[F With R] = True) :JoinRight[F]
 

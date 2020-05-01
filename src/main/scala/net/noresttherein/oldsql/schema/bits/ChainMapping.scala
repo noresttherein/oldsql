@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema, SchemaMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedSchemaMapping, SchemaColumn}
@@ -15,7 +15,6 @@ import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, Chai
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 
 
 

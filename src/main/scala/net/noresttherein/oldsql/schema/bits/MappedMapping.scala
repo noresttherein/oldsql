@@ -9,7 +9,6 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.support.MappingAdapter
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 
 import scala.util.Try
 

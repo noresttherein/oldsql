@@ -1,11 +1,8 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.{ColumnMapping, GenericMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{GenericMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 
 
 /** A convenience base trait for simple mappings which initialize all column lists by filtering the result

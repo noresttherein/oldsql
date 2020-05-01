@@ -58,7 +58,7 @@ object MappedKin {
 			if (compose == ComposedOf.itself[X]) ref.asInstanceOf[Kin[Y]]
 			else ref.map(this)
 
-		override def toString :String = compose + "(_)"
+		override def toString :String = compose.toString + "(_)"
 	}
 
 

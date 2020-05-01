@@ -250,6 +250,8 @@ object InnerJoin {
 
 			protected override def self :left.type InnerJoin R = this
 
+			override def copy(filter :BooleanFormula[left.type With R]) =
+				newJoin(left, table)(filter)
 
 			override def copy[T[O] <: MappingFrom[O]]
 			                 (right :LastRelation[T], filter :BooleanFormula[left.type With T]) :left.type InnerJoin T =
@@ -332,6 +334,8 @@ object LeftJoin {
 
 			override protected def self :left.type LeftJoin R = this
 
+			override protected def copy(filter :BooleanFormula[left.type With R]) :This =
+				LeftJoin(left :left.type, table, filter)
 
 			override def copy[T[A] <: MappingFrom[A]]
 			                 (right :LastRelation[T], filter :BooleanFormula[left.type With T]) :JoinLeft[T] =
@@ -412,6 +416,8 @@ object RightJoin {
 
 			override protected def self = this
 
+			protected override def copy(filter :BooleanFormula[left.type With R]) :This =
+				RightJoin(left :left.type, table, filter)
 
 			override def copy[T[O] <: MappingFrom[O]]
 			                 (right :LastRelation[T], filter :BooleanFormula[left.type With T]) :JoinLeft[T] =
@@ -514,6 +520,8 @@ object From {
 			override def copy[T[O] <: MappingFrom[O]](right :LastRelation[T], filter :BooleanFormula[Dual.type With T]) =
 				newJoin(right)(filter)
 
+			override protected def copy(filter :BooleanFormula[Dual.type With M]) =
+				newJoin(table)(filter)
 		}
 
 

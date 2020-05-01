@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, GenericMapping, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, GenericMapping, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
@@ -15,7 +15,6 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.{MappedMapping, PrefixedMapping, RenamedMapping}
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 import net.noresttherein.oldsql.slang._
 
 import scala.collection.AbstractSeq
@@ -69,7 +68,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * The best of both worlds can be achieved by simply mixing in this trait into a ready component class.
 	  *
 	  * @tparam T subject type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.MandatoryComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.OptionalComponent]]
 	  */
 	trait FrameComponent[T] extends GenericMapping[T, O] { self =>
 
@@ -305,6 +305,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  *  Note that while optional components will often be used in combination with the
 	  *  `OptionalSelect`/`OptionalInsert`/`OptionalUpdate` buffs, none of them is automatically implied.
 	  *
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseOptionalComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.OptionalComponentFrame]]
 	  * @see [[net.noresttherein.oldsql.schema.bits.OptionMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.OptionalSelect]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitSelect]]
@@ -312,8 +314,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitUpdate]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.OptionalInsert]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitInsert]]
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseOptionalComponent]]
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.OptionalComponentFrame]]
 	  */ //todo: should this come already with an OptionalInsert/Update/Select buff?
 	trait OptionalComponent[T] extends FrameComponent[T] {
 		protected[schema] override def extractor = Extractor(pick)
@@ -332,15 +332,15 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 
 	/** Convenience base component class which initializes the extractor using the constructor argument getter.
-	  * @param value extractor function for the value of this component.
+	  * @param pick extractor function for the value of this component.
 	  * @param opts buffs specific to this component. This list will be extended with buffs inherited
 	  *             from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
 	  *             to subcomponents of this component.
 	  * @tparam T value type of this component.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseOptionalComponent]]
 	  */
-	abstract class BaseComponent[T](value :S => T, opts :Buff[T]*) extends FrameComponent[T] {
-		protected[schema] override val extractor :Extractor[S, T] = Extractor.req(value)
+	abstract class BaseComponent[T](protected override val pick :S => T, opts :Buff[T]*) extends MandatoryComponent[T] {
+//		protected[schema] override val extractor :Extractor[S, T] = Extractor.req(pick)
 		override val buffs :Seq[Buff[T]] = opts ++: inheritedBuffs
 	}
 
@@ -376,17 +376,17 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 	/** Convenience base class for components which may not have a value for some instances of the enclosing mapping's
 	  * subject type `S`.
-	  * @param value extractor function for the value of this component.
+	  * @param pick extractor function for the value of this component.
 	  * @param opts buffs specific to this component. This list will be extended with buffs inherited
 	  *             from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
 	  *             to subcomponents of this component.
 	  * @tparam T value type of this component.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseComponent]]
 	  */
-	abstract class BaseOptionalComponent[T](value :S => Option[T], opts :Buff[T]*)
+	abstract class BaseOptionalComponent[T](protected override val pick :S => Option[T], opts :Buff[T]*)
 		extends OptionalComponent[T]
 	{
-		protected[schema] override val extractor = Extractor(value)
+//		protected[schema] override val extractor = Extractor(pick)
 		override val buffs :Seq[Buff[T]] = opts ++: inheritedBuffs
 	}
 
@@ -1053,14 +1053,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	override def apply[T](column :Column[T]) :ColumnExtract[T] = column match {
 		case export :MappingFrame[_, _]#FrameColumn[_] if export belongsTo this =>
 			export.asInstanceOf[FrameColumn[T]].extract
-		case wonky :MappingFrame[_, _]#FrameComponent[_] if wonky belongsTo this => wonky.extract match {
-			case selector :ColumnMappingExtract[S @unchecked, T @unchecked, O @unchecked] => selector
-			case selector =>
-				throw new IllegalStateException(
-					s"Component $column of $this implements FrameComponent but not FrameColumn " +
-					s"and its extract $selector is not a ColumnExtract."
-				)
-		}
+		case wonky :MappingFrame[_, _]#FrameComponent[_] if wonky belongsTo this =>
+			wonky.extract.asInstanceOf[ColumnExtract[T]]
 		case _ =>
 			columnExtracts.getOrElse(column,
 				throw new IllegalArgumentException(s"Column $column is not a part of mapping $this.")

@@ -9,7 +9,6 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection}
 import net.noresttherein.oldsql.schema.RowSource.{AnyRowSource, NamedSource}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
@@ -140,6 +139,9 @@ object JoinParam {
 
 			override def copy[F <: FromClause](left :F, filter :BooleanFormula[F With M]) :F JoinParam M =
 				JoinParam[F, M](left, table, filter)
+
+			override def copy(filter :BooleanFormula[left.type With M]) :This =
+				JoinParam[left.type, M](left, table, filter)
 
 		}
 

@@ -8,7 +8,6 @@ import net.noresttherein.oldsql.schema.ColumnMapping.{LiteralColumn, NumberedCol
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 
 
 

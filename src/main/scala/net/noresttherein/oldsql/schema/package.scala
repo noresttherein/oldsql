@@ -5,13 +5,33 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, TypedMapping}
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
+import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
 import net.noresttherein.oldsql.slang._
 
 /**
   * @author Marcin Mościcki
   */
 package object schema {
+
+	/** A `MappingExtract` describes the parent-child relationship between a mapping and its component.
+	  * It serves three functions:
+	  *   - provides a means of extracting the value of the component from the value of the parent;
+	  *   - retrieves the value of a component from `ComponentValues`;
+	  *   - provides the canonical, 'export' version of the component, that is the version with any wholesale
+	  *     modifications declared in the parent mapping (or some other mapping on the path to the subcomponent),
+	  *     applied to the original version of the component. This includes buffs and column prefix declarations
+	  *     defined for all subcomponents of a mapping.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](TypedMapping[T] ]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
+	  */
+	type MappingExtract[-S, T, O] = GenericMappingExtract[TypedMapping[T, O], S, T, O]
+
+	type ColumnMappingExtract[S, T, O] = GenericMappingExtract[ColumnMapping[T, O], S, T, O]
+
+
+
+
+
 
 	private[schema] def mapBuffs[S, X](mapping :MappingOf[S])(map :S =?> X) :Seq[Buff[X]] =
 		map.requisite match {
@@ -66,12 +86,10 @@ package object schema {
 	{
 		def castToColumn[T](entry :Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T]) = 
 			entry._1 match {
-				case column :ColumnMapping[T @unchecked, O @unchecked] => entry._2 match {
-					case extract :ColumnMappingExtract[S @unchecked, T @unchecked, O @unchecked] =>
-						Some(Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](column, extract))
-					case err =>
-						throw new IllegalStateException(s"Extract for column $column of $mapping is not a ColumnExtract: $err.")
-				}
+				case column :ColumnMapping[T @unchecked, O @unchecked] =>
+					Some(Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](
+						column, entry._2.asInstanceOf[ColumnMappingExtract[S, T, O]]
+					))
 				case _ => None
 			}
 		

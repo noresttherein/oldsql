@@ -48,7 +48,8 @@ import scala.annotation.implicitNotFound
   * @see [[net.noresttherein.oldsql.slang.InferTypeParams.Conforms Conforms]]
   * @author Marcin Mościcki
   */
-@implicitNotFound("Cannot infer type arguments: type ${T} is not a subtype of ${L} with ${R}.")
+@implicitNotFound("Cannot infer type arguments: type ${T} is not a subtype of ${L} with ${R}.\n" +
+                  "This may be caused by type ${L} occurring outside of the InferTypeParams[${T}, ${L}, ${R}] (alias Conforms).")
 sealed abstract class InferTypeParams[-T, L <: R, +R] extends (T => L) {
 	def _1 :T <:< L
 	def _2 :T <:< R
@@ -94,7 +95,9 @@ object InferTypeParams {
 	}
 
 
-	@implicitNotFound("Cannot infer type arguments: type ${T} is not a subtype of ${L} with ${M} with ${R}.")
+	@implicitNotFound("Cannot infer type arguments: type ${T} is not a subtype of ${L} with ${M} with ${R}.\n" +
+	                  "This may be caused by types ${L} or ${M} occurring outside of " +
+	                  "the InferNestedParams[${T}, ${L}, ${M}, ${R}] implicit parameter.")
 	sealed abstract class InferNestedParams[T, L <: M, +M <: R, +R] extends (T => L) {
 		def _1 :T =:= L
 		def _2 :T <:< M

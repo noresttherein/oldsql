@@ -52,7 +52,7 @@ trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with
 
 	def ++:[U >: T](elems :IterableOnce[U]) :Unique[U]
 
-	override def stringPrefix = "Unique"
+	override def className = "Unique"
 }
 
 
@@ -183,7 +183,7 @@ object Unique extends IterableFactory[Unique] {
 
 		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
 			if (elems.iterator.isEmpty) this
-			else elems ++: items
+			else (elems ++: items)
 
 		override def concat[B >: T](suffix :IterableOnce[B]) :Unique[B] = items ++ suffix
 

@@ -11,7 +11,6 @@ import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, 
 import net.noresttherein.oldsql.schema.MappingPath.SelfPath
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingFrame
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
@@ -250,7 +249,7 @@ sealed trait Mapping {
 	  */
 	def apply[T](component :Component[T]) :Extract[T] = extracts(component)
 
-	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract ColumnExtract]]
+	/** Retrieves the [[net.noresttherein.oldsql.schema.ColumnMappingExtract ColumnMappingExtract]]
 	  * for the given column.
 	  * @throws NoSuchElementException if `column` is not a subcomponent of this mapping.
 	  */

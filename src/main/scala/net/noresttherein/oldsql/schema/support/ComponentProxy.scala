@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingNest, Mappin
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, GenericMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
-import net.noresttherein.oldsql.schema.MappingExtract.ColumnMappingExtract
+import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
 
 import scala.collection.mutable
 
@@ -288,10 +288,8 @@ object ComponentProxy {
 		override val columnExtracts = NaturalMap[Column, ColumnExtract](
 			exports.flatMap {
 				case (column :ColumnMapping[Any @unchecked, O @unchecked],
-				      extract :ColumnMappingExtract[S @unchecked, Any @unchecked, O @unchecked]) =>
+				      extract :GenericMappingExtract[ColumnMapping[Any, O] @unchecked, S @unchecked, Any @unchecked, O @unchecked]) =>
 					Some(Assoc[Column, ColumnExtract, Any](column, extract))
-				case (column :ColumnMapping[_, _], extract) =>
-					throw new IllegalStateException(s"Extract for column $column of $this is not a ColumnExtract: $extract.")
 				case _ =>
 					None
 			}.toSeq :_*

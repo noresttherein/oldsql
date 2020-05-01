@@ -35,7 +35,7 @@ object SQLCondition {
 
 		protected override def parts :Seq[SQLFormula[F, T]] = left::right::Nil
 
-		override def toString :String = left + " " + symbol + " " + right
+		override def toString :String = left.toString + " " + symbol + " " + right
 	}
 
 
