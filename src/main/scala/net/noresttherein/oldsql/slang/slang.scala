@@ -13,7 +13,7 @@ package object slang {
 	private[oldsql] implicit class repeat(private val count :Int) extends AnyVal {
 		/** Execute the given block the number of times specified by 'this' argument. */
 		def times(block : =>Unit): Unit =
-			for (i<- 0 until count) block
+			for (_ <- 0 until count) block
 
 	}
 
@@ -60,7 +60,7 @@ package object slang {
 		/** Returns Some(this) if passed condition is true for this, None otherwise;
 		  * `this` is evaluated once, before passing its value to the condition!
 		  */
-		def providing(condition :T=>Boolean) :Option[T] = {
+		def providing(condition :T => Boolean) :Option[T] = {
 			val x = expr
 			if (condition(x)) Some(x) else None
 		}
@@ -76,7 +76,7 @@ package object slang {
 		/** Returns Some(this) if passed condition is false for this, None otherwise;
 		  * `this` is evaluated once, before passing its value to the condition!
 		  */
-		def unless(condition :T=>Boolean) :Option[T] = {
+		def unless(condition :T => Boolean) :Option[T] = {
 			val x = expr
 			if (!condition(x)) Some(x) else None
 		}
@@ -91,25 +91,25 @@ package object slang {
 
 
 	private[oldsql] implicit class IfTrueAndIfFalse(private val condition :Boolean) extends AnyVal {
-		def ifTrue[T](expr: =>T) :Option[T] = if (condition) Some(expr) else None
+		def ifTrue[T](expr: => T) :Option[T] = if (condition) Some(expr) else None
 
-		def ifFalse[T](expr: =>T) :Option[T] = if (!condition) Some(expr) else None
+		def ifFalse[T](expr: => T) :Option[T] = if (!condition) Some(expr) else None
 
-		def thenTry[T](expr : =>Option[T]) :Option[T] = if (condition) expr else None
+		def thenMaybe[T](expr : => Option[T]) :Option[T] = if (condition) expr else None
 
-		def otherwiseTry[T](expr : =>Option[T]) :Option[T] = if (!condition) expr else None
+		def otherwiseMaybe[T](expr : => Option[T]) :Option[T] = if (!condition) expr else None
 	}
 
 
 
-	private[oldsql] implicit class OptionGuardExtension[T](opt : =>Option[T]) {
+	private[oldsql] implicit class OptionGuardExtension[T](opt : => Option[T]) {
 		def orNoneIf(expr :Boolean) :Option[T] =
 			if (expr) None else opt
 
 		def orNoneUnless(expr :Boolean) :Option[T] =
 			if (expr) opt else None
 
-		def mapOrElse[X](expr : T=>X, default : =>X) :X = opt match {
+		def mapOrElse[X](expr : T => X, default : => X) :X = opt match {
 			case Some(t) => expr(t)
 			case none => default
 		}

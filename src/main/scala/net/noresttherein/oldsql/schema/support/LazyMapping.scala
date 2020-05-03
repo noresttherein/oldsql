@@ -1,17 +1,35 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.{GenericMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
 
 
-/** A convenience base trait for simple mappings which initialize all column lists by filtering the result
-  * of the abstract method `columns` based on their applied buffs. The fields are initialized lazily to avoid
-  * calls to `columns` before the class defining it is properly initialized. They all use
-  * [[net.noresttherein.oldsql.collection.Unique.delay]], which is thread safe, invokes the initializer at most once,
-  * and doesn't incur any computational penalty once initialized.
+/** A convenience base trait for simple mappings which initialize all column, component and extract lists
+  * by filtering the result of the abstract method `columns` based on their applied buffs. The fields are initialized
+  * lazily to avoid calls to `columns` before the class defining it is properly initialized. Additionally,
+  * `optionally` implementation is optimized by similarly storing lazily precomputed required buff information.
+  * They all use [[net.noresttherein.oldsql.collection.Unique.delay]] or [[net.noresttherein.oldsql.morsels.Lazy Lazy]],
+  * which are thread safe, invoke the initializer at most once, and don't incur any computational penalty once initialized.
   */
 trait LazyMapping[S, O] extends GenericMapping[S, O] {
+
+
+	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
+		case res :Some[S] =>
+			if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
+		case _ =>
+			val res = default.get
+			if (res.isDefined) res else explicit.get
+	}
+
+	private val audits = Lazy(SelectAudit.Audit(this))
+	private val default = Lazy(OptionalSelect.Value(this))
+	private val explicit = Lazy(ExtraSelect.Value(this))
+
+
 
 	override val columnExtracts :NaturalMap[Column, ColumnExtract] =
 		NaturalMap.Lazy(schema.selectColumnExtracts(this)(extracts))
@@ -31,14 +49,30 @@ trait LazyMapping[S, O] extends GenericMapping[S, O] {
 	override val updateForm: SQLWriteForm[S] = SQLWriteForm.Lazy(super.updateForm)
 	override val insertForm: SQLWriteForm[S] = SQLWriteForm.Lazy(super.insertForm)
 
+
 }
 
 
 
 
 
-
+/** A mixin trait which defines all column and component lists as `val`s initialized by the call to super.
+  * It caches also extracts and some buff information required by `optionally` to provide a faster implementation.
+  */
 trait StableMapping[S, O] extends GenericMapping[S, O] {
+
+	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
+		case res :Some[S] =>
+			if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
+		case _ =>
+			val res = default
+			if (res.isDefined) res else explicit
+	}
+
+	private val audits = SelectAudit.Audit(this)
+	private val default = OptionalSelect.Value(this)
+	private val explicit = ExtraSelect.Value(this)
+
 
 	abstract override val extracts :NaturalMap[Component, Extract] = super.extracts
 	abstract override val columnExtracts :NaturalMap[Column, ColumnExtract] = super.columnExtracts

@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
+import net.noresttherein.oldsql.morsels.Lazy
+import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
 import net.noresttherein.oldsql.schema.GenericMapping
 import net.noresttherein.oldsql.slang._
 
@@ -9,13 +11,28 @@ import net.noresttherein.oldsql.slang._
 trait StaticMapping[S, O] extends GenericMapping[S, O] {
 
 
+
+	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
+		case res :Some[S] =>
+			if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
+		case _ =>
+			val res = default.get
+			if (res.isDefined) res else explicit
+	}
+
+	private val audits = Lazy(SelectAudit.Audit(this))
+	private val default = Lazy(OptionalSelect.Value(this))
+	private val explicit = Lazy(ExtraSelect.Value(this))
+
+
+
 	/** Performs the assembly of this mapping's subject from the components. This method is called in a double-dispatch
 	  * from `optionally`/`apply`, which should be used by external mappings, as they are responsible for
 	  * introducing default values and any manipulation of the final values. The standard implementation
 	  * invokes [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct(pieces)]] as long as
 	  * [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined(pieces)]] returns `true`. Additionally,
 	  * all `NoSuchElementException` exceptions (thrown by default by components `apply` method when no value can
-	  * be assembled or is predefined) are caught and result in returning `None`. All other exceptions,
+	  * be assembled or is preset) are caught and result in returning `None`. All other exceptions,
 	  * including `NullPointerException` which may result from unavailable columns, are propagated. Subclasses should
 	  * override those methods instead of `assemble`.
 	  * @return `Some(construct(pieces))` if `isDefined(pieces)` returns `true` or `None` if it returns `false` or

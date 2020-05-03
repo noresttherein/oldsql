@@ -11,7 +11,7 @@ import scala.collection.{immutable, IterableOps, MapOps}
   * Each key is of type `K[X] forSome { type X }` and is mapped to a value of type `V[X]` for the same type argument `X`.
   * @author Marcin Mościcki
   */
-trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] { outer =>
+trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (K =#> V) { outer =>
 	def get[X](key :K[X]) :Option[V[X]]
 
 	def getOrElse[U[T] >: V[T], X](key :K[X], default: => U[X]) :U[X] = get(key) getOrElse default

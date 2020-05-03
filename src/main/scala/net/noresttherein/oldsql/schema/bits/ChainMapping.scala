@@ -193,7 +193,7 @@ object ChainMapping {
 		extends MappingSchema[C, R, S, O] with ShallowProxy[R, O]
 	{
 
-		override def optionally(pieces :Pieces) :Option[R] = egg.optionally(pieces.compatible(egg))
+		override def optionally(pieces :Pieces) :Option[R] = egg.optionally(pieces)
 
 
 		override def unapply(subject :S) :Option[R] = egg.unapply(subject.init)

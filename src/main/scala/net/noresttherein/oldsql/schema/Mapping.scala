@@ -4,6 +4,7 @@ import java.sql.{PreparedStatement, ResultSet}
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
+import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingReadForm, MappingWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
@@ -16,8 +17,8 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
 import net.noresttherein.oldsql.sql.FromClause.TableCount
 import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent
-
 import scala.annotation.implicitNotFound
+import scala.collection.immutable.ArraySeq
 
 
 
@@ -138,7 +139,7 @@ sealed trait Mapping {
 	  * the subject type of the `Pieces`'s type parameter. This additional restriction serves solely to prevent
 	  * accidental passing of an instance prepared for one mapping to another, such as a component of this mapping.
 	  */
-	type Pieces = ComponentValues[_ >: this.type <: Component[Subject]]
+	type Pieces = ComponentValues[Subject, Origin]
 
 	/** An extract of the value for some component of this mapping with the subject type `T`, which carries
 	  * additionally the export version of that component (from the point of view of this mapping).
@@ -164,6 +165,9 @@ sealed trait Mapping {
 	  * as this instance and thus a valid subcomponent type of this mapping.
 	  */
 	type AnyColumn = Column[_]
+
+	type ExtractMap = NaturalMap[Component, Extract]
+	type ColumnExtractMap = NaturalMap[Column, ColumnExtract]
 
 
 
@@ -221,7 +225,7 @@ sealed trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.getValue ComponentValues.getValue]]
 	  */
 	def assemble(pieces :Pieces) :Option[Subject]
-
+//todo: replace with NullValue
 	def nullValue :Option[Subject] //todo: maybe instead of this problem just have non-null NullValue in forms?
 
 
@@ -230,13 +234,13 @@ sealed trait Mapping {
 	def pick[T](component :Component[T], subject :Subject) :Option[T] = apply(component).get(subject)
 
 	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
-	def pick[T](component :Component[T], pieces :Pieces) :Option[T] = pieces.get(apply(component))
+	def pick[T](component :Component[T], pieces :Pieces) :Option[T] = pieces.get(export(component))
 
 	/** Extract the value for the given component from the given `Subject` instance. */
 	def apply[T](component :Component[T], subject :Subject) :T = apply(component)(subject)
 
 	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
-	def apply[T](component :Component[T], pieces :Pieces) :T = pieces(apply(component))
+	def apply[T](component :Component[T], pieces :Pieces) :T = pieces(export(component))
 
 
 
@@ -256,7 +260,7 @@ sealed trait Mapping {
 	def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
 
 
-
+	//todo: decide definitely if it should include identity extractor for this
 	def extracts :NaturalMap[Component, Extract]
 
 	def columnExtracts :NaturalMap[Column, ColumnExtract]
@@ -532,9 +536,14 @@ trait GenericMapping[S, O] extends Mapping { self =>
 			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
 		}
 
-	override def optionally(pieces: Pieces): Option[S] = //todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
-		pieces.result(this) map { res => (res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) } } orElse
-			OptionalSelect.Value(this) orElse ExtraSelect.Value(this)
+	override def optionally(pieces: Pieces): Option[S] = pieces.assemble(this) match {
+		//todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
+		case Some(res) => Some((res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
+		case _ =>
+			val res = OptionalSelect.Value(this)
+			if (res.isDefined) res
+			else ExtraSelect.Value(this)
+	}
 
 	def assemble(pieces :Pieces) :Option[S]
 
@@ -543,16 +552,16 @@ trait GenericMapping[S, O] extends Mapping { self =>
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		MappingReadForm.select(this :this.type, components)
+		MappingReadForm.select(this, components)
 
 	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		MappingWriteForm.query(this :this.type, components)
+		MappingWriteForm.query(this, components)
 
 	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		MappingWriteForm.update(this :this.type, components)
+		MappingWriteForm.update(this, components)
 
 	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		MappingWriteForm.insert(this :this.type, components)
+		MappingWriteForm.insert(this, components)
 
 	override def selectForm: SQLReadForm[S] = MappingReadForm.defaultSelect(this)
 	override def queryForm: SQLWriteForm[S] = MappingWriteForm.defaultQuery(this)
@@ -616,7 +625,7 @@ trait GenericMapping[S, O] extends Mapping { self =>
 trait RootMapping[S, O] extends GenericMapping[S, O] {
 
 	override def optionally(pieces :Pieces) :Option[S] =
-		super.optionally(pieces.aliased { c => apply(c).export })
+		super.optionally(pieces.aliased(this))
 
 }
 
@@ -860,10 +869,10 @@ object Mapping {
 
 
 	trait ColumnFilter {
-		def apply[S](mapping :MappingOf[S]) :Unique[mapping.Component[_]] =
+		def apply[S](mapping :MappingOf[S]) :Unique[mapping.Column[_]] =
 			mapping.columns.filter(test[mapping.Origin])
 
-		def filter[O](columns :Unique[MappingFrom[O]]) :Unique[MappingFrom[O]] =
+		def filter[O](columns :Unique[ColumnMapping[_, O]]) :Unique[ColumnMapping[_, O]] =
 			columns.filter(test[O])
 
 		def test[O](column :MappingFrom[O]) :Boolean
@@ -926,8 +935,8 @@ object Mapping {
 
 
 		case object AllColumns extends ColumnFilter {
-			override def apply[S](mapping :MappingOf[S]) :Unique[mapping.Component[_]] = mapping.columns
-			override def filter[O](columns :Unique[MappingFrom[O]]) :Unique[MappingFrom[O]] = columns
+			override def apply[S](mapping :MappingOf[S]) :Unique[mapping.Column[_]] = mapping.columns
+			override def filter[O](columns :Unique[ColumnMapping[_, O]]) :Unique[ColumnMapping[_, O]] = columns
 			override def test[O](column :MappingFrom[O]) = true
 		}
 	}
@@ -937,8 +946,9 @@ object Mapping {
 
 
 
-	private class MappingReadForm[S, O] private[Mapping]
-			(mapping :TypedMapping[S, O], columns :Unique[MappingFrom[O]], read :MappingFrom[O]=>SQLReadForm[_] = (_:MappingFrom[O]).selectForm)
+	private[schema] class MappingReadForm[S, O] private[schema]
+	                      (mapping :TypedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
+	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingFrom[O]).selectForm)
 		extends SQLReadForm[S]
 	{
 		private[this] val columnArray = columns.toArray
@@ -951,23 +961,22 @@ object Mapping {
 		override def opt(position: Int)(res: ResultSet): Option[S] = {
 			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
 			val columnValues = columnArray.map { c => i += 1; read(c).opt(i - 1)(res) }
-			val pieces = ComponentValues(mapping) { comp =>
-				val idx = columns.indexOf(mapping.export(comp))
-				if (idx >= 0) columnValues(idx)
-				else None
-			}
+			val pieces = ComponentValues(mapping)(ArraySeq.unsafeWrapArray(columnValues))(columns.indexOf)
 //			mapping.assemble(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
 //				optional.map(_.value) orElse extra.map(_.value)
 			mapping.optionally(pieces)
 		}
 
 		override lazy val nullValue: S = mapping.nullValue getOrElse {
-			mapping.apply(ComponentValues(mapping :mapping.type) { comp =>
-				val lifted = mapping.export(comp)
-				if (columns.contains(lifted))
-					Some(read(lifted).nullValue)
-				else None
-			})
+			mapping.apply(ComponentValues { _ match {
+				case column :ColumnMapping[_, O @unchecked] =>
+					val export = mapping.export(column)
+					if (columns.contains(export))
+						Some(read(export).nullValue)
+					else None
+				case _ =>
+					None
+			}})
 		}
 
 		private def mappingString = mapping.sqlName getOrElse mapping.unqualifiedClassName
@@ -982,13 +991,14 @@ object Mapping {
 
 	object MappingReadForm {
 
-		def apply[S, O](mapping :TypedMapping[S, O], columns :Unique[MappingFrom[O]],
-		                forms :MappingFrom[O] => SQLReadForm[_] = (_:MappingFrom[O]).selectForm) :SQLReadForm[S] =
+		def apply[S, O](mapping :TypedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
+		                forms :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingFrom[O]).selectForm) :SQLReadForm[S] =
 			new MappingReadForm[S, O](mapping, columns, forms)
 
 
 
 		def select[S, O](mapping :TypedMapping[S, O], components :Unique[MappingFrom[O]]) :SQLReadForm[S] = {
+			//todo: we should clearly require that components of an export component are export themselves
 			val columns = components.map(mapping.export(_)).flatMap(_.selectable)
 
 			if (columns.exists(NoSelect.enabled))
@@ -1023,27 +1033,32 @@ object Mapping {
 
 
 
-	private class MappingWriteForm[S, O] private (
-             mapping :TypedMapping[S, O],
-             columns :Unique[MappingFrom[O]],
-             substitute :ValuedBuffType,
-             write :MappingFrom[O] => SQLWriteForm[_])
+	private[schema] class MappingWriteForm[S, O] private[schema]
+	                      (mapping :TypedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
+                           substitute :ValuedBuffType, write :ColumnMapping[_, O] => SQLWriteForm[_])
 		extends SQLWriteForm[S]
 	{
 //		private[this] val extras = columns.map(substitute.Value.unapply(_))(breakOut) :IndexedSeq[Option[Any]]
+		private[this] val extracts = columns.toArray.map(mapping(_))
 
 		override def set(position :Int)(statement :PreparedStatement, value :S) :Unit =
 			if (value == null)
 				setNull(position)(statement)
 			else {
 				val subject = value.asInstanceOf[mapping.Subject]
-				var i = position
+				var i = 0
+				var offset = position
 				columns foreach { c =>
-					val column = c.asInstanceOf[TypedMapping[Any, O]]
+					val column = c.asInstanceOf[ColumnMapping[Any, O]]
 					val form = write(column).asInstanceOf[SQLWriteForm[Any]]
 					//extras(columns.indexOf(column))
-					form.setOpt(i)(statement, substitute.Value(column) orElse mapping(column).get(subject))
-					i += form.writtenColumns
+					val columnValue = substitute.Value(column) match {
+						case some :Some[_] => some
+						case _ => extracts(i).get(subject)
+					}
+					form.setOpt(offset)(statement, columnValue)
+					offset += form.writtenColumns
+					i += 1
 				}
 			}
 
@@ -1058,15 +1073,16 @@ object Mapping {
 
 		override def literal(value: S, inline :Boolean): String = {
 			val subject = value.asInstanceOf[mapping.Subject]
+			var i = 0
 			val literals = columns.toSeq.map { c =>
-				val comp = c.asInstanceOf[mapping.Component[Any]]
 				val form = write(c).asInstanceOf[SQLWriteForm[Any]]
-				mapping(comp).get(subject) match {
+				extracts(i).get(subject) match {
 					case Some(literal) =>
 						if (literal == null) form.nullLiteral(inline)
 						else form.literal(literal, inline)
 					case _ => form.nullLiteral(inline)
 				}
+				i += 1
 			}
 			if (inline) literals.mkString("", ", ", "")
 			else literals.mkString("(", ", ", ")")
@@ -1099,10 +1115,10 @@ object Mapping {
 
 	object MappingWriteForm {
 
-		def apply[S, O](mapping :TypedMapping[S, O], components :Unique[MappingFrom[O]],
-		                write :MappingFrom[O] => SQLWriteForm[_],
+		def apply[S, O](mapping :TypedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
+		                write :ColumnMapping[_, O] => SQLWriteForm[_],
 		                replacement :ValuedBuffType = AbstractValuedBuff) :SQLWriteForm[S] =
-			new MappingWriteForm[S, O](mapping, components, replacement, write)
+			new MappingWriteForm[S, O](mapping, columns, replacement, write)
 
 
 		def query[S, O](mapping :TypedMapping[S, O], components :Unique[MappingFrom[O]],
@@ -1156,13 +1172,13 @@ object Mapping {
 		}
 
 		private def default[S](mapping :MappingOf[S])(filterNot :BuffType, mandatory :ValuedBuffType,
-		                                              write :mapping.Component[_] => SQLWriteForm[_]) :SQLWriteForm[S] = {
+		                                              write :mapping.Column[_] => SQLWriteForm[_]) :SQLWriteForm[S] = {
 			val columns = filterNot.Disabled(mapping) ++ mandatory.Enabled(mapping)
 			new MappingWriteForm[S, mapping.Origin](mapping, columns, mandatory, write)
 		}
 
-		private def full[S](mapping :MappingOf[S])(columns :Unique[mapping.Component[_]], extra :ValuedBuffType,
-		                                           write :mapping.Component[_] => SQLWriteForm[_]) :SQLWriteForm[S] =
+		private def full[S](mapping :MappingOf[S])(columns :Unique[mapping.Column[_]], extra :ValuedBuffType,
+		                                           write :mapping.Column[_] => SQLWriteForm[_]) :SQLWriteForm[S] =
 			new MappingWriteForm[S, mapping.Origin](mapping, columns ++ extra.Enabled(mapping), extra, write)
 
 	}

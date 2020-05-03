@@ -84,10 +84,10 @@ class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O
 
 
 
-	override def selectForm :SQLForm[S] = form
-	override def insertForm :SQLForm[S] = form
-	override def queryForm :SQLForm[S] = form
-	override def updateForm :SQLForm[S] = form
+	override def selectForm :SQLReadForm[S] = form
+	override def insertForm :SQLWriteForm[S] = form
+	override def queryForm :SQLWriteForm[S] = form
+	override def updateForm :SQLWriteForm[S] = form
 
 }
 

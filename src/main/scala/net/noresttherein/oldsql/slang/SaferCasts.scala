@@ -53,15 +53,15 @@ private[oldsql] object SaferCasts {
 
 
 	implicit class TypeParameterCastingExtension1[G[X]](private val value: G[_]) extends AnyVal {
-		def crosstyped[S] :G[S] = value.asInstanceOf[G[S]]
+		@inline def crosstyped[S] :G[S] = value.asInstanceOf[G[S]]
 	}
 
 	implicit class TypeParameterCastingExtension2[G[X, Y]](private val value :G[_, _]) extends AnyVal {
-		def crosstyped[S, T] :G[S, T] = value.asInstanceOf[G[S, T]]
+		@inline def crosstyped[S, T] :G[S, T] = value.asInstanceOf[G[S, T]]
 	}
 
 	implicit class TypeParameterCastingExtension3[G[X, Y, Z]](private val value :G[_, _, _]) extends AnyVal {
-		def crosstyped[S, T, U] :G[S, T, U] = value.asInstanceOf[G[S, T, U]]
+		@inline def crosstyped[S, T, U] :G[S, T, U] = value.asInstanceOf[G[S, T, U]]
 	}
 
 

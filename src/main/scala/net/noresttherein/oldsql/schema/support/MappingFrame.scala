@@ -1,25 +1,29 @@
 package net.noresttherein.oldsql.schema.support
 
+import java.sql.{PreparedStatement, ResultSet}
+
 import net.noresttherein.oldsql.collection.{MutableNaturalMap, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, GenericMapping, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, GenericMapping, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly, ValuedBuffType}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.MappingOf
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, TypedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.{MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.slang._
-
 import scala.collection.AbstractSeq
+import scala.collection.immutable.ArraySeq
 import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe.TypeTag
+
+import net.noresttherein.oldsql
 
 
 
@@ -481,6 +485,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.DirectColumn]]
 	  */
 	trait FrameColumn[T] extends FrameComponent[T] with ColumnMapping[T, O] {
+		private[MappingFrame] val index :Int = nextColumnIndex()
 
 		override def extract :frame.ColumnExtract[T] =
 			super.extract.asInstanceOf[ColumnMappingExtract[S, T, O]]
@@ -1271,6 +1276,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 				finalizeInitialization()
 				initializationState = 2
+
+				oldsql.publishMutable()
 			}
 		}
 
@@ -1315,6 +1322,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		}
 		fastColumnExtracts
 	}
+
+
+
+
 
 
 	/** A sequence which works as a mutable buffer during initialization, but once it is completed requires
@@ -1404,7 +1415,79 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	final override def insertable :Unique[Column[_]] = initInsertable.items
 	final override def autoInserted :Unique[Column[_]] = initAutoInsert.items
 
-	override val selectForm :SQLReadForm[S] = SQLReadForm.Lazy(super.selectForm)
+
+
+
+
+
+	private[this] var columnCount :Int = 0
+
+	private def nextColumnIndex() :Int = synchronized {
+		if (isInitialized)
+			throw new IllegalStateException(s"Can't add another column to $this: the mapping has already been initialized.")
+		val res = columnCount; columnCount += 1; res
+	}
+
+
+
+	private class ReadForm(columns :Unique[ColumnMapping[_, O]],
+	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingFrom[O]).selectForm)
+		extends SQLReadForm[S]
+	{
+		override val readColumns: Int = (0 /: columns)(_ + read(_).readColumns)
+
+//		private[this] val audits = SelectAudit.Audit(mapping)
+//		private[this] val optional = OptionalSelect.unapply(mapping)
+//		private[this] val extra = ExtraSelect.unapply(mapping)
+
+		override def opt(position: Int)(res: ResultSet): Option[S] = {
+			val values = new Array[Option[Any]](columnCount)
+			java.util.Arrays.fill(values.asInstanceOf[Array[AnyRef]], None)
+			var i = position
+			columns foreach {
+				case c :MappingFrame[_, _]#FrameColumn[_] =>
+					i += 1; values(c.index) = read(c).opt(i - 1)(res)
+				case c =>
+					throw new IllegalArgumentException(s"Non-export column $c passed to SQLReadForm $this of $frame.")
+			}
+
+			val pieces = ComponentValues(frame)(ArraySeq.unsafeWrapArray(values)) {
+				case column :MappingFrame[_, _]#FrameColumn[_] => column.index
+				case _ => -1
+			}
+//			mapping.assemble(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
+//				optional.map(_.value) orElse extra.map(_.value)
+			frame.optionally(pieces)
+		}
+
+		override lazy val nullValue: S = frame.nullValue getOrElse {
+			frame.apply(ComponentValues {
+				case column :FrameColumn[_] =>
+					val export = frame.export(column)
+					if (columns.contains(export))
+						Some(read(export).nullValue)
+					else None
+				case _ =>
+					None
+			})
+		}
+
+		override def toString :String = columns.map(read).mkString(s"<$frame{", ",", "}")
+	}
+
+
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
+		val columns = components.map(frame.export(_)).flatMap(_.selectable)
+
+		if (columns.exists(NoSelect.enabled))
+			throw new IllegalArgumentException(
+				s"Can't create a select form for $frame using $components: NoSelect buff present among the selection."
+				)
+		val extra = columns ++ ExtraSelect.Enabled(frame)
+		new ReadForm(columns :++ extra)
+	}
+
+	override val selectForm :SQLReadForm[S] = SQLReadForm.Lazy(new ReadForm(selectable))
 	override val queryForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.queryForm)
 	override val insertForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.insertForm)
 	override val updateForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.updateForm)

@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, M
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaComponent
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.MappingPath.SelfPath
 import net.noresttherein.oldsql.sql.{FromClause, SQLOrdering}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, SQLTypePromotion}
 
@@ -36,6 +37,7 @@ object playground extends App {
 	}
 
 
+	val Backup = (new Humans[Any]) \ (_.gun)
 //	import net.noresttherein.oldsql.collection.Record._
 
 //	trait Tagged[+T]

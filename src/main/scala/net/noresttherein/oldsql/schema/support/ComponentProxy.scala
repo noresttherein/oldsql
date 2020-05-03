@@ -40,8 +40,7 @@ object ComponentProxy {
 
 
 
-		override def assemble(pieces :Pieces) :Option[S] =
-			egg.assemble(pieces.compatible[egg.type](egg))
+		override def assemble(pieces :Pieces) :Option[S] = egg.assemble(pieces)
 
 
 
@@ -118,11 +117,11 @@ object ComponentProxy {
 
 
 		override def pick[T](component :Component[T], subject :S) :Option[T] =
-			if (component eq egg) Some(subject.asInstanceOf[T])
+			if ((component eq egg) || (component eq this)) Some(subject.asInstanceOf[T])
 			else egg.pick(dealias(component), subject)
 
 		override def apply[T](component :Component[T], subject :S) :T =
-			if (component eq egg) subject.asInstanceOf[T]
+			if ((component eq egg) || (component eq this)) subject.asInstanceOf[T]
 			else egg(dealias(component), subject)
 
 
@@ -324,6 +323,10 @@ object ComponentProxy {
 		                           column :egg.Column[T]) :Column[T] =
 			alias(exports, originals, column :egg.Component[T]).asInstanceOf[Column[T]]
 
+
+		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
+
+		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
 
 		//override DeepProxy specialized implementations back to defaults
 		override def export[T](component :Component[T]) :Component[T] = apply(component).export

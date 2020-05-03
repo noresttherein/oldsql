@@ -61,6 +61,9 @@ trait Extractor[-X, +Y] {
 	}
 
 
+
+	def isIdentity :Boolean = false
+
 	override def toString :String = "Extractor@" + System.identityHashCode(this)
 
 }
@@ -247,6 +250,9 @@ object Extractor {
 		override def compose[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, X] = extractor
 		override def compose[W](req :W => X) :RequisiteExtractor[W, X] = Extractor.req(req)
 		override def composeOpt[W](f :W => Option[X]) :Extractor[W, X] = Extractor(f)
+
+
+		override def isIdentity = true
 
 		override def toString = "Identity"
 	}

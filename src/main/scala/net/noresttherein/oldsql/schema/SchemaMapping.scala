@@ -138,7 +138,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  */
 	def apply[N <: Label, T](label :N)(implicit get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O])
 			:Extract[T] =
-		get.extractor(schema, label)
+		get.extract(schema, label)
 
 	/** Returns the component labeled with the given string literal in the schema. If more than one component with
 	  * the same label exist, the last occurrence in the component chain `C` is selected.
@@ -577,8 +577,8 @@ abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :Ma
 	  * (such as within this mapping's `construct` method).
 	  */
 	@inline
-	implicit protected[this] def accessByLabel[N <: Label](label :N) :SchemaComponentLabels[C, R, Pieces, N, S, O] =
-		new SchemaComponentLabels[C, R, Pieces, N, S, O](label)
+	implicit protected[this] def accessByLabel[N <: Label](label :N) :SchemaComponentLabels[C, R, N, S, O] =
+		new SchemaComponentLabels[C, R, N, S, O](label)
 
 }
 

@@ -10,10 +10,17 @@ object generic {
 
 	type =#>[-X[A], +Y[A]] = GenericFun[X, Y]
 
-	trait GenericFun[-X[A], +Y[A]] {
+	trait GenericFun[-X[A], +Y[A]] { outer =>
 		def apply[T](x :X[T]) :Y[T]
 
 		def existential: X[_] => Y[_] = apply(_)
+
+		def andThen[Z[_]](f :GenericFun[Y, Z]) :GenericFun[X, Z] = new GenericFun[X, Z] {
+			override def apply[T](x :X[T]) :Z[T] = f(outer(x))
+		}
+
+		def compose[W[_]](f :GenericFun[W, X]) :GenericFun[W, Y] = f andThen this
+
 	}
 
 	trait BoxFun[+Y[A]] extends GenericFun[Self, Y] {

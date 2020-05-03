@@ -7,11 +7,14 @@ trait Lazy[+T] {
 	def get :T
 
 	def isInitialized :Boolean
+
+	override def toString :String = if (isInitialized) get.toString else "Lazy(?)"
 }
 
 
 
 object Lazy {
+
 	def apply[T](init: => T) :Lazy[T] = new Lazy[T] {
 		@volatile private[this] var f = () => init
 		@volatile private[this] var value :T = _
@@ -37,5 +40,8 @@ object Lazy {
 		}
 	}
 
+
+
+	implicit def lazyUnwrap[T](lzy :Lazy[T]) :T = lzy.get
 
 }

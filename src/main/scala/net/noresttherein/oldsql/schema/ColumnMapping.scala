@@ -43,12 +43,12 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 	override def optionally(pieces :Pieces) :Option[S] =
 		if (isNullable)
-			pieces.result(this)
+			pieces.preset(this)
 		else
-			pieces.result(this) match {
+			pieces.preset(this) match {
 				case Some(null) =>
-					throw new NullPointerException("Read a null value for a non-nullable column " + name +
-						". Flag the column with Buff.Nullable to explicitly allow nulls.")
+					throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
+					                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
 				case res => res
 			}
 
@@ -89,12 +89,12 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 
 	/** Returns `Unique.empty`. */
-	final def components :Unique[Component[_]] = Unique.empty
+	final override def components :Unique[Component[_]] = Unique.empty
 	/** Returns `Unique.empty`. */
-	final def subcomponents :Unique[Component[_]] = Unique.empty
+	final override def subcomponents :Unique[Component[_]] = Unique.empty
 
 	/** Returns `Unique(this)`. */
-	final def columns :Unique[Column[S]] = Unique(this)
+	final override def columns :Unique[Column[S]] = Unique(this)
 
 	final override def selectable :Unique[Column[S]] = selfUnless(NoSelect)
 	final override def queryable :Unique[Column[S]] = selfUnless(NoQuery)

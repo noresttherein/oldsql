@@ -129,7 +129,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 	  */
 	def apply[N <: Label, T](label :N)(implicit get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O])
 			:MappingExtract[S, T, O] =
-		get.extractor(this, label)
+		get.extract(this, label)
 
 	/** Returns the component labeled with the given string literal in the schema. If more than one component with
 	  * the same label exist, the last occurrence in the component chain `C` is selected.
@@ -394,23 +394,23 @@ object MappingSchema {
 	  * the `AbstractSchemaMapping` class for the use of subclasses.
 	  * @see [[net.noresttherein.oldsql.schema.AbstractSchemaMapping]]
 	  */
-	class SchemaComponentLabels[C <: Chain, R <: Chain, V <: ComponentValues[_ <: TypedMapping[S, O]], N <: Label, S, O]
+	class SchemaComponentLabels[C <: Chain, R <: Chain, N <: Label, S, O]
 	                           (private val label :N) extends AnyVal
 	{
 		/** Retrieve the value of the component with this label in the implicit schema from implicit `ComponentValues`.
 		  * If more then one component with this label is present in the schema, the last (rightmost) one is taken.
 		  */
 		def unary_~[T](implicit schema :MappingSchema[C, R, S, O],
-		               get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O], pieces :V) :T =
-			pieces(get.extractor(schema, label))
+		               get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O], pieces :ComponentValues[S, O]) :T =
+			pieces(get.extract(schema, label))
 
 		/** Retrieve the optional value of the component with this label in the implicit schema from implicit
 		  * `ComponentValues`. If more then one component with this label is present in the schema,
 		  * the last (rightmost) one is taken.
 		  */
 		def ?[T](implicit schema :MappingSchema[C, R, S, O],
-		         get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O], pieces :V) :Option[T] =
-			pieces.get(get.extractor(schema, label))
+		         get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O], pieces :ComponentValues[S, O]) :Option[T] =
+			pieces.get(get.extract(schema, label))
 
 		/** Get the component with this label from the implicit schema.
 		  * If more then one component with this label is present in the schema, the last (rightmost) one is taken.
@@ -424,7 +424,7 @@ object MappingSchema {
 		  */
 		def ?>[T](implicit schema :MappingSchema[C, R, S, O],
 		          get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O]) :MappingExtract[S, T, O] =
-			get.extractor(schema, label)
+			get.extract(schema, label)
 
 	}
 
@@ -918,7 +918,7 @@ object MappingSchema {
 	@implicitNotFound("No ${M} <: LabeledMapping[${N}, ${T}, ${O}] present in the schema ${C}\n(with values ${R}).")
 	sealed abstract class GetLabeledComponent[-C <: Chain, R <: Chain, +M <: LabeledMapping[N, T, O], N <: Label, T, O] {
 		def apply[S](schema :MappingSchema[C, R, S, O], label :N) :M
-		def extractor[S](schema :MappingSchema[C, R, S, O], label :N) :MappingExtract[S, T, O]
+		def extract[S](schema :MappingSchema[C, R, S, O], label :N) :MappingExtract[S, T, O]
 	}
 
 	object GetLabeledComponent {
@@ -927,7 +927,7 @@ object MappingSchema {
 			new GetLabeledComponent[Chain ~ M, R ~ T, M, N, T, O] {
 				override def apply[S](schema :MappingSchema[Chain ~ M, R ~ T, S, O], label :N) = schema.last
 
-				override def extractor[S](schema :MappingSchema[Chain ~ M, R ~ T, S, O], label :N) =
+				override def extract[S](schema :MappingSchema[Chain ~ M, R ~ T, S, O], label :N) =
 					schema.extract(schema.last)
 			}
 
@@ -938,8 +938,8 @@ object MappingSchema {
 				override def apply[S](schema :MappingSchema[C ~ TypedMapping[X, O], R ~ X, S, O], label :N) =
 					get(schema.prev, label)
 
-				override def extractor[S](schema :MappingSchema[C ~ TypedMapping[X, O], R ~ X, S, O], label :N) =
-					get.extractor(schema.prev, label)
+				override def extract[S](schema :MappingSchema[C ~ TypedMapping[X, O], R ~ X, S, O], label :N) =
+					get.extract(schema.prev, label)
 			}
 	}
 

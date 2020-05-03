@@ -30,14 +30,17 @@ import net.noresttherein.oldsql.sql.JoinParam.ParamSource.AnyParamSource
   * using values unknown at this time, which can be obtained by applying an arbitrary scala function to `X`.
   * The mapping, aside from representing the parameter value itself, can also be used to create additional
   * subcomponents with values derived from the parameter value, which can be used in an `SQLFormula` as any other
-  * component. The type constructor for a parameter mapping with type `X` is `ParamSource[X]#Row` and
+  * component. The mappings themselves are however only shills, replaced when creating the select statement,
+  * and only their associated `SQLForm`s are being used in the mapping process.
+  * The type constructor for a parameter mapping with type `X` is `ParamSource[X]#Row` and
   * `NamedParamSource[N, X]#Row` for a mapping labeled with a string literal `N &lt;: String with Singleton`.
   * This join is typically written in an abbreviated form `FromClause WithParam X` (or `FromClause <=? X`)
   * and `FromClause JoinParam ("name" ?: X)#T` for the parameter named with a string literal.
-  * This class declares its `Outer` clause as `Nothing` (rather than the `Outer` of the left side) to ensure
-  * neither it nor any its extension does not conform to `FromClause.SubselectFrom[F#Outer]`, thus preventing
-  * it from being used as a part of a subselect of the outer clause, which would hide the existence of a parameter
-  * and make its outer source appear not parameterized.
+  * This class declares its `Outer` clause as `Nothing` (rather than the `Outer` of the left side) to ensure that
+  * neither it nor any extension clause containing it does not conform to `FromClause.SubselectFrom[F#Outer]`,
+  * thus preventing it from being used as a part of a subselect of the outer clause, which would hide the existence
+  * of a parameter and make its outer source appear not parameterized. As the result, only top-level select statement
+  * from clauses can include unbound parameters.
   *
   * @tparam F the actual from clause of the parameterized select statement.
   * @tparam M synthetic `FromParam` mapping which subject is the parameter type.
@@ -218,9 +221,9 @@ object JoinParam {
 
 
 
-	sealed abstract class ParamMapping[P, X, O] protected(implicit sqlForm :SQLForm[X]) extends FormMapping[X, O] {
+	sealed abstract class ParamMapping[P, S, O] protected(implicit sqlForm :SQLForm[S]) extends FormMapping[S, O] {
 		def root :FromParam[P, O]
-		def extractor :MappingExtract[P, X, O]
+		def extractor :MappingExtract[P, S, O]
 		def derivedForm :SQLWriteForm[P] = form compose extractor
 	}
 
@@ -288,7 +291,11 @@ object JoinParam {
 
 		def apply[T :SQLForm](pick :P => T) :Component[T] = new ParamComponent[T](pick)
 
-		def col[T :ColumnForm](pick :P => T) :Component[T] = apply(pick)
+		def col[T :ColumnForm](pick :P => T) :Column[T] =
+			new ParamComponent[T](pick) with ColumnMapping[T, O] {
+				override def name = This.name
+				override val form :ColumnForm[T] = ColumnForm[T]
+			}
 
 
 
