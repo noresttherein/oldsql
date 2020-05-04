@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingReadForm, Ma
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExplicitSelect, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
-import net.noresttherein.oldsql.schema.MappingPath.SelfPath
+import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, SelfPath}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingFrame
 import net.noresttherein.oldsql.slang._
@@ -445,6 +445,10 @@ sealed trait Mapping {
 
 
 
+	/** Unused by most `Mapping` classes as, by default, they do not override referential equality behaviour.
+	  * Provided here for those few classes which do and to future proof us against overrides without
+	  * the `override` keyword.
+	  */
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[Mapping]
 
 
@@ -551,6 +555,12 @@ trait GenericMapping[S, O] extends Mapping { self =>
 
 
 
+	def apply[M >: this.type <: TypedMapping[S, O], X <: Mapping, C <: TypedMapping[T, O], T]
+	         (component :M => X)(implicit hint :Conforms[X, C, TypedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
+		ComponentPath(this :M, component(this))
+
+
+
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 		MappingReadForm.select(this, components)
 
@@ -636,16 +646,31 @@ trait RootMapping[S, O] extends GenericMapping[S, O] {
 
 object Mapping {
 
-	@inline
-	implicit def mappingSelfPath[M <: Mapping, X <: TypedMapping[S, O], S, O]
-	                            (mapping :M)(implicit help :Conforms[M, X, TypedMapping[S, O]]) :SelfPath[X, S, O] =
-		SelfPath.typed[X, S, O](mapping)
+
+	@inline implicit def mappingPathConstructor[X <: Mapping, M <: TypedMapping[S, O], S, O]
+	                                           (self :X)(implicit hint :Conforms[X, M, TypedMapping[S, O]])
+			:MappingPathConstructor[M, S, O] =
+		new MappingPathConstructor[M, S, O](self)
+
+	/** Adds a `\` method to any `Mapping`, creating a `ComponentPath` from it to one of its components. */
+	class MappingPathConstructor[M <: TypedMapping[S, O], S, O](private val self :M) extends AnyVal {
+
+		/** Creates a `ComponentPath` leading from this (wrapped) mapping to its specified component. */
+		def \[X <: Mapping, C <: TypedMapping[T, O], T]
+		     (component :X)(implicit hint :Conforms[X, C, TypedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
+			ComponentPath(self, component)
+
+		def \[X <: Mapping, C <: TypedMapping[T, O], T]
+		     (component :M => X)(implicit hint :Conforms[X, C, TypedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
+			ComponentPath(self, component(self))
+
+		def apply[X <: Mapping, C <: TypedMapping[T, O], T]
+		         (component :M => X)(implicit hint :Conforms[X, C, TypedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
+			ComponentPath(self, component(self))
+	}
 
 
 
-//	implicit def mappingSQLFormula[M[A] <: MappingFrom[A], O, I <: Rank[N], N <: Numeral]
-//	                              (mapping :M[O])(implicit nudge :Conforms[O, _ <: Rank[N], Rank[N]], value :ValueOf[N]) :FreeComponent[M, O] =
-//		new FreeComponent(mapping, valueOf[N])
 	implicit def mappingSQLFormula[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[X, A], X, N <: Numeral]
                                   (mapping :C)
                                   (implicit conforms :Conforms[C, M[F], TypedMapping[X, F]], offset :TableCount[F, N])
@@ -840,17 +865,6 @@ object Mapping {
 	  */
 	trait MappingNest[+M <: Mapping] extends Mapping { this :Mapping =>
 		protected val egg :M
-
-		override def canEqual(that :Any) :Boolean = that.getClass == getClass
-
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case proxy :MappingNest[_] => canEqual(proxy) && proxy.canEqual(this) && egg == proxy.egg
-			case _ => false
-		}
-
-		override def hashCode :Int = egg.hashCode
-
 
 		override def sqlName :Option[String] = egg.sqlName
 

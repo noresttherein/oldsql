@@ -2,15 +2,15 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{Chain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.Record.{#>, |#, Item, Key}
+import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema}
-import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn}
+import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
+import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.RecordMapping.NonEmptyRecordMapping
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema, MappedFlatSchema}
+import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 
 
 /** A mapping of `Record` instances - maps indexed on the type level with string literals.
@@ -85,7 +85,7 @@ object RecordMapping {
 
 
 	trait FlatRecordMapping[+C <: Chain, R <: Record, O]
-		extends RecordMapping[C, R, O] with FlatSchemaMapping[C, R, R, O] with FlatMappingSchema[C, R, R, O]
+		extends RecordMapping[C, R, O] with BaseFlatChainMapping[C, R, O]
 	{
 		override val schema :FlatRecordMapping[C, R, O] = this
 
@@ -101,11 +101,6 @@ object RecordMapping {
 		override def col[N <: Label, T :ColumnForm](label :N, name :String, buffs :Buff[T]*)
 				:FlatRecordMapping[C ~ (N @|| T), R |# (N #> T), O] =
 			col[N, N @|| T, T](label, LabeledSchemaColumn(label, name, buffs:_*))
-
-
-
-		override def map[S](assemble :R => S, disassemble :S => R) :FlatSchemaMapping[C, R, S, O] =
-			new MappedFlatSchema[C, R, S, O](this compose disassemble, assemble)
 
 
 

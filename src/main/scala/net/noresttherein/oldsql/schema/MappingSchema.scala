@@ -1,25 +1,31 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, ChainConcat}
-import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, ChainContains, ChainGet, ForAllItems, ItemExists}
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, Numeral, Positive, PositiveInc}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingFrom, OriginProjection, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingFrom, MappingNest, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.MappingSchema.{ExtensibleNonEmptySchema, FlatMappedSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, MappedSchema, SchemaFlattening}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, MappingLabel}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, LabeledSchemaComponent, SchemaColumn}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-
 import scala.annotation.{implicitNotFound, tailrec}
 import scala.reflect.runtime.universe.TypeTag
+
+import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.morsels.witness.Or
+import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
+import net.noresttherein.oldsql.schema.MappingSchema.CustomizeSchema.FilterSchema
+import net.noresttherein.oldsql.schema.bits.CustomizedMapping.Overrides
+import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 
 
 
@@ -486,6 +492,29 @@ object MappingSchema {
 
 
 
+
+		/** Appends a component to this schema. This is different from
+		  * [[net.noresttherein.oldsql.schema.MappingSchema#append append]] in that it is overriden by
+		  * `FlatMappingSchema` to return always `FlatMappingSchema`, regardless of the `M` component type.
+		  * It should ''never'' be exposed outside `MappingSchema` as it can completely break the contract.
+		  * It is worth having for the purpose of schema manipulating implicits which create new schemas
+		  * by carrying over components from other schema. This kind of use is safe and lets us have a single
+		  * method and simply cast down the result rather than separate for each schema type which would like
+		  * to support the functionalilty.
+		  */
+		protected[MappingSchema] def carryOver[M <: Component[T], T](component :M, extractor :S =?> T)
+				:ExtensibleMappingSchema[C ~ M, R ~ T, S, O] =
+			append(component, extractor)
+
+
+		//consider: think this through, it might be we aren't saving ourselves from anything by using type aliases...
+		//this is not public to avoid leaking the origin type to the type signature or introducing a non-schema component.
+		protected[schema] def append[M <: Component[T], T](component :M, extractor :S =?> T)
+				:ExtensibleMappingSchema[C ~ M, R ~ T, S, O] =
+			new ExtensibleNonEmptySchema[C, M, R, T, S, O](
+				this, component, MappingExtract(component)(extractor)
+			)
+
 		/** Appends a new component to this schema. The component will inherit all buffs associated
 		  * with the outer mapping for subject `S` which where given to this schema at initialization.
 		  * Inherited buffs will follow any buffs passed to this method.
@@ -620,20 +649,12 @@ object MappingSchema {
 
 
 
-		/** Appends a new column component to this schema. Full static type of the column will be encoded in the
-		  * component chain of the returned schema. The column will not inherit the buffs associated with this schema.
-		  */
-		protected def col[M <: SchemaColumn[T, O], T](column :M, value :S =?> T)
-				:ExtensibleMappingSchema[C ~ M, R ~ T, S, O] =
-			new ExtensibleNonEmptySchema[C, M, R, T, S, O](this, column,
-				MappingExtract(column, value.optional, value.requisite))
-
 		/** Appends a new column to this schema with the given name. The column will have the buffs
 		  * specified here, followed by any buffs conveyed by this schema, given to it at its initialization.
 		  */
 		def col[T :ColumnForm](name :String, value :S => T, buffs :Buff[T]*)
 				:ExtensibleMappingSchema[C ~ ||[T], R ~ T, S, O] =
-			col(SchemaColumn[T, O](name, conveyBuffs(value, buffs) :_*), Extractor.req(value))
+			append(SchemaColumn[T, O](name, conveyBuffs(value, buffs) :_*), Extractor.req(value))
 
 		/** Appends a new column to this schema with the name being the reflected name of the zero-argument method
 		  * called on the argument by the extractor function `value`. The column will receive the buffs specified here,
@@ -653,7 +674,7 @@ object MappingSchema {
 		{
 			val extractor = Extractor(value)
 			val column = SchemaColumn[T, O](name, conveyBuffs(extractor, buffs) :_*)
-			col(column, extractor)
+			append(column, extractor)
 		}
 
 		/** Appends a new column to this schema with the name being the reflected name of the zero-argument method
@@ -693,7 +714,7 @@ object MappingSchema {
 				:ExtensibleMappingSchema[C ~ (N @|| T), R ~ T, S, O] =
 		{
 			val column = LabeledSchemaColumn[N, T, O](label, name, conveyBuffs(value, buffs) :_*)
-			col(column, Extractor.req(value))
+			append(column, Extractor.req(value))
 		}
 
 
@@ -724,7 +745,7 @@ object MappingSchema {
 				:ExtensibleMappingSchema[C ~ (N @|| T), R ~ T, S, O] =
 		{
 			val extractor = Extractor(value)
-			col(LabeledSchemaColumn[N, T, O](label, name, conveyBuffs(extractor, buffs) :_*), extractor)
+			append(LabeledSchemaColumn[N, T, O](label, name, conveyBuffs(extractor, buffs) :_*), extractor)
 		}
 
 	}
@@ -743,10 +764,23 @@ object MappingSchema {
 		extends ExtensibleMappingSchema[C, R, S, O] with FlatMappingSchema[C, R, S, O]
 	{
 
-		override def col[M <: SchemaColumn[T, O], T](column :M, value :S =?> T)
+
+		protected[MappingSchema] override def carryOver[M <: Component[T], T]
+		                                               (component :M, extractor :S =?> T)
 				:ExtensibleFlatMappingSchema[C ~ M, R ~ T, S, O] =
-			new ExtensibleFlatNonEmptySchema[C, M, R, T, S, O](this, column,
-				                             MappingExtract(column, value.optional, value.requisite))
+			new ExtensibleFlatNonEmptySchema[C, ||[T], R, T, S, O](
+				this, component.asInstanceOf[||[T]], MappingExtract(component)(extractor)
+			).asInstanceOf[ExtensibleFlatMappingSchema[C ~ M, R ~ T, S, O]]
+
+
+
+		protected[schema] def col[M <: SchemaColumn[T, O], T](column :M, value :S =?> T)
+				:ExtensibleFlatMappingSchema[C ~ M, R ~ T, S, O] =
+			new ExtensibleFlatNonEmptySchema[C, M, R, T, S, O](
+				this, column, MappingExtract(column)(value)
+			)
+
+
 
 		override def col[T :ColumnForm](name :String, value :S => T, buffs :Buff[T]*)
 				:ExtensibleFlatMappingSchema[C ~ ||[T], R ~ T, S, O] =
@@ -855,7 +889,7 @@ object MappingSchema {
 			new ColumnSchemaConcat[PC, PR, SC ~ M, SR ~ T, S, O, C ~ M, R ~ T] {
 				override def apply(prefix :ExtensibleFlatMappingSchema[PC, PR, S, O],
 				                   suffix :FlatMappingSchema[SC ~ M, SR ~ T, S, O]) =
-					init(prefix, suffix.prev).col(suffix.last, suffix.extract(suffix.last))
+					init(prefix, suffix.prev).carryOver(suffix.last, suffix.extract(suffix.last))
 
 			}
 	}
@@ -881,31 +915,199 @@ object MappingSchema {
 				EmptySchema[Any, Any]
 		}
 
-		implicit def emptyFlattening[S, O] :SchemaFlattening[@~, @~, S, O, @~, @~] =
+		implicit def emptyIsFlat[S, O] :SchemaFlattening[@~, @~, S, O, @~, @~] =
 			empty.asInstanceOf[SchemaFlattening[@~, @~, S, O, @~, @~]]
 
-		implicit def componentFlattening[C <: Chain, R <: Chain, PC <: Chain, PR <: Chain,
-			                             M <: SchemaMapping[MC, MR, T, O], MC <: Chain, MR <: Chain, T, S, O,
-		                                 SC <: Chain,  SR <: Chain, IC <: Chain, IR <: Chain]
-		                                (implicit prefix :SchemaFlattening[C, R, S, O, PC, PR],
-		                                 hint :Conforms[M, M, SchemaMapping[MC, MR, T, O]],
-		                                 inline :SchemaFlattening[MC, MR, T, O, SC, SR],
-		                                 concat :ColumnSchemaConcat[PC, PR, SC, SR, S, O, IC, IR])
+		implicit def appendFlattenedComponent[C <: Chain, R <: Chain, PC <: Chain, PR <: Chain,
+			                                  M <: SchemaMapping[MC, MR, T, O], MC <: Chain, MR <: Chain, T, S, O,
+		                                      SC <: Chain,  SR <: Chain, IC <: Chain, IR <: Chain]
+		                                     (implicit prefix :SchemaFlattening[C, R, S, O, PC, PR],
+		                                      hint :Conforms[M, M, SchemaMapping[MC, MR, T, O]],
+		                                      inline :SchemaFlattening[MC, MR, T, O, SC, SR],
+		                                      concat :ColumnSchemaConcat[PC, PR, SC, SR, S, O, IC, IR])
 				:SchemaFlattening[C ~ M, R ~ T, S, O, IC, IR] =
 			new SchemaFlattening[C ~ M, R ~ T, S, O, IC, IR] {
 				override def apply(schema :MappingSchema[C ~ M, R ~ T, S, O]) =
 					concat(prefix(schema.prev), inline(schema.last.schema) compose schema.extract(schema.last))
 			}
+
+		implicit def appendFlattenedIndexedComponent[C <: Chain, R <: LiteralIndex, PC <: Chain, PR <: Chain,
+		                                             M <: SchemaMapping[MC, MR, T, O], MC <: Chain, MR <: Chain, T, S, O,
+		                                             SC <: Chain,  SR <: Chain, IC <: Chain, IR <: Chain]
+		                                            (implicit prefix :SchemaFlattening[C, R, S, O, PC, PR],
+		                                             hint :Conforms[M, M, SchemaMapping[MC, MR, T, O]],
+		                                             inline :SchemaFlattening[MC, MR, T, O, SC, SR],
+		                                             concat :ColumnSchemaConcat[PC, PR, SC, SR, S, O, IC, IR])
+				:SchemaFlattening[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, IC, IR] =
+			appendFlattenedComponent(prefix, hint, inline, concat)
+				.asInstanceOf[SchemaFlattening[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, IC, IR]]
+
 	}
 
 	object SchemaFlattening extends ComponentSchemaFlattening {
 
-		implicit def columnFlattening[C <: Chain, R <: Chain, M <: SchemaColumn[T, O], T, S, O, IC <: Chain, IR <: Chain]
+		implicit def appendColumn[C <: Chain, R <: Chain, M <: SchemaColumn[T, O], T, S, O, IC <: Chain, IR <: Chain]
 		                             (implicit init :SchemaFlattening[C, R, S, O, IC, IR])
 				:SchemaFlattening[C ~ M, R ~ T, S, O, IC ~ M, IR ~ T] =
 			new SchemaFlattening[C ~ M, R ~ T, S, O, IC ~ M, IR ~ T] {
 				override def apply(schema :MappingSchema[C ~ M, R ~ T, S, O]) =
-					init(schema.prev).col(schema.last, schema.extract(schema.last))
+					init(schema.prev).carryOver(schema.last, schema.extract(schema.last))
+			}
+
+		implicit def appendIndexedColumn[C <: Chain, R <: LiteralIndex, M <: SchemaColumn[T, O], T, S, O,
+		                                 IC <: Chain, IR <: Chain]
+		                                (implicit init :SchemaFlattening[C, R, S, O, IC, IR])
+				:SchemaFlattening[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, IC ~ M, IR ~ T] =
+			appendColumn(init).asInstanceOf[SchemaFlattening[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, IC ~ M, IR ~ T]]
+	}
+
+
+
+
+
+
+	@implicitNotFound("Can't exclude components ${E} from ${C} of schema:\nMappingSchema[${C}, ${R}, ${S}, ${O}].\n " +
+	                  "Include and exclude type parameters must be concrete Chain subtypes with literal Int and String " +
+	                  "element types denoting the indices/labels of top level components to exclude.\n" +
+		              "Missing implicit CustomizeSchema[${C}, ${R}, ${S}, ${O}, ${E}]: enable -Xlog-implicits " +
+	                  "for a more detailed reason.")
+	abstract class CustomizeSchema[-C <: Chain, R <: Chain, S, O, E <: Chain] {
+		type Components <: Chain
+		type Values <: Chain
+
+		def apply(schema :MappingSchema[C, R, S, O], include :Iterable[TypedMapping[_, O]],
+		          prohibit :BuffType, explicit :BuffType, optional :BuffType, nonDefault :FlagBuffType)
+				:MappingSchema[Components, Values, S, O]
+
+		def apply(schema :FlatMappingSchema[C, R, S, O], include :Iterable[TypedMapping[_, O]],
+		          prohibit :BuffType, explicit :BuffType, optional :BuffType, nonDefault :FlagBuffType)
+				:FlatMappingSchema[Components, Values, S, O]
+	}
+
+
+
+	sealed abstract class LowPrioritySchemaCustomizationImplicits {
+
+		implicit def include[C <: Chain, R <: Chain, M <: TypedMapping[T, O], T, S, O, E,
+		                     I <: Numeral, J <: Numeral, F <: Chain, V <: Chain]
+		                    (implicit prefix :FilterSchema[C, R, S, O, E, I, F, V], plus :PositiveInc[I, J])
+				:FilterSchema[C ~ M, R ~ T, S, O, E, J, F ~ M, V ~ T] =
+			(schema :MappingSchema[C ~ M, R ~ T, S, O]) =>
+				prefix(schema.prev).carryOver(schema.last, schema.extract(schema.last))
+
+		implicit def includeIndexed[C <: Chain, R <: LiteralIndex, M <: TypedMapping[T, O], T, S, O, E,
+		                            I <: Numeral, J <: Numeral, F <: Chain, V <: Chain]
+		                           (implicit prefix :FilterSchema[C, R, S, O, E, I, F, V], plus :PositiveInc[I, J])
+				:FilterSchema[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, E, J, F ~ M, V ~ T] =
+			include(prefix, plus)
+				.asInstanceOf[FilterSchema[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, E, J, F ~ M, V ~ T]]
+
+	}
+
+
+
+	object CustomizeSchema extends LowPrioritySchemaCustomizationImplicits {
+
+		class ExcludeComponent[M <: Mapping, N <: Numeral, E <: Chain]
+
+		private[this] val instance = new ExcludeComponent[Mapping, 0, Chain]
+
+		implicit def excludeByIndex[M <: Mapping, N <: Numeral, E <: Chain]
+		                           (implicit included :ChainContains[E, N]) =
+			instance.asInstanceOf[ExcludeComponent[M, N, E]]
+
+		implicit def excludeByLabel[M <: LabeledMapping[L, _, _], N <: Numeral, L <: Label, E <: Chain]
+		                           (implicit inferLabel :Conforms[M, M, LabeledMapping[L, _, _]], included :ChainContains[E, L]) =
+			instance.asInstanceOf[ExcludeComponent[M, N, E]]
+
+
+
+
+		@implicitNotFound("Failed to exclude components ${E} from the component chain ${C}.\n" +
+		                  "This is typically caused by a non-existing component index or label string on the exclude list. " +
+		                  "No implicit for FilterSchema[${C}, ${R}, ${S}, ${O}, ${E}, ${N}, ${F}, ${V}].")
+		abstract class FilterSchema[C <: Chain, R <: Chain, S, O, E, N <: Numeral, F <: Chain, V <: Chain] {
+			def apply(schema :MappingSchema[C, R, S, O]) :ExtensibleMappingSchema[F, V, S, O]
+		}
+
+		private[this] val empty :FilterSchema[@~, @~, Any, Any, @~, 0, @~, @~] =
+			{ _ :MappingSchema[@~, @~, Any, Any] => EmptySchema[Any, Any] }
+
+		implicit def emptySchema[S, O, E <: Chain] :FilterSchema[@~, @~, S, O, E, 0, @~, @~] =
+			empty.asInstanceOf[FilterSchema[@~, @~, S, O, E, 0, @~, @~]]
+
+
+		implicit def exclude[C <: Chain, R <: Chain, M <: TypedMapping[T, O], T, S, O, E <: Chain,
+		                     I <: Numeral, J <: Numeral, F <: Chain, V <: Chain]
+		                    (implicit prefix :FilterSchema[C, R, S, O, E, I, F, V], inc :Inc[I, J],
+		                     exclude :ExcludeComponent[M, I, E]) :FilterSchema[C ~ M, R ~ T, S, O, E, J, F, V] =
+			(schema :MappingSchema[C ~ M, R ~ T, S, O]) => prefix(schema.prev)
+
+		implicit def excludeIndexed[C <: Chain, R <: LiteralIndex, M <: TypedMapping[T, O], T, S, O, E <: Chain,
+		                            I <: Numeral, J <: Numeral, F <: Chain, V <: Chain]
+		                           (implicit prefix :FilterSchema[C, R, S, O, E, I, F, V], inc :Inc[I, J],
+		                            exclude :ExcludeComponent[M, I, E])
+				:FilterSchema[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, E, J, F, V] =
+			this.exclude[C, R, M, T, S, O, E, I, J, F, V](prefix, inc, exclude)
+				.asInstanceOf[FilterSchema[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, E, J, F, V]]
+
+
+
+
+		@implicitNotFound("Not all items in chain ${E} identify components in chain ${C}. " +
+			              "Valid members are String literals (component labels) and Int literals (component indices).")
+		class ComponentsExist[C <: Chain, E <: Chain]
+
+		private[this] val exists = new ComponentsExist[Chain, Chain]
+
+		implicit def noExclusions[C <: Chain] :ComponentsExist[C, @~] = exists.asInstanceOf[ComponentsExist[C, @~]]
+
+		implicit def excludedIndex[C <: Chain, N <: Numeral, E <: Chain]
+		                          (implicit exist :ComponentsExist[C, E], longer :ChainGet[C, N, _])
+				:ComponentsExist[C, E ~ N] =
+			instance.asInstanceOf[ComponentsExist[C, E ~ N]]
+
+		implicit def excludeLabel[C <: Chain, L <: Label, E <: Chain]
+		                         (implicit previousExist :ComponentsExist[C, E],
+		                          lastExists :ItemExists[C, ({ type T[X] = X <:< LabeledMapping[L, _, _] })#T, _])
+				:ComponentsExist[C, E ~ L] =
+			instance.asInstanceOf[ComponentsExist[C, E ~ L]]
+
+//		type Excluded[C <: Chain, E <: Chain] = ForAllItems[E, ({
+//			type E[X] = ItemExists[C, ({ type L[M] = M <:< LabeledMapping[X, _, _] })#L, X] Or
+//				ChainGet[C, X with Numeral, _]
+//		})#E]
+
+
+		implicit def customize[C <: Chain, R <: Chain, S, O, E <: Chain, F <: Chain, V <: Chain]
+		                      (implicit filter :FilterSchema[C, R, S, O, E, _, F, V], excluded :ComponentsExist[C, E])
+				:CustomizeSchema[C, R, S, O, E] { type Components = F; type Values = V } =
+			new CustomizeSchema[C, R, S, O, E] {
+				override type Components = F
+				override type Values = V
+
+				override def apply(schema :MappingSchema[C, R, S, O], includes :Iterable[TypedMapping[_, O]],
+				                   ban :BuffType, explicit :BuffType, optional :BuffType, nonDefault :FlagBuffType) =
+				{
+					val filtered = filter(schema)
+					val excludes = excluded(filtered, schema)
+					new FilteredSchema[F, V, S, O](filtered, includes, ban, explicit, excludes, optional, nonDefault)
+				}
+
+				override def apply(schema :FlatMappingSchema[C, R, S, O], includes :Iterable[TypedMapping[_, O]],
+				                   ban :BuffType, explicit :BuffType, optional :BuffType, nonDefault :FlagBuffType) =
+				{
+					val filtered = filter(schema).asInstanceOf[FlatMappingSchema[F, V, S, O]]
+					val excludes = excluded(filtered, schema)
+					new FilteredFlatSchema[F, V, S, O](filtered, includes, ban, explicit, excludes, optional, nonDefault)
+				}
+
+
+				private def excluded(filtered :MappingSchema[F, V, S, O], schema :MappingSchema[C, R, S, O]) = {
+					val components = schema.members.all.asInstanceOf[Seq[TypedMapping[_, O]]]
+					val remaining = filtered.members.all.asInstanceOf[Seq[TypedMapping[_, O]]].toSet
+					components.filterNot(remaining)
+				}
 			}
 
 	}
@@ -1222,6 +1424,78 @@ object MappingSchema {
 
 
 
+	private[schema] trait MappingSchemaProxy[+C <: Chain, R <: Chain, S, O]
+		extends MappingSchema[C, R, S, O] with MappingNest[MappingSchema[C, R, S, O]]
+	{
+		override def unapply(subject :S) :Option[R] = egg.unapply(subject)
+		override def disassemble(subject :S) :R = egg.disassemble(subject)
+		override def members :C = egg.members
+
+		override def assemble(pieces :Pieces) :Option[R] = egg.assemble(pieces)
+
+		override def last[M <: Component[_]](implicit nonEmpty :C <:< (Chain ~ M)) :M = egg.last
+
+		override def prev[I <: Chain, V <: Chain](implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any)) :MappingSchema[I, V, S, O] =
+			egg.prev
+
+		override def outerExtracts :NaturalMap[Component, OuterExtract] = egg.outerExtracts
+		override def outerColumnExtracts :NaturalMap[Column, OuterColumnExtract] = egg.outerColumnExtracts
+	}
+
+
+
+	private[schema] trait FlatMappingSchemaProxy[+C <: Chain, R <: Chain, S, O]
+		extends MappingSchemaProxy[C, R, S, O] with FlatMappingSchema[C, R, S, O]
+		   with MappingNest[FlatMappingSchema[C, R, S, O]]
+	{
+		override def prev[I <: Chain, V <: Chain]
+		                 (implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any)) :FlatMappingSchema[I, V, S, O] =
+			egg.prev
+	}
+
+
+
+	private[schema] class FilteredSchema[+C <: Chain, R <: Chain, S, O]
+	                      (filtered :MappingSchema[C, R, S, O],
+	                       include :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                       exclude :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
+		extends CustomizedMapping[MappingSchema[C, R, S, O], R, O](
+		                          filtered, include, prohibited, explicit, exclude, optional, nonDefault
+			) with MappingSchemaProxy[C, R, S, O]
+	{
+		override def compose[X](extractor :X => S) :MappingSchema[C, R, X, O] =
+			new FilteredSchema[C, R, X, O](egg compose extractor,
+			                               include, prohibited, explicit, exclude, optional, nonDefault)
+
+		override def compose[X](extractor :X =?> S) :MappingSchema[C, R, X, O] =
+			new FilteredSchema[C, R, X, O](egg compose extractor,
+			                               include, prohibited, explicit, exclude, optional, nonDefault)
+
+	}
+
+
+
+	private[schema] class FilteredFlatSchema[+C <: Chain, R <: Chain, S, O]
+	                      (override val egg :FlatMappingSchema[C, R, S, O],
+	                       include :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                       exclude :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
+		extends FilteredSchema(egg, include, prohibited, explicit, exclude, optional, nonDefault)
+		   with FlatMappingSchemaProxy[C, R, S, O]
+	{
+		override def compose[X](extractor :X => S) :FlatMappingSchema[C, R, X, O] =
+			new FilteredFlatSchema[C, R, X, O](egg compose extractor,
+			                                   include, prohibited, explicit, exclude, optional, nonDefault)
+
+		override def compose[X](extractor :X =?> S) :FlatMappingSchema[C, R, X, O] =
+			new FilteredFlatSchema[C, R, X, O](egg compose extractor,
+			                                   include, prohibited, explicit, exclude, optional, nonDefault)
+	}
+
+
+
+
+
+
 	private[schema] abstract class AbstractMappedSchema[+C <: Chain, R <: Chain, S, O]
 	                               (override val schema :MappingSchema[C, R, S, O], override val buffs :Seq[Buff[S]] = Nil)
 		extends ShallowAdapter[MappingSchema[C, R, S, O], R, S, O] with SchemaMapping[C, R, S, O]
@@ -1257,7 +1531,7 @@ object MappingSchema {
 
 	private[schema] class FlatMappedSchema[+C <: Chain, R <: Chain, S, O]
 			              (schema :MappingSchema[C, R, S, O], constructor :R => Option[S], buffs :Seq[Buff[S]] = Nil)
-		extends AbstractMappedSchema(schema, buffs)
+		extends AbstractMappedSchema[C, R, S, O](schema, buffs)
 	{
 		protected override val schemaExtract :Extract[R] = MappingExtract.opt(schema)(schema.unapply)
 

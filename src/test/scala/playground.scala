@@ -1,4 +1,4 @@
-import net.noresttherein.oldsql.collection.Chain.@~
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Origin.Rank
 import net.noresttherein.oldsql.morsels.abacus.Numeral
@@ -36,8 +36,10 @@ object playground extends App {
 			Human(~"gun", ~"backup", ~"second")
 	}
 
-
-	val Backup = (new Humans[Any]) \ (_.gun)
+//	new Humans[Any].forSelect[@~ ~ "backup"]:Int
+//	guns[Any].forSelect[@~ ~ 0 ~ 2 ~ 1] :Int
+//	val path = SelfPath(new Humans[Any])
+//	val Backup = (new Humans[Any]) \ (_.gun)
 //	import net.noresttherein.oldsql.collection.Record._
 
 //	trait Tagged[+T]

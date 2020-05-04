@@ -46,6 +46,11 @@ trait MappingPath[-X <: MappingOf[S], +Y <: TypedMapping[T, O], S, T, O] { self 
 
 
 
+	def apply[M <: Mapping, Z <: TypedMapping[U, O], U]
+	         (component :Y => M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
+		\(component(end))
+
+
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[MappingPath[_, _, _, _, _]]
 
 	override def equals(that :Any) :Boolean = that match {
@@ -67,12 +72,6 @@ trait MappingPath[-X <: MappingOf[S], +Y <: TypedMapping[T, O], S, T, O] { self 
 
 
 object MappingPath {
-
-//	private def typed[X <: MappingOf[S], Y <: TypedMapping[O, T], O, S, T](component :Y)(extract :S =?> T) :MappingPath[X, Y, O, S, T] =
-//		new MappingPath[X, Y, O, S, T] {
-//			override val end = component
-//			override val extract = extract
-//		}
 
 
 	
@@ -116,6 +115,12 @@ object MappingPath {
 			\[component.type, component.type, U](component :component.type)(Conforms[component.type])
 
 
+
+		override def apply[M <: Mapping, Z <: TypedMapping[U, O], U]
+		                  (component :Y => M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]])
+				:ComponentPath[X, Z, S, U, O] =
+			\(component(end))
+
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentPath[_, _, _, _, _]]
 
 		override def toString :String = "\\" + end
@@ -133,10 +138,6 @@ object MappingPath {
 			val c = childType(component)
 			typed[X, Y, S, T, O](c)(parentType(parent)(c))
 		}
-
-//		def apply[M <: Mapping, X <: TypedMapping[O, S], Y <: TypedMapping[O, T], O, S, T]
-//		         (component :M)(extract :S =?> T)(implicit hint :Conforms[M, Y, TypedMapping[O, T]]) :ComponentPath[X, Y, O, S, T] =
-//			typed[X, Y, O, S, T](hint(component).left)(extract)
 
 		private[MappingPath] def typed[X <: TypedMapping[S, O], Y <: TypedMapping[T, O], S, T, O]
 		                              (component :Y)(extract :S =?> T) :ComponentPath[X, Y, S, T, O] =
@@ -156,6 +157,10 @@ object MappingPath {
 			}
 
 	}
+
+
+
+
 
 
 	trait SelfPath[X <: TypedMapping[S, O], S, O] extends ComponentPath[X, X, S, S, O] {

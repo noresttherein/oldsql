@@ -8,21 +8,28 @@ import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQ
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-
 import scala.collection.mutable.Builder
 
+import net.noresttherein.oldsql.schema.bits.CustomizedMapping.{exclude, include}
 
 
 
 
 
-/**
+
+/** A `Mapping` adapter specifically modifying the buffs on
   * @author Marcin Mościcki
   */
 class CustomizedMapping[+M <: TypedMapping[S, O], S, O] private
-                       (override val egg :M, substitutions :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component])
+                       (override val egg :M, protected val substitutions :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component])
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
 {
+	protected def this(source :M, includes :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                 excludes :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType) =
+		this(source,
+		     include(source, includes, prohibited, explicit) ++ exclude(source, excludes, optional, nonDefault)
+		)
+
 	protected override def adapt[T](component :egg.Component[T]) :Component[T] =
 		substitutions.getOrElse(component, component)
 
@@ -34,9 +41,10 @@ class CustomizedMapping[+M <: TypedMapping[S, O], S, O] private
 
 
 
+
 object CustomizedMapping {
-	private type Substitution[X, O] = Assoc[MappingFrom[O]#Component, MappingFrom[O]#Component, X]
-	private type Substitutions[O] = NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component]
+	type Override[X, O] = Assoc[MappingFrom[O]#Component, MappingFrom[O]#Component, X]
+	type Overrides[O] = NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component]
 
 
 	def select[M <: TypedMapping[S, O], S, O]
@@ -62,89 +70,94 @@ object CustomizedMapping {
 
 
 	private def customize[M <: TypedMapping[S, O], S, O]
-	                     (source :M, include :Iterable[TypedMapping[_, O]], disabled :BuffType, remove :BuffType,
-	                      exclude :Iterable[TypedMapping[_, O]], enabled :BuffType, add :FlagBuffType)
+	                     (source :M, includes :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                      excludes :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
 		:CustomizedMapping[M, S, O] =
 	{
-		val included = withoutBuff(source, include, disabled, remove)
-		val excluded = withBuff(source, exclude, enabled, add)
+		val included = include(source, includes, prohibited, explicit)
+		val excluded = exclude(source, excludes, optional, nonDefault)
 		new CustomizedMapping[M, S, O](source, included ++ excluded)
 	}
 
 
-	/** Removes the `remove` buff from all the components in the `components` collection and their subcomponents.
-	  * If the `disabled` buff is present on any of the components, an `IllegalArgumentException` is raised.
-	  * If it is present on any of the subcomponents, the presence of `remove` buff is ignored and the subcomponent
+	/** Modifies the buffs of the given components so that they are included by default in a particular operation.
+	  * It removes the `explicit` buff from all the components in the `components` collection and their subcomponents,
+	  * but if the `prohibited` buff is present on any of the components, an `IllegalArgumentException` is raised.
+	  * If it is present on any of the subcomponents, the presence of `explicit` buff is ignored and the subcomponent
 	  * remains unchanged.
 	  */
-	private def withoutBuff[O](mapping :TypedMapping[_, O], components :Iterable[TypedMapping[_, O]],
-	                           disabled :BuffType, remove :BuffType)
-			:Substitutions[O] =
+	private[schema] def include[O](mapping :TypedMapping[_, O], components :Iterable[TypedMapping[_, O]],
+	                               prohibited :BuffType, explicit :BuffType)
+			:Overrides[O] =
 	{
 		val builder = NaturalMap.newBuilder[MappingFrom[O]#Component, MappingFrom[O]#Component]
 		for (component <- components)
-			withoutBuff(mapping, component, disabled, remove, builder)
+			include(mapping, component, prohibited, explicit, builder)
 		builder.result()
 	}
 
-	private def withoutBuff[T, O](mapping :TypedMapping[_, O], component :TypedMapping[T, O],
-	                              disabled :BuffType, remove :BuffType,
-	                              builder :Builder[Substitution[_, O], Substitutions[O]]) :Unit =
+	private[schema] def include[T, O](mapping :TypedMapping[_, O], component :TypedMapping[T, O],
+	                                  prohibited :BuffType, explicit :BuffType,
+	                                  builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 		mapping.export(component) match {
-			case comp if disabled.enabled(comp) =>
+			case comp if prohibited.enabled(comp) =>
 				throw new IllegalArgumentException(
-					s"Can't include component $component off $mapping as it has the $disabled buff."
+					s"Can't include component $component of $mapping as it has the $prohibited buff."
 				)
 			case column :ColumnMapping[_, O @unchecked] =>
-				if (remove.enabled(column))
-					builder += new Substitution(column, column.withBuffs(column.buffs.filter(remove.disabled)))
+				if (explicit.enabled(column))
+					builder += new Override(column, column.withBuffs(column.buffs.filter(explicit.disabled)))
 			case lifted =>
-				lifted.subcomponents foreach { sub =>
-					sub match {
-						case column :ColumnMapping[_, O @unchecked] =>
-							val col = mapping.export(column)
-							if (disabled.disabled(col) && remove.enabled(col))
-								builder += new Substitution(col, col.withBuffs(col.buffs.filter(remove.disabled)))
-						case _ =>
-							val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
-							if (disabled.disabled(comp) && remove.enabled(comp))
-								builder += new Substitution(comp, BuffedMapping(comp, comp.buffs.filter(remove.disabled) :_*))
-					}
+				lifted.subcomponents foreach {
+					case column :ColumnMapping[_, O @unchecked] =>
+						val col = mapping.export(column)
+						if (prohibited.disabled(col) && explicit.enabled(col))
+							builder += new Override(col, col.withBuffs(col.buffs.filter(explicit.disabled)))
+					case sub =>
+						val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
+						if (prohibited.disabled(comp) && explicit.enabled(comp))
+							builder += new Override(comp, BuffedMapping(comp, comp.buffs.filter(explicit.disabled) :_*))
 				}
 
 		}
 
 
 
-	private def withBuff[O](mapping :TypedMapping[_, O], components :Iterable[TypedMapping[_, O]],
-	                        enabled :BuffType, add :FlagBuffType)
-			:Substitutions[O] =
+	/** Modifies the buffs of the given components so that they are not included by default in a particular operation.
+	  * It adds the  `nonDefault` flag to all the components in the `components` collection and their subcomponents,
+	  * but if the `optional` buff is missing on any of the listed components, an `IllegalArgumentException` is raised.
+	  * Subcomponents of the listed components without the `optional` buff simply remain unchanged.
+	  */
+	private[schema] def exclude[O](mapping :TypedMapping[_, O], components :Iterable[TypedMapping[_, O]],
+	                               optional :BuffType, nonDefault :FlagBuffType)
+			:Overrides[O] =
 	{
 		val builder = NaturalMap.newBuilder[MappingFrom[O]#Component, MappingFrom[O]#Component]
 		for (component <- components)
-			withBuff(mapping, component, enabled, add, builder)
+			exclude(mapping, component, optional, nonDefault, builder)
 		builder.result()
 	}
 
-	private def withBuff[T, O](mapping :TypedMapping[_, O], component :TypedMapping[T, O],
-	                           enabled :BuffType, add :FlagBuffType,
-	                           builder :Builder[Substitution[_, O], Substitutions[O]]) :Unit =
+	private[schema] def exclude[T, O](mapping :TypedMapping[_, O], component :TypedMapping[T, O],
+	                                  optional :BuffType, nonDefault :FlagBuffType,
+	                                  builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 		mapping.export(component) match {
+			case comp if optional.disabled(comp) =>
+				throw new IllegalArgumentException(
+					s"Can't exclude component $comp of $mapping as it does not have the $optional buff.")
 			case column :ColumnMapping[_, O @unchecked] =>
-				if (add.disabled(column) && enabled.enabled(column))
-					builder += new Substitution(column, column.withBuffs(add[T] +: column.buffs))
+				if (nonDefault.disabled(column))
+					builder += new Override(column, column.withBuffs(nonDefault[T] +: column.buffs))
 			case lifted =>
-				lifted.subcomponents foreach { sub =>
-					sub match {
-						case column :ColumnMapping[_, O @unchecked] =>
-							val col = mapping.export(column).asInstanceOf[ColumnMapping[Any, O]]
-							if (add.disabled(col) && enabled.enabled(col))
-								builder += new Substitution[Any, O](col, col.withBuffs(add[Any] +: col.buffs))
-						case _ =>
-							val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
-							if (add.disabled(comp) && enabled.enabled(comp))
-								builder += new Substitution[Any, O](comp, BuffedMapping(comp, add[Any] +: comp.buffs :_*))
-					}
+				lifted.subcomponents foreach {
+					case column :ColumnMapping[_, O @unchecked] =>
+						val col = mapping.export(column).asInstanceOf[ColumnMapping[Any, O]]
+						if (nonDefault.disabled(col) && optional.enabled(col))
+							builder += new Override[Any, O](col, col.withBuffs(nonDefault[Any] +: col.buffs))
+					case sub =>
+						val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
+						if (nonDefault.disabled(comp) && optional.enabled(comp))
+							builder += new Override[Any, O](comp, BuffedMapping(comp, nonDefault[Any] +: comp.buffs :_*))
 				}
 
 		}

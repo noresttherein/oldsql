@@ -8,8 +8,9 @@ import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~, Item}
 import net.noresttherein.oldsql.morsels.generic.{Const, GenericFun, Self}
 import net.noresttherein.oldsql.morsels.LUB
-
 import scala.annotation.{implicitNotFound, tailrec}
+
+import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, NegativeInc, Numeral, Positive}
 
 
 /** A list-like collection of fixed length, with the types of all its elements encoded in its type.
@@ -34,6 +35,8 @@ import scala.annotation.{implicitNotFound, tailrec}
   */
 sealed trait Chain extends Serializable {
 	def isEmpty :Boolean = true
+	
+	def length = 0
 }
 
 
@@ -68,6 +71,7 @@ object Chain extends ChainFactory {
 
 		override def isEmpty = false
 
+		override def length = init.length + 1
 
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[~[_, _]]
@@ -130,6 +134,55 @@ object Chain extends ChainFactory {
 		/** Adds a new element at the end of the chain. */
 		@inline def ~[N](next :N) :C ~ N = new link(self, next)
 
+		/** Returns the element at the given index. The index must be an `Int` literal; if it is non-negative,
+		  * it must be less then the chain's length and counting goes from left to right, starting with zero.
+		  * If it is negative, counting goes from right to left, starting with `-1`. For positive indices,
+		  * the chain must be complete, without an abstract prefix; for negative indices, it suffices that the number
+		  * of last known elements is greater or equal `-index`. Negative indexing is more efficient, especially
+		  * for items close to the end of the chain, as positive indexing always needs to traverse the whole chain
+		  * to rewind and count from `@~`.
+		  */
+		@inline def apply[N <: Numeral, X](index :N)(implicit get :ChainGet[C, N, X]) :X =
+			get(self)
+
+		/** Sets the element at the given index. The index must be an `Int` literal; if it is non-negative,
+		  * it must be less then the chain's length and counting goes from left to right, starting with zero.
+		  * If it is negative, counting goes from right to left, starting with `-1`. For positive indices,
+		  * the chain must be complete, without an abstract prefix; for negative indices, it suffices that the number
+		  * of last known elements is greater or equal `-index`. Negative indexing is more efficient, especially
+		  * for items close to the end of the chain, as positive indexing always needs to traverse the whole chain
+		  * to rewind and count from `@~`.
+		  * @return the chain equal to this one on all positions except the index, where it contains the inserted item.
+		  */
+		@inline def updated[N <: Numeral, X, R <: Chain](index :N, item :X)(implicit set :ChainSet[C, N, X, R]) :R =
+			set(self, item)
+
+		/** Inserts the element into this chain. The index must be an `Int` literal; if it is non-negative,
+		  * it must be less then or equal the chain's length and the element is inserted before the index
+		  * (on the left side), with counting going from left to right, starting with zero. If it is negative,
+		  * the element is inserted after the index (on the right side) and counting goes from right to left,
+		  * starting with `-1`. For positive indices, the chain must be complete, without an abstract prefix;
+		  * for negative indices, it suffices that the number of last known elements is greater or equal `-index`.
+		  * Negative indexing is more efficient, especially for items close to the end of the chain,
+		  * as positive indexing always needs to traverse the whole chain to rewind and count from `@~`.
+		  */
+		@inline def insert[N <: Numeral, X, R <: Chain](index :N, item :X)(implicit insert :ChainInsert[C, N, X, R]) :R =
+			insert(self, item)
+
+		/** Removes the element at the given index. The index must be an `Int` literal; if it is non-negative,
+		  * it must be less then the chain's length and counting goes from left to right, starting with zero.
+		  * If it is negative, counting goes from right to left, starting with `-1`. For positive indices, the
+		  * chain must be complete, without an abstract prefix; for negative indices, it suffices that the number
+		  * of last known elements is greater or equal `-index`. Negative indexing is more efficient, especially
+		  * for items close to the end of the chain, as positive indexing always needs to traverse the whole chain
+		  * to rewind and count from `@~`.
+		  * @return the chain resulting from removing the item at index `N`.
+		  */
+		@inline def remove[N <: Numeral, R <: Chain](index :N)(implicit del :ChainDelete[C, N, R]) :R =
+			del(self)
+		
+		
+		
 		/** Maps this chain using the given generic (polymorphic) function.
 		  * @tparam XF type constructor which forms the type of every element in this chain. If this chain contains
 		  *            elements without a common type constructor, [[net.noresttherein.oldsql.morsels.generic.Self]]
@@ -188,6 +241,9 @@ object Chain extends ChainFactory {
 		  */
 		@inline def toMap[K, V](implicit ub :UpperBound[C, (K, V)]) :Map[K, V] =
 			self.toSeq[(K, V)].toMap
+
+		/** All elements in this chain as they would be returned by `toList`, but without an upper bound. */
+		def all :List[Any] = toList(new UpperBound[C, Any])
 	}
 
 
@@ -211,10 +267,219 @@ object Chain extends ChainFactory {
 
 
 
+	
+	@implicitNotFound("Can't prove that ${P}[X] for all X in chain ${C}.")
+	class ForAllItems[C <: Chain, P[_]] private()
+	
+	object ForAllItems {
+		private[this] val instance = new ForAllItems[Chain, List]
+		
+		implicit def empty[P[_]] :ForAllItems[@~, P] = instance.asInstanceOf[ForAllItems[@~, P]]
+		
+		implicit def induction[C <: Chain, X, P[_]](implicit init :ForAllItems[C, P], last :P[X]) :ForAllItems[C ~ X, P] =
+			instance.asInstanceOf[ForAllItems[C ~ X, P]]
+	}
+	
+	
+	
+	@implicitNotFound("Can't find an element X satisfying ${P}[X] in chain ${C}: implicit ${P}[${X}] not found.")
+	class ItemExists[C <: Chain, P[_], X] private (val found :P[X]) extends AnyVal
 
+	object ItemExists {
+		implicit def last[C <: Chain, P[_], X](implicit pred :P[X]) :ItemExists[C ~ X, P, X] =
+			new ItemExists[C ~ X, P, X](pred)
+
+		implicit def earlier[C <: Chain, T, P[_], X](implicit exists :ItemExists[C, P, X]) :ItemExists[C ~ T, P, X] =
+			new ItemExists[C ~ T, P, X](exists.found)
+	}
+
+
+
+	type ChainContains[C <: Chain, X] = ItemExists[C, ({ type EQ[T] = X =:= T })#EQ, X]
+
+
+
+
+	
+	
+	@implicitNotFound("Can't calculate the length of chain ${C}: either it is unknown " +
+	                  "(the chain starts with abstract Chain), it not equal ${N}, or we ran out of natural numbers.")
+	class ChainLength[-C <: Chain, N <: Numeral] private ()
+
+	object ChainLength {
+		implicit val ZeroLength = new ChainLength[@~, 0]
+
+		implicit def oneLinkLonger[C <: Chain, M <: Numeral, N <: Numeral]
+		                          (implicit prefix :ChainLength[C, M], plus :Inc[M, N]) :ChainLength[C ~ Any, N] =
+			ZeroLength.asInstanceOf[ChainLength[C ~ Any, N]]
+	}
+
+
+
+	@implicitNotFound("Can't get ${N}-th element of chain ${C}:\n either the index type is abstract, the chain starts " +
+	                  "with abstract Chain (rather than @~) and the index is non-negative, ${N} >= length, " +
+	                  "${N} < -length, the item type can't be unified with ${X}, or we ran out of known integers.")
+	abstract class ChainGet[-C <: Chain, N <: Numeral, +X] private {
+		def apply(chain :C) :X
+	}
+
+	object ChainGet {
+		private[this] val last :ChainGet[Chain ~ Any, 0, Any] = new ChainGet[Chain ~ Any, 0, Any] {
+			override def apply(chain :Chain ~ Any) = chain.last
+		}
+
+		private class GetPrev[-C <: Chain, N <: Numeral, +X](prev :ChainGet[C, _, X]) extends ChainGet[C ~ Any, N, X] {
+			override def apply(chain :C ~ Any) = prev(chain.init)
+		}
+		
+
+		implicit def getLastPositive[C <: Chain, N <: Numeral, X](implicit length :ChainLength[C, N]) :ChainGet[C ~ X, N, X] =
+			last.asInstanceOf[ChainGet[C ~ X, N, X]]
+
+		implicit def getEarlierPositive[C <: Chain, N <: Numeral, X]
+		                               (implicit prev :ChainGet[C, N, X], positive :Positive[N]) :ChainGet[C ~ Any, N, X] =
+			new GetPrev(prev)
+
+		implicit def getLastNegative[X] :ChainGet[Chain ~ X, -1, X] = last.asInstanceOf[ChainGet[Chain ~ X, -1, X]]
+
+		implicit def getEarlierNegative[C <: Chain, M <: Numeral, N <: Numeral, X]
+		                               (implicit prev :ChainGet[C, N, X], negative :NegativeInc[M, N]) :ChainGet[C ~ Any, M, X] =
+			new GetPrev(prev)
+	}
+
+
+
+
+
+
+	@implicitNotFound("Can't set the ${N}-th element of chain ${C} to ${X}: either the index type is abstract, " +
+	                  "the chain starts with an abstract Chain (rather than @~) and the index is non-negative, " +
+	                  "${N} >= length, ${N} < -length, the result can't be unified with ${R}, or we ran out of integers.")
+	sealed abstract class ChainSet[-C <: Chain, N <: Numeral, X, +R <: Chain] private {
+		def apply(chain :C, elem :X) :R
+	}
+	
+	object ChainSet {
+		private[this] val last :ChainSet[Chain ~ Any, -1, Any, Chain ~ Any] =
+			new ChainSet[Chain ~ Any, -1, Any, Chain ~ Any] {
+				override def apply(chain :Chain ~ Any, elem :Any) = chain.init ~ elem
+			}
+
+		private class SetPrev[-C <: Chain, T, N <: Numeral, X, +R <: Chain](prev :ChainSet[C, _, X, R])
+			extends ChainSet[C ~ T, N, X, R ~ T]
+		{
+			override def apply(chain :C ~ T, elem :X) = prev(chain.init, elem) ~ chain.last
+		}
+
+		implicit def setLastPositive[C <: Chain, N <: Numeral, X]
+		                            (implicit length :ChainLength[C, N]) :ChainSet[C ~ Any, N, X, C ~ X] =
+			last.asInstanceOf[ChainSet[C ~ Any, N, X, C ~ X]]
+		
+		implicit def setEarlierPositive[C <: Chain, N <: Numeral, X, T, R <: Chain]
+		                               (implicit prev :ChainSet[C, N, X, R], positive :Positive[N]) 
+				:ChainSet[C ~ T, N, X, R ~ T] =
+			new SetPrev(prev)
+
+		implicit def setLastNegative[C <: Chain, X] :ChainSet[C ~ Any, -1, X, C ~ X] =
+			last.asInstanceOf[ChainSet[C ~ Any, -1, X, C ~ X]]
+		
+		implicit def setEarlierNegative[C <: Chain, M <: Numeral, N <: Numeral, X, T, R <: Chain]
+		                               (implicit prev :ChainSet[C, N, X, R], negative :NegativeInc[M, N])
+				:ChainSet[C ~ T, M, X, R ~ T] =
+			new SetPrev(prev)
+
+	}
+
+
+
+
+
+
+	@implicitNotFound("Can't insert ${X] at the ${N}-th position into chain ${C}: either the index type is abstract, " +
+		                  "the chain starts with an abstract Chain (rather than @~) and the index is non-negative, " +
+		                  "${N} > length, ${N} < -length - 1, the result can't be unified with ${R}, or we ran out of integers.")
+	sealed abstract class ChainInsert[-C <: Chain, N <: Numeral, X, +R <: Chain] private {
+		def apply(chain :C, elem :X) :R
+	}
+
+	object ChainInsert {
+		private[this] val last :ChainInsert[Chain, -1, Any, Chain ~ Any] =
+			new ChainInsert[Chain, -1, Any, Chain ~ Any] {
+				override def apply(chain :Chain, elem :Any) = chain ~ elem
+			}
+
+		private class InsertPrev[-C <: Chain, T, N <: Numeral, X, +R <: Chain](prev :ChainInsert[C, _, X, R])
+			extends ChainInsert[C ~ T, N, X, R ~ T]
+		{
+			override def apply(chain :C ~ T, elem :X) = prev(chain.init, elem) ~ chain.last
+		}
+
+		implicit def insertLastPositive[C <: Chain, N <: Numeral, X]
+		                               (implicit length :ChainLength[C, N]) :ChainInsert[C, N, X, C ~ X] =
+			last.asInstanceOf[ChainInsert[C, N, X, C ~ X]]
+
+		implicit def insertEarlierPositive[C <: Chain, N <: Numeral, X, T, R <: Chain]
+		                                  (implicit prev :ChainInsert[C, N, X, R], positive :Positive[N])
+				:ChainInsert[C ~ T, N, X, R ~ T] =
+			new InsertPrev(prev)
+
+		implicit def insertLastNegative[C <: Chain, X] :ChainInsert[C, -1, X, C ~ X] =
+			last.asInstanceOf[ChainInsert[C, -1, X, C ~ X]]
+
+		implicit def insertEarlierNegative[C <: Chain, M <: Numeral, N <: Numeral, X, T, R <: Chain]
+		                                  (implicit prev :ChainInsert[C, N, X, R], negative :NegativeInc[M, N])
+				:ChainInsert[C ~ T, M, X, R ~ T] =
+			new InsertPrev(prev)
+
+	}
+	
+	
+	
+	@implicitNotFound("Can't delete ${N}-th element from chain ${C}: either the index type is abstract, the chain " +
+	                  "starts with an abstract Chain (rather than @~) and the index is non-negative, ${N} >= length, " +
+	                  "${N} < -length, the result chain can't be unified with ${R}, or we ran out of known integers.")
+	sealed abstract class ChainDelete[-C <: Chain, N <: Numeral, +R <: Chain] private {
+		def apply(chain :C) :R
+	}
+	
+	object ChainDelete {
+		private[this] val last :ChainDelete[Chain ~ Any, 0, Chain] =
+			new ChainDelete[Chain ~ Any, 0, Chain] {
+				override def apply(chain :Chain ~ Any) = chain
+			}
+
+		private class DeletePrev[-C <: Chain, T, N <: Numeral, +R <: Chain](prev :ChainDelete[C, _, R])
+			extends ChainDelete[C ~ T, N, R ~ T]
+		{
+			override def apply(chain :C ~ T) = prev(chain.init) ~ chain.last
+		}
+
+		implicit def deleteLastPositive[C <: Chain, N <: Numeral](implicit length :ChainLength[C, N]) 
+				:ChainDelete[C ~ Any, N, C] = last.asInstanceOf[ChainDelete[C ~ Any, N, C]]
+
+		implicit def deleteEarlierPositive[C <: Chain, X, N <: Numeral, R <: Chain]
+		                                  (implicit prev :ChainDelete[C, N, R], positive :Positive[N]) 
+				:ChainDelete[C ~ X, N, R ~ X] =
+			new DeletePrev(prev)
+
+		implicit def deleteLastNegative[C <: Chain] :ChainDelete[C ~ Any, -1, C] = 
+			last.asInstanceOf[ChainDelete[C ~ Any, -1, C]]
+		
+		implicit def deleteEarlierNegative[C <: Chain, X, M <: Numeral, N <: Numeral, R <: Chain]
+		                                  (implicit prev :ChainDelete[C, N, R], negative :NegativeInc[M, N]) 
+				:ChainDelete[C ~ X, M, R ~ X] =
+			new DeletePrev(prev)
+
+	}
+	
+	
+	
+	
+	
+	
 	@implicitNotFound("Can't perform a natural transformation of the chain ${X} (of applied ${XF}) to a chain of ${YF}" +
 	                  "applied to all type arguments of elements of the mapped chain.")
-	sealed abstract class MapChain[XF[T], X <: Chain, YF[T], Y <: Chain] {
+	sealed abstract class MapChain[XF[T], X <: Chain, YF[T], Y <: Chain] private {
 		def apply(f :GenericFun[XF, YF])(x :X) :Y
 	}
 
@@ -235,7 +500,8 @@ object Chain extends ChainFactory {
 
 
 
-
+	
+	@implicitNotFound("Can't apply object ${F} to the chain ${X} with any known conversion.")
 	class ChainApplication[-X <: Chain, -F, +Y] private[Chain](application :(F, X) => Y) extends ((F, X) => Y) {
 		override def apply(f :F, x :X) :Y = application(f, x)
 	}
@@ -245,8 +511,13 @@ object Chain extends ChainFactory {
 
 
 
-	implicit def applyFunction1[X, Y] :ChainApplication[@~ ~ X, X => Y, Y] =
-		ChainApplication { (f :X => Y, xs: @~ ~X) => f(xs.last) }
+	implicit def applyChain[C <: Chain, Y] :ChainApplication[C, C => Y, Y] =
+		ChainApplication { (f :C => Y, xs :C) => f(xs) }
+
+
+
+	implicit def applyFunction1[A, Y] :ChainApplication[@~ ~ A, A => Y, Y] =
+		ChainApplication { (f :A => Y, xs: @~ ~ A) => f(xs.last) }
 
 	implicit def applyFunction2[A, B, Y] :ChainApplication[@~ ~ A ~ B, (A, B) => Y, Y] =
 		ChainApplication { (f :(A, B) => Y, xs: @~ ~A~B) => f(xs.init.last, xs.last) }
@@ -472,6 +743,238 @@ object Chain extends ChainFactory {
 					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
 		}
 
+	
+	
+	
+	
+	
+	implicit def applyTuple1[A, Y] :ChainApplication[@~ ~ A, Tuple1[A] => Y, Y] =
+		ChainApplication { (f :Tuple1[A] => Y, xs: @~ ~ A) => f(Tuple1(xs.last)) }
+
+	implicit def applyTuple2[A, B, Y] :ChainApplication[@~ ~ A ~ B, ((A, B)) => Y, Y] =
+		ChainApplication { (f :((A, B)) => Y, xs: @~ ~A~B) => f((xs.init.last, xs.last)) }
+
+	implicit def applyTuple3[A, B, C, Y] :ChainApplication[@~ ~ A ~ B ~ C, ((A, B, C)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C)) => Y, xs: @~ ~A~B~C) => val xs1 = xs.init; f((xs1.init.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple4[A, B, C, D, Y] :ChainApplication[@~ ~ A ~ B ~ C ~ D, ((A, B, C, D)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D)) => Y, xs: @~ ~A~B~C~D) =>
+				val xs1 = xs.init; val xs2 = xs1.init; f((xs2.init.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple5[A, B, C, D, E, Y] :ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E, ((A, B, C, D, E)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E)) => Y, xs: @~ ~A~B~C~D~E) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init
+				f((xs3.init.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple6[A, B, C, D, E, F, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F, ((A, B, C, D, E, F)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F)) => Y, xs: @~ ~A~B~C~D~E~F) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init
+				f((xs4.init.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple7[A, B, C, D, E, F, G, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G, ((A, B, C, D, E, F, G)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G)) => Y, xs: @~ ~A~B~C~D~E~F~G) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				f((xs5.init.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple8[A, B, C, D, E, F, G, H, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H, ((A, B, C, D, E, F, G, H)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H)) => Y, xs: @~ ~A~B~C~D~E~F~G~H) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init
+				f((xs6.init.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple9[A, B, C, D, E, F, G, H, I, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I, ((A, B, C, D, E, F, G, H, I)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init
+				f((xs7.init.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple10[A, B, C, D, E, F, G, H, I, J, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J,
+			                  ((A, B, C, D, E, F, G, H, I, J)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init
+				f((xs8.init.last, xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple11[A, B, C, D, E, F, G, H, I, J, K, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K,
+			                  ((A, B, C, D, E, F, G, H, I, J, K)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init
+				f((xs9.init.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple12[A, B, C, D, E, F, G, H, I, J, K, L, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L,
+			                  ((A, B, C, D, E, F, G, H, I, J, K, L)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				f((xs10.init.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple13[A, B, C, D, E, F, G, H, I, J, K, L, M, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M,
+			                  ((A, B, C, D, E, F, G, H, I, J, K, L, M)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init
+				f((xs11.init.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple14[A, B, C, D, E, F, G, H, I, J, K, L, M, N, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N,
+		                      ((A, B, C, D, E, F, G, H, I, J, K, L, M, N)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init
+				f((xs12.init.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple15[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O,
+			                  ((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init
+				f((xs13.init.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple16[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P,
+		                      ((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				f((xs14.init.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple17[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q,
+		                      ((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)) => Y, xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init
+			f((xs15.init.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+				xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple18[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R,
+		                      ((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init
+				f((xs16.init.last, xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple19[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R ~ S,
+		                      ((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init
+				f((xs17.init.last, xs17.last,
+					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple20[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R ~ S ~ T,
+		                      ((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				f((xs18.init.last, xs18.last, xs17.last,
+					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple21[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R ~ S ~ T ~ U,
+		                      ((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T~U) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				val xs19 = xs18.init
+				f((xs19.init.last, xs19.last, xs18.last, xs17.last,
+					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+
+	implicit def applyTuple22[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, Y]
+			:ChainApplication[@~ ~ A ~ B ~ C ~ D ~ E ~ F ~ G ~ H ~ I ~ J ~ K ~ L ~ M ~ N ~ O ~ P ~ Q ~ R ~ S ~ T ~ U ~ V,
+		                      ((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)) => Y,
+			 xs: @~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T~U~V) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				val xs19 = xs18.init; val xs20 = xs19.init
+				f((xs20.init.last, xs20.last, xs19.last, xs18.last, xs17.last,
+					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
+					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
+		}
+	
 
 }
 

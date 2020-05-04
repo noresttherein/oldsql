@@ -247,11 +247,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 			initExtracts.getOrElse[frame.Extract, T](target, extractFor(this))
 		}
 
-		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
-//		override def canEqual(that :Any) :Boolean = that match {
-//			case comp :MappingFrame[_, _]#ExportComponent[_] => comp belongsTo frame
-//			case _ => false
-//		}
 
 		override protected def adapt[X](component :egg.Component[X]) :Component[X] =
 			exportSubcomponent(component)
@@ -444,13 +439,14 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	{ nest =>
 
 		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
-			if (initExtracts contains component.asInstanceOf[Component[_]])
+			val cast = component.asInstanceOf[Component[T]]
+			if (initExtracts contains cast)
 				throw new IllegalArgumentException(
 					s"Can't embed mapping $component as a component of $frame as it is already present."
 				)
 			val extract = extractFor(this)
-			initExtracts = initExtracts.updated(component.asInstanceOf[Component[T]], extract)
-			component.extracts.asInstanceOf[NaturalMap[Component, Extract]] foreach { assoc => exportExtract(assoc) }
+			initExtracts = initExtracts.updated(cast, extract)
+			cast.extracts foreach { assoc => exportExtract(assoc) }
 			initComponents += this
 			initSubcomponents += this //don't export subcomponents as its done by EagerDeepProxy
 			extract
@@ -462,8 +458,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		protected override def adapt[X](component :egg.Column[X]) :Column[X] =
 			exportColumn(component.asInstanceOf[Column[X]])
 
-
-		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
 
 		override def toString :String = "{{" + egg + "}}"
 

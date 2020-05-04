@@ -14,57 +14,71 @@ package object abacus {
 	/** Attests that `N + 1 == M`  */
 	@implicitNotFound("Can't add 1 to ${N}. Either the result is not ${M} or we ran out of integers, sorry. " +
 		              "You can always introduce your own as a hack fix.")
-	final class Inc[M <: Numeral :ValueOf, N <: Numeral :ValueOf] {
+	class Inc[M <: Numeral :ValueOf, N <: Numeral :ValueOf] {
 		val m :M = valueOf[M]
 		val n :N = valueOf[N]
 	}
 
-	object Inc {
-		implicit val m_1 = new Inc[-1, 0]
-		implicit val m_2 = new Inc[-2, -1]
-		implicit val m_3 = new Inc[-3, -2]
-		implicit val m_4 = new Inc[-4, -3]
-		implicit val m_5 = new Inc[-5, -4]
-		implicit val m_6 = new Inc[-6, -5]
-		implicit val m_7 = new Inc[-7, -6]
-		implicit val m_8 = new Inc[-8, -7]
-		implicit val m_9 = new Inc[-9, -8]
-		implicit val m_10 = new Inc[-10, -9]
-		implicit val m_11 = new Inc[-11, -10]
-		implicit val m_12 = new Inc[-12, -11]
-		implicit val m_13 = new Inc[-13, -12]
-		implicit val m_14 = new Inc[-14, -13]
-		implicit val m_15 = new Inc[-15, -14]
-		implicit val m_16 = new Inc[-16, -15]
-		implicit val m_17 = new Inc[-17, -16]
-		implicit val m_18 = new Inc[-18, -19]
-		implicit val m_19 = new Inc[-19, -18]
-		implicit val m_20 = new Inc[-20, -19]
-		implicit val m_21 = new Inc[-21, -20]
-		implicit val m_22 = new Inc[-22, -21]
+	@implicitNotFound("Can't witness that ${M} + 1 = ${N}, where ${M}, ${N} >= 0: Either there is no equality, " +
+	                  "at least one of the values is negative, or we ran out of integers - sorry!.")
+	class PositiveInc[M <: Numeral :ValueOf, N <: Numeral :ValueOf] extends Inc[M, N]
 
-		implicit val _1 = new Inc[0, 1]
-		implicit val _2 = new Inc[1, 2]
-		implicit val _3 = new Inc[2, 3]
-		implicit val _4 = new Inc[3, 4]
-		implicit val _5 = new Inc[4, 5]
-		implicit val _6 = new Inc[5, 6]
-		implicit val _7 = new Inc[6, 7]
-		implicit val _8 = new Inc[7, 8]
-		implicit val _9 = new Inc[8, 9]
-		implicit val _10 = new Inc[9, 10]
-		implicit val _11 = new Inc[10, 11]
-		implicit val _12 = new Inc[11, 12]
-		implicit val _13 = new Inc[12, 13]
-		implicit val _14 = new Inc[13, 14]
-		implicit val _15 = new Inc[14, 15]
-		implicit val _16 = new Inc[15, 16]
-		implicit val _17 = new Inc[16, 17]
-		implicit val _18 = new Inc[17, 18]
-		implicit val _19 = new Inc[18, 19]
-		implicit val _20 = new Inc[19, 20]
-		implicit val _21 = new Inc[20, 21]
-		implicit val _22 = new Inc[21, 22]
+	@implicitNotFound("Can't witness that ${M} + 1 = ${N}, where ${M}, ${N} <= 0: Either there is no equality, " +
+		              "at least one of the values is positive, or we ran out of integers - sorry!.")
+	class NegativeInc[M <: Numeral :ValueOf, N <: Numeral :ValueOf] extends Inc[M, N]
+
+	type Positive[N <: Numeral] = PositiveInc[N, _]
+	
+	type Negative[N <: Numeral] = NegativeInc[N, _]
+	
+	
+	
+	object Inc {
+		implicit val m_1 = new NegativeInc[-1, 0]
+		implicit val m_2 = new NegativeInc[-2, -1]
+		implicit val m_3 = new NegativeInc[-3, -2]
+		implicit val m_4 = new NegativeInc[-4, -3]
+		implicit val m_5 = new NegativeInc[-5, -4]
+		implicit val m_6 = new NegativeInc[-6, -5]
+		implicit val m_7 = new NegativeInc[-7, -6]
+		implicit val m_8 = new NegativeInc[-8, -7]
+		implicit val m_9 = new NegativeInc[-9, -8]
+		implicit val m_10 = new NegativeInc[-10, -9]
+		implicit val m_11 = new NegativeInc[-11, -10]
+		implicit val m_12 = new NegativeInc[-12, -11]
+		implicit val m_13 = new NegativeInc[-13, -12]
+		implicit val m_14 = new NegativeInc[-14, -13]
+		implicit val m_15 = new NegativeInc[-15, -14]
+		implicit val m_16 = new NegativeInc[-16, -15]
+		implicit val m_17 = new NegativeInc[-17, -16]
+		implicit val m_18 = new NegativeInc[-18, -19]
+		implicit val m_19 = new NegativeInc[-19, -18]
+		implicit val m_20 = new NegativeInc[-20, -19]
+		implicit val m_21 = new NegativeInc[-21, -20]
+		implicit val m_22 = new NegativeInc[-22, -21]
+
+		implicit val _1 = new PositiveInc[0, 1]
+		implicit val _2 = new PositiveInc[1, 2]
+		implicit val _3 = new PositiveInc[2, 3]
+		implicit val _4 = new PositiveInc[3, 4]
+		implicit val _5 = new PositiveInc[4, 5]
+		implicit val _6 = new PositiveInc[5, 6]
+		implicit val _7 = new PositiveInc[6, 7]
+		implicit val _8 = new PositiveInc[7, 8]
+		implicit val _9 = new PositiveInc[8, 9]
+		implicit val _10 = new PositiveInc[9, 10]
+		implicit val _11 = new PositiveInc[10, 11]
+		implicit val _12 = new PositiveInc[11, 12]
+		implicit val _13 = new PositiveInc[12, 13]
+		implicit val _14 = new PositiveInc[13, 14]
+		implicit val _15 = new PositiveInc[14, 15]
+		implicit val _16 = new PositiveInc[15, 16]
+		implicit val _17 = new PositiveInc[16, 17]
+		implicit val _18 = new PositiveInc[17, 18]
+		implicit val _19 = new PositiveInc[18, 19]
+		implicit val _20 = new PositiveInc[19, 20]
+		implicit val _21 = new PositiveInc[20, 21]
+		implicit val _22 = new PositiveInc[21, 22]
 	}
 
 

@@ -1,15 +1,15 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
+import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping}
+import net.noresttherein.oldsql.schema.support.{ConstantMapping, EmptyMapping, LazyMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping, SQLForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
+import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappedFlatSchema, FlatMappedSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedSchemaMapping, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -87,7 +87,12 @@ object ChainMapping {
 	trait BaseChainMapping[+C <: Chain, R <: Chain, O]
 		extends SchemaMapping[C, R, R, O] with MappingSchema[C, R, R, O]
 	{
-		override val schema = this
+		override val schema :MappingSchema[C, R, R, O] = this
+
+		override val extracts :NaturalMap[Component, Extract] = outerExtracts
+
+		override val columnExtracts :NaturalMap[Column, ColumnExtract] = outerColumnExtracts
+
 
 		override def apply[N <: Label, T]
 		                  (label :N)(implicit get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O])
@@ -114,17 +119,32 @@ object ChainMapping {
 		def map[S](assemble :R => S, disassemble :S => R) :SchemaMapping[C, R, S, O] =
 			new MappedSchema[C, R, S, O](this compose disassemble, assemble)
 
-//		def flatMap[S](assemble :R => Option[S])(disassemble :S => Option[R]) :MappingSchema[C, R, S, O] =
-//			new FlatMappedMappingSchema[C, R, S, O](this compose disassemble, assemble)
+		def flatMap[S](assemble :R => Option[S], disassemble :S => Option[R]) :SchemaMapping[C, R, S, O] =
+			new FlatMappedSchema[C, R, S, O](this compose  Extractor(disassemble), assemble)
+	}
+
+
+
+	trait BaseFlatChainMapping[+C <: Chain, R <: Chain, O]
+		extends BaseChainMapping[C, R, O] with FlatSchemaMapping[C, R, R, O] with FlatMappingSchema[C, R, R, O]
+	{
+		override val schema :FlatMappingSchema[C, R, R, O] = this
+
+		override def map[S](assemble :R => S, disassemble :S => R) :FlatSchemaMapping[C, R, S, O] =
+			new MappedFlatSchema[C, R, S, O](this compose disassemble, assemble)
+
+
+		override def flatMap[S](there :R => Option[S], back :S => Option[R])
+		                       (implicit nulls :SQLForm.NullValue[S]) :FlatSchemaMapping[C, R, S, O] =
+			new FlatMappedFlatSchema[C, R, S, O](this compose Extractor(back), there)
 	}
 
 
 
 
 
-
 	trait FlatChainMapping[+C <: Chain, R <: Chain, O]
-		extends ChainMapping[C, R, O] with FlatSchemaMapping[C, R, R, O] with FlatMappingSchema[C, R, R, O]
+		extends ChainMapping[C, R, O] with BaseFlatChainMapping[C, R, O]
 	{
 		override val schema :FlatChainMapping[C, R, O] = this
 
@@ -136,12 +156,6 @@ object ChainMapping {
 
 		override def lbl[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :ChainMapping[C ~ (N @|| T), R ~ T, O] =
 			col[N @|| T, T](LabeledSchemaColumn(name, buffs:_*))
-
-
-
-		override def map[S](assemble :R => S, disassemble :S => R) :FlatSchemaMapping[C, R, S, O] =
-			new MappedFlatSchema[C, R, S, O](this compose disassemble, assemble)
-
 
 
 		private[schema] override def asPrefix[T] :FlatMappingSchema[C, R, R ~ T, O] =

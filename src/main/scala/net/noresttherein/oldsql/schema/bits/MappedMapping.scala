@@ -115,8 +115,6 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 
 
 
-	override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
-
 	override def toString :String = "Mapped(" + egg  + ")"
 
 }
@@ -260,8 +258,6 @@ object MappedMapping {
 			if (nulls != null) nulls else this.nulls.flatMap(there)
 
 
-
-		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
 
 		override def toString :String = "Mapped(" + egg  + ")"
 

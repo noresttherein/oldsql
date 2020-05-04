@@ -1,6 +1,5 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
@@ -11,12 +10,13 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn
 import net.noresttherein.oldsql.schema.bits.MappedMapping.FlatMappedMapping
 import net.noresttherein.oldsql.schema.support.{LazyMapping, MappingAdapter, StaticMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{BaseColumn, StandardColumn}
-import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, ExtensibleFlatMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, SchemaComponentLabels, SchemaFlattening}
-import net.noresttherein.oldsql.schema.SchemaMapping.{FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaComponent, MappedSchemaMapping, SchemaComponentLabel}
+import net.noresttherein.oldsql.schema.MappingSchema.{CustomizeSchema, EmptySchema, ExtensibleFlatMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, MappedSchema, SchemaComponentLabels, SchemaFlattening}
+import net.noresttherein.oldsql.schema.SchemaMapping.{FilteredSchemaMapping, FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaComponent, MappedSchemaMapping, SchemaComponentLabel, SchemaMappingTemplate}
 import net.noresttherein.oldsql.schema.bits.{LabeledMapping, MappedMapping}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn.LabeledAdaptedSchemaColumn
 import net.noresttherein.oldsql.schema.SchemaMapping.SchemaColumn.{AdaptedSchemaColumn, SchemaColumnLike}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 
 
 
@@ -119,13 +119,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	def :@[N <: Label :ValueOf] :LabeledSchemaComponent[N, C, R, S, O] = valueOf[N] @: this
 
 
-	override def apply[T](component :Component[T]) :Extract[T] =
-		if (component eq schema)
-			MappingExtract.req(schema)(schema.disassemble _).asInstanceOf[Extract[T]]
-		else
-			schema.extract(component)
 
-//	override def apply[T](column :Column[T]) :ExtractColumn[T] = schema.extract(column)
 
 
 
@@ -172,6 +166,76 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	  */
 	def /[M <: Component[T], I <: Numeral, T](idx :I)(implicit get :GetSchemaComponent[C, R, M, I, T, O]) :M =
 		get(schema, idx)
+
+
+
+	private def customized[E <: Chain]
+	                      (include :Iterable[Component[_]], ban :BuffType, explicit :BuffType,
+	                       optional :BuffType, nonDefault :FlagBuffType)
+	                      (implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		new FilteredSchemaMapping(this, result(schema, include, ban, explicit, optional, nonDefault))
+
+
+
+	def forSelect[E <: Chain](include :Iterable[Component[_]], exclude :E)
+	                         (implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		forSelect[E](include)
+
+	def forSelect[E <: Chain](include :Iterable[Component[_]])(implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		customized[E](include, NoSelect, ExplicitSelect, OptionalSelect, NoSelectByDefault)
+
+	def forSelect[E <: Chain](implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		forSelect[E](Nil)
+
+
+
+	def forQuery[E <: Chain](include :Iterable[Component[_]], exclude :E)
+	                        (implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		forQuery[E](include)
+
+	def forQuery[E <: Chain](include :Iterable[Component[_]])(implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		customized[E](include, NoQuery, ExplicitQuery, OptionalQuery, NoQueryByDefault)
+
+	def forQuery[E <: Chain](implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		forQuery[E](Nil)
+
+
+
+	def forUpdate[E <: Chain](include :Iterable[Component[_]], exclude :E)
+	                         (implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		forUpdate[E](include)
+
+	def forUpdate[E <: Chain](include :Iterable[Component[_]])(implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		customized[E](include, NoUpdate, ExplicitUpdate, OptionalUpdate, NoUpdateByDefault)
+
+	def forUpdate[E <: Chain](implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		forUpdate[E](Nil)
+
+
+
+	def forInsert[E <: Chain](include :Iterable[Component[_]], exclude :E)
+	                         (implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		forInsert[E](include)
+
+	def forInsert[E <: Chain](include :Iterable[Component[_]])(implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		customized[E](include, NoInsert, ExplicitInsert, OptionalInsert, NoInsertByDefault)
+
+	def forInsert[E <: Chain](implicit result :CustomizeSchema[C, R, S, O, E])
+			:SchemaMapping[result.Components, result.Values, S, O] =
+		forInsert[E](Nil)
+
 
 
 
@@ -258,7 +322,7 @@ object SchemaMapping {
 
 
 		trait SchemaColumnLike[+C <: SchemaColumn[_, O], T, S, O]
-			extends ColumnMapping[S, O] with FlatSchemaMapping[@~ ~ C, @~ ~ T, S, O]
+			extends FlatSchemaMapping[@~ ~ C, @~ ~ T, S, O] with ColumnMapping[S, O]
 		{
 			override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :SchemaColumnLike[C, T, X, O] =
 				new AdaptedSchemaColumn[C, T, X, O](schema compose back)(
@@ -400,6 +464,36 @@ object SchemaMapping {
 
 
 
+	trait SchemaMappingTemplate[+C <: Chain, R <: Chain, S, O] extends SchemaMapping[C, R, S, O] {
+
+		override def apply[T](component :Component[T]) :Extract[T] =
+			if (component eq schema)
+				MappingExtract.req(schema)(schema.disassemble _).asInstanceOf[Extract[T]]
+			else
+				schema.extract(component)
+
+		override def apply[T](column :Column[T]) :ColumnExtract[T] = schema.extract(column)
+
+
+
+		override def extracts :NaturalMap[Component, Extract] =
+			schema.outerExtracts.updated[Extract, R](schema, MappingExtract.req(schema)(schema.disassemble))
+
+		override def columnExtracts :NaturalMap[Column, ColumnExtract] =
+			schema.outerColumnExtracts
+
+
+		override def components :Unique[Component[_]] = schema.components
+
+		override def subcomponents :Unique[Component[_]] = schema.subcomponents
+
+		override def columns :Unique[Column[_]] = schema.columns
+	}
+
+
+
+
+
 
 	private class SchemaComponentLabel[N <: Label, M <: SchemaMapping[C, R, S, O], +C <: Chain, R <: Chain, S, O]
 	                                  (label :N, egg :M)
@@ -427,6 +521,28 @@ object SchemaMapping {
 
 
 
+	private[schema] class FilteredSchemaMapping[+C <: Chain, R <: Chain, S, O]
+	                                           (original :SchemaMapping[_ <: Chain, _ <: Chain, S, O],
+	                                            override val schema :MappingSchema[C, R, S, O])
+		extends SchemaMappingTemplate[C, R, S, O]
+	{
+		override def assemble(pieces :Pieces) = original.assemble(pieces)
+
+		override val extracts = schema.outerExtracts
+	}
+
+
+	private[schema] class FilteredFlatSchemaMapping[+C <: Chain, R <: Chain, S, O]
+	                                               (original :FlatSchemaMapping[_ <: Chain, _ <: Chain, S, O],
+	                                                override val schema :FlatMappingSchema[C, R, S, O])
+		extends FilteredSchemaMapping[C, R, S, O](original, schema) with FlatSchemaMapping[C, R, S, O]
+
+
+
+
+
+	//these are very close to MappedSchema, FlatMappedSchema, MappedFlatSchema, FlatMappedFlatSchema,
+	//but use T=>S instead of R=>S
 	private[schema] class MappedSchemaMapping[+C <: Chain, R <: Chain, T, S, O]
 	                                         (override val egg :SchemaMapping[C, R, T, O],
 	                                          override val map :T => S, override val unmap :S => T)
@@ -559,13 +675,12 @@ object SchemaMapping {
   * @see [[net.noresttherein.oldsql.schema.MappingSchema.SchemaComponentLabels]]
   */
 abstract class AbstractSchemaMapping[+C <: Chain, R <: Chain, S, O](contents :MappingSchema[C, R, S, O])
-	extends SchemaMapping[C, R, S, O] with StaticMapping[S, O] with LazyMapping[S, O]
+	extends SchemaMappingTemplate[C, R, S, O] with StaticMapping[S, O] with LazyMapping[S, O]
 {
 	implicit val schema :MappingSchema[C, R, S, O] = contents
 
-	override val extracts :NaturalMap[Component, Extract] = schema.outerExtracts
-	override val columnExtracts :NaturalMap[Column, ColumnExtract] =
-		oldsql.schema.selectColumnExtracts(this)(extracts)
+	override val extracts :NaturalMap[Component, Extract] = super[SchemaMappingTemplate].extracts
+	override val columnExtracts :NaturalMap[Column, ColumnExtract] = schema.outerColumnExtracts
 
 	override val components :Unique[Component[_]] = schema.components
 	override val subcomponents :Unique[Component[_]] = schema.subcomponents
