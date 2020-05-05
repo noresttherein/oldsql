@@ -13,6 +13,7 @@ trait StaticMapping[S, O] extends GenericMapping[S, O] {
 
 
 	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
+		case res if buffs.isEmpty => res
 		case res :Some[S] =>
 			if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
 		case _ =>

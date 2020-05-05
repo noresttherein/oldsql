@@ -102,6 +102,10 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 
 
 
+	override def optionally(pieces :Pieces) :Option[R] = pieces.assemble(this) //no buffs.
+
+
+
 	/** Returns the chain with the values of all components from the subject value of the enclosing `SchemaMapping`.
 	  * @return a chain of component values inside `Some` as long as all of them returned `Some`
 	  *         from their `optionally` method, and `None` in the case when at least one of them didn't have a value
@@ -177,7 +181,7 @@ trait MappingSchema[+C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, 
 
 	/** The last component on the list. */
 	def last[M <: Component[_]](implicit nonEmpty :C <:< (Chain ~ M)) :M
-	//todo: replace maybe with a single this.type <:< MappingSchema[I ~ Any, V ~ _, S, O]?
+
 	/** The schema for the chain `I`, containing all components of this schema except for the last one. */
 	def prev[I <: Chain, V <: Chain](implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any)) :MappingSchema[I, V, S, O]
 
@@ -478,7 +482,11 @@ object MappingSchema {
 	  * This is a separate class from the `MappingSchema` as different schema variants have slightly
 	  * different methods with conflicting signatures.
 	  */
-	trait ExtensibleMappingSchema[+C <: Chain, R <: Chain, S, O] extends MappingSchema[C, R, S, O] {
+	sealed trait ExtensibleMappingSchema[+C <: Chain, R <: Chain, S, O] extends MappingSchema[C, R, S, O] {
+
+		override def export[T](component :Component[T]) :Component[T] = component
+
+		override def export[T](column :Column[T]) :Column[T] = column
 
 		protected[schema] def conveyBuffs[T](extractor :S => T, buffs :Seq[Buff[T]]) :Seq[Buff[T]] =
 			if (buffs.isEmpty) outerBuffs.flatMap(_.cascade(extractor))
@@ -760,7 +768,7 @@ object MappingSchema {
 	  * This class extends `ExtensibleMappingSchema`, but inherited non-column component factory methods
 	  * switch back to building a general `MappingSchema` so that the process can diverge at any time.
 	  */
-	trait ExtensibleFlatMappingSchema[+C <: Chain, R <: Chain, S, O]
+	sealed trait ExtensibleFlatMappingSchema[+C <: Chain, R <: Chain, S, O]
 		extends ExtensibleMappingSchema[C, R, S, O] with FlatMappingSchema[C, R, S, O]
 	{
 
@@ -1091,7 +1099,7 @@ object MappingSchema {
 				{
 					val filtered = filter(schema)
 					val excludes = excluded(filtered, schema)
-					new FilteredSchema[F, V, S, O](filtered, includes, ban, explicit, excludes, optional, nonDefault)
+					new CustomizedSchema[F, V, S, O](filtered, includes, ban, explicit, excludes, optional, nonDefault)
 				}
 
 				override def apply(schema :FlatMappingSchema[C, R, S, O], includes :Iterable[TypedMapping[_, O]],
@@ -1099,7 +1107,9 @@ object MappingSchema {
 				{
 					val filtered = filter(schema).asInstanceOf[FlatMappingSchema[F, V, S, O]]
 					val excludes = excluded(filtered, schema)
-					new FilteredFlatSchema[F, V, S, O](filtered, includes, ban, explicit, excludes, optional, nonDefault)
+					new CustomizedFlatSchema[F, V, S, O](
+						filtered, includes, ban, explicit, excludes, optional, nonDefault
+					)
 				}
 
 
@@ -1392,7 +1402,7 @@ object MappingSchema {
 
 
 
-	private[schema] class FlatNonEmptySchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, S, O]
+	private[schema] class FlatNonEmptySchema[+C <: Chain, +M <: ColumnMapping[T, O], R <: Chain, T, S, O]
 	                                        (override val init :FlatMappingSchema[C, R, S, O], next :M,
 	                                         get :MappingExtract[S, T, O])
 		extends NonEmptySchema[C, M, R, T, S, O](init, next, get) with FlatMappingSchema[C ~ M, R ~ T, S, O]
@@ -1403,6 +1413,13 @@ object MappingSchema {
 				:FlatMappingSchema[P, V, S, O] =
 			init.asInstanceOf[FlatMappingSchema[P, V, S, O]]
 
+		//these shortcut implementations work because column mappings moved their buff handling to their forms.
+		override val selectForm = SQLReadForm.ChainReadForm(init.selectForm, last.selectForm)
+		override val queryForm = SQLWriteForm.ChainWriteForm(init.queryForm, last.queryForm)
+		override val updateForm = SQLWriteForm.ChainWriteForm(init.updateForm, last.updateForm)
+		override val insertForm = SQLWriteForm.ChainWriteForm(init.insertForm, last.insertForm)
+
+
 		override def compose[X](extractor :X => S) :FlatNonEmptySchema[C, M, R, T, X, O] =
 			new FlatNonEmptySchema[C, M, R, T, X, O](init compose extractor, last, this.extractor compose extractor)
 
@@ -1412,7 +1429,7 @@ object MappingSchema {
 
 
 
-	private[schema] class ExtensibleFlatNonEmptySchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, S, O]
+	private[schema] class ExtensibleFlatNonEmptySchema[+C <: Chain, +M <: ColumnMapping[T, O], R <: Chain, T, S, O]
 	                      (prev :ExtensibleFlatMappingSchema[C, R, S, O], next :M, get :MappingExtract[S, T, O])
 		extends FlatNonEmptySchema[C, M, R, T, S, O](prev, next, get) with ExtensibleFlatMappingSchema[C ~ M, R ~ T, S, O]
 	{
@@ -1435,7 +1452,8 @@ object MappingSchema {
 
 		override def last[M <: Component[_]](implicit nonEmpty :C <:< (Chain ~ M)) :M = egg.last
 
-		override def prev[I <: Chain, V <: Chain](implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any)) :MappingSchema[I, V, S, O] =
+		override def prev[I <: Chain, V <: Chain](implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any))
+				:MappingSchema[I, V, S, O] =
 			egg.prev
 
 		override def outerExtracts :NaturalMap[Component, OuterExtract] = egg.outerExtracts
@@ -1455,7 +1473,7 @@ object MappingSchema {
 
 
 
-	private[schema] class FilteredSchema[+C <: Chain, R <: Chain, S, O]
+	private[schema] class CustomizedSchema[+C <: Chain, R <: Chain, S, O]
 	                      (filtered :MappingSchema[C, R, S, O],
 	                       include :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
 	                       exclude :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
@@ -1463,32 +1481,33 @@ object MappingSchema {
 		                          filtered, include, prohibited, explicit, exclude, optional, nonDefault
 			) with MappingSchemaProxy[C, R, S, O]
 	{
+
 		override def compose[X](extractor :X => S) :MappingSchema[C, R, X, O] =
-			new FilteredSchema[C, R, X, O](egg compose extractor,
-			                               include, prohibited, explicit, exclude, optional, nonDefault)
+			new CustomizedSchema[C, R, X, O](egg compose extractor,
+			                                 include, prohibited, explicit, exclude, optional, nonDefault)
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[C, R, X, O] =
-			new FilteredSchema[C, R, X, O](egg compose extractor,
-			                               include, prohibited, explicit, exclude, optional, nonDefault)
+			new CustomizedSchema[C, R, X, O](egg compose extractor,
+			                                 include, prohibited, explicit, exclude, optional, nonDefault)
 
 	}
 
 
 
-	private[schema] class FilteredFlatSchema[+C <: Chain, R <: Chain, S, O]
+	private[schema] class CustomizedFlatSchema[+C <: Chain, R <: Chain, S, O]
 	                      (override val egg :FlatMappingSchema[C, R, S, O],
 	                       include :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
 	                       exclude :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
-		extends FilteredSchema(egg, include, prohibited, explicit, exclude, optional, nonDefault)
+		extends CustomizedSchema(egg, include, prohibited, explicit, exclude, optional, nonDefault)
 		   with FlatMappingSchemaProxy[C, R, S, O]
 	{
 		override def compose[X](extractor :X => S) :FlatMappingSchema[C, R, X, O] =
-			new FilteredFlatSchema[C, R, X, O](egg compose extractor,
-			                                   include, prohibited, explicit, exclude, optional, nonDefault)
+			new CustomizedFlatSchema[C, R, X, O](egg compose extractor,
+			                                     include, prohibited, explicit, exclude, optional, nonDefault)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[C, R, X, O] =
-			new FilteredFlatSchema[C, R, X, O](egg compose extractor,
-			                                   include, prohibited, explicit, exclude, optional, nonDefault)
+			new CustomizedFlatSchema[C, R, X, O](egg compose extractor,
+			                                     include, prohibited, explicit, exclude, optional, nonDefault)
 	}
 
 

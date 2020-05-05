@@ -1,16 +1,14 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.support.{ConstantMapping, EmptyMapping, LazyMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping, SQLForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping, SQLForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappedFlatSchema, FlatMappedSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
-import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedSchemaMapping, SchemaColumn}
+import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedFlatSchema, FlatMappedSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
+import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
@@ -31,6 +29,7 @@ trait ChainMapping[+C <: Chain, R <: Chain, O] extends BaseChainMapping[C, R, O]
 	  */
 	protected def append[M <: Subschema[_, _, T], T](component :M) :ChainMapping[C ~ M, R ~ T, O] =
 		new NonEmptyChainMapping[C, M, R, T, O](this, component)
+
 
 	/** Appends the given component to this schema.
 	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
@@ -88,6 +87,11 @@ object ChainMapping {
 		extends SchemaMapping[C, R, R, O] with MappingSchema[C, R, R, O]
 	{
 		override val schema :MappingSchema[C, R, R, O] = this
+
+		override def export[T](component :Component[T]) :Component[T] = component
+
+		override def export[T](column :Column[T]) :Column[T] = column
+
 
 		override val extracts :NaturalMap[Component, Extract] = outerExtracts
 
@@ -148,7 +152,7 @@ object ChainMapping {
 	{
 		override val schema :FlatChainMapping[C, R, O] = this
 
-		protected def col[M <: Subschema[_, _, T], T](component :M) :FlatChainMapping[C ~ M, R ~ T, O] =
+		protected def col[M <: ||[T], T](component :M) :FlatChainMapping[C ~ M, R ~ T, O] =
 			new NonEmptyFlatChainMapping[C, M, R, T, O](this, component)
 
 		override def col[T :ColumnForm](name :String, buffs :Buff[T]*) :FlatChainMapping[C ~ ||[T], R ~ T, O] =
@@ -184,7 +188,7 @@ object ChainMapping {
 
 
 
-	private class NonEmptyFlatChainMapping[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, O]
+	private class NonEmptyFlatChainMapping[+C <: Chain, +M <: ColumnMapping[T, O], R <: Chain, T, O]
 	                                      (prefix :FlatChainMapping[C, R, O], next :M)
 		extends FlatNonEmptySchema[C, M, R, T, R ~ T, O](
 		                       prefix.asPrefix[T], next, MappingExtract.req(next)((row :R ~ T) => row.last))

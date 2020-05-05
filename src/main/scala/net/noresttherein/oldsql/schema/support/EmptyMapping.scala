@@ -9,6 +9,9 @@ import net.noresttherein.oldsql.schema.{ColumnMappingExtract, GenericMapping, SQ
   */
 trait EmptyMapping[S, O] extends GenericMapping[S, O] {
 
+	override def assemble(pieces :Pieces) :Option[S] = pieces.preset(this)
+
+
 	override def apply[T](component :Component[T]) :Extract[T] =
 		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")
 
@@ -42,7 +45,6 @@ trait EmptyMapping[S, O] extends GenericMapping[S, O] {
 	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty
 
 
-	override def assemble(values :Pieces) :Option[S] = None
 }
 
 
@@ -58,6 +60,11 @@ class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
 	override def optionally(values :Pieces) :Option[S] = result
 
 	override def apply(values :Pieces) :S = subject
+
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+		SQLReadForm.const(subject, (0 /: components) { _ + _.columns.size })
+
+	override val selectForm :SQLReadForm[S] = SQLReadForm.const(subject)
 
 	override def toString :String = "Const(" + subject + ")"
 }

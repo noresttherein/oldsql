@@ -1,12 +1,10 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, NaturalMapBase}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
-import net.noresttherein.oldsql.schema.ColumnMapping.{LiteralColumn, NumberedColumn, StandardColumn}
+import net.noresttherein.oldsql.schema.ColumnMapping.{NumberedColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
-import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 
 
@@ -49,7 +47,7 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 				case Some(null) =>
 					throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
 					                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
-				case res => res
+				case res => res //don't check buffs - we do it in the form for speed
 			}
 
 	override def nullValue :Option[S] = form.nulls.toOption

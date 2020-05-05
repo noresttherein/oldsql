@@ -15,9 +15,12 @@ import net.noresttherein.oldsql.slang._
 
 /** Values for components of the given mapping together with possibly the value for the whole mapping,
   * used as input data for the assembly process defined by some mapping `TypedMapping[S, O]`.
-  * It is created typically from row data of an SQL query to map tabular result into an object, but can be also used
-  * to set the values of specific components on an existing value `x :S` by disassembling `x` into `ComponentValues`,
-  * substituting the values for the components we want to change, and reassembling it again to `S` using the mapping.
+  * It is created typically from row data of an SQL query to map tabular result into an object, but some implementations
+  * work the other way round: they start with a subject value `S` and disassemble it into values for the components
+  * of the associated mapping before saving an entity, abstracting over exactly which columns take part in a given
+  * database operation. It abut can be also used to modify the values of specific components on an existing subject
+  * `x :S` by disassembling `x` into `ComponentValues`, substituting the values for the components we want to change,
+  * and reassembling it again to `S` using the mapping.
   *
   * It is designed to support a hierarchical assembly process, where a mapping will assemble the final result from
   * the values of its direct components, which might not be defined explicitly in this instance, but assembled themselves

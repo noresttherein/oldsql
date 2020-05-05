@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.{Chain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -89,7 +89,7 @@ object RecordMapping {
 	{
 		override val schema :FlatRecordMapping[C, R, O] = this
 
-		protected def col[K <: Label, M <: Subschema[_, _, T], T](key :K, component :M)
+		protected def col[K <: Label, M <: ||[T], T](key :K, component :M)
 				:FlatRecordMapping[C ~ M, R |# (K #> T), O] =
 			new NonEmptyFlatRecordMapping[C, M, R, K, T, O](this, key, component)
 
@@ -136,7 +136,7 @@ object RecordMapping {
 
 
 
-	private class NonEmptyFlatRecordSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Record, K <: Key, T, S, O]
+	private class NonEmptyFlatRecordSchema[+C <: Chain, +M <: ColumnMapping[T, O], R <: Record, K <: Key, T, S, O]
 	                                      (override val init :FlatMappingSchema[C, R, S, O], key :K, next :M,
 	                                       extract :MappingExtract[S, T, O])
 		extends NonEmptyRecordSchema[C, M, R, K, T, S, O](init, key, next, extract)
@@ -147,6 +147,10 @@ object RecordMapping {
 				:FlatMappingSchema[P, V, S, O] =
 			init.asInstanceOf[FlatMappingSchema[P, V, S, O]]
 
+		override val selectForm = SQLReadForm.RecordReadForm(init.selectForm, new ValueOf(key), last.selectForm)
+		override val queryForm = SQLWriteForm.RecordWriteForm(init.queryForm, last.queryForm)
+		override val updateForm = SQLWriteForm.RecordWriteForm(init.updateForm, last.updateForm)
+		override val insertForm = SQLWriteForm.RecordWriteForm(init.insertForm, last.insertForm)
 
 		override def compose[X](extractor :X => S) :FlatMappingSchema[C ~ M, R |# (K #> T), X, O] =
 			new NonEmptyFlatRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
@@ -170,7 +174,7 @@ object RecordMapping {
 
 
 
-	private class NonEmptyFlatRecordMapping[+C <: Chain, +M <: TypedMapping[T, O], R <: Record, K <: Key, T, O]
+	private class NonEmptyFlatRecordMapping[+C <: Chain, +M <: ColumnMapping[T, O], R <: Record, K <: Key, T, O]
 	                                       (prefix :FlatRecordMapping[C, R, O], key :K, next :M)
 		extends NonEmptyFlatRecordSchema[C, M, R, K, T, R |# (K #> T), O](
 		                                 prefix.asPrefix[K #> T], key, next,

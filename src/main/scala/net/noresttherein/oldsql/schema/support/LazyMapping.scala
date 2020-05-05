@@ -18,6 +18,7 @@ trait LazyMapping[S, O] extends GenericMapping[S, O] {
 
 
 	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
+		case res if buffs.isEmpty => res
 		case res :Some[S] =>
 			if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
 		case _ =>
@@ -62,6 +63,7 @@ trait LazyMapping[S, O] extends GenericMapping[S, O] {
 trait StableMapping[S, O] extends GenericMapping[S, O] {
 
 	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
+		case res if noBuffs => res
 		case res :Some[S] =>
 			if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
 		case _ =>
@@ -69,6 +71,7 @@ trait StableMapping[S, O] extends GenericMapping[S, O] {
 			if (res.isDefined) res else explicit
 	}
 
+	private val noBuffs = buffs.isEmpty
 	private val audits = SelectAudit.Audit(this)
 	private val default = OptionalSelect.Value(this)
 	private val explicit = ExtraSelect.Value(this)

@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.bits.MappedMapping.FlatMappedMapping
 import net.noresttherein.oldsql.schema.support.{LazyMapping, MappingAdapter, StaticMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{BaseColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.MappingSchema.{CustomizeSchema, EmptySchema, ExtensibleFlatMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, MappedSchema, SchemaComponentLabels, SchemaFlattening}
-import net.noresttherein.oldsql.schema.SchemaMapping.{FilteredSchemaMapping, FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaComponent, MappedSchemaMapping, SchemaComponentLabel, SchemaMappingTemplate}
+import net.noresttherein.oldsql.schema.SchemaMapping.{CustomizedSchemaMapping, FlatMappedSchemaMapping, FlatSchemaMapping, LabeledSchemaComponent, MappedSchemaMapping, SchemaComponentLabel, SchemaMappingTemplate}
 import net.noresttherein.oldsql.schema.bits.{LabeledMapping, MappedMapping}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn.LabeledAdaptedSchemaColumn
 import net.noresttherein.oldsql.schema.SchemaMapping.SchemaColumn.{AdaptedSchemaColumn, SchemaColumnLike}
@@ -174,7 +174,7 @@ trait SchemaMapping[+C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] {
 	                       optional :BuffType, nonDefault :FlagBuffType)
 	                      (implicit result :CustomizeSchema[C, R, S, O, E])
 			:SchemaMapping[result.Components, result.Values, S, O] =
-		new FilteredSchemaMapping(this, result(schema, include, ban, explicit, optional, nonDefault))
+		new CustomizedSchemaMapping(this, result(schema, include, ban, explicit, optional, nonDefault))
 
 
 
@@ -521,9 +521,9 @@ object SchemaMapping {
 
 
 
-	private[schema] class FilteredSchemaMapping[+C <: Chain, R <: Chain, S, O]
-	                                           (original :SchemaMapping[_ <: Chain, _ <: Chain, S, O],
-	                                            override val schema :MappingSchema[C, R, S, O])
+	private[schema] class CustomizedSchemaMapping[+C <: Chain, R <: Chain, S, O]
+	                                             (original :SchemaMapping[_ <: Chain, _ <: Chain, S, O],
+	                                              override val schema :MappingSchema[C, R, S, O])
 		extends SchemaMappingTemplate[C, R, S, O]
 	{
 		override def assemble(pieces :Pieces) = original.assemble(pieces)
@@ -532,10 +532,10 @@ object SchemaMapping {
 	}
 
 
-	private[schema] class FilteredFlatSchemaMapping[+C <: Chain, R <: Chain, S, O]
-	                                               (original :FlatSchemaMapping[_ <: Chain, _ <: Chain, S, O],
-	                                                override val schema :FlatMappingSchema[C, R, S, O])
-		extends FilteredSchemaMapping[C, R, S, O](original, schema) with FlatSchemaMapping[C, R, S, O]
+	private[schema] class CustomizedFlatSchemaMapping[+C <: Chain, R <: Chain, S, O]
+	                                                 (original :FlatSchemaMapping[_ <: Chain, _ <: Chain, S, O],
+	                                                  override val schema :FlatMappingSchema[C, R, S, O])
+		extends CustomizedSchemaMapping[C, R, S, O](original, schema) with FlatSchemaMapping[C, R, S, O]
 
 
 

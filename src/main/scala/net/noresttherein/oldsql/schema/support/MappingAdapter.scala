@@ -48,7 +48,7 @@ object MappingAdapter {
 	  */
 	trait ShallowAdapter[+M <: Mapping.TypedMapping[T, O], T, S, O] extends GenericMapping[S, O] with MappingNest[M] {
 
-		override def components :Unique[Component[_]] = Unique(egg)
+		override def components :Unique[Component[_]] = egg.components //Unique(egg)
 		override def subcomponents :Unique[Component[_]] = egg.subcomponents
 
 		override def columns :Unique[Column[_]] = egg.columns

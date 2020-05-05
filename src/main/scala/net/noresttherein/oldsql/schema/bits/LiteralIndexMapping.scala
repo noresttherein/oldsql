@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, MappingExtract, MappingSchema}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn
@@ -84,7 +84,7 @@ object LiteralIndexMapping {
 	{
 		override val schema :FlatLiteralIndexMapping[C, R, O] = this
 
-		protected def col[K <: Label, M <: Subschema[_, _, T], T](key :K, component :M)
+		protected def col[K <: Label, M <: ||[T], T](key :K, component :M)
 				:FlatLiteralIndexMapping[C ~ M, R |~ (K :~ T), O] =
 			new NonEmptyFlatIndexMapping[C, M, R, K, T, O](this, key, component)
 
@@ -131,7 +131,7 @@ object LiteralIndexMapping {
 
 
 
-	private class NonEmptyFlatIndexSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
+	private class NonEmptyFlatIndexSchema[+C <: Chain, +M <: ColumnMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
 	                                     (override val init :FlatMappingSchema[C, R, S, O], key :K, next :M,
 	                                      extract :MappingExtract[S, T, O])
 		extends NonEmptyIndexSchema[C, M, R, K, T, S, O](init, key, next, extract)
@@ -141,6 +141,13 @@ object LiteralIndexMapping {
 		override def prev[P <: Chain, V <: Chain](implicit comps :C ~ M <:< (P ~ Any), vals :R |~ (K :~ T) <:< (V ~ Any))
 				:FlatMappingSchema[P, V, S, O] =
 			init.asInstanceOf[FlatMappingSchema[P, V, S, O]]
+
+
+		override val selectForm = SQLReadForm.LiteralIndexReadForm(init.selectForm, new ValueOf(key), last.selectForm)
+		override val queryForm = SQLWriteForm.LiteralIndexWriteForm(init.queryForm, last.queryForm)
+		override val updateForm = SQLWriteForm.LiteralIndexWriteForm(init.updateForm, last.updateForm)
+		override val insertForm = SQLWriteForm.LiteralIndexWriteForm(init.insertForm, last.insertForm)
+
 
 		override def compose[X](extractor :X => S) :FlatMappingSchema[C ~ M, R |~ (K :~ T), X, O] =
 			new NonEmptyFlatIndexSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
@@ -164,7 +171,7 @@ object LiteralIndexMapping {
 
 
 
-	private class NonEmptyFlatIndexMapping[+C <: Chain, +M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, O]
+	private class NonEmptyFlatIndexMapping[+C <: Chain, +M <: ColumnMapping[T, O], R <: LiteralIndex, K <: Key, T, O]
 	                                      (prefix :FlatLiteralIndexMapping[C, R, O], key :K, next :M)
 		extends NonEmptyFlatIndexSchema[C, M, R, K, T, R |~ (K :~ T), O](
 		                                prefix.asPrefix[K :~ T], key, next,

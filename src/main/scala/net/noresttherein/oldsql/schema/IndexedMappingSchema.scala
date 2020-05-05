@@ -21,7 +21,6 @@ import net.noresttherein.oldsql.schema.IndexedSchemaMapping.FlatIndexedSchemaMap
   * @author Marcin Mościcki
   */
 trait IndexedMappingSchema[+C <: Chain, R <: LiteralIndex, S, O] extends MappingSchema[C, R, S, O] {
-	//todo: make flatten work
 
 //	override def prev[I <: Chain, V <: Chain](implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any))
 //			:IndexedMappingSchema[I, V, S, O]

@@ -191,7 +191,7 @@ sealed trait Mapping {
 
 	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
 	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
-	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.result result]] method
+	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.assemble assemble]] method
 	  * of `ComponentValues` (which, by default, will first check if it has a predefined value stored for this mapping,
 	  * and, only if not, forward to this instance's [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  * method which is responsible for the actual assembly of the subject from the values of the subcomponents,
@@ -221,10 +221,11 @@ sealed trait Mapping {
 	  * in [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] and should not be called directly.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply apply]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.value ComponentValues.value]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.getValue ComponentValues.getValue]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.root ComponentValues.root]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.optionally ComponentValues.optionally]]
 	  */
 	def assemble(pieces :Pieces) :Option[Subject]
+
 //todo: replace with NullValue
 	def nullValue :Option[Subject] //todo: maybe instead of this problem just have non-null NullValue in forms?
 
@@ -541,6 +542,7 @@ trait GenericMapping[S, O] extends Mapping { self =>
 		}
 
 	override def optionally(pieces: Pieces): Option[S] = pieces.assemble(this) match {
+		case res if buffs.isEmpty => res //very common case
 		//todo: perhaps extract this to MappingReadForm for speed (not really needed as the buffs cascaded to columns anyway)
 		case Some(res) => Some((res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
 		case _ =>
