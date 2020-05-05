@@ -2,10 +2,12 @@ package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.collection.NaturalMap
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, TypedMapping}
 import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang._
 
 /**
@@ -33,15 +35,41 @@ package object schema {
 
 
 
-	private[schema] def mapBuffs[S, X](mapping :MappingOf[S])(map :S =?> X) :Seq[Buff[X]] =
-		map.requisite match {
-			case Some(req) => mapping.buffs.map(_.map(req))
-			case _ => mapping.buffs.map(buff => buff.map {
-				s => map.get(s) getOrElse {
-					throw new BuffMappingFailureException(s"Failed mapping buff $buff of mapping $mapping: no value returned for $s by $map")
+	private[schema] def mapForm[S, X](form :ColumnForm[S])(map :S =?> X, unmap :X =?> S)
+	                                 (implicit nulls :NullValue[X] = null) :ColumnForm[X] =
+		(map, unmap) match {
+			case (Requisite(there), Requisite(back)) =>
+				if (nulls == null) form.bimapNull(there)(back)
+				else form.bimap(there)(back)
+			case _ =>
+				if (nulls == null) form.biflatMapNull(map.optional)(unmap.optional)
+				else form.biflatMap(map.optional)(unmap.optional)
+		} //todo: implement form mapping with extractors.
+
+
+
+	private[schema] def mapBuffs[S, X](mapping :MappingOf[S])(map :S =?> X, unmap :X =?> S) :Seq[Buff[X]] =
+		mapping.buffs.map { buff =>
+			buff.bimap(
+				map.requisite getOrElse {
+					val flatMap = map.optional
+					s :S => flatMap(s) getOrElse {
+						throw new BuffMappingFailureException(
+							s"Failed mapping of $mapping: could not derive the value for buff $buff from $s."
+						)
+					}
+				},
+				unmap.requisite getOrElse {
+					val flatUnmap = unmap.optional
+					x :X => flatUnmap(x) getOrElse {
+						throw new BuffMappingFailureException(
+							s"Failed mapping of $mapping: could not unmap value $x as part of the buff $buff."
+						)
+					}
 				}
-			})
+			)
 		}
+
 
 
 	private[schema] def flatMapBuffs[S, X](mapping :MappingOf[S])
@@ -108,26 +136,61 @@ package object schema {
 //			:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
 //		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](col, extract)
 
-	@inline def composeExtractAssoc[S, X, T, O](extractor :MappingExtract[S, X, O])
-	                                           (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
+	@inline private[schema] def composeExtracts[S, X, T, O]
+	                            (extracts :TypedMapping[X, O]#ExtractMap, extractor :MappingExtract[S, X, O])
+			:TypedMapping[S, O]#ExtractMap =
+		extracts.map(composeExtractAssoc(extractor)(_))
+
+	@inline private[schema] def composeExtracts[S, X, T, O](mapping :TypedMapping[X, O], extractor :S =?> X)
+			:TypedMapping[S, O]#ExtractMap =
+		mapping.extracts.map(composeExtractAssoc(mapping, extractor)(_))
+
+
+
+	@inline private[schema] def composeColumnExtracts[S, X, T, O]
+	                            (extracts :TypedMapping[X, O]#ColumnExtractMap, extractor :MappingExtract[S, X, O])
+			:TypedMapping[S, O]#ColumnExtractMap =
+		extracts.map(composeColumnExtractAssoc(extractor)(_))
+
+	@inline private[schema] def composeColumnExtracts[S, X, T, O](mapping :TypedMapping[X, O], extractor :S =?> X)
+			:TypedMapping[S, O]#ColumnExtractMap =
+		mapping.columnExtracts.map(composeColumnExtractAssoc(mapping, extractor)(_))
+
+
+
+	@inline private[schema] def composeExtractAssoc[S, X, T, O]
+	                            (extractor :MappingExtract[S, X, O])
+	                            (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
 			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
 		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
 
-	@inline def composeExtractAssoc[S, X, T, O](mapping :MappingFrom[O], f : S => X)
-	                                           (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
+	@inline private[schema] def composeExtractAssoc[S, X, T, O](mapping :MappingFrom[O], extractor :S =?> X)
+	                            (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
+			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
+		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
+
+	@inline private[schema] def composeExtractAssoc[S, X, T, O](mapping :MappingFrom[O], f : S => X)
+	                            (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
 			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
 		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](entry._1, entry._2 compose f)
 
 
-	@inline def composeColumnExtractAssoc[S, X, T, O]
-	                                     (extractor :MappingExtract[S, X, O])
-	                                     (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
+
+	@inline private[schema] def composeColumnExtractAssoc[S, X, T, O]
+	                            (extractor :MappingExtract[S, X, O])
+	                            (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
 			:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
 		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
 
-	@inline def composeColumnExtractAssoc[S, X, T, O]
-	                                     (mapping :MappingFrom[O], f : S => X)
-	                                     (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
+	@inline private[schema] def composeColumnExtractAssoc[S, X, T, O]
+	                            (mapping :MappingFrom[O], extractor : S =?> X)
+	                            (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
+	:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
+		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
+
+	@inline private[schema] def composeColumnExtractAssoc[S, X, T, O]
+	                            (mapping :MappingFrom[O], f : S => X)
+	                            (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
 	:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
 		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose f)
 

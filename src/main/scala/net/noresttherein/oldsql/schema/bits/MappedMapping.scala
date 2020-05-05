@@ -1,26 +1,44 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
-import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.support.MappingAdapter
 
-import scala.util.Try
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.Extractor.=?>
 
 
 
 
 
-//todo: combine MappedMapping and FlatMappedMapping by use of extractors.
 trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAdapter[M, T, S, O] {
+
+	/** The subject value `S` that `null` values from the database are mapped to.
+	  * This is different from `this.nullValue` in that it is designed to hold the implicit method parameter
+	  * of `Mapping.map` (producing this mapping) which defaults to `null`. For this reason `nullValue`
+	  * will use it if not-null, but default to mapping the `nullVaulue` of the mapped component if `null`.
+	  * Note that this '''must''' be implemented as either a method or a constructor parameter `val` as it is used in
+	  * this trait's constructor body.
+	  */
 	protected def nulls :NullValue[S]
-	protected def map :T => S
-	protected def unmap :S => T
+
+	/** Function mapping the subject type `T` of the adapted mapping to the target subject type `S`, used by read forms
+	  * and assembly method. It is used in the constructor body of this trait and as such '''must''' be overriden
+	  * with either a method or a constructor parameter `val` or `NullPointerException` will be thrown from
+	  * the constructor.
+	  */
+	protected def map :T =?> S
+
+	/** Function mapping the subject type `S`` of this mapping to the subject type `T` of the` adapted mapping,
+	  * used by write forms. It is used in the constructor body of this trait and as such '''must''' be overriden
+	  * with either a method or a constructor parameter `val` or `NullPointerException` will be thrown from
+	  * the constructor.
+	  */
+	protected def unmap :S =?> T
 
 
 
@@ -38,69 +56,112 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 			MappingExtract(column)(egg(column) compose unmap)
 */
 
+	if (map == null || unmap == null)
+		throw new IllegalStateException(s"MappedMapping map ($map) or unmap ($unmap) extract is null; overrides " +
+			                             "must happen with a def or a constructor parameter val.")
 
+	private[this] val mapFun = map.requisite.orNull
+	private[this] val unmapFun = unmap.requisite.orNull
 
-	private[this] val eggExtract :Extract[T] = MappingExtract.req(egg)(unmap)
+	private[this] val eggExtract :Extract[T] = MappingExtract(egg)(unmap)
 
-	override val extracts :NaturalMap[Component, Extract] = {
-		def adapt[X](entry :Assoc[Component, egg.Extract, X]) :Assoc[Component, Extract, X] =
-			Assoc[Component, Extract, X](entry._1, entry._2 compose unmap)
-		egg.extracts.map(adapt(_)).updated(egg, eggExtract)
-	}
+	override val extracts :NaturalMap[Component, Extract] =
+		schema.composeExtracts(egg, eggExtract).updated(egg, eggExtract)
 
 	override val columnExtracts :NaturalMap[Column, ColumnExtract] = egg match {
 		case column :ColumnMapping[T @unchecked, O @unchecked] =>
 			NaturalMap.single[Column, ColumnExtract, T](column, eggExtract.asInstanceOf[ColumnExtract[T]])
 		case _ =>
-			egg.columnExtracts.map(schema.composeColumnExtractAssoc(eggExtract)(_))
+			schema.composeColumnExtracts(egg, eggExtract)
 	}
 
 
 
 	override val components :Unique[Component[_]] = Unique(egg)//egg.components
 
+
+
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
 		val form = egg.selectForm(if (components.contains(egg)) egg.selectable else components)
-		if (nulls == null) form.mapNull(map) else form.map(map)
+		if (nulls == null)
+			if (mapFun == null) form.flatMapNull(map.optional) else form.mapNull(mapFun)
+		else
+			if (mapFun == null) form.flatMap(map.optional) else form.map(mapFun)
 	}
 
-	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		egg.queryForm(if (components.contains(egg)) egg.queryable else components).unmap(unmap)
+	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = {
+		val form = egg.queryForm(if (components.contains(egg)) egg.queryable else components)
+		if (unmapFun == null) form.flatUnmap(unmap.optional) else form.unmap(unmapFun)
+	}
 
-	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		egg.updateForm(if (components.contains(egg)) egg.updatable else components).unmap(unmap)
+	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = {
+		val form = egg.updateForm(if (components.contains(egg)) egg.updatable else components)
+		if (unmapFun == null) form.flatUnmap(unmap.optional) else form.unmap(unmapFun)
+	}
 
-	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		egg.insertForm(if (components.contains(egg)) egg.insertable else components).unmap(unmap)
-
+	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = {
+		val form = egg.insertForm(if (components.contains(egg)) egg.insertable else components)
+		if (unmapFun == null) form.flatUnmap(unmap.optional) else form.unmap(unmapFun)
+	}
 
 
 	override val selectForm :SQLReadForm[S] =
-		if (nulls == null) egg.selectForm.mapNull(map)
-		else egg.selectForm.map(map)
+		if (nulls == null)
+			if (mapFun == null) egg.selectForm.flatMapNull(map.optional)
+			else egg.selectForm.mapNull(mapFun)
+		else
+	        if (mapFun == null) egg.selectForm.flatMap(map.optional)
+			else egg.selectForm.map(mapFun)
 
-	override val queryForm :SQLWriteForm[S] = egg.queryForm.unmap(unmap)
-	override val updateForm :SQLWriteForm[S] = egg.updateForm.unmap(unmap)
-	override val insertForm :SQLWriteForm[S] = egg.insertForm.unmap(unmap)
+	override val queryForm :SQLWriteForm[S] =
+		if (unmapFun == null) egg.queryForm.flatUnmap(unmap.optional) else egg.queryForm.unmap(unmapFun)
+
+	override val updateForm :SQLWriteForm[S] =
+		if (unmapFun == null) egg.updateForm.flatUnmap(unmap.optional) else egg.updateForm.unmap(unmapFun)
+
+	override val insertForm :SQLWriteForm[S] =
+		if (unmapFun == null) egg.insertForm.flatUnmap(unmap.optional) else egg.insertForm.unmap(unmapFun)
 
 
-	override val buffs :Seq[Buff[S]] = egg.buffs.map(_.bimap(map, unmap)) //consider: should buffs use the NullValue?
+
+	override val buffs :Seq[Buff[S]] = schema.mapBuffs(egg)(map, unmap) //consider: should buffs use the NullValue?
 
 
 
-	override def assemble(values :Pieces) :Option[S] = values.get(eggExtract).map(map)
+	override def assemble(values :Pieces) :Option[S] =
+		if (mapFun == null) values.get(eggExtract).flatMap(map.optional)
+		else values.get(eggExtract).map(mapFun)
 
-	implicit override def nullValue :NullValue[S] =
+
+
+	/** The subject value `S` that database `null`s should map to, used by the read forms. It is initialized
+	  * with the `nulls` parameter of the `Mapping.map` method creating `MappedMapping` instances. If the latter
+	  * is `null` (the field, not the wrapped value) it defaults to mapping the `nullValue` of the adapted mapping
+	  * with `map`.
+	  */
+	implicit override val nullValue :NullValue[S] =
 		if (nulls != null) nulls
-		else egg.nullValue.map(map)
+		else if (mapFun == null) egg.nullValue.flatMap(map.optional)
+		else egg.nullValue.map(mapFun)
+
+
+
+	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+		MappedMapping[M, T, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
 
 	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
-		MappedMapping[M, T, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
+		MappedMapping[M, T, X, O](egg, map andThen there, unmap compose back)(mapNulls(there))
 
 	override def flatMap[X](there :S => Option[X], back :X => Option[S])
 	                       (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
-		MappedMapping.opt[M, T, X, O](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
+		MappedMapping[M, T, X, O](egg, map andThen Extractor(there), unmap composeOpt back)(flatMapNulls(there))
 
+
+
+	protected def mapNulls[X](there :S =?> X)(implicit nulls :NullValue[X]) :NullValue[X] = there.requisite match {
+		case Some(req) => mapNulls(req)
+		case _ => flatMapNulls(there.optional)
+	}
 
 
 	protected def mapNulls[X](there :S => X)(implicit nulls :NullValue[X]) :NullValue[X] =
@@ -124,167 +185,28 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 
 object MappedMapping {
 
-	def apply[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S => T, unmapped :T => S)
+	def apply[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S =?> T, unmapped :T =?> S)
 	                                           (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
-		new MappingBijection[M, S, T, O](mapping, mapped, unmapped)
+		new MappedMappingAdapter[M, S, T, O](mapping, mapped, unmapped)
+
+	def sure[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S => T, unmapped :T => S)
+	                                          (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
+		apply[M, S, T, O](mapping, Extractor.req(mapped), Extractor.req(unmapped))
 
 
 	def opt[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S => Option[T], unmapped :T => Option[S])
 	                                         (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
-		new FlatMappedMapping[M, S, T, O](mapping, mapped, unmapped, nulls)
+		apply[M, S, T, O](mapping, Extractor.opt(mapped), Extractor.opt(unmapped))
 
 
 
 
 
 
-	private class MappingBijection[M <: Mapping.TypedMapping[T, O], T, S, O]
-	                              (override val egg :M, override val map :T => S, override val unmap :S => T)
-	                              (implicit override val nulls :NullValue[S] = null)
-		extends MappedMapping[M, T, S, O] with MappingAdapter[M, S, O] //AdaptedAs[M, T]
-
-
-
-	class FlatMappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O]
-	                       (override val egg :M,
-	                        protected final val map :T => Option[S],
-	                        protected final val unmap :S => Option[T],
-	                        onNone :NullValue[S] = null)
-		extends ShallowAdapter[M, T, S, O] with MappingAdapter[M, S, O] //AdaptedAs[M, S]
-	{
-		implicit override val nullValue :NullValue[S] =
-			if (onNone != null) onNone
-			else egg.nullValue.flatMap(map)
-
-
-
-		override def assemble(values :Pieces) :Option[S] = values.get(eggExtract).flatMap(map)
-
-
-
-		private[this] val eggExtract :Extract[T] = MappingExtract.opt(egg)(unmap)
-
-		override val extracts :NaturalMap[Component, Extract] = {
-			def adapt[X](entry :Assoc[Component, egg.Extract, X]) =
-				Assoc[Component, Extract, X](entry._1, entry._2 composeOpt unmap)
-			egg.extracts.map(adapt(_)).updated(egg, eggExtract)
-		}
-
-		override val columnExtracts :NaturalMap[Column, ColumnExtract] = egg match {
-			case column :ColumnMapping[T @unchecked, O @unchecked] =>
-				NaturalMap.single[Column, ColumnExtract, T](column, eggExtract.asInstanceOf[ColumnExtract[T]])
-			case _ =>
-				egg.columnExtracts.map(schema.composeColumnExtractAssoc(eggExtract)(_))
-		}
-
-
-
-		override val components :Unique[Component[_]] = Unique(egg)
-
-
-		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-			if (components.contains(egg)) egg.selectForm(egg.selectable).flatMap(map)
-			else egg.selectForm(components).flatMap(map)
-
-		override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.contains(egg)) egg.queryForm(egg.queryable).flatUnmap(unmap)
-			else egg.queryForm(components).flatUnmap(unmap)
-
-		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.contains(egg)) egg.updateForm(egg.updatable).flatUnmap(unmap)
-			else egg.updateForm(components).flatUnmap(unmap)
-
-		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.contains(egg)) egg.insertForm(egg.insertable).flatUnmap(unmap)
-			else egg.insertForm(components).flatUnmap(unmap)
-
-		
-
-		override val selectForm :SQLReadForm[S] = egg.selectForm.flatMap(map)
-		override val queryForm :SQLWriteForm[S] = egg.queryForm.flatUnmap(unmap)
-		override val updateForm :SQLWriteForm[S] = egg.updateForm.flatUnmap(unmap)
-		override val insertForm :SQLWriteForm[S] = egg.insertForm.flatUnmap(unmap)
-
-
-		override val buffs :Seq[Buff[S]] = egg.buffs.map(buff => buff.bimap(
-			s => map(s).getOrElse { throw new BuffMappingFailureException(
-					s"Failed mapping of $egg: could not derive the value for the buff $buff from $s."
-				)},
-			(t :S) => unmap(t) getOrElse { throw new BuffMappingFailureException(
-					s"Failed mapping of $egg: could not unmap value $t as part of the buff $buff."
-				)}
-		))
-
-
-
-		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
-			new FlatMappedMapping[M, T, X, O](egg, map(_) map there, back andThen unmap, mapNulls(there))
-
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])
-		                       (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
-			new FlatMappedMapping[M, T, X, O](egg, map(_) flatMap there, back(_) flatMap unmap, flatMapNulls(there))
-
-
-		protected def mapNulls[X](there :S => X)(implicit nulls :NullValue[X]) :NullValue[X] =
-			if (nulls != null) nulls else nullValue.map(there)
-
-		protected def flatMapNulls[X](there :S => Option[X])(implicit nulls :NullValue[X]) :NullValue[X] =
-			if (nulls != null) nulls else nullValue.flatMap(there)
-
-
-
-		override def toString :String = "Mapped(" + egg  + ")"
-
-	}
-
-
-
-
-
-
-/*
-	class MappedColumnMapping[M <: ColumnMapping[O, S], O, S, T]
-	                         (override val egg :M, override val map :S => T, override val unmap :T => S)
-	                         (implicit override val nulls :NullValue[T] = null)
-		extends MappedMapping[M, O, S, T] with MappingAdapter[M, O, T] with ColumnMapping[O, T]
-	{
-		override def name :String = egg.name
-
-		override val form :ColumnForm[T] =
-			if (nulls != null) egg.form.bimap(map)(unmap)
-			else egg.form.bimapNull(map)(unmap)
-
-		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :MappedColumnMapping[M, O, S, X] =
-			new MappedColumnMapping[M, O, S, X](egg, map andThen there, back andThen unmap)(mapNulls(there))
-
-		override def flatMap[X](there :T => Option[X], back :X => Option[T])
-		                       (implicit nulls :NullValue[X]) :FlatMappedColumnMapping[M, O, S, X] =
-			new FlatMappedColumnMapping[M, O, S, X](egg, map andThen there, back(_) map unmap)(flatMapNulls(there))
-	}
-
-
-
-	class FlatMappedColumnMapping[M <: ColumnMapping[O, S], O, S, T]
-	                             (col :M, there :S => Option[T], back :T => Option[S])
-	                             (implicit nullValue :NullValue[T] = null)
-		extends FlatMappedMapping[M, O, S, T](col, there, back) with ColumnMapping[O, T]
-	{
-		override def name :String = egg.name
-
-		override val form :ColumnForm[T] =
-			if (nulls != null) egg.form.biflatMap(map)(unmap)
-			else egg.form.biflatMapNull(map)(unmap)
-
-		override def map[X](there :T => X, back :X => T)(implicit nulls :NullValue[X]) :FlatMappedColumnMapping[M, O, S, X] =
-			new FlatMappedColumnMapping[M, O, S, X](egg, map(_) map there, back andThen unmap)(mapNulls(there))
-
-		override def flatMap[X](there :T => Option[X], back :X => Option[T])
-		                       (implicit nulls :NullValue[X]) :FlatMappedColumnMapping[M, O, S, X] =
-			new FlatMappedColumnMapping[M, O, S, X](egg, map(_) flatMap there, back(_) flatMap unmap)(flatMapNulls(there))
-
-	}
-*/
-
+	class MappedMappingAdapter[M <: TypedMapping[T, O], T, S, O]
+	                          (override val egg :M, override val map :T =?> S, override val unmap :S =?> T)
+	                          (implicit override val nulls :NullValue[S] = null)
+		extends MappedMapping[M, T, S, O] with MappingAdapter[M, S, O]
 
 
 }

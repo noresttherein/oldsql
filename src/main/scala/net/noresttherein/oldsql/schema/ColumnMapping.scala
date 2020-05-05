@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.{NumberedColumn, StandardColumn}
@@ -272,6 +274,11 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 
 
+	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :Component[X] =
+		new StandardColumn[X, O](name, schema.mapBuffs(this)(there, back))(
+			schema.mapForm(form)(there, back)
+		)
+
 	override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
 		new StandardColumn[X, O](name, buffs.map(_.bimap(there, back)))(
 			if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
@@ -406,17 +413,17 @@ object ColumnMapping {
 		override def withBuffs(buffs :Seq[Buff[S]]) :LiteralColumn[N, S, O] =
 			new LiteralColumn[N, S, O](buffs)(new ValueOf(name), form)
 
-		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :LiteralColumn[N, X, O] =
-			new LiteralColumn[N, X, O](buffs.map(_.bimap(there, back)))(
-				implicitly[ValueOf[N]],
-				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
+
+		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
+			new LiteralColumn[N, X, O](schema.mapBuffs(this)(there, back))(
+				implicitly[ValueOf[N]], schema.mapForm(form)(there, back)
 			)
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :LiteralColumn[N, X, O] =
-			new LiteralColumn[N, X, O](schema.flatMapBuffs(this)(there, back))(
-				implicitly[ValueOf[N]],
-				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
-			)
+		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
+			as(Extractor.req(there), Extractor.req(back))
+
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
+			as(Extractor(there), Extractor(back))
 
 //		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LiteralColumn[_, _, _]]
 
@@ -435,16 +442,16 @@ object ColumnMapping {
 
 		override def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[S, O] = new NumberedColumn(number, name, buffs)
 
-		override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :NumberedColumn[X, O] =
-			new NumberedColumn[X, O](number, name, buffs.map(_.bimap(there, back)))(
-				if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
+		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
+			new NumberedColumn[X, O](number, name, schema.mapBuffs(this)(there, back))(
+				schema.mapForm(form)(there, back)
 			)
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :NumberedColumn[X, O] =
-			new NumberedColumn[X, O](number, name, schema.flatMapBuffs(this)(there, back))(
-				if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
-			)
+		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
+			as(Extractor.req(there), Extractor.req(back))
 
+		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
+			as(Extractor.opt(there), Extractor.opt(back))
 
 /*
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[NumberedColumn[_, _]]

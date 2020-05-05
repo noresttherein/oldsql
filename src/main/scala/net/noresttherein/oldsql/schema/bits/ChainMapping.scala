@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping, SQLForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedFlatSchema, FlatMappedSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
-import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
+import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchemaMapping, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
@@ -119,13 +119,6 @@ object ChainMapping {
 			super./[M, I, T](idx)
 
 
-
-
-		def map[S](assemble :R => S, disassemble :S => R) :SchemaMapping[C, R, S, O] =
-			new MappedSchema[C, R, S, O](this compose disassemble, assemble)
-
-		def flatMap[S](assemble :R => Option[S], disassemble :S => Option[R]) :SchemaMapping[C, R, S, O] =
-			new FlatMappedSchema[C, R, S, O](this compose  Extractor(disassemble), assemble)
 	}
 
 
@@ -134,14 +127,6 @@ object ChainMapping {
 		extends BaseChainMapping[C, R, O] with FlatSchemaMapping[C, R, R, O] with FlatMappingSchema[C, R, R, O]
 	{
 		override val schema :FlatMappingSchema[C, R, R, O] = this
-
-		override def map[S](assemble :R => S, disassemble :S => R) :FlatSchemaMapping[C, R, S, O] =
-			new MappedFlatSchema[C, R, S, O](this compose disassemble, assemble)
-
-
-		override def flatMap[S](there :R => Option[S], back :S => Option[R])
-		                       (implicit nulls :SQLForm.NullValue[S]) :FlatSchemaMapping[C, R, S, O] =
-			new FlatMappedFlatSchema[C, R, S, O](this compose Extractor(back), there)
 	}
 
 

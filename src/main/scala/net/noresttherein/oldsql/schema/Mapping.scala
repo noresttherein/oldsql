@@ -20,6 +20,8 @@ import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.ArraySeq
 
+import net.noresttherein.oldsql.morsels.Extractor.=?>
+
 
 
 
@@ -427,7 +429,16 @@ sealed trait Mapping {
 	  */
 	def inOption :OptionMapping[this.type, Subject, Origin] = OptionMapping(this)
 
-	//todo: map with extractors
+
+
+	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
+	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
+	  * `NullValue.value` will be returned. If `back` extractor will return `None`, a `null` value will be written
+	  * to the database.
+	  */
+	def as[X](there :Subject =?> X, back :X =?> Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
+		MappedMapping[this.type, Subject, X, Origin](this, there, back)
+
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
 	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
 	  * `NullValue.value` will be returned.
