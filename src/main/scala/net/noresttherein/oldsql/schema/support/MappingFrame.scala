@@ -1454,20 +1454,13 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 			frame.optionally(pieces)
 		}
 
-		override lazy val nullValue: S = frame.nullValue getOrElse {
-			frame.apply(ComponentValues {
-				case column :FrameColumn[_] =>
-					val export = frame.export(column)
-					if (columns.contains(export))
-						Some(read(export).nullValue)
-					else None
-				case _ =>
-					None
-			})
-		}
+		override def nullValue: S = frame.nullValue.value
+
+		override def nulls :NullValue[S] = frame.nullValue
 
 		override def toString :String = columns.map(read).mkString(s"<$frame{", ",", "}")
 	}
+
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {

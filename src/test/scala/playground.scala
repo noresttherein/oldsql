@@ -36,6 +36,20 @@ object playground extends App {
 			Human(~"gun", ~"backup", ~"second")
 	}
 
+	trait Base {
+		def m :String
+
+		val x = m
+		if (x == null)
+			println ("null :(")
+	}
+
+	class Sub(val m :String = "hey") extends Base {
+
+	}
+
+	new Sub
+
 //	new Humans[Any].forSelect[@~ ~ "backup"]:Int
 //	guns[Any].forSelect[@~ ~ 0 ~ 2 ~ 1] :Int
 //	val path = SelfPath(new Humans[Any])

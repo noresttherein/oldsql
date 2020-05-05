@@ -18,7 +18,7 @@ import scala.util.Try
 
 //todo: combine MappedMapping and FlatMappedMapping by use of extractors.
 trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAdapter[M, T, S, O] {
-	implicit protected def nulls :NullValue[S]
+	protected def nulls :NullValue[S]
 	protected def map :T => S
 	protected def unmap :S => T
 
@@ -84,15 +84,15 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 	override val insertForm :SQLWriteForm[S] = egg.insertForm.unmap(unmap)
 
 
-	override val buffs :Seq[Buff[S]] = egg.buffs.map(_.bimap(map, unmap)) //todo: should buffs use the NullValue?
+	override val buffs :Seq[Buff[S]] = egg.buffs.map(_.bimap(map, unmap)) //consider: should buffs use the NullValue?
 
 
 
 	override def assemble(values :Pieces) :Option[S] = values.get(eggExtract).map(map)
 
-	override def nullValue :Option[S] =
-		if (nulls != null) nulls.toOption
-		else Try { egg.nullValue.map(map) }.toOption.flatten
+	implicit override def nullValue :NullValue[S] =
+		if (nulls != null) nulls
+		else egg.nullValue.map(map)
 
 	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
 		MappedMapping[M, T, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
@@ -105,13 +105,11 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 
 	protected def mapNulls[X](there :S => X)(implicit nulls :NullValue[X]) :NullValue[X] =
 		if (nulls != null) nulls
-		else if (this.nulls != null) this.nulls.map(there)
-		else null
+		else nullValue.map(there)
 
 	protected def flatMapNulls[X](there :S => Option[X])(implicit nulls :NullValue[X]) :NullValue[X] =
 		if (nulls != null) nulls
-		else if (this.nulls != null) this.nulls.flatMap(there)
-		else null
+		else nullValue.flatMap(there)
 
 
 
@@ -154,39 +152,15 @@ object MappedMapping {
 	                        onNone :NullValue[S] = null)
 		extends ShallowAdapter[M, T, S, O] with MappingAdapter[M, S, O] //AdaptedAs[M, S]
 	{
-		implicit protected val nulls :NullValue[S] =
-			if (onNone != null)
-				onNone
-			else
-	            Try { egg.nullValue.flatMap(map) }.toOption.flatten.map(NullValue.apply[S] _) getOrElse
-					NullValue.eval[S] {
-						throw new IllegalArgumentException(
-							s"No NullValue provided for $this and None after mapping ${egg.nullValue}."
-						)
-					}
-
-		override def nullValue :Option[S] = nulls.toOption
+		implicit override val nullValue :NullValue[S] =
+			if (onNone != null) onNone
+			else egg.nullValue.flatMap(map)
 
 
 
 		override def assemble(values :Pieces) :Option[S] = values.get(eggExtract).flatMap(map)
 
 
-
-/*
-		override def apply[X](component :Component[X]) :Extract[X] =
-			if (component eq egg)
-				eggExtract.asInstanceOf[Extract[X]]
-			else
-				MappingExtract(component)(egg(component) composeOpt unmap)
-
-
-		override def apply[X](column :Column[X]) :ColumnExtract[S, X, O] =
-			if (column eq egg)
-				eggExtract.asInstanceOf[ColumnExtract[S, X, O]]
-			else
-				MappingExtract(column)(egg(column) composeOpt unmap)
-*/
 
 		private[this] val eggExtract :Extract[T] = MappingExtract.opt(egg)(unmap)
 
@@ -252,10 +226,10 @@ object MappedMapping {
 
 
 		protected def mapNulls[X](there :S => X)(implicit nulls :NullValue[X]) :NullValue[X] =
-			if (nulls != null) nulls else this.nulls.map(there)
+			if (nulls != null) nulls else nullValue.map(there)
 
 		protected def flatMapNulls[X](there :S => Option[X])(implicit nulls :NullValue[X]) :NullValue[X] =
-			if (nulls != null) nulls else this.nulls.flatMap(there)
+			if (nulls != null) nulls else nullValue.flatMap(there)
 
 
 

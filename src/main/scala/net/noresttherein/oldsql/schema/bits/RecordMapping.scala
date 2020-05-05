@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptyS
   * on assembly.
   * @author Marcin Mościcki
   */
-trait RecordMapping[+C <: Chain, R <: Record, O] extends BaseChainMapping[C, R, O] {
+trait RecordMapping[C <: Chain, R <: Record, O] extends BaseChainMapping[C, R, O] {
 
 	override val schema :RecordMapping[C, R, O] = this
 
@@ -84,7 +84,7 @@ object RecordMapping {
 
 
 
-	trait FlatRecordMapping[+C <: Chain, R <: Record, O]
+	trait FlatRecordMapping[C <: Chain, R <: Record, O]
 		extends RecordMapping[C, R, O] with BaseFlatChainMapping[C, R, O]
 	{
 		override val schema :FlatRecordMapping[C, R, O] = this
@@ -117,7 +117,7 @@ object RecordMapping {
 
 
 
-	private class NonEmptyRecordSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: Record, K <: Key, T, S, O]
+	private class NonEmptyRecordSchema[C <: Chain, M <: TypedMapping[T, O], R <: Record, K <: Key, T, S, O]
 	                                  (first :MappingSchema[C, R, S, O], key :K, next :M,
 	                                   extract :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[Record, |#, Item, C, M, R, T, K #> T, S, O](first, next, extract, _.last._2)
@@ -136,7 +136,7 @@ object RecordMapping {
 
 
 
-	private class NonEmptyFlatRecordSchema[+C <: Chain, +M <: ColumnMapping[T, O], R <: Record, K <: Key, T, S, O]
+	private class NonEmptyFlatRecordSchema[C <: Chain, M <: ColumnMapping[T, O], R <: Record, K <: Key, T, S, O]
 	                                      (override val init :FlatMappingSchema[C, R, S, O], key :K, next :M,
 	                                       extract :MappingExtract[S, T, O])
 		extends NonEmptyRecordSchema[C, M, R, K, T, S, O](init, key, next, extract)
@@ -165,7 +165,7 @@ object RecordMapping {
 
 
 
-	private class NonEmptyRecordMapping[+C <: Chain, +M <: TypedMapping[T, O], R <: Record, K <: Key, T, O]
+	private class NonEmptyRecordMapping[C <: Chain, M <: TypedMapping[T, O], R <: Record, K <: Key, T, O]
 	                                   (prefix :RecordMapping[C, R, O], key :K, next :M)
 		extends NonEmptyRecordSchema[C, M, R, K, T, R |# (K #> T), O](
 		                             prefix.asPrefix[K #> T], key, next,
@@ -174,7 +174,7 @@ object RecordMapping {
 
 
 
-	private class NonEmptyFlatRecordMapping[+C <: Chain, +M <: ColumnMapping[T, O], R <: Record, K <: Key, T, O]
+	private class NonEmptyFlatRecordMapping[C <: Chain, M <: ColumnMapping[T, O], R <: Record, K <: Key, T, O]
 	                                       (prefix :FlatRecordMapping[C, R, O], key :K, next :M)
 		extends NonEmptyFlatRecordSchema[C, M, R, K, T, R |# (K #> T), O](
 		                                 prefix.asPrefix[K #> T], key, next,

@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, GenericMapping, Map
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang._
 
 
@@ -38,7 +39,7 @@ object OptionMapping {
 
 		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(eggExtract))
 
-		override val nullValue = Some(None)
+		override def nullValue :NullValue[Option[S]] = NullValue.None
 
 
 

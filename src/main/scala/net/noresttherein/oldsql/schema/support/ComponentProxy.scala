@@ -8,8 +8,9 @@ import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, GenericMapping, Map
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
 import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
-
 import scala.collection.mutable
+
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 
 
 
@@ -21,7 +22,7 @@ trait ComponentProxy[S, O] extends GenericMapping[S, O] with MappingNest[Mapping
 
 	override def buffs :Seq[Buff[S]] = egg.buffs
 
-	override def nullValue :Option[S] = egg.nullValue
+	override def nullValue :NullValue[S] = egg.nullValue
 
 }
 

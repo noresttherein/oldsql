@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, C
 import net.noresttherein.oldsql.schema.ColumnMapping.{NumberedColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 
 
 
@@ -50,7 +51,7 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 				case res => res //don't check buffs - we do it in the form for speed
 			}
 
-	override def nullValue :Option[S] = form.nulls.toOption
+	override def nullValue :NullValue[S] = form.nulls
 
 
 

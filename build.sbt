@@ -22,10 +22,10 @@ resolvers ++= Seq(
 
 
 libraryDependencies ++= Seq(
-	"org.postgresql" % "postgresql" % "9.2-1004-jdbc41",
-	"net.bytebuddy" % "byte-buddy" % "1.10.8",
 	"org.scala-lang" % "scala-library" % "2.13.1",
 	"org.scala-lang" % "scala-reflect" % "2.13.1",
+	"net.bytebuddy" % "byte-buddy" % "1.10.8",
+	"org.postgresql" % "postgresql" % "9.2-1004-jdbc41",
 	"org.scalatest" %% "scalatest" % "3.3.0-SNAP2" % "test",
 	"org.scalacheck" %% "scalacheck" % "1.14.3" % "test"
 )
@@ -33,7 +33,7 @@ libraryDependencies ++= Seq(
 
 scalacOptions ++= Seq(
 //	"-Ylog-classpath",
-//	"-Xlog-implicits",
+	"-Xlog-implicits",
 	"-feature",
 	"-deprecation",
 //	"-language:postfixOps",

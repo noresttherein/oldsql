@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.schema.bits.LiteralIndexMapping.NonEmptyIndexMap
   * in the schema being the values in the index at the corresponding positions.
   * @author Marcin Mościcki
   */
-trait LiteralIndexMapping[+C <: Chain, R <: LiteralIndex, O] extends BaseChainMapping[C, R, O] {
+trait LiteralIndexMapping[C <: Chain, R <: LiteralIndex, O] extends BaseChainMapping[C, R, O] {
 
 	override val schema :LiteralIndexMapping[C, R, O] = this
 
@@ -79,7 +79,7 @@ object LiteralIndexMapping {
 
 
 	
-	trait FlatLiteralIndexMapping[+C <: Chain, R <: LiteralIndex, O] 
+	trait FlatLiteralIndexMapping[C <: Chain, R <: LiteralIndex, O]
 		extends LiteralIndexMapping[C, R, O] with BaseFlatChainMapping[C, R, O]
 	{
 		override val schema :FlatLiteralIndexMapping[C, R, O] = this
@@ -112,7 +112,7 @@ object LiteralIndexMapping {
 
 	
 
-	private class NonEmptyIndexSchema[+C <: Chain, +M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
+	private class NonEmptyIndexSchema[C <: Chain, M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
 	                                 (first :MappingSchema[C, R, S, O], key :K, next :M,
 	                                  extract :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[LiteralIndex, |~, Item, C, M, R, T, K :~ T, S, O](first, next, extract, _.last.value)
@@ -131,7 +131,7 @@ object LiteralIndexMapping {
 
 
 
-	private class NonEmptyFlatIndexSchema[+C <: Chain, +M <: ColumnMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
+	private class NonEmptyFlatIndexSchema[C <: Chain, M <: ColumnMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
 	                                     (override val init :FlatMappingSchema[C, R, S, O], key :K, next :M,
 	                                      extract :MappingExtract[S, T, O])
 		extends NonEmptyIndexSchema[C, M, R, K, T, S, O](init, key, next, extract)
@@ -162,7 +162,7 @@ object LiteralIndexMapping {
 
 
 
-	private class NonEmptyIndexMapping[+C <: Chain, +M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, O]
+	private class NonEmptyIndexMapping[C <: Chain, M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, O]
 	                                  (prefix :LiteralIndexMapping[C, R, O], key :K, next :M)
 		extends NonEmptyIndexSchema[C, M, R, K, T, R |~ (K :~ T), O](
 		                            prefix.asPrefix[K :~ T], key, next,
@@ -171,7 +171,7 @@ object LiteralIndexMapping {
 
 
 
-	private class NonEmptyFlatIndexMapping[+C <: Chain, +M <: ColumnMapping[T, O], R <: LiteralIndex, K <: Key, T, O]
+	private class NonEmptyFlatIndexMapping[C <: Chain, M <: ColumnMapping[T, O], R <: LiteralIndex, K <: Key, T, O]
 	                                      (prefix :FlatLiteralIndexMapping[C, R, O], key :K, next :M)
 		extends NonEmptyFlatIndexSchema[C, M, R, K, T, R |~ (K :~ T), O](
 		                                prefix.asPrefix[K :~ T], key, next,

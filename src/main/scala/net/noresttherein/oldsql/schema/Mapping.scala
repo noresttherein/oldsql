@@ -226,8 +226,8 @@ sealed trait Mapping {
 	  */
 	def assemble(pieces :Pieces) :Option[Subject]
 
-//todo: replace with NullValue
-	def nullValue :Option[Subject] //todo: maybe instead of this problem just have non-null NullValue in forms?
+
+	def nullValue :NullValue[Subject]
 
 
 
@@ -551,9 +551,9 @@ trait GenericMapping[S, O] extends Mapping { self =>
 			else ExtraSelect.Value(this)
 	}
 
-	def assemble(pieces :Pieces) :Option[S]
+	override def assemble(pieces :Pieces) :Option[S]
 
-	def nullValue :Option[S] = None
+	override def nullValue :NullValue[S] = NullValue.NotNull
 
 
 
@@ -983,17 +983,9 @@ object Mapping {
 			mapping.optionally(pieces)
 		}
 
-		override lazy val nullValue: S = mapping.nullValue getOrElse {
-			mapping.apply(ComponentValues { _ match {
-				case column :ColumnMapping[_, O @unchecked] =>
-					val export = mapping.export(column)
-					if (columns.contains(export))
-						Some(read(export).nullValue)
-					else None
-				case _ =>
-					None
-			}})
-		}
+		override def nullValue: S = mapping.nullValue.value
+
+		override def nulls :NullValue[S] = mapping.nullValue
 
 		private def mappingString = mapping.sqlName getOrElse mapping.unqualifiedClassName
 

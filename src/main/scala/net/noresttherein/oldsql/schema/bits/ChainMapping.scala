@@ -20,7 +20,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 
 
 /** A mapping for `Chain` heterogeneous lists which is a `SchemaMapping` and its own `MappingSchema` at the same time. */
-trait ChainMapping[+C <: Chain, R <: Chain, O] extends BaseChainMapping[C, R, O] {
+trait ChainMapping[C <: Chain, R <: Chain, O] extends BaseChainMapping[C, R, O] {
 
 	override val schema :ChainMapping[C, R, O] = this
 
@@ -83,9 +83,10 @@ object ChainMapping {
 
 
 
-	trait BaseChainMapping[+C <: Chain, R <: Chain, O]
-		extends SchemaMapping[C, R, R, O] with MappingSchema[C, R, R, O]
-	{
+	trait BaseChainMapping[C <: Chain, R <: Chain, O] extends SchemaMapping[C, R, R, O] with MappingSchema[C, R, R, O] {
+		override type Components = C
+		override type Schema[Q] = MappingSchema[C, R, R, Q]
+
 		override val schema :MappingSchema[C, R, R, O] = this
 
 		override def export[T](component :Component[T]) :Component[T] = component
@@ -129,7 +130,7 @@ object ChainMapping {
 
 
 
-	trait BaseFlatChainMapping[+C <: Chain, R <: Chain, O]
+	trait BaseFlatChainMapping[C <: Chain, R <: Chain, O]
 		extends BaseChainMapping[C, R, O] with FlatSchemaMapping[C, R, R, O] with FlatMappingSchema[C, R, R, O]
 	{
 		override val schema :FlatMappingSchema[C, R, R, O] = this
@@ -147,7 +148,7 @@ object ChainMapping {
 
 
 
-	trait FlatChainMapping[+C <: Chain, R <: Chain, O]
+	trait FlatChainMapping[C <: Chain, R <: Chain, O]
 		extends ChainMapping[C, R, O] with BaseFlatChainMapping[C, R, O]
 	{
 		override val schema :FlatChainMapping[C, R, O] = this
@@ -180,7 +181,7 @@ object ChainMapping {
 
 
 
-	private class NonEmptyChainMapping[+C <: Chain, +M <: TypedMapping[T, O], R <: Chain, T, O]
+	private class NonEmptyChainMapping[C <: Chain, M <: TypedMapping[T, O], R <: Chain, T, O]
 	                                  (prefix :ChainMapping[C, R, O], next :M)
 		extends NonEmptySchema[C, M, R, T, R ~ T, O](
 				               prefix.asPrefix[T], next, MappingExtract.req(next)((row :R ~ T) => row.last))
@@ -188,7 +189,7 @@ object ChainMapping {
 
 
 
-	private class NonEmptyFlatChainMapping[+C <: Chain, +M <: ColumnMapping[T, O], R <: Chain, T, O]
+	private class NonEmptyFlatChainMapping[C <: Chain, M <: ColumnMapping[T, O], R <: Chain, T, O]
 	                                      (prefix :FlatChainMapping[C, R, O], next :M)
 		extends FlatNonEmptySchema[C, M, R, T, R ~ T, O](
 		                       prefix.asPrefix[T], next, MappingExtract.req(next)((row :R ~ T) => row.last))
@@ -206,7 +207,7 @@ object ChainMapping {
 	  * @tparam T the outer subject type of the extended schema, the init of the outer subject type of this mapping.
 	  * @tparam S the outer subject type of this schema.           
 	  */
-	private[schema] class ChainPrefixSchema[+C <: Chain, R <: Chain, T <: Chain, S <: T ~ Any, O]
+	private[schema] class ChainPrefixSchema[C <: Chain, R <: Chain, T <: Chain, S <: T ~ Any, O]
 	                                       (protected val egg :MappingSchema[C, R, T, O])
 		extends MappingSchema[C, R, S, O] with ShallowProxy[R, O]
 	{
@@ -264,7 +265,7 @@ object ChainMapping {
 
 
 
-	private[schema] class FlatChainPrefixSchema[+C <: Chain, R <: Chain, T <: Chain, S <: T ~ Any, O]
+	private[schema] class FlatChainPrefixSchema[C <: Chain, R <: Chain, T <: Chain, S <: T ~ Any, O]
 	                                           (protected override val egg :FlatMappingSchema[C, R, T, O])
 		extends ChainPrefixSchema[C, R, T, S, O](egg) with FlatMappingSchema[C, R, S, O]
 	{
