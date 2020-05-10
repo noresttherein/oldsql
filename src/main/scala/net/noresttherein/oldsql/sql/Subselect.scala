@@ -32,11 +32,11 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 
 	override def copy[L <: FromClause, R[O] <: MappingFrom[O]]
-	                 (left :L, right :RowSource[R], filter :BooleanFormula[L With R]) :L Subselect R =
-		Subselect(left, LastRelation(right), filter)
+	                 (left :L, right :RowSource[R])(filter :BooleanFormula[left.Generalized With R]) :L Subselect R =
+		Subselect(left, LastRelation(right))(filter)
 
-	override def copy[C <: FromClause](left :C, filter :BooleanFormula[C With T]) :JoinRight[C] =
-		Subselect(left, table, filter)
+	override def copy[C <: FromClause](left :C)(filter :BooleanFormula[left.Generalized With T]) :JoinRight[C] =
+		Subselect(left, table)(filter)
 
 
 	override type LikeJoin[+L <: FromClause, R[O] <: MappingFrom[O]] = L Subselect R
@@ -69,31 +69,33 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 object Subselect {
 	def apply[L[O] <: MappingFrom[O], R[O] <: MappingFrom[O]]
 	         (left :RowSource[L], right :RowSource[R]) :From[L] Subselect R =
-		Subselect(From(left), LastRelation(right), True)
+		Subselect(From(left), LastRelation(right))(True)
 
 	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L Subselect R =
-		Subselect(left, LastRelation(right), True)
+		Subselect(left, LastRelation(right))(True)
 
 
 	private[sql] def apply[L <: FromClause, R[O] <: MappingFrom[O]]
-	                      (prefix :L, next :JoinedRelation[FromClause With R, R], filter :BooleanFormula[L With R]) :L Subselect R =
+	                      (prefix :L, next :JoinedRelation[FromClause With R, R])
+	                      (filter :BooleanFormula[prefix.Generalized With R]) :L Subselect R =
 		new Subselect[prefix.type, R] {
 			override val left = prefix
 			override val table = next
-			override val joinCondition = filter
+			override val condition = filter
 
 			override type JoinLeft[T[A] <: MappingFrom[A]] = left.type Subselect T
 			override type This = left.type Subselect R
 
 			override def self :left.type Subselect R = this
 
-			override def copy(filter :BooleanFormula[left.type With R]) :This =
-				Subselect(left, table, filter)
+			override def copy(filter :BooleanFormula[left.Generalized With R]) :This =
+				Subselect[left.type, R](left, table)(filter)
 
 
-			override def copy[T[O] <: MappingFrom[O]]
-			                 (right :LastRelation[T], filter :BooleanFormula[left.type With T]) :left.type Subselect T =
-				Subselect(left, right, filter)
+			override def copy[T[O] <: MappingFrom[O]](right :LastRelation[T])
+			                                         (filter :BooleanFormula[left.Generalized With T])
+					:left.type Subselect T =
+				Subselect[left.type, T](left, right)(filter)
 
 		}
 

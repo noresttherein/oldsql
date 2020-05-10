@@ -1,26 +1,22 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
-import net.noresttherein.oldsql.morsels.Origin.{##, Rank}
-import net.noresttherein.oldsql.schema.{bits, ColumnMapping, GenericMapping, Mapping, RowSource, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, MappingSubject, OriginProjection, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnMapping, RowSource, SQLForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingSubject, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.{ChainMapping, LabeledMapping}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.FromClause.GetTableByIndex.GetTableByNegativeIndex
 import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByLabel, BySubject, ByTypeConstructor}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.{FreeComponent, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyRelationIn
-import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, Formula}
+import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
-import net.noresttherein.oldsql.sql.JoinParam.{FromParam, ParamSource, WithParam}
+import net.noresttherein.oldsql.sql.JoinParam.{ParamSource, WithParam}
 import net.noresttherein.oldsql.sql.SQLTerm.True
-
 import scala.annotation.implicitNotFound
 
 
@@ -143,6 +139,12 @@ trait FromClause {
 	  */
 	def row :ChainTuple[Generalized, Row] = row(ExtendedBy.itself)
 
+	/** Create an SQL tuple formula, based on some extending clause `E`, containing `JoinedRelation` formulas 
+	  * for all joined elements in their order of appearance. It will contain entries for all mappings in this clause,
+	  * including parameter mappings and mappings listed in this clause's `Outer` prefix (if this clause 
+	  * is a subselect clause. This overloaded variant is used by the zero-argument `row` to obtain the chain prefix
+	  * containing the relation formulas based on the final clause type from a prefix clause of a join.
+	  */
 	def row[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, Row]
 
 	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance.
@@ -150,6 +152,10 @@ trait FromClause {
 	  */
 	def tableStack :LazyList[AnyRelationIn[Generalized]] = tableStack(ExtendedBy.itself)
 
+	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance.
+	  * The `JoinedFormula`s are based on some extending clause `E`, so that the stack for a prefix clause
+	  * can be used as-is by extending clause's zero argument `tableStack`.
+	  */
 	def tableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]]
 
 
@@ -171,6 +177,10 @@ trait FromClause {
 	  */
 	def subselectRow :ChainTuple[Generalized, SubselectRow] = subselectRow(ExtendedBy.itself)
 
+	/** Create an SQL tuple formula containing `JoinedRelation` formulas for all joined elements of the most deeply
+	  * nested subselect clause, in their order of appearance. The formulas are based on some extending clause `E`,
+	  * so they can be used by the zero-argument `subselectRow` as the chain prefix of its result. 
+	  */
 	def subselectRow[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow]
 
 	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance, ending
@@ -180,11 +190,28 @@ trait FromClause {
 	  */
 	def subselectTableStack :LazyList[AnyRelationIn[Generalized]] = subselectTableStack(ExtendedBy.itself)
 
+	/** All relations in this clause in the reverse order, ending with the last (right-most) appearance of a `Subselect`
+	  * 'join' or `Dual`. The elements are returned as `JoinedRelation`s for generic, untyped mappings, 
+	  * based on some extending clause `E`. Used by the zero-argument `subselectTableStack`
+	  * to request the tail of the stack with formulas of the correct type from the prefix clause.
+	  */
 	def subselectTableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]]
 
 
 
 
+
+
+	/** The ''WHERE'' part of this clause representing the filter condition as SQL AST.
+	  * It is the conjunction of join conditions for all joins in this clause.
+	  */
+	def filteredBy :BooleanFormula[Generalized] = filteredBy(ExtendedBy.itself)
+
+	/** The combined join conditions of all joins in this clause as a formula based on an extending clause.
+	  * Used by zero-argument `filteredBy` to request the individual join conditions as formulas based on the clause
+	  * it was called for.
+	  */
+	def filteredBy[E <: FromClause](extension :Generalized ExtendedBy E) :BooleanFormula[E]
 
 	/** Function type returning a join condition between the last relation in this clause and a following mapping `T`.
 	  * Used as the parameter for [[net.noresttherein.oldsql.sql.With#on With.on]], it is declared here
@@ -209,22 +236,23 @@ trait FromClause {
 
 
 object FromClause {
-
-	/** A `FromClause` representing the ''from'' clause of a subselect of a select with a ''from'' clause `F`.
-	  * `S &lt;: SubselectFrom[F]` if and only if `S` has the form of `F Subselect M1 With M2 ... With MN`
-	  * for some mappings `M1...MN` and both types are full clauses. Sources conforming to `SubselectFrom[F]` can use
-	  * all the mappings/tables which are a part of `F`, but they are not a part of any select formulas created
-	  * from that source. This allows the use of nested select queries which depend on values from the ''from'' clause
-	  * of the outer select. Rather counterintuitively, this type is contravariant rather than covariant.
-	  * There are two reasons behind it: one, preventing any clause from being a subselect clause of a clause
-	  * with an abstract prefix, ensuring that full mapping lists are compared, and two, treating all join
-	  * kinds as equivalent for this purpose. Note that subselects may be nested to an arbitrary depth
-	  * and only directly nested subselects of `F` conform to this type.
+	
+	/** An upper bound for `FromClause` subtypes representing ''from'' clauses of subselects of a select
+	  * with the ''from'' clause `F`. `S &lt;: SubselectFrom[F]` if and only if `S` has the form of
+	  * `F Subselect M1 With M2 ... With MN` for some mappings `M1...MN` and both types are full clauses.
+	  * Clauses conforming to `SubselectFrom[F]` can use all the mappings/tables which are a part of `F`,
+	  * but they are not a part of any select formulas created from that source. This allows the use of nested select
+	  * queries which depend on values from the ''from'' clause of the outer select. Rather counterintuitively,
+	  * this type is contravariant rather than covariant. There are two reasons behind it: one, preventing any clause
+	  * from being a subselect clause of a clause with an abstract prefix, ensuring that full mapping lists are compared,
+	  * and two, treating all join kinds as equivalent for this purpose. Note that subselects may be nested
+	  * to an arbitrary depth and only directly nested subselects of `F` conform to this type.
 	  */
 	type SubselectFrom[-F <: FromClause] = FromClause {
 		type Outer >: F <: FromClause
 	}
 
+	
 
 	/** A full `FromClause`, which doesn't contain any parameters and is not a basis for a subselect of another clause.
 	  * `S &lt;: OuterFrom` if and only if it is a concrete clause (without any abstract types or `FromClause`
@@ -328,37 +356,42 @@ object FromClause {
 
 
 		@inline def naturalJoin[T[O] <: MappingFrom[O]]
-		                       (table :RowSource[T])(implicit last :GetTableByNegativeIndex[F, -1]) :F InnerJoin T =
-			InnerJoin(self, table) where naturalFilter[T]
+		                       (table :RowSource[T])
+		                       (implicit last :GetTableByNegativeIndex[self.Generalized, -1]) :F InnerJoin T =
+			InnerJoin[self.type, T](self, table) where naturalFilter[T]
 
 		@inline def naturalJoin[T[O] <: MappingFrom[O], A]
-		                       (table :T[A])(implicit last :GetTableByNegativeIndex[F, -1],
+		                       (table :T[A])(implicit last :GetTableByNegativeIndex[self.Generalized, -1],
 		                                     alias :OriginProjection[T[A], A, T[Any], Any]) :F InnerJoin T =
-			InnerJoin(self, RowSource(table)) where naturalFilter[T]
+			InnerJoin[self.type, T](self, RowSource(table)) where naturalFilter[T]
 
 		@inline def leftNaturalJoin[T[O] <: MappingFrom[O]]
-		                           (table :RowSource[T])(implicit last :GetTableByNegativeIndex[F, -1]) :F LeftJoin T =
-			LeftJoin(self, table) where naturalFilter[T]
+		                           (table :RowSource[T])
+		                           (implicit last :GetTableByNegativeIndex[self.Generalized, -1]) :F LeftJoin T =
+			LeftJoin[self.type, T](self, table) where naturalFilter[T]
 
 		@inline def leftNaturalJoin[T[O] <: MappingFrom[O], A]
-		                           (table :T[A])(implicit last :GetTableByNegativeIndex[F, -1],
-		                                         alias :OriginProjection[T[A], A, T[Any], Any]) :F LeftJoin T =
-			LeftJoin(self, RowSource(table)) where naturalFilter[T]
+		                           (table :T[A])
+		                           (implicit last :GetTableByNegativeIndex[self.Generalized, -1],
+		                            alias :OriginProjection[T[A], A, T[Any], Any]) :F LeftJoin T =
+			LeftJoin[self.type, T](self, RowSource(table)) where naturalFilter[T]
 
 		@inline def rightNaturalJoin[T[O] <: MappingFrom[O]]
-		                            (table :RowSource[T])(implicit last :GetTableByNegativeIndex[F, -1]) :F RightJoin T =
-			RightJoin(self, table) where naturalFilter[T]
+		                            (table :RowSource[T])
+		                            (implicit last :GetTableByNegativeIndex[self.Generalized, -1]) :F RightJoin T =
+			RightJoin[self.type, T](self, table) where naturalFilter[T]
 
 		@inline def rightNaturalJoin[T[O] <: MappingFrom[O], A]
-		                            (table :T[A])(implicit last :GetTableByNegativeIndex[F, -1],
-		                                          alias :OriginProjection[T[A], A, T[Any], Any]) :F RightJoin T =
-			RightJoin(self, RowSource(table)) where naturalFilter[T]
+		                            (table :T[A])
+		                            (implicit last :GetTableByNegativeIndex[self.Generalized, -1],
+		                             alias :OriginProjection[T[A], A, T[Any], Any]) :F RightJoin T =
+			RightJoin[self.type, T](self, RowSource(table)) where naturalFilter[T]
 
 
 		
-		private def naturalFilter[T[O] <: MappingFrom[O]](tables :JoinedTables[F With T])
-		                                                 (implicit prev :GetTableByNegativeIndex[F With T, -2])
-				:BooleanFormula[F With T] =
+		private def naturalFilter[T[O] <: MappingFrom[O]](tables :JoinedTables[self.Generalized With T])
+		                                                 (implicit prev :GetTableByNegativeIndex[self.Generalized With T, -2])
+				:BooleanFormula[self.Generalized With T] =
 		{
 			val firstTable = tables.prev
 			val secondTable = tables.last
@@ -370,15 +403,15 @@ object FromClause {
 			val joins = common map { name =>
 
 				val first = firstColumns(name).asInstanceOf[ColumnMapping[Any, prev.J]]
-				val second = secondColumns(name).asInstanceOf[ColumnMapping[Any, F With T]]
+				val second = secondColumns(name).asInstanceOf[ColumnMapping[Any, self.Generalized With T]]
 				if (first.form != second.form)
 					throw new IllegalArgumentException(s"Can't perform a natural join of $firstTable and $secondTable: " +
 							s"columns $first and $second have different types (form) ")
 
 				new FreeComponent[prev.J, MappingSubject[Any]#M, Any](first, 1) ===
-					new FreeComponent[F With T, MappingSubject[Any]#M, Any](second, 2)
+					new FreeComponent[self.Generalized With T, MappingSubject[Any]#M, Any](second, 2)
 			}
-			(True[F With T]() /: joins)(_ && _)
+			(True[self.Generalized With T]() /: joins)(_ && _)
 		}
 
 
@@ -499,7 +532,7 @@ object FromClause {
 	  */
 	@implicitNotFound("Cannot get ${N}-th relation of ${F}. \n" +
 		              "Either ${N} >= size (where size is the number of relations in the FROM clause),\n" +
-		              "or -${N} is greater the number of relations in the instantiated suffix of the FROM clause,\n" +
+		              "or -(${N}) is greater the number of relations in the instantiated suffix of the FROM clause,\n" +
 		              "or ${N} >= 0 and the size is not known (the clause type starts with FromClause and not Dual/From.")
 	sealed abstract class GetTableByIndex[-F <: FromClause, N <: Numeral] {
 		/** The ''negative'' index of the found relation: that's `-1` for the last relation in the clause
@@ -526,7 +559,7 @@ object FromClause {
 	object GetTableByIndex {
 
 		@implicitNotFound("Can't get the relation at the (negative) index ${N} in ${F}. " +
-			              "Either ${N} >= 0 or -${N} is greater than the number of known tables in the FROM clause.")
+			              "Either ${N} >= 0 or -(${N}) is greater than the number of known tables in the FROM clause.")
 		sealed abstract class GetTableByNegativeIndex[-F <: FromClause, N <: Numeral] extends GetTableByIndex[F, N] {
 			override type I = N
 		}
@@ -688,8 +721,6 @@ object FromClause {
 		abstract class Get[-F <: FromClause, X] {
 			/** The ''negative'' index of the accessed relation, starting with `-1` for the rightmost relation in `F`.*/
 			type I <: Numeral
-			/** A unique origin type with the negative index of the relation encoded in it. */
-			type O = ##[I]
 
 			/** The last mapping type matching `X` in `F`. */
 			type T[O] <: MappingFrom[O]
@@ -778,7 +809,6 @@ object FromClause {
 			sealed abstract class Get[-F <: FromClause, M[O] <: MappingFrom[O]] {
 				type I <: Numeral
 				/** A unique origin type with the negative index of the relation encoded in it. */
-				type O = ##[I]
 				type T[O] = M[O]
 				type J >: F <: FromClause
 
@@ -834,15 +864,16 @@ object FromClause {
 		implicit def joinFirst[L <: FromClause, R[O] <: MappingFrom[O]]
 				:JoinClauses[L, Dual With R, W[Dual, MappingFrom]#LikeJoin[L, R]] =
 			(first :L, second :Dual With R) =>
-				start.copy(first, second.right, second.condition.asInstanceOf[BooleanFormula[L With R]])
+				start.copy(first, second.right)(second.condition.asInstanceOf[BooleanFormula[first.Generalized With R]])
 
 		implicit def joinNext[F <: FromClause, S <: FromClause, J <: L With R, L <: FromClause, R[O] <: MappingFrom[O],
 		                      E <: FromClause]
 		                     (implicit joinLeft :JoinClauses[F, L, E], conforms :Conforms[S, J, L With R])
 				:JoinClauses[F, S, J#JoinRight[E]] =
-			(first :F, second :S) => //we can simply cast the condition as it works on any clause with J as its suffix
-				second.copy(joinLeft(first, second.left), second.condition.asInstanceOf[BooleanFormula[E With R]])
-
+			(first :F, second :S) => {//we can simply cast the condition as it works on any clause with J as its suffix
+				val left = joinLeft(first, second.left)
+				second.copy(left)(second.condition.asInstanceOf[BooleanFormula[left.Generalized With R]])
+			}
 	}
 
 
@@ -885,7 +916,7 @@ object FromClause {
 	/** Proof that the ''from'' clause `S` is an extension of the clause `F` / the clause `F` is a prefix
 	  * of the clause of `S`. It means that `S &lt;: F With T1 ... With TN forSome { type T1 ... TN }`.
 	  * This takes into account only the static type of both clauses and the actual mapping lists on both can
-	  * differ and be of different lengths if `F` is not a full clause and has a generalized prefix.
+	  * differ and be of different lengths if `F` is not a full clause and has an abstract prefix.
 	  * The implication here is that this witness can be relied upon only in the context of the actual
 	  * extension and is not to be treated as a generalized subtyping hierarchy.
 	  */

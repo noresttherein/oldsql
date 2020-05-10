@@ -47,7 +47,7 @@ class SubselectJoin[F <: FromClause, S <: Mapping] private
 
 	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): SubselectFrom[O] = {
 		val transplanted = target from right
-		transplanted filterBy SQLScribe.subselect[Outer, this.type, O, SubselectFrom[O], Boolean](joinCondition, this, transplanted, rewriter)
+		transplanted filterBy SQLScribe.subselect[Outer, this.type, O, SubselectFrom[O], Boolean](condition, this, transplanted, rewriter)
 	}
 
 	//	override def copyJoin[L <: FromClause, M <: Mapping](left: L, right: M): L SubselectJoin M =

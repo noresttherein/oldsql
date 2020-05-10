@@ -2,10 +2,8 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping}
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.sql.LogicalFormula.CaseLogical
 import net.noresttherein.oldsql.sql.MappingFormula.{CaseMapping, ComponentFormula, FreeComponent, JoinedRelation}
-import net.noresttherein.oldsql.sql.SQLCondition.CaseCondition
-import net.noresttherein.oldsql.sql.SQLFormula.{CaseFormula, ColumnFormula, CompositeColumnFormula, CompositeFormula, FormulaMatcher}
+import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeColumnFormula, CompositeFormula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.{CaseColumnFormula, ColumnFormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeColumnFormula.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.CaseComposite

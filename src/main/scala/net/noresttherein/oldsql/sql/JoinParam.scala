@@ -105,46 +105,46 @@ object JoinParam {
 
 
 	def apply[F <: FromClause, X](from :F, source :ParamSource[X]) :F WithParam X =
-		JoinParam[F, ParamSource[X]#Row](from, LastRelation(source), True)
+		JoinParam[F, ParamSource[X]#Row](from, LastRelation(source))(True)
 
 	def apply[F <: FromClause, N <: Label, X](from :F, source :NamedParamSource[N, X]) :F JoinParam (N ?: X)#T =
-		JoinParam[F, (N ?: X)#T](from, LastRelation(source), True)
+		JoinParam[F, (N ?: X)#T](from, LastRelation(source))(True)
 
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
 	trait ParamFactory[X] extends Any {
 		def apply[F <: FromClause](from :F)(implicit form :SQLForm[X]) :F WithParam X =
-			JoinParam(from, LastRelation(ParamSource[X]()), True)
+			JoinParam(from, LastRelation(ParamSource[X]()))(True)
 
 		def apply[F <: FromClause](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
-			JoinParam(from, LastRelation(ParamSource[X](name)), True)
+			JoinParam(from, LastRelation(ParamSource[X](name)))(True)
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T])(implicit form :SQLForm[X]) :From[T] WithParam X =
-			JoinParam(From(from), LastRelation(ParamSource[X]()), True)
+			JoinParam(From(from), LastRelation(ParamSource[X]()))(True)
 
 		def apply[T[O] <: MappingFrom[O]](from :RowSource[T], name :String)(implicit form :SQLForm[X]) :From[T] WithParam X =
-			JoinParam(From(from), LastRelation(ParamSource[X](name)), True)
+			JoinParam(From(from), LastRelation(ParamSource[X](name)))(True)
 	}
 
 
 
 	private[sql] def apply[L <: FromClause, M[O] <: ParamFrom[O]]
-	                      (from :L, param :LastRelation[M],
-	                       filter :BooleanFormula[L With M]) :L JoinParam M =
+	                      (from :L, param :LastRelation[M])(
+	                       filter :BooleanFormula[from.Generalized With M]) :L JoinParam M =
 		new JoinParam[from.type, M] {
 			override val left = from
 			override val table = param
-			override val joinCondition = filter
+			override val condition = filter
 
 			override type This = left.type JoinParam M
 			override type JoinRight[+C <: FromClause] = C JoinParam M
 			override def self :left.type JoinParam M = this
 
-			override def copy[F <: FromClause](left :F, filter :BooleanFormula[F With M]) :F JoinParam M =
-				JoinParam[F, M](left, table, filter)
+			override def copy[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With M]) :F JoinParam M =
+				JoinParam[F, M](left, table)(filter)
 
-			override def copy(filter :BooleanFormula[left.type With M]) :This =
-				JoinParam[left.type, M](left, table, filter)
+			override def copy(filter :BooleanFormula[left.Generalized With M]) :This =
+				JoinParam[left.type, M](left, table)(filter)
 
 		}
 

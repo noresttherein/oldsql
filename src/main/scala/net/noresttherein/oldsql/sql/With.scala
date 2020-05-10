@@ -1,7 +1,6 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.~
-import net.noresttherein.oldsql.morsels.Origin.##
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.schema.RowSource
 import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
@@ -47,11 +46,11 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 
 	/** the join condition joining the right side to the left side. It is not the complete filter
 	  * condition, as it doesn't include any join conditions defined in the left side of this join. */
-	protected[this] val joinCondition :BooleanFormula[L With R]
+	val condition :BooleanFormula[Generalized]
 
-	protected def copy(filter :BooleanFormula[L With R]) :This
+	protected def copy(filter :BooleanFormula[left.Generalized With R]) :This
 
-	def copy[F <: FromClause](left :F, filter :BooleanFormula[F With R] = True) :JoinRight[F]
+	def copy[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With R]) :JoinRight[F]
 
 
 	/** This type with the `FromClause` of the left side substituted for `F`. */
@@ -75,7 +74,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	def right :RowSource[R] = lastTable.source
 
 
-	def condition :BooleanFormula[This] = joinCondition
+//	def condition :BooleanFormula[Generalized] = joinCondition
 
 
 	override val size :Int = left.size + 1
@@ -91,6 +90,9 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 		table.extend(stretch) #:: left.tableStack(stretch.stretchFront[left.Generalized, R])
 
 
+
+	override def filteredBy[E <: FromClause](extension :Generalized ExtendedBy E) :BooleanFormula[E] =
+		left.filteredBy(extension.stretchFront[left.Generalized, R]) && condition.stretch(extension)
 
 	/** A function accepting the last relation of this clause, as a formula for a join between this clause
 	  * and a following mapping `T`, and the formula for the mapping `T`, being the last relation in the join,
@@ -114,18 +116,18 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	  */
 	def on(condition :left.JoinFilter[R]) :JoinRight[left.This] = {
 		val joinFilter = condition(left.lastTable.extend[R], table)
-		val grounded = SQLScribe.groundFreeComponents[left.type With R, Boolean](self)(joinFilter)
-		copy[left.type](left, joinCondition && grounded)
+		val grounded = SQLScribe.groundFreeComponents(generalized)(joinFilter)
+		copy[left.This](left)(this.condition && grounded)
 	}
 
 
 	def whereLast(condition :JoinedRelation[FromClause With R, R] => BooleanFormula[FromClause With R]) :This =
-		copy(joinCondition && SQLScribe.groundFreeComponents(this)(condition(table)))
+		copy(this.condition && SQLScribe.groundFreeComponents(generalized)(condition(table)))
 
 
-	def where[F >: L <: FromClause](condition :JoinedTables[F With R] => BooleanFormula[F With R]) :This = {
-		val cond = condition(new JoinedTables[F With R](this))
-		copy(joinCondition && SQLScribe.groundFreeComponents(this)(cond))
+	def where[F >: L <: FromClause](condition :JoinedTables[Generalized] => BooleanFormula[Generalized]) :This = {
+		val cond = condition(new JoinedTables[Generalized](generalized))
+		copy(this.condition && SQLScribe.groundFreeComponents(generalized)(cond))
 	}
 
 
@@ -168,19 +170,16 @@ object With {
 		InnerJoin(left, right)
 
 
-
 	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, RowSource[R])] =
 		Some(join.left -> join.right)
 
-	def unapply(from :FromClause) :Option[(FromClause, AnyRowSource)]  =
+	def unapply(from :FromClause) :Option[(FromClause, AnyRowSource)] =
 		from match {
 			case join :AnyWith => Some((join.left :FromClause, join.right))
 			case _ => None
 		}
 
 
-
-	type AnyWith = With[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
-
+	type AnyWith = With[_ <: FromClause, M] forSome {type M[O] <: MappingFrom[O]}
 
 }

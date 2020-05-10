@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SubselectFrom}
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyRelationIn
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * (like 'SELECT _ FROM DUAL' in Oracle) and an initial element for `With` lists
   * (any chain of `With` classes starts by joining with `Dual`).
   */
-class Dual private (val filteredBy :BooleanFormula[Dual]) extends FromClause {
+class Dual private (override val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 	def this() = this(True())
 
@@ -66,6 +66,13 @@ class Dual private (val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
 
 	override def size = 0
+
+
+
+	override def filteredBy[E <: FromClause](extension :Dual ExtendedBy E) :BooleanFormula[E] =
+		filteredBy.stretch(extension)
+
+
 
 	override type JoinFilter[T[O] <: MappingFrom[O]] = Nothing
 
