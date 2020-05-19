@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.{Mapping, Mapping}
-import net.noresttherein.oldsql.sql.FromClause.{SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.FromClause.{SubselectOf, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
 
@@ -59,7 +59,7 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 	override def plantMatching(prefix: ComponentPath[_ <: Mapping, _ <: Mapping]): Dual = this
 
 
-	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): SubselectFrom[O] =
+	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): SubselectOf[O] =
 		throw new UnsupportedOperationException(s"Can't transplant $this onto $target")
 
 

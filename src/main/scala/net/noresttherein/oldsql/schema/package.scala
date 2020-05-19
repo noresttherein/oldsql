@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang._
@@ -19,15 +19,26 @@ package object schema {
 	  * It serves three functions:
 	  *   - provides a means of extracting the value of the component from the value of the parent;
 	  *   - retrieves the value of a component from `ComponentValues`;
-	  *   - provides the canonical, 'export' version of the component, that is the version with any wholesale
-	  *     modifications declared in the parent mapping (or some other mapping on the path to the subcomponent),
+	  *   - provides the canonical, 'export' version of the component, that is the version with any modifications,
+	  *     declared in the parent mapping (or some other mapping on the path to the subcomponent),
 	  *     applied to the original version of the component. This includes buffs and column prefix declarations
 	  *     defined for all subcomponents of a mapping.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](TypedMapping[T] ]]
+	  * This is a type alias for a template class parameterized with the component mapping type, specified as
+	  * the most generic [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping[T, O] ]].
+	  * @see [[net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](RefinedMapping[T] ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
+	  * @tparam S the subject type of the parent mapping.
+	  * @tparam T the subject type of the component mapping.
+	  * @tparam O the origin type of the parent and child mappings.
 	  */
-	type MappingExtract[-S, T, O] = GenericMappingExtract[TypedMapping[T, O], S, T, O]
+	type MappingExtract[-S, T, O] = GenericMappingExtract[RefinedMapping[T, O], S, T, O]
 
+	/** A `MappingExtract` for a column with subject type `T` of a parent mapping with subject type `S` and origin
+	  * type `O`.
+	  * @see [[net.noresttherein.oldsql.schema.MappingExtract]]
+	  * @see [[net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract]]
+	  */
 	type ColumnMappingExtract[S, T, O] = GenericMappingExtract[ColumnMapping[T, O], S, T, O]
 
 
@@ -101,21 +112,21 @@ package object schema {
 
 
 	private[schema] def selectColumnExtracts[S, O]
-	                    (mapping :TypedMapping[S, O])
-	                    (extracts :NaturalMap[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract])
-			:NaturalMap[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract] =
+	                    (mapping :RefinedMapping[S, O])
+	                    (extracts :NaturalMap[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract])
+			:NaturalMap[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract] =
 		selectColumnExtracts(mapping.toString)(extracts)
 
 
 	private[schema] def selectColumnExtracts[S, O]
 	                    (mapping: => String)
-	                    (extracts :NaturalMap[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract])
-			:NaturalMap[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract] =
+	                    (extracts :NaturalMap[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract])
+			:NaturalMap[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract] =
 	{
-		def castToColumn[T](entry :Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T]) = 
+		def castToColumn[T](entry :Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T]) =
 			entry._1 match {
 				case column :ColumnMapping[T @unchecked, O @unchecked] =>
-					Some(Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](
+					Some(Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](
 						column, entry._2.asInstanceOf[ColumnMappingExtract[S, T, O]]
 					))
 				case _ => None
@@ -127,72 +138,72 @@ package object schema {
 
 
 //	@inline def extractAssoc[S, T, O]
-//	                        (mapping :TypedMapping[S, O], comp :TypedMapping[T, O], extract :MappingExtract[S, T, O])
-//			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
-//		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](comp, extract)
+//	                        (mapping :RefinedMapping[S, O], comp :RefinedMapping[T, O], extract :MappingExtract[S, T, O])
+//			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
+//		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](comp, extract)
 //
 //	@inline def extractAssoc[S, T, O]
-//	                        (mapping :TypedMapping[S, O], col :ColumnMapping[T, O], extract :ColumnExtract[S, T, O])
-//			:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
-//		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](col, extract)
+//	                        (mapping :RefinedMapping[S, O], col :ColumnMapping[T, O], extract :ColumnExtract[S, T, O])
+//			:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
+//		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](col, extract)
 
-	@inline private[schema] def composeExtracts[S, X, T, O]
-	                            (extracts :TypedMapping[X, O]#ExtractMap, extractor :MappingExtract[S, X, O])
-			:TypedMapping[S, O]#ExtractMap =
+	@inline private[oldsql] def composeExtracts[S, X, T, O]
+	                            (extracts :RefinedMapping[X, O]#ExtractMap, extractor :MappingExtract[S, X, O])
+			:RefinedMapping[S, O]#ExtractMap =
 		extracts.map(composeExtractAssoc(extractor)(_))
 
-	@inline private[schema] def composeExtracts[S, X, T, O](mapping :TypedMapping[X, O], extractor :S =?> X)
-			:TypedMapping[S, O]#ExtractMap =
+	@inline private[oldsql] def composeExtracts[S, X, T, O](mapping :RefinedMapping[X, O], extractor :S =?> X)
+			:RefinedMapping[S, O]#ExtractMap =
 		mapping.extracts.map(composeExtractAssoc(mapping, extractor)(_))
 
 
 
-	@inline private[schema] def composeColumnExtracts[S, X, T, O]
-	                            (extracts :TypedMapping[X, O]#ColumnExtractMap, extractor :MappingExtract[S, X, O])
-			:TypedMapping[S, O]#ColumnExtractMap =
+	@inline private[oldsql] def composeColumnExtracts[S, X, T, O]
+	                            (extracts :RefinedMapping[X, O]#ColumnExtractMap, extractor :MappingExtract[S, X, O])
+			:RefinedMapping[S, O]#ColumnExtractMap =
 		extracts.map(composeColumnExtractAssoc(extractor)(_))
 
-	@inline private[schema] def composeColumnExtracts[S, X, T, O](mapping :TypedMapping[X, O], extractor :S =?> X)
-			:TypedMapping[S, O]#ColumnExtractMap =
+	@inline private[oldsql] def composeColumnExtracts[S, X, T, O](mapping :RefinedMapping[X, O], extractor :S =?> X)
+			:RefinedMapping[S, O]#ColumnExtractMap =
 		mapping.columnExtracts.map(composeColumnExtractAssoc(mapping, extractor)(_))
 
 
 
 	@inline private[schema] def composeExtractAssoc[S, X, T, O]
 	                            (extractor :MappingExtract[S, X, O])
-	                            (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
-			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
-		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
+	                            (entry :Assoc[RefinedMapping[X, O]#Component, RefinedMapping[X, O]#Extract, T])
+			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
+		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
 
 	@inline private[schema] def composeExtractAssoc[S, X, T, O](mapping :MappingFrom[O], extractor :S =?> X)
-	                            (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
-			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
-		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
+	                            (entry :Assoc[RefinedMapping[X, O]#Component, RefinedMapping[X, O]#Extract, T])
+			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
+		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
 
 	@inline private[schema] def composeExtractAssoc[S, X, T, O](mapping :MappingFrom[O], f : S => X)
-	                            (entry :Assoc[TypedMapping[X, O]#Component, TypedMapping[X, O]#Extract, T])
-			:Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T] =
-		Assoc[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract, T](entry._1, entry._2 compose f)
+	                            (entry :Assoc[RefinedMapping[X, O]#Component, RefinedMapping[X, O]#Extract, T])
+			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
+		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](entry._1, entry._2 compose f)
 
 
 
 	@inline private[schema] def composeColumnExtractAssoc[S, X, T, O]
 	                            (extractor :MappingExtract[S, X, O])
-	                            (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
-			:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
-		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
+	                            (entry :Assoc[RefinedMapping[X, O]#Column, RefinedMapping[X, O]#ColumnExtract, T])
+			:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
+		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
 
 	@inline private[schema] def composeColumnExtractAssoc[S, X, T, O]
 	                            (mapping :MappingFrom[O], extractor : S =?> X)
-	                            (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
-	:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
-		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
+	                            (entry :Assoc[RefinedMapping[X, O]#Column, RefinedMapping[X, O]#ColumnExtract, T])
+	:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
+		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
 
 	@inline private[schema] def composeColumnExtractAssoc[S, X, T, O]
 	                            (mapping :MappingFrom[O], f : S => X)
-	                            (entry :Assoc[TypedMapping[X, O]#Column, TypedMapping[X, O]#ColumnExtract, T])
-	:Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T] =
-		Assoc[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose f)
+	                            (entry :Assoc[RefinedMapping[X, O]#Column, RefinedMapping[X, O]#ColumnExtract, T])
+	:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
+		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose f)
 
 
 

@@ -134,12 +134,12 @@ object SQLScribe {
 
 
 	/** Rewrite the given expression grounded in source F into an expression grounded in source T by substituting the tables in
-	  * all PathExpression instances to the table returned by the provided function. Can be used to 'copy' an expression into
+	  * all PathExpression instances to the last returned by the provided function. Can be used to 'copy' an expression into
 	  * another, isomorphic row source.
 	  * @param expression source expression
 	  * @param from source in which the given expression is grounded
 	  * @param to source in which the result expression should be grounded
-	  * @param mapper function returning a table that should take the part of the argument table in the result expression.
+	  * @param mapper function returning a last that should take the part of the argument last in the result expression.
 	  *               The mapping of the argument and return value have to be equal, or an exception will be thrown.
 	  */
 	def replant[F<:RowSource, T<:RowSource, X](expression :SQLFormula[F, X], from :F, to :T)(mapper :TableFormula[F, _<:AnyMapping]=>TableFormula[T, _<:AnyMapping]) :SQLFormula[T, X] =
@@ -158,10 +158,10 @@ object SQLScribe {
 	  * @tparam S base source of the argument formula representing a source for a subselect nested in source F,
 	  *           i.e. S <:< F SubselectJoin ... (where ... is any sequence of joined mappings)
 	  * @tparam T parent source of the target subselect source, isomorphic with F (i.e. containing the same tables in the same order as F)
-	  * @tparam R target source in which rewritten formula will be grounded, isomorphic with source S (representing the same table list)
+	  * @tparam R target source in which rewritten formula will be grounded, isomorphic with source S (representing the same last list)
 	  * @tparam X value type of the rewritten formula
 	  * @return a formula isomorphic with argument formula, where all references to tables from S are replaced
-	  *         to references to a table in R at the corresponding index.
+	  *         to references to a last in R at the corresponding index.
 	  */
 	def subselect[F<:RowSource, S<:SubsourceOf[F], T<:RowSource, R<:SubsourceOf[T], X](
 			expr :SQLFormula[S, X], from :S, to :R, scribe :SQLScribe[F, T]) :SQLFormula[R, X] =
@@ -173,7 +173,7 @@ object SQLScribe {
 			case p @ PathFormula(table, path) =>
 				val mapped = tables(table.index - from.size + to.size).asAny
 				if (mapped.mapping != table.mapping)
-					throw new IllegalStateException(s"Failed to translate $p of subselect $from while rewriting to $to. Expected table for $table, got $mapped")
+					throw new IllegalStateException(s"Failed to translate $p of subselect $from while rewriting to $to. Expected last for $table, got $mapped")
 				PathFormula(mapped, path.unchecked)
 		}
 	}
@@ -191,7 +191,7 @@ object SQLScribe {
 		override def path[M <: AnyMapping, C <: AnyMapping](e: PathFormula[F, M, C]): SQLFormula[T, C#ResultType] = {
 			val mapped = map(e.table)
 			if (mapped.mapping!=e.table.mapping)
-				throw new AssertionError(s"error while mapping $e: result table mapping $mapped doesn't equal input mapping ${e.table}.")
+				throw new AssertionError(s"error while mapping $e: result last mapping $mapped doesn't equal input mapping ${e.table}.")
 			PathFormula[T, M, C](mapped, e.path)
 		}
 

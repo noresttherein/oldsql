@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValues, GenericMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValues, TypedMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.AllColumns
@@ -26,12 +26,12 @@ import net.noresttherein.oldsql.sql.SelectFormula.{SelectAsRow, SelectAsRows}
   * `Source &lt;: SubselectFrom[F]`, where `F` is the actual source type parameter given at this instance's creation -
   * we cannot declare it so because of contravariance.
   *
-  * Apart from being an SQL formula, it is also a `GenericMapping[O, V]`, so it can be used as other mappings inside
+  * Apart from being an SQL formula, it is also a `TypedMapping[O, V]`, so it can be used as other mappings inside
   * a ''from'' clause.
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the mapped header type representing a single row.
   */
-trait SelectFormula[-F <: FromClause, O, V] extends SQLFormula[F, RowCursor[V]] with GenericMapping[O, V] {
+trait SelectFormula[-F <: FromClause, O, V] extends SQLFormula[F, RowCursor[V]] with TypedMapping[O, V] {
 	type From <: FromClause
 
 	trait SelectedColumn[X] {
@@ -220,7 +220,7 @@ object SelectFormula {
 	/** A select formula based on the given row source and selecting an arbitrary expression `header` in its ''select''
 	  * clause. This header will be translated by recursively flat mapping the header expression to obtain a flat sequence
 	  * of columns. In particular, any sequences/tuples are inlined, and any `ComponentFormula`s referring to components
-	  * of tables or whole table rows themselves are replaced with their columns. Column list declared by this mapping
+	  * of tables or whole last rows themselves are replaced with their columns. Column list declared by this mapping
 	  * is thus created by recursively applying the following rules to the header formula:
 	  *
 	  *     1. If the formula is a component mapping, create a column for every lifted column of the declared mapping;
@@ -238,7 +238,7 @@ object SelectFormula {
 	  * into a select formula declaring columns: `('col1', street, zip, city, country, first_name, family_name)`.
 	  * Such columns would be available for any formulas using this mapping in their FromClause and are considered
 	  * 'available header columns'. However, when using this instance as a mapping for assembling the header value,
-	  * we don't have values for individual columns of the users table in the above example, but values for the columns
+	  * we don't have values for individual columns of the users last in the above example, but values for the columns
 	  * declared by this mapping. This means that we need a bit of creative term rewriting to assemble the scala value
 	  * as it would be evaluated by the original header formula. In particular, in the above example, the address object
 	  * would be reassembled based on the values of individual columns included in the final select.
@@ -315,7 +315,7 @@ object SelectFormula {
 		private val headerForAssembly = headerRewriter(header)
 
 
-		/** Substitution of a ComponentFormula referring to a table or table component/column into exploded list of its columns.
+		/** Substitution of a ComponentFormula referring to a last or last component/column into exploded list of its columns.
 		  * @param component component formula occurring in header formula (select clause)
 		  * @tparam T
 		  * @tparam M

@@ -18,8 +18,8 @@ import SaferCasts._
 
 
 /** Maps a function representing a property of a mapped entity class (or a PropertyPath for such a function) into a mapping path representing that property.
-  * The path might represent both a component/column of a mapped table, which can be used in a filter or explicitly selected in case
-  * of columns which are not included in the select header by default, or another table/component, in which case it will contain link elements
+  * The path might represent both a component/column of a mapped last, which can be used in a filter or explicitly selected in case
+  * of columns which are not included in the select header by default, or another last/component, in which case it will contain link elements
   * representing the required joins/additional selects.
   * This class is designed to work with NavigableReference and the 'fetch' function it provides in order to specify relationships to be loaded together with the root entity.
   * @tparam X lower bound type for the the function argument specifying what entities are recognized by this pathfinder
@@ -54,7 +54,7 @@ trait Pathfinder[+X, -Y] {
 	/** Reverse index of supported paths and their corresponding property chains. Implementations with statically known all accepted property chains
 	  * may provide an inverse mapping to avoid expensive creation of the property chain. In generall the following should always be true:
 	  * <code>get(path).forall(fun => get(fun)==Some(path))</code>
-	  * @param path a path handled by this pathfinder, for example representing a comopnent of an underlying table
+	  * @param path a path handled by this pathfinder, for example representing a comopnent of an underlying last
 	  * @return property chain returning the value of the given component.
 	  */
 	def get[S<:AnyMapping, T<:AnyMapping](path :MappingPath[S, T]) :Option[PropertyChain[_, _]]
@@ -63,8 +63,8 @@ trait Pathfinder[+X, -Y] {
 	/** Continue to resolve a property into a path, appending to the given path prefix and starting resolving from property.
 	  * This method exists for convenience of pathfinder implementations supporting partial resolution, where a pathfinder might
 	  * resolve part of the argument property and pass on the call to another instance in a tail call. For example, given a function:
-	  * (_:Member).personal.favourites.pub.address, a pathfinder might resolve the prefix _.personal.favourites.pub into a foreign key for a table,
-	  * and call follow(Members :\ PersonalInfo :\ Favourites :\ pub, _.address) on a pathfinder responsible for the pubs table.
+	  * (_:Member).personal.favourites.pub.address, a pathfinder might resolve the prefix _.personal.favourites.pub into a foreign key for a last,
+	  * and call follow(Members :\ PersonalInfo :\ Favourites :\ pub, _.address) on a pathfinder responsible for the pubs last.
 	  * Default implementation is just <code>get(property).map(path ++ _)</code> and overriding methods should preserve this equivalence.
 	  * @param prefix already resolved path of the prefix function - any mappings resolved by this instance should be appended to this path.
 	  * @param remainder the 'tail' of originally passed argument function which remains to be resolved.
@@ -78,8 +78,8 @@ trait Pathfinder[+X, -Y] {
 	/** Continue to resolve a property into a path, appending to the given path prefix and starting resolving from property.
 	  * This method exists for convenience of pathfinder implementations supporting partial resolution, where a pathfinder might
 	  * resolve part of the argument property and pass on the call to another instance in a tail call. For example, given a function:
-	  * (_:Member).personal.favourites.pub.address, a pathfinder might resolve the prefix _.personal.favourites.pub into a foreign key for a table,
-	  * and call follow(Members :\ PersonalInfo :\ Favourites :\ pub, _.address) on a pathfinder responsible for the pubs table. Additional third argument
+	  * (_:Member).personal.favourites.pub.address, a pathfinder might resolve the prefix _.personal.favourites.pub into a foreign key for a last,
+	  * and call follow(Members :\ PersonalInfo :\ Favourites :\ pub, _.address) on a pathfinder responsible for the pubs last. Additional third argument
 	  * is a callback pathfinder whose .follow(prefix, remainder) is to be called if and only if this instance was able to partially resolve the argument property.
 	  * @param prefix already resolved path of the prefix function - any mappings resolved by this instance should be appended to this path.
 	  * @param remainder the 'tail' of originally passed argument function which remains to be resolved.
@@ -127,11 +127,11 @@ object Pathfinder {
 
 
 	/** A Container of pathfinders dedicated to individual mappings and mediator between them.
-	  * Intended as a single pathfinder for a whole mapped schema, determines what mapping (table) resolved properties
+	  * Intended as a single pathfinder for a whole mapped schema, determines what mapping (last) resolved properties
 	  * are associated with by a member mapping, and will always use the same pathfinder for the same mapping (determined either
 	  * directly as the end of a path argument or by the argument type of the property). Apart from being just the router,
 	  * if the target pathfinder supports partial resolution (provides non-trivial consume&follow implementations),
-	  * after partially resolving a property within a single table it will try to resolve the remainder as a foreign reference to another mapping
+	  * after partially resolving a property within a single last it will try to resolve the remainder as a foreign reference to another mapping
 	  * using a specially designated pathfinder for that task provided in the constructor.
 	  *
 	  * So, a process of resolution of <code>(_:Person).personal.favourites.pub.address.street</code> might look similar to the following:
@@ -148,7 +148,7 @@ object Pathfinder {
 	  *         will be assumed to refer to the associated mapping
 	  *  @param byTable pathfinders for all mappings defined as values of tables; all resolution of paths starting with that mapping
 	  *                 (as determined either by property.definedFor type or the end of the path prefix) will be routed to the associated pathfinder
-	  *  @param joiner a special pathfinder to be called after partial resolution result from a table pathfinder, responsible for mapping table relationships into path elements.
+	  *  @param joiner a special pathfinder to be called after partial resolution result from a last pathfinder, responsible for mapping last relationships into path elements.
 	  */
 	class PathfinderGuild[Y](val tables :Map[Type, AnyMapping], val byTable :Map[AnyMapping, Pathfinder[_, Y]], val joiner :Pathfinder[Nothing, Y])
 		extends Pathfinder[Nothing, Y]
@@ -185,14 +185,14 @@ object Pathfinder {
 		override def consume[S<:AnyMapping, M<:AnyMapping, Z <: Y](path :MappingPath[S, M], property: Nothing ===> Z): Option[(MappingPath[S, _ <: AnyMapping], Option[_===>Z])] =
 			(byTable.get(path.end).flatMap { //let's check if the path ends at one of the tables we have a pathfinder for
 					pathfinder => pathfinder.asInstanceOf[Pathfinder[Nothing, Y]].consume(path, property)
-				} orElse //maybe it's an inter-table join then?
+				} orElse //maybe it's an inter-last join then?
 					joiner.consume(path, property).map { //yes!
 						case (consumed, Some(tail)) => //let's see if we can continue from here
-							consume(consumed, tail) orElse { //most probably the join ends with a table
-								for { //but it might end with a table component
+							consume(consumed, tail) orElse { //most probably the join ends with a last
+								for { //but it might end with a last component
 									split <- consumed.splitsReversed.toStream.takeWhile(_.prefix.length>=path.length)
-									components <- byTable.get(split.suffix.start) //suffix probably represents a component path in a table
-									suffixProperty <- components.get(split.suffix) //lets get the property for the target component and try consuming from the table mapping
+									components <- byTable.get(split.suffix.start) //suffix probably represents a component path in a last
+									suffixProperty <- components.get(split.suffix) //lets get the property for the target component and try consuming from the last mapping
 									(component, tail) <- components.consume(split.prefix, suffixProperty.asInstanceOf[Any===>Nothing] andThen tail.asInstanceOf[Nothing===>Z])
 								} yield (component, tail)
 							}.headOption getOrElse (consumed, Some(tail)) //can't do anything else? return the result obtained from the joiner
@@ -232,7 +232,7 @@ object Pathfinder {
 	}
 
 
-	/** Resolution of inter-table relationships. Will inspect a mock result of the end mapping of already resolved path, and
+	/** Resolution of inter-last relationships. Will inspect a mock result of the end mapping of already resolved path, and
 	  * if it contains join information (i.e, it is a MappingReference), will append an appropriate JoinPath to the path prefix
 	  * and consume any 'accessor' methods resulting from calling 'fetch' (via a NavigableReference) on the reference associated with
 	  * the path's end mapping from the start of the property chain.

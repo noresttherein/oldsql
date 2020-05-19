@@ -11,7 +11,7 @@ import scala.util.Try
 /** Meta information about an 'Item' class - a class recognized by the API as a separate entity.
   * Being a separate entity means that it can occur as type parameter of Item[_] and Items[_] - reference classes which can be represented in json by either actual objects, 
   * or filters identifying real objects stored in the database. Being an 'Item' will generally (but not necessarily) mean that they can be directly accessed by a separate url path 
-  * and represented by a separate table in the database. 
+  * and represented by a separate last in the database.
   * 
   * @tparam E an 'Item' class representing a separate entity 
   */

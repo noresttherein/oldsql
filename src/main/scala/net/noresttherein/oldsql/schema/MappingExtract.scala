@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.slang.OptionGuardExtension
 
@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.slang.OptionGuardExtension
 
 object MappingExtract {
 
-	def apply[S, T, O](component :TypedMapping[T, O], pick :S => Option[T], surepick :Option[S => T])
+	def apply[S, T, O](component :RefinedMapping[T, O], pick :S => Option[T], surepick :Option[S => T])
 			:MappingExtract[S, T, O] =
 		surepick match {
 			case Some(sure) => req(component)(sure)
@@ -26,7 +26,7 @@ object MappingExtract {
 			case _ => opt(column)(pick)
 		}
 
-	def apply[S, T, O](component :TypedMapping[T, O])(extractor :Extractor[S, T]) :MappingExtract[S, T, O] =
+	def apply[S, T, O](component :RefinedMapping[T, O])(extractor :Extractor[S, T]) :MappingExtract[S, T, O] =
 		extractor match {
 			case _ :IdentityExtractor[_] => ident(component).asInstanceOf[MappingExtract[S, T, O]]
 			case c :ConstantExtractor[_, T @unchecked] => const(component)(c.constant)
@@ -44,8 +44,8 @@ object MappingExtract {
 			case _ => opt(column)(extractor.optional) //todo: FromOptionExtractor
 		}
 
-	def like[X <: Mapping, M <: TypedMapping[T, O], S, T, O]
-	        (component :X)(extractor :Extractor[S, T])(implicit conforms :Conforms[X, M, TypedMapping[T, O]])
+	def like[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
+	        (component :X)(extractor :Extractor[S, T])(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, S, T, O] =
 		extractor match {
 			case _ :IdentityExtractor[_] => identity(component).asInstanceOf[GenericMappingExtract[M, S, T, O]]
@@ -57,64 +57,64 @@ object MappingExtract {
 
 
 
-	def optional[X <: Mapping, M <: TypedMapping[T, O], S, T, O]
-	            (component :X)(extractor :S => Option[T])(implicit conforms :Conforms[X, M, TypedMapping[T, O]])
+	def optional[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
+	            (component :X)(extractor :S => Option[T])(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, S, T, O] =
 		new OptionalExtract[M, S, T, O](component, extractor)
 
-	def opt[S, T, O](component :TypedMapping[T, O])(extractor :S => Option[T]) :MappingExtract[S, T, O] =
-		new OptionalExtract[TypedMapping[T, O], S, T, O](component, extractor)
+	def opt[S, T, O](component :RefinedMapping[T, O])(extractor :S => Option[T]) :MappingExtract[S, T, O] =
+		new OptionalExtract[RefinedMapping[T, O], S, T, O](component, extractor)
 
 	def opt[S, T, O](column :ColumnMapping[T, O])(extractor :S => Option[T]) :ColumnMappingExtract[S, T, O] =
 		new OptionalExtract[ColumnMapping[T, O], S, T, O](column, extractor)
 
 
 
-	def requisite[X <: Mapping, M <: TypedMapping[T, O], S, T, O]
-	             (component :X)(extractor :S => T)(implicit conforms :Conforms[X, M, TypedMapping[T, O]])
+	def requisite[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
+	             (component :X)(extractor :S => T)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, S, T, O] =
 		new RequisiteExtract(component, extractor)
 
-	def req[S, T, O](component :TypedMapping[T, O])(requisite :S => T) :MappingExtract[S, T, O] =
-		new RequisiteExtract[TypedMapping[T, O], S, T, O](component, requisite)
+	def req[S, T, O](component :RefinedMapping[T, O])(requisite :S => T) :MappingExtract[S, T, O] =
+		new RequisiteExtract[RefinedMapping[T, O], S, T, O](component, requisite)
 
 	def req[S, T, O](column :ColumnMapping[T, O])(requisite :S => T) :ColumnMappingExtract[S, T, O] =
 		new RequisiteExtract[ColumnMapping[T, O], S, T, O](column, requisite)
 
 
 
-	def identity[X <: Mapping, M <: TypedMapping[T, O], T, O]
-	            (component :X)(implicit conforms :Conforms[X, M, TypedMapping[T, O]])
+	def identity[X <: Mapping, M <: RefinedMapping[T, O], T, O]
+	            (component :X)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, T, T, O] =
 		new IdentityExtract(component)
 
-	def ident[T, O](component :TypedMapping[T, O]) :MappingExtract[T, T, O] =
-		new IdentityExtract[TypedMapping[T, O], T, O](component)
+	def ident[T, O](component :RefinedMapping[T, O]) :MappingExtract[T, T, O] =
+		new IdentityExtract[RefinedMapping[T, O], T, O](component)
 
 	def ident[T, O](column :ColumnMapping[T, O]) :ColumnMappingExtract[T, T, O] =
 		new IdentityExtract[ColumnMapping[T, O], T, O](column)
 
 
 
-	def constant[X <: Mapping, M <: TypedMapping[T, O], T, O]
-	            (component :X)(constant :T)(implicit conforms :Conforms[X, M, TypedMapping[T, O]])
+	def constant[X <: Mapping, M <: RefinedMapping[T, O], T, O]
+	            (component :X)(constant :T)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, Any, T, O] =
 		new ConstantExtract[M, T, O](component, constant)
 
-	def const[T, O](component :TypedMapping[T, O])(value :T) :MappingExtract[Any, T, O] =
-		new ConstantExtract[TypedMapping[T, O], T, O](component, value)
+	def const[T, O](component :RefinedMapping[T, O])(value :T) :MappingExtract[Any, T, O] =
+		new ConstantExtract[RefinedMapping[T, O], T, O](component, value)
 
 	def const[T, O](column :ColumnMapping[T, O])(value :T) :ColumnMappingExtract[Any, T, O] =
 		new ConstantExtract[ColumnMapping[T, O], T, O](column, value)
 
 
 
-	def empty[X <: Mapping, M <: TypedMapping[T, O], T, O]
-	         (component :X)(implicit conforms :Conforms[X, M, TypedMapping[T, O]])
+	def empty[X <: Mapping, M <: RefinedMapping[T, O], T, O]
+	         (component :X)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, Any, T, O] =
 		new EmptyExtract[M, T, O](component)
 
-	def none[T, O](component :TypedMapping[T, O]) :MappingExtract[Any, T, O] =
+	def none[T, O](component :RefinedMapping[T, O]) :MappingExtract[Any, T, O] =
 		new EmptyExtract(component)
 
 	def none[T, O](column :ColumnMapping[T, O]) :ColumnMappingExtract[Any, T, O] =
@@ -122,13 +122,13 @@ object MappingExtract {
 
 
 
-	def unapply[S, T, O](extract :MappingExtract[S, T, O]) :Some[(S => Option[T], Option[S => T], TypedMapping[T, O])] =
+	def unapply[S, T, O](extract :MappingExtract[S, T, O]) :Some[(S => Option[T], Option[S => T], RefinedMapping[T, O])] =
 		Some(extract.optional, extract.requisite, extract.export)
 
-	def unapply[S, T](extractor :Extractor[S, T]) :Option[(S => Option[T], Option[S => T], TypedMapping[_ <: T, _])] =
+	def unapply[S, T](extractor :Extractor[S, T]) :Option[(S => Option[T], Option[S => T], RefinedMapping[_ <: T, _])] =
 		extractor match {
 			case c :GenericMappingExtract[_, S @unchecked, T @unchecked, _] =>
-				Some((extractor.optional, extractor.requisite, c.export.asInstanceOf[TypedMapping[_ <: T, _]]))
+				Some((extractor.optional, extractor.requisite, c.export.asInstanceOf[RefinedMapping[_ <: T, _]]))
 			case _ =>
 				None
 		}
@@ -138,7 +138,7 @@ object MappingExtract {
 
 
 
-	trait GenericMappingExtract[+M <: TypedMapping[T, O], -S, T, O] extends Extractor[S, T] {
+	trait GenericMappingExtract[+M <: RefinedMapping[T, O], -S, T, O] extends Extractor[S, T] {
 
 		val export :M
 
@@ -147,7 +147,7 @@ object MappingExtract {
 		@inline final def get[L <: S](pieces :ComponentValues[L, O]) :Option[T] = pieces.get(this)
 
 
-		def andThen[C <: TypedMapping[Y, O], Y](extract :GenericMappingExtract[C, T, Y, O])
+		def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericMappingExtract[C, T, Y, O])
 				:GenericMappingExtract[C, S, Y, O] =
 			extract compose this
 
@@ -195,7 +195,7 @@ object MappingExtract {
 
 
 
-	private[schema] class OptionalExtract[+M <: TypedMapping[T, O], -S, T, O]
+	private[schema] class OptionalExtract[+M <: RefinedMapping[T, O], -S, T, O]
 	                                     (val export :M, override val optional :S => Option[T])
 		extends GenericMappingExtract[M, S, T, O] with OptionalExtractor[S, T]
 	{
@@ -209,7 +209,7 @@ object MappingExtract {
 
 
 
-	private[schema] class RequisiteExtract[+M <: TypedMapping[T, O], -S, T, O]
+	private[schema] class RequisiteExtract[+M <: RefinedMapping[T, O], -S, T, O]
 	                                      (override val export :M, override val getter :S => T)
 		extends GenericMappingExtract[M, S, T, O] with RequisiteExtractor[S, T]
 	{
@@ -257,7 +257,7 @@ object MappingExtract {
 
 
 
-	private[schema] class IdentityExtract[+M <: TypedMapping[T, O], T, O](component :M)
+	private[schema] class IdentityExtract[+M <: RefinedMapping[T, O], T, O](component :M)
 		extends RequisiteExtract[M, T, T, O](component, Predef.identity[T]) with IdentityExtractor[T]
 	{
 
@@ -299,7 +299,7 @@ object MappingExtract {
 
 
 
-	private[schema] class ConstantExtract[+M <: TypedMapping[T, O], T, O](component :M, override val constant :T)
+	private[schema] class ConstantExtract[+M <: RefinedMapping[T, O], T, O](component :M, override val constant :T)
 		extends RequisiteExtract[M, Any, T, O](component, (_ :Any) => constant) with ConstantExtractor[Any, T]
 	{
 
@@ -328,7 +328,7 @@ object MappingExtract {
 
 
 
-	private[schema] class EmptyExtract[+M <: TypedMapping[T, O], T, O](component :M)
+	private[schema] class EmptyExtract[+M <: RefinedMapping[T, O], T, O](component :M)
 		extends OptionalExtract[M, Any, T, O](component, Extractor.none.optional) with EmptyExtractor[Any, T]
 	{
 		override def compose[X](extractor :X =?> Any) :GenericMappingExtract[M, X, T, O] = this

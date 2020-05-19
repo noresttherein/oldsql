@@ -178,12 +178,10 @@ trait ScalaWriteForms {
 
 
 
-
-
-
-
-
 }
+
+
+
 
 
 
@@ -228,7 +226,7 @@ private[schema] object ScalaWriteForms {
 		override def inlineNullLiteral :String = form.inlineNullLiteral
 
 		override def equals(that :Any) :Boolean = that match {
-			case opt :OptionWriteForm[_] => opt.form == form
+			case opt :OptionWriteForm[_] => (this eq opt) || opt.canEqual(this) && opt.form == form
 			case _ => false
 		}
 
@@ -275,7 +273,7 @@ private[schema] object ScalaWriteForms {
 	case class Tuple2WriteForm[-L, -R](_1 :SQLWriteForm[L], _2 :SQLWriteForm[R])
 		extends AbstractTuple2WriteForm[L, R]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -329,7 +327,7 @@ private[schema] object ScalaWriteForms {
 	case class Tuple3WriteForm[-A, -B, -C](_1 :SQLWriteForm[A], _2 :SQLWriteForm[B], _3 :SQLWriteForm[C])
 		extends AbstractTuple3WriteForm[A, B, C]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -389,7 +387,7 @@ private[schema] object ScalaWriteForms {
 	case class Tuple4WriteForm[-A, -B, -C, -D](_1 :SQLWriteForm[A], _2 :SQLWriteForm[B], _3 :SQLWriteForm[C], _4 :SQLWriteForm[D])
 		extends AbstractTuple4WriteForm[A, B, C, D]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -456,7 +454,7 @@ private[schema] object ScalaWriteForms {
 			_1 :SQLWriteForm[A], _2 :SQLWriteForm[B], _3 :SQLWriteForm[C], _4 :SQLWriteForm[D], _5 :SQLWriteForm[E]
 		) extends AbstractTuple5WriteForm[A, B, C, D, E]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -530,7 +528,7 @@ private[schema] object ScalaWriteForms {
 			_6 :SQLWriteForm[F]
 		) extends AbstractTuple6WriteForm[A, B, C, D, E, F]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -610,7 +608,7 @@ private[schema] object ScalaWriteForms {
 			_6 :SQLWriteForm[F], _7 :SQLWriteForm[G]
 		) extends AbstractTuple7WriteForm[A, B, C, D, E, F, G]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -698,7 +696,7 @@ private[schema] object ScalaWriteForms {
 			_6 :SQLWriteForm[F], _7 :SQLWriteForm[G], _8 :SQLWriteForm[H]
 		) extends AbstractTuple8WriteForm[A, B, C, D, E, F, G, H]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -792,7 +790,7 @@ private[schema] object ScalaWriteForms {
 			_6 :SQLWriteForm[F], _7 :SQLWriteForm[G], _8 :SQLWriteForm[H], _9 :SQLWriteForm[I]
 		) extends AbstractTuple9WriteForm[A, B, C, D, E, F, G, H, I]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -892,7 +890,7 @@ private[schema] object ScalaWriteForms {
 			_6 :SQLWriteForm[F], _7 :SQLWriteForm[G], _8 :SQLWriteForm[H], _9 :SQLWriteForm[I], _10 :SQLWriteForm[J]
 		) extends AbstractTuple10WriteForm[A, B, C, D, E, F, G, H, I, J]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -999,7 +997,7 @@ private[schema] object ScalaWriteForms {
 			_11 :SQLWriteForm[K]	                                                                       
 		) extends AbstractTuple11WriteForm[A, B, C, D, E, F, G, H, I, J, K]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -1112,7 +1110,7 @@ private[schema] object ScalaWriteForms {
 			_11 :SQLWriteForm[K], _12 :SQLWriteForm[L]	                                                                       
 		) extends AbstractTuple12WriteForm[A, B, C, D, E, F, G, H, I, J, K, L]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -1231,7 +1229,7 @@ private[schema] object ScalaWriteForms {
 			_11 :SQLWriteForm[K], _12 :SQLWriteForm[L], _13 :SQLWriteForm[M] 	                                                                       
 		) extends AbstractTuple13WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -1356,7 +1354,7 @@ private[schema] object ScalaWriteForms {
 			_11 :SQLWriteForm[K], _12 :SQLWriteForm[L], _13 :SQLWriteForm[M], _14 :SQLWriteForm[N] 	                                                                       
 		) extends AbstractTuple14WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -1489,7 +1487,7 @@ private[schema] object ScalaWriteForms {
 			_11 :SQLWriteForm[K], _12 :SQLWriteForm[L], _13 :SQLWriteForm[M], _14 :SQLWriteForm[N], _15 :SQLWriteForm[O] 	                                                                       
 		) extends AbstractTuple15WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -1629,7 +1627,7 @@ private[schema] object ScalaWriteForms {
 			_16 :SQLWriteForm[P]		                                                                                           
 		) extends AbstractTuple16WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -1775,7 +1773,7 @@ private[schema] object ScalaWriteForms {
 			_16 :SQLWriteForm[P], _17 :SQLWriteForm[Q]		                                                                                           
 		) extends AbstractTuple17WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -1927,7 +1925,7 @@ private[schema] object ScalaWriteForms {
 			_16 :SQLWriteForm[P], _17 :SQLWriteForm[Q], _18 :SQLWriteForm[R]		                                                                                           
 		) extends AbstractTuple18WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -2085,7 +2083,7 @@ private[schema] object ScalaWriteForms {
 			_16 :SQLWriteForm[P], _17 :SQLWriteForm[Q], _18 :SQLWriteForm[R], _19 :SQLWriteForm[S]		                                                                                           
 		) extends AbstractTuple19WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -2249,7 +2247,7 @@ private[schema] object ScalaWriteForms {
 			_16 :SQLWriteForm[P], _17 :SQLWriteForm[Q], _18 :SQLWriteForm[R], _19 :SQLWriteForm[S], _20 :SQLWriteForm[T]		                                                                                           
 		) extends AbstractTuple20WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -2420,7 +2418,7 @@ private[schema] object ScalaWriteForms {
 			_21 :SQLWriteForm[U]	                                                                                                               
 		) extends AbstractTuple21WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 
@@ -2597,7 +2595,7 @@ private[schema] object ScalaWriteForms {
 			_21 :SQLWriteForm[U], _22 :SQLWriteForm[V]
 		) extends AbstractTuple22WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V]
 	{
-		override def productPrefix :String = ">"
+		override def productPrefix :String = "<"
 	}
 
 	

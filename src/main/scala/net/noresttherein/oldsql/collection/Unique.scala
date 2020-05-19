@@ -1,8 +1,9 @@
 package net.noresttherein.oldsql.collection
 
 
-import net.noresttherein.oldsql.collection.Unique.{UniqueSeqAdapter, UniqueSetAdapter}
+import scala.annotation.nowarn
 
+import net.noresttherein.oldsql.collection.Unique.{UniqueSeqAdapter, UniqueSetAdapter}
 import scala.collection.immutable.{IndexedSeq, Iterable, Seq, Set}
 import scala.collection.mutable.Builder
 import scala.collection.{AbstractSeq, AbstractSet, IterableFactory, IterableFactoryDefaults, IterableOps}
@@ -183,7 +184,7 @@ object Unique extends IterableFactory[Unique] {
 
 		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
 			if (elems.iterator.isEmpty) this
-			else (elems ++: items)
+			else ((elems ++: items) : @nowarn)
 
 		override def concat[B >: T](suffix :IterableOnce[B]) :Unique[B] = items ++ suffix
 

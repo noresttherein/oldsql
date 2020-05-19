@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.{GenericMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{TypedMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
 
@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, Select
   * They all use [[net.noresttherein.oldsql.collection.Unique.delay]] or [[net.noresttherein.oldsql.morsels.Lazy Lazy]],
   * which are thread safe, invoke the initializer at most once, and don't incur any computational penalty once initialized.
   */
-trait LazyMapping[S, O] extends GenericMapping[S, O] {
+trait LazyMapping[S, O] extends TypedMapping[S, O] {
 
 
 	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
@@ -60,7 +60,7 @@ trait LazyMapping[S, O] extends GenericMapping[S, O] {
 /** A mixin trait which defines all column and component lists as `val`s initialized by the call to super.
   * It caches also extracts and some buff information required by `optionally` to provide a faster implementation.
   */
-trait StableMapping[S, O] extends GenericMapping[S, O] {
+trait StableMapping[S, O] extends TypedMapping[S, O] {
 
 	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
 		case res if noBuffs => res

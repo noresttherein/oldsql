@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.schema.Mapping
@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
-class PrefixedMapping[M <: TypedMapping[S, O], S, O](val prefix :String, override val egg :M)
+class PrefixedMapping[M <: RefinedMapping[S, O], S, O](val prefix :String, override val egg :M)
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O] //Adapted[M]
 {
 	protected override def adapt[T](component :Component[T]) :Component[T] = component.prefixed(prefix)
@@ -43,10 +43,10 @@ class PrefixedMapping[M <: TypedMapping[S, O], S, O](val prefix :String, overrid
 
 
 object PrefixedMapping {
-	def apply[S, O](prefix :String, component :TypedMapping[S, O]) :Adapted[component.type] =
+	def apply[S, O](prefix :String, component :RefinedMapping[S, O]) :Adapted[component.type] =
 		new PrefixedMapping[component.type, S, O](prefix, component)
 
-	def qualified[S, O](prefix :String, component :TypedMapping[S, O]) :Adapted[component.type] =
+	def qualified[S, O](prefix :String, component :RefinedMapping[S, O]) :Adapted[component.type] =
 		if (prefix.length == 0)
 			new PrefixedMapping[component.type, S, O]("", component)
 		else
@@ -54,8 +54,8 @@ object PrefixedMapping {
 
 
 
-	def generic[X <: Mapping, M <: TypedMapping[S, O], S, O]
-	           (prefix :String, component :X)(implicit hint :Conforms[X, M, TypedMapping[S, O]]) :Adapted[M] =
+	def generic[X <: Mapping, M <: RefinedMapping[S, O], S, O]
+	           (prefix :String, component :X)(implicit hint :Conforms[X, M, RefinedMapping[S, O]]) :Adapted[M] =
 		new PrefixedMapping[M, S, O](prefix, component)
 
 }

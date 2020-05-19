@@ -76,7 +76,7 @@ import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQ
   * @see [[net.noresttherein.oldsql.schema.MappingSchema.FlatMappingSchema]]
   * @author Marcin Mościcki
   */
-trait SchemaMapping[C <:Chain, R <: Chain, S, O] extends GenericMapping[S, O] { outer =>
+trait SchemaMapping[C <:Chain, R <: Chain, S, O] extends TypedMapping[S, O] { outer =>
 
 	/** The chain listing components in this schema. In default implementation, these are all direct, non-synthetic
 	  * components. Customizing this mapping by including and excluding certain components for the purpose of

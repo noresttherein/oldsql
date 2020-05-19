@@ -1,14 +1,13 @@
 package net.noresttherein.oldsql.sql
 
 
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.LogicalFormula.AND.{ANDMatcher, CaseAND}
 import net.noresttherein.oldsql.sql.LogicalFormula.NOT.{CaseNOT, NOTMatcher}
 import net.noresttherein.oldsql.sql.LogicalFormula.OR.{CaseOR, ORMatcher}
-import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, CompositeColumnFormula, CompositeFormula, FormulaMatcher}
+import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CompositeColumnFormula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher
-import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.sql.SQLTerm.{False, True}
 
 
@@ -16,10 +15,6 @@ import net.noresttherein.oldsql.sql.SQLTerm.{False, True}
 /** Base trait for SQL formulas implementing Boolean algebra. */
 trait LogicalFormula[-F <: FromClause] extends CompositeColumnFormula[F, Boolean] {
 	override def readForm :ColumnReadForm[Boolean] = ColumnForm[Boolean]
-
-
-	override def applyTo[Y[X]](matcher :FormulaMatcher[F, Y]) :Y[Boolean] =
-		applyTo(matcher :ColumnFormulaMatcher[F, Y])
 
 }
 
@@ -43,12 +38,10 @@ object LogicalFormula {
 			formula
 
 
-		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.not(this)
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.not(this)
 
 		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = NOT(mapper(formula))
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :BooleanFormula[S] =
-			NOT(formula.stretch[U, S])
 	}
 
 
@@ -101,13 +94,11 @@ object LogicalFormula {
 
 
 
-		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.and(this)
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.and(this)
 
 		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = new AND(parts.map(mapper(_)))
 
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :ExtendedBy[U, S]) :BooleanFormula[S] =
-			AND(parts.map(_.stretch[U, S]))
 
 		override def toString :String = parts.reverse.mkString("(", " and ", ")")
 	}
@@ -173,13 +164,11 @@ object LogicalFormula {
 
 
 
-		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.or(this)
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.or(this)
 
 		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = new OR(parts.map(mapper(_)))
 
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :BooleanFormula[S] =
-			OR(parts.map(_.stretch[U, S]))
 
 		override def toString :String = parts.reverse.mkString("(", ") or (", ")")
 	}

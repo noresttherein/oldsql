@@ -1,14 +1,14 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{GenericMapping, Mapping}
+import net.noresttherein.oldsql.schema.{TypedMapping, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingNest, OpenNest}
 
 
 
 
 
-trait MappingAdapter[+M <: Mapping, S, O] extends GenericMapping[S, O] with OpenNest[M] {
+trait MappingAdapter[+M <: Mapping, S, O] extends TypedMapping[S, O] with OpenNest[M] {
 	override val egg :M
 
 //	override def map[X](there :S => X, back :X => S) :egg.type AdaptedAs X =
@@ -46,7 +46,7 @@ object MappingAdapter {
 	  * @tparam T the subject type of the adapted mapping `M`.
 	  * @tparam S the subject type of this mapping.
 	  */
-	trait ShallowAdapter[+M <: Mapping.TypedMapping[T, O], T, S, O] extends GenericMapping[S, O] with MappingNest[M] {
+	trait ShallowAdapter[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends TypedMapping[S, O] with MappingNest[M] {
 
 		override def components :Unique[Component[_]] = egg.components //Unique(egg)
 		override def subcomponents :Unique[Component[_]] = egg.subcomponents

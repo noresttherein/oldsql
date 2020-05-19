@@ -108,11 +108,9 @@ object SQLCondition {
 			new OrderComparison(ordering, mapper(left), symbol, mapper(right))
 
 
-		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] =
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] =
 			matcher.order(this)
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :OrderComparison[S, T] =
-			OrderComparison[S, T](ordering, left.stretch[U, S], symbol, right.stretch[U, S])
 	}
 
 
@@ -152,10 +150,8 @@ object SQLCondition {
 
 		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = Equality(mapper(left), mapper(right))
 
-		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.equality(this)
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.equality(this)
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :Equality[S, T] =
-			Equality(left.stretch[U, S], right.stretch[U, S])
 	}
 
 
@@ -178,8 +174,8 @@ object SQLCondition {
 		override def freeValue :Option[Boolean] =
 			for (l <- left.freeValue; r <- right.freeValue) yield l != r
 
-		//		override def get(values :RowValues[F]) :Option[Boolean] =
-		//			for (l <- left.get(values); r <- right.get(values)) yield l == r
+//		override def get(values :RowValues[F]) :Option[Boolean] =
+//			for (l <- left.get(values); r <- right.get(values)) yield l == r
 
 		override def symbol :String = Comparison.NEQ
 
@@ -187,10 +183,8 @@ object SQLCondition {
 
 		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = Inequality(mapper(left), mapper(right))
 
-		override def applyTo[Y[X]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.inequality(this)
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.inequality(this)
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :Inequality[S, T] =
-			Inequality[S, T](left.stretch[U, S], right.stretch[U, S])
 	}
 
 

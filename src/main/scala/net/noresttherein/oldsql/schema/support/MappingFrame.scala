@@ -8,11 +8,11 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, GenericMapping, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, TypedMapping, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly, ValuedBuffType}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -31,7 +31,7 @@ import net.noresttherein.oldsql
 
 //todo: provide examples
 /** Convenience base trait for mappings with a fixed, hierarchical structure, which subjects are assembled
-  * from subcomponents of arbitrary depth. This includes table mappings and other instances where columns are known
+  * from subcomponents of arbitrary depth. This includes last mappings and other instances where columns are known
   * statically and should be created manually, rather than by some generic code. While it exposes mutator methods
   * to facilitate creation and declaration of components, it is expected that they'll be used solely in the constructors
   * of derived classes by those classes themselves and, once created, it will be seen as immutable from the outside.
@@ -44,7 +44,7 @@ import net.noresttherein.oldsql
   *
   * @tparam S the `Subject` type of the mapped entity.
   * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
-  *           but coming from different sources (especially different aliases for a table occurring more then once
+  *           but coming from different sources (especially different aliases for a last occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
   */
@@ -75,7 +75,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.MandatoryComponent]]
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.OptionalComponent]]
 	  */
-	trait FrameComponent[T] extends GenericMapping[T, O] { self =>
+	trait FrameComponent[T] extends TypedMapping[T, O] { self =>
 
 		/** Returns the value of this component in an option if an implicit `ComponentValues` instance 
 		  * for the enclosing composite mapping is present. 
@@ -288,13 +288,13 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  *      the mapped value.
 	  *   1. The value is not present at a given lifecycle phase of the mapped entity, for example a database
 	  *      generated primary key.
-	  *   1. It is part of a different table.
+	  *   1. It is part of a different last.
 	  *   1. The column(s) with the value for the component is not included in every database query (for example,
-	  *      for efficiency reasons or because it is a part of a joined table) and therefore neither it is present
+	  *      for efficiency reasons or because it is a part of a joined last) and therefore neither it is present
 	  *      when the entity is being updated. It is a case of value being missing on a given instance, rather than
 	  *      for the represented abstract (or real life) entity.
 	  *   1. It is a part of a denormalized relation and its existence depends on value(s) of other component(s).
-	  *      This is for example the case with mapping of a class with its subclasses to a single database table.
+	  *      This is for example the case with mapping of a class with its subclasses to a single database last.
 	  *
 	  *  Of the above, the first case should use a
 	  *  [[net.noresttherein.oldsql.schema.support.MappingFrame.MandatoryComponent MandatoryComponent]] instance,
@@ -722,7 +722,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 			case self :MappingFrame[_, _]#FrameComponent[_] if self.belongsTo(frame) =>
 				if (buffs == null)
 					throw new IllegalStateException(s"$this.buffs is null: overrides must be defined before any components.")
-				if (verifiedPrefix.length > 0 || buffs.nonEmpty )
+				if (verifiedPrefix.length > 0 || buffs.nonEmpty)
 					throw new IllegalArgumentException(
 						s"Can't use column $template of the same mapping $frame as the template for a new column."
 					)

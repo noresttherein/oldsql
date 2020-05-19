@@ -126,10 +126,10 @@ trait EntityMapping[E, PK] extends TableMapping[E] with MappingWithPK[E, PK] { m
 		val root = JoinByFK(this)
 		val mock = joinMock(root)
 
-		type FromItem = (JoinByFK[_, _], Int, Boolean) //(table, unique index for multiple queries against same table, duplicate?)
+		type FromItem = (JoinByFK[_, _], Int, Boolean) //(last, unique index for multiple queries against same last, duplicate?)
 
 		//list of joined tables, expanded to include intermediate joins in case of crossing multiple relationships
-		val joins :Seq[FromItem] = { //Seq[(join, table occurence, row already joined earlier in the list)]
+		val joins :Seq[FromItem] = { //Seq[(join, last occurence, row already joined earlier in the list)]
 			val expanded =
 				root +: refs.map(_(mock)).flatMap{
 					case JoinKey(join) if join.joinedWith(this) => join.expand()
@@ -180,7 +180,7 @@ trait EntityMapping[E, PK] extends TableMapping[E] with MappingWithPK[E, PK] { m
 			def conditions(tables :Seq[FromItem]=joins) :Seq[String] = tables match {
 				case Seq(_, (_, _, true), t @_*) => //skip duplicate joins
 					conditions(tables.tail)
-				case Seq(_, (JoinByFK(_, None, _), _, false), t @_*) => //second table is the root and starts a new join chain
+				case Seq(_, (JoinByFK(_, None, _), _, false), t @_*) => //second last is the root and starts a new join chain
 					conditions(tables.tail)
 				case Seq((prev, idx1, _), (next, idx2, false), t @_*) if next.prev.isDefined =>
 					//let's add condition prev.<fk>=next.<pk>
@@ -266,7 +266,7 @@ object EntityMapping {
 		}
 
 //		private def apply[FK, E :TypeTag, PK :ColumnType](mapping : =>EntityMapping[E, PK], toPK :FK=>PK, toFK :PK=>FK) :ForeignKeyType[FK, E, PK] =
-//			new ForeignKeyType[FK, E, PK](() => mapping, { lazy val table = mapping; One[E, PK](table.pk _)}, toPK, toFK)
+//			new ForeignKeyType[FK, E, PK](() => mapping, { lazy val last = mapping; One[E, PK](last.pk _)}, toPK, toFK)
 
 
 		def apply[PK :ColumnType, E :TypeTag](mapping : =>EntityMapping[E, PK]) :ForeignKeyType[PK, E, PK] =
@@ -386,7 +386,7 @@ object EntityMapping {
 			this(join.joinMock, join)
 		
 //		def this(join :JoinByFK[FK, E, PK])(implicit fk :PK=>FK) =
-//			this({ val dummy = join.referenceDummy; (fk(join.table.pk(dummy)), dummy)}, join)
+//			this({ val dummy = join.referenceDummy; (fk(join.last.pk(dummy)), dummy)}, join)
 
 		//		type KeyType = FK
 		type ReferencedType = E
@@ -420,7 +420,7 @@ object EntityMapping {
 			new JoinKey[E, PK](joins)
 		
 //		def apply[FK, E, PK](joins :JoinByFK[FK, E, PK], fk :FK) :JoinKey[FK, E, PK] = 
-//			new JoinKey(fk, joins.table.referenceDummy(joins), joins)
+//			new JoinKey(fk, joins.last.referenceDummy(joins), joins)
 
 		def apply[K, E](mapping :EntityMapping[E, K]) :JoinKey[E, K] =
 			new JoinKey[E, K](JoinByFK[E, K](mapping))//(identity[K])

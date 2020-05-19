@@ -54,7 +54,7 @@ object ConnectedMapping {
 
 	private object JoinByFK {
 		def apply[C, P, PK](prev :JoinByFK[C, _], key :ComponentMapping[C, One[P]], table :ConnectedMapping[P, PK]) :JoinByFK[P, PK] =
-		//		def apply[C, P, PK](table :ConnectedMapping[P, PK], key :ComponentMapping[C, One[P]], prev :JoinByFK[C, _]) :JoinByFK[P, PK] =
+		//		def apply[C, P, PK](last :ConnectedMapping[P, PK], key :ComponentMapping[C, One[P]], prev :JoinByFK[C, _]) :JoinByFK[P, PK] =
 			new JoinByFK[P, PK](table, Some(key, prev))
 
 		def apply[E, PK](table :ConnectedMapping[E, PK]) :JoinByFK[E, PK] = new JoinByFK(table, None)
@@ -72,7 +72,7 @@ object ConnectedMapping {
 			this(join.joinMock, join)
 
 		//		def this(join :JoinByFK[FK, E, PK])(implicit fk :PK=>FK) =
-		//			this({ val dummy = join.referenceDummy; (fk(join.table.pk(dummy)), dummy)}, join)
+		//			this({ val dummy = join.referenceDummy; (fk(join.last.pk(dummy)), dummy)}, join)
 
 		//		type KeyType = FK
 		type ReferencedType = E
@@ -106,7 +106,7 @@ object ConnectedMapping {
 			new JoinKey[E, PK](joins)
 
 		//		def apply[FK, E, PK](joins :JoinByFK[FK, E, PK], fk :FK) :JoinKey[FK, E, PK] = 
-		//			new JoinKey(fk, joins.table.referenceDummy(joins), joins)
+		//			new JoinKey(fk, joins.last.referenceDummy(joins), joins)
 
 		def apply[K, E](mapping :ConnectedMapping[E, K]) :JoinKey[E, K] =
 			new JoinKey[E, K](JoinByFK[E, K](mapping))//(identity[K])

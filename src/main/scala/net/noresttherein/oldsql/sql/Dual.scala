@@ -2,9 +2,11 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.collection.Chain.@~
+import net.noresttherein.oldsql.schema.TypedMapping
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
-import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.AnyRelationIn
+import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation
+import net.noresttherein.oldsql.sql.MappingFormula.TypedJoinedRelation.LastRelation
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
@@ -15,19 +17,17 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * (like 'SELECT _ FROM DUAL' in Oracle) and an initial element for `With` lists
   * (any chain of `With` classes starts by joining with `Dual`).
   */
-class Dual private (override val filteredBy :BooleanFormula[Dual]) extends FromClause {
-
-	def this() = this(True())
+sealed class Dual private () extends FromClause {
 
 	override type LastMapping[O] = Nothing
 	override type LastTable[-F <: FromClause] = Nothing
-	override type FromLast = Dual
+	override type FromLast = FromClause
 	override type This = Dual
 
-	override def lastTable :Nothing = throw new NoSuchElementException("Dual.lastTable")
+	override def last :Nothing = throw new NoSuchElementException("Dual.last")
 
 
-	override type Generalized = Dual
+	override type Generalized = FromClause
 
 	override def generalized :Dual = this
 
@@ -42,12 +42,12 @@ class Dual private (override val filteredBy :BooleanFormula[Dual]) extends FromC
 
 	override def row :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
-	override def row[E <: FromClause](stretch :Dual ExtendedBy E) :ChainTuple[E, @~] =
+	override def row[E <: FromClause](stretch :FromClause ExtendedBy E) :ChainTuple[E, @~] =
 		ChainTuple.EmptyChain
 
-	override def tableStack :LazyList[AnyRelationIn[Dual]] = LazyList.empty
+	override def tableStack :LazyList[JoinedRelation.AnyIn[FromClause]] = LazyList.empty
 
-	override def tableStack[E <: FromClause](stretch :Dual ExtendedBy E) :LazyList[AnyRelationIn[E]] = LazyList.empty
+	override def tableStack[E <: FromClause](stretch :FromClause ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] = LazyList.empty
 
 
 
@@ -55,12 +55,12 @@ class Dual private (override val filteredBy :BooleanFormula[Dual]) extends FromC
 
 	override def subselectRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
-	override def subselectRow[E <: FromClause](stretch :Dual ExtendedBy E) :ChainTuple[E, @~] =
+	override def subselectRow[E <: FromClause](stretch :FromClause ExtendedBy E) :ChainTuple[E, @~] =
 		ChainTuple.EmptyChain
 
-	override def subselectTableStack :LazyList[AnyRelationIn[Dual]] = LazyList.empty
+	override def subselectTableStack :LazyList[JoinedRelation.AnyIn[FromClause]] = LazyList.empty
 
-	override def subselectTableStack[E <: FromClause](stretch :Dual ExtendedBy E) :LazyList[AnyRelationIn[E]] =
+	override def subselectTableStack[E <: FromClause](stretch :FromClause ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] =
 		LazyList.empty
 
 
@@ -69,13 +69,20 @@ class Dual private (override val filteredBy :BooleanFormula[Dual]) extends FromC
 
 
 
-	override def filteredBy[E <: FromClause](extension :Dual ExtendedBy E) :BooleanFormula[E] =
+	override def filteredBy :BooleanFormula[FromClause] = True
+
+	override def filteredBy[E <: FromClause](extension :FromClause ExtendedBy E) :BooleanFormula[E] =
 		filteredBy.stretch(extension)
 
 
 
 	override type JoinFilter[T[O] <: MappingFrom[O]] = Nothing
 
+
+
+//	override protected def joinAll_:(preceding :FromClause) :FromClause = preceding
+//
+//	override protected def joinSubselect_:(preceding :FromClause) :FromClause = preceding
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]
@@ -104,6 +111,13 @@ class Dual private (override val filteredBy :BooleanFormula[Dual]) extends FromC
   * (by default any chain of With[_, _] classes is eventually terminated by a Dual instance).
   */
 object Dual extends Dual {
+
+	protected[sql] override def selfInnerJoin[T[A] <: TypedMapping[X, A], X]
+	                                         (right :LastRelation[T, X])(filter :BooleanFormula[FromClause With T])
+			:From[T] with (this.type InnerJoin T) =
+		From.newJoin[T, X](right)(filter)
+
+
 	def unapply(source :FromClause) :Boolean = source.isInstanceOf[Dual]
 }
 

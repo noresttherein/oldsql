@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.schema.{ColumnMapping, GenericMapping, Mapping}
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnMapping, TypedMapping, Mapping}
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
-trait LabeledMapping[N <: Label, S, O] extends GenericMapping[S, O]
+trait LabeledMapping[N <: Label, S, O] extends TypedMapping[S, O]
 
 
 
@@ -24,15 +24,27 @@ object LabeledMapping {
 
 
 
+	def apply[N <: Label, M <: RefinedMapping[S, O], S, O]
+	         (label :N, mapping :M)(implicit infer :Conforms[M, M, RefinedMapping[S, O]]) :N @: M =
+		new MappingLabel[N, M, S, O](mapping)(new ValueOf[N](label))
+
+
+
 	sealed trait @:[N <: Label, M <: Mapping] extends Adapted[M] with LabeledMapping[N, M#Subject, M#Origin] {
 		def label :N
 	}
 
 
 
-	def apply[N <: Label, M <: TypedMapping[S, O], S, O]
-	         (label :N, mapping :M)(implicit infer :Conforms[M, M, TypedMapping[S, O]]) :N @: M =
-		new MappingLabel[N, M, S, O](mapping)(new ValueOf[N](label))
+	object @: {
+		def unapply(mapping :Mapping) :Option[(Label, Mapping)] = mapping match {
+			case labeled: @:[_, _] => Some(labeled.label -> labeled.egg)
+			case _ => None
+		}
+
+		def unapply[N <: Label, M <: Mapping](labeled :N @: M) :Some[(N, M)] =
+			Some(labeled.label -> labeled.egg)
+	}
 
 
 
@@ -43,11 +55,11 @@ object LabeledMapping {
 	implicit def LabeledMappingAdapterProjection[N <: Label, M <: Mapping, A, R <: Mapping, B]
 	                                            (implicit alias :OriginProjection[M, A, R, B])
 			:OriginProjection[N @: M, A, N @: R, B] =
-		labeled => (labeled.label @: alias(labeled.egg).asInstanceOf[TypedMapping[Any, Any]]).asInstanceOf[N @: R]
+		labeled => (labeled.label @: alias(labeled.egg).asInstanceOf[RefinedMapping[Any, Any]]).asInstanceOf[N @: R]
 
 
 
-	class MappingLabel[N <: Label, M <: TypedMapping[S, O], S, O](val egg :M)(implicit singleton :ValueOf[N])
+	class MappingLabel[N <: Label, M <: RefinedMapping[S, O], S, O](val egg :M)(implicit singleton :ValueOf[N])
 		extends ShallowProxy[S, O] with (N @: M)
 	{
 		def this(label :N, egg :M) = this(egg)(new ValueOf(label))

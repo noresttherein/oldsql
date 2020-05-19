@@ -4,7 +4,7 @@ import scala.collection.mutable.ListBuffer
 
 
 
-/**  A collection of columns definition describing a schema for a table or query.
+/**  A collection of columns definition describing a schema for a last or query.
   *  Allows statically typed access to the database - when a row is defined to be of this RowDef's type,
   *  columns defined under it can be used to access the row data in a type safe manner.
   *  We say that a column belongs to RowDef x, or is under x, if it is either defined by x's class,

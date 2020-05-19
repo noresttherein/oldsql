@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, Base
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.RecordMapping.NonEmptyRecordMapping
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 
 
@@ -117,7 +117,7 @@ object RecordMapping {
 
 
 
-	private class NonEmptyRecordSchema[C <: Chain, M <: TypedMapping[T, O], R <: Record, K <: Key, T, S, O]
+	private class NonEmptyRecordSchema[C <: Chain, M <: RefinedMapping[T, O], R <: Record, K <: Key, T, S, O]
 	                                  (first :MappingSchema[C, R, S, O], key :K, next :M,
 	                                   extract :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[Record, |#, Item, C, M, R, T, K #> T, S, O](first, next, extract, _.last._2)
@@ -165,7 +165,7 @@ object RecordMapping {
 
 
 
-	private class NonEmptyRecordMapping[C <: Chain, M <: TypedMapping[T, O], R <: Record, K <: Key, T, O]
+	private class NonEmptyRecordMapping[C <: Chain, M <: RefinedMapping[T, O], R <: Record, K <: Key, T, O]
 	                                   (prefix :RecordMapping[C, R, O], key :K, next :M)
 		extends NonEmptyRecordSchema[C, M, R, K, T, R |# (K #> T), O](
 		                             prefix.asPrefix[K #> T], key, next,

@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -112,7 +112,7 @@ object LiteralIndexMapping {
 
 	
 
-	private class NonEmptyIndexSchema[C <: Chain, M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
+	private class NonEmptyIndexSchema[C <: Chain, M <: RefinedMapping[T, O], R <: LiteralIndex, K <: Key, T, S, O]
 	                                 (first :MappingSchema[C, R, S, O], key :K, next :M,
 	                                  extract :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[LiteralIndex, |~, Item, C, M, R, T, K :~ T, S, O](first, next, extract, _.last.value)
@@ -162,7 +162,7 @@ object LiteralIndexMapping {
 
 
 
-	private class NonEmptyIndexMapping[C <: Chain, M <: TypedMapping[T, O], R <: LiteralIndex, K <: Key, T, O]
+	private class NonEmptyIndexMapping[C <: Chain, M <: RefinedMapping[T, O], R <: LiteralIndex, K <: Key, T, O]
 	                                  (prefix :LiteralIndexMapping[C, R, O], key :K, next :M)
 		extends NonEmptyIndexSchema[C, M, R, K, T, R |~ (K :~ T), O](
 		                            prefix.asPrefix[K :~ T], key, next,

@@ -20,7 +20,7 @@ import com.hcore.ogre.slang.SaferCasts._
 
 /** An extendable collection of sql selects (possibly with a single element) used to fetch data specified
   * by a collection of MappingPath instances sharing the same root. It represents a realisation of requests
-  * in the form 'fetch me entities E from mapping (possibly table) H, including in the result following
+  * in the form 'fetch me entities E from mapping (possibly last) H, including in the result following
   * optional column or related entities (including transitive relations).
   *
   * This class provides both the batch to be executed and a way of adding new data to the batch; In that way,
@@ -34,7 +34,7 @@ trait Haul[H<:AnyMapping] {
 
 	/** Add a new data source to be included in the haul.
 	  * @param path a path to the mapping for the requested data, either an optional component not normally included in selects,
-	  *             a foreign key to related table or a combination of thereof.
+	  *             a foreign key to related last or a combination of thereof.
 	  * @tparam M mapping type for requested data.
 	  * @return a Haul being the sum of sources contained in this instance and any needed to provide the requested data.
 	  */
@@ -150,7 +150,7 @@ object Haul {
 			else if (included(path))
 				self
 			else if (tables.keys.exists(_.startsWith(path)))
-				self //todo: is include relation really transitive? Does fetching a component imply fetching all columns in the table?
+				self //todo: is include relation really transitive? Does fetching a component imply fetching all columns in the last?
 			else if (derivatives.paths.exists(_.startsWith(path)))
 				self
 			else derivatives.find(path).map {
@@ -325,15 +325,15 @@ object Haul {
 //			val (joined :RowSource, _) = reverseMergeJoin(parent, parentTable, join.left)
 			val crossjoin = reverseMergeCrossJoin(parent, join.left).result joinAny source
 			val from = crossjoin.toStream.reverse.toIndexedSeq
-			val left = from(parentTable.index).ensuring(_.mapping==parentTable.mapping) //parent table
-			val right = from(parent.size + join.size-2).ensuring(_.mapping==join.right) //my root table
+			val left = from(parentTable.index).ensuring(_.mapping==parentTable.mapping) //parent last
+			val right = from(parent.size + join.size-2).ensuring(_.mapping==join.right) //my root last
 
 			
 			val condition = SQLScribe.replant(join.filter, join, crossjoin) {
 				case join.lastTable => right
 				case join.left.lastTable => left
 				case TableFormula(m, i) => from(parent.size+i).ensuring(_.mapping==m)
-//				case t => throw new IllegalArgumentException(s"Unexpected table $t when replanting $join condition into $crossjoin; should be one of ($left, $right)")
+//				case t => throw new IllegalArgumentException(s"Unexpected last $t when replanting $join condition into $crossjoin; should be one of ($left, $right)")
 			}
 			crossjoin where condition
 		}

@@ -42,7 +42,7 @@ trait CompositeReference[+T, E] extends Reference[T] { //extends ComposableRefer
 /** Operations on references for some composite type C which value can be represented as some sort of collection or composite
   * of items of another type T. Best examples are of course all subtypes of Iterable[T], but also Option[T] as well as
   * identity representation to a super type. The motivation is to be able to accept and return instances of Reference[C],
-  * where composite value C can be mapped to a collection of E, which themselves can be mapped to individual rows in a table. 
+  * where composite value C can be mapped to a collection of E, which themselves can be mapped to individual rows in a last.
  * 
  */
 object CompositeReference {

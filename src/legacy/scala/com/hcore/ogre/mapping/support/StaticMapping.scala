@@ -19,7 +19,7 @@ import com.hcore.ogre.sql.{SQLReadForm, SQLWriteForm}
 import scala.collection.mutable.ListBuffer
 
 /** Convenience base trait for mappings which are defined statically, rather than dynamically (i.e the mapped type and schema is mostly known).
-  * This includes table mappings and other instances, where columns are known statically and should be created manually, rather than by some generic code.
+  * This includes last mappings and other instances, where columns are known statically and should be created manually, rather than by some generic code.
   * While it exposes mutator methods to facilitate creation and declaration of components, it is expected that they'll be used solely in
   * the constructors of derived classes by those classes themselves and, once created, it will be seen as immutable from the outside.
   * If an attempt is made to modify this instance once any of its accessor methods for components had been called previously, an exception will be thrown.

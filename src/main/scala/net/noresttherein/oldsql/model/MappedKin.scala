@@ -1,8 +1,10 @@
 package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.MappedKin.KinMapper
-import net.noresttherein.oldsql.slang.SaferCasts._
+import net.noresttherein.oldsql.slang
 
+
+import slang._
 
 
 trait MappedKin[S, +T] extends Kin[T] {

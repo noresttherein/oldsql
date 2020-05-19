@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappedSchema, FlatMappingSchema, MappedSchema}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
@@ -312,7 +312,7 @@ object IndexedMappingSchema {
 
 
 
-	private[schema] class NonEmptyIndexedSchema[N <: Label :ValueOf, C <: Chain, M <: TypedMapping[T, O],
+	private[schema] class NonEmptyIndexedSchema[N <: Label :ValueOf, C <: Chain, M <: RefinedMapping[T, O],
 	                                            R <: LiteralIndex, T, S, O]
 	                                           (override val init :IndexedMappingSchema[C, R, S, O],
 	                                            component :M, selector :MappingExtract[S, T, O])
@@ -338,7 +338,7 @@ object IndexedMappingSchema {
 
 
 
-	private[schema] class FlatNonEmptyIndexedSchema[N <: Label :ValueOf, C <: Chain, M <: TypedMapping[T, O],
+	private[schema] class FlatNonEmptyIndexedSchema[N <: Label :ValueOf, C <: Chain, M <: RefinedMapping[T, O],
 	                                                R <: LiteralIndex, T, S, O]
 	                                               (override val init :FlatIndexedMappingSchema[C, R, S, O],
 	                                                last :M, extractor :MappingExtract[S, T, O])

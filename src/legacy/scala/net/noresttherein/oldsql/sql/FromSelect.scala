@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.sql.FromClause.{RowTables, SelectFrom, SubselectFrom}
+import net.noresttherein.oldsql.sql.FromClause.{RowTables, SelectFrom, SubselectOf}
 
 
 
@@ -13,10 +13,10 @@ trait FromSelect[F <: FromClause, H] {
 
 	def from :F
 
-	def asSQL[P <: FromClause, O](implicit subsourceOf :F <:< SubselectFrom[P]) :SelectFormula[P, O, H] =
-		SelectFormula.subselect[P, SubselectFrom[P], O, H](subsourceOf(from), header.asInstanceOf[SQLFormula[SubselectFrom[P], H]])
+	def asSQL[P <: FromClause, O](implicit subsourceOf :F <:< SubselectOf[P]) :SelectFormula[P, O, H] =
+		SelectFormula.subselect[P, SubselectOf[P], O, H](subsourceOf(from), header.asInstanceOf[SQLFormula[SubselectOf[P], H]])
 
-	def asSubselectOf[P <: FromClause, O](source :P, alias :O)(implicit subsourceOf :F <:< SubselectFrom[P]) :SelectFormula[P, O, H] =
+	def asSubselectOf[P <: FromClause, O](source :P, alias :O)(implicit subsourceOf :F <:< SubselectOf[P]) :SelectFormula[P, O, H] =
 		asSQL[P, O]
 
 	def asSelect[O](implicit ev :F <:< SelectFrom) :SelectFormula[FromClause, O, H] =
@@ -38,7 +38,7 @@ object FromSelect {
 		new SimpleSelect[F, H](source, header(source.tables))
 
 
-	implicit def asSQL[F <: SubselectFrom[P], P <: FromClause, O, H](select :FromSelect[F, H]) :SelectFormula[P, O, H] =
+	implicit def asSQL[F <: SubselectOf[P], P <: FromClause, O, H](select :FromSelect[F, H]) :SelectFormula[P, O, H] =
 		select.asSQL[P, O]
 
 

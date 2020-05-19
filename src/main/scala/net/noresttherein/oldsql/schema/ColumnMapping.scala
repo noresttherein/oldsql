@@ -3,12 +3,18 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.{NumberedColumn, StandardColumn}
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql.FromClause
+import net.noresttherein.oldsql.sql.FromClause.TableCount
+import net.noresttherein.oldsql.sql.MappingFormula.{FreeColumn, FreeComponent}
+import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula
 
 
 
@@ -25,7 +31,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
   * which are adaptable by operations such as mapping and prefixing, transformation methods on columns
   * return a new instance, using the form (and, where suitable, buffs and name) of the original as their basis.
   */
-trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
+trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 
 	/** Returns `Some(this.name)`. */
 	final override def sqlName = Some(name)
@@ -128,22 +134,9 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 		case Some(buff) => SQLReadForm.eval(buff.value)
 		case _ =>
 			val audits = SelectAudit.Audit(buffs)
-			val read =
-//				if (Nullable.enabled(buffs))
-					if (audits.isEmpty) form
-					else form.map(audits.reduce(_ andThen _), form.nullValue)
-/*
-				else {
-					val notNull =  { s :S =>
-						if (s == null)
-							throw new NullPointerException("Read a null value for non-nullable column " + sqlName +
-								". Flag the column with Buff.Nullable to explicitly allow nulls.")
-						s
-					}
-					if (audits.isEmpty) form map notNull
-					else form.map((audits :\ notNull)(_ andThen _))
-				}
-*/
+			val read = //we can't enforce not null here because of artificial nulls resulting from outer joins
+				if (audits.isEmpty) form
+				else form.map(audits.reduce(_ andThen _), form.nullValue)
 			OptionalSelect.test(buffs) match {
 				case Some(ConstantBuff(x)) => read orElse SQLReadForm.const(x)
 				case Some(buff) => read orElse SQLReadForm.eval(buff.value)
@@ -322,6 +315,16 @@ trait ColumnMapping[S, O] extends GenericMapping[S, O] { column =>
 
 object ColumnMapping {
 
+	type ColumnOf[S] = ColumnMapping[S, _]
+
+	type ColumnFrom[O] = ColumnMapping[_, O]
+
+//	type WithSubject[S] = { type M[O] = ColumnMapping[S, O] }
+//
+//	type WithOrigin[O] = { type M[S] = ColumnMapping[S, O] }
+
+
+
 	def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :ColumnMapping[S, O] =
 		new StandardColumn(name, buffs)
 
@@ -330,6 +333,21 @@ object ColumnMapping {
 
 	def labeled[N <: String with Singleton, S :ColumnForm, O](label :N, buffs :Buff[S]*) :LiteralColumn[N, S, O] =
 		new LiteralColumn[N, S, O](buffs)(new ValueOf(label), ColumnForm[S])
+
+
+
+
+
+/*
+	implicit def columnSQLFormula[F <: FromClause, C <: ColumnMapping[_, _], M[A] <: ColumnMapping[S, A], S, N <: Numeral]
+	             (column :C)(implicit conforms :Conforms[C, M[F], ColumnMapping[S, F]], offset :TableCount[F, N])
+			:FreeComponent[F, M, S] =
+		if (offset.count <= 0)
+			throw new IllegalArgumentException(
+				s"Can't convert column $column to an SQL formula as its Origin type has zero tables.")
+		else
+			FreeColumn(column, offset.count - 1)
+*/
 
 
 

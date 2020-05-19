@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, OriginProjection}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.sql.Join
+import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 
 
 
@@ -9,7 +11,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, Origi
   * @author Marcin Mościcki
   */
 trait RowSource[M[O] <: MappingFrom[O]] {
-	type Row[O] = M[O]
+	type Row[O] = M[O] //consider: RowSource could be covariant if not for this member type. Maybe not needed?
 
 	def apply[O] :M[O]
 	def sql :String
@@ -23,7 +25,7 @@ trait RowSource[M[O] <: MappingFrom[O]] {
 
 
 object RowSource {
-	type AnyRowSource = RowSource[M] forSome { type M[O] <: MappingFrom[O] }
+	type * = RowSource[M] forSome { type M[O] <: MappingFrom[O] }
 
 
 	def apply[M[O] <: MappingFrom[O], A](name :String, template :M[A])
@@ -34,6 +36,16 @@ object RowSource {
 	def apply[M[O] <: MappingFrom[O], A](template :M[A])
 	                                    (implicit alias :OriginProjection[M[A], A, M[Any], Any]) :RowSource[M] =
 		new AliasingSource(template)
+
+
+
+
+
+
+	implicit def identityCast[J[M[O] <: MappingFrom[O]] <: _ Join M, R[O] <: MappingFrom[O], T[O] <: TypedMapping[_, O]]
+	                         (source :RowSource[R])
+	                         (implicit cast :JoinedRelationSubject[J, R, T, TypedMapping.AnyFrom]) :RowSource[T] =
+		cast(source)
 
 
 
@@ -105,8 +117,8 @@ object RowSource {
 		def of[S] :TableConstructor[S] = new TableConstructor[S] {}
 
 		sealed trait TableConstructor[S] extends Any {
-			def apply[M[O] <: TypedMapping[S, O]](name :String)
-			                                     (implicit mapping :String => M[_],
+			def apply[M[O] <: RefinedMapping[S, O]](name :String)
+			                                       (implicit mapping :String => M[_],
 			                                   alias :OriginProjection[M[AnyRef], AnyRef, M[Any], Any]) :Table[M] =
 				Table(name, mapping(name).asInstanceOf[M[AnyRef]])
 		}

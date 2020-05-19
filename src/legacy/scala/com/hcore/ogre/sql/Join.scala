@@ -303,7 +303,7 @@ abstract class ExplicitJoin[+L<:RowSource, R<:AnyMapping] protected (
 	  */
 	override def on(condition :(L#LastTable[this.type], TableFormula[this.type, R]) => BooleanFormula[this.type]) :Self[L] =
 		super.on(condition).asInstanceOf[Self[L]]
-//		filterBy(condition(left.last.asPartOf(this).asInstanceOf[L#LastTable[this.type]], lastTable)).self
+//		filterBy(condition(left.last.asPartOf(this).asInstanceOf[L#LastTable[this.type]], last)).self
 
 
 

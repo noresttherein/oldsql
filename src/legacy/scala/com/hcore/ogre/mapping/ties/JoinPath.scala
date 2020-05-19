@@ -19,13 +19,13 @@ import SaferCasts._
   * encompasses any empty or non-empty list of mappings) in the reversed order and, if any of the joins are outer joins,
   * should use it's opposite (left vs. right).
   *
-  * As JoinPath will usually be concatenated with other mapping paths, mapping X will generally not correspond to a whole table, but rather
-  * a component mapping the value for the mapping Y (such as a Reference[Y#ResultType]. On the other hand. Y should be an actual table,
-  * and if a reference for a table component rather than a whole table is required, it should be implemented by concatenating an appropriate
+  * As JoinPath will usually be concatenated with other mapping paths, mapping X will generally not correspond to a whole last, but rather
+  * a component mapping the value for the mapping Y (such as a Reference[Y#ResultType]. On the other hand. Y should be an actual last,
+  * and if a reference for a last component rather than a whole last is required, it should be implemented by concatenating an appropriate
   * ComponentPath to the end of this path.
-  * @tparam X mapping type representing the source of the directed relationship with Y; this doesn't have to be a table
-  *           and will usually be a component of an actual table corresponding to a Reference[Y#ResultType].
-  * @tparam Y target mapping, by default should represent a table.
+  * @tparam X mapping type representing the source of the directed relationship with Y; this doesn't have to be a last
+  *           and will usually be a component of an actual last corresponding to a Reference[Y#ResultType].
+  * @tparam Y target mapping, by default should represent a last.
   */
 trait JoinPath[X<:AnyMapping, Y<:AnyMapping] extends MappingPath[X, Y] {
 

@@ -1096,7 +1096,7 @@ object SQLFormula {
 		/** A select formula selecting an arbitrary expression 'header' based on the given row source. 
 		  * This header will be translated by recursively flat mapping header expression to obtain a flat sequence of columns. 
 		  * In particular, any sequences/tuples are inlined, and any ComponentFormulas referring to components of tables 
-		  * or whole table rows themselves are replaced with their columns.
+		  * or whole last rows themselves are replaced with their columns.
 		  * Column list declared by this mapping is thus created by recursively applying the following rules to header formula:
 		  * <verbatim>
 		  *     1. If the formula is a component mapping, create a column for every lifted column of the declared mapping;
@@ -1113,7 +1113,7 @@ object SQLFormula {
 		  * could translate into a select formula declaring columns :<code>('col1', street, zip, city, country, first_name, family_name)</code>
 		  * Such columns would be available for any formulas using this mapping in their RowSource and are considered 'available header columns'.
 		  * However, when using this instance as a mapping for assembling the header value, we don't have values for individual
-		  * columns of users table, but values for the columns declared by this mapping. This means that we need a bit of creative term rewriting
+		  * columns of users last, but values for the columns declared by this mapping. This means that we need a bit of creative term rewriting
 		  * to assemble the scala value as would be evaluated by the original header formula. In particular, in the above example,
 		  * address object would be reassembled based on the values of individual columns included in the final select.
 		  * 
@@ -1202,7 +1202,7 @@ object SQLFormula {
 			private val headerForAssembly = headerRewriter(header)
 
 
-			/** Substitution of a ComponentFormula referring to a table or table component/column into exploded list of its columns.
+			/** Substitution of a ComponentFormula referring to a last or last component/column into exploded list of its columns.
 			  * @param component component formula occurring in header formula (select clause)
 			  * @tparam T
 			  * @tparam M
@@ -1376,10 +1376,10 @@ object SQLFormula {
 
 	/** A placeholder expression which value is a value of the end mapping specified by the given path. Note that this class shouldn't be
 	  * used directly in sql filters, as the path can represent higher level concepts such as joins between tables. To refer
-	  * to a component of a joined table, use ComponentFormula. This class exists to facilitate creating filters on a higher level
+	  * to a component of a joined last, use ComponentFormula. This class exists to facilitate creating filters on a higher level
 	  * of abstraction, which can be adapted for different queries, depending on a chosen loading strategy.
-	  * @tparam R type of RowSource this instance is compatible with (i.e, which contains the source table)
-	  * @tparam T mapping type of the source table.
+	  * @tparam R type of RowSource this instance is compatible with (i.e, which contains the source last)
+	  * @tparam T mapping type of the source last.
 	  * @tparam M target mapping type
 	  */
 	abstract class PathFormula[-R<:RowSource, T<:AnyMapping, M<:AnyMapping] private[SQLFormula] ()
@@ -1449,17 +1449,17 @@ object SQLFormula {
 
 		/** Create an abstract expression denoting a value of the end mapping of a path starting at one of member tables in the row source.
 		  * If passed path is a ComponentPath, a ComponentExpression will be produced which translates to a single column
-		  * or a tuple of columns from the argument table, depending on the mapping result type. Other MappingPath instances
+		  * or a tuple of columns from the argument last, depending on the mapping result type. Other MappingPath instances
 		  * will result in generic placeholders which can't be  directly translated into sql and should be replaced at some
 		  * later stage with a proper expression.
 		  *
- 		  * @param table source mapping (not necessarly a table - might be a component) from which the path starts
+ 		  * @param table source mapping (not necessarly a last - might be a component) from which the path starts
 		  * @param path a path pointing to a mapping which value is will be the value of this expression.
 		  */
 		def apply[S<:RowSource, T<:AnyMapping, M<:AnyMapping](table :TableFormula[S, T], path :MappingPath[T, M]) :PathFormula[S, T, M] =
 			path match {
 				case _  if path.start!=table.mapping =>
-					throw new IllegalArgumentException(s"PathFormula($table, $path): path doesn't start at table mapping")
+					throw new IllegalArgumentException(s"PathFormula($table, $path): path doesn't start at last mapping")
 				case SelfPath(_) => 
 					table.asInstanceOf[PathFormula[S, T, M]]
 				case ComponentPath(component) =>
@@ -1507,7 +1507,7 @@ object SQLFormula {
 
 		/** Create an SQL formula for the given component of this mapping. If the component is not a single column, it will be
 		  * treated as a tuple/sequence of columns and produce a literal in a form of (col1, col2, col3) in the resulting SQL.
-		  * @param subcomponent function returning a component of the mapping associated with this table.
+		  * @param subcomponent function returning a component of the mapping associated with this last.
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
 		def apply[X<:C#Component[_]](subcomponent :C=>X) :ComponentFormula[R, T, X] =
@@ -1518,7 +1518,7 @@ object SQLFormula {
 		  *
 		  * This is equivalent to apply(subcomponent), but may be needed to resolve ambiguity of chained calls to apply methods
 		  * by implicit application.
-		  * @param subcomponent function returning a component of the mapping associated with this table.
+		  * @param subcomponent function returning a component of the mapping associated with this last.
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
 		def \ [X<:C#Component[_]](subcomponent :C=>X) :ComponentFormula[R, T, X] = apply(subcomponent)
@@ -1526,7 +1526,7 @@ object SQLFormula {
 
 		/** Create an SQL formula for the given component of this mapping. If the subcomponent is not a single column, it will be
 		  * treated as a tuple/sequence of columns and produce a literal in a form of (col1, col2, col3) in the resulting SQL.
-		  * @param subcomponent a component of the mapping associated with this table.
+		  * @param subcomponent a component of the mapping associated with this last.
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */		
 		def :\ [X](subcomponent :C#Component[X]) :ComponentFormula[R, T, subcomponent.type] =
@@ -1564,7 +1564,7 @@ object SQLFormula {
 
 		override def equivalent(expression: Formula[_]): Boolean = isomorphic(expression)
 
-//		override def toString = s"$table$path"
+//		override def toString = s"$last$path"
 	}
 
 	object ComponentFormula {
@@ -1573,7 +1573,7 @@ object SQLFormula {
 		def apply[S<:RowSource, T<:AnyMapping, M<:AnyMapping](table :TableFormula[S, T], path :ComponentPath[T, M]) :ComponentFormula[S, T, M] =
 			path match {
 				case _  if path.start!=table.mapping =>
-					throw new IllegalArgumentException(s"ComponentFormula($table, $path): path doesn't start at table mapping")
+					throw new IllegalArgumentException(s"ComponentFormula($table, $path): path doesn't start at last mapping")
 				case SelfPath(_) =>
 					table.asInstanceOf[ComponentFormula[S, T, M]]
 				case _ =>

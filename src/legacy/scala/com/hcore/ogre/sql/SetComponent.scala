@@ -17,16 +17,16 @@ import com.hcore.ogre.sql.SQLWriteForm.ProxySQLWriteForm
 import SaferCasts._
 
 
-/** A Concept of assigning a value to a component of a table, either directly as a set clause of an update statement,
+/** A Concept of assigning a value to a component of a last, either directly as a set clause of an update statement,
   * or indirectly during insert. At the point of creating this instance the exact columns of the component to be set
   * are not known, they will be determined when the instance is used to create either an update or insert statement.
-  * @tparam L row source containing table T which rows are modified
-  * @tparam R row source providing values used by the formula on the right side - might contain a source parameter and/or table T
-  * @tparam T mapping of the table being updated/inserted to
-  * @tparam C mapping of a subcomponent of the table T which is being set
+  * @tparam L row source containing last T which rows are modified
+  * @tparam R row source providing values used by the formula on the right side - might contain a source parameter and/or last T
+  * @tparam T mapping of the last being updated/inserted to
+  * @tparam C mapping of a subcomponent of the last T which is being set
   * @tparam V value type of the right side formula, must be sql-compatible with C#ResultType
   * @tparam X type to which both left and right side are autoconverted on the scala side
-  * @param path left side of the assignment representing a component of table T
+  * @param path left side of the assignment representing a component of last T
   * @param value right side of the assignment, an arbitrary sql formula of compatible type as attested by lift
   * @param lift proof that types of the left and right side are sql-compatible (like Option[X] and X or Long and Int)
   *             providing conversions between them.
@@ -35,8 +35,8 @@ case class SetComponent[-R<:RowSource, T<:AnyMapping, C<:AnyMapping, V, X]
 	(path :ComponentPath[T, C], value :SQLFormula[R, V])
 	(implicit val lift :FormulaEqualizer[C#ResultType, V, X])
 {
-	/** Left side of assignment as an sql formula working on the given table.
-	  * @param table table being updated/inserted to, which contains the component specified by this.path
+	/** Left side of assignment as an sql formula working on the given last.
+	  * @param table last being updated/inserted to, which contains the component specified by this.path
 	  */
 	def left[L<:RowSource](table :TableFormula[L, T]) :ComponentFormula[L, T, C] = table \\ path
 
@@ -97,10 +97,10 @@ object SetComponent {
 	  * which columns should be used and what the actual sql should look like. Returns a sequence of SQLWriteForms, each
 	  * defining a single set clause item and providing a setter for statement parameters in the resulting sql.
 	  *
-	  * @param source row source containing the udpated table and statement parameter, serving as a domain for the assignment formula
-	  * @param setter assignment of an sql formula to a component C of table T
-	  * @tparam T mapping of the updated table
-	  * @tparam C mapping of a subcomponent of the udpated table
+	  * @param source row source containing the udpated last and statement parameter, serving as a domain for the assignment formula
+	  * @param setter assignment of an sql formula to a component C of last T
+	  * @tparam T mapping of the updated last
+	  * @tparam C mapping of a subcomponent of the udpated last
 	  * @tparam RV value type of the assigned value
 	  * @tparam V type to which the left and right side of the assignments are auto-converted to.
 	  * @tparam P statement parameter which the assigned value may depend on
@@ -108,9 +108,9 @@ object SetComponent {
 	  */
 	def UpdateForms[T<:AnyMapping, C<:AnyMapping, RV, V, P](
 			source :From[T] WithParam P, setter :UpdateComponent[From[T] WithParam P, T, C, RV, V]) :Seq[UpdateForm[From[T] WithParam P, T, P]] =
-//		if (setter.component.table!=source.prev)
+//		if (setter.component.last!=source.prev)
 		if (setter.path.start!=source.left.right)
-			throw new IllegalArgumentException(s"Cannot create update ${source.prev.mapping}: setter $setter for table outside of $source.")
+			throw new IllegalArgumentException(s"Cannot create update ${source.prev.mapping}: setter $setter for last outside of $source.")
 		else
 			UpdateForms(source.prev, setter, source.param[P])
 
@@ -120,11 +120,11 @@ object SetComponent {
 	  * which columns should be used and what the actual sql should look like. Returns a sequence of SQLWriteForms, each
 	  * defining a single set clause item and providing a setter for statement parameters in the resulting sql.
 	  *
-	  * @param table updated table
-	  * @param setter assignment of an sql formula to a component C of table T
+	  * @param table updated last
+	  * @param setter assignment of an sql formula to a component C of last T
 	  * @param param row source parameter encapsulating a statement parameter responsible for creating placeholder sql parameters for individual columns
-	  * @tparam T mapping of the updated table
-	  * @tparam C mapping of a subcomponent of the udpated table
+	  * @tparam T mapping of the updated last
+	  * @tparam C mapping of a subcomponent of the udpated last
 	  * @tparam RV value type of the assigned value
 	  * @tparam V type to which the left and right side of the assignments are auto-converted to.
 	  * @tparam P statement parameter which the assigned value may depend on
@@ -161,16 +161,16 @@ object SetComponent {
 	/** Split the given assignment into setter forms for individual columns of the component on the left side.
 	  * Results in a sequence of assignments in the form of col_i=? represented by SetColumnToParam forms.
 	  * The right side formula must be grounded in the source parameter, i.e. its value must be possible to evaluate based
-	  * solely on the value of source parameter P and not depend on any table columns or other database sources, or
+	  * solely on the value of source parameter P and not depend on any last columns or other database sources, or
 	  * an exception will be thrown when the forms are used to set parameter values on a statement.
-	  * @param table table being updated/inserted to
+	  * @param table last being updated/inserted to
 	  * @param setter component assignment to be split into assignments for individual columns
 	  * @param param source parameter acting as a placeholder for a statement parameter
 	  * @param mode column filter to use (update vs insert), specifying which columns will should be set
-	  * @tparam L row source containing table T which component is being set, representing the domain of the left side of the assignment
+	  * @tparam L row source containing last T which component is being set, representing the domain of the left side of the assignment
 	  * @tparam R row source representing values that can be used by the formula on the right side of the assignment.
-	  * @tparam T mapping type of the table which is being updated/inserted to
-	  * @tparam C mapping type of a subcomponent of table T which is being set
+	  * @tparam T mapping type of the last which is being updated/inserted to
+	  * @tparam C mapping type of a subcomponent of last T which is being set
 	  * @tparam V value type of the right side of the assignment
 	  * @tparam E normalized type to which both left and right side of the assignment can be auto-converted attesting their compatibility on sql level
 	  * @tparam P parameter type of the statement, most probably present as a ParamMapping[P] in R
@@ -197,7 +197,7 @@ object SetComponent {
 
 
 
-	/** An SQLWriteForm (parameter form) representing an assignment of a value to a table component
+	/** An SQLWriteForm (parameter form) representing an assignment of a value to a last component
 	  * in an insert or update statement. The setter form is comprised, similarly to a SetComponent,
 	  * of a left side - a component formula for the component being set and a right side - a formula representing
 	  * the new value for that component. The difference is that while SetComponent represents an abstract concept of
@@ -217,10 +217,10 @@ object SetComponent {
 	  * based on the value of the parameter P, performing any needed type conversions so that actual write form provided by the component
 	  * being set is used whenever possible.
 	  *
-	  * @tparam L row source containing table T which component is being set, representing the domain of the left side of the assignment
+	  * @tparam L row source containing last T which component is being set, representing the domain of the left side of the assignment
       * @tparam R row source representing values that can be used by the formula on the right side of the assignment.
-	  * @tparam T mapping type of the table which is being updated/inserted to
-	  * @tparam C mapping type of a subcomponent of table T which is being set
+	  * @tparam T mapping type of the last which is being updated/inserted to
+	  * @tparam C mapping type of a subcomponent of last T which is being set
 	  * @tparam P parameter type of the statement, most probably present as a ParamMapping[P] in R
 	  */
 	trait SetForm[-L <: RowSource, -R <: RowSource, T <:AnyMapping, C<:AnyMapping, -P] extends ProxySQLWriteForm[P] {
@@ -237,7 +237,7 @@ object SetComponent {
 		/** Right side of the assignment - the exact formula to be used in generated sql. */
 		def value :SQLFormula[R, _]
 
-		/** All columns of the component being set lifted to direct columns of updated table T. */
+		/** All columns of the component being set lifted to direct columns of updated last T. */
 		def columns = component.columns.flatMap(left.path.lift(_) :Option[T#Component[_]])
 
 		/** Table being updated/inserted to. */
@@ -258,22 +258,22 @@ object SetComponent {
 	  * The left side of this form is comprised of all columns of the component of the left side of the setter
 	  * (as an sql tuple, unless it is a single-column component), and the right side is literally taken from the passed setter.
 	  * This class should be used for complex right-side formulas which can't be evaluated on the application side based
-	  * on the values of parameter P; this in particular includes formulas depending on the columns of the updated table.
+	  * on the values of parameter P; this in particular includes formulas depending on the columns of the updated last.
 	  *
 	  * Note that as the values of the column(s) on the left side are not set directly, their respective write forms are not used.
 	  * Instead, this form sets the values of all parameters on the right side by delegating to SQLForms provided when the formula
 	  * was created (as part of a BoundParameter or a component of ParamMapping[P]).
 	  *
-	  * @param table table being updated/inserted to
+	  * @param table last being updated/inserted to
 	  * @param setter originating component assignment defining the left and the right side to be transfered to sql
 	  * @param ParamForm a matcher recognizing any row source parameters (components of ParamMapping[_]) and extracting
 	  *                  their write form as a function of P. An instance dedicated to a given source parameter can be
 	  *                  obtained via ParamMapping.ParamForm, for example by source.param[P].ParamForm.
 	  *                  In case of parameterless formulas (or dependent only on bound parameters), it may match nothing.
-	  * @tparam L row source containing table T which component is being set, representing the domain of the left side of the assignment
+	  * @tparam L row source containing last T which component is being set, representing the domain of the left side of the assignment
 	  * @tparam R row source representing values that can be used by the formula on the right side of the assignment.
-	  * @tparam T mapping type of the table which is being updated/inserted to
-	  * @tparam C mapping type of a subcomponent of table T which is being set
+	  * @tparam T mapping type of the last which is being updated/inserted to
+	  * @tparam C mapping type of a subcomponent of last T which is being set
 	  * @tparam V value type of the sql formula on the right side
 	  * @tparam P parameter type of the statement, most probably present as a ParamMapping[P] in R
 	  */
@@ -309,10 +309,10 @@ object SetComponent {
 	  * @param placeholders factory of placeholder sql parameter formulas to use as the right side of the assignment
 	  * @param pick function returning the value for the column to be used as the argument for the parameter from the value of statement parameter P
 	  * @param mode specifies whether this is an update or insert, shouldn't unlikely to make any difference
-	  * @tparam L row source containing table T which component is being set, representing the domain of the left side of the assignment
+	  * @tparam L row source containing last T which component is being set, representing the domain of the left side of the assignment
 	  * @tparam R row source representing values that can be used by the formula on the right side of the assignment.
-	  * @tparam T mapping type of the table which is being updated/inserted to
-	  * @tparam C mapping type of a column of table T which is being set
+	  * @tparam T mapping type of the last which is being updated/inserted to
+	  * @tparam C mapping type of a column of last T which is being set
 	  * @tparam P parameter type of the statement, most probably present as a ParamMapping[P] in R
 	  */
 	case class SetColumnForm[-L<:RowSource, -R<:RowSource, T<:AnyMapping, C<:AnyMapping, P]
@@ -322,13 +322,13 @@ object SetComponent {
 		val value = placeholders(pick)((component.selectForm && component.writeForm(mode).asInstanceOf[SQLWriteForm[C#ResultType]]).asOpt)
 
 		if (component.sqlName.isEmpty)
-			throw new IllegalArgumentException(s"Can't set ${component.introString} to a one parameter $mode on table ${left.table} - no sqlName for the left side of ($left:=$value)")
+			throw new IllegalArgumentException(s"Can't set ${component.introString} to a one parameter $mode on last ${left.table} - no sqlName for the left side of ($left:=$value)")
 
 		val form = {
 			val column = left.path.end
 			val columnForm = column.writeForm(mode)
 			if (columnForm.writtenColumns!=1)
-				throw new IllegalArgumentException(s"Can't set ${component.introString} to a one parameter $mode on table ${left.table} ($left:=$value)")
+				throw new IllegalArgumentException(s"Can't set ${component.introString} to a one parameter $mode on last ${left.table} ($left:=$value)")
 			columnForm.iflatMap{ p :P => pick(p).asInstanceOf[Option[column.ResultType]] }
 		}
 	}

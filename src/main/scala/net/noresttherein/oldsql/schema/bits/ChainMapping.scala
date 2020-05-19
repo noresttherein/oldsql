@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedFla
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchemaMapping, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 
 
@@ -166,7 +166,7 @@ object ChainMapping {
 
 
 
-	private class NonEmptyChainMapping[C <: Chain, M <: TypedMapping[T, O], R <: Chain, T, O]
+	private class NonEmptyChainMapping[C <: Chain, M <: RefinedMapping[T, O], R <: Chain, T, O]
 	                                  (prefix :ChainMapping[C, R, O], next :M)
 		extends NonEmptySchema[C, M, R, T, R ~ T, O](
 				               prefix.asPrefix[T], next, MappingExtract.req(next)((row :R ~ T) => row.last))

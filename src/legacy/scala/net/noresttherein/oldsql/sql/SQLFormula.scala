@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnReadForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.Component
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, RowValues, SelectFrom, SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, RowValues, SelectFrom, SubselectOf, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ConversionMatcher, OrNull}

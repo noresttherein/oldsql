@@ -1239,7 +1239,7 @@ object LiteralIndex extends ChainIndexFactory {
 	/** An entry of `LiteralIndex`, indexed solely on the type level by the singleton type `K` and storing only
 	  * the value `V`.
 	  */
-	class :~[+K, +V](val value :V) extends AnyVal {
+	class :~[+K, +V](val value :V) { //todo: extends AnyVal started crashing the compiler ??!
 		type Key <: K
 		type Value <: V
 
@@ -1249,7 +1249,7 @@ object LiteralIndex extends ChainIndexFactory {
 
 		def isEmpty = false
 
-		override def toString :String = "~# " + value
+		override def toString :String = ":~ " + value
 	}
 
 

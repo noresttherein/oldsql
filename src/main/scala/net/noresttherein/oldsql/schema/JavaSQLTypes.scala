@@ -1,11 +1,14 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.SQLForm.{MappedSQLForm, NullValue}
 import java.sql
 import java.sql.Timestamp
 import java.time.Instant
+import java.util.Optional
 
-import net.noresttherein.oldsql.schema.ColumnForm.{DerivedColumnForm, MappedColumnForm}
+import net.noresttherein.oldsql.schema.ColumnForm.DerivedColumnForm
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+
+
 
 /**
   * @author Marcin Mościcki
@@ -24,5 +27,14 @@ object JavaSQLTypes {
 	)
 
 
+
+	implicit def OptionalNullForm[T >: Null :SQLForm] :SQLForm[Optional[T]] =
+		SQLForm[T].bimap[Optional[T]](Optional.ofNullable)(_.orElse(null))
+
+	implicit def OptionalForm[T :SQLForm] :SQLForm[Optional[T]] =
+		SQLForm[T].biflatMap(t => Some(Optional.ofNullable(t))) {
+			case some if some.isPresent => Some(some.get)
+			case _ => None
+		}
 
 }

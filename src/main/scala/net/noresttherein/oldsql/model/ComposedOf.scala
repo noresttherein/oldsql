@@ -1,11 +1,11 @@
 package net.noresttherein.oldsql.model
 
+import scala.collection.Factory
+
 import net.noresttherein.oldsql.model.ComposedOf.{Arity, ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.{Collection, Custom}
 import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.slang.SaferCasts._
 
-import scala.collection.{BuildFrom, Factory}
 //todo: implicits for immutable.Iterable and immutable.Map
 
 
@@ -49,9 +49,9 @@ trait ComposedOf[C, E] {
 
 	def unapply(kin :Kin[C]) :Option[C ComposedOf E] = kin match {
 		case ComposedOf(composed) if this.compatibleWith(composed) =>
-			Some(composed.asInstanceOf[ComposedOf[C, E]])
-		case ComposableFrom(co) && DecomposableTo(deco) if compatibleWith(decomposer) =>
-			Some(ComposedOf(composer, deco.asInstanceOf[DecomposableTo[C, E]]))
+			Some(composed.asInstanceOf[C ComposedOf E])
+		case DecomposableTo(deco) if compatibleWith(decomposer) =>
+			Some(ComposedOf(composer, deco.asInstanceOf[C DecomposableTo E]))
 		case _ :CompositeKin[_, _] => None
 		case _ => Some(this)
 	}
@@ -155,7 +155,7 @@ object ComposedOf {
 	implicit def iterable[E] :Iterable[E] CollectionOf E = CollectionOf(ComposableFrom.iterable[E], DecomposableTo.iterable[E])
 
 	/** An implicit value witnessing that `Map[K, V]` can be converted to and from a collection of `K->V`. */
-	implicit def map[K, V] :Map[K, V] CollectionOf (K->V) = mapInstance.asInstanceOf[Map[K, V] CollectionOf (K -> V)]
+	implicit def map[K, V] :Map[K, V] CollectionOf (K -> V) = mapInstance.asInstanceOf[Map[K, V] CollectionOf (K -> V)]
 
 	/** Combines implicitly available composer and decomposer for the type pair `C`, `E` into a `C ComposedOf E`.
 	  * Returned instance overrides equality in terms of equality of its constituents. This may potentially lead to

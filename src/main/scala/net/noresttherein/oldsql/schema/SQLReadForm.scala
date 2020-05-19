@@ -27,7 +27,7 @@ import scala.collection.immutable.Seq
   * @see [[net.noresttherein.oldsql.schema.SQLForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnReadForm]]
   */
-trait SQLReadForm[+T] {
+trait SQLReadForm[+T] extends Serializable {
 
 	/** Reads the column values from columns `&lt;position..position + this.readColumns)` of the passed `ResultSet`
 	  * and creates an instance of `T`. The default implementation delegates to `opt` and fallbacks to `nullValue`
@@ -37,7 +37,7 @@ trait SQLReadForm[+T] {
 	  *                                this is different in intent from the `NullPointerException` case
 	  *                                as it is used primarily for multi-column forms, when the missing values are
 	  *                                a likely the result of an outer join or subclass columns in a
-	  *                                table per class hierarchy mapping.
+	  *                                last per class hierarchy mapping.
 	  * @throws NullPointerException if the read column is `null` and type `T` does not define a value corresponding to `null`.
 	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]
@@ -72,7 +72,25 @@ trait SQLReadForm[+T] {
 	  * This wrapper can be implicitly passed as a type class, even if the form does not support `null` values
 	  * (i.e. `nullValue` throws an exception), which would not be possible by simply using `nullValue`.
 	  */
-	implicit def nulls :NullValue[T] = NullValue.eval(nullValue)
+	implicit def nulls :NullValue[T] = new DerivedNullValue
+
+	private class DerivedNullValue extends NullValue[T] {
+		private def outer :SQLReadForm[T] = SQLReadForm.this
+
+		override def value :T = nullValue
+		override def map[U](f :T => U) = NullValue.eval(f(nullValue))
+
+		override def equals(that :Any) :Boolean = that match {
+			case formNull :SQLReadForm[_]#DerivedNullValue => formNull.outer eq SQLReadForm.this
+			case _ => false
+		}
+
+		override def hashCode :Int = System.identityHashCode(SQLReadForm.this)
+
+		override def toString = "Null(?)"
+	}
+
+
 
 	/** Number of columns read by this form. This must be a constant as it is typically is used to calculate offsets
 	  * for various forms once per `ResultSet` rather than per row. Naturally, there is no requirement for actual
@@ -198,7 +216,7 @@ trait SQLReadForm[+T] {
 	def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] = Tuple2ReadForm(this, other)
 
 	/** Combines this form with a `SQLWriteForm` to create a read/write `SQLForm[O]`. */
-	def &&[O>:T](write :SQLWriteForm[O]) :SQLForm[O] = SQLForm.combine[O](this, write)
+	def <>[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = SQLForm.combine[O](this, write)
 
 
 
@@ -302,12 +320,16 @@ object SQLReadForm extends ScalaReadForms {
 				new MappedSQLReadForm(map)(source, if (nulls == null) source.nulls.map(map) else nulls)
 		}
 
+	/** Maps the result of reading `S` with an implicit form to `T`. */
 	def flatMap[S :SQLReadForm, T :NullValue](map :S => Option[T]) :SQLReadForm[T] =
 		SQLReadForm[S] match {
 			case col :ColumnReadForm[_] =>
 				ColumnReadForm.flatMap(map)(col.asInstanceOf[ColumnReadForm[S]], NullValue[T])
+			case _ =>
+				new FlatMappedSQLReadForm(map)
 		}
 
+	/** Maps the result of reading `S` with an implicit form to `T`. */
 	def optMap[S, T](map :Option[S] => Option[T])(implicit source :SQLReadForm[S], nulls :NullValue[T]) :SQLReadForm[T] =
 		source match {
 			case col :ColumnReadForm[_] =>
@@ -316,6 +338,7 @@ object SQLReadForm extends ScalaReadForms {
 				new OptionMappedSQLReadForm[S, T](map)
 		}
 
+	/** Maps the result of reading `S` with an implicit form to `T`. */
 	def optMap[S :SQLReadForm, T](map :Option[S] => Option[T], nullValue : =>T) :SQLReadForm[T] =
 		optMap(map)(SQLReadForm[S], NullValue.eval(nullValue))
 
@@ -397,6 +420,7 @@ object SQLReadForm extends ScalaReadForms {
 
 
 	private[schema] trait EmptyReadForm[+T] extends SQLReadForm[T] {
+		override def readColumns = 0
 		override def apply(position :Int)(res :ResultSet) :T = nullValue
 		override def opt(position :Int)(res :ResultSet) :Option[T] = None
 	}
@@ -408,7 +432,16 @@ object SQLReadForm extends ScalaReadForms {
 
 		override def nullValue :T = nulls.value
 
-		override def toString = "<NULL"
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case nulls :NullReadForm[_] if nulls.canEqual(this) =>
+				nulls.readColumns == readColumns && nulls.nulls == this.nulls
+			case _ => false
+		}
+
+		override def hashCode :Int = nulls.hashCode
+
+		override def toString = "NULL>"
 	}
 
 
@@ -435,13 +468,13 @@ object SQLReadForm extends ScalaReadForms {
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
 			case const :ConstReadForm[_] if const canEqual this =>
-				const.get == value && const.readColumns == readColumns
+				const.get == value && const.readColumns == readColumns && const.nulls == nulls
 			case _ => false
 		}
 
 		override def hashCode :Int = value.hashCode
 
-		override def toString :String = "<" + value
+		override def toString :String = String.valueOf(value) + ">"
 	}
 
 
@@ -456,7 +489,7 @@ object SQLReadForm extends ScalaReadForms {
 
 		override def nullValue: T = nulls.value
 
-		override def toString :String = "<?"
+		override def toString :String = "?=>"
 	}
 
 
@@ -482,7 +515,7 @@ object SQLReadForm extends ScalaReadForms {
 
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] = source.optMap(map andThen fun)
 
-		override def toString :String = "<=" + source
+		override def toString :String = source.toString + "=>"
 	}
 
 
@@ -506,7 +539,7 @@ object SQLReadForm extends ScalaReadForms {
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] =
 			source.flatMap(map andThen fun)
 
-		override def toString :String = "<=" + source
+		override def toString :String = source.toString + "=>"
 
 	}
 
@@ -530,7 +563,7 @@ object SQLReadForm extends ScalaReadForms {
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] =
 			source.flatMap((s :S) => fun(Option(map(s))))
 
-		override def toString :String = "<=" + source
+		override def toString :String = source.toString + "=>"
 	}
 
 
@@ -546,6 +579,8 @@ object SQLReadForm extends ScalaReadForms {
 			first.opt(position)(res) orElse second.opt(position)(res)
 
 		override def nullValue :T = first.nullValue
+
+		override def nulls :NullValue[T] = first.nulls
 
 		override def readColumns :Int = first.readColumns
 
@@ -592,6 +627,7 @@ object SQLReadForm extends ScalaReadForms {
 		override def asOpt :SQLReadForm[Option[T]] = form.asOpt
 
 
+		override def nulls :NullValue[T] = form.nulls
 		override def nullValue :T = form.nullValue
 		override def readColumns :Int = form.readColumns
 
@@ -635,41 +671,28 @@ object SQLReadForm extends ScalaReadForms {
 			fastAccess
 		}
 
-		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] =
-			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.map(fun))
-			else form.map(fun)
+		//better to risk too early evaluation and remove the decorator overhead
+		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] = form.map(fun)
 
-		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] =
-			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.flatMap(fun))
-			else form.flatMap(fun)
+		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] = form.flatMap(fun)
 
-		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] =
-			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.optMap(fun))
-			else form.optMap(fun)
+		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] = form.optMap(fun)
 
-		override def asOpt :SQLReadForm[Option[T]] =
-			if (fastAccess == null && initialized == null) new LazyReadForm(() => form.asOpt)
-			else form.asOpt
+		override def asOpt :SQLReadForm[Option[T]] = form.asOpt
 
-		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] =
-			if  (fastAccess == null && initialized == null) new LazyReadForm(() => super.orElse(fallback))
-			else form orElse fallback
+		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = form orElse fallback
 
-		override def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] =
-			if (fastAccess == null && initialized == null) new LazyReadForm(() => super.*(other))
-			else form * other
+		override def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] = form * other
 
-		override def &&[O >: T](write :SQLWriteForm[O]) :SQLForm[O] =
-			if (fastAccess == null && initialized == null) super.&&(write)
-			else form && write
+		override def <>[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = form <> write
 
 
 		override def canEqual(that :Any) :Boolean =
 			(that.asInstanceOf[AnyRef] eq this) || that.getClass == getClass && isInitialized
 
 		override def toString :String =
-			if (fastAccess == null && initialized == null) "<Lazy"
-			else form.toString
+			if (fastAccess == null && initialized == null) "Lazy>"
+			else "Lazy(" + form + ")"
 	}
 
 
@@ -723,7 +746,7 @@ object SQLReadForm extends ScalaReadForms {
 
 		override def hashCode() :Int = forms.hashCode
 
-		override def toString :String = forms.mkString("<Seq(",",",")")
+		override def toString :String = forms.mkString("Seq(",",",")>")
 	}
 
 
@@ -758,7 +781,7 @@ object SQLReadForm extends ScalaReadForms {
 
 		override def hashCode :Int = init.hashCode * 31 + last.hashCode
 
-		override def toString :String = last match {
+		override def toString :String = last match { //consider: could be more efficient
 			case _ :ChainReadForm[_, _] => init.toString + "~(" + last + ")"
 			case _ => init.toString + "~" + last
 		}
@@ -766,7 +789,8 @@ object SQLReadForm extends ScalaReadForms {
 
 
 
-	private[schema] trait ChainIndexReadForm[C[+A <: I, +B <: E[K, V]] <: A ~ B, E[+A <: Singleton, +B], I <: Chain, K <: Singleton, V]
+	private[schema] trait ChainIndexReadForm[C[+A <: I, +B <: E[K, V]] <: A ~ B,
+	                                         E[+A <: Singleton, +B], I <: Chain, K <: Singleton, V]
 		extends SQLReadForm[I C E[K, V]]
 	{
 		protected val init :SQLReadForm[I]
@@ -795,6 +819,7 @@ object SQLReadForm extends ScalaReadForms {
 
 		protected def symbol :String
 
+		//consider: could be more efficient
 		override def toString :String = init.toString + symbol + "(" + key + "->" + value + ")"
 	}
 

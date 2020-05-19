@@ -136,10 +136,10 @@ trait MappedSchemaRepository extends Repository { repository =>
 		def apply[T](select :Reference[T], fetch : (E => Reference[Any])*)(implicit composition :T ComposedOf E, s :Session): T = {
 			select match {
 //				case Satisfying(composition(PropertyIn(property, keys))) =>
-//					val filter = table.joinFilter(property, keys.toSeq)
+//					val filter = last.joinFilter(property, keys.toSeq)
 //					val joins = filter.join ++: fetch
-//					val query = table.joinSelect(Some(filter.whereClause), joins:_*)(filter.Setter)
-//					val retrieved = Time(s"executing select from $table by property values: $select")(table.joinSelect(Some(filter.whereClause), joins:_*)(filter.Setter)(filter.value).list)
+//					val query = last.joinSelect(Some(filter.whereClause), joins:_*)(filter.Setter)
+//					val retrieved = Time(s"executing select from $last by property values: $select")(last.joinSelect(Some(filter.whereClause), joins:_*)(filter.Setter)(filter.value).list)
 //					composition(retrieved)
 				case Single(Full(HasId(id))) =>
 					val retrieved = Time(s"executing select one from $table by id: $select")(table.joinSelect(Some(table.wherePKClause), fetch:_*)(table.WherePKParameter)(Some(id)).list)
@@ -162,7 +162,7 @@ trait MappedSchemaRepository extends Repository { repository =>
 
 
 		override def delete[C](selection: Reference[C])(implicit composition :C ComposedOf E, s: Session): Unit = selection match {
-			//			case ByProperty(table.PropertyComponent(comp), key) =>
+			//			case ByProperty(last.PropertyComponent(comp), key) =>
 			//				comp.withValue(key).delete.execute
 			case Satisfying(PropertyIn(table.PropertyComponent(comp), keys)) =>
 				val filter = comp.filter(keys.toSeq)
@@ -287,7 +287,7 @@ trait MappedSchemaRepository extends Repository { repository =>
 						val cmp = many.ComponentValue(ref)
 						val onePKColumn = pkColumn(one.table)
 						val fkColumn = many.table.ForeignKeyComponent(get).columns.head.sqlName.get
-						val selectFK = cmp.property.select(many.table.ForeignKeyComponent(get)) //s"select $fkColumn from ${many.table.qname} where ${cmp.property.where}"
+						val selectFK = cmp.property.select(many.table.ForeignKeyComponent(get)) //s"select $fkColumn from ${many.last.qname} where ${cmp.property.where}"
 						val delete = s"${one.table.deleteClause} where $onePKColumn = ($selectFK)"
 						cmp.update(delete).execute
 				}
@@ -410,7 +410,7 @@ trait MappedSchemaRepository extends Repository { repository =>
 				val saved = repository.save(col.toSeq)(many, s)
 				saved.foreach { m => insert(IdRef(owner), IdRef(m)).execute }
 				//				val joins = saved.map(m => new JoinRow(None, IdRef(owner), IdRef(m)))
-				//				joins.foreach(table.insert(_))
+				//				joins.foreach(last.insert(_))
 				val ref = new PersistedMany[M, C](idOf(owner), saved)
 				set(owner, ref)
 			case _ => owner

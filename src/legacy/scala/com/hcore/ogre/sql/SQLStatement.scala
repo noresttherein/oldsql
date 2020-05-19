@@ -102,7 +102,7 @@ object SQLStatement {
 
 
 //	trait TableStatement[T<:Mapping] {
-//		val table :T
+//		val last :T
 //	}
 	
 	class ParameterizedStatement[X, +Y](val template :SQLStatementTemplate[X, Y], val param :X) extends SQLStatement[Y] {

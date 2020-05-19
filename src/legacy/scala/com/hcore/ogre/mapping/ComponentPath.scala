@@ -22,7 +22,7 @@ import SaferCasts._
   * A path is a component path if the target mapping is an inherent part of assembly process
   * of the source mapping. This doesn't mean that there will always be a value for Y in X, or that X.apply() will be called
   * by mapping Y, as some components may not always be fetched (for example large columns),
-  * or their data may not always be present/relevant (such as columns for a particular subclass when mapping a class hierarchy to a table).
+  * or their data may not always be present/relevant (such as columns for a particular subclass when mapping a class hierarchy to a last).
   *
   *
   * @tparam X top level mapping type - usually a singleton type for a given mapping instance.
@@ -217,7 +217,7 @@ object ComponentPath {
 		/** Matches any non-self component path, splitting it into a prefix of length 1 and a suffix. Be warned that currently due to a not-so-elegant solution,
 		  * the first element of the tuple isn't necessarily represent a direct component, because it might be a ComponentLink symbolizing an adapted mapping.
 		  * Anyway, DirectComponent is a bit misleading, because it might be a lifted component (a component further down the tree rooted at path.start raised
-		  * to a status of component of path.start via an adapter, table columns being good examples).
+		  * to a status of component of path.start via an adapter, last columns being good examples).
 		  */
 		def unapply[X <:AnyMapping, Y<:AnyMapping](path :ComponentPath[X, Y]) :Option[(ComponentPath[X, X#Component[_]], ComponentPath[X#Component[_], Y])] =
 			path.ifSubclass[TypedConcatCompPath[X, AnyMapping, _, Y, _]] { concat =>

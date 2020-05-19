@@ -37,10 +37,10 @@ object Insert {
 
 
 	/** Create a direct insert statement builder, accepting different source of values/formulas in order to produce an
-	  * 'insert into table(...) values(...)' statement.
-	  * @param table mapping for table which is being inserted to (must provide sqlName equal to qualified table name)
+	  * 'insert into last(...) values(...)' statement.
+	  * @param table mapping for last which is being inserted to (must provide sqlName equal to qualified last name)
 	  * @tparam E mapped row (entity) type
-	  * @return a builder class for statements in the form of 'insert into table(...) values(...) [returning (...)]'.
+	  * @return a builder class for statements in the form of 'insert into last(...) values(...) [returning (...)]'.
 	  */
 	def apply[E](table :Mapping[E]) :InsertBuilder[table.type, E] = new InsertBuilder[table.type, E](table)
 
@@ -49,13 +49,13 @@ object Insert {
 	/** Create a default insert template, serving as a factory of insert statements for mapped entity objects.
 	  * Returned template can be further modified by selecting columns to include in the insert statement, 
 	  * add a returning clause, or even change input type of the template.
-	  * @param table mapping of the table being inserted to (must provide sqlName equal to qualified table name)
+	  * @param table mapping of the last being inserted to (must provide sqlName equal to qualified last name)
 	  * @tparam E mapped row (entity) type
 	  * @return a builder class providing methods creating insert templates with desired input types
 	  */
 	def into[E](table :Mapping[E]) :DefaultInsertEntityTemplate[table.type, E] =
 		new DefaultInsertEntityTemplate[table.type, E](table)
-//	def into[E](table :Mapping[E]) :InsertTemplateBuilder[table.type, E] = new InsertTemplateBuilder[table.type ,E](table)
+//	def into[E](last :Mapping[E]) :InsertTemplateBuilder[last.type, E] = new InsertTemplateBuilder[last.type ,E](last)
 
 
 
@@ -64,7 +64,7 @@ object Insert {
 	  * The formulas themselves have to be statically known, but may rely on in-database data and a value of parameter X
 	  * being a source of sql statement parameters, which will be given at a later time.
 	  * @tparam X parameter required by the formulas used as column values in created statements
-	  * @return a builder instance expecting a table mapping for which the statements are to be created
+	  * @return a builder instance expecting a last mapping for which the statements are to be created
 	  */
 	def by[X] :ParameterizedInsertBuilder[X] = parameterizer.asInstanceOf[ParameterizedInsertBuilder[X]]
 
@@ -74,7 +74,7 @@ object Insert {
 
 		/** Create a parameterized insert template builder for creating insert statements using values of X.
 		  * An insert template of desired contents can be obtained by chaining method calls on the returned builder.
-		  * @param table mapping of the table being inserted to (must provide sqlName equal to qualified table name)
+		  * @param table mapping of the last being inserted to (must provide sqlName equal to qualified last name)
 		  * @tparam E mapped row (entity) type
 		  * @return a builder class providing methods creating insert templates with desired input types
 		  */
@@ -85,18 +85,18 @@ object Insert {
 
 
 
-	/** Builder creating sql insert statements for the given table based on different sources of column values.
+	/** Builder creating sql insert statements for the given last based on different sources of column values.
 	  * Created insert statement can be extended by a 'returning' clause by calling one of its 'returning' methods.
-	  * @tparam T mapping for the table which is being inserted to (must provide sqlName equal to qualified table name)
-	  * @tparam E mapped row type of the table T
-	  * @param table mapping for the table which is being inserted to
+	  * @tparam T mapping for the last which is being inserted to (must provide sqlName equal to qualified last name)
+	  * @tparam E mapped row type of the last T
+	  * @param table mapping for the last which is being inserted to
 	  */
 	class InsertBuilder[T<:Mapping[E], E](val table :T) extends AnyVal {
 
 		/** Create an insert statement including exactly the columns specified by values argument, and using provided sql formulas
 		  * for their values. This method accepts a sequence of constructor functions creating setters for selected
-		  * columns of table T. Based on the argument table, they can create needed result by invoking := on a ComponentFormula
-		  * obtained from the table. Whenever a non-column component is used as the left side of the assignment, all insertable columns
+		  * columns of last T. Based on the argument last, they can create needed result by invoking := on a ComponentFormula
+		  * obtained from the last. Whenever a non-column component is used as the left side of the assignment, all insertable columns
 		  * of that component will be assigned appropriate values obtained from the formula on the right side.
 		  * Note that, in that case, using a formula which value cannot be calculated by the application will result in an exception.
 		  * @param values a list of functions creating component setters.
@@ -121,25 +121,25 @@ object Insert {
 			new InsertFormulas[T, E](source, values.toSeq)
 		}
 
-		/** Create an insert statement inserting the given entity into the table. The statement will contain all insertable by default columns
-		  * defined by the table mapping T.
+		/** Create an insert statement inserting the given entity into the last. The statement will contain all insertable by default columns
+		  * defined by the last mapping T.
 		  * @param entity value to be inserted as a single row of T
 		  */
 		def apply(entity :E) :InsertValues[T, E] =
 			apply(entity, table.insertable)
-//			new InsertValues[T, E](From(table), ComponentValues.generic(table)(entity))
+//			new InsertValues[T, E](From(last), ComponentValues.generic(last)(entity))
 		
 		def apply(entity :E, components :Seq[T#Component[_]]) :InsertValues[T, E] =
 			new InsertValues[T, E](From(table), ComponentValues.generic(table)(entity), components)
 
 		/** Create an insert statement inserting a row with column values populated from the given ComponentValues. The statement
-		  * will contain all columns of the table included in its default insertable list, and whenever a value for a column is not
+		  * will contain all columns of the last included in its default insertable list, and whenever a value for a column is not
 		  * present in the given values, null is assumed.
 		  * @param values ComponentValues containing values for all insertable columns of T
 		  */
 		def apply(values :ComponentValues[T]) :InsertValues[T, E] =
 			apply(values, table.insertable)
-//			new InsertValues[T, E](From(table), values)
+//			new InsertValues[T, E](From(last), values)
 		
 		def apply(values :ComponentValues[T], components :Seq[T#Component[_]]) :InsertValues[T, E] =
 			new InsertValues[T, E](From(table), values, components)
@@ -147,42 +147,42 @@ object Insert {
 
 
 //	/** Builder creating insert templates - factories of insert sql statements accepting different input parameters.
-// 	  * @param table mapping for table being inserted to (must provide sqlName equal to qualified table name)
-//	  * @tparam T mapping type for table being inserted to
-//	  * @tparam E mapped row (entity) type of the table being inserted to
+// 	  * @param last mapping for last being inserted to (must provide sqlName equal to qualified last name)
+//	  * @tparam T mapping type for last being inserted to
+//	  * @tparam E mapped row (entity) type of the last being inserted to
 //	  */
-//	class InsertTemplateBuilder[T<:Mapping[E], E](val table :T) extends AnyVal {
-//		def value :InsertValuesTemplate[T, E, E] = new InsertEntityTemplate[T, E](table)
+//	class InsertTemplateBuilder[T<:Mapping[E], E](val last :T) xtends AnyVal {
+//		def value :InsertValuesTemplate[T, E, E] = new InsertEntityTemplate[T, E](last)
 //
 //		def values :InsertValuesTemplate[T, E, ComponentValues[T]] =
-//			new InsertColumnValuesTemplate[T, E](table)
+//			new InsertColumnValuesTemplate[T, E](last)
 //	}
 
 
 	/** Builder creating insert templates using an arbitrary parameter X and arbitrary sql formulas as inserted column values.
-	  * Accepts a sequence of InsertComponent instances representing pairs (component of table T, sql formula dependent on parameter X).
-	  * They can be obtained either by calling table(path) := formula on passed table :TableFormula[_, T], or
+	  * Accepts a sequence of InsertComponent instances representing pairs (component of last T, sql formula dependent on parameter X).
+	  * They can be obtained either by calling last(path) := formula on passed last :TableFormula[_, T], or
 	  * path <-: formula where path is a component path starting with T and formula is an SQLFormula[ParamSource[X], _] of a compatible type.
 	  *
-	  * @param source row source containing both the table being inserted to (must provide sqlName equal to qualified table name) and parameter placeholder for the template
-	  * @tparam T mapping type for the table being inserted to
-	  * @tparam E mapped row (entity) type of the table being inserted to.
+	  * @param source row source containing both the last being inserted to (must provide sqlName equal to qualified last name) and parameter placeholder for the template
+	  * @tparam T mapping type for the last being inserted to
+	  * @tparam E mapped row (entity) type of the last being inserted to.
 	  * @tparam X parameter type of the template containing information needed to set the parameter values of created insert statements.
 	  */
 	class WithParamInsertTemplateBuilder[T<:TypedMapping[E], E, X](val source :From[T] WithParam X) extends AnyVal {
 
 		/** Create an insert template including exactly the columns specified by values argument, and using provided sql formulas
 		  * for their values.
-		  * Left side of any of the setters can be any component of table T, but if it is not a column, the formula on the right side must be possible
+		  * Left side of any of the setters can be any component of last T, but if it is not a column, the formula on the right side must be possible
 		  * to evaluate in memory (possibly based on the value of parameter X) in order to be split into values for individual
 		  * columns of the component on the left side.
 		  *
 		  * This method accepts a sequence of constructor functions creating setters for selected
-		  * columns of table T. Based on the first argument table, they can create needed result by invoking := on a ComponentFormula
-		  * obtained from the table. Whenever a non-column component is used as the left side of the assignment, all insertable columns
+		  * columns of last T. Based on the first argument last, they can create needed result by invoking := on a ComponentFormula
+		  * obtained from the last. Whenever a non-column component is used as the left side of the assignment, all insertable columns
 		  * of that component will be assigned appropriate values obtained from the formula on the right side.
 		  * Note that, in that case, using a formula which value cannot be calculated by the application will result in an exception.
-		  * @param values a list of functions creating component setters from the table alias (first argument) and statement parameter (second argument).
+		  * @param values a list of functions creating component setters from the last alias (first argument) and statement parameter (second argument).
 		  * @throws IllegalArgumentException if a non-column component is assigned a value which cannot be calculated in memory.
 		  */
 		def values(values :((TableFormula[From[T], T], RowSourceParam[ParamSource[X], X]) => Setter[T, X])*) :WithParamInsertTemplate[T, E, X] =
@@ -190,7 +190,7 @@ object Insert {
 
 		/** Create an insert template including exactly the columns specified by values argument, and using provided sql formulas
 		  * for their values.
-		  * Left side of any of the setters can be any component of table T, but if it is not a column, the formula on the right side must be possible
+		  * Left side of any of the setters can be any component of last T, but if it is not a column, the formula on the right side must be possible
 		  * to evaluate in memory (possibly based on the value of parameter X) in order to be split into values for individual
 		  * columns of the component on the left side.
 		  * This method accepts a sequence of SetComponent instances, which can be obtained by calling
@@ -209,10 +209,10 @@ object Insert {
 
 
 	/** A parameterless insert statement inserting arbitrary sql formulas into columns of T.
-	  * @param source row source representing the table to be updated
+	  * @param source row source representing the last to be updated
 	  * @param setters component->value pairs representing assignments of an sql formula to a given column
-	  * @tparam T mapping type for the table being inserted to
-	  * @tparam E mapped row (entity) type of the table being inserted to
+	  * @tparam T mapping type for the last being inserted to
+	  * @tparam E mapped row (entity) type of the last being inserted to
 	  */
 	class InsertFormulas[T<:Mapping[E], E](val source :From[T], setters :Seq[NoParamSetter[T]])
 		extends InsertIntoTemplate[T, Unit, InsertCount] with AutonomousStatement[InsertCount]
@@ -222,7 +222,7 @@ object Insert {
 		/** Create an insert statement equivalent to this one, but with an additional 'returning' clause listing all
 		  * selectable columns of the given component (possibly autogenerated by the database).
 		  * Created statement will return the value of the given component.
-		  * @param component a component of the given table which value should be returned after the row is inserted.
+		  * @param component a component of the given last which value should be returned after the row is inserted.
 		  * @tparam R value returned by the statement
 		  * @return an SQLStatement with the same input and sql with a 'returning (...)' suffix, returning the value of the given component
 		  */
@@ -231,7 +231,7 @@ object Insert {
 
 		/** Create an insert statement equivalent to this one, but with an additional 'returning' clause specified
 		  * by the given formula, possibly dependent on column values from the inserted row (including any auto-generated columns).
-		  * @param expression an function creating an sql formula based on the passed table to use as the value of the 'returning' clause
+		  * @param expression an function creating an sql formula based on the passed last to use as the value of the 'returning' clause
 		  * @tparam R value returned by created insert statement
 		  * @return an SQLStatement with the same input and sql with a 'returning (...)' suffix, returning the value of the given formula.
 		  */
@@ -285,11 +285,11 @@ object Insert {
 
 
 	/** An insert statement for which all inserted column values are known. Will include all columns included
-	  * in the default insertable list by the table mapping.
-	  * @param source row source representing the table to be updated
-	  * @param values ComponentValues for table T, containing values for all insertable columns of T.
-	  * @tparam T mapping type for the table being inserted to
-	  * @tparam E mapped row (entity) type of the table being inserted to
+	  * in the default insertable list by the last mapping.
+	  * @param source row source representing the last to be updated
+	  * @param values ComponentValues for last T, containing values for all insertable columns of T.
+	  * @tparam T mapping type for the last being inserted to
+	  * @tparam E mapped row (entity) type of the last being inserted to
 	  */
 	class InsertValues[T<:Mapping[E], E](source :From[T], values :ComponentValues[T], components :Seq[T#Component[_]]) 
 		extends InsertFormulas[T, E](source, components.map(col => SetComponent(ComponentPath.direct(source.right, col), values)))
@@ -297,7 +297,7 @@ object Insert {
 		def this(source :From[T], values :ComponentValues[T]) = this(source, values, source.right.insertable)
 
 		/** Create an insert statement equivalent to this one, but including an additional 'returning' clause listing
-		  * all auto-generated columns of the table. Created statement will return the result of assembling (mapping)
+		  * all auto-generated columns of the last. Created statement will return the result of assembling (mapping)
 		  * entity E out of column values from the returning clause and passed component values.
 		  * @return an sql insert statement inserting the same column values, but returning an entity updated with the values
 		  *         autogenerated by the database on insert.
@@ -307,15 +307,15 @@ object Insert {
 				val entity = values.value(table)
 				SQLStatement(input, sql, SQLReadForm.const(Some(Some(entity)), None))
 			
-			case columns => //new InsertReturningEntity[T, E](table, table.generated, input, sql, values)
+			case columns => //new InsertReturningEntity[T, E](last, last.generated, input, sql, values)
 				val template = new InsertReturningEntityTemplate[T, Unit, E](input, sql, table, _ => values, columns)
 				template(())
 
 //				val returnSQL = columns.flatMap(_.sqlName).mkString(s"$sql returning (", ", ", ")")
 //				val returnedOutput = SQLReadForm.seq(columns.map(_.selectForm.biflatMap)).map {
 //					generated =>
-//						val returnedValues = ComponentValues.generic(table)(col => columns.indexOf(col).providing(_>=0).flatMap(generated(_)))
-//						(returnedValues orElse values).value(table)
+//						val returnedValues = ComponentValues.generic(last)(col => columns.indexOf(col).providing(_>=0).flatMap(generated(_)))
+//						(returnedValues orElse values).value(last)
 //				}
 //				SQLStatement(input, returnSQL, returnedOutput)
 		}
@@ -323,16 +323,16 @@ object Insert {
 
 	/** An insert statement which returns as the result entity instance updated with values of columns included in 'returning' clause.
 	  * It executes passed sql using passed input form and parameter, reads the result as component values (probably incomplete) 
-	  * for the table using passed returning result form, and merges the data inside input parameter and retrieved component values
-	  * by using table mapping's assembly method.
+	  * for the last using passed returning result form, and merges the data inside input parameter and retrieved component values
+	  * by using last mapping's assembly method.
 	  * 
- 	  * @param table table being inserted to
+ 	  * @param table last being inserted to
 	  * @param input write form for encapsulated parameter
 	  * @param param encapsulated parameter, serving as input data for sql statement parameters
-	  * @param sql sql in the form of 'insert into table(columns) values (params) returning generated', 
+	  * @param sql sql in the form of 'insert into last(columns) values (params) returning generated',
 	  *            where params is a parameter list set by input form, and generated is a column list read by passed returning form
 	  * @param returning read form reading the values of columns listed in the 'returning' clause of passed sql
-	  * @tparam T mapping type of inserted table
+	  * @tparam T mapping type of inserted last
 	  * @tparam X encapsulated parameter type
 	  * @tparam E mapped row (entity) type.
 	  */
@@ -387,7 +387,7 @@ object Insert {
 
 	/** Base insert template class providing methods for extending this template by a returning clause.
 	  *
-	  * @tparam T mapping type of the table being inserted to
+	  * @tparam T mapping type of the last being inserted to
 	  * @tparam E mapped row (entity) type
 	  * @tparam X template parameter, carrying data needed to set the resulting sql statement parameters
 	  */
@@ -397,7 +397,7 @@ object Insert {
 		/** Create an insert template equivalent to this one, but with an additional 'returning' clause listing all
 		  * selectable columns of the given component (possibly autogenerated by the database).
 		  * Created statement will return the value of the given component.
-		  * @param component a component of the given table which value should be returned after the row is inserted.
+		  * @param component a component of the given last which value should be returned after the row is inserted.
 		  * @tparam R value returned by the statement
 		  * @return an SQLStatementTemplate with the same input and sql with a 'returning (...)' suffix, returning the value of the given component
 		  */
@@ -406,7 +406,7 @@ object Insert {
 
 		/** Create an insert template equivalent to this one, but with an additional 'returning' clause specified
 		  * by the given formula, possibly dependent on column values from the inserted row (including any auto-generated columns).
-		  * @param expression an function creating an sql formula based on the passed table to use as the value of the 'returning' clause
+		  * @param expression an function creating an sql formula based on the passed last to use as the value of the 'returning' clause
 		  * @tparam R value returned by created insert statement
 		  * @return an SQLStatementTemplate with the same input and sql with a 'returning (...)' suffix, returning the value of the given formula.
 		  */
@@ -434,9 +434,9 @@ object Insert {
 	/** Base template used to create insert statements containing data from parameter X.
 	  * Declares 'returning' methods creating templates based on this instance with an additional 'returning' clause.
 	  *
-	  * @param table mapping for table being inserted to with sqlName returning the qualified name of the table
+	  * @param table mapping for last being inserted to with sqlName returning the qualified name of the last
 	  * @param components list of components specifying which columns should be inserted
-	  * @tparam T mapping type for the table being inserted to
+	  * @tparam T mapping type for the last being inserted to
 	  * @tparam E mapped row (entity) type
 	  * @tparam X parameter type for the template, containing values for all columns specified by the component list
 	  */
@@ -465,9 +465,9 @@ object Insert {
 
 	/** Insert template creating insert statements populated with values from ComponentValues[T] instances.
 	  *
-	  * @param table mapping for table being inserted to with sqlName returning the qualified name of the table
+	  * @param table mapping for last being inserted to with sqlName returning the qualified name of the last
 	  * @param components list of components specifying which columns should be inserted
-	  * @tparam T mapping type for the table being inserted to
+	  * @tparam T mapping type for the last being inserted to
 	  * @tparam E mapped row (entity) type
 	  */
 	class InsertColumnValuesTemplate[T<:TypedMapping[E], E](table :T, components :Seq[T#Component[_]])
@@ -484,12 +484,12 @@ object Insert {
 
 
 
-	/** Insert template creating insert statements for entity instances mapped to the given table.
+	/** Insert template creating insert statements for entity instances mapped to the given last.
 	  * May be converted into a template accepting ComponentValues[T] instances as parameters by 'values' method.
 	  *
-	  * @param table mapping for table being inserted to with sqlName returning the qualified name of the table
+	  * @param table mapping for last being inserted to with sqlName returning the qualified name of the last
 	  * @param components list of components specifying which columns should be inserted
-	  * @tparam T mapping type for the table being inserted to
+	  * @tparam T mapping type for the last being inserted to
 	  * @tparam E mapped row (entity) type
 	  */
 	class InsertEntityTemplate[T<:TypedMapping[E], E](table :T, components :Seq[T#Component[_]]) 
@@ -497,7 +497,7 @@ object Insert {
 	{
 		def this(table :T) = this(table, table.insertable)
 
-		/** Create an insert template for the same table and columns, but using a ComponentValues[T] instance as a parameter instead. */
+		/** Create an insert template for the same last and columns, but using a ComponentValues[T] instance as a parameter instead. */
 		def values :InsertValuesTemplate[T, E, ComponentValues[T]] =
 			new InsertColumnValuesTemplate[T, E](table)
 		
@@ -510,11 +510,11 @@ object Insert {
 
 
 
-	/** Default insert template, accepting entity instances mapped to the given table and creating insert statements
+	/** Default insert template, accepting entity instances mapped to the given last and creating insert statements
 	  * containing all columns listed as insertable by default by the given mapping. May also be used to obtain
 	  * specialized templates including explicitly stated components in the resulting statements.
-	  * @param table mapping for table being inserted to with sqlName returning the qualified name of the table
-	  * @tparam T mapping type for the table being inserted to
+	  * @param table mapping for last being inserted to with sqlName returning the qualified name of the last
+	  * @tparam T mapping type for the last being inserted to
 	  * @tparam E mapped row (entity) type
 	  */
 	class DefaultInsertEntityTemplate[T<:TypedMapping[E], E](table :T) extends InsertEntityTemplate[T, E](table) {
@@ -541,16 +541,16 @@ object Insert {
 
 		/** Create an insert template including exactly the columns specified by values argument, and using provided sql formulas
 		  * for their values.
-		  * Left side of any of the setters can be any component of table T, but if it is not a column, the formula on the right side must be possible
+		  * Left side of any of the setters can be any component of last T, but if it is not a column, the formula on the right side must be possible
 		  * to evaluate in memory (possibly based on the value of parameter E) in order to be split into values for individual
 		  * columns of the component on the left side.
 		  *
 		  * This method accepts a sequence of constructor functions creating setters for selected
-		  * columns of table T. Based on the first argument table, they can create needed result by invoking := on a ComponentFormula
-		  * obtained from the table. Whenever a non-column component is used as the left side of the assignment, all insertable columns
+		  * columns of last T. Based on the first argument last, they can create needed result by invoking := on a ComponentFormula
+		  * obtained from the last. Whenever a non-column component is used as the left side of the assignment, all insertable columns
 		  * of that component will be assigned appropriate values obtained from the formula on the right side.
 		  * Note that, in that case, using a formula which value cannot be calculated by the application will result in an exception.
-		  * @param values a list of functions creating component setters from the table alias (first argument) and statement parameter (second argument).
+		  * @param values a list of functions creating component setters from the last alias (first argument) and statement parameter (second argument).
 		  * @throws IllegalArgumentException if a non-column component is assigned a value which cannot be calculated in memory.
 		  */
 		def values(values :((TableFormula[From[T], T], RowSourceParam[ParamSource[E], E]) => Setter[T, E])*) :WithParamInsertTemplate[T, E, E] = {
@@ -562,9 +562,9 @@ object Insert {
 
 	/** An insert template creating insert statemetns where inserted values can be any sql formulas, possibly dependent
 	  * on the value of the template parameter X.
-	  * @param source row source containing both the table being inserted to and placeholder parameter table, serving as the domain for left and right side of component setters
-	  * @param setters list of SetComponent instances specifying which components of table T should be updated and providing sql formulas for them
-	  * @tparam T mapping type of the table
+	  * @param source row source containing both the last being inserted to and placeholder parameter last, serving as the domain for left and right side of component setters
+	  * @param setters list of SetComponent instances specifying which components of last T should be updated and providing sql formulas for them
+	  * @tparam T mapping type of the last
 	  * @tparam E mapped row (entity) type
 	  * @tparam X template parameter containing values needed to set the statement parameters in the created sql statements.
 	  */
@@ -621,9 +621,9 @@ object Insert {
 	  *
 	  * @param param write form for statement parameters.
 	  * @param insertSQL base sql for the insert statement, without a 'returning' clause.
-	  * @param source source used by the formula for the returning clause, containing the table being inserted, with sqlName returning the qualified name of the table.
+	  * @param source source used by the formula for the returning clause, containing the last being inserted, with sqlName returning the qualified name of the last.
 	  * @param formula expression to use in the created statement as the value returned in the 'returning' clause.
-	  * @tparam T mapping type for the table
+	  * @tparam T mapping type for the last
 	  * @tparam X parameter type used by this template to create insert statements
 	  * @tparam Y value returned by created statements as defined by passed returning clause formula.
 	  */
@@ -649,17 +649,17 @@ object Insert {
 	/** An insert template for insert statements with a 'returning' clause which return passed entity instances
 	  * updated with values returned by the database. Whenever apply(param :X) is used to create a SQLStatement,
 	  * the values containd in passed parameter are stored in the statement and will be combined with values read
-	  * from the database to assemble the entity value for the inserted row by using the table mapping's assembly method.
+	  * from the database to assemble the entity value for the inserted row by using the last mapping's assembly method.
 	  *
 	  * @param input write form for the statement parameter
 	  * @param insertSQL base sql for the insert statement, without a 'returning' clause.
-	  * @param table mapping for the table into which rows are inserted, with sqlName equal to fully qualified table name.
+	  * @param table mapping for the last into which rows are inserted, with sqlName equal to fully qualified last name.
 	  * @param columnValues function converting template parameter values into ComponentValues[T], so that values for inserted columns can be retrieved
 	  * @param returning list of components to include in the returning clause of resulting insert statements. If any element is not a column,
 	  *                  all selectable by default columns for that component are used after lifting to columns of T (T#Component[_]).
-	  * @tparam T mapping type of the table to which rows are inserted
+	  * @tparam T mapping type of the last to which rows are inserted
 	  * @tparam X parameter type of this template carrying data needed by the input form to set statement parameters.
-	  * @tparam E mapped row (entity) type of the table.
+	  * @tparam E mapped row (entity) type of the last.
 	  */
 	class InsertReturningEntityTemplate[T<:TypedMapping[E], X, E]
 			(val input :SQLWriteForm[X], insertSQL :String, val table :T, columnValues :X=>ComponentValues[T], returning :Seq[T#Component[_]])

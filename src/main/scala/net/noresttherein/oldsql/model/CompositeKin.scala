@@ -1,10 +1,9 @@
 package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
-import net.noresttherein.oldsql.model.Kin.{GenericKinFactory, KinComposer, KinFactory, Present}
+import net.noresttherein.oldsql.model.Kin.{KinFactory, Present}
 import net.noresttherein.oldsql.model.Kin.Lazy.LazyKin
 import net.noresttherein.oldsql.model.MappedKin.{CompositeMapper, KinMapper}
-import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.slang._
 
 
@@ -26,10 +25,10 @@ import net.noresttherein.oldsql.slang._
 trait CompositeKin[+T, E] extends Kin[T] {
 //	type Item = E
 	def composer :ComposableFrom[T, E]
-	def decomposer :DecomposableTo[_<:T, E]
+	def decomposer :DecomposableTo[_ <: T, E]
 	def decompose :Option[Iterable[E]]
 
-	def items :ComposedOf[_<:T, E]
+	def items :ComposedOf[_ <: T, E]
 
 	def mapItems[X, XS](map :KinMapper[E, X])(implicit as :XS ComposedOf X) :Kin[XS]
 

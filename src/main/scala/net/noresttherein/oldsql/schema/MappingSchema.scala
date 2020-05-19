@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, Numeral, Positive, PositiveInc}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingFrom, MappingNest, OriginProjection, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingFrom, MappingNest, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.MappingSchema.{ExtensibleNonEmptySchema, FlatMappedSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, MappedSchema, SchemaFlattening}
@@ -55,7 +55,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
   *           of this mapping.
   * @tparam S the entity type of an owning `SchemaMapping`.
   * @tparam O a marker type denoting the origin of the mapping used to distinguish between different instances
-  *           of the same class but representing different tables or different occurrences of a table in the
+  *           of the same class but representing different tables or different occurrences of a last in the
   *           ''from'' clause of an SQL select.
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping]]
@@ -109,7 +109,7 @@ trait MappingSchema[C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, O
 	  * in the component type chain. At the same time it removes troublesome occurrences of the
 	  * origin type `O` in other places than the type parameter itself.
 	  */
-	type |*|[L <: Chain, V <: Chain, T] = SchemaMapping[L, V, T, O]
+	type |*|[L <: Chain, V <: Chain, T] = SchemaMapping[L, V, T, O] //todo: |%|
 
 	/** A shorthand alias for `LabeledSchemaComponent[N, L, V, T, O]`, allowing reduced notation for components
 	  * of this mapping in the component type chain. At the same time it removes troublesome occurrences of the
@@ -121,7 +121,7 @@ trait MappingSchema[C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, O
 	type Subschema[L <: Chain,  V <: Chain, T] = SchemaMapping[L, V, T, O]
 
 	/** Component type of this schema, enforcing implementation of `SchemaMapping` of all components. */
-	type LabeledSubschema[N <: Label, L <: Chain,  V <: Chain, T] = LabeledSchemaComponent[N, L, V, T, O]
+	type LabeledSubschema[N <: Label, L <: Chain,  V <: Chain, T]= LabeledSchemaComponent[N, L, V, T, O]
 
 	/** The subject type of the enclosing mapping. All 'outer' extractors contained in this schema are functions
 	  * of this type.  */
@@ -1022,11 +1022,11 @@ object MappingSchema {
 		type Components <: Chain
 		type Values <: Chain
 
-		def apply(schema :MappingSchema[C, R, S, O], include :Iterable[TypedMapping[_, O]],
+		def apply(schema :MappingSchema[C, R, S, O], include :Iterable[RefinedMapping[_, O]],
 		          prohibit :BuffType, explicit :BuffType, optional :BuffType, nonDefault :FlagBuffType)
 				:MappingSchema[Components, Values, S, O]
 
-		def apply(schema :FlatMappingSchema[C, R, S, O], include :Iterable[TypedMapping[_, O]],
+		def apply(schema :FlatMappingSchema[C, R, S, O], include :Iterable[RefinedMapping[_, O]],
 		          prohibit :BuffType, explicit :BuffType, optional :BuffType, nonDefault :FlagBuffType)
 				:FlatMappingSchema[Components, Values, S, O]
 	}
@@ -1035,14 +1035,14 @@ object MappingSchema {
 
 	sealed abstract class LowPrioritySchemaCustomizationImplicits {
 
-		implicit def include[C <: Chain, R <: Chain, M <: TypedMapping[T, O], T, S, O, E,
+		implicit def include[C <: Chain, R <: Chain, M <: RefinedMapping[T, O], T, S, O, E,
 		                     I <: Numeral, J <: Numeral, F <: Chain, V <: Chain]
 		                    (implicit prefix :FilterSchema[C, R, S, O, E, I, F, V], plus :PositiveInc[I, J])
 				:FilterSchema[C ~ M, R ~ T, S, O, E, J, F ~ M, V ~ T] =
 			(schema :MappingSchema[C ~ M, R ~ T, S, O]) =>
 				prefix(schema.prev).carryOver(schema.last, schema.extract(schema.last))
 
-		implicit def includeIndexed[C <: Chain, R <: LiteralIndex, M <: TypedMapping[T, O], T, S, O, E,
+		implicit def includeIndexed[C <: Chain, R <: LiteralIndex, M <: RefinedMapping[T, O], T, S, O, E,
 		                            I <: Numeral, J <: Numeral, F <: Chain, V <: Chain]
 		                           (implicit prefix :FilterSchema[C, R, S, O, E, I, F, V], plus :PositiveInc[I, J])
 				:FilterSchema[C ~ M, R |~ (LiteralIndex.Key :~ T), S, O, E, J, F ~ M, V ~ T] =
@@ -1084,13 +1084,13 @@ object MappingSchema {
 			empty.asInstanceOf[FilterSchema[@~, @~, S, O, E, 0, @~, @~]]
 
 
-		implicit def exclude[C <: Chain, R <: Chain, M <: TypedMapping[T, O], T, S, O, E <: Chain,
+		implicit def exclude[C <: Chain, R <: Chain, M <: RefinedMapping[T, O], T, S, O, E <: Chain,
 		                     I <: Numeral, J <: Numeral, F <: Chain, V <: Chain]
 		                    (implicit prefix :FilterSchema[C, R, S, O, E, I, F, V], inc :Inc[I, J],
 		                     exclude :ExcludeComponent[M, I, E]) :FilterSchema[C ~ M, R ~ T, S, O, E, J, F, V] =
 			(schema :MappingSchema[C ~ M, R ~ T, S, O]) => prefix(schema.prev)
 
-		implicit def excludeIndexed[C <: Chain, R <: LiteralIndex, M <: TypedMapping[T, O], T, S, O, E <: Chain,
+		implicit def excludeIndexed[C <: Chain, R <: LiteralIndex, M <: RefinedMapping[T, O], T, S, O, E <: Chain,
 		                            I <: Numeral, J <: Numeral, F <: Chain, V <: Chain]
 		                           (implicit prefix :FilterSchema[C, R, S, O, E, I, F, V], inc :Inc[I, J],
 		                            exclude :ExcludeComponent[M, I, E])
@@ -1133,7 +1133,7 @@ object MappingSchema {
 				override type Components = F
 				override type Values = V
 
-				override def apply(schema :MappingSchema[C, R, S, O], includes :Iterable[TypedMapping[_, O]],
+				override def apply(schema :MappingSchema[C, R, S, O], includes :Iterable[RefinedMapping[_, O]],
 				                   ban :BuffType, explicit :BuffType, optional :BuffType, nonDefault :FlagBuffType) =
 				{
 					val filtered = filter(schema)
@@ -1141,7 +1141,7 @@ object MappingSchema {
 					new CustomizedSchema[F, V, S, O](filtered, includes, ban, explicit, excludes, optional, nonDefault)
 				}
 
-				override def apply(schema :FlatMappingSchema[C, R, S, O], includes :Iterable[TypedMapping[_, O]],
+				override def apply(schema :FlatMappingSchema[C, R, S, O], includes :Iterable[RefinedMapping[_, O]],
 				                   ban :BuffType, explicit :BuffType, optional :BuffType, nonDefault :FlagBuffType) =
 				{
 					val filtered = filter(schema).asInstanceOf[FlatMappingSchema[F, V, S, O]]
@@ -1153,8 +1153,8 @@ object MappingSchema {
 
 
 				private def excluded(filtered :MappingSchema[F, V, S, O], schema :MappingSchema[C, R, S, O]) = {
-					val components = schema.members.all.asInstanceOf[Seq[TypedMapping[_, O]]]
-					val remaining = filtered.members.all.asInstanceOf[Seq[TypedMapping[_, O]]].toSet
+					val components = schema.members.all.asInstanceOf[Seq[RefinedMapping[_, O]]]
+					val remaining = filtered.members.all.asInstanceOf[Seq[RefinedMapping[_, O]]].toSet
 					components.filterNot(remaining)
 				}
 			}
@@ -1199,14 +1199,14 @@ object MappingSchema {
 
 
 
-	@implicitNotFound("No component ${M} <: TypedMapping[${T}, ${O}] present at index ${I} in the schema ${C}\n(with values ${R}).")
-	sealed abstract class GetSchemaComponent[C <: Chain, R <: Chain, +M <: TypedMapping[T, O], I <: Numeral, T, O] {
+	@implicitNotFound("No component ${M} <: RefinedMapping[${T}, ${O}] present at index ${I} in the schema ${C}\n(with values ${R}).")
+	sealed abstract class GetSchemaComponent[C <: Chain, R <: Chain, +M <: RefinedMapping[T, O], I <: Numeral, T, O] {
 		def apply[S](schema :MappingSchema[C, R, S, O], idx :I) :M
 		def extract[S](schema :MappingSchema[C, R, S, O], idx :I) :MappingExtract[S, T, O]
 	}
 
 	object GetSchemaComponent {
-		implicit def singleton[M <: TypedMapping[T, O], O, T]
+		implicit def singleton[M <: RefinedMapping[T, O], O, T]
 				:GetSchemaComponent[@~ ~ M, @~ ~ T, M, 0, T, O] =
 			new GetSchemaComponent[@~ ~ M, @~ ~ T, M, 0, T, O] {
 				override def apply[S](schema :MappingSchema[@~ ~ M, @~ ~ T, S, O], idx :0) = schema.last
@@ -1214,7 +1214,7 @@ object MappingSchema {
 					schema.extract(schema.last)
 			}
 
-		implicit def last[C <: Chain, R <: Chain, M <: TypedMapping[T, O], I <: Numeral, J <: Numeral, T, O]
+		implicit def last[C <: Chain, R <: Chain, M <: RefinedMapping[T, O], I <: Numeral, J <: Numeral, T, O]
 		                 (implicit inc :Inc[I, J], get :GetSchemaComponent[C, R, _, I, _, O])
 				:GetSchemaComponent[C ~ M, R ~ T, M, J, T, O] =
 			new GetSchemaComponent[C ~ M, R ~ T, M, J, T, O] {
@@ -1223,7 +1223,7 @@ object MappingSchema {
 					schema.extract(schema.last)
 			}
 
-		implicit def previous[C <: Chain, L <: Mapping, R <: Chain, M <: TypedMapping[T, O], X, I <: Numeral, T, O]
+		implicit def previous[C <: Chain, L <: Mapping, R <: Chain, M <: RefinedMapping[T, O], X, I <: Numeral, T, O]
 		                     (implicit get :GetSchemaComponent[C, R, M, I, T, O])
 				:GetSchemaComponent[C ~ L, R ~ X, M, I, T, O] =
 			new GetSchemaComponent[C ~ L, R ~ X, M, I, T, O] {
@@ -1338,7 +1338,7 @@ object MappingSchema {
 	  * @tparam O the origin type serving as a discriminator between different instances by tagging them on the type level.
 	  */
 	private[schema] abstract class BaseNonEmptySchema[I <: Chain, L[+A <: I, +B <: E] <: A ~ B, E,
-	                                                  C <: Chain, M <: TypedMapping[T, O], R <: I, T, U <: E, S, O]
+	                                                  C <: Chain, M <: RefinedMapping[T, O], R <: I, T, U <: E, S, O]
 	                                                 (val init :MappingSchema[C, R, S, O], component :M,
 	                                                  val extractor :MappingExtract[S, T, O], lastValue :R L U => T)
 		extends MappingSchema[C ~ M, R L U, S, O] with LazyMapping[R L U, O]
@@ -1413,7 +1413,7 @@ object MappingSchema {
 
 
 
-	private[schema] class NonEmptySchema[C <: Chain, M <: TypedMapping[T, O], R <: Chain, T, S, O]
+	private[schema] class NonEmptySchema[C <: Chain, M <: RefinedMapping[T, O], R <: Chain, T, S, O]
 	                      (prev :MappingSchema[C, R, S, O], component :M, extractor :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[Chain, ~, Any, C, M, R, T, T, S, O](prev, component, extractor, _.last)
 	{
@@ -1429,7 +1429,7 @@ object MappingSchema {
 
 
 
-	private[schema] class ExtensibleNonEmptySchema[C <: Chain, M <: TypedMapping[T, O], R <: Chain, T, S, O]
+	private[schema] class ExtensibleNonEmptySchema[C <: Chain, M <: RefinedMapping[T, O], R <: Chain, T, S, O]
                           (prev :ExtensibleMappingSchema[C, R, S, O], last :M, extractor :MappingExtract[S, T, O])
 		extends NonEmptySchema[C, M, R, T, S, O](prev, last, extractor) with ExtensibleMappingSchema[C ~ M, R ~ T, S, O]
 	{
@@ -1514,8 +1514,8 @@ object MappingSchema {
 
 	private[schema] class CustomizedSchema[C <: Chain, R <: Chain, S, O]
 	                      (filtered :MappingSchema[C, R, S, O],
-	                       include :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
-	                       exclude :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
+	                       include :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                       exclude :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
 		extends CustomizedMapping[MappingSchema[C, R, S, O], R, O](
 		                          filtered, include, prohibited, explicit, exclude, optional, nonDefault
 			) with MappingSchemaProxy[C, R, S, O]
@@ -1535,8 +1535,8 @@ object MappingSchema {
 
 	private[schema] class CustomizedFlatSchema[C <: Chain, R <: Chain, S, O]
 	                      (override val egg :FlatMappingSchema[C, R, S, O],
-	                       include :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
-	                       exclude :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
+	                       include :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                       exclude :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
 		extends CustomizedSchema(egg, include, prohibited, explicit, exclude, optional, nonDefault)
 		   with FlatMappingSchemaProxy[C, R, S, O]
 	{

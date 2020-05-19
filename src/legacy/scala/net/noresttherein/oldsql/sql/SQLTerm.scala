@@ -210,24 +210,24 @@ object SQLTerm extends MultiColumnTerms {
 		override def readForm :ColumnReadForm[T] = form
 		override val writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.const(value)
 
-		override def opt :BoundColumnParameter[Option[T]] = new BoundParameter(Option(value))
+		override def opt :BoundParameterColumn[Option[T]] = new BoundParameter(Option(value))
 
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[BoundColumnParameter[_]]
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[BoundParameterColumn[_]]
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
-			case other :BoundColumnParameter[_] if other canEqual this => other.param == param
+			case other :BoundParameterColumn[_] if other canEqual this => other.param == param
 		}
 	}
 
 
 
 	object BoundColumnParameter {
-		def apply[T :ColumnForm](param :T, name :Option[String] = None) :BoundColumnParameter[T] =
-			new BoundColumnParameter[T](param, name)
+		def apply[T :ColumnForm](param :T, name :Option[String] = None) :BoundParameterColumn[T] =
+			new BoundParameterColumn[T](param, name)
 
 		def unapply[T](e :SQLFormula[Nothing, T]) :Option[(T, Option[String])] = e match {
-			case param :BoundColumnParameter[T] => Some(param.value -> param.name)
+			case param :BoundParameterColumn[T] => Some(param.value -> param.name)
 			case _ => None
 		}
 

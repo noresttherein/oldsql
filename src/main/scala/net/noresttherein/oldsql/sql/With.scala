@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.~
-import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.schema.RowSource
-import net.noresttherein.oldsql.schema.RowSource.AnyRowSource
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
+import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
+import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation
-import net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation.{AnyRelationIn, LastRelation}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
@@ -42,36 +42,42 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	val left :L
 
 	/** The right side of the join - representation of a table alias containing the joined mapping. */
-	val table :LastRelation[R]
-
-	/** the join condition joining the right side to the left side. It is not the complete filter
-	  * condition, as it doesn't include any join conditions defined in the left side of this join. */
-	val condition :BooleanFormula[Generalized]
-
-	protected def copy(filter :BooleanFormula[left.Generalized With R]) :This
-
-	def copy[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With R]) :JoinRight[F]
-
-
-	/** This type with the `FromClause` of the left side substituted for `F`. */
-	type JoinRight[+F <: FromClause] <: F With R
-
-	protected def self :JoinRight[left.type]
-
-	override type This >: this.type <: L With R
-
-	override type Generalized = left.Generalized With R
-
-	override def generalized :Generalized = this.asInstanceOf[Generalized]
-
+	override val last :JoinedRelation[FromClause With R, R]
 
 	override type LastMapping[O] = R[O]
 	override type LastTable[F <: FromClause] = JoinedRelation[F, R]
 
 	override type FromLast = FromClause With R
-	override def lastTable :JoinedRelation[FromClause With R, R] = table
 
-	def right :RowSource[R] = lastTable.source
+	def right :RowSource[R] = last.source
+
+	/** the join condition joining the right side to the left side. It is not the complete filter
+	  * condition, as it doesn't include any join conditions defined in the left side of this join. */
+	val condition :BooleanFormula[Generalized]
+
+
+	//consider :maybe we should declare it as simply L With R and override in every subclass?
+	protected def copy(filter :BooleanFormula[left.Generalized With R]) :This
+
+	def copy[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With R]) :WithLeft[F]
+
+	protected[sql] def copyLike[F <: FromClause]
+	                           (template :Join.*)(left :F)(implicit single :(L With R) <:< (Dual With R))
+			:template.LikeJoin[F, R]
+
+
+
+	override type This >: this.type <: L With R
+
+	/** This type with the `FromClause` of the left side substituted for `F`. */
+	type WithLeft[+F <: FromClause] <: F With R
+
+	@deprecated
+	protected def self :WithLeft[left.type]
+
+	override type Generalized = left.Generalized With R
+
+	override def generalized :Generalized = this.asInstanceOf[Generalized]
 
 
 //	def condition :BooleanFormula[Generalized] = joinCondition
@@ -81,18 +87,18 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 
 
 
-	override type Row = left.Row ~ table.Subject
+	override type Row = left.Row ~ last.Subject
 
 	override def row[E <: FromClause](extension :Generalized ExtendedBy E) :ChainTuple[E, Row] =
-		left.row(extension.stretchFront[left.Generalized, R]) ~ table.upcast.stretch(extension)
+		left.row(extension.shrink[left.Generalized, R]) ~ last.stretch(extension)
 
-	override def tableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[AnyRelationIn[E]] =
-		table.extend(stretch) #:: left.tableStack(stretch.stretchFront[left.Generalized, R])
+	override def tableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] =
+		last.extend(stretch) #:: left.tableStack(stretch.shrink[left.Generalized, R])
 
 
 
 	override def filteredBy[E <: FromClause](extension :Generalized ExtendedBy E) :BooleanFormula[E] =
-		left.filteredBy(extension.stretchFront[left.Generalized, R]) && condition.stretch(extension)
+		left.filteredBy(extension.shrink[left.Generalized, R]) && condition.stretch(extension)
 
 	/** A function accepting the last relation of this clause, as a formula for a join between this clause
 	  * and a following mapping `T`, and the formula for the mapping `T`, being the last relation in the join,
@@ -114,15 +120,15 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	  *         returned by the passed filter function.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#JoinFilter]]
 	  */
-	def on(condition :left.JoinFilter[R]) :JoinRight[left.This] = {
-		val joinFilter = condition(left.lastTable.extend[R], table)
+	def on(condition :left.JoinFilter[R]) :WithLeft[L] = { //todo: left.This is really left.type, so we don't need This
+		val joinFilter = condition(left.last.extend[R], last)
 		val grounded = SQLScribe.groundFreeComponents(generalized)(joinFilter)
-		copy[left.This](left)(this.condition && grounded)
+		copy[L](left)(this.condition && grounded)
 	}
 
 
 	def whereLast(condition :JoinedRelation[FromClause With R, R] => BooleanFormula[FromClause With R]) :This =
-		copy(this.condition && SQLScribe.groundFreeComponents(generalized)(condition(table)))
+		copy(this.condition && SQLScribe.groundFreeComponents(generalized)(condition(last)))
 
 
 	def where[F >: L <: FromClause](condition :JoinedTables[Generalized] => BooleanFormula[Generalized]) :This = {
@@ -131,16 +137,23 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	}
 
 
+//	override protected def joinAll_:(preceding :FromClause) :FromClause = ???
+//	override protected def joinSubselect_:(preceding :FromClause) :FromClause = ???
+
+
 
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
 	override def equals(that :Any) :Boolean = that match {
-		case join :With[_, _] =>
-			(join eq this) || (join canEqual this) && join.left == left && join.lastTable == lastTable
+		case self :AnyRef if self eq this => true
+
+		case join :With[_, _] if canEqual(join) && join.canEqual(this) =>
+			join.left == left && join.last == last
+
 		case _ => false
 	}
 
-	override def hashCode :Int = left.hashCode * 31 + table.hashCode
+	override def hashCode :Int = left.hashCode * 31 + last.hashCode
 
 
 
@@ -159,27 +172,51 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 /** A factory for ''from'' clauses of SQL SELECT statements representing non-empty list of tables joined together. */
 object With {
 
-	/** Create a cross join between the left side, given as a (possibly empty) source/list of  tables,
-	  * and the the mapping on the right side representing a table or some table proxy.
+
+	/** Create a cross join between the left side, given as a (possibly empty) clause/list of relations,
+	  * and the the mapping on the right side representing a table, some other relation or a surrogate mapping.
 	  */
-	def apply[L[O] <: MappingFrom[O], R[O] <: MappingFrom[O]]
-	         (left :RowSource[L], right :RowSource[R]) :From[L] InnerJoin R =
+	def apply[L[O] <: MappingFrom[O], LG[O] <: TypedMapping[A, O], A,
+		      R[O] <: MappingFrom[O], RG[O] <: TypedMapping[B, O], B]
+	         (left :RowSource[L], right :RowSource[R])
+	         (implicit castL :JoinedRelationSubject[From, L, LG, MappingOf[A]#TypedProjection],
+	                   castR :InferSubject[From[L], InnerJoin, R, RG, B])
+			:From[L] InnerJoin R =
 		InnerJoin(left, right)
 
-	def apply[L <: FromClause, R[O] <: MappingFrom[O]](left :L, right :RowSource[R]) :L InnerJoin R =
-		InnerJoin(left, right)
+	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	         (left :L, right :RowSource[R], filter :BooleanFormula[L#Generalized With R])
+	         (implicit cast :InferSubject[left.type, InnerJoin, R, T, S]) :L InnerJoin R =
+		InnerJoin(left, right, filter)
 
 
 	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, RowSource[R])] =
 		Some(join.left -> join.right)
 
-	def unapply(from :FromClause) :Option[(FromClause, AnyRowSource)] =
+	def unapply(from :FromClause) :Option[(FromClause, RowSource.*)] =
 		from match {
-			case join :AnyWith => Some((join.left :FromClause, join.right))
+			case join :With.* => Some((join.left :FromClause, join.right))
 			case _ => None
 		}
 
 
-	type AnyWith = With[_ <: FromClause, M] forSome {type M[O] <: MappingFrom[O]}
+
+	/** An existential upper bound of all `With` instances that can be used in casting or pattern matching
+	  * without generating compiler warnings about erasure.
+	  */
+	type * = With[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
+
+
+
+	trait TypedWith[+L <: FromClause, R[O] <: TypedMapping[S, O], S] extends With[L, R] {
+
+
+		protected[sql] override def copyLike[F <: FromClause]
+		                                    (template :Join.*)(left :F)
+		                                    (implicit single :(L With R) <:< (Dual With R))
+				:template.LikeJoin[F, R] =
+			template.copy[F, R, S](left, right)(single(this).condition)
+	}
 
 }
+

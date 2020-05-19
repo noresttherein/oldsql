@@ -33,20 +33,20 @@ import extensions._
 
 /** A generic skeleton implementation for mappings creating Reference instances to other tables or parts of other tables.
   * Works as a wrapper for a foreign key component which contains all data required to perform a join between
-  * the owner table and the foreign table. The actual implementation of the join is left out for subclasses, with
+  * the owner last and the foreign last. The actual implementation of the join is left out for subclasses, with
   * this instance simply creating a correct MappingPath linking the two tables and exporting it via 'scout' method
   * for discovery by pathfinders. Note that we will refer here to the key mapped by this instance as foreign key and
-  * the referenced key in the other table as target key (usually primary key), but  because of symmetrical nature
+  * the referenced key in the other last as target key (usually primary key), but  because of symmetrical nature
   * of relational databases it might be actually the other way round, the 'foreign key' component of this mapping being
-  * a primary key of the table (or rather, probably a sym link mapping for the primary key component) and the target key
+  * a primary key of the last (or rather, probably a sym link mapping for the primary key component) and the target key
   * a real foreign key in the database sense.
-  * @tparam FK scala type of the foreign key, representing the local data used to match records in foreign table TM.
+  * @tparam FK scala type of the foreign key, representing the local data used to match records in foreign last TM.
   * @tparam FKM mapping responsible for the foreign key type which is being boxed by this adapter inside produced references.
-  * @tparam TM table mapping for the target of the join. Note that it is not necessarily the actual target mapping for referenced type!
+  * @tparam TM last mapping for the target of the join. Note that it is not necessarily the actual target mapping for referenced type!
   * @tparam E referenced element type being an individual record contained in produced references.
-  * @tparam EM target component in the foreign table responsible for mapping instances of E which will be used to produce referenced composite type X.
-  * @tparam TK the key in the other table and the key type for produced references, identifying subsets of records E.
-  * @tparam TKM component in the target table responsible for mapping the referenced key, usually the primary key component.
+  * @tparam EM target component in the foreign last responsible for mapping instances of E which will be used to produce referenced composite type X.
+  * @tparam TK the key in the other last and the key type for produced references, identifying subsets of records E.
+  * @tparam TKM component in the target last responsible for mapping the referenced key, usually the primary key component.
   * @tparam X scala type contained by the reference, a composite type consisting of items of type E
   * @tparam R type of the mapped references, the result type of this mapping.
   */
@@ -71,26 +71,26 @@ trait GenericJoinComponentReferenceMapping[FK, FKM<:Mapping[FK], TM<:AnyMapping,
 	protected def toTargetKey :FK=>TK
 
 	/** Convert the value of the key retrieved from a referenced instance into a value that can be stored
-	  * in this table by the foreign key component TKM. This function is called when saving an instance of Reference R
+	  * in this last by the foreign key component TKM. This function is called when saving an instance of Reference R
 	  * pointing to instances of E using key TK; if the conversion is impossible recovery is probably not possible, so
 	  * exceptions here will be generally propagated.
 	  */
 	protected def toForeignKey :TK=>FK
 
-	/** Path in the target table pointing to the component mapping the values for referenced keys. */
+	/** Path in the target last pointing to the component mapping the values for referenced keys. */
 	protected def targetKey :ComponentPath[TM, TKM]
 
-	/** Path in the target table pointing to the component mapping the actual referenced values.
-	  * In most cases, it will be just a self path for the whole table).
+	/** Path in the target last pointing to the component mapping the actual referenced values.
+	  * In most cases, it will be just a self path for the whole last).
 	  */
 	protected def target :ComponentPath[TM, EM]
 
-	/** Actual implementations will return the join between the target table, this component and potentially
+	/** Actual implementations will return the join between the target last, this component and potentially
 	  * other tables which take no part in mapping the result values, but can be used to narrow down the results,
 	  * such as dictionary tables. Note two things: first, the join is not between two tables, but actually between
-	  * this component and the target table and will be 'planted' in the owning table before performing actual queries.
+	  * this component and the target last and will be 'planted' in the owning last before performing actual queries.
 	  * This is to avoid the dependency of components on the owning mappings. Second, the order of the join is reversed
-	  * for easy access to this mapping: first come any optional tables, then the target table, and this component last.
+	  * for easy access to this mapping: first come any optional tables, then the target last, and this component last.
 	  * This means that it will likely appear in the reversed form in final queries, and if any outer joins are present here,
 	  * they'll be swapped into their opposites to preserve the semantics.
 	  * @return
@@ -98,8 +98,8 @@ trait GenericJoinComponentReferenceMapping[FK, FKM<:Mapping[FK], TM<:AnyMapping,
 	def join :RowSource Join TM Join this.type
 
 
-	/** Path from this component to the referenced mapping, starting with a JoinPath with target table and followed by the
-	  * path to the target component in that table.
+	/** Path from this component to the referenced mapping, starting with a JoinPath with target last and followed by the
+	  * path to the target component in that last.
 	  */
 	def joinPath :MappingPath[this.type, EM] =
 		JoinPath[this.type, TM](join, arity, referencedOwner) ++ target
@@ -108,13 +108,13 @@ trait GenericJoinComponentReferenceMapping[FK, FKM<:Mapping[FK], TM<:AnyMapping,
 	def arity = referenceFactory.items.arity
 
 	/** A function used as the 'pick' function for the join path, which would retrieve the value mapped
-	  * by the whole target table (rather than just the target component) from a reference. This will generally
+	  * by the whole target last (rather than just the target component) from a reference. This will generally
 	  * be impossible, so default implementation will just return None for all arguments.
 	  */
 	def referencedOwner :R => Option[TM#ResultType] = _ => None
 
 	/** A function which retrieves a single referenced value E out of a reference R if possible. Foreign keys pointing
-	  * to at most one record in the target table and to the whole table record rather than just a component may
+	  * to at most one record in the target last and to the whole last record rather than just a component may
 	  * use it as an implementation of referencedOwner.
 	  * @return
 	  */
@@ -164,7 +164,7 @@ trait GenericJoinComponentReferenceMapping[FK, FKM<:Mapping[FK], TM<:AnyMapping,
 
 
 
-/** A specialization of generic reference mappings based on stored joins which refer to the whole records in the target table
+/** A specialization of generic reference mappings based on stored joins which refer to the whole records in the target last
   * (as it will generally be the case).
   */
 trait GenericJoinReferenceMapping[FK, FKM<:Mapping[FK], TK, TKM<:Mapping[TK], E, EM<:Mapping[E], X, R<:Reference[X]]
@@ -180,15 +180,15 @@ trait GenericJoinReferenceMapping[FK, FKM<:Mapping[FK], TK, TKM<:Mapping[TK], E,
 
 
 /** A mapping for R<:Reference[X] based on equality comparison between a key of type K stored locally and mapped by mapping FKM,
-  * and a (asummingly compatible column-wise) key in the target table mapped by component TKM. Produced join simply
-  * joins the target table with this mapping, comparing the values of components responsible for their respective keys.
+  * and a (asummingly compatible column-wise) key in the target last mapped by component TKM. Produced join simply
+  * joins the target last with this mapping, comparing the values of components responsible for their respective keys.
   * @tparam K scala type of the key compared in both tables. Note that if the actual mappings compared are of incompatible types,
   *           they should be first mapped via ComponentPath.map.
   * @tparam FKM mapping responsible for the key which is being boxed by this adapter inside produced references.
-  * @tparam TM table mapping for the target of the join. Note that it is not necessarily the actual target mapping for referenced type!
-  * @tparam TKM component in the target table responsible for mapping the referenced key, usually the primary key component.
+  * @tparam TM last mapping for the target of the join. Note that it is not necessarily the actual target mapping for referenced type!
+  * @tparam TKM component in the target last responsible for mapping the referenced key, usually the primary key component.
   * @tparam E referenced element type being an individual record contained in produced references.
-  * @tparam EM target component in the foreign table responsible for mapping instances of E which will be used to produce referenced composite type X.
+  * @tparam EM target component in the foreign last responsible for mapping instances of E which will be used to produce referenced composite type X.
   * @tparam X scala type contained by the reference, a composite type consisting of items of type E
   * @tparam R type of the mapped references, the result type of this mapping.
   */
@@ -213,21 +213,21 @@ trait GenericComponentReferenceKeyMapping[K, FKM<:Mapping[K], TM<:AnyMapping, TK
 
 
 /** A mapping for R<:Reference[X] based on equality comparison between a key of type K stored locally and mapped by mapping FKM,
-  * and a (asummingly compatible column-wise) key in the target table mapped by component TKM. Produced join simply
-  * joins the target table with this mapping, comparing the values of components responsible for their respective keys.
+  * and a (asummingly compatible column-wise) key in the target last mapped by component TKM. Produced join simply
+  * joins the target last with this mapping, comparing the values of components responsible for their respective keys.
   * @param lazyKey mapping for the local key value to be included as a component of this mapping.
-  *            For foreign keys, this might be any mapping, for inverse foreign keys it will usually be a sym link to primary key mapping of the owner table.
-  * @param lazyTargetKey expression evaluating to a path starting at the target table and pointing to the mapping of the key to be compared with key
-  * @param lazyTarget expression evaluating to a path starting at the target table and pointing to the mapping responsible for the element type E of mapped Reference R
+  *            For foreign keys, this might be any mapping, for inverse foreign keys it will usually be a sym link to primary key mapping of the owner last.
+  * @param lazyTargetKey expression evaluating to a path starting at the target last and pointing to the mapping of the key to be compared with key
+  * @param lazyTarget expression evaluating to a path starting at the target last and pointing to the mapping responsible for the element type E of mapped Reference R
   * @param referenceFactory factory of reference values used to create reference R instances based on the key and/or Iterable[E],
   *                         as well as producing a key for storing out of instances of R
   * @tparam K scala type of the key compared in both tables. Note that if the actual mappings compared are of incompatible types,
   *           they should be first mapped via ComponentPath.map.
   * @tparam FKM mapping responsible for the key which is being boxed by this adapter inside produced references.
-  * @tparam TM table mapping for the target of the join. Note that it is not necessarily the actual target mapping for referenced type!
-  * @tparam TKM component in the target table responsible for mapping the referenced key, usually the primary key component.
+  * @tparam TM last mapping for the target of the join. Note that it is not necessarily the actual target mapping for referenced type!
+  * @tparam TKM component in the target last responsible for mapping the referenced key, usually the primary key component.
   * @tparam E referenced element type being an individual record contained in produced references.
-  * @tparam EM target component in the foreign table responsible for mapping instances of E which will be used to produce referenced composite type X.
+  * @tparam EM target component in the foreign last responsible for mapping instances of E which will be used to produce referenced composite type X.
   * @tparam X scala type contained by the reference, a composite type consisting of items of type E
   * @tparam R type of the mapped references, the result type of this mapping.
   */
@@ -255,9 +255,9 @@ trait GenericReferenceKeyMapping[K, FKM<:Mapping[K], TKM<:Mapping[K], E, EM<:Map
 
 
 
-/** A mapping for reference R<:Reference[X :(_ ComposedOf E)] joining on key equality between this table's key,
-  * as given by 'key' argument, and target table key mapping. This is a specialized producing refering to the whole
-  * target table (the element type of R is the ResultType of the table mapping).
+/** A mapping for reference R<:Reference[X :(_ ComposedOf E)] joining on key equality between this last's key,
+  * as given by 'key' argument, and target last key mapping. This is a specialized producing refering to the whole
+  * target last (the element type of R is the ResultType of the last mapping).
   */
 class BaseGenericReferenceKeyMapping[K, FKM<:Mapping[K], TKM<:Mapping[K], E, EM<:Mapping[E], X, R<:Reference[X]]
 		(lazyKey : =>FKM, lazyTargetKey : =>ComponentPath[EM, TKM],
@@ -276,14 +276,14 @@ class BaseGenericReferenceKeyMapping[K, FKM<:Mapping[K], TKM<:Mapping[K], E, EM<
 trait GenericForeignKeyReferenceMapping[K, FKM<:Mapping[K], TKM<:Mapping[K], E, EM<:Mapping[E], X, R<:Reference[X]] 
 	extends GenericReferenceKeyMapping[K, FKM, TKM, E, EM, X, R]
 { self =>
-	/** Create a mapping representing the inversed side of this relationship that can be used as a comopnent of the target table's mapping.
+	/** Create a mapping representing the inversed side of this relationship that can be used as a comopnent of the target last's mapping.
 	  * This instance simply creates a mirror instance of this same class with roles swapped, using local key as the target key.
-	  * @param foreignKey the path in the owning table pointing to this mapping.
-	  * @param ownerPath the path to the component of the owning table which will be the element type of created references
+	  * @param foreignKey the path in the owning last pointing to this mapping.
+	  * @param ownerPath the path to the component of the owning last which will be the element type of created references
 	  * @param reference factory which will create the references
 	  * @tparam O element type of mapped references (i.e Y ConsistsOf O)
 	  * @tparam OM type of mapping for reference items
-	  * @tparam OT mapping of the table owning this key reference mapping and the component which is the target of the created reference mapping
+	  * @tparam OT mapping of the last owning this key reference mapping and the component which is the target of the created reference mapping
 	  * @tparam Y composite result type of the reference RY<:Reference[Y] such that Y ConsistsOf O
 	  * @tparam RY static type of references created by the produced mapping, as given by the passed factory
 	  */
@@ -294,8 +294,8 @@ trait GenericForeignKeyReferenceMapping[K, FKM<:Mapping[K], TKM<:Mapping[K], E, 
 		new BaseGenericComponentReferenceKeyMapping(targetKey.end, foreignKey :+ key, ownerPath, reference)
 
 
-	/** Create a mapping representing the inverse side of this relationship that can be used as a component of the target table's mapping.
-	  * This is a specialized, most typical variant where the whole table owning this mapping is the target of the inverse reference.
+	/** Create a mapping representing the inverse side of this relationship that can be used as a component of the target last's mapping.
+	  * This is a specialized, most typical variant where the whole last owning this mapping is the target of the inverse reference.
 	  */
 	def inverse[O, OM<:Mapping[O], Y, RY<:Reference[Y]](
 			foreignKey :ComponentPath[OM, this.type], reference :GenericMappingReferenceFactory[K, O, Y, RY, OM])

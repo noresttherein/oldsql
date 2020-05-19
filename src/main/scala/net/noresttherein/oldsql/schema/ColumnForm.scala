@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.{LazyColumnWriteForm, OptionColumnWriteForm}
 import net.noresttherein.oldsql.schema.ScalaForms.OptionForm
-import net.noresttherein.oldsql.schema.SQLForm.{CombinedForm, FlatMappedSQLForm, LazyForm, MappedSQLForm, NullableForm, NullValue, OptionForm}
+import net.noresttherein.oldsql.schema.SQLForm.{CombinedForm, FlatMappedSQLForm, LazyForm, MappedSQLForm, NullableForm, NullValue}
 
 
 
@@ -16,6 +16,9 @@ trait BaseColumnForm {
 	
 	override def toString :String = sqlType.toString
 }
+
+
+
 
 
 
@@ -138,6 +141,9 @@ object ColumnForm {
 			override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) =
 				if (isInitialized) form.biflatMap(map)(unmap)
 				else Lazy(form.biflatMap[X](map)(unmap))
+
+			override def toString :String =
+				if (isInitialized) "Lazy(" + form + ")" else "Lazy"
 		}
 
 
@@ -154,6 +160,7 @@ object ColumnForm {
 		new OptionForm[T] with OptionColumnWriteForm[T] with ColumnForm[Option[T]] {
 			override val form = ColumnForm[T]
 			override def read(position :Int)(res :ResultSet) :Option[T] = ColumnForm[T].opt(position)(res)
+			override def toString = super[OptionColumnWriteForm].toString
 		}
 
 	implicit def SomeColumnForm[T :ColumnForm] :ColumnForm[Some[T]] =
@@ -216,22 +223,48 @@ object ColumnForm {
 		@inline implicit def fromInt(code :Int) = new JDBCSQLType(code)
 		@inline implicit def toInt(code :JDBCSQLType) :Int = code.code
 	}
-	
-	
-	
-	
-	
-	trait NullableColumnForm[T >: Null] extends ColumnForm[T] with NullableForm[T] {
+
+
+
+
+
+	/** A convenience mixin trait for forms of reference types using `null` as their `nullValue`.
+	  * Implements also the null literal methods to return "null".
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue]]
+	  */
+	trait NullableColumnForm[T >: Null] extends NullableForm[T] with ColumnForm[T] {
 		override def apply(position :Int)(res :ResultSet) :T = read(position)(res)
+
+		override def nullLiteral :String = "null"
+		override def inlineNullLiteral :String = "null"
+	}
+
+
+
+
+
+
+	abstract class AbstractColumnForm[T](override val sqlType :JDBCSQLType)(implicit override val nulls :NullValue[T])
+		extends ColumnForm[T]
+	{
+		override def nullValue :T = nulls.value
+
+		override def toString :String = sqlType.toString
 	}
 
 
 
 	class MappedColumnForm[S :ColumnForm, T :NullValue](map :S => T, unmap :T => S)
 		extends MappedSQLForm(map, unmap) with MappedColumnReadForm[S, T] with ColumnForm[T]
+	{
+		override def toString :String = super[MappedSQLForm].toString
+	}
 
 	class FlatMappedColumnForm[S :ColumnForm, T :NullValue](map :S => Option[T], unmap :T => Option[S])
 		extends FlatMappedSQLForm(map, unmap) with FlatMappedColumnReadForm[S, T] with ColumnForm[T]
+	{
+		override def toString :String = super[FlatMappedSQLForm].toString
+	}
 
 
 

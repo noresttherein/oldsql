@@ -12,13 +12,13 @@ import SaferCasts._
 
 /** A special join type serving as a source for subselects (selects occuring inside of another select, either in the header or where clause).
   * It has implicit access to all tables in the parent source, while providing own additional tables in its from clause.
-  * It is represented as an explicit artificial join between parent source (left side), and first table of the subselect from list.
+  * It is represented as an explicit artificial join between parent source (left side), and first last of the subselect from list.
   * This allows to use any expressions grounded in the parent select as expressions grounded in this select, as it doesn't differ
   * from any other RowSource extension by joins.
   *
   * @param source row source for parent select
-  * @param table first table in the from list of this subselect
-  * @param cond join condition joining this subselect (or rather, its first table) with parent select; may be expanded upon
+  * @param table first last in the from list of this subselect
+  * @param cond join condition joining this subselect (or rather, its first last) with parent select; may be expanded upon
   *             when additional tables are added to this subselect join (i.e. this source is expanded).
   * @tparam S static type of parent select source
   * @tparam R Right side of this join.

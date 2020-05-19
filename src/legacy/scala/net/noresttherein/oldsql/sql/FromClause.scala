@@ -379,7 +379,7 @@ object FromClause {
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[WithParam[_, _]]
 
 
-		override def toString :String = s"$left with $lastTable" +  (if (condition == True) "" else " on " + condition)
+		override def toString :String = s"$left with $last" +  (if (condition == True) "" else " on " + condition)
 	}
 
 
@@ -1266,7 +1266,7 @@ object FromClause {
 
 		private val instance = new LastTableOf[Mapping, FromClause Join Mapping] {
 			final def apply(source: FromClause Join Mapping): TableFormula[FromClause Join Mapping, Mapping] =
-				source.lastTable.asInstanceOf[TableFormula[FromClause Join Mapping, Mapping]]
+				source.last.asInstanceOf[TableFormula[FromClause Join Mapping, Mapping]]
 		}
 	}
 
@@ -1354,7 +1354,7 @@ object FromClause {
 			}
 
 			override def map[A <: Mapping](left :F, right :L J R, merge :M J R)(table: TableFormula[right.type, A]): TableFormula[M J R, A] =
-				if (table==right.lastTable) merge.lastTable.asInstanceOf[TableFormula[M J R, A]]
+				if (table==right.last) merge.last.asInstanceOf[TableFormula[M J R, A]]
 				else merger.map(left, right.left, merge.left)(table.asInstanceOf[TableFormula[L, A]]).asPartOf(merge :M J R)
 		}
 	}

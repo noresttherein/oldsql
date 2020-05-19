@@ -10,9 +10,9 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 
 
 
-/** A join between an existing `FromClause`, representing a table or a joined list, and another mapping.
-  * The given mapping doesn't have to represent a table at this point - it might be for example a table component
-  * to be 'planted' in a particular table at a later point.
+/** A join between an existing `FromClause`, representing a last or a joined list, and another mapping.
+  * The given mapping doesn't have to represent a last at this point - it might be for example a last component
+  * to be 'planted' in a particular last at a later point.
   *
   * Note that, as with all generic types taking exactly two arguments, it can be written in the infix notation:
   * `val usersGuns :From[Users] Join UserGuns Join Guns`. This class is covariant regarding its left side,
@@ -20,7 +20,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   * if for all `JN &lt;: Join`.
   *
   * @param left a FromClause constituting a pre-existing join list of tables - may be empty (Dual).
-  * @param table the right side of the join - representation of a table alias containing the joined mapping.
+  * @param table the right side of the join - representation of a last alias containing the joined mapping.
   * @param joinCondition the join condition joining the right side to the left side. It is not the complete filter 
   *                      condition, as it doesn't include any join conditions defined in the left side of this join.
   * @tparam L the left side of this join.
@@ -107,9 +107,9 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 
 	/** Apply a join condition to the last two tables in this chain. This works exactly like 'where', but
 	  * instead of a single argument representing all joined tables, the filter function should take as its arguments
-	  * the last two tables, i.e, the last table defined by the left side of this join, if any, and the right side 
+	  * the last two tables, i.e, the last last defined by the left side of this join, if any, and the right side
 	  * of this join. Static type checking will enforce that this method can't be called on 'joins' where the left side 
-	  * is empty (single table sources).
+	  * is empty (single last sources).
 	  * @param condition a function creating a representation of an SQL expression from the passed aliases 
 	  *                  for the joined tables.
 	  */
@@ -170,14 +170,14 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 				case e if e.table.index > table.index =>
 					PathFormula(tables(e.table.index-1).asAny, e.path.cast[Mapping, Mapping])
 				case e =>
-					throw new IllegalArgumentException(s"Cannot translate expression $e while substituting $this ($table -> $value): unknown table.")
+					throw new IllegalArgumentException(s"Cannot translate expression $e while substituting $this ($table -> $value): unknown last.")
 			}
 			joined filterBy translated
 		}
 
 
-	/** Remove the right table from this join and apply an additional filter on the left side obtained from this instance's
-	  * join  condition by replacing any path expressions rooted in the right table with a bound parameter which
+	/** Remove the right last from this join and apply an additional filter on the left side obtained from this instance's
+	  * join  condition by replacing any path expressions rooted in the right last with a bound parameter which
 	  * value is derived from the value for the right mapping.
 	  */
 	def substitute(value :R#Subject) :L =
@@ -187,7 +187,7 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 			case p if p.table != lastTable =>
 				p.asInstanceOf[PathFormula[L, Mapping, Mapping]]
 			//			case p =>
-			//				throw new IllegalArgumentException(s"Cannot parameterize expression $p in $this: last table is probably an abstract expression")
+			//				throw new IllegalArgumentException(s"Cannot parameterize expression $p in $this: last last is probably an abstract expression")
 		}
 
 
@@ -242,7 +242,7 @@ object Join {
 	type OuterJoin[+L <: FromClause, R <: Mapping] = LeftJoin[L, R]
 
 	/** Create a cross join between the left side, given as a (possibly empty) source/list of  tables,
-	  * and the the mapping on the right side representing a table or some table proxy.
+	  * and the the mapping on the right side representing a last or some last proxy.
 	  */
 	def apply[L <: FromClause, R <: Mapping](left: L, right: R): L InnerJoin R =
 		new InnerJoin(left, right)
@@ -294,10 +294,10 @@ abstract class ProperJoin[+L <: FromClause, R <: Mapping] protected
 
 
 
-	/** Specify an alias for the last table in the join. This is not necessary and may be overriden in case of conflicts,
+	/** Specify an alias for the last last in the join. This is not necessary and may be overriden in case of conflicts,
 	  * but can be used as the default value and/or help with debugging.
-	  * @param alias the alias for the table as in 'from users as u'
-	  * @return a new join isomorphic with this instance, but with a new last table (not equal to this.last).
+	  * @param alias the alias for the last as in 'from users as u'
+	  * @return a new join isomorphic with this instance, but with a new last last (not equal to this.last).
 	  */
 	def as(alias :String) :Self[L] = {
 		val join = copyJoin(new TableFormula[FromClause, R](right, left.size, Some(alias))) //new Join[L, R](left, , True())
@@ -459,7 +459,7 @@ object RightJoin {
 
 
 
-/** A FromClause constituting of exactly one table or table-like object.
+/** A FromClause constituting of exactly one last or last-like object.
   * This is just a bit of sugar for Join[Dual, T], so that we can write the type From[T] instead
   * (and in particular, rather niftly, From[Children] Join Daemons).
   */
@@ -510,7 +510,7 @@ class From[T <: Mapping] protected (table :TableFormula[Dual Join T, T], filter 
 
 
 
-/** A `FromClause` factory for both single table queries, and starting points for arbitrary join lists.
+/** A `FromClause` factory for both single last queries, and starting points for arbitrary join lists.
   * Example (see the `Join` class documentation for explanation of the filters):
   * {{{
   *     val users = From(Users) where (_(_.name)==="Jack")

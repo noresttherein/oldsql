@@ -75,7 +75,7 @@ trait PropertiesMapping[E, PK] extends Mapping[E] {
 				val next = rest.drop(property).flatMap(_.drop(JoinProperty[T])) getOrElse (
 					throw new IllegalArgumentException(s"can't filter on $whole: property $property is not a prefix of $rest (or is not followed by join property) - most likely a bug")
 				)
-				val mapping = foreignMapping getOrElse (throw new IllegalArgumentException(s"can't filter on $whole: table $foreignTable is not a PropertiesMapping (following $rest)"))
+				val mapping = foreignMapping getOrElse (throw new IllegalArgumentException(s"can't filter on $whole: last $foreignTable is not a PropertiesMapping (following $rest)"))
 				val extended = path match {
 					case Some(p) => p andThen (_.join) andThen property.fun
 					case None if whole==rest => property.fun.asInstanceOf[S=>One[T]]

@@ -4,7 +4,7 @@ name := "oldsql"
 
 version := "pleistocen"
 
-scalaVersion := "2.13.1"
+scalaVersion := "2.13.2"
 
 fork in Compile := true
 
@@ -22,8 +22,8 @@ resolvers ++= Seq(
 
 
 libraryDependencies ++= Seq(
-	"org.scala-lang" % "scala-library" % "2.13.1",
-	"org.scala-lang" % "scala-reflect" % "2.13.1",
+	"org.scala-lang" % "scala-library" % "2.13.2",
+	"org.scala-lang" % "scala-reflect" % "2.13.2",
 	"net.bytebuddy" % "byte-buddy" % "1.10.8",
 	"org.postgresql" % "postgresql" % "9.2-1004-jdbc41",
 	"org.scalatest" %% "scalatest" % "3.3.0-SNAP2" % "test",
@@ -34,6 +34,7 @@ libraryDependencies ++= Seq(
 scalacOptions ++= Seq(
 //	"-Ylog-classpath",
 //	"-Xlog-implicits",
+	"-Wconf:cat=deprecation&msg=\\(foldRight instead\\|foldLeft instead\\):silent",
 	"-feature",
 	"-deprecation",
 //	"-language:postfixOps",

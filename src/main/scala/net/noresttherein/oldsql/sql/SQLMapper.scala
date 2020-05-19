@@ -41,18 +41,5 @@ object SQLMapper {
 
 	type OptionResult[Y[+X]] = { type T[+X] = Option[Y[X]] }
 
-	type SQLExtractor[+S <: FromClause, Y[+X]] = FormulaMatcher[S, OptionResult[Y]#T]
-
-
-	type FormulaResult[S <: FromClause] = { type T[X] = SQLFormula[S, X] }
-	type ColumnResult[S <: FromClause] = { type T[X] = ColumnFormula[S, X] }
-
-//	type SQLRewriter[+F <: FromClause, T <: FromClause] = SQLMapper[F, FormulaResult[T]#T]
-	trait SQLRewriter[+F <: FromClause, T <: FromClause] extends SQLMapper[F, FormulaResult[T]#T] {
-		def apply[X](e :SQLFormula[F, X]) :SQLFormula[T, X]
-
-		def apply[X](e :ColumnFormula[F, X]) :ColumnFormula[T, X]
-	}
-
 }
 

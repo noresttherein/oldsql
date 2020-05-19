@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.schema.bits.ComponentProperty.GenericComponentProperty
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 
 
 package object bits {
@@ -12,7 +12,7 @@ package object bits {
 	  * @see [[net.noresttherein.oldsql.model.PropertyPath]]
 	  * @author Marcin Mościcki
 	  */
-	type ComponentProperty[-S, T, O] = GenericComponentProperty[TypedMapping[T, O], S, T, O]
+	type ComponentProperty[-S, T, O] = GenericComponentProperty[RefinedMapping[T, O], S, T, O]
 
 	type ColumnProperty[-S, T, O] = GenericComponentProperty[ColumnMapping[T, O], S, T, O]
 }

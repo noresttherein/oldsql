@@ -163,7 +163,7 @@ trait MappedSchemaRepository extends Repository { repository =>
 
 
 		override def delete(selection: Selection[_, E])(implicit s: Session): Unit = selection match {
-			//			case ByProperty(table.PropertyComponent(comp), key) =>
+			//			case ByProperty(last.PropertyComponent(comp), key) =>
 			//				comp.withValue(key).delete.execute
 			case ByPropertyValues(table.PropertyComponent(comp), keys) =>
 				val filter = comp.filter(keys)
@@ -287,7 +287,7 @@ trait MappedSchemaRepository extends Repository { repository =>
 						val cmp = many.ComponentValue(ref)
 						val onePKColumn = pkColumn(one.table)
 						val fkColumn = many.table.ForeignKeyComponent(get).columns(0).name
-						val selectFK = cmp.property.select(many.table.ForeignKeyComponent(get)) //s"select $fkColumn from ${many.table.qname} where ${cmp.property.where}"
+						val selectFK = cmp.property.select(many.table.ForeignKeyComponent(get)) //s"select $fkColumn from ${many.last.qname} where ${cmp.property.where}"
 						val delete = s"${one.table.deleteClause} where $onePKColumn = ($selectFK)"
 						cmp.update(delete).execute
 				}
@@ -406,7 +406,7 @@ trait MappedSchemaRepository extends Repository { repository =>
 				val saved = repository.save(col.toSeq)(many, s)
 				saved.foreach { m => insert(IdRef(owner), IdRef(m)).execute }
 				//				val joins = saved.map(m => new JoinRow(None, IdRef(owner), IdRef(m)))
-				//				joins.foreach(table.insert(_))
+				//				joins.foreach(last.insert(_))
 				val ref = new PersistedMany[M, C](idOf(owner), saved)
 				set(owner, ref)
 			case _ => owner

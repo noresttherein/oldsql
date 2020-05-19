@@ -4,16 +4,16 @@ import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, GenericMapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, TypedMapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang._
 
 
 
-trait OptionMapping[M <: TypedMapping[S, O], S, O] extends GenericMapping[Option[S], O] {
+trait OptionMapping[M <: RefinedMapping[S, O], S, O] extends TypedMapping[Option[S], O] {
 	val get :M
 }
 
@@ -21,16 +21,16 @@ trait OptionMapping[M <: TypedMapping[S, O], S, O] extends GenericMapping[Option
 
 object OptionMapping {
 
-	def singleton[S, O](mapping :TypedMapping[S, O]) :OptionMapping[mapping.type, S, O] =
+	def singleton[S, O](mapping :RefinedMapping[S, O]) :OptionMapping[mapping.type, S, O] =
 		apply(mapping)
 
 
-	def apply[M <: TypedMapping[S, O], S, O](mapping :M) :OptionMapping[M, S, O] =
+	def apply[M <: RefinedMapping[S, O], S, O](mapping :M) :OptionMapping[M, S, O] =
 		new DirectOptionMapping[M, S, O](mapping)
 
 
 
-	class DirectOptionMapping[M <: TypedMapping[S, O], S, O](val egg :M)
+	class DirectOptionMapping[M <: RefinedMapping[S, O], S, O](val egg :M)
 		extends OptionMapping[M, S, O] with ShallowAdapter[M, S, Option[S], O]
 	{ box =>
 		val get :M = egg

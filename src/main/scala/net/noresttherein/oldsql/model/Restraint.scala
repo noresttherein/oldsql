@@ -1,17 +1,15 @@
 package net.noresttherein.oldsql.model
 
-import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}
+import scala.util.matching.Regex
+
+import scala.reflect.runtime.universe.TypeTag
 import scala.collection.Iterable
-import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, ComposableFrom, DecomposableTo, ExtractAs}
+import net.noresttherein.oldsql.model.ComposedOf.{DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False, NestedRestraint, Not, True}
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, MappedRestrainer, NestedRestrainer}
-import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Property, Self, TranslableTerm}
+import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Self, TranslableTerm}
 import net.noresttherein.oldsql.model.types.OrderingSupport
 import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.slang.SaferCasts._
-
-import scala.reflect.ClassTag
-import scala.util.matching.Regex
 
 
 
@@ -651,7 +649,7 @@ object Restraint {
 
 
 	/** Create `Restraint`s checking if a value is a member of a given set of values and matches such instances.
-	  * All created instances test against inlined value sets (rather than a result set from a select from another table),
+	  * All created instances test against inlined value sets (rather than a result set from a select from another last),
 	  * but the set can contain arbitrary expressions derivable from the root entity `T`.
 	  *
 	  * Example: `hero.name in ('Minsc', name)`.

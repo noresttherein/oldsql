@@ -33,8 +33,8 @@ object Query {
 //
 //	val f = new { val hello = "world" } with C(_)
 
-//	implicit class TableQuery[T<:Table](table :T) extends Query[T] {
-//		val selection = table
+//	implicit class TableQuery[T<:Table](last :T) extends Query[T] {
+//		val selection = last
 //	}
 
 //	implicit def queryDefinition[Row](query :Query[Row]) :query.selection.type = query.selection
@@ -73,7 +73,7 @@ object Query {
 
 object From {
 //	Seq(("hello", 1)).map{ case(s, i) => new { val string = s; val int = i }}.map(x => x.string )
-//	def apply[T<:Table](table :T) :Query[]
+//	def apply[T<:Table](last :T) :Query[]
 }
 
 //trait PackedQuery[Entity, Row<:RowPacking[Entity]] extends Query[Row] {
@@ -82,7 +82,7 @@ object From {
 //
 //
 //object PackedQuery {
-//	implicit class MappedTableQuery[Entity, T<:MappedTable[Entity]](table :T) extends Query.TableQuery[T](table)
+//	implicit class MappedTableQuery[Entity, T<:MappedTable[Entity]](last :T) extends Query.TableQuery[T](last)
 //
 //
 //}
@@ -91,7 +91,7 @@ object From {
 //trait ContextQuery[Entity, Ctx, Row<:RowContextPacking[Entity, Ctx]] extends Query[Row]
 //
 //object ContextQuery {
-//	implicit class EntityTableQuery[Entity, PC, UC, T<:EntityTable[Entity, PC, UC]](table :T) extends Query.TableQuery[T](table)
+//	implicit class EntityTableQuery[Entity, PC, UC, T<:EntityTable[Entity, PC, UC]](last :T) extends Query.TableQuery[T](last)
 //
 //}
 

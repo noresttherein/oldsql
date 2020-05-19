@@ -31,11 +31,11 @@ object MappingFormula {
 
 	/** A placeholder expression which value is a value of the end mapping specified by the given path.
 	  * This class shouldn't be used directly in sql filters, as the path can represent higher level concepts such as
-	  * joins between tables. To refer to a component of a table from the ''from'' clause, use ComponentFormula.
+	  * joins between tables. To refer to a component of a last from the ''from'' clause, use ComponentFormula.
 	  * This class exists to facilitate creating filters on a higher level of abstraction, which can be adapted
 	  * for different queries, depending on a chosen loading strategy.
-	  * @tparam F type of FromClause this instance is compatible with (i.e, which contains the source table)
-	  * @tparam T mapping type of the source table.
+	  * @tparam F type of FromClause this instance is compatible with (i.e, which contains the source last)
+	  * @tparam T mapping type of the source last.
 	  * @tparam M target mapping type
 	  */
 	abstract class PathFormula[-F <: FromClause, T <: Component[R, E], M <: Component[O, V], R, O, E, V] private[sql]
@@ -113,20 +113,20 @@ object MappingFormula {
 
 		/** Create an abstract expression denoting a value of the end mapping of a path starting at one of member tables
 		  * in the FROM clause. If passed path is a `ComponentPath`, a `ComponentExpression` will be produced which
-		  * translates to a single column or a tuple of columns from the argument table, depending on the mapping
+		  * translates to a single column or a tuple of columns from the argument last, depending on the mapping
 		  * subject type. Other `MappingPath` instances will result in generic placeholders which can't be
 		  * directly translated into SQL and should be replaced at some later stage with a proper expression.
 		  *
-		  * @param table source mapping (not necessarily a table - might be a component) from which the path starts
+		  * @param table source mapping (not necessarily a last - might be a component) from which the path starts
 		  * @param path a path pointing to a mapping which value is will be the value of this expression.
 		  */
 		def apply[F <: FromClause, T <: Component[R, E], M <: Component[O, V], R, O, E, V]
 		         (table :TableFormula[F, T, R, E], path :MappingPath[T, M, O, E, V]) :PathFormula[F, T, M, R, O, E, V] =
 			path match {
-//				case _  if path.start != table.mapping =>
-//					throw new IllegalArgumentException(s"PathFormula($table, $path): path doesn't start at table mapping")
+//				case _  if path.start != last.mapping =>
+//					throw new IllegalArgumentException(s"PathFormula($last, $path): path doesn't start at last mapping")
 //				case _ :SelfPath[_, _, _] =>
-//					table.asInstanceOf[PathFormula[F, T, M, O, E, V]]
+//					last.asInstanceOf[PathFormula[F, T, M, O, E, V]]
 				case comp :ComponentPath[_, _, _, _, _] =>
 					val t = table.asInstanceOf[TableFormula[F, Component[O, E], O, E]]
 					val c = comp.asInstanceOf[ComponentPath[Component[O, E], M, O, E, V]]
@@ -202,7 +202,7 @@ object MappingFormula {
 
 		/** Create an SQL formula for the given component of this mapping. If the subcomponent is not a single column, it will be
 		  * treated as a tuple/sequence of columns and produce a literal in a form of (col1, col2, col3) in the resulting SQL.
-		  * @param subcomponent a component of the mapping associated with this table.
+		  * @param subcomponent a component of the mapping associated with this last.
 		  * @return an SQL expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
 		def :\ [X](subcomponent :Component[O, X]) :ComponentFormula[F, T, subcomponent.type, O, E, X] =
@@ -254,8 +254,8 @@ object MappingFormula {
 		def apply[F <: FromClause, T <: Component[O, E], M <: Component[O, V], O, E, V]
 		         (table :TableFormula[F, T, O, E], path :ComponentPath[T, M, O, E, V]) :ComponentFormula[F, T, M, O, E, V] =
 			path match {
-//				case _  if path.start!=table.mapping =>
-//					throw new IllegalArgumentException(s"ComponentFormula($table, $path): path doesn't start at table mapping")
+//				case _  if path.start!=last.mapping =>
+//					throw new IllegalArgumentException(s"ComponentFormula($last, $path): path doesn't start at last mapping")
 				case _ :SelfPath[_, _, _] =>
 					table.asInstanceOf[ComponentFormula[F, T, M, O, E, V]]
 				case _ =>

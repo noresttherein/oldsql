@@ -185,6 +185,9 @@ trait ScalaForms {
 
 
 
+
+
+
 private[schema] object ScalaForms {
 
 	class OptionForm[T](implicit some :SQLForm[T])
@@ -192,8 +195,11 @@ private[schema] object ScalaForms {
 	{
 		override def readColumns :Int = some.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = some.opt(position)(res).map(Option.apply)
-		override def apply(position :Int)(res :ResultSet) :Option[T] = some.opt(position)(res)
+		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] =
+			some.opt(position)(res).map(Option.apply)
+
+		override def apply(position :Int)(res :ResultSet) :Option[T] =
+			some.opt(position)(res)
 
 		override def nullValue :Option[T] = None
 

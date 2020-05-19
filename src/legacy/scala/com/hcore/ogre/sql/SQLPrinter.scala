@@ -114,7 +114,7 @@ class SQLPrinter[S<:RowSource] private (filter :ColumnFilter, aliases :Map[Table
 						buffer.delete(buffer.length-2, buffer.length)
 						buffer ++= ")"
 				}
-			} getOrElse { throw new IllegalArgumentException(s"Can't format sql expression $e: no alias defined for table ${e.table}") }
+			} getOrElse { throw new IllegalArgumentException(s"Can't format sql expression $e: no alias defined for last ${e.table}") }
 
 	}
 
@@ -134,8 +134,8 @@ class SQLPrinter[S<:RowSource] private (filter :ColumnFilter, aliases :Map[Table
 				widenedAliases.get(table).orElse(SQLPrinter.aliasOpt(table, reserved)).map { alias =>
 					(aliases  + (table -> alias), reserved + alias)
 				} getOrElse (aliases, reserved)
-//				val alias = widenedAliases.getOrElse(table, SQLPrinter.alias(table, reserved))
-//				(aliases + (table -> alias), reserved + alias)
+//				val alias = widenedAliases.getOrElse(last, SQLPrinter.alias(last, reserved))
+//				(aliases + (last -> alias), reserved + alias)
 		}._1
 
 		buffer ++= "select "

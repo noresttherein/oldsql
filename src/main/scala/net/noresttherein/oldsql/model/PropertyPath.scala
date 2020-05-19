@@ -2,14 +2,14 @@ package net.noresttherein.oldsql.model
 
 import java.lang.reflect.{Method, Modifier}
 
+import scala.collection.mutable.ListBuffer
+import scala.reflect.runtime.universe._
+
 import net.noresttherein.oldsql.model.InvocationReflection.Trace
 import net.noresttherein.oldsql.model.PropertyPath.UpdatableProperty
-import net.noresttherein.oldsql.slang.SaferCasts._
-import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.slang
 
-import scala.collection.mutable.ListBuffer
-import scala.reflect.runtime.universe
-import scala.reflect.runtime.universe._
+import slang._
 
 
 

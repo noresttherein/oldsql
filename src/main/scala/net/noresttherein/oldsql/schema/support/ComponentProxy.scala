@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingNest, MappingOf, TypedMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, GenericMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingNest, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, TypedMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
 import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 /**
   * @author Marcin Mościcki
   */
-trait ComponentProxy[S, O] extends GenericMapping[S, O] with MappingNest[MappingOf[S]] {
+trait ComponentProxy[S, O] extends TypedMapping[S, O] with MappingNest[MappingOf[S]] {
 
 	override def buffs :Seq[Buff[S]] = egg.buffs
 
@@ -35,7 +35,7 @@ object ComponentProxy {
 
 
 	/** A skeleton of a mapping proxy which uses the components of the proxied mapping as-is. */
-	trait ShallowProxy[S, O] extends ComponentProxy[S, O] with ShallowAdapter[TypedMapping[S, O], S, S, O] {
+	trait ShallowProxy[S, O] extends ComponentProxy[S, O] with ShallowAdapter[RefinedMapping[S, O], S, S, O] {
 		
 		protected override val egg :Component[S]
 

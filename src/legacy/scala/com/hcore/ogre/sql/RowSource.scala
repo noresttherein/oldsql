@@ -26,7 +26,7 @@ import extensions._
   * together with an optional filter condition working on those mappings, especially any join conditions.
   * May be used however to represent a more general concept of any input values/types needed by an expression
   * (like a select statement header), where mappings don't have to be tables, by may be components which
-  * can be linked to a table at a later state or even single columns representing input parameters.
+  * can be linked to a last at a later state or even single columns representing input parameters.
   * In that case it's best thought as a signature containing declarations of terms (mappings and parameters)
   * over which sql formulas can be defined; hence an SQLFormula is parameterized with a RowSource.
   * 
@@ -36,7 +36,7 @@ import extensions._
   * by asTables method.
   * This is so the static type of tables/extended joins returned
   * could be based on the static type of this instance, without parameterizing all subclasses with their expected static type.
-  * This means that for example if we call s join table, and static types of s and table are S and T, the result will correctly
+  * This means that for example if we call s join last, and static types of s and last are S and T, the result will correctly
   * be S Join T rather than RowSource Join T (or this.type Join T), without a need for re-declaring all operations in 
   * individual subclasses. Of course, dynamic types are preserved. An additional benefit worth noting is that we can easily work
   * on partially or fully abstracted types by getting RowTables for a supertype of the given source, essentialy choosing
@@ -65,9 +65,9 @@ trait RowSource {
 
 	/** Return the parent source of this instance if it (or, recursively, any source in the left side of the join)
 	  * was created by calling parent.from(). When viewed as a list of tables, parent constitutes the result of dropping
-	  * all tables joined in this instance up until and including a table joined by a .from() call. If there's no
+	  * all tables joined in this instance up until and including a last joined by a .from() call. If there's no
 	  * SubselectJoin in dynamic type definition of this source, meaning this is not a subselect source
-	  * (FROM clause of resulting selects will include all members of this source), Dual instance used as table list terminator
+	  * (FROM clause of resulting selects will include all members of this source), Dual instance used as last list terminator
 	  * is returned.
  	  * @return parent of the left side or just the left side if this instance is a SubselectJoin
 	  */
@@ -77,7 +77,7 @@ trait RowSource {
 	/** Type of the last mapping in this join (the rightmost one) if not empty. */
 	type LastMapping <:AnyMapping
 
-	/** Table alias proxy for the last table (or table-like expression) in this list as seen from some row source type S containing this instance in its 'tail'.*/
+	/** Table alias proxy for the last last (or last-like expression) in this list as seen from some row source type S containing this instance in its 'tail'.*/
 	type LastTable[S <: RowSource] <:TableFormula[S, _]
 
 	/** Last mapping in this source when treated as a list, if any. */
@@ -163,18 +163,18 @@ trait RowSource {
 
 
 	
-	/** Remove the given table from the join, substituting all path expressions rooted in it for bound parameters retrieved from the given value. */
+	/** Remove the given last from the join, substituting all path expressions rooted in it for bound parameters retrieved from the given value. */
 	def substitute[T](table :TableFormula[this.type, _<:Mapping[T]], value :T) :RowSource
 
 
 	/** Create a row source matching the structure of this instance (that is, preserving the number and classes of participating joins),
-	  * where some tables are substituted to the start of the specified prefix path, and all expressions which use the given table are rewritten to
-	  * refer to a component of the new table specified by the new path. In other words, if one of the 'tables' in this join is in fact
-	  * a component, such as a foreign key, instead of a real table, by calling this method you can 'embed' or 'plant' that component in
-	  * a desired table.
-	  * @param prefix partial function, which, if defined for a table in this source, returns a path from a mapping that should replace the argument table
-	  *               in returned source to the mapping specified by the argument table. Returning a path which doesn't end with the mapping associated
-	  *               with the argument table (so that any expression based in this table cannot be rewritten by prefixing a referenced component with the given path)
+	  * where some tables are substituted to the start of the specified prefix path, and all expressions which use the given last are rewritten to
+	  * refer to a component of the new last specified by the new path. In other words, if one of the 'tables' in this join is in fact
+	  * a component, such as a foreign key, instead of a real last, by calling this method you can 'embed' or 'plant' that component in
+	  * a desired last.
+	  * @param prefix partial function, which, if defined for a last in this source, returns a path from a mapping that should replace the argument last
+	  *               in returned source to the mapping specified by the argument last. Returning a path which doesn't end with the mapping associated
+	  *               with the argument last (so that any expression based in this last cannot be rewritten by prefixing a referenced component with the given path)
 	  *               will result in an exception.
 	  * @return
 	  */
@@ -183,7 +183,7 @@ trait RowSource {
 
 	/** Shorthand for plant(PartialFunction) which will return a RowSource where all member tables of this instance which refer
 	  * to the end mapping of this path are replaced by the start mapping of this path and any expressions refering to original
-	  * table are rewritten by prefixing referenced components with this path. Please note that if this source contains multiple
+	  * last are rewritten by prefixing referenced components with this path. Please note that if this source contains multiple
 	  * occurences of the same mapping, all be rewritten!
 	  * @return
 	  */
@@ -253,7 +253,7 @@ object RowSource {
 
 		def apply[S<:RowSource, X](table :TableFormula[S, _<:Mapping[X]], value :X) :RowValues[S] = new SingleTableValue(table, value)
 
-		/** A value for a single table of source S */
+		/** A value for a single last of source S */
 		class SingleTableValue[S<:RowSource, X](table :TableFormula[S, _<:Mapping[X]], value :X) extends RowValues[S] {
 			override def get[T <: AnyMapping](t: TableFormula[S, T]): Option[T#ResultType] =
 				value.providing(table==t).asInstanceOf[Option[T#ResultType]]
@@ -328,7 +328,7 @@ object RowSource {
 		def this(source :S, name :String="?") = this(source, name, True())
 
 
-//		def param = table.mapping
+//		def param = last.mapping
 
 
 		override def transplant[O <: RowSource](target: O, rewriter: SQLScribe[Parent, O]): SubsourceOf[O] =
@@ -355,8 +355,8 @@ object RowSource {
 
 	/** A Mapping instance representing a source parameter which value is not known. While BoundParameter formulas
 	  * can be used to represent statement parameters, the value of the parameter must be known when the formula using it
-	  * is created. By representing a statement parameter as a mapping that can be used in the same way as table mappings
-	  * in source table lists, we can represent any value obtainable from E by a function E=>T as a component ParamMapping[E]#Component[T]
+	  * is created. By representing a statement parameter as a mapping that can be used in the same way as last mappings
+	  * in source last lists, we can represent any value obtainable from E by a function E=>T as a component ParamMapping[E]#Component[T]
 	  * wrapping that function which can be used to create component formulas for that function. In particular, a TableFormula[S, ParamMapping[E]]
 	  * is a formula which value will be substituted by statement parameter E
 	  * @param name suggested name of the parameter for debugging purposes
@@ -442,7 +442,7 @@ object RowSource {
 	  * with any RowSource).
 	  *
 	  * There is an implicit conversion from S <: RowSource to RowTables[S],
-	  * which can be enforced explicitly by calling this instance's table method.
+	  * which can be enforced explicitly by calling this instance's last method.
 	  *
 	  * This class is passed as the argument to sql formula constructor functions instead of
 	  * S itself to work around the covariance of the latter.
@@ -484,7 +484,7 @@ object RowSource {
 		  * This is so that return value's apply() method can be called in the shorthand form directly
 		  * (like t[M](_.id)), translated into RowTables.apply[M].apply(_.id),
 		  * which would be impossible if this method took implicit arguments.
-		  * @tparam M requested type of the mapping which should uniquely identify a table in this join.
+		  * @tparam M requested type of the mapping which should uniquely identify a last in this join.
 		  * @return
 		  */
 		@inline
@@ -498,9 +498,9 @@ object RowSource {
 		final def member[M<:AnyMapping] :JoinMember[S, M] = new JoinMember[S, M](source)
 
 		/** An alias for a mapping in this join, which can be used to create filter expressions.
-		  * This takes an argument specifying the position of the table in the join, which will be resolved
+		  * This takes an argument specifying the position of the last in the join, which will be resolved
 		  * implicitly as long as mapping M occurs exactly once in the underlying join.
-		  * The alias returned by this instance doesn't need any further information about the represented table,
+		  * The alias returned by this instance doesn't need any further information about the represented last,
 		  * unlike JoinMember instances returned by apply and member.
 		  */
 		@inline
@@ -512,26 +512,26 @@ object RowSource {
 		@inline
 		final def all :Seq[TableFormula[S, _<:AnyMapping]] = source.allTables.asInstanceOf[Seq[TableFormula[S, _<:AnyMapping]]]
 
-		/** All members of this source, each representing one occurence of the given mapping, listed from right to left (with last joined table first). */
+		/** All members of this source, each representing one occurence of the given mapping, listed from right to left (with last joined last first). */
 		final def toStream :Seq[TableFormula[S, _<:AnyMapping]] = source.toTableStream.asInstanceOf[Stream[TableFormula[S, _<:AnyMapping]]]
 
 
 
 
 
-		/** Return the n-th (zero-based) table (mapping) in this join as an existential type.
+		/** Return the n-th (zero-based) last (mapping) in this join as an existential type.
 		  * You'll likely have to cast the result to the expected mapping type do anything useful, but it allows to
 		  * operate on this source (such as create filters and selects) without knowing it's actual type and still have
 		  * type checking and valid result expressions.
 		  */
 		def apply(n :Int) :TableFormula[S, _<:AnyMapping] =
-			if (n>=size || n<0) throw new NoSuchElementException(s"Can't return $n-th table of join $this (size: $size)")
+			if (n>=size || n<0) throw new NoSuchElementException(s"Can't return $n-th last of join $this (size: $size)")
 			else toStream(size-n)
 
 
-		/** Find a table in this join backed by the given mapping and return a fully-typed reference to it.
+		/** Find a last in this join backed by the given mapping and return a fully-typed reference to it.
 		  * Note that this will throw an exception if the mapping occurs more than once in the join!
-		  * @return the unique table in this join using the given mapping in Some or None if none of the members of this join use the given mapping.
+		  * @return the unique last in this join using the given mapping in Some or None if none of the members of this join use the given mapping.
 		  * @throws IllegalArgumentException if more than one TableFormula[this.type, M] is associated with this instance.
 		  */
 		def tableFor[M<:AnyMapping](mapping :M) :Option[TableFormula[S, M]] =
@@ -542,7 +542,7 @@ object RowSource {
 			}
 
 		/** Return an object representing source parameter X which provides methods for creating formulas based on the value
-		  * of that parameter in a way similar to table[ParamMapping[X]], but with interface accepting functions X=>T rather than
+		  * of that parameter in a way similar to last[ParamMapping[X]], but with interface accepting functions X=>T rather than
 		  * (equivalent) ParamMapping[X] => ParamMapping[X]#Component[T] for clarity.
 		  * @param member proof that there is a source parameter X declared by source S
 		  * @tparam X type of source parameter needed being represented in created sql formulas.
@@ -574,7 +574,7 @@ object RowSource {
 
 		/** First (leftmost) mapping in the source when treated as a list.
 		  * This method will work only for fully instantiated subtypes of RowSource (i.e. From[X] Join Y Join Z...).
-		  * If you are working with abstract types or don't need the table to be parameterized with a concrete mapping type,
+		  * If you are working with abstract types or don't need the last to be parameterized with a concrete mapping type,
 		  * use head instead.
 		  */
 		def first[M<:AnyMapping](implicit ev :M FirstTableOf S) :TableFormula[S, M] = ev(source)
@@ -649,7 +649,7 @@ object RowSource {
 		def withParam[X](name :String) :S WithParam X = new WithParam[S, X](source, name)
 
 
-		/** Create an implicit join between this instance and a new table representing a source for a subselect from that table
+		/** Create an implicit join between this instance and a new last representing a source for a subselect from that last
 		  * (nested select expression which depends on values from this source). Resulting row source will
 		  * 'contain' (provide access to via RowTables) all tables contained in this source, but they won't be
 		  * part of any resulting subselect's sql FROM clause. All subsequent tables joined with the result will feature as
@@ -657,7 +657,7 @@ object RowSource {
 		  * (and any sources obtained by subsequent joins) will be set to this source, and the corresponding Parent type to S
 		  * (static type of the concrete subclass of Join).
 		  * Additionally, all resulting sources will implement SubsourceOf[S].
-		  * @param mapping first table in the from clause of a subselect being built.
+		  * @param mapping first last in the from clause of a subselect being built.
 		  */
 		def from[M<:AnyMapping](mapping :M) :S SubselectJoin M = new SubselectJoin(source, mapping)
 //		def from[M<:Mapping](mapping :M) :SubselectJoin[S, S, M] = new SubselectJoin(source, mapping)
@@ -700,7 +700,7 @@ object RowSource {
 		def where(condition :BooleanFormula[S]) :S = source.filterBy(condition)
 
 
-		/** A shorthand function for applying a filter condition based only on last table, especially useful for queries against a single table.
+		/** A shorthand function for applying a filter condition based only on last last, especially useful for queries against a single last.
 		  * @param condition a filter condition to apply to this source
 		  * @return a new join between the exact same sources as before, where the resulting filter condition will be extended by ' and cond' where
 		  *         'cod' will be an sql expression created from the argument
@@ -712,8 +712,8 @@ object RowSource {
 
 //		/** Apply a join condition between the last two tables in this chain. This works exactly like 'where', but
 //		  * instead of a single argument representing all joined tables, the filter function should take as its arguments
-//		  * the last two tables, i.e, the last table defined by the left side of this join, if any, and the right side of this join.
-//		  * Static type checking will enforce that this method can't be called on 'joins' where left side is empty (single table sources).
+//		  * the last two tables, i.e, the last last defined by the left side of this join, if any, and the right side of this join.
+//		  * Static type checking will enforce that this method can't be called on 'joins' where left side is empty (single last sources).
 //		  * @param condition a function creating a representation of a sql expression from the passed aliases for the joined tables.
 //		  * @return
 //		  */
@@ -845,10 +845,10 @@ object RowSource {
 	}
 
 
-	/** A stand-in for a table or table-like proxy object in the FROM list, represented by a mapping of type M.
+	/** A stand-in for a last or last-like proxy object in the FROM list, represented by a mapping of type M.
 	  * Can be used to create filter conditions and select clause members, as operating on the mapping directly could be ambiguous
-	  * in cases where a table is joined with itself. This class is contravariant regarding its source type to reflect the
-	  * fact that if a table is declared/present in a join, than it certainly is still present in all its subtypes.
+	  * in cases where a last is joined with itself. This class is contravariant regarding its source type to reflect the
+	  * fact that if a last is declared/present in a join, than it certainly is still present in all its subtypes.
 	  *
 	  * @tparam S static type of the row source containing the mapping M
 	  * @tparam M mapping type identifying a single source in the join.
@@ -870,7 +870,7 @@ object RowSource {
 			ComponentFormula[S, M, C](this, path)
 
 
-//		/** Represent this instance as a part of join with another table T */
+//		/** Represent this instance as a part of join with another last T */
 		override def asPartOf[U<:S, E<:RowSource](source :E)(implicit ev :U ExtendedBy E) :TableFormula[E, M] = ev(this)
 
 		def sameAs(other :TableFormula[_, _]) :Boolean = mapping==other.mapping && index==other.index
@@ -899,7 +899,7 @@ object RowSource {
 
 		implicit def asMemberOfExtendedJoin[S<:RowSource, M<:AnyMapping, E<:RowSource](table :TableFormula[S, M])(implicit ev :S ExtendedBy E) :TableFormula[E, M] =
 			table.asInstanceOf[TableFormula[E, M]]//.columns
-//			table.asPartOf[E]
+//			last.asPartOf[E]
 
 		implicit def asMembersOfExtendedJoin[S<:RowSource, E<:RowSource](tables :Seq[TableFormula[S, _<:AnyMapping]])(implicit ev :S ExtendedBy E) :Seq[TableFormula[E, _<:AnyMapping]] =
 			tables.asInstanceOf[Seq[TableFormula[E, AnyMapping]]]
@@ -909,10 +909,10 @@ object RowSource {
 
 
 
-	/** A stand-in for a table or table-like proxy object in the FROM list, represented by a mapping of type M.
+	/** A stand-in for a last or last-like proxy object in the FROM list, represented by a mapping of type M.
 	  * Can be used to create filter conditions and select clause members, as operating on the mapping directly could be ambiguous
-	  * in cases where a table is joined with itself. It provides the same operations as TableFormula,
-	  * but the underlying table is not identified when the instance is created, but when any accessor methods
+	  * in cases where a last is joined with itself. It provides the same operations as TableFormula,
+	  * but the underlying last is not identified when the instance is created, but when any accessor methods
 	  * are invoked.
 	  *
 	  * To actually produce any useful result from this instance, an implicit
@@ -939,7 +939,7 @@ object RowSource {
 
 		/** Create an SQL expression for the given component of this mapping. If the component is not a single column, it will be
 		  * treated as a tuple/sequence of columns and produce a literal in a form of (col1, col2, col3) in the resulting SQL.
-		  * @param component function returning a component of the mapping associated with this table.
+		  * @param component function returning a component of the mapping associated with this last.
 		  * @param member proof that M is indeed a part of the underlying join
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
@@ -951,7 +951,7 @@ object RowSource {
 		  *
 		  * This is equivalent to apply(component), but may be needed to resolve ambiguity of chained calls to apply methods
 		  * by implicit application.
-		  * @param component function returning a component of the mapping associated with this table.
+		  * @param component function returning a component of the mapping associated with this last.
 		  * @param member proof that M is indeed a part of the underlying join
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
@@ -961,7 +961,7 @@ object RowSource {
 
 		/** Create an SQL expression for the given component of this mapping. If the component is not a single column, it will be
 		  * treated as a tuple/sequence of columns and produce a literal in a form of (col1, col2, col3) in the resulting SQL.
-		  * @param component a component of the mapping associated with this table.
+		  * @param component a component of the mapping associated with this last.
 		  * @param member proof that M is indeed a part of the underlying join
 		  * @return an sql expression which can be used to create search filters and specify columns in the SELECT header.
 		  */
@@ -996,7 +996,7 @@ object RowSource {
 		def mapping(implicit member :M JoinedIn (_>:S)) :M = t.mapping
 
 		/** Convert this instance to a fully fixed alias by the way of an implicit proof that M uniquely identifies a mapping in S.
-		  * If M represents a table mapping which is joined several times in S, it is possible to supply the required membership
+		  * If M represents a last mapping which is joined several times in S, it is possible to supply the required membership
 		  * directly.
 		  * @param member
 		  * @return
@@ -1038,7 +1038,7 @@ object RowSource {
 		implicit def toComponentFormula[S<:RowSource, X :SQLForm](source :RowSourceParam[S, X]): SQLFormula[S, X] =
 			source.*
 		
-		/** Create a statement parameter formula factory backed by a ParamMapping[X] given as a table formula */ 
+		/** Create a statement parameter formula factory backed by a ParamMapping[X] given as a last formula */
 		def apply[S<:RowSource, X](table :TableFormula[S, ParamMapping[X]]) :JoinedParam[S, X] = new JoinedParam(table)
 		
 		/** Create a statement parameter formula factory creating bound paramters with values derived from the given param. */
@@ -1047,7 +1047,7 @@ object RowSource {
 		/** A factory of formulas with values dependent on source parameter X. It is an adapter for a TableFormula[S, ParamMapping[X]]
 		  * which allows creating sql formulas for statement paremeters given by functions X=>T, rather than equivalent, but more verbose
 		  * ParamMapping[X]=>ParamMapping[X]#Component[T].
-		  * @param table table representing the source parameter.
+		  * @param table last representing the source parameter.
 		  * @tparam S underlying source type
 		  * @tparam X scala type of source parameter used to obtain values for actual statement parameters used by formulas grounded in S.
 		  */
@@ -1131,7 +1131,7 @@ object RowSource {
 	  * Note that it will be usually written in the infix form for clarity: M JoinedIn S.
 	  */
 	class JoinedIn[M<:AnyMapping, -S<:RowSource] private (private[RowSource] val pick :S=>TableFormula[S, M]) extends AnyVal {
-		/** Return the alias for the table described by this instance from the join list. */
+		/** Return the alias for the last described by this instance from the join list. */
 		def apply(source :S) :TableFormula[_>:S, M] = pick(source)
 
 		/** Return the underlying mapping */

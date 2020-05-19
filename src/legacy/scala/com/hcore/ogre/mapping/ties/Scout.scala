@@ -8,7 +8,7 @@ import com.hcore.ogre.model.Reference
 
 /** A marker interface identifying some mapping by a contained path. It is used by Pathfinders as a means for discovery
   * what mapping does a particular function refer to. In general, given some function p: X=>Y working on types in the domain model,
-  * a mapping : M<:Mapping[X], we would like to discover what mapping (component, other table) does the function refer to.
+  * a mapping : M<:Mapping[X], we would like to discover what mapping (component, other last) does the function refer to.
   * One way of doing it is to call it on a mock instance obtained from mapping M and investigate the result:
   * if the target mapping (and all intermediate from X to Y) support this feature, they will pass the starting path
   * originating in the root mock for X, appending to it any passed components/joined tables, hopfully eventually

@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, RefinedMapping, MappingOf}
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, ConcatPath, SelfPath}
 import net.noresttherein.oldsql.slang.InferTypeParams
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
-trait MappingPath[-X <: MappingOf[S], +Y <: TypedMapping[T, O], S, T, O] { self =>
+trait MappingPath[-X <: MappingOf[S], +Y <: RefinedMapping[T, O], S, T, O] { self =>
 	val end :Y
 	def extractor :Extractor[S, T]
 
@@ -22,7 +22,7 @@ trait MappingPath[-X <: MappingOf[S], +Y <: TypedMapping[T, O], S, T, O] { self 
 
 
 
-	def \[Z <: TypedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[X, Z, S, U, P] = next match {
+	def \[Z <: RefinedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[X, Z, S, U, P] = next match {
 		case _ :SelfPath[_, _, _] =>
 			if (end != next.end)
 				throw new IllegalArgumentException(s"Can't append self-path $next to $this as refers to a different mapping.")
@@ -30,24 +30,24 @@ trait MappingPath[-X <: MappingOf[S], +Y <: TypedMapping[T, O], S, T, O] { self 
 		case _ => new ConcatPath(this, next)
 	}
 
-	def \[Z <: TypedMapping[U, O], U](next :ComponentPath[Y, Z, T, U, O]) :MappingPath[X, Z, S, U, O] =
+	def \[Z <: RefinedMapping[U, O], U](next :ComponentPath[Y, Z, T, U, O]) :MappingPath[X, Z, S, U, O] =
 		\(next :MappingPath[Y, Z, T, U, O])
 
-	def \[M <: Mapping, Z <: TypedMapping[U, O], U]
-	     (component :Y => M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
+	def \[M <: Mapping, Z <: RefinedMapping[U, O], U]
+	     (component :Y => M)(implicit hint :Conforms[M, Z, RefinedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
 		\(component(end))
 
-	def \[M <: Mapping, Z <: TypedMapping[U, O], U]
-	     (component :M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
+	def \[M <: Mapping, Z <: RefinedMapping[U, O], U]
+	     (component :M)(implicit hint :Conforms[M, Z, RefinedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
 		this \ (end \ component)
 
-	def :\[U](component :TypedMapping[U, O]) :MappingPath[X, component.type, S, U, O] =
+	def :\[U](component :RefinedMapping[U, O]) :MappingPath[X, component.type, S, U, O] =
 		\[component.type, component.type, U](component :component.type)(Conforms[component.type])
 
 
 
-	def apply[M <: Mapping, Z <: TypedMapping[U, O], U]
-	         (component :Y => M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
+	def apply[M <: Mapping, Z <: RefinedMapping[U, O], U]
+	         (component :Y => M)(implicit hint :Conforms[M, Z, RefinedMapping[U, O]]) :MappingPath[X, Z, S, U, O] =
 		\(component(end))
 
 
@@ -75,18 +75,18 @@ object MappingPath {
 
 
 	
-	trait ComponentPath[-X <: TypedMapping[S, O], +Y <: TypedMapping[T, O], S, T, O] extends MappingPath[X, Y, S, T, O] {
+	trait ComponentPath[-X <: RefinedMapping[S, O], +Y <: RefinedMapping[T, O], S, T, O] extends MappingPath[X, Y, S, T, O] {
 
 		def carry(values :ComponentValues[S, O]) :ComponentValues[T, O]
 
-		override def \[Z <: TypedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[X, Z, S, U, P] =
+		override def \[Z <: RefinedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[X, Z, S, U, P] =
 			next match {
 				case comp :ComponentPath[X , Y, S, T, O] => this \ comp
 				case _ => super.\(next)
 			}
 
 
-		override def \[Z <: TypedMapping[U, O], U](next :ComponentPath[Y, Z, T, U, O]) :ComponentPath[X, Z, S, U, O] =
+		override def \[Z <: RefinedMapping[U, O], U](next :ComponentPath[Y, Z, T, U, O]) :ComponentPath[X, Z, S, U, O] =
 			next match {
 				case self :SelfPath[_, _, _] =>
 					if (self.end != end)
@@ -98,26 +98,26 @@ object MappingPath {
 
 
 
-		override def \[M <: Mapping, Z <: TypedMapping[U, O], U]
-		              (component :Y => M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]])
+		override def \[M <: Mapping, Z <: RefinedMapping[U, O], U]
+		              (component :Y => M)(implicit hint :Conforms[M, Z, RefinedMapping[U, O]])
 				:ComponentPath[X, Z, S, U, O] =
 			\(component(end))
 
 
-		override def \[M <: Mapping, Z <: TypedMapping[U, O], U]
-		             (component :M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]]) :ComponentPath[X, Z, S, U, O] =
+		override def \[M <: Mapping, Z <: RefinedMapping[U, O], U]
+		             (component :M)(implicit hint :Conforms[M, Z, RefinedMapping[U, O]]) :ComponentPath[X, Z, S, U, O] =
 		{
 			val c = hint(component)
 			ComponentPath.typed[X, Z, S, U, O](c)(extractor andThen end(c))
 		}
 
-		override def :\[U](component :TypedMapping[U, O]) :ComponentPath[X, component.type, S, U, O] =
+		override def :\[U](component :RefinedMapping[U, O]) :ComponentPath[X, component.type, S, U, O] =
 			\[component.type, component.type, U](component :component.type)(Conforms[component.type])
 
 
 
-		override def apply[M <: Mapping, Z <: TypedMapping[U, O], U]
-		                  (component :Y => M)(implicit hint :Conforms[M, Z, TypedMapping[U, O]])
+		override def apply[M <: Mapping, Z <: RefinedMapping[U, O], U]
+		                  (component :Y => M)(implicit hint :Conforms[M, Z, RefinedMapping[U, O]])
 				:ComponentPath[X, Z, S, U, O] =
 			\(component(end))
 
@@ -131,15 +131,15 @@ object MappingPath {
 
 	object ComponentPath {
 
-		def apply[P <: Mapping, X <: TypedMapping[S, O], C <: Mapping, Y <: TypedMapping[T, O], S, T, O]
-		         (parent :P, component :C)(implicit parentType :Conforms[P, X, TypedMapping[S, O]], childType :Conforms[C, Y, TypedMapping[T, O]])
+		def apply[P <: Mapping, X <: RefinedMapping[S, O], C <: Mapping, Y <: RefinedMapping[T, O], S, T, O]
+		         (parent :P, component :C)(implicit parentType :Conforms[P, X, RefinedMapping[S, O]], childType :Conforms[C, Y, RefinedMapping[T, O]])
 			:ComponentPath[X, Y, S, T, O] =
 		{ 
 			val c = childType(component)
 			typed[X, Y, S, T, O](c)(parentType(parent)(c))
 		}
 
-		private[MappingPath] def typed[X <: TypedMapping[S, O], Y <: TypedMapping[T, O], S, T, O]
+		private[MappingPath] def typed[X <: RefinedMapping[S, O], Y <: RefinedMapping[T, O], S, T, O]
 		                              (component :Y)(extract :S =?> T) :ComponentPath[X, Y, S, T, O] =
 			new ComponentPath[X, Y, S, T, O] {
 				override val end = component
@@ -150,7 +150,7 @@ object MappingPath {
 
 
 
-		def unapply[X <: MappingOf[S], Y <: TypedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O]) :Option[Y] =
+		def unapply[X <: MappingOf[S], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O]) :Option[Y] =
 			path match {
 				case _ :ComponentPath[_, _, _, _, _] => Some(path.end)
 				case _ => None
@@ -163,7 +163,7 @@ object MappingPath {
 
 
 
-	trait SelfPath[X <: TypedMapping[S, O], S, O] extends ComponentPath[X, X, S, S, O] {
+	trait SelfPath[X <: RefinedMapping[S, O], S, O] extends ComponentPath[X, X, S, S, O] {
 
 		override def extractor :RequisiteExtractor[S, S] = Extractor.ident[S]
 
@@ -174,10 +174,10 @@ object MappingPath {
 
 
 
-		override def \[Z <: TypedMapping[U, P], U, P](next :MappingPath[X, Z, S, U, P]) :MappingPath[X, Z, S, U, P] =
+		override def \[Z <: RefinedMapping[U, P], U, P](next :MappingPath[X, Z, S, U, P]) :MappingPath[X, Z, S, U, P] =
 			next
 
-		override def \[Z <: TypedMapping[U, O], U](next :ComponentPath[X, Z, S, U, O]) :ComponentPath[X, Z, S, U, O] =
+		override def \[Z <: RefinedMapping[U, O], U](next :ComponentPath[X, Z, S, U, O]) :ComponentPath[X, Z, S, U, O] =
 			next
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[SelfPath[_, _, _]]
@@ -190,16 +190,16 @@ object MappingPath {
 
 	object SelfPath {
 		@inline 
-		implicit def apply[M, X <: TypedMapping[S, O], S, O]
-		                  (mapping :M)(implicit typeHint :Conforms[M, X, TypedMapping[S, O]]) :SelfPath[X, S, O] =
+		implicit def apply[M, X <: RefinedMapping[S, O], S, O]
+		                  (mapping :M)(implicit typeHint :Conforms[M, X, RefinedMapping[S, O]]) :SelfPath[X, S, O] =
 			typed[X, S, O](mapping)
 
-		def typed[X <: TypedMapping[S, O], S, O](mapping :X) :SelfPath[X, S, O] = new SelfPath[X, S, O] {
+		def typed[X <: RefinedMapping[S, O], S, O](mapping :X) :SelfPath[X, S, O] = new SelfPath[X, S, O] {
 			override val end = mapping
 		}
 
 
-		def unapply[X <: MappingOf[S], Y <: TypedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O]) :Option[X] =
+		def unapply[X <: MappingOf[S], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O]) :Option[X] =
 			path match {
 				case self :SelfPath[_, _, _] => Some(self.end.asInstanceOf[X])
 				case _ => None
@@ -211,7 +211,7 @@ object MappingPath {
 
 
 
-	private[MappingPath] class ConcatPath[W <: MappingOf[R], X <: TypedMapping[S, N], Y <: TypedMapping[T, O], R, S, T, N, O]
+	private[MappingPath] class ConcatPath[W <: MappingOf[R], X <: RefinedMapping[S, N], Y <: RefinedMapping[T, O], R, S, T, N, O]
 										 (val first :MappingPath[W, X, R, S, N], val second :MappingPath[X, Y, S, T, O])
 		extends MappingPath[W, Y, R, T, O]
 	{
@@ -227,11 +227,11 @@ object MappingPath {
 		override def listComponents(acc :List[Mapping]) :List[Mapping] =
 			first.listComponents(second.end::acc)
 
-		override def \[Z <: TypedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[W, Z, R, U, P] =
+		override def \[Z <: RefinedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[W, Z, R, U, P] =
 			next match {
 				case concat :ConcatPath[_, _, _, _, _, _, _, _] =>
-					this \ concat.first.asInstanceOf[MappingPath[Y, TypedMapping[Any, P], T, Any, P]] \
-						concat.second.asInstanceOf[MappingPath[TypedMapping[Any, P], Z, Any, U, P]]
+					this \ concat.first.asInstanceOf[MappingPath[Y, RefinedMapping[Any, P], T, Any, P]] \
+						concat.second.asInstanceOf[MappingPath[RefinedMapping[Any, P], Z, Any, U, P]]
 				case _ =>
 					super.\(next)
 			}
@@ -242,7 +242,7 @@ object MappingPath {
 	
 	
 	private[MappingPath] class ConcatComponentPath
-	                           [W <: TypedMapping[R, O], X <: TypedMapping[S, O], Y <: TypedMapping[T, O], R, S, T, O]
+	                           [W <: RefinedMapping[R, O], X <: RefinedMapping[S, O], Y <: RefinedMapping[T, O], R, S, T, O]
 	                           (override val first :ComponentPath[W, X, R, S, O],
 	                            override val second :ComponentPath[X, Y, S, T, O])
 		extends ConcatPath[W, X, Y, R, S, T, O, O](first, second) with ComponentPath[W, Y, R, T, O]
@@ -251,21 +251,21 @@ object MappingPath {
 
 		override def carry(values :ComponentValues[R, O]) = second.carry(first.carry(values))
 
-		override def \[Z <: TypedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[W, Z, R, U, P] =
+		override def \[Z <: RefinedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[W, Z, R, U, P] =
 			next match {
 				case comp :ComponentPath[Y, Z, T, U, P] => this \ comp
 				case concat :ConcatPath[_, _, _, _, _, _, _, _] =>
-					this \ concat.first.asInstanceOf[MappingPath[Y, TypedMapping[Any, P], T, Any, P]] \
-						concat.second.asInstanceOf[MappingPath[TypedMapping[Any, P], Z, Any, U, P]]
+					this \ concat.first.asInstanceOf[MappingPath[Y, RefinedMapping[Any, P], T, Any, P]] \
+						concat.second.asInstanceOf[MappingPath[RefinedMapping[Any, P], Z, Any, U, P]]
 				case _ =>
 					super.\(next)
 			}
 
-		override def \[Z <: TypedMapping[U, O], U](next :ComponentPath[Y, Z, T, U, O]) :ComponentPath[W, Z, R, U, O] =
+		override def \[Z <: RefinedMapping[U, O], U](next :ComponentPath[Y, Z, T, U, O]) :ComponentPath[W, Z, R, U, O] =
 			next match {
 				case concat :ConcatComponentPath[_, _, _, _, _, _, _] =>
-					this \ concat.first.asInstanceOf[ComponentPath[Y, TypedMapping[Any, O], T, Any, O]] \
-						concat.second.asInstanceOf[ComponentPath[TypedMapping[Any, O], Z, Any, U, O]]
+					this \ concat.first.asInstanceOf[ComponentPath[Y, RefinedMapping[Any, O], T, Any, O]] \
+						concat.second.asInstanceOf[ComponentPath[RefinedMapping[Any, O], Z, Any, U, O]]
 				case _ =>
 					super.\(next)
 			}
@@ -277,7 +277,7 @@ object MappingPath {
 
 	object \~\ {
 
-		def unapply[X <: MappingOf[S], Y <: TypedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O])
+		def unapply[X <: MappingOf[S], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O])
 				:Option[(MappingPath[X, W, S, Q, _], MappingPath[W, Y, Q, T, O])] forSome
 					{ type W <: MappingOf[Q]; type Q } =
 			path match {
@@ -287,9 +287,9 @@ object MappingPath {
 	}
 
 	object \\ {
-		def unapply[X <: TypedMapping[S, O], Y <: TypedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O])
+		def unapply[X <: RefinedMapping[S, O], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O])
 				:Option[(ComponentPath[X, W, S, Q, O], ComponentPath[W, Y, Q, T, O])] forSome
-					{ type W <: TypedMapping[Q, O]; type Q } =
+					{ type W <: RefinedMapping[Q, O]; type Q } =
 			path match {
 				case concat :ConcatComponentPath[X, _, Y, S, _, T, O] => Some(concat.first -> concat.second)
 				case _ => None

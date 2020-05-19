@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.TypedMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedAs, ShallowAdapter}
 import net.noresttherein.oldsql.schema.support.MappingAdapter
@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 
 
 
-trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAdapter[M, T, S, O] {
+trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends ShallowAdapter[M, T, S, O] {
 
 	/** The subject value `S` that `null` values from the database are mapped to.
 	  * This is different from `this.nullValue` in that it is designed to hold the implicit method parameter
@@ -185,17 +185,17 @@ trait MappedMapping[+M <: Mapping.TypedMapping[T, O], T, S, O] extends ShallowAd
 
 object MappedMapping {
 
-	def apply[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S =?> T, unmapped :T =?> S)
-	                                           (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
+	def apply[M <: RefinedMapping[S, O], S, T, O](mapping :M, mapped :S =?> T, unmapped :T =?> S)
+	                                             (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
 		new MappedMappingAdapter[M, S, T, O](mapping, mapped, unmapped)
 
-	def sure[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S => T, unmapped :T => S)
-	                                          (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
+	def sure[M <: RefinedMapping[S, O], S, T, O](mapping :M, mapped :S => T, unmapped :T => S)
+	                                            (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
 		apply[M, S, T, O](mapping, Extractor.req(mapped), Extractor.req(unmapped))
 
 
-	def opt[M <: TypedMapping[S, O], S, T, O](mapping :M, mapped :S => Option[T], unmapped :T => Option[S])
-	                                         (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
+	def opt[M <: RefinedMapping[S, O], S, T, O](mapping :M, mapped :S => Option[T], unmapped :T => Option[S])
+	                                           (implicit nulls :NullValue[T] = null) :M AdaptedAs T =
 		apply[M, S, T, O](mapping, Extractor.opt(mapped), Extractor.opt(unmapped))
 
 
@@ -203,7 +203,7 @@ object MappedMapping {
 
 
 
-	class MappedMappingAdapter[M <: TypedMapping[T, O], T, S, O]
+	class MappedMappingAdapter[M <: RefinedMapping[T, O], T, S, O]
 	                          (override val egg :M, override val map :T =?> S, override val unmap :S =?> T)
 	                          (implicit override val nulls :NullValue[S] = null)
 		extends MappedMapping[M, T, S, O] with MappingAdapter[M, S, O]

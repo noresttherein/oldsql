@@ -7,7 +7,6 @@ import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLFormula.{CompositeFormula, Formula, FormulaMatcher}
-import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple.{CaseChain, ChainHead, ChainMatcher}
 import net.noresttherein.oldsql.sql.SQLTuple.SeqTuple.{CaseSeq, SeqMatcher}
@@ -22,17 +21,7 @@ import scala.collection.immutable.Seq
   */
 trait SQLTuple[-F <: FromClause, T] extends CompositeFormula[F, T] {
 
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLTuple[_, _]]
-
-	override def isomorphic(expression: Formula[_]): Boolean = expression match {
-		case t :SQLTuple[_, _] => contentsIsomorphic(t)
-		case _ => false
-	}
-
-	private[oldsql] override def equivalent(expression :Formula[_]) :Boolean = expression match {
-		case t :SQLTuple[_, _] => contentsEquivalent(t)
-		case _ => false
-	}
+	override def sameAs(other :CompositeFormula[Nothing, _]) :Boolean = other.isInstanceOf[SQLTuple[_, _]]
 
 }
 
@@ -70,13 +59,11 @@ object SQLTuple {
 
 
 
-		override def applyTo[Y[X]](matcher: FormulaMatcher[F, Y]): Y[Seq[T]] = matcher.seq(this)
+		override def applyTo[Y[_]](matcher: FormulaMatcher[F, Y]): Y[Seq[T]] = matcher.seq(this)
 
 		override def map[S <: FromClause](mapper: SQLScribe[F, S]) =
 			SeqTuple(inOrder.map(mapper(_)))
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :ExtendedBy[U, S]) =
-			SeqTuple(inOrder.map(_.stretch[U, S]))
 
 		override def toString :String = inOrder.mkString("Seq(", ",", ")")
 	}
@@ -119,7 +106,7 @@ object SQLTuple {
 
 		def toSeq :Seq[SQLFormula[F, _]] = parts
 
-		override def applyTo[Y[X]](matcher :FormulaMatcher[F, Y]) :Y[T] = matcher.chain(this)
+		override def applyTo[Y[_]](matcher :FormulaMatcher[F, Y]) :Y[T] = matcher.chain(this)
 
 		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T]
 
@@ -127,7 +114,8 @@ object SQLTuple {
 		override def stretch[M[O] <: MappingFrom[O]] :ChainTuple[F With M, T] =
 			stretch[F, F With M]
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T]
+		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
+			map(SQLScribe.stretcher)
 
 		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
 			stretch[U, S]
@@ -183,6 +171,8 @@ object SQLTuple {
 
 		case object EmptyChain extends SQLTerm[@~] with ChainTuple[FromClause, @~] {
 			override def size :Int = 0
+
+			protected override def form :SQLForm[@~] = SQLForm.EmptyChainForm
 
 			override def writeForm :SQLWriteForm[Unit] = SQLWriteForm.empty
 

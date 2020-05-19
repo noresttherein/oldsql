@@ -9,9 +9,8 @@ import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.Tuple2WriteForm
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedWriteForm, Tuple2WriteForm}
 import net.noresttherein.oldsql.slang._
-
 import scala.collection.immutable.Seq
 
 
@@ -32,7 +31,7 @@ import scala.collection.immutable.Seq
   * @see [[net.noresttherein.oldsql.schema.SQLForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   */
-trait SQLWriteForm[-T] {
+trait SQLWriteForm[-T] extends Serializable {
 
 	/** Set the values of parameters `&lt;position..position+writtenColumns)` of the given `PreparedStatement` to
 	  * the values obtained from the given value of `T`. This method simply delegates to `set` or `setNull`, depending
@@ -82,10 +81,6 @@ trait SQLWriteForm[-T] {
 	def nullLiteral :String
 
 
-//	def inlineLiteral(value :Option[T]) :String = value match {
-//		case Some(x) => inlineLiteral(x)
-//		case _ => inlineNullLiteral
-//	}
 
 	/** The string representation of of the given value of `T` ready to be embedded as part of a larger SQL tuple literal
 	  * or a SELECT clause. For single column forms, this will be the same as `literal(values)`. Multi column forms
@@ -102,9 +97,6 @@ trait SQLWriteForm[-T] {
 	def inlineNullLiteral :String
 
 
-//	def literal(value :Option[T], inline :Boolean) :String =
-//		if (inline) inlineLiteral(value)
-//		else literal(value)
 
 	def literal(value :T, inline :Boolean) :String =
 		if (inline) inlineLiteral(value)
@@ -113,6 +105,7 @@ trait SQLWriteForm[-T] {
 	def nullLiteral(inline :Boolean) :String =
 		if (inline) inlineNullLiteral
 		else nullLiteral
+
 
 
 	/** Number of parameters set by this form each time its `set` or `setNull` is called. */
@@ -160,10 +153,21 @@ trait SQLWriteForm[-T] {
 	  */
 	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = Tuple2WriteForm(this, other)
 
+	/** Creates a write form which will first write any given value with this form, and then with the argument form,
+	  * starting at statement parameter position right after the position of last written parameter by this form.
+	  * This is particularly useful in conjunction with composing both forms with functions retrieving different
+	  * properties of the same larger entity. The string literal representation will be that of a SQL tuple.
+	  */
+	def +[S <: T](next :SQLWriteForm[S]) :SQLWriteForm[S] = next match {
+		case composite :CombinedWriteForm[S @unchecked] =>
+			SQLWriteForm.combine(this +: composite.forms:_*)
+		case _ =>
+			SQLWriteForm.combine(this, next)
+	}
 
 
 	/** Combine this form with a read form for the same type in order to obtain a read-write form. */
-	def &&[O<:T](read :SQLReadForm[O]) :SQLForm[O] = SQLForm.combine(read, this)
+	def <>[O <: T](read :SQLReadForm[O]) :SQLForm[O] = SQLForm.combine(read, this)
 
 
 
@@ -204,7 +208,7 @@ object SQLWriteForm extends ScalaWriteForms {
 	/** A form which will ignore all values provided as arguments and instead write the value provided here,
 	  * using the implicit `SQLWriteForm[T]`.
 	  */
-	def const[T :SQLWriteForm](value :T) :SQLWriteForm[Any] = 
+	def const[T :SQLWriteForm](value :T) :SQLWriteForm[Any] =
 		if (value == null) new NullWriteForm[T]
 		else new ConstWriteForm(value)
 
@@ -245,7 +249,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#flatUnmap flatUnmap]] on the implicit form for `S`. */
-	def flatMap[S :SQLWriteForm, T](map :T=>Option[S]) :SQLWriteForm[T] =
+	def flatMap[S :SQLWriteForm, T](map :T => Option[S]) :SQLWriteForm[T] =
 		implicitly[SQLWriteForm[S]] match {
 			case a :ColumnWriteForm[_] =>
 				ColumnWriteForm.flatMap(map)(a.asInstanceOf[ColumnWriteForm[S]])
@@ -284,13 +288,19 @@ object SQLWriteForm extends ScalaWriteForms {
 	def seq[T](items :Seq[SQLWriteForm[T]]) :SQLWriteForm[Seq[T]] = new SeqWriteFormImpl[T](items)
 
 	/** An empty form which never writes anything. Its `writtenColumns` property is set to zero. */
-	val empty :SQLWriteForm[Any] = new EmptyWriteForm[Any] {}
+	val empty :SQLWriteForm[Any] = new EmptyWriteForm[Any] {
+		override def equals(that :Any) :Boolean = that.getClass == getClass
+		override def hashCode :Int = getClass.hashCode
+	}
 
 
 
 
 
 
+	/** An implicit write form for empty chains which writes nothing (has `writtenColumns` equal zero).
+	  * Used as the terminator of write forms for various `Chain` subclasses.
+	  */
 	implicit val EmptyChainWriteForm :SQLWriteForm[@~] = empty
 
 	implicit def ChainWriteForm[I <: Chain, L](implicit t :SQLWriteForm[I], h :SQLWriteForm[L]) :SQLWriteForm[I ~ L] =
@@ -309,6 +319,25 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
+	/** Mixin trait for `SQLWriteForm` implementations which provides abstract overrides for  `literal` and
+	  * `inlineLiteral` which test the value for nullity before passing them to `super`. Calls for null values
+	  * get instead delegated to the specialized null variant of the method.
+	  */
+	trait NullableWriteForm[-T >: Null] extends SQLWriteForm[T] {
+		abstract override def literal(value :T) :String =
+			if (value == null) nullLiteral else super.literal(value)
+
+		abstract override def inlineLiteral(value :T) :String =
+			if (value == null) inlineNullLiteral else super.inlineLiteral(value)
+
+		override def literal(value :T, inline :Boolean) :String = super.literal(value, inline)
+	}
+
+
+
+
+
+
 	/** A base trait for forms which write nothing. Sets the `writtenColumns` property to zero. */
 	trait EmptyWriteForm[-T] extends SQLWriteForm[T] {
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = ()
@@ -318,7 +347,27 @@ object SQLWriteForm extends ScalaWriteForms {
 		override def literal(value: T): String = ""
 		override def nullLiteral: String = ""
 		final override def writtenColumns: Int = 0
-		override def toString = "EMPTY"
+
+		override def toString = "<EMPTY"
+	}
+
+
+
+
+
+
+	trait NonLiteralWriteForm[-T] extends SQLWriteForm[T] {
+		override def literal(value: T): String =
+			throw new UnsupportedOperationException(toString + ".literal")
+
+		override def nullLiteral :String =
+			throw new UnsupportedOperationException(toString + ".nullLiteral")
+
+		override def inlineLiteral(value: T): String =
+			throw new UnsupportedOperationException(toString + ".inlineLiteral")
+
+		override def inlineNullLiteral :String =
+			throw new UnsupportedOperationException(toString + ".inlineNullLiteral")
 	}
 
 
@@ -332,7 +381,7 @@ object SQLWriteForm extends ScalaWriteForms {
 		override def set(position :Int)(statement :PreparedStatement, value :Any) :Unit =
 			writer.setNull(position)(statement)
 
-		override def setNull(position :Int)(statement :PreparedStatement) :Unit = 
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit =
 			writer.setNull(position)(statement)
 
 		override def literal(value :Any) :String = writer.nullLiteral
@@ -377,7 +426,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 		override def hashCode :Int = value.hashCode * 31 + form.hashCode
 
-		override def toString = s"$form=$value>"
+		override def toString = s"<$form=$value"
 	}
 
 
@@ -408,12 +457,12 @@ object SQLWriteForm extends ScalaWriteForms {
 		@inline override def inlineNullLiteral: String = inlineLiteral(null.asInstanceOf[Any])
 
 
-		override def toString = s"$form=?>"
+		override def toString = s"<=?$form"
 	}
 
 
 
-	private[schema] class EvalOrNullWriteForm[T](value: Option[T])(implicit form :SQLWriteForm[T], orElse :NullValue[T])
+	private[schema] class EvalOrNullWriteForm[T](value: =>Option[T])(implicit form :SQLWriteForm[T], orElse :NullValue[T])
 		extends SQLWriteForm[Any]
 	{
 		override def writtenColumns: Int = form.writtenColumns
@@ -442,7 +491,7 @@ object SQLWriteForm extends ScalaWriteForms {
 		@inline override def inlineNullLiteral: String = inlineLiteral(null.asInstanceOf[Any])
 
 
-		override def toString = s"$form=?>"
+		override def toString = s"<=?$form"
 	}
 
 
@@ -480,7 +529,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-		override def toString :String = source.toString + "=>"
+		override def toString :String = "<=" + source
 	}
 
 
@@ -502,7 +551,7 @@ object SQLWriteForm extends ScalaWriteForms {
 		override def inlineLiteral(value :T) :String = source.inlineLiteral(unmap(value))
 		override def inlineNullLiteral :String = source.inlineNullLiteral
 
-		override def toString :String = source.toString + "=>"
+		override def toString :String = "<=" + source
 	}
 
 
@@ -595,40 +644,33 @@ object SQLWriteForm extends ScalaWriteForms {
 			fastAccess
 		}
 
-		override def unmap[X](fun :X => T) :SQLWriteForm[X] =
-			if (fastAccess == null && initialized == null) Lazy(form.unmap(fun))
-			else form.unmap(fun)
+		//better to risk too early evaluation and remove the decorator overhead
+		override def unmap[X](fun :X => T) :SQLWriteForm[X] = form.unmap(fun)
 
 		override def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] =
-			if (fastAccess == null && initialized == null) Lazy(form.flatUnmap(fun))
-			else form.flatUnmap(fun)
+			form.flatUnmap(fun)
 
-		override def asOpt :SQLWriteForm[Option[T]] =
-			if (fastAccess == null && initialized == null) Lazy(form.asOpt)
-			else form.asOpt
+		override def asOpt :SQLWriteForm[Option[T]] = form.asOpt
 
-		override def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] =
-			if (fastAccess == null && initialized == null) Lazy(form * other)
-			else form * other
+		override def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = form * other
 
-		override def &&[O <: T](read :SQLReadForm[O]) :SQLForm[O] =
-			if (fastAccess == null && initialized == null) SQLForm.Lazy(form && read)
-			else form && read
+		override def +[S <: T](next :SQLWriteForm[S]) :SQLWriteForm[S] = form + next
+
+		override def <>[O <: T](read :SQLReadForm[O]) :SQLForm[O] = form <> read
 
 
-
-		override def canEqual(that :Any) :Boolean =
-			that.isInstanceOf[ProxyWriteForm[_]] && isInitialized
 
 		override def toString :String =
-			if (fastAccess == null && initialized == null) "Lazy>"
-			else form.toString
+			if (fastAccess == null && initialized == null) "<Lazy"
+			else "Lazy(" + form + ")"
 
 	}
 
 
 
-	private class CombinedWriteForm[-T](val forms :Seq[SQLWriteForm[T]]) extends SQLWriteForm[T] with CompositeWriteForm[T] {
+	private class CombinedWriteForm[-T](val forms :Seq[SQLWriteForm[T]])
+		extends SQLWriteForm[T] with CompositeWriteForm[T]
+	{
 		override val writtenColumns :Int = super.writtenColumns
 
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = {
@@ -647,7 +689,15 @@ object SQLWriteForm extends ScalaWriteForms {
 		override def inlineNullLiteral: String =
 			forms.map(_.inlineNullLiteral).mkString("", ", ", "")
 
-		override def toString :String = forms.mkString("(", "&", ")>")
+
+		override def +[S <: T](next :SQLWriteForm[S]) :SQLWriteForm[S] = next match {
+			case seq :CombinedWriteForm[S @unchecked] =>
+				new CombinedWriteForm(forms ++: seq.forms)
+			case _ =>
+				new CombinedWriteForm(forms :+ next)
+		}
+
+		override def toString :String = forms.mkString("<(", "+", ")")
 	}
 
 
@@ -691,7 +741,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-		override def toString :String = forms.mkString("Seq(",",",")>")
+		override def toString :String = forms.mkString("<Seq(",",",")")
 	}
 
 	private case class SeqWriteFormImpl[-T](forms :Seq[SQLWriteForm[T]]) extends SeqWriteForm[T] {

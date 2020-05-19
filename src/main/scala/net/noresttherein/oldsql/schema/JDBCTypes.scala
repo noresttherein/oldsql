@@ -22,8 +22,8 @@ trait SQLTypes {
 
 /** Includes implicit `SQLForm` declarations for all SQL types defined by JDBC in `java.sql.Types`. */
 trait JDBCTypes extends SQLTypes {
-
-
+//todo: make this an object with a companion trait extended by SQLWriteForm and SQLReadForm to have it in the implicit search path
+//  Split into java box types and the rest.
 
 	private[this] implicit val NotNull = NullValue.NotNull
 
@@ -69,6 +69,8 @@ trait JDBCTypes extends SQLTypes {
 
 	abstract class JDBCForm[T](val sqlType :JDBCSQLType)(implicit override val nulls :NullValue[T]) extends ColumnForm[T] {
 		override def nullValue :T = nulls.value
+
+		override def toString = sqlType.toString
 	}
 
 	abstract class NullableJDBCForm[T >: Null](sqlType :JDBCSQLType)
@@ -84,15 +86,15 @@ trait JDBCTypes extends SQLTypes {
 	val BasicLiteralTypes = Seq(BigDecimalForm, BooleanForm, ByteForm, DateForm, DoubleForm, FloatForm, IntForm, LongForm, ShortForm, StringForm, TimeForm, TimestampForm, URLForm)
 
 
+
 	implicit case object SQLArrayForm extends NullableJDBCForm[sql.Array](ARRAY) with NonLiteralForm[sql.Array] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :sql.Array) :Unit =
 			statement.setArray(position, value)
 
 		protected override def read(position: Int)(res: ResultSet): sql.Array = res.getArray(position)
-
-		override def toString = "ARRAY"
 	}
+
 
 	case object ASCIIStreamForm extends NullableJDBCForm[InputStream](LONGVARCHAR) with NonLiteralForm[InputStream] {
 
@@ -100,9 +102,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setAsciiStream(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): InputStream = res.getAsciiStream(column)
-
-		override def toString = "LONGVARCHAR"
 	}
+
 
 	implicit case object BigDecimalForm extends NullableJDBCForm[BigDecimal](DECIMAL) {
 
@@ -110,9 +111,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setBigDecimal(position, value.bigDecimal)
 
 		protected override def read(column: Int)(res: ResultSet): BigDecimal = res.getBigDecimal(column)
-
-		override def toString = "DECIMAL"
 	}
+
 
 	implicit case object JavaBigDecimalForm extends NullableJDBCForm[JBigDecimal](DECIMAL) {
 
@@ -124,15 +124,15 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JDECIMAL"
 	}
 
+
 	case object BinaryStreamForm extends NullableJDBCForm[InputStream](LONGVARBINARY) with NonLiteralForm[InputStream] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :InputStream) :Unit =
 			statement.setBinaryStream(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): InputStream = res.getBinaryStream(column)
-
-		override def toString = "LONGVARBINARY"
 	}
+
 
 	implicit case object BlobForm extends NullableJDBCForm[Blob](BLOB) with NonLiteralForm[Blob] {
 
@@ -140,9 +140,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setBlob(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Blob = res.getBlob(column)
-
-		override def toString = "BLOB"
 	}
+
 
 	implicit case object BooleanForm extends JDBCForm[Boolean](BOOLEAN) {
 
@@ -150,9 +149,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setBoolean(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Boolean = res.getBoolean(column)
-
-		override def toString = "BOOLEAN"
 	}
+
 
 	case object JavaBooleanForm extends NullableJDBCForm[JBoolean](BOOLEAN) {
 
@@ -167,15 +165,15 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JBOOLEAN"
 	}
 
+
 	implicit case object ByteForm extends JDBCForm[Byte](TINYINT) {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Byte) :Unit =
 			statement.setByte(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Byte = res.getByte(column)
-
-		override def toString = "TINYINT"
 	}
+
 
 	implicit case object JavaByteForm extends NullableJDBCForm[JByte](TINYINT) {
 
@@ -190,29 +188,30 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JBYTE"
 	}
 
+
 	implicit case object BytesForm extends NullableJDBCForm[Array[Byte]](BINARY) with NonLiteralForm[Array[Byte]] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Array[Byte]) :Unit =
 			statement.setBytes(position, value)
 
 		protected override def read(column: Int)(res: ResultSet) :Array[Byte] = res.getBytes(column)
-
-		override def toString = "BINARY"
 	}
+
 
 	implicit case object CharForm extends JDBCForm[Char](CHAR) {
 		override protected def read(position :Int)(res :ResultSet) :Char =
 			res.getString(position) match {
 				case null => 0
-				case s if s.length != 1 =>throw new IllegalArgumentException("Read '" + s + "' instead of a single Char from result set at index " + position)
+				case s if s.length != 1 =>
+					throw new IllegalArgumentException(
+						"Read '" + s + "' instead of a single Char from result set at index " + position)
 				case c => c.charAt(0)
 			}
 
 		override def set(position :Int)(statement :PreparedStatement, value :Char) :Unit =
 			statement.setString(position, String.valueOf(value))
-
-		override def toString = "CHAR"
 	}
+
 
 	implicit case object JavaCharForm extends NullableJDBCForm[JChar](CHAR) {
 		override protected def read(position :Int)(res :ResultSet) :JChar =
@@ -228,15 +227,15 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JCHAR"
 	}
 
+
 	implicit case object CharacterStreamForm extends NullableJDBCForm[Reader](LONGVARCHAR) with NonLiteralForm[Reader] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Reader) :Unit =
 			statement.setCharacterStream(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Reader = res.getCharacterStream(column)
-
-		override def toString = "LONGVARCHAR"
 	}
+
 
 	implicit case object ClobForm extends NullableJDBCForm[Clob](CLOB) with NonLiteralForm[Clob] {
 
@@ -244,9 +243,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setClob(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Clob = res.getClob(column)
-
-		override def toString = "CLOB"
 	}
+
 
 	implicit case object DateForm extends NullableJDBCForm[sql.Date](DATE) {
 
@@ -255,12 +253,12 @@ trait JDBCTypes extends SQLTypes {
 
 		protected override def read(column: Int)(res: ResultSet): sql.Date = res.getDate(column)
 
-		override def literal(value :sql.Date) :String = if (value == null) "null" else format.format(value.toLocalDate)
-
-		override def toString = "DATE"
+		override def literal(value :sql.Date) :String =
+			if (value == null) "null" else format.format(value.toLocalDate)
 
 		private[this] val format = DateTimeFormatter.ofPattern("'uuuu-MM-dd'")
 	}
+
 
 	implicit case object DoubleForm extends JDBCForm[Double](DOUBLE) {
 
@@ -268,9 +266,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setDouble(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Double = res.getDouble(column)
-
-		override def toString = "DOUBLE"
 	}
+
 
 	implicit case object JavaDoubleForm extends NullableJDBCForm[JDouble](DOUBLE) {
 
@@ -285,15 +282,15 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JDOUBLE"
 	}
 
+
 	implicit case object FloatForm extends JDBCForm[Float](FLOAT) {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Float) :Unit =
 			statement.setFloat(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Float = res.getFloat(column)
-
-		override def toString = "FLOAT"
 	}
+
 
 	implicit case object JavaFloatForm extends NullableJDBCForm[JFloat](FLOAT) {
 
@@ -308,15 +305,15 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JFLOAT"
 	}
 
+
 	implicit case object IntForm extends JDBCForm[Int](INTEGER) {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Int) :Unit =
 			statement.setInt(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Int = res.getInt(column)
-
-		override def toString = "Numeral"
 	}
+
 
 	implicit case object JavaIntForm extends NullableJDBCForm[JInt](INTEGER) {
 
@@ -331,15 +328,15 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JINT"
 	}
 
+
 	implicit case object LongForm extends JDBCForm[Long](BIGINT) {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Long) :Unit =
 			statement.setLong(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Long = res.getLong(column)
-
-		override def toString = "BIGINT"
 	}
+
 
 	implicit case object JavaLongForm extends NullableJDBCForm[JLong](BIGINT) {
 
@@ -354,15 +351,15 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "JLONG"
 	}
 
+
 	case object NCharacterStreamForm extends NullableJDBCForm[Reader](LONGNVARCHAR) with NonLiteralForm[Reader] {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Reader) :Unit =
 			statement.setNCharacterStream(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Reader = res.getNCharacterStream(column)
-
-		override def toString = "LONGNVARCHAR"
 	}
+
 
 	implicit case object NClobForm extends NullableJDBCForm[NClob](NCLOB) with NonLiteralForm[NClob] {
 
@@ -370,9 +367,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setNClob(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): NClob = res.getNClob(column)
-
-		override def toString = "NCLOB"
 	}
+
 
 	case object NStringForm extends NullableJDBCForm[String](NVARCHAR) {
 
@@ -384,9 +380,8 @@ trait JDBCTypes extends SQLTypes {
 		override def literal(value :String) :String =
 			if (value == null) "null"
 			else "'" + value.replace("'", "''") + "'"
-
-		override def toString = "NVARCHAR"
 	}
+
 
 	implicit case object RefForm extends NullableJDBCForm[sql.Ref](REF) with NonLiteralForm[Ref] {
 
@@ -394,9 +389,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setRef(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Ref = res.getRef(column)
-
-		override def toString = "REF"
 	}
+
 
 	implicit case object RowIdForm extends NullableJDBCForm[sql.RowId](REF) with NonLiteralForm[RowId] {
 
@@ -406,15 +400,15 @@ trait JDBCTypes extends SQLTypes {
 			statement.setRowId(position, value)
 	}
 
+
 	implicit case object ShortForm extends JDBCForm[Short](SMALLINT) {
 
 		override def set(position :Int)(statement :PreparedStatement, value :Short) :Unit =
 			statement.setShort(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): Short = res.getShort(column)
-
-		override def toString = "SMALLINT"
 	}
+
 
 	implicit case object JavaShortForm extends NullableJDBCForm[JShort](SMALLINT) {
 
@@ -436,9 +430,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setSQLXML(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): SQLXML = res.getSQLXML(column)
-
-		override def toString = "SQLXML"
 	}
+
 
 	implicit case object StringForm extends NullableJDBCForm[String](VARCHAR) {
 
@@ -450,9 +443,8 @@ trait JDBCTypes extends SQLTypes {
 		override def literal(value: String): String =
 			if (value == null) "null"
 			else "'" + value.replace("'", "''") + "'"
-
-		override def toString = "VARCHAR"
 	}
+
 
 	implicit case object TimestampForm extends NullableJDBCForm[sql.Timestamp](TIMESTAMP) with NonLiteralForm[sql.Timestamp] {
 
@@ -460,9 +452,8 @@ trait JDBCTypes extends SQLTypes {
 			statement.setTimestamp(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): sql.Timestamp = res.getTimestamp(column)
-
-		override def toString = "TIMESTAMP"
 	}
+
 
 	implicit case object TimeForm extends NullableJDBCForm[sql.Time](TIME) with NonLiteralForm[sql.Time] {
 
@@ -470,8 +461,6 @@ trait JDBCTypes extends SQLTypes {
 			statement.setTime(position, value)
 
 		protected override def read(column: Int)(res: ResultSet): sql.Time = res.getTime(column)
-
-		override def toString = "TIME"
 	}
 
 
@@ -485,6 +474,7 @@ trait JDBCTypes extends SQLTypes {
 		override def toString = "URL"
 	}
 
+
 	class NullForm[T >: Null] extends NullableJDBCForm[T](NULL) {
 		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
 			statement.setNull(position, NULL)
@@ -492,8 +482,6 @@ trait JDBCTypes extends SQLTypes {
 		protected override def read(column: Int)(res: ResultSet): T = null
 
 		override def equals(that :Any) :Boolean = that.isInstanceOf[NullForm[_]]
-
-		override def toString = "NULL"
 	}
 
 

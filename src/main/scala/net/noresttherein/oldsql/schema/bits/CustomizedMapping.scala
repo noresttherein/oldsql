@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.{-#>, Assoc}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
@@ -20,12 +20,12 @@ import net.noresttherein.oldsql.schema.bits.CustomizedMapping.{exclude, include}
 /** A `Mapping` adapter specifically modifying the buffs on
   * @author Marcin Mościcki
   */
-class CustomizedMapping[+M <: TypedMapping[S, O], S, O] private
+class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] private
                        (override val egg :M, protected val substitutions :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component])
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
 {
-	protected def this(source :M, includes :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
-	                 excludes :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType) =
+	protected def this(source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                   excludes :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType) =
 		this(source,
 		     include(source, includes, prohibited, explicit) ++ exclude(source, excludes, optional, nonDefault)
 		)
@@ -47,31 +47,31 @@ object CustomizedMapping {
 	type Overrides[O] = NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component]
 
 
-	def select[M <: TypedMapping[S, O], S, O]
-	          (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
+	def select[M <: RefinedMapping[S, O], S, O]
+	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
+              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :CustomizedMapping[M, S, O] =
 		customize(source, include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
 
-	def query[M <: TypedMapping[S, O], S, O]
-	         (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
-	         (implicit inferS :Conforms[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
+	def query[M <: RefinedMapping[S, O], S, O]
+	         (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
+	         (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :CustomizedMapping[M, S, O] =
 		customize(source, include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
 
-	def update[M <: TypedMapping[S, O], S, O]
-	          (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
+	def update[M <: RefinedMapping[S, O], S, O]
+	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
+              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :CustomizedMapping[M, S, O] =
 		customize(source, include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
 
-	def insert[M <: TypedMapping[S, O], S, O]
-	          (source :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, TypedMapping[S, O]]) :CustomizedMapping[M, S, O] =
+	def insert[M <: RefinedMapping[S, O], S, O]
+	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
+              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :CustomizedMapping[M, S, O] =
 		customize(source, include, NoInsert, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
 
 
 
-	private def customize[M <: TypedMapping[S, O], S, O]
-	                     (source :M, includes :Iterable[TypedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
-	                      excludes :Iterable[TypedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
+	private def customize[M <: RefinedMapping[S, O], S, O]
+	                     (source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                      excludes :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
 		:CustomizedMapping[M, S, O] =
 	{
 		val included = include(source, includes, prohibited, explicit)
@@ -86,7 +86,7 @@ object CustomizedMapping {
 	  * If it is present on any of the subcomponents, the presence of `explicit` buff is ignored and the subcomponent
 	  * remains unchanged.
 	  */
-	private[schema] def include[O](mapping :TypedMapping[_, O], components :Iterable[TypedMapping[_, O]],
+	private[schema] def include[O](mapping :RefinedMapping[_, O], components :Iterable[RefinedMapping[_, O]],
 	                               prohibited :BuffType, explicit :BuffType)
 			:Overrides[O] =
 	{
@@ -96,7 +96,7 @@ object CustomizedMapping {
 		builder.result()
 	}
 
-	private[schema] def include[T, O](mapping :TypedMapping[_, O], component :TypedMapping[T, O],
+	private[schema] def include[T, O](mapping :RefinedMapping[_, O], component :RefinedMapping[T, O],
 	                                  prohibited :BuffType, explicit :BuffType,
 	                                  builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 		mapping.export(component) match {
@@ -114,7 +114,7 @@ object CustomizedMapping {
 						if (prohibited.disabled(col) && explicit.enabled(col))
 							builder += new Override(col, col.withBuffs(col.buffs.filter(explicit.disabled)))
 					case sub =>
-						val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
+						val comp = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
 						if (prohibited.disabled(comp) && explicit.enabled(comp))
 							builder += new Override(comp, BuffedMapping(comp, comp.buffs.filter(explicit.disabled) :_*))
 				}
@@ -128,7 +128,7 @@ object CustomizedMapping {
 	  * but if the `optional` buff is missing on any of the listed components, an `IllegalArgumentException` is raised.
 	  * Subcomponents of the listed components without the `optional` buff simply remain unchanged.
 	  */
-	private[schema] def exclude[O](mapping :TypedMapping[_, O], components :Iterable[TypedMapping[_, O]],
+	private[schema] def exclude[O](mapping :RefinedMapping[_, O], components :Iterable[RefinedMapping[_, O]],
 	                               optional :BuffType, nonDefault :FlagBuffType)
 			:Overrides[O] =
 	{
@@ -138,7 +138,7 @@ object CustomizedMapping {
 		builder.result()
 	}
 
-	private[schema] def exclude[T, O](mapping :TypedMapping[_, O], component :TypedMapping[T, O],
+	private[schema] def exclude[T, O](mapping :RefinedMapping[_, O], component :RefinedMapping[T, O],
 	                                  optional :BuffType, nonDefault :FlagBuffType,
 	                                  builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 		mapping.export(component) match {
@@ -155,7 +155,7 @@ object CustomizedMapping {
 						if (nonDefault.disabled(col) && optional.enabled(col))
 							builder += new Override[Any, O](col, col.withBuffs(nonDefault[Any] +: col.buffs))
 					case sub =>
-						val comp = mapping.export(sub).asInstanceOf[TypedMapping[Any, O]]
+						val comp = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
 						if (nonDefault.disabled(comp) && optional.enabled(comp))
 							builder += new Override[Any, O](comp, BuffedMapping(comp, nonDefault[Any] +: comp.buffs :_*))
 				}

@@ -164,7 +164,7 @@ object Buff {
 	  * its columns individually. It implies `OptionalQuery` and `NoQueryByDefault`. */
 	case object ExplicitQuery extends ComboFlag(OptionalQuery, NoQueryByDefault)
 
-	/** A buff type marking that a given column/component must be included in every query against the table, using
+	/** A buff type marking that a given column/component must be included in every query against the last, using
 	  * the value provided by the buff. It implies `NoSelect` and `NoQuery` and is used to artificially limit the number
 	  * of mapped entities.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped]] */
@@ -179,7 +179,7 @@ object Buff {
 	  * It is still included by default and needs to be excluded explicitly. */
 	case object OptionalInsert extends FlagBuffType
 
-	/** A buff marking that a given column/component is not inserted by default into the underlying table
+	/** A buff marking that a given column/component is not inserted by default into the underlying last
 	  * and needs to be included explicitly. It implies `OptionalInsert` and `NoInsertByDefault`. */
 	case object ExplicitInsert extends ComboFlag(OptionalInsert, NoInsertByDefault)
 
@@ -217,8 +217,8 @@ object Buff {
 
 	/** Marks a column or component which is not part of the mapped scala class, but is still part of the mapped
 	  * entity from the relational point of view. All rows which are subject to mapping by the application have
-	  * the value returned by the buff, essentially partitioning the table and limiting the application to a subset
-	  * of its rows. It implies both `ExtraQuery` and `ExtraWrite`, meaning that all queries against the table will
+	  * the value returned by the buff, essentially partitioning the last and limiting the application to a subset
+	  * of its rows. It implies both `ExtraQuery` and `ExtraWrite`, meaning that all queries against the last will
 	  * include the annotated column in the filter and all inserts and updates will set its value based on this buff.
 	  */
 	case object Unmapped extends ComboBuffType(ExtraQuery, ExtraWrite) with GeneratedBuffType

@@ -9,9 +9,8 @@ import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.SQLForm.{NullValue, Tuple2Form}
 import net.noresttherein.oldsql.schema.SQLReadForm.{ChainIndexReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainMapWriteForm, ChainWriteForm, EmptyWriteForm, EvalOrNullWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, RecordWriteForm, SeqWriteForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainMapWriteForm, ChainWriteForm, EmptyWriteForm, EvalOrNullWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, NonLiteralWriteForm, RecordWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
-
 import scala.collection.immutable.Seq
 
 
@@ -25,7 +24,7 @@ import scala.collection.immutable.Seq
   * mapping methods for adapting it to other value types. Basic and typical implementations define the read and write
   * forms of `T` symmetrically, with the exact same column list read and written, but it is not strictly required.
   * This is a lower level API than [[net.noresttherein.oldsql.schema.Mapping Mapping]] as it allows no possibility
-  * of customization which columns of a table are included and carries no information about them apart of their
+  * of customization which columns of a last are included and carries no information about them apart of their
   * relative order in the `ResultSet`/statement parameter list.
   *
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
@@ -215,7 +214,10 @@ object SQLForm extends JDBCTypes with ScalaForms {
 
 
 
+	/** An empty chain form for the `Chain` terminator `@~`, which doesn't write or read any columns. */
 	implicit val EmptyChainForm :SQLForm[@~] = new EmptyForm[@~](@~) {
+		override def equals(that :Any) :Boolean = that.getClass == getClass
+		override def hashCode :Int = getClass.hashCode
 		override def toString = "@~"
 	}
 
@@ -238,9 +240,11 @@ object SQLForm extends JDBCTypes with ScalaForms {
 
 	/** A type class providing a 'null' value for type `T`. This is the value which should be used by a form when
 	  * the underlying column(s) is null. This may be any default value, not only `null` or 'zero';
-	  * for example, a collection type can return an empty collection.
+	  * for example, a collection type can return an empty collection. It can also be used to enforce
+	  * not-null semantics by throwing an exception as in `NullValue.NotNull`.
 	  */
-	trait NullValue[+T] {
+	trait NullValue[+T] extends Serializable {
+
 		/** Value to which null columns in the `ResultSet` are mapped.
 		  * @throws NullPointerException if the particular form for type `T` prohibits null values.
 		  */
@@ -282,17 +286,8 @@ object SQLForm extends JDBCTypes with ScalaForms {
 
 
 		/** Create a new instance wrapping the given value of `T` as the 'null' value. */
-		def apply[T](sqlNull :T) :NullValue[T] = new NullValue[T] {
-			override def value = sqlNull
+		def apply[T](sqlNull :T) :NullValue[T] = new ArbitraryNullValue(sqlNull)
 
-			override def map[U](f :T => U) :NullValue[U] = try {
-					NullValue(f(sqlNull))
-				} catch {
-					case _ :Exception => NullValue.eval(f(sqlNull))
-				}
-
-			override def toString :String = "Null(" + value + ")"
-		}
 
 
 		/** Create a new instance which evaluates the given expression each time its `value` method is called.
@@ -308,13 +303,7 @@ object SQLForm extends JDBCTypes with ScalaForms {
 		/** A `NullValue` instance which always throws a `NullPointerException`. Used with forms for types which
 		  * don't accept null values or simply wish to forbid them.
 		  */
-		final val NotNull :NullValue[Nothing] = new NullValue[Nothing] {
-			override def value = throw new NullPointerException("This type does not allow null values.")
-			override def toOption = scala.None
-			override def map[U](f :Nothing => U) :NullValue[U] = this
-			override def toString = "NotNull"
-		}
-
+		final val NotNull :NullValue[Nothing] = new NotNull
 		/** Scala `None` as the null value for `Option[T]`. */
 		implicit final val None :NullValue[Option[Nothing]] = NullValue(scala.None)
 		/** `null` itself as the value used by nullable types `T >: scala.Null`. */
@@ -338,6 +327,39 @@ object SQLForm extends JDBCTypes with ScalaForms {
 		/** Unit itself as its 'null' value. */
 		implicit final val Unit = NullValue(())
 
+
+
+		private class ArbitraryNullValue[T](override val value :T) extends NullValue[T] {
+
+			override def map[U](f :T => U) :NullValue[U] = try {
+				NullValue(f(value))
+			} catch {
+				case _ :Exception => NullValue.eval(f(value))
+			}
+
+			override def equals(that :Any) :Boolean = that match {
+				case nulls :ArbitraryNullValue[_] => (nulls eq this) || nulls.value == value
+				case _ => false
+			}
+
+			override def hashCode :Int = if (value == null) 0 else value.hashCode
+
+			override def toString :String = "Null(" + value + ")"
+		}
+
+
+
+		private class NotNull extends NullValue[Nothing] {
+			override def value = throw new NullPointerException("This type does not allow null values.")
+			override def toOption = scala.None
+			override def map[U](f :Nothing => U) :NullValue[U] = this
+
+			override def equals(that :Any) :Boolean = that.isInstanceOf[NotNull]
+			override def hashCode :Int = getClass.hashCode
+
+			override def toString = "NotNull"
+		}
+
 	}
 
 
@@ -345,15 +367,11 @@ object SQLForm extends JDBCTypes with ScalaForms {
 
 
 	/** A convenience mixin trait for forms of reference types using `null` as their `nullValue`.
-	  * Implements also the null literal methods to return "null". Note that the latter will be likely inappropriate
-	  * for multi-column types!
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue]]
 	  */
 	trait NullableForm[T >: Null] extends SQLForm[T] {
 		override def nullValue :Null = null
 		override def nulls :NullValue[T] = NullValue.Null
-		override def nullLiteral :String = "null"
-		override def inlineNullLiteral :String = "null"
 	}
 
 
@@ -362,12 +380,7 @@ object SQLForm extends JDBCTypes with ScalaForms {
 	  * include `Blob` and similar large data types. All literal-related methods of `SQLWriteForm`
 	  * throw an `UnsupportedOperationException`.
 	  */
-	trait NonLiteralForm[T] extends SQLForm[T] {
-		override def literal(value: T): String = throw new UnsupportedOperationException(getClass.getName+".literal")
-		override def nullLiteral :String = throw new UnsupportedOperationException(getClass.getName+".nullLiteral")
-		override def inlineLiteral(value: T): String = throw new UnsupportedOperationException(getClass.getName+".inlineLiteral")
-		override def inlineNullLiteral :String = throw new UnsupportedOperationException(getClass.getName+".inlineNullLiteral")
-	}
+	trait NonLiteralForm[T] extends SQLForm[T] with NonLiteralWriteForm[T]
 
 
 	/** A base class for forms which do not read or write any columns. Read methods always return `nullValue`,
@@ -379,6 +392,8 @@ object SQLForm extends JDBCTypes with ScalaForms {
 		override def opt(position :Int)(rs :ResultSet) :Option[T] = None
 
 		override def readColumns = 0
+
+		override def toString = "EMPTY"
 	}
 
 
@@ -404,7 +419,7 @@ object SQLForm extends JDBCTypes with ScalaForms {
 		override def toString = "UNIT"
 	}
 
-	case object NothingForm extends EmptyForm[Nothing](throw new UnsupportedOperationException("SQLType.NothingType")) {
+	case object NothingForm extends EmptyForm[Nothing](throw new UnsupportedOperationException("SQLForm.NothingForm")) {
 		override def toString = "NOTHING"
 	}
 
@@ -414,7 +429,7 @@ object SQLForm extends JDBCTypes with ScalaForms {
 
 
 
-	class UnknownForm[T] extends EmptyForm[T](throw new UnsupportedOperationException("SQLType.UnknownType")) {
+	class UnknownForm[T] extends EmptyForm[T](throw new UnsupportedOperationException("SQLForm.UnknownForm")) {
 		override def toString = "UNKNOWN"
 	}
 
@@ -448,6 +463,7 @@ object SQLForm extends JDBCTypes with ScalaForms {
 		override def opt(position: Int)(res: ResultSet): Option[T] = read.opt(position)(res)
 
 		override def nullValue: T = read.nullValue
+		override def nulls :NullValue[T] = read.nulls
 
 		override def literal(value: T): String = write.literal(value)
 		override def nullLiteral: String = write.nullLiteral
@@ -463,7 +479,7 @@ object SQLForm extends JDBCTypes with ScalaForms {
 
 		override def hashCode :Int = read.hashCode * 31 + write.hashCode
 
-		override def toString = s"($read & $write)"
+		override def toString = s"($read<>$write)"
 	}
 
 
@@ -514,17 +530,12 @@ object SQLForm extends JDBCTypes with ScalaForms {
 		override def isInitialized :Boolean = super[LazyReadForm].isInitialized
 
 		override def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] =
-			if (isInitialized) form.bimap[X](map)(unmap)
-			else Lazy(form.bimap[X](map)(unmap))
-
+			form.bimap(map)(unmap)
 
 		override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
-			if (isInitialized) form.biflatMap(map)(unmap)
-			else Lazy(form.biflatMap(map)(unmap))
+			form.biflatMap(map)(unmap)
 
-		override def *[O](other :SQLForm[O]) :SQLForm[(T, O)] =
-			if (isInitialized) form * other
-			else Lazy(form * other)
+		override def *[O](other :SQLForm[O]) :SQLForm[(T, O)] = form * other
 
 		override def toString :String = if (isInitialized) form.toString else "<Lazy>"
 	}

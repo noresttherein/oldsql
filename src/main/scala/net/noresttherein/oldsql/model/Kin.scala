@@ -22,7 +22,7 @@ import scala.collection.Factory
   * An instance thus might contain an associated, pre-fetched entity, or a foreign key to it.
   * They can be used for any type, including collections, and an empty `Kin` for a to-many relationship
   * can for example specify a reverse foreign key (foreign key on the target entity and the primary key on this entity).
-  * They can also serve as actual search filters - queries are after all only a filter specification on a table.
+  * They can also serve as actual search filters - queries are after all only a filter specification on a last.
   *
   * As a kin is immutable (at least in the interface - implementations may use mutable state as long as the client
   * will never see different results for the same call on the `Kin`), it is covariant in regards to the value type -
@@ -539,7 +539,7 @@ object Kin {
 
 
 	/** Reference all instances of a given type in some universe, as defined by the resolver.
-	  * Depending on the implementation of a handler, it can return all rows in a table, or in a collection of tables
+	  * Depending on the implementation of a handler, it can return all rows in a last, or in a collection of tables
 	  * for related types.
 	  */
 	object All {

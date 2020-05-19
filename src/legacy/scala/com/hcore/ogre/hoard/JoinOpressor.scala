@@ -117,8 +117,8 @@ class JoinOpressor[S<:RowSource Join FK, FK<:Mapping[K], E, K](
 
 		override def path[M <: Mapping, C <: Mapping](e: PathFormula[S, M, C]): RestrictionElement[C#ResultType] =
 			e match {
-				case ComponentFormula(table, component) if component.surepick.isDefined =>
-					propertyResult(references(table).andThen(component.surepick.get.asInstanceOf[Any=>C#ResultType]))
+				case ComponentFormula(last, component) if component.surepick.isDefined =>
+					propertyResult(references(last).andThen(component.surepick.get.asInstanceOf[Any=>C#ResultType]))
 				case _ => error(e, None)
 			}
 

@@ -94,12 +94,12 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 
 
-	override def &&[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = write match {
-		case atom :ColumnWriteForm[O] => this && atom
-		case _ => super.&&(write)
+	override def <>[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = write match {
+		case atom :ColumnWriteForm[O] => this <> atom
+		case _ => super.<>(write)
 	}
 
-	def &&[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = ColumnForm.combine(this, write)
+	def <>[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = ColumnForm.combine(this, write)
 
 
 
@@ -110,7 +110,7 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 
 
-	override def toString :String = "<" + sqlType
+	override def toString :String = sqlType.toString + ">"
 
 }
 
@@ -135,7 +135,7 @@ object ColumnReadForm {
 			override def apply(position :Int)(res :ResultSet) = nulls.value
 			override def read(position :Int)(res :ResultSet) = nulls.value
 			override val sqlType = jdbcType
-			override def toString = "<NULL:" + sqlType
+			override def toString = "NULL:" + sqlType + ">"
 		}
 
 	/** Creates a dummy form which produces no values. Every call to `opt` will return `None`, while `apply`
@@ -154,7 +154,7 @@ object ColumnReadForm {
 			override def apply(position :Int)(res :ResultSet) = super[ConstReadForm].apply(position)(res)
 			override def read(position :Int)(res :ResultSet) :T = super[ConstReadForm].apply(position)(res)
 			override val sqlType = jdbcType
-			override def toString = "<" + value + ":" + sqlType
+			override def toString = value.toString + ":" + sqlType + ">"
 		}
 
 	/** Creates a dummy form which always produces the same value, never reading from the `ResultSet`.
@@ -174,7 +174,7 @@ object ColumnReadForm {
 			override def apply(position :Int)(res :ResultSet) = super[EvalReadForm].apply(position)(res)
 			override def read(position :Int)(res :ResultSet) = super[EvalReadForm].apply(position)(res)
 			override val sqlType = jdbcType
-			override def toString = "<?:" + sqlType
+			override def toString = sqlType.toString + "?=>"
 		}
 
 	/** Creates a form which always returns from its `apply` method the value
@@ -248,13 +248,12 @@ object ColumnReadForm {
 			if (isInitialized) form orElse fallback
 			else Lazy(form orElse fallback)
 
-		override def &&[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] =
-			if (isInitialized) form && write
-			else ColumnForm.Lazy(form && write)
+		override def <>[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] =
+			if (isInitialized) form <> write
+			else ColumnForm.Lazy(form <> write)
 
 		override def toString :String =
-			if (isInitialized) form.toString
-			else "<Lazy:" + sqlType
+			if (isInitialized) "Lazy(" + form + ")" else "Lazy>"
 	}
 
 
@@ -291,7 +290,7 @@ object ColumnReadForm {
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
 			form.optMap((map :Option[S] => Option[T]) andThen fun)
 
-		override def toString :String = "<=" + source
+		override def toString :String = source.toString + "=>"
 	}
 
 
@@ -321,7 +320,7 @@ object ColumnReadForm {
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
 			form.flatMap((map :S => Option[T]) andThen fun)
 
-		override def toString :String = "<=" + source
+		override def toString :String = source.toString + "=>"
 	}
 
 
@@ -346,7 +345,7 @@ object ColumnReadForm {
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
 			form.flatMap((s :S) => fun(Option(map(s))))
 
-		override def toString :String = "<=" + source
+		override def toString :String = source.toString + "=>"
 	}
 
 

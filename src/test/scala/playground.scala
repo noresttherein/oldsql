@@ -2,7 +2,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Origin.Rank
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, GenericMapping, Mapping, MappingSchema}
+import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, TypedMapping, Mapping, MappingSchema}
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaComponent
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
@@ -94,9 +94,9 @@ object playground extends App {
 //		override protected def construct(implicit pieces :Pieces) :Int = 1
 //	}
 //
-//	//	val T = Table("table", new SomeTable("table"))
-//	val T = Table[SomeTable]("table")
-//	val I = Table.of[Int]("table")
+//	//	val T = Table("last", new SomeTable("last"))
+//	val T = Table[SomeTable]("last")
+//	val I = Table.of[Int]("last")
 //
 //	val name :String = I[Long].name
 }

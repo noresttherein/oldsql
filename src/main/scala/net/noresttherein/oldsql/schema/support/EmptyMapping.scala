@@ -1,13 +1,13 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{ColumnMappingExtract, GenericMapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnMappingExtract, TypedMapping, SQLForm, SQLReadForm, SQLWriteForm}
 
 
 /**
   * @author Marcin Mościcki
   */
-trait EmptyMapping[S, O] extends GenericMapping[S, O] {
+trait EmptyMapping[S, O] extends TypedMapping[S, O] {
 
 	override def assemble(pieces :Pieces) :Option[S] = pieces.preset(this)
 
@@ -15,7 +15,7 @@ trait EmptyMapping[S, O] extends GenericMapping[S, O] {
 	override def apply[T](component :Component[T]) :Extract[T] =
 		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")
 
-	override def apply[T](column :Column[T]) :ColumnMappingExtract[S, T, O] =
+	override def apply[T](column :Column[T]) :ColumnExtract[T] =
 		throw new IllegalArgumentException(s"Column $column is not a part of this empty mapping: $this.")
 	
 
