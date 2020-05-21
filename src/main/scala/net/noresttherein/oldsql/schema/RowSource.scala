@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.support.ConstantMapping
 import net.noresttherein.oldsql.sql.Join
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 
@@ -131,4 +132,8 @@ object RowSource {
 	}
 
 
+
+	private[oldsql] val Dummy = RowSource[({ type M[O] = ConstantMapping["Dummy", O] })#M, "Dummy"](
+		new ConstantMapping["Dummy", "Dummy"]("Dummy")
+	)
 }

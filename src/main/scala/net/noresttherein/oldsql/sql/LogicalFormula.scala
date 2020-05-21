@@ -42,6 +42,7 @@ object LogicalFormula {
 
 		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = NOT(mapper(formula))
 
+		override def toString = "NOT " + formula
 	}
 
 
@@ -100,7 +101,7 @@ object LogicalFormula {
 
 
 
-		override def toString :String = parts.reverse.mkString("(", " and ", ")")
+		override def toString :String = parts.reverse.mkString("(", " AND ", ")")
 	}
 
 
@@ -133,7 +134,7 @@ object LogicalFormula {
 	case class OR[-F <: FromClause] private(protected val parts :List[BooleanFormula[F]]) extends LogicalFormula[F] {
 		def conditions :Seq[BooleanFormula[F]] = parts.reverse
 
-		protected override def inOrder :Seq[BooleanFormula[F]] = parts.reverse
+		override def inOrder :Seq[BooleanFormula[F]] = parts.reverse
 
 
 //		override def get(values: RowValues[F]): Option[Boolean] = (Option(false) /: parts) {
@@ -170,7 +171,7 @@ object LogicalFormula {
 
 
 
-		override def toString :String = parts.reverse.mkString("(", ") or (", ")")
+		override def toString :String = parts.reverse.mkString("(", ") OR (", ")")
 	}
 
 

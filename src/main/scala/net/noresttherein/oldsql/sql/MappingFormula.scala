@@ -14,6 +14,7 @@ import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula.{CaseCompone
 import net.noresttherein.oldsql.sql.MappingFormula.FreeColumn.FreeColumnMatcher
 import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent.{CaseFreeComponent, FreeComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.{CaseRelation, RelationMatcher}
+import net.noresttherein.oldsql.sql.MappingFormula.TypedJoinedRelation.LastRelation
 import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher
 import slang._
@@ -69,13 +70,13 @@ object MappingFormula {
 
 //		override def basedOn[E <: FromClause](implicit subtype :E <:< F) :SQLFormula[E, V] =
 //			throw new UnsupportedOperationException("Free")
-
-		override def stretch[T[A] <: MappingFrom[A]] :FreeComponent[F With T, M, V] =
-			new FreeComponent[F With T, M, V](mapping.asInstanceOf[M[F With T]], shift + 1)
-
-		override def stretch[U <: F, S <: FromClause]
-		                    (implicit ev :U ExtendedBy S) :FreeComponent[S, M, V] =
-			new FreeComponent[S, M, V](mapping.asInstanceOf[M[S]], shift + ev.length)
+//
+//		override def stretch[T[A] <: MappingFrom[A]] :FreeComponent[F With T, M, V] =
+//			new FreeComponent[F With T, M, V](mapping.asInstanceOf[M[F With T]], shift + 1)
+//
+//		override def stretch[U <: F, S <: FromClause]
+//		                    (implicit ev :U ExtendedBy S) :FreeComponent[S, M, V] =
+//			new FreeComponent[S, M, V](mapping.asInstanceOf[M[S]], shift + ev.length)
 
 		override def stretch[U <: F, S <: FromClause]
 		                    (target :S)(implicit ev :U ExtendedBy S) :FreeComponent[S, M, V] =
@@ -170,15 +171,18 @@ object MappingFormula {
 			matcher.freeComponent[F, M, V](this)
 
 
-		override def stretch[T[O] <: MappingFrom[O]] :FreeColumn[F With T, M, V] =
-			new FreeColumn[F With T, M, V](column.asInstanceOf[M[F With T]], shift + 1)
+//		override def stretch[T[O] <: MappingFrom[O]] :FreeColumn[F With T, M, V] =
+//			new FreeColumn[F With T, M, V](column.asInstanceOf[M[F With T]], shift + 1)
 
 		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :FreeColumn[S, M, V] =
 			new FreeColumn[S, M, V](column.asInstanceOf[M[S]], shift + ev.length)
 
-		override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :FreeColumn[S, M, V] =
-			new FreeColumn[S, M, V](column.asInstanceOf[M[S]], shift + ev.length)
+//		override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :FreeColumn[S, M, V] =
+//			new FreeColumn[S, M, V](column.asInstanceOf[M[S]], shift + ev.length)
 	}
+
+
+
 
 
 
@@ -292,7 +296,22 @@ object MappingFormula {
 				:ColumnComponentFormula[F, T, E, C, X, O] =
 			ColumnComponentFormula(from, column)
 
+
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentFormula.*]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case component :ComponentFormula.* if canEqual(component) && component.canEqual(this) =>
+				from == component.from && mapping == component.mapping //consider: should it compare extractor.export?
+			case _ => false
+		}
+
+		override def hashCode :Int = from.hashCode * 31 + mapping.hashCode
 	}
+
+
+
 
 
 
@@ -342,12 +361,14 @@ object MappingFormula {
 
 			override val readForm :SQLReadForm[V] = extractor.export.selectForm
 
+			override def subselectFrom(from :F) :SQLFormula[from.Outer, Rows[V]] =
+				SelectFormula.subselect[from.Outer, from.type, T, E, M, V, O](from, this)
+
+			override def stretch[U <: F, G <: FromClause](target :G)(implicit ev :U ExtendedBy G) :SQLFormula[G, V] =
+				new ProperComponent[G, T, E, M, V, G](from.extend[U, G], mapping.asInstanceOf[M[G]])
 
 			override def applyTo[Y[_]](matcher :FormulaMatcher[F, Y]) :Y[V] =
 				matcher.component[T, E, M, V, O](this)
-
-			override def stretch[U <: F, G <: FromClause](implicit ev :U ExtendedBy G) :SQLFormula[G, V] =
-				new ProperComponent[G, T, E, M, V, G](from.extend[U, G], mapping.asInstanceOf[M[G]])
 		}
 
 
@@ -395,7 +416,11 @@ object MappingFormula {
 	{
 		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[V] = matcher.component(this)
 
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnComponentFormula.*]
 	}
+
+
+
 
 
 
@@ -440,7 +465,7 @@ object MappingFormula {
 			//fixme: sort out where the buff-related modifications take place to have consistent assembly semantics
 			override val readForm = extractor.export.form
 
-			override def stretch[U <: F, G <: FromClause](implicit ev :U ExtendedBy G) :ColumnFormula[G, V] =
+			override def stretch[U <: F, G <: FromClause](target :G)(implicit ev :U ExtendedBy G) :ColumnFormula[G, V] =
 				new ProperColumn[G, T, M, E, V, G](from.extend(ev), column.asInstanceOf[M[G]])
 		}
 
@@ -490,17 +515,54 @@ object MappingFormula {
 		override def extend[S <: F, G <: FromClause](implicit extension :S ExtendedBy G) :SQLRelation[G, T, E, G]
 
 //		override def aliased[N <: Label](alias :N) :ComponentFormula[F, (T As N)#T, E, T, E, O]
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLRelation.*]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case relation :SQLRelation.* if (this canEqual relation) && (relation canEqual this) =>
+				relation.shift == shift && relation.mapping == mapping
+			case _ => false
+		}
+
+		override def hashCode :Int = shift * 31 + mapping.hashCode
 	}
 
 
 
+
+
+
 	object SQLRelation {
-//		def apply[F, T[A] <: TypedMapping[E, A], E](source :RowSource[M], shift :Int) :SQLRelation[F, T, E, O]
+
+		def apply[F <: FromClause, M[A] <: MappingFrom[A], T[A] <: TypedMapping[S, A], S]
+		         (table :M[F])
+		         (implicit cast :Conforms[M[F], T[F], TypedMapping[S, F]], shift :TableShift[F, M, _ <: Numeral],
+		          alias :OriginProjection[T[F], F, T[Any], Any])
+				:TypedJoinedRelation[F, T, S] =
+			TypedJoinedRelation(table)
+//			new TypedJoinedRelation[F, T, S](RowSource[T, F](cast(table))(alias), table, shift.tables)
+
+		private[sql] def apply[F <: FromClause, T[A] <: TypedMapping[S, A], S](source :RowSource[T], index :Int)
+				:TypedJoinedRelation[F, T, T[Any]#Subject] =
+			new TypedJoinedRelation[F, T, T[Any]#Subject](source, index)
+
+		private[sql] def apply[F <: FromClause, M[A] <: MappingFrom[A], T[A] <: TypedMapping[S, A], S]
+		                      (from :F, source :RowSource[M], index :Int)
+		                      (implicit inference :Conforms[M[Any], T[Any], TypedMapping[S, Any]],
+		                       cast :RowSource[M] <:< RowSource[T]) :TypedJoinedRelation[F, T, S] =
+			new TypedJoinedRelation[F, T, S](source, index)
+
+		def last[M[A] <: MappingFrom[A], T[A] <: TypedMapping[S, A], S]
+		        (source :RowSource[M])
+		        (implicit inference :Conforms[M[Any], T[Any], TypedMapping[S, Any]]) :LastRelation[T, S] =
+			new TypedJoinedRelation[FromClause With T, T, S](source.asInstanceOf[RowSource[T]], 0)
 
 
-		type * = SQLRelation[_ <: FromClause, T, E, _] forSome { type T[O] <: TypedMapping[E, O]; type E }
 
-		type AnyIn[-F <: FromClause] = SQLRelation[F, T, E, _] forSome { type T[O] <: TypedMapping[E, O]; type E }
+		type * = SQLRelation[_ <: FromClause, T, _, _] forSome { type T[O] <: TypedMapping[_, O] }
+
+		type AnyIn[-F <: FromClause] = SQLRelation[F, T, _, _] forSome { type T[O] <: TypedMapping[_, O] }
 
 
 
@@ -536,11 +598,11 @@ object MappingFormula {
 
 	object JoinedRelation {
 
-		private[sql] def apply[F <: FromClause, M[A] <: MappingFrom[A]](source :RowSource[M], index :Int)
-				:JoinedRelation[F, M] =
-			new TypedJoinedRelation[F, MappingOf[Any]#TypedProjection, Any](
-				source.asInstanceOf[RowSource[MappingOf[Any]#TypedProjection]], index
-			).asInstanceOf[JoinedRelation[F, M]]
+//		private[sql] def apply[F <: FromClause, M[A] <: MappingFrom[A]](source :RowSource[M], index :Int)
+//				:JoinedRelation[F, M] =
+//			new TypedJoinedRelation[F, MappingOf[Any]#TypedProjection, Any](
+//				source.asInstanceOf[RowSource[MappingOf[Any]#TypedProjection]], index
+//			).asInstanceOf[JoinedRelation[F, M]]
 
 //		private[sql] def apply[F <: FromClause, M[O] <: MappingFrom[O]](mapping :M[Any], index :Int) :JoinedRelation[F, M] =
 //			new JoinedRelation(mapping, index)
@@ -560,6 +622,9 @@ object MappingFormula {
 
 
 
+
+
+
 	class TypedJoinedRelation[F <: FromClause, T[A] <: TypedMapping[E, A], E] private[sql]
 	                         (override val source :RowSource[T], override val mapping :T[F], override val shift :Int)
 		extends JoinedRelation[F, T] with SQLRelation[F, T, E, F]
@@ -574,15 +639,15 @@ object MappingFormula {
 
 
 		//fixme: these must reuse this.mapping or the mapping won't recognize the components!
-		override def stretch[M[A] <: MappingFrom[A]] :TypedJoinedRelation[F With M, T, E] =
-			stretch[F, F With M]
-
-		override def stretch[U <: F, G <: FromClause](implicit ev :U ExtendedBy G) :TypedJoinedRelation[G, T, E] =
-			new TypedJoinedRelation[G, T, E](source, shift + ev.length)
+//		override def stretch[M[A] <: MappingFrom[A]] :TypedJoinedRelation[F With M, T, E] =
+//			stretch[F, F With M]
+//
+//		override def stretch[U <: F, G <: FromClause](implicit ev :U ExtendedBy G) :TypedJoinedRelation[G, T, E] =
+//			new TypedJoinedRelation[G, T, E](source, shift + ev.length)
 
 		override def stretch[U <: F, G <: FromClause]
 		                    (target :G)(implicit ev :U ExtendedBy G) :TypedJoinedRelation[G, T, E] =
-			stretch[U, G]
+			new TypedJoinedRelation[G, T, E](source, shift + ev.length)
 
 		//todo: why did we need both stretch and extend?
 		override def extend[M[A] <: MappingFrom[A]] :TypedJoinedRelation[F With M, T, E] =
@@ -601,6 +666,9 @@ object MappingFormula {
 //		}
 
 	}
+
+
+
 
 
 
@@ -673,8 +741,6 @@ object MappingFormula {
 		override def freeComponent[J >: F <: FromClause, M[A] <: TypedMapping[X, A], X](e :FreeComponent[J, M, X]) :Y[X] =
 			mapping(e)
 	}
-
-
 
 	trait MappingColumnMatcher[+F <: FromClause, +Y[X]] extends FreeColumnMatcher[F, Y] with ColumnComponentMatcher[F, Y]
 

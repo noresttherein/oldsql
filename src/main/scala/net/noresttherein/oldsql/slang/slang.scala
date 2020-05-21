@@ -161,15 +161,15 @@ package object slang {
 
 
 
-	private[oldsql] implicit class TypeParameterCastingExtension1[G[X]](private val value: G[_]) extends AnyVal {
+	private[oldsql] implicit class TypeParameterCastingExtension1[G[_]](private val value: G[_]) extends AnyVal {
 		@inline def crosstyped[S] :G[S] = value.asInstanceOf[G[S]]
 	}
 
-	private[oldsql] implicit class TypeParameterCastingExtension2[G[X, Y]](private val value :G[_, _]) extends AnyVal {
+	private[oldsql] implicit class TypeParameterCastingExtension2[G[_, _]](private val value :G[_, _]) extends AnyVal {
 		@inline def crosstyped[S, T] :G[S, T] = value.asInstanceOf[G[S, T]]
 	}
 
-	private[oldsql] implicit class TypeParameterCastingExtension3[G[X, Y, Z]](private val value :G[_, _, _]) extends AnyVal {
+	private[oldsql] implicit class TypeParameterCastingExtension3[G[_, _, _]](private val value :G[_, _, _]) extends AnyVal {
 		@inline def crosstyped[S, T, U] :G[S, T, U] = value.asInstanceOf[G[S, T, U]]
 	}
 

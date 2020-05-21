@@ -61,17 +61,6 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 
 
 
-/*
-	def map[A[_], B[_]](f :Item =#> NaturalMap[A, B]#Item) :NaturalMap[A, B] = {
-		val res = NaturalMap.newBuilder[A, B]
-		val iter = iterator
-		while (iter.hasNext) {
-			res += f(iter.next())
-		}
-		res.result()
-	}
-*/
-
 	def map[A[_], B[_]](f :Assoc[K, V, _] => Assoc[A, B, _]) :NaturalMap[A, B] = {
 		val res = NaturalMap.newBuilder[A, B]
 		val iter = iterator

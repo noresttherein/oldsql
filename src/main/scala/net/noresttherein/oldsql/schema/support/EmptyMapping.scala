@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{ColumnMappingExtract, TypedMapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnMappingExtract, SQLForm, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin
 
 
 /**
@@ -52,7 +53,7 @@ trait EmptyMapping[S, O] extends TypedMapping[S, O] {
 
 
 
-class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
+class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] with OfFreeOrigin[O] {
 	private[this] val result = Some(subject)
 
 	override def assemble(values :Pieces) :Option[S] = result

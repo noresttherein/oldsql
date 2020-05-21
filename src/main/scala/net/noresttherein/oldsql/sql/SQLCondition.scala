@@ -5,9 +5,11 @@ import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQL
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLCondition.Comparison.{CaseComparison, ComparisonMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.Equality.{CaseEquality, EqualityMatcher}
+import net.noresttherein.oldsql.sql.SQLCondition.Exists.{CaseExists, ExistsMatcher}
+import net.noresttherein.oldsql.sql.SQLCondition.In.{CaseIn, InMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.Inequality.InequalityMatcher
 import net.noresttherein.oldsql.sql.SQLCondition.OrderComparison.OrderComparisonMatcher
-import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CompositeColumnFormula, CompositeFormula}
+import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula, CompositeColumnFormula, CompositeFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher
 
 
@@ -204,30 +206,28 @@ object SQLCondition {
 
 
 
+	case class Exists[-F <: FromClause, V, O](select :SelectFormula[F, V, O]) extends SQLCondition[F] {
+		protected override def parts :Seq[SQLFormula[F, _]] = select::Nil
 
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, Boolean] =
+			mapper(select) match {
+				case sel :SelectFormula[S, V, _] => sel.exists
+				case other =>
+					throw new IllegalArgumentException(
+						s"Can't map $this with $mapper because it didn't return a select expression: $other :${other.getClass}"
+					)
+			}
 
-/*
-	case class ExistsFormula[-F <: FromClause, H](select :SelectFormula[F, _, H]) extends SQLCondition[F] {
-		protected def parts :Seq[SelectFormula[F, _, H]] = select::Nil
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.exists(this)
 
-		override def get(values: RowValues[F]): Option[Boolean] = None
-
-
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Boolean] = matcher.exists(this)
-
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]): SQLFormula[S, Boolean] = mapper(select) match {
-			case sel :SelectFormula[_, _, _] => ExistsFormula(sel.asInstanceOf[SelectFormula[S, _, H]])
-			case f => throw new IllegalArgumentException(s"Can't rewrite $this using $mapper because argument is not a select: $f")
-		}
-
-		override def toString = s"Exists($select)"
+		override def toString :String = s"EXISTS($select)"
 	}
 
 
 
-	object ExistsFormula {
+	object Exists {
 		trait ExistsMatcher[+F <: FromClause, +Y[X]] {
-			def exists[X](f :ExistsFormula[F, X]) :Y[Boolean]
+			def exists[V, O](e :Exists[F, V, O]) :Y[Boolean]
 		}
 
 		type MatchExists[+F <: FromClause, +Y[X]] = ExistsMatcher[F, Y]
@@ -237,50 +237,33 @@ object SQLCondition {
 
 
 
-	case class In[-F <: FromClause, T](left :SQLFormula[F, T], right :SQLFormula[F, Seq[T]])
+
+
+
+	case class In[-F <: FromClause, V](left :ColumnFormula[F, V], right :SQLFormula[F, Seq[V]])
 		extends SQLCondition[F]
 	{
-		protected override def parts :Seq[SQLFormula[F, _]] = Seq(left, right)
+		override protected def parts :Seq[SQLFormula[F, _]] = left::right::Nil
 
-		override def get(values: RowValues[F]) :Option[Boolean] =
-			for (l <- left.get(values); r <- right.get(values)) yield r.contains(l)
-
-		override def freeValue :Option[Boolean] =
-			for (l <- left.freeValue; r <- right.freeValue) yield r.contains(l)
-
-
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Boolean] = matcher.in(this)
-
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]): SQLFormula[S, Boolean] =
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, Boolean] =
 			In(mapper(left), mapper(right))
 
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Boolean] = matcher.in(this)
 
-
-		private[oldsql] override def equivalent(expression: Formula[_]): Boolean = expression match {
-			case l In r => (l equivalent left) && (r equivalent right)
-			case _ => false
-		}
-
-		override def isomorphic(expression: Formula[_]): Boolean = expression match {
-			case l In r => (l isomorphic left) && (r isomorphic right)
-			case _ => false
-		}
-
-		override def toString = s"$left in $right"
+		override def toString :String = s"($left IN $right)"
 	}
 
 
 
 	object In {
 		trait InMatcher[+F <: FromClause, +Y[X]] {
-			def in[X](f :In[F, X]) :Y[Boolean]
+			def in[V](e :In[F, V]) :Y[Boolean]
 		}
 
 		type MatchIn[+F <: FromClause, +Y[X]] = InMatcher[F, Y]
 
 		type CaseIn[+F <: FromClause, +Y[X]] = InMatcher[F, Y]
 	}
-*/
 
 
 
@@ -304,14 +287,20 @@ object SQLCondition {
 
 	}
 */
-	type ConditionMatcher[+F <: FromClause, +Y[X]] = ComparisonMatcher[F, Y]
+	trait ConditionMatcher[+F <: FromClause, +Y[X]] extends ComparisonMatcher[F, Y]
+		with ExistsMatcher[F, Y] with InMatcher[F, Y]
 
-	type MatchCondition[+F <: FromClause, +Y[X]] = CaseComparison[F, Y]
+	trait MatchCondition[+F <: FromClause, +Y[X]] extends CaseComparison[F, Y]
+		with CaseExists[F, Y] with CaseIn[F, Y]
 
 	trait CaseCondition[+F <: FromClause, +Y[X]] extends ConditionMatcher[F, Y] with MatchCondition[F, Y] {
 		def condition(e :SQLCondition[F]) :Y[Boolean]
 
 		override def comparison[X](e :Comparison[F, X]) :Y[Boolean] = condition(e)
+
+		override def in[V](e :In[F, V]) :Y[Boolean] = condition(e)
+
+		override def exists[V, O](e :Exists[F, V, O]) :Y[Boolean] = condition(e)
 	}
 
 

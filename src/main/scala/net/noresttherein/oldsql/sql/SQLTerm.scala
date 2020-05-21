@@ -39,9 +39,9 @@ trait SQLTerm[T] extends SQLFormula[FromClause, T] {
 
 
 //	override def get(values :RowValues[FromClause]) :Option[T] = freeValue
-	override def stretch[M[O] <: MappingFrom[O]] :SQLTerm[T] = this
-
-	override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :SQLTerm[T] = this
+//	override def stretch[M[O] <: MappingFrom[O]] :SQLTerm[T] = this
+//
+//	override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :SQLTerm[T] = this
 
 	override def stretch[U <: FromClause, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLTerm[T] = this
 
@@ -72,10 +72,10 @@ object SQLTerm extends MultiColumnTerms {
 
 		override def readForm :ColumnReadForm[T] = form
 
-		override def stretch[M[O] <: MappingFrom[O]] :ColumnTerm[T] = this
-
-		override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnTerm[T] =
-			this
+//		override def stretch[M[O] <: MappingFrom[O]] :ColumnTerm[T] = this
+//
+//		override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnTerm[T] =
+//			this
 
 		override def stretch[U <: FromClause, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnTerm[T] =
 			this

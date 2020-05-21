@@ -26,6 +26,9 @@ trait AutoConversionFormula[-F <: FromClause, S, T] extends CompositeFormula[F, 
 
 	override def freeValue :Option[T] = expr.freeValue.map(convert)
 
+	override def subselectFrom(from :F) :SQLFormula[from.Outer, Rows[T]] =
+		SelectFormula.subselect[from.Outer, from.type, S, T, Any](from, this)
+
 //	override def get(values :RowValues[F]) :Option[T] = expr.get(values).map(convert)
 
 

@@ -23,6 +23,8 @@ trait SQLTuple[-F <: FromClause, T] extends CompositeFormula[F, T] {
 
 	override def sameAs(other :CompositeFormula[Nothing, _]) :Boolean = other.isInstanceOf[SQLTuple[_, _]]
 
+	override def subselectFrom(from :F) :SQLFormula[from.Outer, Rows[T]] =
+		SelectFormula.subselect[from.Outer, from.type, T, Any](from, this)
 }
 
 
@@ -111,14 +113,14 @@ object SQLTuple {
 		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T]
 
 
-		override def stretch[M[O] <: MappingFrom[O]] :ChainTuple[F With M, T] =
-			stretch[F, F With M]
-
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
-			map(SQLScribe.stretcher)
+//		override def stretch[M[O] <: MappingFrom[O]] :ChainTuple[F With M, T] =
+//			stretch[F, F With M]
+//
+//		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
+//			map(SQLScribe.stretcher(target))
 
 		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
-			stretch[U, S]
+			map(SQLScribe.stretcher(target))
 
 		def ~[S <: F, H](head :SQLFormula[S, H]) :ChainHead[S, T, H] = new ChainHead(this, head)
 
@@ -163,8 +165,8 @@ object SQLTuple {
 			override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T ~ H] =
 				init.map(mapper) ~ mapper(last)
 
-			override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T ~ H] =
-				init.stretch[U, S] ~ last.stretch[U, S]
+			override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T ~ H] =
+				init.stretch(target) ~ last.stretch(target)
 		}
 
 
@@ -182,9 +184,9 @@ object SQLTuple {
 
 			override def map[S <: FromClause](mapper :SQLScribe[FromClause, S]) :ChainTuple[S, @~] = this
 
-			override def stretch[M[O] <: MappingFrom[O]] = this
-
-			override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) = this
+//			override def stretch[M[O] <: MappingFrom[O]] = this
+//
+//			override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) = this
 
 			override def stretch[U <: FromClause, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) = this
 		}

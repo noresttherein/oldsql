@@ -182,7 +182,7 @@ object ColumnWriteForm {
 	  * Used as part of `ColumnForm.combine` to convert a `ColumnReadForm` into a `ColumnForm` for situations
 	  * where its write functionality is known not to be used. Be careful!
 	  */
-	private[oldsql] def dummy(jdbcType :JDBCSQLType) :ColumnWriteForm[Any] =
+	private[oldsql] def dummy[T](jdbcType :JDBCSQLType) :ColumnWriteForm[T] =
 		new NonLiteralWriteForm[Any] with ColumnWriteForm[Any] {
 			override val sqlType = jdbcType
 

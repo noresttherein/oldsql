@@ -2,7 +2,7 @@ organization := "net.noresttherein"
 
 name := "oldsql"
 
-version := "pleistocen"
+version := "Imoen"
 
 scalaVersion := "2.13.2"
 
@@ -34,9 +34,7 @@ libraryDependencies ++= Seq(
 scalacOptions ++= Seq(
 //	"-Ylog-classpath",
 //	"-Xlog-implicits",
-	"-Wconf:cat=deprecation&msg=\\(foldRight instead\\|foldLeft instead\\):silent",
-	"-feature",
-	"-deprecation",
+	"-Wconf:cat=deprecation&msg=foldLeft instead|foldRight instead:silent,cat=deprecation:w,cat=feature:w",
 //	"-language:postfixOps",
 	"-language:implicitConversions",
 	"-language:higherKinds",

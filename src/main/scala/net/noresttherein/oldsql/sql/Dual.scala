@@ -26,15 +26,41 @@ sealed class Dual private () extends FromClause {
 
 	override def last :Nothing = throw new NoSuchElementException("Dual.last")
 
+	override def size = 0
+
+	override def subselectSize = 0
+
+
 
 	override type Generalized = FromClause
 
 	override def generalized :Dual = this
 
 
+
+	override type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R] = P
+
+	override def joinedWith[F <: FromClause](prefix :F, firstJoin :Join.*) :F = prefix
+
+	override type ExtendJoinedWith[+F <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R,
+	                               +N[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R, T[O] <: MappingFrom[O]]
+		= J[F, T]
+
+	override def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
+	                             (prefix :F, firstJoin :Join.*, nextJoin :this.type Join T)
+			:ExtendJoinedWith[F, firstJoin.LikeJoin, nextJoin.LikeJoin, T] =
+		firstJoin.copy[F, T, X](prefix, nextJoin.right)(nextJoin.condition :BooleanFormula[Generalized With T])
+
+
+
 	override type Outer = FromClause
 
 	override def outer :Dual = this //throw new NoSuchElementException(s"No outer source for Dual")
+
+	override type AsSubselectOf[F <: FromClause] = F
+
+	override def asSubselectOf[F <: FromClause](outer :F)(implicit extension :FromClause ExtendedBy F) :F = outer
+//		throw new UnsupportedOperationException("Can't represent Dual as a subselect of " + outer)
 
 
 
@@ -42,12 +68,14 @@ sealed class Dual private () extends FromClause {
 
 	override def row :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
-	override def row[E <: FromClause](stretch :FromClause ExtendedBy E) :ChainTuple[E, @~] =
+	override def row[E <: FromClause](target :E)(implicit stretch :FromClause ExtendedBy E) :ChainTuple[E, @~] =
 		ChainTuple.EmptyChain
 
 	override def tableStack :LazyList[JoinedRelation.AnyIn[FromClause]] = LazyList.empty
 
-	override def tableStack[E <: FromClause](stretch :FromClause ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] = LazyList.empty
+	override def tableStack[E <: FromClause]
+	                       (target :E)(implicit stretch :FromClause ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] =
+		LazyList.empty
 
 
 
@@ -55,46 +83,46 @@ sealed class Dual private () extends FromClause {
 
 	override def subselectRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
 
-	override def subselectRow[E <: FromClause](stretch :FromClause ExtendedBy E) :ChainTuple[E, @~] =
+	override def subselectRow[E <: FromClause](target :E)(implicit stretch :FromClause ExtendedBy E) :ChainTuple[E, @~] =
 		ChainTuple.EmptyChain
 
 	override def subselectTableStack :LazyList[JoinedRelation.AnyIn[FromClause]] = LazyList.empty
 
-	override def subselectTableStack[E <: FromClause](stretch :FromClause ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] =
+	override def subselectTableStack[E <: FromClause]
+	             (target :E)(implicit stretch :FromClause ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] =
 		LazyList.empty
 
 
 
-	override def size = 0
+	override def filter :BooleanFormula[FromClause] = True
 
+	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :BooleanFormula[E] =
+		filter
+//		filter.stretch(target)(extension)
 
-
-	override def filteredBy :BooleanFormula[FromClause] = True
-
-	override def filteredBy[E <: FromClause](extension :FromClause ExtendedBy E) :BooleanFormula[E] =
-		filteredBy.stretch(extension)
-
+	override def subselectFilter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E)
+			:BooleanFormula[E] =
+		filter
+//		filter.stretch(target)(extension)
 
 
 	override type JoinFilter[T[O] <: MappingFrom[O]] = Nothing
 
 
 
-//	override protected def joinAll_:(preceding :FromClause) :FromClause = preceding
-//
-//	override protected def joinSubselect_:(preceding :FromClause) :FromClause = preceding
+
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]
 
 	override def equals(that :Any) :Boolean = that match {
-		case d :Dual => (d eq this) || d.canEqual(this) && d.filteredBy == filteredBy
+		case d :Dual => (d eq this) || d.canEqual(this) && d.filter == filter
 		case _ => false
 	}
 
-	override def hashCode :Int = filteredBy.hashCode
+	override def hashCode :Int = filter.hashCode
 
-	override def toString :String = filteredBy match {
+	override def toString :String = filter match {
 		case True() => "Dual"
 		case e => s"Dual where $e"
 	}

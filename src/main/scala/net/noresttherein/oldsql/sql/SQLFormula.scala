@@ -1,7 +1,6 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Mapping, SQLForm, SQLReadForm, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
@@ -13,13 +12,13 @@ import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
 import net.noresttherein.oldsql.sql.SQLTerm.{BoundParameter, CaseTerm, False, SQLLiteral, TermMatcher, True}
 import net.noresttherein.oldsql.sql.SQLTuple.{CaseTuple, TupleMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionMatcher}
-import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.MappingFormula.{CaseMapping, ColumnComponentFormula, FreeColumn, MappingColumnMatcher, MappingMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.{AliasedColumn, ColumnFormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeColumnFormula.{CaseCompositeColumn, CompositeColumnMatcher, MatchCompositeColumn}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
 import net.noresttherein.oldsql.sql.MappingFormula.ColumnComponentFormula.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingFormula.FreeColumn.CaseFreeColumn
+import net.noresttherein.oldsql.sql.SelectFormula.{CaseSelect, CaseSelectColumn, SelectColumnMatcher, SelectMatcher, SubselectFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
 import slang._
 
@@ -93,21 +92,6 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 	def unary_![S <: F](implicit ev :this.type <:< BooleanFormula[S]) :BooleanFormula[S] = NOT(ev(this))
 
 
-
-	def parameters :Seq[BoundParameter[_]] = collect { case x :BoundParameter[_] => x }
-
-
-
-	def collect[X](fun :PartialFunction[SQLFormula[_ <: FromClause, _], X]) :Seq[X] = reverseCollect(fun, Nil).reverse
-
-	protected def reverseCollect[X](fun :PartialFunction[SQLFormula[_ <: FromClause, _], X], acc :List[X]) :List[X] =
-		fun.lift(this) ++: acc
-
-
-
-	def applyTo[Y[_]](matcher :FormulaMatcher[F, Y]) :Y[V]
-
-
 	/** Lifts this expression to one of type `X`, without any effect on the actual generated sql. */
 	def to[X](implicit lift :Lift[V, X]) :SQLFormula[F, X] = PromotionConversion(this, lift)
 
@@ -115,23 +99,46 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 	def opt :SQLFormula[F, Option[V]] = to[Option[V]] //OrNull(this)
 
 
+	def subselectFrom(from :F) :SQLFormula[from.Outer, Rows[V]] =
+		throw new UnsupportedOperationException(
+			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
+		)
 
 	/** Upcasts this formula to the base ''from'' clause `E &lt;: F`, using only implicit evidence about the subtype
 	  * relation rather than explicit lower type bound (which would be an identity cast in Scala).
 	  */
 	def basedOn[E <: FromClause](implicit subtype :E <:< F) :SQLFormula[E, V] = this.asInstanceOf[SQLFormula[E, V]]
 
-	/** Treat this expression as an expression of a FROM clause extending the source `F` this expression is based on
-	  * with an additional relation mapping `T`. */
-	def stretch[T[O] <: MappingFrom[O]] :SQLFormula[F With T, V] = stretch[F, F With T]
+//	/** Treat this expression as an expression of a FROM clause extending the source `F` this expression is based on
+//	  * with an additional relation mapping `T`. */
+//	def stretch[T[O] <: MappingFrom[O]] :SQLFormula[F With T, V] = stretch[F, F With T]
+//
+//	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
+//	  * the clause `F` this expression is based on. */
+//	def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :SQLFormula[S, V]
 
 	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
 	  * the clause `F` this expression is based on. */
-	def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :SQLFormula[S, V]
+	def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] //= stretch[U, S]
 
-	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
-	  * the clause `F` this expression is based on. */
-	def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] = stretch[U, S]
+
+
+	def parameters :Seq[BoundParameter[_]] = collect { case x :BoundParameter[_] => x }
+
+
+
+	def collect[X](fun :PartialFunction[Formula[_], X]) :Seq[X] = reverseCollect(fun, Nil).reverse
+
+	protected def reverseCollect[X](fun :PartialFunction[Formula[_], X], acc :List[X]) :List[X] =
+		fun.lift(this) ++: acc
+
+	protected[this] def reverseCollect[X](e :Formula[_])(fun :PartialFunction[Formula[_], X], acc :List[X]) :List[X] =
+		e.reverseCollect(fun, acc)
+
+
+	def applyTo[Y[_]](matcher :FormulaMatcher[F, Y]) :Y[V]
+
+
 
 	/** If this expression is a free formula - not dependent on `F` or free parameters -
 	  * which value can be determined at this point, return its value. */
@@ -186,10 +193,6 @@ object SQLFormula {
 
 	implicit def implicitTerm[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
 
-	implicit def asPartOfExtendingSource[F <: FromClause, E <: FromClause, T]
-	                                    (expression :SQLFormula[F, T])(implicit ev :F ExtendedBy E) :SQLFormula[E, T] =
-		expression.stretch[F, E]
-
 /*
 	implicit def typingCast[J[M[O] <: MappingFrom[O]] <: _ Join M, R[O] <: MappingFrom[O], T[O] <: TypedMapping[_, O], X]
 	                       (e :SQLFormula[J[R], X])
@@ -207,7 +210,8 @@ object SQLFormula {
 
 
 
-
+	type * = SQLFormula[_ <: FromClause, _]
+	//todo: replace usages with *
 	/** An upper type bound of all `SQLFormula[_, T]` instances. */
 	type Formula[T] = SQLFormula[Nothing, T]
 
@@ -234,24 +238,24 @@ object SQLFormula {
 		override def opt :ColumnFormula[F, Option[V]] = OrNull(this)
 
 
+		override def basedOn[E <: FromClause](implicit subtype :E <:< F) :ColumnFormula[E, V] =
+			this.asInstanceOf[ColumnFormula[E, V]]
+
+		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V]
+
+		override def subselectFrom(from :F) :ColumnFormula[from.Outer, Rows[V]] =
+			SelectFormula.subselect[from.Outer, from.type, V, Any](from, this)
+
+
+
+		def as(alias :String) :ColumnFormula[F, V] = new AliasedColumn(this, alias)
+
+
+
 		override def applyTo[Y[_]](matcher :FormulaMatcher[F, Y]) :Y[V] =
 			applyTo(matcher :ColumnFormulaMatcher[F, Y])
 
 		def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[V]
-
-		override def basedOn[E <: FromClause](implicit subtype :E <:< F) :ColumnFormula[E, V] =
-			this.asInstanceOf[ColumnFormula[E, V]]
-
-		override def stretch[M[O] <: MappingFrom[O]] :ColumnFormula[F With M, V] = stretch[F, F With M]
-
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnFormula[S, V]
-
-		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V] =
-			stretch[U, S]
-		
-		
-		
-		def as(alias :String) :ColumnFormula[F, V] = new AliasedColumn(this, alias)
 	}
 
 
@@ -261,7 +265,7 @@ object SQLFormula {
 		class AliasedColumn[-F <: FromClause, V](val column :ColumnFormula[F, V], val alias :String)
 			extends CompositeColumnFormula[F, V]
 		{
-			override val parts = column::Nil
+			protected override val parts = column::Nil
 			
 			override def readForm :ColumnReadForm[V] = column.readForm
 			
@@ -288,25 +292,29 @@ object SQLFormula {
 
 		trait ColumnFormulaMatcher[+F <: FromClause, +Y[X]]
 			extends ColumnTermMatcher[F, Y] with CompositeColumnMatcher[F, Y] with MappingColumnMatcher[F, Y]
+			with SelectColumnMatcher[F, Y]
 
 		trait MatchColumnFormula[+F <: FromClause, +Y[X]] extends ColumnFormulaMatcher[F, Y]
 			with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
-			with CaseColumnComponent[F, Y] with CaseFreeColumn[F, Y]
+			with CaseColumnComponent[F, Y] with CaseFreeColumn[F, Y] with CaseSelectColumn[F, Y]
 
 		trait CaseColumnFormula[+F <: FromClause, +Y[X]] extends MatchColumnFormula[F, Y] {
 			def column[X](e :ColumnFormula[F, X]) :Y[X]
 
 			override def composite[X](e :CompositeColumnFormula[F, X]) :Y[X] = column(e)
 
-			override def term[X](e :SQLTerm.ColumnTerm[X]) :Y[X] = column(e)
-
 			override def component[T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O]
 			                      (e :ColumnComponentFormula[F, T, E, M, V, O]) :Y[V] =
 				column(e)
 
 			override def freeComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-			                          (column :FreeColumn[O, M, V]) :Y[V] =
-				this.column(column)
+			                          (e :FreeColumn[O, M, V]) :Y[V] =
+				column(e)
+
+			override def select[V, O](e :SelectFormula.SelectColumn[F, V, O]) :Y[Rows[V]] = column(e)
+
+			override def term[X](e :SQLTerm.ColumnTerm[X]) :Y[X] = column(e)
+
 		}
 	}
 
@@ -315,14 +323,14 @@ object SQLFormula {
 
 
 	trait CompositeFormula[-F <: FromClause, V] extends SQLFormula[F, V] {
-		protected def inOrder :Seq[SQLFormula[F, _]] = parts
+		def inOrder :Seq[SQLFormula[F, _]] = parts
 		protected def parts :Seq[SQLFormula[F, _]]
 
 
 //		override def isGroundedIn(tables: Iterable[AnyJoinedRelation]): Boolean =
 //			parts.forall(_.isGroundedIn(tables))
 
-		override protected def reverseCollect[X](fun: PartialFunction[SQLFormula[_ <: FromClause, _], X], acc: List[X]): List[X] =
+		protected override def reverseCollect[X](fun: PartialFunction[Formula[_], X], acc: List[X]): List[X] =
 			(super.reverseCollect(fun, acc) /: inOrder)((collected, member) => member.reverseCollect(fun, collected))
 
 
@@ -330,8 +338,8 @@ object SQLFormula {
 		def map[S <: FromClause](mapper :SQLScribe[F, S]) :SQLFormula[S, V]
 
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :SQLFormula[S, V] =
-			map(SQLScribe.stretcher)
+		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] =
+			map(SQLScribe.stretcher(target))
 
 
 
@@ -405,14 +413,14 @@ object SQLFormula {
 	trait CompositeColumnFormula[-F <: FromClause, X] extends CompositeFormula[F, X] with ColumnFormula[F, X] {
 		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, X]
 
-		override def stretch[M[O] <: MappingFrom[O]] :ColumnFormula[F With M, X] =
-			map(SQLScribe.stretcher[F, F With M])
+//		override def stretch[M[O] <: MappingFrom[O]] :ColumnFormula[F With M, X] =
+//			map(SQLScribe.stretcher[F, F With M])
 
-		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnFormula[S, X] =
-			map(SQLScribe.stretcher)
+//		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnFormula[S, X] =
+//			map(SQLScribe.stretcher)
 
 		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, X] =
-			map(SQLScribe.stretcher)
+			map(SQLScribe.stretcher(target))
 
 	}
 
@@ -513,8 +521,8 @@ object SQLFormula {
 			implicit def self[T] :Lift[T, T] = ident.asInstanceOf[Lift[T, T]]
 			implicit def option[T] :Lift[T, Option[T]] = opt.asInstanceOf[Lift[T, Option[T]]]
 //			implicit def some[T] :Lift[Some[T], Option[T]] = new Supertype[Some[T], Option[T]]
-			implicit def singleRow[T] :Lift[RowCursor[T], T] = selectRow.asInstanceOf[Lift[RowCursor[T], T]]
-			implicit def rowSeq[T] :Lift[RowCursor[T], Seq[T]] = selectRows.asInstanceOf[Lift[RowCursor[T], Seq[T]]]
+			implicit def singleRow[T] :Lift[Rows[T], T] = selectRow.asInstanceOf[Lift[Rows[T], T]]
+			implicit def rowSeq[T] :Lift[Rows[T], Seq[T]] = selectRows.asInstanceOf[Lift[Rows[T], Seq[T]]]
 
 			class ComposedLift[X, Y, Z](prev :Lift[X, Y], next :Lift[Y, Z]) extends Lift[X, Z] {
 
@@ -543,21 +551,21 @@ object SQLFormula {
 				override def toString = "Option[_]"
 			}
 
-			private[this] val selectRow = new Lift[RowCursor[Any], Any] {
-				override def apply(value: RowCursor[Any]): Any = value.head
-				override def inverse(value: Any): Option[RowCursor[Any]] = Some(RowCursor(value))
+			private[this] val selectRow = new Lift[Rows[Any], Any] {
+				override def apply(value: Rows[Any]): Any = value.head
+				override def inverse(value: Any): Option[Rows[Any]] = Some(Rows(value))
 
-				override def toString = "RowCursor.one"
+				override def toString = "Rows.one"
 			}
 
-			private[this] val selectRows = new Lift[RowCursor[Any], Seq[Any]] {
-				override def apply(value: RowCursor[Any]): Seq[Any] = Seq(value.seq)
-				override def inverse(value: Seq[Any]): Option[RowCursor[Any]] = value match {
-					case Seq(row) => Some(RowCursor(row))
+			private[this] val selectRows = new Lift[Rows[Any], Seq[Any]] {
+				override def apply(value: Rows[Any]): Seq[Any] = Seq(value.seq)
+				override def inverse(value: Seq[Any]): Option[Rows[Any]] = value match {
+					case Seq(row) => Some(Rows(row))
 					case _ => None
 				}
 
-				override def toString = "RowCursor.seq"
+				override def toString = "Rows.seq"
 			}
 
 		}
@@ -572,26 +580,37 @@ object SQLFormula {
 
 	/** A visitor traversing the structure of an SQL formula over tables in `F` and producing a value of `Y[X]`,
 	  * where `X` is the value type of the mapped formula. This interface declares a method for every concrete formula
-	  * class defined in this package, which is invoked in a double dispatch `apply(formula)`/`formula.applyTo(this)`.
+	  * class defined in this package, which is invoked in double dispatch `apply(formula)`/`formula.applyTo(this)`.
 	  * This makes for quite a large number of cases, making it a problem both for maintainers and implementors
 	  * who may not need to handle every individual type directly. To alleviate the former, this interface
 	  * is built by recursively extending partial traits defining methods for visiting all subclasses of a given
 	  * formula class. They typically form a one-to-one relationship with formula classes, with each formula
-	  * declaring in its companion object its own matcher, extending the matchers of its subclasses.
-	  * To alleviate the latter, two parallel interface families are introduced: `Case`''Formula''
-	  * and `Match`''Formula''. The former implements all visitor methods for all subclasses of ''Formula''
-	  * by delegating to the method for the ''Formula'' class (introduced by the trait if the formula is abstract),
-	  * catching all subclasses in a single case. The latter is similar, but doesn't introduce a new method for
-	  * abstract formulas and leaves all methods for direct subclasses of ''Formula'' not implemented. The methods
-	  * for ''their'' subclasses delegate as in the former example. This in turn has the effect of matching against
-	  * a smallest set of classes covering all concrete subclasses of ''Formula''. By mixing in a selection of above
-	  * traits, one has a good degree of freedom in selecting which parts of the `SQLFormula` hierarchy are handled
-	  * in detail and which are glossed over.
+	  * declaring in its companion object (or in the same scope for inner classes) its own matcher, extending
+	  * the matchers of its subclasses. To alleviate the latter, two parallel interface families are introduced:
+	  * `Case`''Formula'' and `Match`''Formula''. The former implements all visitor methods for all subclasses
+	  * of ''Formula'' by delegating to the method for the ''Formula'' class (introduced by the trait if the formula
+	  * is abstract), catching all subclasses in a single case. The latter is similar, but doesn't introduce
+	  * a new method for abstract formulas and leaves all methods for direct subclasses of ''Formula'' not implemented.
+	  * The methods for ''their'' subclasses delegate as in the former example. This in turn has the effect of matching
+	  * against a smallest set of classes covering all concrete subclasses of ''Formula''. `ColumnFormula` subtypes
+	  * are a bit special, as they have their own hierarchy, parallel to that of plain SQLFormulas. Wherever a
+	  * formula type, for example `SQLLiteral`, exists in both non-column and column versions, the non-column ''matcher''
+	  * will extend the associated column ''matcher''. The `CaseLiteral` trait in our example will implement
+	  * the callback for the column literal by delegating it to the method for the base literal. In this way,
+	  * the standard delegation chain for any column formula always starts by delegating to the non-column method.
+	  * It is however possible to change by mixing in one or more of the `Match` or `Case` traits for particular
+	  * column formula types after the general matcher traits. For example,
+	  * `CaseFormula[F, Y] with CaseColumnFormula[F, Y]` will change it to the opposite: all callbacks for column
+	  * formulas reach the `formula` callback for the root `ColumnFormula` and, only then, delegate to the `formula`
+	  * method for `SQLFormula`. By mixing in a selection of the above traits, one has a good degree of freedom
+	  * in selecting which parts of the `SQLFormula` hierarchy are handled in detail and which are glossed over.
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.MatchFormula]]
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.CaseFormula]]
+	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher]]
 	  */
 	trait FormulaMatcher[+F <: FromClause, +Y[X]] extends SQLMapper[F, Y]
-		with ColumnFormulaMatcher[F, Y] with TermMatcher[F, Y] with CompositeMatcher[F, Y] with MappingMatcher[F, Y] //with SelectMatcher[F, Y]
+		with ColumnFormulaMatcher[F, Y] with CompositeMatcher[F, Y] with MappingMatcher[F, Y]
+		with SelectMatcher[F, Y] with TermMatcher[F, Y]
 	{
 		override def apply[X](f: SQLFormula[F, X]): Y[X] = f.applyTo(this) //f.extract(this) getOrElse unhandled(f)
 	}
@@ -601,8 +620,8 @@ object SQLFormula {
 	  * subclasses: `term`, `composite`, `select`, `mapping`.
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.FormulaMatcher]]
 	  */
-	trait MatchFormula[+F <: FromClause, +Y[X]] //extends FormulaMatcher[F, Y]
-		extends CaseTerm[F, Y] with CaseComposite[F, Y] with CaseMapping[F, Y]//with CaseSelect[F, Y]
+	trait MatchFormula[+F <: FromClause, +Y[X]]
+		extends CaseComposite[F, Y] with CaseMapping[F, Y] with CaseSelect[F, Y] with CaseTerm[F, Y]
 
 	/** A not particularly useful `FormulaMatcher` which delegates all the cases to the single `formula` method
 	  * invoked for every subformula (SQL AST node). Used as a base class when only few cases need special handling.
@@ -611,14 +630,10 @@ object SQLFormula {
 	trait CaseFormula[+F <: FromClause, +Y[X]] extends FormulaMatcher[F, Y] with MatchFormula[F, Y] {
 		def formula[X](e :SQLFormula[F, X]) :Y[X]
 
-		override def term[X](e: SQLTerm[X]): Y[X] = formula(e)
-
-//		override def select[X](f :SelectFormula[F, X]) :Y[RowCursor[X]] = formula(f)
-//
-		override def mapping[M <: Mapping](e :MappingFormula[F, M]) :Y[M#Subject] = formula(e)
-
 		override def composite[X](e: CompositeFormula[F, X]): Y[X] = formula(e)
-
+		override def mapping[M <: Mapping](e :MappingFormula[F, M]) :Y[M#Subject] = formula(e)
+		override def select[V, O](e :SelectFormula[F, V, O]) :Y[Rows[V]] = formula(e)
+		override def term[X](e: SQLTerm[X]): Y[X] = formula(e)
 	}
 
 	trait SelectiveMatcher[+F <: FromClause, +Y[X]] extends CaseFormula[F, Y] {

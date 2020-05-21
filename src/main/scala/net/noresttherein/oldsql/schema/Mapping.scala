@@ -748,7 +748,7 @@ object Mapping {
 	  * for `TypedMapping` which performs the same function.
 	  */
 	trait OfFreeOrigin[O] extends Mapping {
-		type Origin = O
+		override type Origin = O
 	}
 
 	/** A base trait for mappings which do not interpret their origin type in any way, in particular never handle

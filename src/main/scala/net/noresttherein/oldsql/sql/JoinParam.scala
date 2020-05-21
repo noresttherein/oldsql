@@ -17,6 +17,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 import net.noresttherein.oldsql.sql.JoinParam.ParamFrom
 import net.noresttherein.oldsql.sql.MappingFormula.TypedJoinedRelation.LastRelation
+import net.noresttherein.oldsql.sql.With.TypedWith
 
 
 
@@ -37,7 +38,7 @@ import net.noresttherein.oldsql.sql.MappingFormula.TypedJoinedRelation.LastRelat
   * This join is typically written in an abbreviated form `FromClause WithParam X` (or `FromClause <=? X`)
   * and `FromClause JoinParam ("name" ?: X)#T` for the parameter named with a string literal.
   * This class declares its `Outer` clause as `Nothing` (rather than the `Outer` of the left side) to ensure that
-  * neither it nor any extension clause containing it does not conform to `FromClause.SubselectFrom[F#Outer]`,
+  * neither it nor any extension clause containing it does not conform to `FromClause.SubselectOf[F#Outer]`,
   * thus preventing it from being used as a part of a subselect of the outer clause, which would hide the existence
   * of a parameter and make its outer source appear not parameterized. As the result, only top-level select statement
   * from clauses can include unbound parameters.
@@ -50,25 +51,42 @@ import net.noresttherein.oldsql.sql.MappingFormula.TypedJoinedRelation.LastRelat
 sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M] {
 	type Param = M[FromLast]#Subject
 
+	override def subselectSize = 0
+
 	@inline final def from :F = left
 
 	override type This >: this.type <: F JoinParam M
 	override type WithLeft[+L <: FromClause] <: L JoinParam M
 
+
+	override type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R] =
+		left.JoinedWith[P, J] JoinParam M
+
+	override def joinedWith[P <: FromClause](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
+		withLeft(left.joinedWith(prefix, firstJoin))(condition)
+
+
+
 	override type Outer = Nothing
 
-
 	override def outer = throw new UnsupportedOperationException(s"JoinParam[$this].outer")
+
+	override type AsSubselectOf[J <: FromClause] = Nothing
+
+	override def asSubselectOf[J <: FromClause](outer :J)(implicit extension :Outer ExtendedBy J) :AsSubselectOf[J] =
+		throw new UnsupportedOperationException(s"JoinParam[$this].asSubselectOf")
 
 
 
 	override type SubselectRow = left.SubselectRow ~ Param
 
-	override def subselectRow[E <: FromClause](stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow] =
-		left.subselectRow(stretch.shrink[left.Generalized, M]) ~ last.stretch(stretch)
+	override def subselectRow[E <: FromClause]
+	                         (target :E)(implicit stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow] =
+		left.subselectRow(target)(stretch.shrink[left.Generalized, M]) ~ last.stretch(target)(stretch)
 
-	override def subselectTableStack[E <: FromClause](stretch :Generalized ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] =
-		last.extend(stretch) #:: left.subselectTableStack(stretch.shrink[left.Generalized, M])
+	override def subselectTableStack[E <: FromClause]
+	             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] =
+		last.extend(stretch) #:: left.subselectTableStack(target)(stretch.shrink[left.Generalized, M])
 
 
 	protected override def joinType = "param"
@@ -137,26 +155,23 @@ object JoinParam {
 	private[sql] def apply[L <: FromClause, M[O] <: FromParam[X, O], X]
 	                      (from :L, param :LastRelation[M, X])(
 	                       filter :BooleanFormula[from.Generalized With M]) :L JoinParam M =
-		new JoinParam[from.type, M] {
+		new JoinParam[from.type, M] with TypedWith[from.type, M, X] {
 			override val left = from
 			override val last = param
 			override val condition = filter
+			override val size = left.size + 1
 
 			override type This = left.type JoinParam M
 			override type WithLeft[+C <: FromClause] = C JoinParam M
 			override def self :left.type JoinParam M = this
 
-			override def copy[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With M]) :F JoinParam M =
+			override def withLeft[F <: FromClause]
+			                     (left :F)(filter :BooleanFormula[left.Generalized With M]) :F JoinParam M =
 				JoinParam[F, M, X](left, last)(filter)
 
-			override def copy(filter :BooleanFormula[left.Generalized With M]) :This =
+			override def withFilter(filter :BooleanFormula[left.Generalized With M]) :This =
 				JoinParam[left.type, M, X](left, last)(filter)
 
-
-			protected[sql] override def copyLike[F <: FromClause]
-			                                    (template :Join.*)(left :F)
-			                                    (implicit single :(this.left.type With M) <:< (Dual With M))  =
-				template.copy[F, M, X](left, right)(single(this).condition)
 		}
 
 
