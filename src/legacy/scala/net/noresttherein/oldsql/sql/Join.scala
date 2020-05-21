@@ -262,7 +262,7 @@ object Join {
 
 abstract class ProperJoin[+L <: FromClause, R <: Mapping] protected
 		(source :L, t :TableFormula[L Join R, R], filter :BooleanFormula[L Join R])
-	extends Join[L, R](source, t, filter) //with SubselectFrom[L#Outer]
+	extends Join[L, R](source, t, filter) //with AsSubselectOf[L#Outer]
 { join =>
 	type Outer = left.Outer
 
@@ -276,7 +276,7 @@ abstract class ProperJoin[+L <: FromClause, R <: Mapping] protected
 
 
 
-	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): SubselectFrom[O] = {
+	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): AsSubselectOf[O] = {
 		val transplanted = left.transplant(target, rewriter)
 		val joined = copyJoin(transplanted)
 		val filter = SQLScribe.subselect[Outer, this.type, O, joined.type, Boolean](condition, this, joined, rewriter)

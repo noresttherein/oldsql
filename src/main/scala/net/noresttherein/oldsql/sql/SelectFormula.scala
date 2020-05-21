@@ -357,17 +357,6 @@ object SelectFormula {
 		extends SelectFormula[F, V, O] with LazyMapping[V, O]
 	{ outer =>
 
-		def this(from :S, header :ColumnFormula[S, V]) = this(from, header :SQLFormula[S, V])
-
-		def this(from :S, header :CompositeFormula[S, V]) = this(from, header :SQLFormula[S, V])
-
-		def this(from :S, header :ComponentFormula[S, T, E, M, V, O] forSome {
-				type T[A] <: TypedMapping[E, A]; type E; type M[A] <: TypedMapping[V, A]
-			}) =
-			this(from, header :SQLFormula[S, V])
-
-
-
 		override type From = S
 		
 		/** A column in the header of owning select.
@@ -380,203 +369,6 @@ object SelectFormula {
 			extends ColumnMapping[T, O] with SelectedColumn[T]
 
 
-/*
-
-		private type ColumnListing[X] = List[ColumnExpression[_]]]
-
-		private class ColumnCollector extends FormulaMatcher[S, ColumnListing]
-			with CaseFormula[S, ColumnListing] with CaseColumnFormula[S, ColumnListing]
-		{
-			private[this] var names :Set[String] = Set("") //used column names, disallowing ""
-
-			override def column[X](e :ColumnFormula[S, X]) = {
-				implicit val form :ColumnForm[X] = e.readForm match {
-					case form :ColumnForm[X @unchecked] => form
-					case form => form <> ColumnWriteForm.dummy(e.readForm.sqlType)
-				}
-				new ColumnExpression(e, nameFor(e))::Nil
-			}
-
-			override def component[T[B] <: TypedMapping[E, B], E, M[B] <: TypedMapping[X, B], X, A]
-			                      (e :ComponentFormula[S, T, E, M, X, A]) =
-			{
-				val table = e.table
-
-				def headerColumn[C](column :table.Column[C]) :ColumnExpression[C] = {
-					val expr = e.from \ column
-					new ColumnExpression[C](e.from \ column, nameFor(expr))
-				}
-				e.mapping.selectable.view.map(table.export(_)).filter(NoSelectByDefault.disabled)
-					.map(headerColumn).toList
-			}
-
-			override def tuple[X](e :SQLTuple[S, X]) =
-				e.inOrder.view.flatMap(this(_)).toList
-
-			override def conversion[T, U](e :AutoConversionFormula[S, T, U]) =
-				this(e.expr)
-
-			override def formula[X](e :SQLFormula[S, X]) =
-				throw new IllegalArgumentException(
-					s"SQLFormula $e cannot be used in a SelectFormula header expression."
-				)
-
-
-
-			private def nameFor(f :ColumnFormula[S, _]) :String = {
-				val name :String = f match {
-					case FromParam(param, extract) =>
-						if (extract.isIdentity && !names(param.name)) param.name
-						else param.name + "_" + columns.size
-
-					case ComponentFormula(_, MappingExtract(_, _, component)) =>
-						val name :String = component match {
-							case column :ColumnMapping[_, _] => column.name
-							case label @: _ => label
-							case _ => component.sqlName getOrElse ""
-						}
-						if (!names(name)) name else name + "_" + columns.size
-
-					case BoundParameter(_, Some(name)) => //unlikely to appear in this position
-						if (!names(name)) name else name + "_" + columns.size
-
-					case _ => "_" + columns.size
-				}
-				names = names + name
-				name
-			}
-		}
-*/
-
-//		/** A source which will be used to provide data for evaluating the header during this select mapping's assembly
-//		  * process. When performing the mapping of rows returned by an arbitrary select, we don't have values
-//		  * for tables listed in its from clause, but values for column expressions in its header clause.
-//		  * Therefore when evaluating the header, we won't have values for tables in source, just `ComponentValues`
-//		  * instance for this mapping. */
-//		private val fromForAssembly = from param SQLForm.Unknown[Pieces]()
-//
-//		private type FromPieces = S WithParam Pieces
-//		private type Res[T] = SQLFormula[FromPieces, T]
-//
-//		/** Rewrites the header formula, treating it as a sequence of top-level column formulas.
-//		  * Each such column formula is replaced with a `ParamMapping` derived from the parameter `Pieces` added
-//		  * to the source FROM clause `S`. */
-//		private var headerRewriter = new HeaderRewriter
-//
-//		private class HeaderRewriter extends SQLScribe[S, FromPieces]
-//			with CaseFormula[S, FormulaResult[FromPieces]#T] with CaseColumnFormula[S, ColumnResult[FromPieces]#T]
-//		{
-//			var columns :List[ColumnExpression[_]] = Nil
-//			private[this] var names :Set[String] = Set("") //used column names, disallowing ""
-//
-//			override def column[X](e :ColumnFormula[S, X]) :ColumnFormula[FromPieces, X] = {
-//				implicit val form :ColumnForm[X] = e.readForm match {
-//					case form :ColumnForm[X @unchecked] => form
-//					case form => form <> ColumnWriteForm.dummy(e.readForm.sqlType)
-//				}
-//				val col = new ColumnExpression(e, nameFor(e))
-//				columns = col :: columns
-//				val param = fromForAssembly.last.mapping.optcol { pieces => pieces.get(col) }
-//				fromForAssembly.last \ param
-//			}
-//
-//			override def component[T[B] <: TypedMapping[E, B], E, M[B] <: TypedMapping[X, B], X, A]
-//			                      (e :ComponentFormula[S, T, E, M, X, A]) :Res[X] =
-//			{
-//				val substitution = new ComponentSubstitution(e)
-//				columns = substitution.columns reverse_::: columns
-//				substitution.substitute
-//			}
-//
-//			//the only composites that undergo structural mapping, anything else throws up from this.formula
-//			override def tuple[X](e: SQLTuple[S, X]): Res[X] = e.map(this)
-//
-//			override def conversion[Z, X](e :AutoConversionFormula[S, Z, X]) :Res[X] = e.map(this)
-//
-//
-//			override def formula[X](e :SQLFormula[S, X]) =
-//				throw new IllegalArgumentException(
-//					s"SQLFormula $e cannot be used in a SelectFormula header expression."
-//				)
-//
-//
-//
-//			private def nameFor(f :ColumnFormula[S, _]) :String = {
-//				val name :String = f match {
-//					case FromParam(param, extract) =>
-//						if (extract.isIdentity && !names(param.name)) param.name
-//						else param.name + "_" + columns.size
-//
-//					case ComponentFormula(_, MappingExtract(_, _, component)) =>
-//						val name :String = component match {
-//							case column :ColumnMapping[_, _] => column.name
-//							case label @: _ => label
-//							case _ => component.sqlName getOrElse ""
-//						}
-//						if (!names(name)) name else name + "_" + columns.size
-//
-//					case BoundParameter(_, Some(name)) => //unlikely to appear in this position
-//						if (!names(name)) name else name + "_" + columns.size
-//
-//					case _ => "_" + columns.size
-//				}
-//				names = names + name
-//				name
-//			}
-//		}
-//
-//
-//
-//		/** Substitution of a `ComponentFormula` referring to a table or a table component/column
-//		  * for the exploded list of its columns.
-//		  * @param component component formula occurring in header formula (select clause) */
-//		private class ComponentSubstitution[T[B] <: TypedMapping[E, B], E, M[B] <: TypedMapping[X, B], X, A]
-//		                                   (component :ComponentFormula[S, T, E, M, X, A])
-//		{
-//			private[this] val table = component.table.asInstanceOf[RefinedMapping[T[A]#Subject, A]]
-//
-//			val (substitutions, columns) = {
-//				def headerColumn[X](column :table.Column[X]) :Assoc[T[A]#Component, ColumnExpression, X] = {
-//					val export = table.export(column)
-//					Assoc(export, new ColumnExpression[X](component.table \ export, export.name))
-//				}
-//				val entries = component.mapping.selectable.toList.map(headerColumn(_)).filter {
-//					entry => NoSelectByDefault.disabled(entry._1)
-//				}
-//				NaturalMap(entries :_*) -> entries.map(_._2)
-//			}
-//
-//			private implicit val form = component.readForm <> SQLWriteForm.empty
-//
-//			/** A substitute formula replacing original component formula with a `ParamMapping` assembling its value
-//			  * from values of columns of the outer select formula/mapping. */
-//			val substitute :SQLFormula[FromPieces, M[A]#Subject] = fromForAssembly.last.mapping.opt { pieces =>
-//				val substitutedValues = ComponentValues(table).apply(
-//					new (T[A]#Component =#> Option) {
-//						override def apply[X](x :RefinedMapping[X, A]) = substitutions.get(x) match {
-//							case Some(col) => pieces.get(col)
-//							case _ => None
-//						}
-//					}
-//				)
-//				val param = substitutedValues.get(component.mapping.asInstanceOf[RefinedMapping[M[A]#Subject, A]])
-//				headerForAssembly \ param
-//			}
-//
-//		}
-//
-//
-//
-//		/** Header formula with formulas for individual columns in the select clause substituted by join parameter
-//		  * of type `ComponentValues`. It allows to evaluate the header formula using not the values for tables in its
-//		  * original from clause, but values for column formulas returned by executing the select, passed
-//		  * as this mapping's `ComponentValues`. Final terms of this formula are 'join parameters' which return
-//		  * the value for a selected column from passed `ComponentValues`, either directly (single column),
-//		  * or by assembling a mapped value using mapping for substituted formula. They are composed to form
-//		  * the equivalent header formula by tuple formulas, preserved as they were in the original header formula
-//		  * based on `this.from`.
-//		  */
-//		private val headerForAssembly = headerRewriter(header)
 
 		private type Assembler[T] = Pieces => Option[T]
 
@@ -590,7 +382,7 @@ object SelectFormula {
 			override def column[X](e :ColumnFormula[S, X]) :Pieces => Option[X] = {
 				implicit val form :ColumnForm[X] = e.readForm match {
 					case form :ColumnForm[X @unchecked] => form
-					case form => form <> ColumnWriteForm.dummy(e.readForm.sqlType)
+					case form => form <> ColumnWriteForm.dummy(form.sqlType)
 				}
 				val column = new ColumnExpression(e, nameFor(e))
 				columns = column::columns
@@ -798,16 +590,66 @@ object SelectFormula {
 	}
 
 
-	
+
+	private abstract class ArbitrarySelectColumn[-F <: FromClause, S <: SubselectOf[F], V, O]
+	                                            (override val from :S, override val header :ColumnFormula[S, V])
+		extends SelectColumn[F, V, O]
+	{
+		override type From = S
+
+		class HeaderColumn extends ColumnMapping[V, O] with SelectedColumn[V] {
+			override val name :String = header match {
+				case FromParam(param, extract) => param.name
+
+				case ComponentFormula(_, MappingExtract(_, _, component)) =>
+					component match {
+						case column :ColumnMapping[_, _] => column.name
+						case label @: _ => label
+						case _ => component.sqlName getOrElse "result"
+					}
+
+				case BoundParameter(_, Some(name)) => name //unlikely to appear in this position
+
+				case _ => "result"
+			}
+
+			override val form :ColumnForm[V] = header.readForm match {
+				case form :ColumnForm[V @unchecked] => form
+				case form => form <> ColumnWriteForm.dummy(form.sqlType)
+			}
+
+			override def formula = header
+		}
+
+		private[this] val column = new HeaderColumn
+
+		override val headerColumns = column::Nil
+
+		override val extracts = NaturalMap.single[Component, Extract, V](column, MappingExtract.ident(column))
+		override def columnExtracts = extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
+
+		override val columns = Unique.single[Column[V]](column)
+		override def components = columns
+		override def subcomponents = columns
+
+
+
+		override def assemble(pieces :Pieces) :Option[V] = pieces.get(column)
+
+		override def optionally(pieces :Pieces) :Option[V] = pieces.get(column)
+	}
+
+
+
 	//todo: these could use custom, much simplified implementations
-	private class ArbitraryFreeSelectColumn[S <: OuterFrom, V, O](from :S, override val header :ColumnFormula[S, V])
-		extends ArbitrarySelectFormula[FromClause, S, V, O](from, header) with FreeSelectColumn[V, O]
+	private class ArbitraryFreeSelectColumn[S <: OuterFrom, V, O](from :S, header :ColumnFormula[S, V])
+		extends ArbitrarySelectColumn[FromClause, S, V, O](from, header) with FreeSelectColumn[V, O]
 
 	
 	
 	private class ArbitrarySubselectColumn[-F <: FromClause, S <: SubselectOf[F], V, O]
 	                                      (clause :S, override val header :ColumnFormula[S, V])
-		extends ArbitrarySelectFormula[F, S, V, O](clause, header) with SubselectColumn[F, S, V, O]
+		extends ArbitrarySelectColumn[F, S, V, O](clause, header) with SubselectColumn[F, S, V, O]
 	{
 		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G) = {
 			type Ext = FromClause { type Outer = G }

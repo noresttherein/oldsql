@@ -58,7 +58,7 @@ trait SQLMapper[+F <: FromClause, +Y[X]] {
 //
 //
 //
-//	protected[sql] def matchSelect[X](f :SelectFormula[S, X]) :Y[RowCursor[X]] //= matchFormula(f)
+//	protected[sql] def matchSelect[X](f :SelectFormula[S, X]) :Y[Rows[X]] //= matchFormula(f)
 //
 //
 //	protected[sql] def matchRow[X](f :SelectAsRow[S, X]) :Y[X] //= matchConversion(f)

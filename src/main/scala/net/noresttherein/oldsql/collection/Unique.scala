@@ -79,6 +79,12 @@ object Unique extends IterableFactory[Unique] {
 	private[this] val reusableEmpty = new IndexedUnique[Nothing](IndexedSeq.empty, Map.empty)
 
 
+
+	/** A specialized light `Unique` implementation for collections containing only one element. */
+	def single[T](singleton :T) :Unique[T] = new SingletonUnique(singleton)
+
+
+
 	/** A `Unique[T]` with lazily evaluated contents. The initializer will be called only when any of the methods
 	  * on the proxy is called. It will be executed at most once, withing a `synchronized` block for the proxy.
 	  * Once computed, it remains thread safe but will incur no additional synchronization penalty.
@@ -243,6 +249,41 @@ object Unique extends IterableFactory[Unique] {
                 ) ++= that).result()
 
 	}
+
+
+
+
+
+
+	private class SingletonUnique[T](override val head :T) extends Unique[T] {
+		override def last :T = head
+		override def tail = Unique.empty[T]
+		override def init = Unique.empty[T]
+
+		override def apply(n :Int) =
+			if (n == 0) head
+			else throw new IndexOutOfBoundsException(s"$n/1")
+
+		override def foreach[U](f :T => U) :Unit = f(head)
+
+		override def indexOf[U >: T](elem :U) = if (head == elem) 0 else -1
+
+		override def +:[U >: T](elem :U) =
+			if (elem == head) this else Unique(elem, head)
+
+		override def :+[U >: T](elem :U) =
+			if (elem == head) this else Unique(head, elem)
+
+		override def :++[U >: T](elems :IterableOnce[U]) =
+			if (elems.iterator.isEmpty) this
+			else Unique.from(head ::elems.to(List))
+
+		override def iterator = Iterator.single(head)
+
+	}
+
+
+
 
 
 

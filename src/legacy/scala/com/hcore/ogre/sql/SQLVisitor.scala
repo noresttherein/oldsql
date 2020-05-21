@@ -77,7 +77,7 @@ trait GenericSQLVisitor[+F<:RowSource, +R[T]] {
 
 	def path[M<:Mapping, C<:Mapping](e :PathFormula[F, M, C]) :R[C#ResultType]
 
-	def select[H](e :SelectFormula[F, H]) :R[RowCursor[H]]
+	def select[H](e :SelectFormula[F, H]) :R[Rows[H]]
 
 	def exists[H](e :ExistsFormula[F, H]) :R[Boolean]
 	

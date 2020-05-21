@@ -66,7 +66,7 @@ abstract class SQLScribe[F <: FromClause, T <: FromClause](protected val from :F
 	//		case s :FreeSelectFormula[_] =>
 	//			select(s.asInstanceOf[FreeSelectFormula[H]])
 	//		case s :SubselectFormula[_, _, _] =>
-	//			subselect(s.asInstanceOf[SubselectFormula[F, SubselectFrom[F], H]])
+	//			subselect(s.asInstanceOf[SubselectFormula[F, AsSubselectOf[F], H]])
 	//	}
 
 	override def select[H](e :GroundedSelectFormula[H]) :SelectFormula[T, H] = e

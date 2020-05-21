@@ -24,11 +24,11 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   *             when additional tables are added to this subselect join (i.e. this source is expanded).
   * @tparam F static type of outer select's source.
   * @tparam S Right side of this join - the first table of the ''from'' clause of the represented subselect.
-  * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]]
+  * @see [[net.noresttherein.oldsql.sql.FromClause.AsSubselectOf AsSubselectOf]]
   */
 class SubselectJoin[F <: FromClause, S <: Mapping] private
 		(val source :F, table :TableFormula[F Join S, S], cond :BooleanFormula[F Join S])
-	extends Join[F, S](source, table, cond) //with SubselectFrom[F]
+	extends Join[F, S](source, table, cond) //with AsSubselectOf[F]
 { subsource =>
 
 	val outer = source :Outer
@@ -45,9 +45,9 @@ class SubselectJoin[F <: FromClause, S <: Mapping] private
 	override def subselectTables: Seq[TableFormula[this.type, _ <: Mapping]] = Seq(lastTable)
 
 
-	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): SubselectFrom[O] = {
+	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): AsSubselectOf[O] = {
 		val transplanted = target from right
-		transplanted filterBy SQLScribe.subselect[Outer, this.type, O, SubselectFrom[O], Boolean](condition, this, transplanted, rewriter)
+		transplanted filterBy SQLScribe.subselect[Outer, this.type, O, AsSubselectOf[O], Boolean](condition, this, transplanted, rewriter)
 	}
 
 	//	override def copyJoin[L <: FromClause, M <: Mapping](left: L, right: M): L SubselectJoin M =

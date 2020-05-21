@@ -313,8 +313,8 @@ object SQLFormula {
 			implicit def self[T] :Lift[T, T] = ident.asInstanceOf[Lift[T, T]]
 			implicit def option[T] :Lift[T, Option[T]] = opt.asInstanceOf[Lift[T, Option[T]]]
 //			implicit def some[T] :Lift[Some[T], Option[T]] = new Supertype[Some[T], Option[T]]
-			implicit def singleRow[T] :Lift[RowCursor[T], T] = selectRow.asInstanceOf[Lift[RowCursor[T], T]]
-			implicit def rowSeq[T] :Lift[RowCursor[T], T] = selectRows.asInstanceOf[Lift[RowCursor[T], T]]
+			implicit def singleRow[T] :Lift[Rows[T], T] = selectRow.asInstanceOf[Lift[Rows[T], T]]
+			implicit def rowSeq[T] :Lift[Rows[T], T] = selectRows.asInstanceOf[Lift[Rows[T], T]]
 
 			class LiftChain[X, Y, Z](prev :Lift[X, Y], next :Lift[Y, Z]) extends Lift[X, Z] {
 
@@ -354,31 +354,31 @@ object SQLFormula {
 			}
 */
 
-			private[this] val selectRow = new Lift[RowCursor[Any], Any] {
-				override def apply(value: RowCursor[Any]): Any = value.head
-				override def inverse(value: Any): Option[RowCursor[Any]] = Some(RowCursor(value))
+			private[this] val selectRow = new Lift[Rows[Any], Any] {
+				override def apply(value: Rows[Any]): Any = value.head
+				override def inverse(value: Any): Option[Rows[Any]] = Some(Rows(value))
 
-				override def apply[S <: FromClause](expr: SQLFormula[S, RowCursor[Any]]): SQLFormula[S, Any] =
+				override def apply[S <: FromClause](expr: SQLFormula[S, Rows[Any]]): SQLFormula[S, Any] =
 					expr.asSubclassOf[SelectFormula[S, _, Any]].map(_.single) getOrElse {
 						throw new IllegalArgumentException(s"Can't lift a non-select formula $expr to a single row select formula")
 					}
 
-				override def toString = "RowCursor.one"
+				override def toString = "Rows.one"
 			}
 
-			private[this] val selectRows = new Lift[RowCursor[Any], Seq[Any]] {
-				override def apply(value: RowCursor[Any]): Seq[Any] = Seq(value.seq)
-				override def inverse(value: Seq[Any]): Option[RowCursor[Any]] = value match {
-					case Seq(row) => Some(RowCursor(row))
+			private[this] val selectRows = new Lift[Rows[Any], Seq[Any]] {
+				override def apply(value: Rows[Any]): Seq[Any] = Seq(value.seq)
+				override def inverse(value: Seq[Any]): Option[Rows[Any]] = value match {
+					case Seq(row) => Some(Rows(row))
 					case _ => None
 				}
 
-				override def apply[S <: FromClause](expr: SQLFormula[S, RowCursor[Any]]): SQLFormula[S, Seq[Any]] =
+				override def apply[S <: FromClause](expr: SQLFormula[S, Rows[Any]]): SQLFormula[S, Seq[Any]] =
 					expr.asSubclassOf[SelectFormula[S, _, Any]].map(_.rows) getOrElse {
 						throw new IllegalArgumentException(s"Can't lift a non-select formula $expr to a row seq formula")
 					}
 
-				override def toString = "RowCursor.seq"
+				override def toString = "Rows.seq"
 			}
 
 		}
@@ -436,7 +436,7 @@ object SQLFormula {
 
 		override def composite[X](f: CompositeFormula[F, X]): Y[X] = formula(f)
 
-		override def select[X](f :SelectFormula[F, X]) :Y[RowCursor[X]] = formula(f)
+		override def select[X](f :SelectFormula[F, X]) :Y[Rows[X]] = formula(f)
 
 		override def mapping[M <: Mapping](f :MappingFormula[F, M]) :Y[M#Subject] = formula(f)
 

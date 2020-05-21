@@ -49,10 +49,10 @@ trait FromClause {
 
 	/** Type of the outer source if this source represents a subselect source created by `Outer.from()`.
 	  * All 'real' `Join` subclasses have this type equal to the `Outer` of their left side, but `SubselectJoin`
-	  * defines `Outer` as the type of its left side. Additionally, all 'real' joins implement `SubselectFrom[L#Outer]`
-	  * and `SubselectJoin` implements `SubselectFrom[L]`. This means that for any concrete class `S &lt;: FromClause`
+	  * defines `Outer` as the type of its left side. Additionally, all 'real' joins implement `AsSubselectOf[L#Outer]`
+	  * and `SubselectJoin` implements `AsSubselectOf[L]`. This means that for any concrete class `S &lt;: FromClause`
 	  * with fully instantiated parameters (i.e. all tables in `S` and types of joins in it are known)
-	  * value `(s :S) from t1 join t2 ... join t3` conforms to `SubselectFrom[S]`. This way we can statically express
+	  * value `(s :S) from t1 join t2 ... join t3` conforms to `AsSubselectOf[S]`. This way we can statically express
 	  * a dependency relationship between sources without resorting to implicit evidence.
 	  */
 	type Outer <: FromClause
@@ -217,8 +217,8 @@ object FromClause {
 	import Join._
 
 	/** A `FromClause` representing a subselect source of `S`.
-	  * `S &lt;: SubselectFrom[R]` if and only if `S =:= R SubselectJoin M1 Join M2 ... Join MN` for some mappings
-	  * `M1...MN`. Sources conforming to `SubselectFrom[S]` can use all the mappings/tables which are a part of `S`,
+	  * `S &lt;: AsSubselectOf[R]` if and only if `S =:= R SubselectJoin M1 Join M2 ... Join MN` for some mappings
+	  * `M1...MN`. Sources conforming to `AsSubselectOf[S]` can use all the mappings/tables which are a part of `S`,
 	  * but they are not a part of any select formulas created from that source. This allows the use of nested
 	  * select queries which depend on values from the 'FROM' clause of the outer select. Note that subselects
 	  * may be nested to an arbitrary depth and only directly nested subselects of `S` conform to this type.
@@ -360,7 +360,7 @@ object FromClause {
 //		def param = table.mapping
 
 
-		override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): SubselectFrom[O] =
+		override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): AsSubselectOf[O] =
 			throw new UnsupportedOperationException(s"WithParam($this).transplant($target, _)")
 
 
@@ -700,7 +700,7 @@ object FromClause {
 		  * explicit joins in the subselect as usual. The outer of the returned source
 		  * (and any sources obtained by subsequent joins) will be set to this source, and the corresponding Outer type to S
 		  * (static type of the concrete subclass of Join).
-		  * Additionally, all resulting sources will implement SubselectFrom[S].
+		  * Additionally, all resulting sources will implement AsSubselectOf[S].
 		  * @param mapping first table in the from clause of a subselect being built.
 		  */
 		def from[M<:Mapping](mapping :M) :S SubselectJoin M = new SubselectJoin(source, mapping)

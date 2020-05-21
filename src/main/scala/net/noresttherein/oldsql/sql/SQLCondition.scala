@@ -56,7 +56,7 @@ object SQLCondition {
 		         (left :SQLFormula[F, T], symbol :String, right :SQLFormula[F, T]) :Comparison[F, T] =
 			symbol match {
 				case EQ => Equality(left, right)
-				case NEQ =>Inequality(left, right)
+				case NEQ => Inequality(left, right)
 				case _ => OrderComparison(left, symbol, right)
 			}
 

@@ -17,16 +17,16 @@ trait RowCursor[+E] {
 
 
 object RowCursor {
-	def apply[E](items :E*) :RowCursor[E] = Rows(items)
+	def apply[E](items :E*) :Rows[E] = Rows(items)
 
 
-	implicit def readForm[T :SQLReadForm] :SQLReadForm[RowCursor[T]] = SQLReadForm[T].map((t :T) => RowCursor(t))
+	implicit def readForm[T :SQLReadForm] :SQLReadForm[Rows[T]] = SQLReadForm[T].map((t :T) => Rows(t))
 
-	implicit def writeForm[T :SQLWriteForm] :SQLWriteForm[RowCursor[T]] =
-		EmptyForm(throw new UnsupportedOperationException("SQLWriteForm[RowCursor]")) //SQLWriteForm[T].imap(_.row)
+	implicit def writeForm[T :SQLWriteForm] :SQLWriteForm[Rows[T]] =
+		EmptyForm(throw new UnsupportedOperationException("SQLWriteForm[Rows]")) //SQLWriteForm[T].imap(_.row)
 
 
-	case class Rows[+E](seq :Seq[E]) extends RowCursor[E] {
+	case class Rows[+E](seq :Seq[E]) extends Rows[E] {
 		def single :E = seq match {
 			case Seq(res) => res
 			case _ => throw new IllegalStateException("Expected a single result from a row cursor, got " + seq.size)
