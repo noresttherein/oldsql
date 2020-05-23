@@ -276,7 +276,7 @@ object Unique extends IterableFactory[Unique] {
 
 		override def :++[U >: T](elems :IterableOnce[U]) =
 			if (elems.iterator.isEmpty) this
-			else Unique.from(head ::elems.to(List))
+			else Unique.from(head::elems.iterator.to(List))
 
 		override def iterator = Iterator.single(head)
 

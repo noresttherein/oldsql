@@ -6,10 +6,10 @@ import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables, SubselectOf}
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
-import net.noresttherein.oldsql.sql.MappingFormula.{JoinedRelation, SQLRelation}
+import net.noresttherein.oldsql.sql.MappingFormula.{BaseComponentFormula, ComponentFormula, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.SelectFormula.{SubselectColumn, SubselectFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
-import net.noresttherein.oldsql.sql.SQLScribe.ComponentSubstitutions
+import net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 
@@ -55,7 +55,9 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	def right :RowSource[R] = last.source
 
 	/** the join condition joining the right side to the left side. It is not the complete filter
-	  * condition, as it doesn't include any join conditions defined in the left side of this join. */
+	  * condition, as it doesn't include any join conditions defined in the left side of this join.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
+	  */
 	val condition :BooleanFormula[Generalized]
 
 
@@ -71,8 +73,10 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 
 	//consider: maybe we should declare it as simply L With R and override in every subclass?
 	protected def withFilter(filter :BooleanFormula[left.Generalized With R]) :This
-
+//
 	def withLeft[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With R]) :WithLeft[F]
+
+//	def withLeft[F <: FromClause](left :F)(filter :WithLeft[left.type] => BooleanFormula[left.Generalized With R]) :WithLeft[F] = ???
 
 	protected[sql] def withLeftLike[F <: FromClause]
 	                               (template :Join.*)(left :F)(implicit single :(L With R) <:< (Dual With R))
@@ -80,9 +84,23 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 
 
 
+	override type Init = left.Init
+
 	override type Generalized = left.Generalized With R
 
 	override def generalized :Generalized = this.asInstanceOf[Generalized]
+
+
+
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :BooleanFormula[E] =
+		left.filter(target)(extension.stretchFront[left.Generalized, R]) && condition.stretch(target)
+
+
+
+	override type Row = left.Row ~ last.Subject
+
+	override def row[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, Row] =
+		left.row(target)(extension.stretchFront[left.Generalized, R]) ~ last.stretch(target)
 
 
 
@@ -97,23 +115,25 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 
 
 
-	override type Row = left.Row ~ last.Subject
-
-	override def row[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, Row] =
-		left.row(target)(extension.shrink[left.Generalized, R]) ~ last.stretch(target)
-
-	override def tableStack[E <: FromClause](target :E)(implicit stretch :Generalized ExtendedBy E)
-			:LazyList[JoinedRelation.AnyIn[E]] =
-		last.extend(stretch) #:: left.tableStack(target)(stretch.shrink[left.Generalized, R])
-
-
-
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :BooleanFormula[E] =
-		left.filter(target)(extension.shrink[left.Generalized, R]) && condition.stretch(target)
-
 	override def subselectFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 			:BooleanFormula[E] =
-		left.subselectFilter(target)(extension.shrink[left.Generalized, R]) && condition.stretch(target)
+		left.subselectFilter(target)(extension.stretchFront[left.Generalized, R]) && condition.stretch(target)
+
+
+
+//	override type ExtendAsSubselectOf[O <: FromClause, J[+F <: FromClause, T[A] <: MappingFrom[A]] <: F Join T,
+//	                                  M[A] <: MappingFrom[A]] =
+//		J[AsSubselectOf[O], M] { type Outer >: O <: FromClause }
+//
+//	override def extendAsSubselectOf[O <: FromClause, T[A] <: MappingFrom[A]]
+//	                                (outer :O, next :this.type ProperJoin T)(implicit extension :Outer ExtendedBy O)
+//			:next.LikeJoin[AsSubselectOf[O], T] =
+//	{
+//		val subselectR = asSubselectOf(outer)
+//		val substitute = With.shiftAside[next.Generalized, subselectR.Generalized With T](1, extension.length)
+//		next.copy(subselectR, next.right)(substitute(next.condition))
+//	}
+
 
 
 	/** A function accepting the last relation of this clause, as a formula over a join between this clause
@@ -140,6 +160,11 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 		val joinFilter = condition(left.last.extend[R], last)
 		val grounded = SQLScribe.groundFreeComponents(generalized)(joinFilter)
 		withLeft[L](left)(this.condition && grounded)
+//		withLeft[L](left){ copy =>
+//			val joinCondition = condition(copy.left.last.extend[R], last)
+//			val grounded = SQLScribe.groundFreeComponents(copy.generalized)(joinCondition)
+//			this.condition && grounded
+//		}
 	}
 
 
@@ -218,27 +243,33 @@ object With {
 
 	/** An SQL expression rewriter creating a gap for `extension` relations before the last `threshold` relations. */
 	@deprecated
-	private[sql] def shiftAside[F <: FromClause, R <: FromClause](threshold :Int, extension :Int) :SQLScribe[F, R] =
-		new ComponentSubstitutions[F, R] {
-			override def relation[M[A] <: TypedMapping[E, A], E, O](e :SQLRelation[F, M, E, O])
-					:SQLRelation[R, M, E, O] =
-				(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
-				 else SQLRelation[R, M, E](e.source, e.shift + extension)).asInstanceOf[SQLRelation[R, M, E, O]]
+	private[sql] def shiftAside[F <: FromClause, G <: FromClause](threshold :Int, extension :Int) :SQLScribe[F, G] =
+		new SubstituteComponents[F, G] {
+
+			override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
+//					:BaseComponentFormula[G, T, T, _ >: G <: FromClause] =
+					:BaseComponentFormula[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] } =
+			(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
+				 else SQLRelation[G, T, E](e.source, e.shift + extension)).asInstanceOf[SQLRelation[G, T, E, G]]
 
 			override def subselect[S <: SubselectOf[F], V, O](e :SubselectFormula[F, S, V, O]) = ???
 			override def subselect[S <: SubselectOf[F], V, O](e :SubselectColumn[F, S, V, O]) = ???
 		}
 
-	/** An SQL expression rewriter creating a gap for `extension` relations before the last `threshold` relations. */
-	private[sql] def shiftAside[F <: FromClause, R <: FromClause]
-	                           (sub :R, extension :Int)(implicit ext :F ExtendedBy R) :SQLScribe[F, R] =
-		new ComponentSubstitutions[F, R] {
+	/** An SQL expression rewriter shifting back all relations before the last `Subselect` join by `extension` positions.
+	  * Used when a subselect clause is 'transplanted' onto another clause, extending the `Outer` clause of the subselect.
+	  * @param sub the new subselect clause
+	  */
+	private[sql] def shiftAside[F <: FromClause, G <: FromClause]
+	                           (sub :G, extension :Int)(implicit ext :F ExtendedBy G) :SQLScribe[F, G] =
+		new SubstituteComponents[F, G] {
 			private[this] val threshold = sub.subselectSize
 
-			override def relation[M[A] <: TypedMapping[E, A], E, O](e :SQLRelation[F, M, E, O])
-					:SQLRelation[R, M, E, O] =
-				(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
-				 else SQLRelation[R, M, E](e.source, e.shift + extension)).asInstanceOf[SQLRelation[R, M, E, O]]
+			override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
+//					:ComponentFormula[G, T, E, T, E, _] =
+					:BaseComponentFormula[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] } =
+			(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
+				 else SQLRelation[G, T, E](e.source, e.shift + extension)).asInstanceOf[SQLRelation[G, T, E, G]]
 
 			override def subselect[S <: SubselectOf[F], V, O](e :SubselectFormula[F, S, V, O]) =
 				e.stretch(sub)(ext)
@@ -256,6 +287,13 @@ object With {
 
 
 	trait TypedWith[+L <: FromClause, R[O] <: TypedMapping[S, O], S] extends With[L, R] {
+		override val last :SQLRelation[FromLast, R, S, FromLast]
+
+
+		override def tableStack[E <: FromClause](target :E)(implicit stretch :Generalized ExtendedBy E)
+				:LazyList[SQLRelation.AnyIn[E]] =
+			last.stretch(target) #:: left.tableStack(target)(stretch.stretchFront[left.Generalized, R])
+
 
 
 		protected[sql] override def withLeftLike[F <: FromClause]

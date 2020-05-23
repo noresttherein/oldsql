@@ -5,31 +5,29 @@ import java.sql.PreparedStatement
 import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.generic.{=#>, Self}
+import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SQLForm, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:
 import net.noresttherein.oldsql.schema.Buff.NoSelectByDefault
-import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
-import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.AutoConversionFormula.PromotionConversion
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectOf}
-import net.noresttherein.oldsql.sql.JoinParam.{FromParam, WithParam}
-import net.noresttherein.oldsql.sql.MappingFormula.{ColumnComponentFormula, ComponentFormula, JoinedRelation, SQLRelation}
+import net.noresttherein.oldsql.sql.JoinParam.FromParam
+import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.SQLCondition.Exists
-import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CaseFormula, ColumnFormula, CompositeFormula, Formula, FormulaMatcher}
+import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CaseFormula, ColumnFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.{CaseColumnFormula, ColumnFormulaMatcher}
-import net.noresttherein.oldsql.sql.SQLMapper.FixedResult
-import net.noresttherein.oldsql.sql.SQLScribe.{ColumnResult, ComponentSubstitutions, FormulaResult}
 import net.noresttherein.oldsql.sql.SQLTerm.BoundParameter
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple.MatchChain
 import net.noresttherein.oldsql.sql.SQLTuple.{ChainTuple, SeqTuple}
+
+
 import slang._
 
 
@@ -65,7 +63,7 @@ sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]
 
 	val from :From
 
-	def tables :Seq[JoinedRelation.AnyIn[from.Generalized]] = from.subselectTableStack
+	def tables :Seq[SQLRelation.AnyIn[from.Generalized]] = from.subselectTableStack
 
 	def filter :BooleanFormula[from.Generalized] = from.filter
 
@@ -92,6 +90,11 @@ sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]
 	override def freeValue :Option[Rows[V]] = header.freeValue.map(Rows(_))
 
 	override def isFree :Boolean = header.isFree
+
+
+
+	override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SelectFormula[S, V, O]
+
 
 
 	protected override def reverseCollect[X](fun: PartialFunction[Formula[_], X], acc: List[X]): List[X] =
@@ -133,9 +136,9 @@ sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]
 
 object SelectFormula {
 
-	def apply[F <: OuterFrom, T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, O]
-	         (from :F, header :ComponentFormula[F, T, E, M, V, O]) :TypedSelectMapping[F, M, V, O] =
-		new SelectComponent[F, T, E, M, V, O](from, header)
+	def apply[F <: OuterFrom, T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, I >: F <: FromClause, O]
+	         (from :F, header :ComponentFormula[F, T, E, M, V, I]) :TypedSelectMapping[F, M, V, O] =
+		new SelectComponent[F, T, E, M, V, I, O](from, header)
 	
 	def apply[F <: OuterFrom, V, O](from :F, header :SQLTuple[F, V]) :FreeSelectFormula[V, O] =
 		new ArbitraryFreeSelect[F, V, O](from, header) 
@@ -148,9 +151,10 @@ object SelectFormula {
 
 
 
-	def subselect[F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, O]
-	             (from :S, header :ComponentFormula[S, T, E, M, V, O]) :TypedSubselectMapping[F, S, M, V, O] =
-		new SubselectComponent[F, S, T, E, M, V, O](from, header)
+	def subselect[F <: FromClause, S <: SubselectOf[F],
+		          T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
+	             (from :S, header :ComponentFormula[S, T, E, M, V, I]) :TypedSubselectMapping[F, S, M, V, O] =
+		new SubselectComponent[F, S, T, E, M, V, I, O](from, header)
 
 	def subselect[F <: FromClause, S <: SubselectOf[F], V, O](from :S, header :SQLTuple[S, V])
 			:SubselectFormula[F, S, V, O] =
@@ -178,6 +182,8 @@ object SelectFormula {
 		override def readForm :ColumnReadForm[Rows[V]] = header.readForm.map(Rows(_))
 
 		override def single :ColumnFormula[F, V] = to[V]
+
+		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SelectColumn[S, V, O]
 	}
 	
 	/** A `SelectFormula` interface exposing the mapping type `H` used as the header.
@@ -213,16 +219,16 @@ object SelectFormula {
 		                    (target :S)(implicit ev :U ExtendedBy S) :FreeSelectFormula[V, O] =
 			this
 
-		override def applyTo[Y[_]](matcher: FormulaMatcher[FromClause, Y]): Y[Rows[V]] = matcher.select(this)
+		override def applyTo[Y[_]](matcher: FormulaMatcher[FromClause, Y]): Y[Rows[V]] = matcher.freeSelect(this)
 	}
-	
+
 	trait FreeSelectColumn[V, O] extends FreeSelectFormula[V, O] with SelectColumn[FromClause, V, O] {
 
 		override def stretch[U <: FromClause, S <: FromClause]
 		                    (target :S)(implicit ev :U ExtendedBy S) :FreeSelectColumn[V, O] =
 			this
 
-		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[FromClause, Y]) :Y[Rows[V]] = matcher.select(this)
+		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[FromClause, Y]) :Y[Rows[V]] = matcher.freeSelect(this)
 	}
 
 
@@ -237,12 +243,18 @@ object SelectFormula {
 	trait SubselectFormula[-F <: FromClause, S <: SubselectOf[F], V, O] extends SelectFormula[F, V, O] {
 		override type From = S
 
+		override def stretch[U <: F, G <: FromClause](target :G)(implicit extension :U ExtendedBy G)
+			:SubselectFormula[G, _ <: SubselectOf[G], V, O]
+
 		override def applyTo[Y[_]](matcher: FormulaMatcher[F, Y]): Y[Rows[V]] = matcher.subselect(this)
 	}
-	
-	trait SubselectColumn[-F <: FromClause, S <: SubselectOf[F], V, O] 
+
+	trait SubselectColumn[-F <: FromClause, S <: SubselectOf[F], V, O]
 		extends SubselectFormula[F, S, V, O] with SelectColumn[F, V, O]
 	{
+		override def stretch[U <: F, G <: FromClause](base :G)(implicit extension :U ExtendedBy G)
+				:SubselectColumn[G, _ <: SubselectOf[G], V, O]
+
 		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Rows[V]] = matcher.subselect(this)
 	}
 
@@ -257,31 +269,31 @@ object SelectFormula {
 	trait SubselectMapping[-F <: FromClause, S <: SubselectOf[F], H <: Mapping]
 		extends SelectAs[F, H] with SubselectFormula[F, S, H#Subject, H#Origin]
 
-	trait TypedSelectMapping[F <: OuterFrom, H[A] <: TypedMapping[V, A], V, O] extends SelectMapping[F, H[O]]
+	trait TypedSelectMapping[F <: OuterFrom, H[A] <: TypedMapping[V, A], V, O] extends FreeSelectFormula[V, O] with SelectMapping[F, H[O]]
 
 	trait TypedSubselectMapping[-F <: FromClause, S <: SubselectOf[F], H[A] <: TypedMapping[V, A], V, O]
-		extends SubselectMapping[F, S, H[O]]
+		extends SubselectFormula[F, S, V, O] with SubselectMapping[F, S, H[O]]
 
 
 
 
 
 
-	private abstract class SelectComponentFormula[-F <: FromClause, S <: SubselectOf[F],
-	                                              T[A] <: TypedMapping[E, A], E, H[A] <: TypedMapping[V, A], V, O]
-	                       (override val from :S, override val  header :ComponentFormula[S, T, E, H, V, O])
-		extends SelectAs[F, H[O]] with ShallowProxy[V, O]
+	private abstract class SelectComponentFormula[-F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E,
+	                                              H[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
+	                       (override val from :S, override val  header :ComponentFormula[S, T, E, H, V, I])
+		extends SelectFormula[F, V, O] with SelectAs[F, H[O]] with ShallowProxy[V, O]
 	{
 		override type From = S
 
-		protected override val egg = header.mapping
-		override val mapping: H[O] = header.mapping
+		protected override val egg = header.mapping.withOrigin[O]
+		override val mapping = egg
 
-		override val headerColumns: Seq[SelectedColumn[_]] = mapping.selectable.toSeq.map(include(_))
+		override val headerColumns: Seq[SelectedColumn[_]] = header.mapping.selectable.toSeq.map(include(_))
 
-		private def include[X](column :Column[X]) :SelectedColumn[X] = new SelectedColumn[X] {
+		private def include[X](column :ColumnMapping[X, I]) :SelectedColumn[X] = new SelectedColumn[X] {
 			override val name :String = column.name
-			override val formula = header \ column
+			override val formula  = header \ column
 		}
 
 
@@ -294,30 +306,33 @@ object SelectFormula {
 
 
 
-	private class SelectComponent[F <: OuterFrom, T[A] <: TypedMapping[E, A], E, H[A] <: TypedMapping[V, A], V, O]
-	                             (from :F, header :ComponentFormula[F, T, E, H, V, O])
-		extends SelectComponentFormula[FromClause, F, T, E, H, V, O](from, header) with TypedSelectMapping[F, H, V, O]
+	private class SelectComponent[F <: OuterFrom, T[A] <: TypedMapping[E, A], E,
+		                          H[A] <: TypedMapping[V, A], V, I >: F <: FromClause, O]
+	                             (from :F, header :ComponentFormula[F, T, E, H, V, I])
+		extends SelectComponentFormula[FromClause, F, T, E, H, V, I, O](from, header) with TypedSelectMapping[F, H, V, O]
 
 
 
-	private class SubselectComponent[-F <: FromClause, S <: SubselectOf[F],
-	                                 T[A] <: TypedMapping[E, A], E, H[A] <: TypedMapping[V, A], V, O]
-	                                (subselect :S, component :ComponentFormula[S, T, E, H, V, O])
-		extends SelectComponentFormula[F, S, T, E, H, V, O](subselect, component)
+	private class SubselectComponent[-F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E,
+	                                 H[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
+	                                (subselect :S, component :ComponentFormula[S, T, E, H, V, I])
+		extends SelectComponentFormula[F, S, T, E, H, V, I, O](subselect, component)
 		   with TypedSubselectMapping[F, S, H, V, O]
 	{
-		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G) = {
-			type Ext = FromClause { type Outer = G }
+
+		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G) :SubselectFormula[G, _ <: SubselectOf[G], V, O] =
+//				:SubselectComponent[G, D, T, E, H, V, _ >: D <: FromClause, O] forSome { type D <: SubselectOf[G] } =
+		{
+			type Ext = SubselectOf[G] //pretend this is the actual type S after rebasing to the extension clause G
 			val upcast = from :FromClause //scalac bug workaround
-			val stretched = upcast.asSubselectOf(clause)(ev.asInstanceOf[upcast.Outer ExtendedBy G])
-    				.asInstanceOf[Ext]
+			val stretched = upcast.asSubselectOf(clause)(ev.asInstanceOf[upcast.Outer ExtendedBy G]).asInstanceOf[Ext]
 			val subselectTables = stretched.size - clause.size
 			val table = header.from
 			val replacement =
-				if (table.shift < subselectTables) table.asInstanceOf[SQLRelation[Ext, T, E, O]]
-				else stretched.tableStack(table.shift + ev.length).asInstanceOf[SQLRelation[Ext, T, E, O]]
-			val component = replacement \ header.mapping
-			new SubselectComponent[G, Ext, T, E, H, V, O](stretched, component)
+				if (table.shift < subselectTables) table.asInstanceOf[SQLRelation[Ext, T, E, Ext]]
+				else stretched.tableStack(table.shift + ev.length).asInstanceOf[SQLRelation[Ext, T, E, Ext]]
+			val component = replacement \ header.mapping.withOrigin[Ext]
+			new SubselectComponent[G, Ext, T, E, H, V, Ext, O](stretched, component)
 		}
 
 	}
@@ -332,10 +347,11 @@ object SelectFormula {
 	  * of tables or whole table rows themselves are replaced with their columns. Column list declared by this mapping
 	  * is thus created by recursively applying the following rules to the header formula:
 	  *
+	  *     1. If the formula is a `ColumnFormula`, it is taken as a basis for a `SelectedColumn`;
 	  *     1. If the formula is a component mapping, create a column for every export column of the declared mapping;
-	  *     1. If the formula is a composite formula such as a tuple, recursively flatMap over it by applying these rules;
-	  *     1. In other cases the formula is taken to represent a single column in the resulting select and
-	  *        an appropriate column is created.
+	  *     1. If the formula is a tuple formula such as a tuple, recursively flatMap over it by applying these rules;
+	  *     1. If the formula is a conversion, proceed with the base expression;
+	  *     1. Other types of expressions encountered anyone inside the `header` result in throwing an exception.
 	  *
 	  * Note that the above column list should be considered in the context of this instance as a mapping and represents
 	  * all columns that potentially might be a part of the select clause. Existence of non-selectable and optional
@@ -358,7 +374,7 @@ object SelectFormula {
 	{ outer =>
 
 		override type From = S
-		
+
 		/** A column in the header of owning select.
 		  * @param formula sql expression providing the value for the column.
 		  * @param name column name (sqlName) and suggested alias for the column in the select clause.
@@ -390,7 +406,7 @@ object SelectFormula {
 			}
 
 
-			override def component[T[B] <: TypedMapping[E, B], E, M[B] <: TypedMapping[X, B], X, A]
+			override def component[T[B] <: TypedMapping[E, B], E, M[B] <: TypedMapping[X, B], X, A >: S <: FromClause]
 			                      (e :ComponentFormula[S, T, E, M, X, A]) =
 			{
 				val table = e.table
@@ -494,7 +510,7 @@ object SelectFormula {
 
 
 
-			override def component[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[X, A], X, G]
+			override def component[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[X, A], X, G >: S <: FromClause]
 			                      (e :ComponentFormula[S, T, E, M, X, G]) :Extractors[X] =
 			{
 				val table = e.table
@@ -569,17 +585,19 @@ object SelectFormula {
 
 	}
 
-	
-	
+
+
 	private class ArbitraryFreeSelect[S <: OuterFrom, V, O](from :S, header :SQLFormula[S, V])
 		extends ArbitrarySelectFormula[FromClause, S, V, O](from, header) with FreeSelectFormula[V, O]
-	
-	
-	
+
+
+
 	private class ArbitrarySubselect[-F <: FromClause, S <: SubselectOf[F], V, O](subclause :S, header :SQLFormula[S, V])
 		extends ArbitrarySelectFormula[F, S, V, O](subclause, header) with SubselectFormula[F, S, V, O]
 	{
-		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G) :SQLFormula[G, Rows[V]] = {
+		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G)
+				:SubselectFormula[G, _  <: SubselectOf[G], V, O] =
+		{
 			type Ext = FromClause { type Outer = G }
 			val upcast = from :FromClause //scalac bug workaround
 			val stretched = upcast.asSubselectOf(clause)(ev.asInstanceOf[upcast.Outer ExtendedBy G])
@@ -587,6 +605,7 @@ object SelectFormula {
 			val substitute = With.shiftAside[S, Ext](stretched.size - clause.size, ev.length)
 			new ArbitrarySubselect[G, Ext, V, O](stretched, substitute(header))
 		}
+
 	}
 
 
@@ -626,7 +645,9 @@ object SelectFormula {
 		override val headerColumns = column::Nil
 
 		override val extracts = NaturalMap.single[Component, Extract, V](column, MappingExtract.ident(column))
-		override def columnExtracts = extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
+
+		override def columnExtracts =
+			extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
 
 		override val columns = Unique.single[Column[V]](column)
 		override def components = columns
@@ -641,17 +662,19 @@ object SelectFormula {
 
 
 
-	//todo: these could use custom, much simplified implementations
+
 	private class ArbitraryFreeSelectColumn[S <: OuterFrom, V, O](from :S, header :ColumnFormula[S, V])
 		extends ArbitrarySelectColumn[FromClause, S, V, O](from, header) with FreeSelectColumn[V, O]
 
-	
-	
+
+
 	private class ArbitrarySubselectColumn[-F <: FromClause, S <: SubselectOf[F], V, O]
 	                                      (clause :S, override val header :ColumnFormula[S, V])
 		extends ArbitrarySelectColumn[F, S, V, O](clause, header) with SubselectColumn[F, S, V, O]
 	{
-		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G) = {
+		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G)
+				:SubselectColumn[G, _ <: SubselectOf[G], V, O] =
+		{
 			type Ext = FromClause { type Outer = G }
 			val upcast :FromClause = from
 			val stretched = upcast.asSubselectOf(clause)(ev.asInstanceOf[upcast.Outer ExtendedBy G])
@@ -661,59 +684,13 @@ object SelectFormula {
 		}
 	}
 
-/*
-	case class SelectAsRow[-F <: FromClause, H, O](select :SelectFormula[F, H, O])
-		extends AutoConversionFormula[F, Rows[H], H]
-	{
-		override def expr = select
-
-		override def convert(s: Rows[H]): H = s.head
-
-		override def name = "SingleRow"
-
-
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[H] = matcher.row(this)
-
-
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :AutoConversionFormula[S, Rows[H], H] =
-			mapper(expr) match {
-				case select :SelectFormula[S, H, _] => new SelectAsRow(select)
-				case e => AutoConversionFormula(e)
-			}
-
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]): AutoConversionFormula[S, Rows[H], H] =
-			mapper(select) match {
-				case sel :SelectFormula[_, _] => SelectAsRow(sel.asInstanceOf[SelectFormula[S, H]])
-				case f => AutoConversionFormula(f)(_.head)
-			}
-	}
-
-	case class SelectAsRows[-F <: FromClause, H](select :SelectFormula[F, H]) extends AutoConversionFormula[F, Rows[H], Seq[H]] {
-		def expr = select
-
-		override def convert(s: Rows[H]): Seq[H] = s.seq
-
-		override def name = "Rows"
-
-
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Seq[H]] = matcher.rows(this)
-
-
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]): AutoConversionFormula[S, Rows[H], Seq[H]] =
-			mapper(select) match {
-				case sel :SelectFormula[_, _] => SelectAsRows(sel.asInstanceOf[SelectFormula[S, H]])
-				case f => AutoConversionFormula(f)(_.seq)
-			}
-
-	}
-*/
 
 
 
 
 
 	trait FreeSelectColumnMatcher[+F <: FromClause, +Y[X]] {
-		def select[V, O](e :FreeSelectColumn[V, O]) :Y[Rows[V]]
+		def freeSelect[V, O](e :FreeSelectColumn[V, O]) :Y[Rows[V]]
 	}
 
 	type MatchFreeSelectColumn[+F <: FromClause, +Y[X]] = FreeSelectColumnMatcher[F, Y]
@@ -740,7 +717,7 @@ object SelectFormula {
 	trait CaseSelectColumn[+F <: FromClause, +Y[X]] extends MatchSelectColumn[F, Y] {
 		def select[V, O](e :SelectColumn[F, V, O]) :Y[Rows[V]]
 
-		override def select[V, O](e :FreeSelectColumn[V, O]) :Y[Rows[V]] =
+		override def freeSelect[V, O](e :FreeSelectColumn[V, O]) :Y[Rows[V]] =
 			select(e :SelectColumn[F, V, O])
 
 		override def subselect[S <: SubselectOf[F], V, O](e :SubselectColumn[F, S, V, O]) :Y[Rows[V]] =
@@ -750,13 +727,13 @@ object SelectFormula {
 
 
 	trait FreeSelectMatcher[+F <: FromClause, +Y[X]] extends FreeSelectColumnMatcher[F, Y] {
-		def select[V, O](e :FreeSelectFormula[V, O]) :Y[Rows[V]]
+		def freeSelect[V, O](e :FreeSelectFormula[V, O]) :Y[Rows[V]]
 	}
 
 	type MatchFreeSelect[+F <: FromClause, +Y[X]] = CaseFreeSelect[F, Y]
 
 	trait CaseFreeSelect[+F <: FromClause, +Y[X]] extends FreeSelectMatcher[F, Y] with CaseFreeSelectColumn[F, Y] {
-		override def select[V, O](e :FreeSelectColumn[V, O]) :Y[Rows[V]] = select(e :FreeSelectFormula[V, O])
+		override def freeSelect[V, O](e :FreeSelectColumn[V, O]) :Y[Rows[V]] = freeSelect(e :FreeSelectFormula[V, O])
 	}
 
 
@@ -785,7 +762,7 @@ object SelectFormula {
 
 		def subselect[S <: SubselectOf[F], V, O](e: SubselectFormula[F, S, V, O]): Y[Rows[V]] = select(e)
 
-		def select[V, O](e: FreeSelectFormula[V, O]): Y[Rows[V]] = select(e :SelectFormula[F, V, O])
+		def freeSelect[V, O](e: FreeSelectFormula[V, O]): Y[Rows[V]] = select(e :SelectFormula[F, V, O])
 	}
 
 

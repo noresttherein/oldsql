@@ -11,12 +11,12 @@ import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
-import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, JoinedRelation}
+import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 import net.noresttherein.oldsql.sql.JoinParam.ParamFrom
-import net.noresttherein.oldsql.sql.MappingFormula.TypedJoinedRelation.LastRelation
+import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.With.TypedWith
 
 
@@ -71,10 +71,12 @@ sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M
 
 	override def outer = throw new UnsupportedOperationException(s"JoinParam[$this].outer")
 
-	override type AsSubselectOf[J <: FromClause] = Nothing
+	override type AsSubselectOf[O <: FromClause] = Nothing
 
-	override def asSubselectOf[J <: FromClause](outer :J)(implicit extension :Outer ExtendedBy J) :AsSubselectOf[J] =
-		throw new UnsupportedOperationException(s"JoinParam[$this].asSubselectOf")
+	override def asSubselectOf[O <: FromClause](outer :O)(implicit extension :Outer ExtendedBy O) :Nothing =
+		throw new UnsupportedOperationException(
+			s"JoinParam[$this].asSubselectOf: join parameters can't appear as a part of a subselect from clause."
+		)
 
 
 
@@ -82,11 +84,8 @@ sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M
 
 	override def subselectRow[E <: FromClause]
 	                         (target :E)(implicit stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow] =
-		left.subselectRow(target)(stretch.shrink[left.Generalized, M]) ~ last.stretch(target)(stretch)
+		left.subselectRow(target)(stretch.stretchFront[left.Generalized, M]) ~ last.stretch(target)(stretch)
 
-	override def subselectTableStack[E <: FromClause]
-	             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[JoinedRelation.AnyIn[E]] =
-		last.extend(stretch) #:: left.subselectTableStack(target)(stretch.shrink[left.Generalized, M])
 
 
 	protected override def joinType = "param"
@@ -101,6 +100,9 @@ sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M
 
 
 object JoinParam {
+
+	/** A template `OuterJoin` instance with a dummy mapping, for use as a polymorphic factory of `OuterJoin` joins. */
+	final val template :JoinParam.* = JoinParam(Dual, ParamSource[Unit]())
 
 	/** An alias for `JoinParam` accepting the parameter type as the second (right) argument, hiding the
 	  * `FromParam[X, _]` from the type signature.
@@ -171,6 +173,11 @@ object JoinParam {
 
 			override def withFilter(filter :BooleanFormula[left.Generalized With M]) :This =
 				JoinParam[left.type, M, X](left, last)(filter)
+
+
+			override def subselectTableStack[E <: FromClause]
+			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[SQLRelation.AnyIn[E]] =
+				last.stretch(target) #:: left.subselectTableStack(target)(stretch.stretchFront[left.Generalized, M])
 
 		}
 

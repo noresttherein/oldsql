@@ -303,7 +303,7 @@ object SQLFormula {
 
 			override def composite[X](e :CompositeColumnFormula[F, X]) :Y[X] = column(e)
 
-			override def component[T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O]
+			override def component[T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
 			                      (e :ColumnComponentFormula[F, T, E, M, V, O]) :Y[V] =
 				column(e)
 

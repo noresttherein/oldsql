@@ -18,8 +18,8 @@ import net.noresttherein.oldsql.schema.support.MappingFrame
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
-import net.noresttherein.oldsql.sql.FromClause.{TableCount, TableShift}
-import net.noresttherein.oldsql.sql.MappingFormula.{FreeComponent, JoinedRelation, TypedJoinedRelation}
+import net.noresttherein.oldsql.sql.FromClause.TableShift
+import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent
 
 
 
@@ -90,8 +90,8 @@ import net.noresttherein.oldsql.sql.MappingFormula.{FreeComponent, JoinedRelatio
   * of two-argument type constructors, preventing them from accepting the type parameters of `TypedMapping`
   * or `RefinedMapping`. Abstract type parameters of existential types such as `Component[_]` are not unified, leading
   * to absurd situations where 'obviously' equal types are not unified by the compiler, almost completely preventing
-  * their type safe use. The second reason is the limitation of the type inferer which, when faces with
-  * method with a signature in the form of `[M &lt;: RefinedMapping[S, O], O, S](m :M)` will, when applied to
+  * their type safe use. The second reason is the limitation of the type inferer which, when faced with
+  * a method with a signature in the form of `[M &lt;: RefinedMapping[S, O], O, S](m :M)` will, when applied to
   * `m :TypedMapping[O, Int]` infer types `TypedMapping[O, Int], Nothing, Nothing` causing a compile error.
   * On the other hand, defining the type parameter as `[M &lt;: RefinedMapping[_, _]]` assigns new distinct types to the
   * missing type parameters, which are not unified even with `m.Subject`/`m.Origin` itself, leading to a lot of issues.
@@ -542,12 +542,12 @@ sealed trait Mapping {
 
 	protected[oldsql] def toSQLRelation[F <: FromClause, M[O] <: TypedMapping[Subject, O]]
 	                                   (shift :Int)(implicit supertype :this.type <:< M[F])
-			:TypedJoinedRelation[F, M, Subject] = ???
+			:SQLRelation[F, M, Subject] = ???
 //		new JoinedRelation[F, M](???, supertype(this), shift)
 
 	def toSQLRelation[F <: FromClause, M[O] <: TypedMapping[Subject, O]]
 	                 (implicit supertype :this.type <:< M[F], shift :TableShift[F, M, _ <: Numeral])
-			:TypedJoinedRelation[F, M, Subject] = ??? //todo: we should make sure this is the first relation in F
+			:SQLRelation[F, M, Subject] = ??? //todo: we should make sure this is the first relation in F
 */
 
 	/** Unused by most `Mapping` classes as, by default, they do not override referential equality behaviour.
@@ -665,13 +665,13 @@ object Mapping {
 	  * to type `B`.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection]]
 	  */
-	implicit class MappingAliasing[M <: Mapping](private val self :M) extends AnyVal {
+	implicit class MappingAliasing[M[O] <: MappingFrom[O], A](private val self :M[_]) extends AnyVal {
 		/** Substitutes the `Origin` type of this mapping to type `B`. Follow this method call with `()`
 		  * to apply the result and infer the result type. The returned mapping type is provided by an implicit
 		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]], see its documentation for
 		  * more information.
 		  */
-		@inline def withOrigin[B] = new ApplyOriginProjection[M, B](self)
+		@inline def withOrigin[B] :M[B] = self.asInstanceOf[M[B]]//new ApplyOriginProjection[M, B](self)
 	}
 
 	/** An applicable wrapper over mapping `M` which converts it to `Origin` type `B` by the use of an implicit

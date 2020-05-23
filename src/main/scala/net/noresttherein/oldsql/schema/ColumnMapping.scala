@@ -112,11 +112,11 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 
 	/** An empty `Unique` if the given buff is ''disabled'' (not attached), or a singleton `Unique(this)` otherwise. */
 	@inline protected final def selfUnless(buff :BuffType) :Unique[Column[S]] =
-		if (buff.enabled(buffs)) Unique.empty else Unique(this)
+		if (buff.enabled(buffs)) Unique.empty else Unique.single(this)
 
 	/** An empty `Unique` if the given buff is ''enabled'' (attached), or a singleton `Unique(this)` otherwise. */
 	@inline protected final def selfIf(buff :BuffType) :Unique[Column[S]] =
-		if (buff.disabled(buffs)) Unique.empty else Unique(this)
+		if (buff.disabled(buffs)) Unique.empty else Unique.single(this)
 
 
 
