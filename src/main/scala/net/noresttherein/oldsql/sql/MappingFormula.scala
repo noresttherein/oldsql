@@ -682,6 +682,9 @@ object MappingFormula {
 		def LastRelation[T[A] <: TypedMapping[S, A], S](from :RowSource[T]) :LastRelation[T, S] =
 			new SQLRelation[FromClause With T, T, S, FromClause With T](from, 0)
 
+		private[sql] def LastRelation[T[A] <: TypedMapping[S, A], S](from :RowSource[T], mapping :T[_])
+				:LastRelation[T, S] =
+			new SQLRelation[FromClause With T, T, S, FromClause With T](from, mapping.withOrigin[FromClause With T], 0)
 
 
 		trait RelationMatcher[+F <: FromClause, +Y[X]] {

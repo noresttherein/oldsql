@@ -3,14 +3,12 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Join.TypedJoin
-import net.noresttherein.oldsql.sql.MappingFormula.{JoinedRelation, SQLRelation}
+import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation
 import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
-import net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 
@@ -50,6 +48,8 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 
 	override def outer :Outer = left.generalized
 
+	override type Inner = FromClause With T
+
 
 
 	override def subselectFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
@@ -67,6 +67,12 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 
 	override type AsSubselectOf[O <: FromClause] = O Subselect T
 
+	override def asSubselectOf[O <: FromClause](newOuter :O)(implicit extension :Outer ExtendedBy O)
+		:(O Subselect T) { type Outer = newOuter.Generalized } =
+	{
+		val substitute = With.shiftAside[Generalized, newOuter.Generalized With T](1, extension.length)
+		withLeft[newOuter.type](newOuter)(substitute(condition))
+	}
 
 
 	protected override def joinType = "subselect"
@@ -94,6 +100,13 @@ object Subselect {
 	private[sql] def apply[L <: FromClause, R[O] <: TypedMapping[S, O], S]
 	                      (prefix :L, next :LastRelation[R, S])
 	                      (filter :BooleanFormula[prefix.Generalized With R]) :L Subselect R =
+		newJoin[R, S](prefix, next)(filter)
+
+
+
+	private[sql] def newJoin[R[O] <: TypedMapping[S, O], S]
+	                        (prefix :FromClause, next :LastRelation[R, S])
+	                        (filter :BooleanFormula[prefix.Generalized With R]) :prefix.type Subselect R =
 		new Subselect[prefix.type, R] with TypedJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
@@ -122,13 +135,6 @@ object Subselect {
 			override def subselectTableStack[E <: FromClause]
 			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[SQLRelation.AnyIn[E]] =
 				last.stretch(target) #:: LazyList.empty[SQLRelation.AnyIn[E]]
-
-			override def asSubselectOf[J <: FromClause](outer :J)(implicit extension :Outer ExtendedBy J) :J Subselect R = {
-				type Res = outer.Generalized With R
-				val substitute = With.shiftAside[Generalized, outer.Generalized With R](1, extension.length)
-				copy[J, R, S](outer, right)(substitute(condition))
-			}
-
 
 		}
 

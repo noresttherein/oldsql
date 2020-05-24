@@ -104,7 +104,7 @@ trait FromClause { thisClause =>
 	/** Similar to `Outer`, this type is always defined as `Dual`, with all join kinds defining it as `left.Init`.
 	  * This way, if the compiler can prove that `F#Init =:= Dual`, then the static type `F` is a complete clause -
 	  * with all relations and joins known. It is of little use by itself in the client code.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.CompleteClause]]
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.CompleteFrom]]
 	  */
 	type Init <: FromClause
 
@@ -236,6 +236,12 @@ trait FromClause { thisClause =>
 	  */
 	def outer :Outer
 
+	/** The incomplete suffix clause containing all relations since the last `Subselect` join or `Dual`, with all
+	  * join kinds replaced with the base `With`. It is the result of substituting in the complete type of this clause
+	  * the `Outer` prefix containing relations present 'implicitly' in the scope with `FromClause`.
+	  */
+	type Inner >: Generalized <: FromLast
+
 
 
 	/** Number of relations contained in the explicit portion of this subselect join. This is equal to
@@ -278,7 +284,7 @@ trait FromClause { thisClause =>
 
 	/** Create an SQL tuple formula containing `JoinedRelation` formulas for all joined elements of the most deeply
 	  * nested subselect clause, in their order of appearance. The formulas are based on some extending clause `E`,
-	  * so they can be used by the zero-argument `subselectRow` as the chain prefix of its result. 
+	  * so they can be used by the zero-argument `subselectRow` as the chain prefix of its result.
 	  */
 	def subselectRow[E <: FromClause](target :E)(implicit stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow]
 
@@ -290,7 +296,7 @@ trait FromClause { thisClause =>
 	def subselectTableStack :LazyList[SQLRelation.AnyIn[Generalized]] = subselectTableStack(generalized)
 
 	/** All relations in this clause in the reverse order, ending with the last (right-most) appearance of a `Subselect`
-	  * 'join' or `Dual`. The elements are returned as `JoinedRelation`s for generic, untyped mappings, 
+	  * 'join' or `Dual`. The elements are returned as `JoinedRelation`s for generic, untyped mappings,
 	  * based on some extending clause `E`. Used by the zero-argument `subselectTableStack`
 	  * to request the tail of the stack with formulas of the correct type from the prefix clause.
 	  */
@@ -305,27 +311,37 @@ trait FromClause { thisClause =>
 	  * `J &lt;:&lt; J#AsSubselectOf[J#Outer]` and `J#AsSubselectOf[J#Outer] &lt;:&lt; J#Generalized`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Outer]]
 	  */
-	type AsSubselectOf[F <: FromClause] <: FromLast //{ type Outer >: F <: FromClause }
+	type AsSubselectOf[F <: FromClause] <: FromLast
 
-//	type ExtendAsSubselectOf[F <: FromClause, J[+L <: FromClause, R[A] <: MappingFrom[A]] <: L ProperJoin R,
-//	                         T[A] <: MappingFrom[A]] <:
-//		(FromClause With T) { type Outer >: F <: FromClause }
+	/** An auxiliary type used to define `AsSubselectOf[F]` for a clause extending this clause with mapping `T`.
+	  * It uses the `J#LikeJoin` to join `this.AsSubselectOf[F]` with `R`, unless this instance is `Dual`, in which
+	  * case a `Subselect` join is used.
+	  */
+	type ExtendAsSubselectOf[F <: FromClause, J[+L <: FromClause, R[A] <: MappingFrom[A]] <: L ProperJoin R,
+	                         T[A] <: MappingFrom[A]] <:
+		FromClause With T
 
 	/** For subselect clauses - that is subtypes with a `Subselect` join kind occurring somewhere in their definition,
 	  * not necessarily `Subselect` instances - it represents them as a subselect of a clause `F`, being
 	  * an extension of their outer clause (the left side of the right-most `Subselect` join). In syntactic terms,
 	  * it replaces the `Outer` type in this type's definition with type `F`. Procedurally, it joins in order
 	  * all relations since the last occurrence of a `Subselect` join, forming the explicit ''from'' clause of
-	  * the subselect, with the new outer clause `F`, preserving all join conditions. If this clause is not a
-	  * subselect clause, this method has simply the effect of performing a cartesian join of the relations
-	  * listed in `this` with the relations listed in `outer` (preserving join conditions within both, but without
-	  * any additional filtering).
+	  * a modified subselect, with the new outer clause `F`, preserving all join conditions. If this clause is not a
+	  * subselect clause, this method will use `Subselect` join to join the `newOuter` with the first relation of this
+	  * clause. All join conditions are preserved.
+	  * @return a ''from'' clause conforming to `SubselectOf[F]`.
 	  */
-	def asSubselectOf[F <: FromClause](outer :F)(implicit extension :Outer ExtendedBy F) :AsSubselectOf[F]
+	def asSubselectOf[F <: FromClause](newOuter :F)(implicit extension :Outer ExtendedBy F)
+			:AsSubselectOf[F] { type Outer = newOuter.Generalized; type Inner = thisClause.Inner }
 
-//	def extendAsSubselectOf[F <: FromClause, T[A] <: MappingFrom[A]](outer :F, next :this.type ProperJoin T)
-//	                                                                (implicit extension :Outer ExtendedBy F)
-//			:ExtendAsSubselectOf[F, next.LikeJoin, T]
+	/** An auxiliary method used to implement `asSubselectOf` by inversion of control: instead of each join instance
+	  * copying its join and relation itself, it passes itself to its left side, which invokes its `withLeft` method
+	  * in a double dispatch. This allows the `Dual` class to override this behavior and use a `Subselect` to join
+	  * the following relation, when `asSubselectOf` is called for a non-subselect clause.
+	  */
+	def extendAsSubselectOf[F <: FromClause, T[A] <: TypedMapping[X, A], X]
+	                       (newOuter :F, next :this.type ProperJoin T)(implicit extension :Outer ExtendedBy F)
+			:ExtendAsSubselectOf[F, next.LikeJoin, T] { type Outer = newOuter.Generalized; type Inner = next.Inner }
 
 
 
@@ -366,12 +382,12 @@ trait FromClause { thisClause =>
 
 object FromClause {
 
-	/** A type to which all complete ''from'' clauses conform. If `F &lt;: CompleteClause`, then all joins in the
+	/** A type to which all complete ''from'' clauses conform. If `F &lt;: CompleteFrom`, then all joins in the
 	  * clause are known. Note that the mappings can still be abstract types and the join kinds may be some supertypes
-	  * of actual joins used. However, if `F &lt;: CompleteClause`, than also `F#Generalized` is statically known
+	  * of actual joins used. However, if `F &lt;: CompleteFrom`, than also `F#Generalized` is statically known
 	  * and `F &lt;:&lt; F#Generalized` can be proven, even if the type system doesn't allow to express it here.
 	  */
-	type CompleteClause = FromClause {
+	type CompleteFrom = FromClause {
 		type FromLast >: this.type <: FromClause
 		type Init = Dual
 		type Generalized >: this.type <: FromLast
@@ -384,7 +400,7 @@ object FromClause {
 	  * which are a part of `F`, but they are not a part of any select formulas created from that source. This allows
 	  * the use of nested select queries which depend on values from the ''from'' clause of the outer select.
 	  * Somewhat counterintuitively, this type is contravariant rather than covariant. There are two reasons behind it:
-	  * one, preventing any clause from being a subselect clause of a clause with an abstract prefix, ensuring that
+	  * one, preventing any type from being a subselect clause of a clause with an abstract prefix, ensuring that
 	  * full mapping lists are compared, and two, treating all join kinds as equivalent for this purpose.
 	  * Note that subselects may be nested to an arbitrary depth and only directly nested subselects of `F`
 	  * conform to this type.

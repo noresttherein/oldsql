@@ -58,22 +58,28 @@ sealed class Dual private () extends FromClause {
 
 	override def outer :Dual = this
 
+	override type Inner = FromClause
 
 
-	override type AsSubselectOf[F <: FromClause] = Nothing //F
 
-	override def asSubselectOf[F <: FromClause](outer :F)(implicit extension :FromClause ExtendedBy F) :Nothing = //:F = //outer
+//	override type AsSubselectOf[F <: FromClause] = F
+//
+//	override def asSubselectOf[F <: FromClause](outer :F)(implicit extension :FromClause ExtendedBy F) :F = outer
+//
+	override type AsSubselectOf[F <: FromClause] = Nothing
+
+	override def asSubselectOf[F <: FromClause](outer :F)(implicit extension :FromClause ExtendedBy F) :Nothing =
 		throw new UnsupportedOperationException("Can't represent Dual as a subselect of " + outer)
 
 
-//	override type ExtendAsSubselectOf[F <: FromClause, J[+L <: FromClause, R[A] <: MappingFrom[A]] <: L Join R,
-//	                                  T[A] <: MappingFrom[A]] =
-//		F Subselect T { type Outer >: F }
-//
-//	override def extendAsSubselectOf[F <: FromClause, T[A] <: MappingFrom[A]]
-//	                                (outer :F, next :this.type ProperJoin T)(implicit extension :FromClause ExtendedBy F)
-//			:outer.type Subselect T =
-//		Subselect(outer, next.right, next.condition)
+	override type ExtendAsSubselectOf[F <: FromClause, J[+L <: FromClause, R[A] <: MappingFrom[A]] <: L Join R,
+	                                  T[A] <: MappingFrom[A]] =
+		F Subselect T
+
+	override def extendAsSubselectOf[F <: FromClause, T[A] <: TypedMapping[S, A], S]
+	                                (outer :F, next :this.type ProperJoin T)(implicit extension :FromClause ExtendedBy F)
+			:outer.type Subselect T =
+		Subselect[outer.type, T, T, S](outer, next.right, next.condition) //todo: make sure to reuse the mapping
 
 
 

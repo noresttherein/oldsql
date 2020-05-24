@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.sql.SQLOrdering.{MappedSQLOrdering, ReverseSQLOr
   * @author Marcin Mościcki
   */
 
-sealed trait SQLOrdering[X] extends Ordering[X] {
+sealed trait SQLOrdering[X] extends Ordering[X] with Serializable {
 	def unmap[Y](lower :Y => X) :SQLOrdering[Y] = new MappedSQLOrdering(lower)(this)
 
 	override def reverse :SQLOrdering[X] = new ReverseSQLOrdering[X](this)

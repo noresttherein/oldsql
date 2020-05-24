@@ -89,7 +89,6 @@ object SQLScribe {
 
 
 
-
 		override def freeComponent[O >: F <: FromClause, M[A] <: TypedMapping[X, A], X]
 		                          (e :FreeComponent[O, M, X]) :MappingFormula[G, M[O]] =
 			unhandled(e)
@@ -103,20 +102,20 @@ object SQLScribe {
 
 
 /*
-	class SubstituteRelation[+F <: FromClause, G <: FromClause, R[A] <: TypedMapping[X, A], X, N[A] <: MappingFrom[A]]
+	class SubstituteRelation[+F <: _ With R, G <: _ With N, R[A] <: TypedMapping[X, A], X, N[A] <: MappingFrom[A]]
 	                        (oldClause :F, newClause :G,
 	                         oldRelation :JoinedRelation[_ >: F, R], newRelation :BaseComponentFormula[G, N, R, _])
 		extends SubstituteComponents[F, G]
 	{
 		override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
-				:BaseComponentFormula[G, M, T, _] forSome { type M[A] <: MappingFrom[A] } =
+				:BaseComponentFormula[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] } =
 			(if (oldRelation.shift == e.shift) newRelation else e).asInstanceOf[BaseComponentFormula[G, N, T, G]]
 
 		override def subselect[S <: SubselectOf[F], V, O](e :SubselectFormula[F, S, V, O]) :SQLFormula[G, Rows[V]] = {
 			val oldsubselect = e.from
 			val oldOuter = oldsubselect.outer //:oldsubselect.Outer
 			implicit val oldOuterExtension = oldsubselect.subselectSpan
-			val subclause = e.from.asSubselectOf(oldClause)(oldsubselect.subselectSpan.asInstanceOf[e.from.Outer ExtendedBy G])
+			val subclause = e.from.asSubselectOf(newClause)(oldsubselect.subselectSpan.asInstanceOf[e.from.Outer ExtendedBy G])
 		}
 
 		override def subselect[S <: SubselectOf[F], V, O](e :SubselectColumn[F, S, V, O]) :ColumnFormula[G, Rows[V]] = ???

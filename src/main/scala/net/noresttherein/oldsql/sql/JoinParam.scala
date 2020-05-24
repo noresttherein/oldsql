@@ -27,7 +27,7 @@ import net.noresttherein.oldsql.sql.With.TypedWith
 
 
 /** A specialized join class which joins the source on its left side with a synthetic mapping
-  * `M[O] &lt;: FromParam[X, O]`, representing a query parameter `X`. It allows to filter a the given from clause
+  * `M[O] &lt;: FromParam[X, O]`, representing a query parameter `X`. It allows to filter a given from clause
   * using values unknown at this time, which can be obtained by applying an arbitrary scala function to `X`.
   * The mapping, aside from representing the parameter value itself, can also be used to create additional
   * subcomponents with values derived from the parameter value, which can be used in an `SQLFormula` as any other
@@ -47,7 +47,7 @@ import net.noresttherein.oldsql.sql.With.TypedWith
   * @tparam M synthetic `FromParam` mapping which subject is the parameter type.
   * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam.WithParam]]
-  */
+  */ //consider: should F be bound by CompleteFrom, or would it be too limiting?
 sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M] {
 	type Param = M[FromLast]#Subject
 
@@ -70,6 +70,8 @@ sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M
 	override type Outer = Nothing
 
 	override def outer = throw new UnsupportedOperationException(s"JoinParam[$this].outer")
+
+	override type Inner = left.Inner With M
 
 	override type AsSubselectOf[O <: FromClause] = Nothing
 

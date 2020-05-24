@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.TypedMapping.AnyFrom
 import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, SubselectOf}
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Join.{JoinedRelationSubject, TypedJoin}
-import net.noresttherein.oldsql.sql.MappingFormula.{BaseComponentFormula, JoinedRelation, SQLRelation}
+import net.noresttherein.oldsql.sql.MappingFormula.{BaseComponentFormula, SQLRelation}
 import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.ProperJoin.TypedProperJoin
 import net.noresttherein.oldsql.sql.SelectFormula.{SubselectColumn, SubselectFormula}
@@ -178,8 +178,9 @@ object Join {
 	trait TypedJoin[+L <: FromClause, R[O] <: TypedMapping[S, O], S]
 		extends TypedWith[L, R, S] with Join[L, R]
 	{
-		override def withLeft[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With R]) :F LikeJoin R =
-			copy[F, R, S](left, right)(filter)
+		override def withLeft[F <: FromClause](newLeft :F)(filter :BooleanFormula[newLeft.Generalized With R])
+				:F LikeJoin R =
+			copy[F, R, S](newLeft, right)(filter)
 
 		override def joinedWith[F <: FromClause]
 		                       (prefix :F, first :Join.*) :JoinedWith[F, first.LikeJoin] =
@@ -235,15 +236,15 @@ sealed trait ProperJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends Join[L
 
 	override def outer :Outer = left.outer
 
-	override type AsSubselectOf[F <: FromClause] = left.AsSubselectOf[F] LikeJoin R
-
-
+	override type Inner = left.Inner With R
 
 	override type SubselectRow = left.SubselectRow ~ last.Subject //R[last.Origin]#Subject
 
 	override def subselectRow[E <: FromClause]
 	                         (target :E)(implicit stretch :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow] =
 		left.subselectRow(target)(stretch.stretchFront[left.Generalized, R]) ~ last.stretch(target)(stretch)
+
+	override type AsSubselectOf[F <: FromClause] = left.ExtendAsSubselectOf[F, LikeJoin, R]
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[ProperJoin.*]
@@ -294,18 +295,18 @@ object ProperJoin {
 
 	trait TypedProperJoin[+L <: FromClause, R[O] <: TypedMapping[S, O], S]
 		extends TypedJoin[L, R, S] with ProperJoin[L, R]
-	{
+	{ thisJoin =>
 
 		override def subselectTableStack[E <: FromClause]
 		             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[SQLRelation.AnyIn[E]] =
 			last.stretch[Generalized, E](target) #::
 				left.subselectTableStack(target)(stretch.stretchFront[left.Generalized, R])
 
-		override def asSubselectOf[J <: FromClause](outer :J)(implicit extension :Outer ExtendedBy J) :AsSubselectOf[J] = {
-			val prefix = left.asSubselectOf(outer)(extension)
-			val substitute = With.shiftAside[Generalized, prefix.Generalized With R](subselectSize, extension.length)
-			copy[left.AsSubselectOf[J], R, S](prefix, right)(substitute(condition))
-		}
+		override def asSubselectOf[F <: FromClause](newOuter :F)(implicit extension :Outer ExtendedBy F)
+				:AsSubselectOf[F] { type Outer = newOuter.Generalized; type Inner = thisJoin.Inner } =
+			left.extendAsSubselectOf[F, R, S](newOuter, self)
+
+
 	}
 
 }
