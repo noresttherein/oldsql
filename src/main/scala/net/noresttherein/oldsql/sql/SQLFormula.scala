@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Mapping, SQLForm, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.slang
+import net.noresttherein.oldsql.sql.ArithmeticFormula.{ArithmeticMatcher, CaseArithmetic}
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ColumnPromotionConversion, ConversionMatcher, OrNull, PromotionConversion}
@@ -18,8 +19,11 @@ import net.noresttherein.oldsql.sql.SQLFormula.CompositeColumnFormula.{CaseCompo
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
 import net.noresttherein.oldsql.sql.MappingFormula.ColumnComponentFormula.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingFormula.FreeColumn.CaseFreeColumn
-import net.noresttherein.oldsql.sql.SelectFormula.{CaseSelect, CaseSelectColumn, SelectColumnMatcher, SelectMatcher, SubselectFormula}
+import net.noresttherein.oldsql.sql.SelectFormula.{CaseSelect, CaseSelectColumn, SelectColumnMatcher, SelectMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
+
+
+
 import slang._
 
 
@@ -108,14 +112,6 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 	  * relation rather than explicit lower type bound (which would be an identity cast in Scala).
 	  */
 	def basedOn[E <: FromClause](implicit subtype :E <:< F) :SQLFormula[E, V] = this.asInstanceOf[SQLFormula[E, V]]
-
-//	/** Treat this expression as an expression of a FROM clause extending the source `F` this expression is based on
-//	  * with an additional relation mapping `T`. */
-//	def stretch[T[O] <: MappingFrom[O]] :SQLFormula[F With T, V] = stretch[F, F With T]
-//
-//	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
-//	  * the clause `F` this expression is based on. */
-//	def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :SQLFormula[S, V]
 
 	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
 	  * the clause `F` this expression is based on. */
@@ -413,12 +409,6 @@ object SQLFormula {
 	trait CompositeColumnFormula[-F <: FromClause, X] extends CompositeFormula[F, X] with ColumnFormula[F, X] {
 		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, X]
 
-//		override def stretch[M[O] <: MappingFrom[O]] :ColumnFormula[F With M, X] =
-//			map(SQLScribe.stretcher[F, F With M])
-
-//		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnFormula[S, X] =
-//			map(SQLScribe.stretcher)
-
 		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, X] =
 			map(SQLScribe.stretcher(target))
 
@@ -427,18 +417,19 @@ object SQLFormula {
 
 
 	object CompositeColumnFormula {
-
+		//todo: concatenation, like
 		trait CompositeColumnMatcher[+F <: FromClause, +Y[X]]
-			extends ConditionMatcher[F, Y] with LogicalMatcher[F, Y] with ColumnPromotionMatcher[F, Y]
-			   with AliasedColumnMatcher[F, Y]
+			extends ConditionMatcher[F, Y] with LogicalMatcher[F, Y] with ArithmeticMatcher[F, Y]
+			   with ColumnPromotionMatcher[F, Y] with AliasedColumnMatcher[F, Y]
 
 		trait MatchCompositeColumn[+F <: FromClause, +Y[X]] extends CompositeColumnMatcher[F, Y]
-			with CaseCondition[F, Y] with CaseLogical[F, Y] with CaseColumnPromotion[F, Y]
+			with CaseCondition[F, Y] with CaseLogical[F, Y] with CaseArithmetic[F, Y] with CaseColumnPromotion[F, Y]
 			with CaseAliasedColumn[F, Y]
 
 		trait CaseCompositeColumn[+F <: FromClause, +Y[X]] extends MatchCompositeColumn[F, Y] {
 			def composite[X](e :CompositeColumnFormula[F, X]) :Y[X]
 
+			override def arithmetic[V](e :ArithmeticFormula[F, V]) :Y[V] = composite(e)
 			override def logical(e :LogicalFormula[F]) :Y[Boolean] = composite(e)
 			override def promotion[T, U](e :ColumnPromotionConversion[F, T, U]) :Y[U] = composite(e)
 			override def condition(e :SQLCondition[F]) :Y[Boolean] = composite(e)

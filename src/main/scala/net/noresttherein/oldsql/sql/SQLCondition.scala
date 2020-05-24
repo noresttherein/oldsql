@@ -27,7 +27,6 @@ trait SQLCondition[-F <: FromClause] extends CompositeColumnFormula[F, Boolean] 
 
 
 object SQLCondition {
-	//todo: like, in, exists
 	//todo: uniform naming convention for classes.
 
 	trait Comparison[-F <: FromClause, T] extends SQLCondition[F] with CompositeFormula[F, Boolean] {
