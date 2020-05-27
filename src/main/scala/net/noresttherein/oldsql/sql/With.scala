@@ -71,8 +71,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 
 
 
-	//consider: maybe we should declare it as simply L With R and override in every subclass?
-	protected def withFilter(filter :BooleanFormula[left.Generalized With R]) :This
+	protected def withCondition(filter :BooleanFormula[Generalized]) :This
 
 	def withLeft[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With R]) :WithLeft[F]
 
@@ -87,6 +86,21 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	override def generalized :Generalized = this.asInstanceOf[Generalized]
 
 
+
+	@volatile private var initializedFilter :BooleanFormula[Generalized] = _
+	private var cachedFilter  :BooleanFormula[Generalized] = _
+
+	override def filter :BooleanFormula[Generalized] = {
+		if (cachedFilter == null) {
+			var filt = initializedFilter
+			if (filt == null) {
+				filt = filter(generalized)
+				initializedFilter = filt
+			}
+			cachedFilter = filt
+		}
+		cachedFilter
+	}
 
 	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :BooleanFormula[E] =
 		left.filter(target)(extension.stretchFront[left.Generalized, R]) && condition.stretch(target)
@@ -126,7 +140,12 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 			:ExtendAsSubselectOf[O, next.LikeJoin, T] { type Outer = newOuter.Generalized; type Inner = next.Inner } =
 	{
 		val subselectR = asSubselectOf(newOuter)
-		val substitute = With.shiftAside[next.Generalized, subselectR.Generalized With T](1, extension.length)
+//		implicit val extendNext = extension.asInstanceOf[next.Generalized ExtendedBy (subselectR.Generalized With T)]
+		//todo: refactor joins so they take functions creating conditions and move this to the constructor
+		//  this would however introduce problem with Join.as: one of the relation becoming unavailable
+		val unfiltered = next.withLeft[subselectR.Generalized](subselectR.generalized)(True)
+		val substitute = With.shiftBack[next.Generalized, subselectR.Generalized With T](
+			next.generalized, unfiltered, extension.length, subselectSize + 1)
 		next.withLeft[subselectR.type](subselectR)(substitute(next.condition))
 	}
 
@@ -160,12 +179,12 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 
 
 	def whereLast(condition :JoinedRelation[FromClause With R, R] => BooleanFormula[FromClause With R]) :This =
-		withFilter(this.condition && SQLScribe.groundFreeComponents(generalized)(condition(last)))
+		withCondition(this.condition && SQLScribe.groundFreeComponents(generalized)(condition(last)))
 
 
 	def where[F >: L <: FromClause](condition :JoinedTables[Generalized] => BooleanFormula[Generalized]) :This = {
 		val cond = condition(new JoinedTables[Generalized](generalized))
-		withFilter(this.condition && SQLScribe.groundFreeComponents(generalized)(cond))
+		withCondition(this.condition && SQLScribe.groundFreeComponents(generalized)(cond))
 	}
 
 
@@ -179,7 +198,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 		case self :AnyRef if self eq this => true
 
 		case join :With[_, _] if canEqual(join) && join.canEqual(this) =>
-			join.left == left && join.last == last
+			join.last == join.last && join.left == left
 
 		case _ => false
 	}
@@ -221,51 +240,52 @@ object With {
 		InnerJoin(left, right, filter)
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, RowSource[R])] =
-		Some(join.left -> join.right)
 
-	def unapply(from :FromClause) :Option[(FromClause, RowSource.*)] =
+	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, JoinedRelation[FromClause With R, R])] =
+		Some(join.left -> join.last)
+
+	def unapply(from :FromClause) :Option[(FromClause, SQLRelation.*)] =
 		from match {
-			case join :With.* => Some((join.left :FromClause, join.right))
+			case join :With.* => Some((join.left :FromClause, join.last.toSQLRelation.get))
 			case _ => None
 		}
 
 
 
-	/** An SQL expression rewriter creating a gap for `extension` relations before the last `threshold` relations. */
-	@deprecated
-	private[sql] def shiftAside[F <: FromClause, G <: FromClause](threshold :Int, extension :Int) :SQLScribe[F, G] =
+	/** An SQL expression rewriter shifting back references to all relations before the last `Subselect` join
+	  * by `extension` positions. Used when a subselect clause is 'transplanted' onto another clause,
+	  * extending the `Outer` clause of the subselect.
+	  * @param sub the new subselect clause
+	  * @tparam F a subselect clause
+	  * @tparam G a new subselect clause with some additional relations inserted between F#Outer and the mapping
+	  *           joined in with a `Subselect` join.
+	  *///fixme: this class is whole wrong! G is not an extension of F!
+//	private[sql] def shiftBack[F <: FromClause, G <: FromClause]
+//	                          (old :F, sub :G)(implicit extension :old.Outer ExtendedBy sub.Outer) :SQLScribe[F, G] =
+//		shiftBack(old, sub, extension.length, old.subselectSize)
+//
+	private[sql] def shiftBack[F <: FromClause, G <: FromClause]
+	                          (old :F, extending :G, extension :Int, threshold :Int) :SQLScribe[F, G] =
 		new SubstituteComponents[F, G] {
+			protected[this] override val oldClause = old
+			protected[this] override val newClause = extending
 
 			override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
 					:BaseComponentFormula[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] } =
 				(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
 				 else SQLRelation[G, T, E](e.source, e.shift + extension)).asInstanceOf[SQLRelation[G, T, E, G]]
 
-			override def subselect[S <: SubselectOf[F], V, O](e :SubselectFormula[F, S, V, O]) = ???
-			override def subselect[S <: SubselectOf[F], V, O](e :SubselectColumn[F, S, V, O]) = ???
+
+			protected[this] override def extended[S <: FromClause, N <: FromClause]
+			                             (subselect :S, replacement :N)
+			                             (implicit oldExt :oldClause.Generalized ExtendedBy S,
+			                                       newExt :newClause.Generalized ExtendedBy N) =
+				shiftBack[S, N](subselect, replacement, extension, threshold + oldExt.length)
 		}
 
-	/** An SQL expression rewriter shifting back all relations before the last `Subselect` join by `extension` positions.
-	  * Used when a subselect clause is 'transplanted' onto another clause, extending the `Outer` clause of the subselect.
-	  * @param sub the new subselect clause
-	  */
-	private[sql] def shiftAside[F <: FromClause, G <: FromClause]
-	                           (sub :G, extension :Int)(implicit ext :F ExtendedBy G) :SQLScribe[F, G] =
-		new SubstituteComponents[F, G] {
-			private[this] val threshold = sub.subselectSize
 
-			override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
-					:BaseComponentFormula[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] } =
-			(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
-				 else SQLRelation[G, T, E](e.source, e.shift + extension)).asInstanceOf[SQLRelation[G, T, E, G]]
 
-			override def subselect[S <: SubselectOf[F], V, O](e :SubselectFormula[F, S, V, O]) =
-				e.stretch(sub)(ext)
 
-			override def subselect[S <: SubselectOf[F], V, O](e :SubselectColumn[F, S, V, O]) =
-				e.stretch(sub)(ext)
-		}
 
 
 	/** An existential upper bound of all `With` instances that can be used in casting or pattern matching

@@ -242,6 +242,8 @@ trait FromClause { thisClause =>
 	  */
 	type Inner >: Generalized <: FromLast
 
+//	type Subselect = FromClause { type Outer = thisClause.Generalized }
+
 
 
 	/** Number of relations contained in the explicit portion of this subselect join. This is equal to
@@ -453,144 +455,148 @@ object FromClause {
 	/** Extension methods for `FromClause` classes which benefit from having a static, invariant self type.
 	  * Most notably, this includes methods for joining it with other relations.
 	  */
-	implicit class FromClauseMethods[F <: FromClause](val self :F) extends AnyVal {
+	implicit class FromClauseMethods[F <: FromClause](val fromClause :F) extends AnyVal {
 
-		@inline def tables :JoinedTables[F] = new JoinedTables[F](self)
+		@inline def tables :JoinedTables[F] = new JoinedTables[F](fromClause)
 
-		@inline def relations :JoinedRelations[F] = new JoinedRelations[F](self)
+		@inline def relations :JoinedRelations[F] = new JoinedRelations[F](fromClause)
 
-		@inline def subselectSpan :self.Outer ExtendedBy F = new ExtendedBy[self.Outer, F](self.subselectSize)
+		@inline def subselectSuffix :fromClause.Outer PrefixOf fromClause.Generalized =
+			new PrefixOf[fromClause.Outer, fromClause.Generalized](fromClause.subselectSize)
+
+		@inline def subselectSpan :fromClause.Outer ExtendedBy F =
+			new ExtendedBy(fromClause.subselectSize)
 
 
 
 		@inline def join[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                (table :RowSource[R])
-		                (implicit cast :InferSubject[self.type, InnerJoin, R, T, S]) :F InnerJoin R =
-		InnerJoin(self, table)
+		                (implicit cast :InferSubject[fromClause.type, InnerJoin, R, T, S]) :F InnerJoin R =
+		InnerJoin(fromClause, table)
 
 		@inline def join[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                (table :R[A])
-		                (implicit cast :InferSubject[self.type, InnerJoin, R, T, S],
+		                (implicit cast :InferSubject[fromClause.type, InnerJoin, R, T, S],
 		                 alias :OriginProjection[R[A], A, R[Any], Any]) :F InnerJoin R =
 			join(RowSource(table))
 
 		@inline def join[R <: FromClause](other :R) :other.JoinedWith[F, InnerJoin] =
-			other.joinedWith(self, InnerJoin.template)
+			other.joinedWith(fromClause, InnerJoin.template)
 
 
 
 		@inline def outerJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                    (table :RowSource[R])
-		                    (implicit cast :InferSubject[self.type, OuterJoin, R, T, S]) :F OuterJoin R =
-			OuterJoin(self, table)
+		                    (implicit cast :InferSubject[fromClause.type, OuterJoin, R, T, S]) :F OuterJoin R =
+			OuterJoin(fromClause, table)
 
 		@inline def outerJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                    (table :R[A])
-		                    (implicit cast :InferSubject[self.type, OuterJoin, R, T, S],
+		                    (implicit cast :InferSubject[fromClause.type, OuterJoin, R, T, S],
 		                     alias :OriginProjection[R[A], A, R[Any], Any]) :F OuterJoin R =
 			outerJoin(RowSource(table))
 
 		@inline def outerJoin[R <: FromClause](other :R) :other.JoinedWith[F, OuterJoin] =
-			other.joinedWith(self, OuterJoin.template)
+			other.joinedWith(fromClause, OuterJoin.template)
 
 
 
 		@inline def leftJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                    (table :RowSource[R])
-		                    (implicit cast :InferSubject[self.type, LeftJoin, R, T, S]) :F LeftJoin R =
-			LeftJoin(self, table)
+		                    (implicit cast :InferSubject[fromClause.type, LeftJoin, R, T, S]) :F LeftJoin R =
+			LeftJoin(fromClause, table)
 
 		@inline def leftJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                    (table :R[A])
-		                    (implicit cast :InferSubject[self.type, LeftJoin, R, T, S],
+		                    (implicit cast :InferSubject[fromClause.type, LeftJoin, R, T, S],
 		                     alias :OriginProjection[R[A], A, R[Any], Any]) :F LeftJoin R =
 			leftJoin(RowSource(table))
 
 		@inline def leftJoin[R <:FromClause ](other :R) :other.JoinedWith[F, LeftJoin] =
-			other.joinedWith(self, LeftJoin.template)
+			other.joinedWith(fromClause, LeftJoin.template)
 
 
 
 		@inline def rightJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                     (table :RowSource[R])
-		                     (implicit cast :InferSubject[self.type, RightJoin, R, T, S]) :F RightJoin R =
-			RightJoin(self, table)
+		                     (implicit cast :InferSubject[fromClause.type, RightJoin, R, T, S]) :F RightJoin R =
+			RightJoin(fromClause, table)
 
 		@inline def rightJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                     (table :R[A])
-		                     (implicit cast :InferSubject[self.type, RightJoin, R, T, S],
+		                     (implicit cast :InferSubject[fromClause.type, RightJoin, R, T, S],
 		                      alias :OriginProjection[R[A], A, R[Any], Any]) :F RightJoin R =
 			rightJoin(RowSource(table))
 
 		@inline def rightJoin[R <: FromClause](other :R) :other.JoinedWith[F, RightJoin] =
-			other.joinedWith(self, RightJoin.template)
+			other.joinedWith(fromClause, RightJoin.template)
 
 
 
 		@inline def naturalJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                       (table :RowSource[R])
-		                       (implicit cast :InferSubject[self.type, InnerJoin, R, T, S],
-		                        last :GetTableByNegativeIndex[self.Generalized, -1]) :F InnerJoin R =
-			cast(InnerJoin[self.type, T, T, S](self, cast(table)) where naturalFilter[T])
+		                       (implicit cast :InferSubject[fromClause.type, InnerJoin, R, T, S],
+		                        last :GetTableByNegativeIndex[fromClause.Generalized, -1]) :F InnerJoin R =
+			cast(InnerJoin[fromClause.type, T, T, S](fromClause, cast(table)) where naturalFilter[T])
 
 		@inline def naturalJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                       (table :R[A])
-		                       (implicit cast :InferSubject[self.type, InnerJoin, R, T, S],
+		                       (implicit cast :InferSubject[fromClause.type, InnerJoin, R, T, S],
 		                        alias :OriginProjection[R[A], A, R[Any], Any],
-		                        last :GetTableByNegativeIndex[self.Generalized, -1]) :F InnerJoin R =
+		                        last :GetTableByNegativeIndex[fromClause.Generalized, -1]) :F InnerJoin R =
 			naturalJoin(RowSource(table))
 
-		
-		
+
+
 		@inline def naturalOuterJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                            (table :RowSource[R])
-		                            (implicit cast :InferSubject[self.type, OuterJoin, R, T, S],
-		                             last :GetTableByNegativeIndex[self.Generalized, -1]) :F OuterJoin R =
-			cast(OuterJoin[self.type, T, T, S](self, cast(table)) where naturalFilter[T])
+		                            (implicit cast :InferSubject[fromClause.type, OuterJoin, R, T, S],
+		                             last :GetTableByNegativeIndex[fromClause.Generalized, -1]) :F OuterJoin R =
+			cast(OuterJoin[fromClause.type, T, T, S](fromClause, cast(table)) where naturalFilter[T])
 
 		@inline def naturalOuterJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                            (table :R[A])
-		                            (implicit cast :InferSubject[self.type, OuterJoin, R, T, S],
+		                            (implicit cast :InferSubject[fromClause.type, OuterJoin, R, T, S],
 		                             alias :OriginProjection[R[A], A, R[Any], Any],
-		                             last :GetTableByNegativeIndex[self.Generalized, -1]) :F OuterJoin R =
+		                             last :GetTableByNegativeIndex[fromClause.Generalized, -1]) :F OuterJoin R =
 			naturalOuterJoin(RowSource(table))
 
 
 
 		@inline def naturalLeftJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                           (table :RowSource[R])
-		                           (implicit cast :InferSubject[self.type, LeftJoin, R, T, S],
-		                            last :GetTableByNegativeIndex[self.Generalized, -1]) :F LeftJoin R =
-			cast(LeftJoin[self.type, T, T, S](self, cast(table)) where naturalFilter[T])
+		                           (implicit cast :InferSubject[fromClause.type, LeftJoin, R, T, S],
+		                            last :GetTableByNegativeIndex[fromClause.Generalized, -1]) :F LeftJoin R =
+			cast(LeftJoin[fromClause.type, T, T, S](fromClause, cast(table)) where naturalFilter[T])
 
 		@inline def naturalLeftJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                           (table :R[A])
-		                           (implicit cast :InferSubject[self.type, LeftJoin, R, T, S],
+		                           (implicit cast :InferSubject[fromClause.type, LeftJoin, R, T, S],
 		                            alias :OriginProjection[R[A], A, R[Any], Any],
-		                            last :GetTableByNegativeIndex[self.Generalized, -1]) :F LeftJoin R =
+		                            last :GetTableByNegativeIndex[fromClause.Generalized, -1]) :F LeftJoin R =
 			naturalLeftJoin(RowSource(table))
 
-		
-		
+
+
 		@inline def naturalRightJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                            (table :RowSource[R])
-		                            (implicit cast :InferSubject[self.type, RightJoin, R, T, S],
-		                             last :GetTableByNegativeIndex[self.Generalized, -1]) :F RightJoin R =
-			cast(RightJoin[self.type, T, T, S](self, cast(table))(cast.self) where naturalFilter[T])
+		                            (implicit cast :InferSubject[fromClause.type, RightJoin, R, T, S],
+		                             last :GetTableByNegativeIndex[fromClause.Generalized, -1]) :F RightJoin R =
+			cast(RightJoin[fromClause.type, T, T, S](fromClause, cast(table))(cast.self) where naturalFilter[T])
 
 		@inline def naturalRightJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                            (table :R[A])
-		                            (implicit cast :InferSubject[self.type, RightJoin, R, T, S],
+		                            (implicit cast :InferSubject[fromClause.type, RightJoin, R, T, S],
 		                             alias :OriginProjection[R[A], A, R[Any], Any],
-		                             last :GetTableByNegativeIndex[self.Generalized, -1]) :F RightJoin R =
+		                             last :GetTableByNegativeIndex[fromClause.Generalized, -1]) :F RightJoin R =
 			naturalRightJoin(RowSource(table))
 
 
 
 		private def naturalFilter[T[O] <: TypedMapping[_, O]]
-		                         (tables :JoinedTables[self.Generalized With T])
-		                         (implicit prev :GetTableByNegativeIndex[self.Generalized With T, -2])
-				:BooleanFormula[self.Generalized With T] =
+		                         (tables :JoinedTables[fromClause.Generalized With T])
+		                         (implicit prev :GetTableByNegativeIndex[fromClause.Generalized With T, -2])
+				:BooleanFormula[fromClause.Generalized With T] =
 		{
 			val firstTable = tables.prev
 			val secondTable = tables.last
@@ -609,30 +615,30 @@ object FromClause {
 
 				FreeColumn(first, 1) === FreeColumn(second, 0)
 			}
-			(True[self.Generalized With T]() /: joins)(_ && _)
+			(True[fromClause.Generalized With T]() /: joins)(_ && _)
 		}
 
 
 
 		@inline def subselectFrom[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
 		                         (table :RowSource[R])
-		                         (implicit cast :InferSubject[self.type, Subselect, R, T, S]) :F Subselect R =
-			Subselect(self, table)
+		                         (implicit cast :InferSubject[fromClause.type, Subselect, R, T, S]) :F Subselect R =
+			Subselect(fromClause, table)
 
 		@inline def subselectFrom[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
 		                         (table :R[A])
-		                         (implicit cast :InferSubject[self.type, Subselect, R, T, S],
+		                         (implicit cast :InferSubject[fromClause.type, Subselect, R, T, S],
 		                          alias :OriginProjection[R[A], A, R[Any], Any]) :F Subselect R =
 			subselectFrom(RowSource(table))
 
 		@inline def subselectFrom[R <: FromClause](other :R) :other.JoinedWith[F, Subselect] =
-			other.joinedWith(self, Subselect.template)
+			other.joinedWith(fromClause, Subselect.template)
 
 
 
-		@inline def param[X :SQLForm] :F WithParam X = JoinParam(self, ParamSource[X]())
+		@inline def param[X :SQLForm] :F WithParam X = JoinParam(fromClause, ParamSource[X]())
 
-		@inline def param[X :SQLForm](name :String) :F WithParam X = JoinParam(self, ParamSource[X](name))
+		@inline def param[X :SQLForm](name :String) :F WithParam X = JoinParam(fromClause, ParamSource[X](name))
 
 	}
 
@@ -768,16 +774,15 @@ object FromClause {
 		/** The ''negative'' index of the found relation: that's `-1` for the last relation in the clause
 		  * and decreases going left. */
 		type I <: Numeral
-//		/** A unique origin type with the negative index of the relation encoded in it. */
-//		type O = ##[I]
+
 		type J >: F <: FromClause
 
 		/** The mapping type of the relation at index `N`. */
 		type T[O] <: MappingFrom[O]
 
-		val stretch :FromClause With T ExtendedBy J
+		val stretch :FromClause With T PrefixOf J
 
-		implicit def count :TableCount[J, _ <: Numeral] = new TableCount[J, stretch.length.type](stretch.length)
+		implicit def count :TableCount[J, _ <: Numeral] = new TableCount[J, stretch.suffix.type](stretch.suffix)
 
 
 		/** Getter for the relation from the input `FromClause`. */
@@ -803,7 +808,7 @@ object FromClause {
 				override type T[O] = M[O]
 				type J = FromClause With M
 
-				override val stretch = implicitly[J ExtendedBy J]
+				override val stretch = implicitly[J PrefixOf J]
 
 				override def table(from :FromClause With M) :JoinedRelation[FromClause With M, M] = from.last
 			}
@@ -837,7 +842,7 @@ object FromClause {
 				override type T[O] = R[O]
 				override type J = FromClause With R
 
-				override val stretch = implicitly[J ExtendedBy J]
+				override val stretch = implicitly[J PrefixOf J]
 
 				override def table(from :L With R) = from.last
 			}
@@ -902,7 +907,7 @@ object FromClause {
 			/** The negative index of the relation. */
 			def shift :I
 
-			val stretch :FromClause With T ExtendedBy J
+			val stretch :FromClause With T PrefixOf J
 
 			/** Getter for the matching relation. */
 			def apply(from :F) :JoinedRelation[J, T] = table(from).extend(stretch)
@@ -916,7 +921,7 @@ object FromClause {
 				override type T[O] = M[O]
 				override type J = FromClause With M
 
-				override val stretch = implicitly[J ExtendedBy J]
+				override val stretch = implicitly[J PrefixOf J]
 
 				override def shift = -1 : -1
 
@@ -959,6 +964,8 @@ object FromClause {
 			/** The last mapping type matching `X` in `F`. */
 			type T[O] <: MappingFrom[O]
 
+			/** A supertype of the ''from'' clause owning the table starting with `FromClause With T` and upcasting
+			  * all following joins to `With`. */
 			type J >: F <: FromClause
 
 			/** The negative index of the found relation, starting with `-1` and decreasing from right to left. */
@@ -1088,7 +1095,7 @@ object FromClause {
 	  * and should be relied upon only in the context of the actual extension.
 	  */ //it could in theory be covariant, but we rely in SQLFormula.extend that the relation remains the first one
 	@implicitNotFound("FromClause ${F} is not a prefix of the clause ${S} (ignoring join kinds).")
-	class ExtendedBy[F <: FromClause, S <: FromClause] private[FromClause] (val length :Int) extends AnyVal {
+	class ExtendedBy[+F <: FromClause, -S <: FromClause] private[FromClause] (val length :Int) extends AnyVal {
 		/** A transitive proof that a clause extending `S` with a single relation (mapping) also extends `F`. */
 		@inline
 		def stretch[R[O] <: MappingFrom[O]] :F ExtendedBy (S With R) = new ExtendedBy(length + 1)
@@ -1099,14 +1106,21 @@ object FromClause {
 			new ExtendedBy(length + 1)
 
 		@inline
-		def +[C <: FromClause](next :S ExtendedBy C) :F ExtendedBy C = new ExtendedBy[F, C](length + next.length)
+		def stretchFront[C <: FromClause](implicit front :C ExtendedBy F) :C ExtendedBy S =
+			new ExtendedBy(front.length + length)
 
 		@inline
-		def -[C <: FromClause](suffix :C ExtendedBy S)(implicit prefix :F ExtendedBy S) :F ExtendedBy C =
+		def stretch[C <: FromClause](implicit next :S ExtendedBy C) :F ExtendedBy C =
+			new ExtendedBy[F, C](length + next.length)
+
+		@inline
+		def shrink[E >: F <: FromClause, C <: FromClause, T <: S]
+		          (implicit prefix :E ExtendedBy T, suffix :C ExtendedBy T) :F ExtendedBy C =
 			new ExtendedBy[F, C](length - suffix.length)
 
 		@inline
-		def -:[C <: FromClause](prefix :F ExtendedBy C)(implicit suffix :C ExtendedBy S) :C ExtendedBy S =
+		def shrinkFront[E >: F <: FromClause, C <: FromClause, T <: S]
+		               (implicit prefix :E ExtendedBy C, suffix :C ExtendedBy T) :C ExtendedBy S =
 			new ExtendedBy(length - prefix.length)
 	}
 
@@ -1125,6 +1139,49 @@ object FromClause {
 
 
 
+
+
+	/** Proof that the ''from'' clause `S` is an extension of the clause `F` / the clause `F` is a prefix
+	  * of the clause of `S`. It means that `S =:= F With T1 ... With TN forSome { type T1 ... TN }`.
+	  * This takes into account only the static type of both clauses and the actual mapping lists on both can
+	  * differ and be of different lengths if `F` is not a complete clause and has an abstract prefix.
+	  * For this reason this class should be in general relied upon only in the context of the actual extension,
+	  * rather than a proof of `S` containing all the relations of `F` unless `F` is complete.
+	  */
+	@implicitNotFound("FromClause ${F} is not a prefix of the clause ${S}.")
+	class PrefixOf[F <: FromClause, S <: FromClause] private[FromClause] (val suffix :Int) extends AnyVal {
+
+		@inline def extension :F ExtendedBy S = new ExtendedBy(suffix)
+
+		/** A transitive proof that a clause extending `S` with a single relation (mapping) also extends `F`. */
+		@inline
+		def stretch[R[O] <: MappingFrom[O]] :F PrefixOf (S With R) = new PrefixOf(suffix + 1)
+
+		@inline
+		def stretch[C <: FromClause](implicit next :S PrefixOf C) :F PrefixOf C =
+			new PrefixOf[F, C](suffix + next.suffix)
+
+		@inline
+		def shrink[C <: FromClause](implicit prefix :F PrefixOf S, suffix :C PrefixOf S) :F PrefixOf C =
+			new PrefixOf[F, C](this.suffix - suffix.suffix)
+
+		@inline
+		def shrinkFront[C <: FromClause](implicit prefix :F PrefixOf C, suffix :C PrefixOf S) :C PrefixOf S =
+			new PrefixOf(this.suffix - prefix.suffix)
+	}
+
+
+
+	object PrefixOf {
+		private[this] val instance = new PrefixOf[FromClause, FromClause](0)
+
+		implicit def itself[F <: FromClause] :PrefixOf[F, F] = instance.asInstanceOf[F PrefixOf F]
+
+		implicit def extend[F <: FromClause, S <: L With R, L <: FromClause, R[A] <: MappingFrom[A]]
+		                   (implicit ev :F PrefixOf L) :F PrefixOf S = //todo: verify type inference works
+			new PrefixOf(ev.suffix + 1)
+	}
+	
 //	import Zipper._
 ////	todo: zipper
 //	trait Zipper[P <: FromClause, S <: ZipperSuffix]

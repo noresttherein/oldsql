@@ -173,7 +173,7 @@ object JoinParam {
 			                     (left :F)(filter :BooleanFormula[left.Generalized With M]) :F JoinParam M =
 				JoinParam[F, M, X](left, last)(filter)
 
-			override def withFilter(filter :BooleanFormula[left.Generalized With M]) :This =
+			override def withCondition(filter :BooleanFormula[left.Generalized With M]) :This =
 				JoinParam[left.type, M, X](left, last)(filter)
 
 
@@ -188,13 +188,16 @@ object JoinParam {
 
 
 
-	def unapply[F <: FromClause, X](param :F WithParam X) :Option[(F, ParamSource[X])] =
-		Some(param.left -> param.right.asInstanceOf[ParamSource[X]])
+	def unapply[F <: FromClause, X](param :F WithParam X)
+			:Option[(F, JoinedRelation[FromClause With M, M] forSome { type M[A] <: FromParam[X, A] })] =
+		Some(param.left -> param.last)
 
-	def unapply(from :FromClause) :Option[(FromClause, ParamSource[_])] = from match {
-		case param :JoinParam.* => Some(param.left -> param.right.asInstanceOf[ParamSource[_]])
-		case _ => None
-	}
+	def unapply(from :FromClause)
+			:Option[(FromClause, JoinedRelation[FromClause With M, M] forSome { type M[A] <: FromParam[_, A] })] =
+		from match {
+			case param :JoinParam.* => Some(param.left -> param.last)
+			case _ => None
+		}
 
 
 
@@ -236,7 +239,7 @@ object JoinParam {
 		def apply[X :SQLForm]() :ParamSource[X] = new ParamSource("?")
 
 		def unapply(source :RowSource.*) :Option[(SQLForm[_], String)] = source match {
-			case param :ParamSource[_] => Some(param.form -> param.name)
+			case param :GenericParamSource[_, _] => Some(param.form -> param.name)
 			case _ => None
 		}
 
@@ -404,7 +407,7 @@ object JoinParam {
 
 
 
-	type * = JoinParam[_ <: FromClause, M] forSome { type M[O] <: ParamFrom[O] }
+	type * = JoinParam[_ <: FromClause, M] forSome { type M[O] <: FromParam[_, O] }
 
 
 

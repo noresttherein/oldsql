@@ -119,8 +119,8 @@ object SQLTuple {
 //		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
 //			map(SQLScribe.stretcher(target))
 
-		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
-			map(SQLScribe.stretcher(target))
+		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
+			map(SQLScribe.stretcher(base))
 
 		def ~[S <: F, H](head :SQLFormula[S, H]) :ChainHead[S, T, H] = new ChainHead(this, head)
 
@@ -165,8 +165,8 @@ object SQLTuple {
 			override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T ~ H] =
 				init.map(mapper) ~ mapper(last)
 
-			override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T ~ H] =
-				init.stretch(target) ~ last.stretch(target)
+			override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T ~ H] =
+				init.stretch(base) ~ last.stretch(base)
 		}
 
 
@@ -188,7 +188,7 @@ object SQLTuple {
 //
 //			override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) = this
 
-			override def stretch[U <: FromClause, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) = this
+			override def stretch[U <: FromClause, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) = this
 		}
 	}
 

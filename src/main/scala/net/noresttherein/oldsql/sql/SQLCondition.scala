@@ -1,10 +1,9 @@
 package net.noresttherein.oldsql.sql
 
 
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.SQLCondition.Comparison.{CaseComparison, ComparisonMatcher}
-import net.noresttherein.oldsql.sql.SQLCondition.Equality.{CaseEquality, EqualityMatcher}
+import net.noresttherein.oldsql.sql.SQLCondition.Equality.EqualityMatcher
 import net.noresttherein.oldsql.sql.SQLCondition.Exists.{CaseExists, ExistsMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.In.{CaseIn, InMatcher}
 import net.noresttherein.oldsql.sql.SQLCondition.Inequality.InequalityMatcher
@@ -142,9 +141,6 @@ object SQLCondition {
 		override def freeValue :Option[Boolean] =
 			for (l <- left.freeValue; r <- right.freeValue) yield l == r
 
-//		override def get(values :RowValues[F]) :Option[Boolean] =
-//			for (l <- left.get(values); r <- right.get(values)) yield l == r
-
 		override def symbol :String = Comparison.EQ
 
 
@@ -175,8 +171,6 @@ object SQLCondition {
 		override def freeValue :Option[Boolean] =
 			for (l <- left.freeValue; r <- right.freeValue) yield l != r
 
-//		override def get(values :RowValues[F]) :Option[Boolean] =
-//			for (l <- left.get(values); r <- right.get(values)) yield l == r
 
 		override def symbol :String = Comparison.NEQ
 
@@ -268,24 +262,7 @@ object SQLCondition {
 
 
 
-/*
-	trait ConditionMatcher[+F <: FromClause, +Y[X]]
-		extends InMatcher[F, Y] with ExistsMatcher[F, Y] with ComparisonMatcher[F, Y]
 
-	trait MatchCondition[+F <: FromClause, +Y[X]]
-		extends CaseIn[F, Y] with CaseExists[F, Y] with CaseComparison[F, Y]
-
-	trait CaseCondition[+F <: FromClause, +Y[X]] extends ConditionMatcher[F, Y] with MatchCondition[F, Y] {
-		def condition(f :SQLCondition[F]) :Y[Boolean]
-
-		override def in[X](f :In[F, X]) :Y[Boolean] = condition(f)
-
-		override def exists[X](f :ExistsFormula[F, X]) :Y[Boolean] = condition(f)
-
-		override def comparison[X](f: Comparison[F, X]): Y[Boolean] = condition(f)
-
-	}
-*/
 	trait ConditionMatcher[+F <: FromClause, +Y[X]] extends ComparisonMatcher[F, Y]
 		with ExistsMatcher[F, Y] with InMatcher[F, Y]
 

@@ -27,24 +27,11 @@ trait SQLTerm[T] extends SQLFormula[FromClause, T] {
 	override def readForm :SQLReadForm[T] = form
 	def writeForm :SQLWriteForm[Unit]
 
-	//	override def readForm :SQLReadForm[T] = SQLReadForm[T]
-
+	override def stretch[U <: FromClause, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLTerm[T] = this
 
 	override def isomorphic(expression: Formula[_]): Boolean = this == expression
 
 	private[oldsql] override def equivalent(expression: Formula[_]): Boolean = this == expression
-
-//	override def isGroundedIn(tables: Iterable[AnyJoinedRelation]): Boolean = freeValue.isDefined
-
-
-
-//	override def get(values :RowValues[FromClause]) :Option[T] = freeValue
-//	override def stretch[M[O] <: MappingFrom[O]] :SQLTerm[T] = this
-//
-//	override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :SQLTerm[T] = this
-
-	override def stretch[U <: FromClause, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLTerm[T] = this
-
 
 }
 
@@ -72,12 +59,7 @@ object SQLTerm extends MultiColumnTerms {
 
 		override def readForm :ColumnReadForm[T] = form
 
-//		override def stretch[M[O] <: MappingFrom[O]] :ColumnTerm[T] = this
-//
-//		override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnTerm[T] =
-//			this
-
-		override def stretch[U <: FromClause, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnTerm[T] =
+		override def stretch[U <: FromClause, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ColumnTerm[T] =
 			this
 
 	}
@@ -250,7 +232,7 @@ object SQLTerm extends MultiColumnTerms {
 		override def hashCode :Int = (if (value == null) 0 else value.hashCode) * 31 + form.hashCode
 
 
-		override def toString :String = "?" + value //if (value == null) "null" else "?"+value
+		override def toString :String = "?" + value
 	}
 
 

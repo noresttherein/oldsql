@@ -49,15 +49,15 @@ import slang._
   * @tparam V the mapped header type representing a single row.
   */
 sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]] with TypedMapping[V, O] {
-	/** The from clause of this select */
-	type From <: FromClause //SubselectOf[F]
+	/** The from clause of this select. */
+	type From <: FromClause
 
 	trait SelectedColumn[X] {
 		def name :String
 		def formula :ColumnFormula[From, X]
 	}
 
-	def header :SQLFormula[From, V]
+	val header :SQLFormula[From, V]
 
 	def headerColumns :Seq[SelectedColumn[_]]
 
@@ -73,19 +73,13 @@ sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]
 
 	def notExists :ColumnFormula[F, Boolean] = !Exists(this)
 
-	def single :SQLFormula[F, V] = to[V] //new SelectAsRow(this)
+	def single :SQLFormula[F, V] = to[V]
 
-	def rows :SQLFormula[F, Seq[V]] = to[Seq[V]] //new SelectAsRows(this)
+	def rows :SQLFormula[F, Seq[V]] = to[Seq[V]]
 
 
 
 	override def readForm :SQLReadForm[Rows[V]] = header.readForm.map(Rows(_))
-
-//	override def get(values: RowValues[F]) :Option[Rows[V]] =
-//		header.get(values.asInstanceOf[RowValues[From]]).map(Rows(_))
-
-//	override def isGroundedIn(tables: Iterable[AnyJoinedRelation]): Boolean =
-//		header.isGroundedIn(tables)
 
 	override def freeValue :Option[Rows[V]] = header.freeValue.map(Rows(_))
 
@@ -93,7 +87,7 @@ sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]
 
 
 
-	override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SelectFormula[S, V, O]
+	override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SelectFormula[S, V, O]
 
 
 
@@ -141,7 +135,7 @@ object SelectFormula {
 		new SelectComponent[F, T, E, M, V, I, O](from, header)
 	
 	def apply[F <: OuterFrom, V, O](from :F, header :SQLTuple[F, V]) :FreeSelectFormula[V, O] =
-		new ArbitraryFreeSelect[F, V, O](from, header) 
+		new ArbitraryFreeSelect[F, V, O](from, header)
 	
 	def apply[F <: OuterFrom, X, Y, O](from :F, header :AutoConversionFormula[F, X, Y]) :FreeSelectFormula[Y, O] =
 		new ArbitraryFreeSelect[F, Y, O](from, header)
@@ -183,7 +177,7 @@ object SelectFormula {
 
 		override def single :ColumnFormula[F, V] = to[V]
 
-		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SelectColumn[S, V, O]
+		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SelectColumn[S, V, O]
 	}
 	
 	/** A `SelectFormula` interface exposing the mapping type `H` used as the header.
@@ -191,8 +185,6 @@ object SelectFormula {
 	  */
 	trait SelectAs[-F <: FromClause, H <: Mapping] extends SelectFormula[F, H#Subject, H#Origin] {
 		val mapping :H
-
-//		def header = mapping
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[SelectAs[_, _]]
 
@@ -216,7 +208,7 @@ object SelectFormula {
 		override type From <: OuterFrom
 
 		override def stretch[U <: FromClause, S <: FromClause]
-		                    (target :S)(implicit ev :U ExtendedBy S) :FreeSelectFormula[V, O] =
+		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectFormula[V, O] =
 			this
 
 		override def applyTo[Y[_]](matcher: FormulaMatcher[FromClause, Y]): Y[Rows[V]] = matcher.freeSelect(this)
@@ -225,7 +217,7 @@ object SelectFormula {
 	trait FreeSelectColumn[V, O] extends FreeSelectFormula[V, O] with SelectColumn[FromClause, V, O] {
 
 		override def stretch[U <: FromClause, S <: FromClause]
-		                    (target :S)(implicit ev :U ExtendedBy S) :FreeSelectColumn[V, O] =
+		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectColumn[V, O] =
 			this
 
 		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[FromClause, Y]) :Y[Rows[V]] = matcher.freeSelect(this)
@@ -243,7 +235,7 @@ object SelectFormula {
 	trait SubselectFormula[-F <: FromClause, S <: SubselectOf[F], V, O] extends SelectFormula[F, V, O] {
 		override type From = S
 
-		override def stretch[U <: F, G <: FromClause](target :G)(implicit extension :U ExtendedBy G)
+		override def stretch[U <: F, G <: FromClause](base :G)(implicit extension :U ExtendedBy G)
 			:SubselectFormula[G, _ <: SubselectOf[G], V, O]
 
 		override def applyTo[Y[_]](matcher: FormulaMatcher[F, Y]): Y[Rows[V]] = matcher.subselect(this)
@@ -320,13 +312,13 @@ object SelectFormula {
 		   with TypedSubselectMapping[F, S, H, V, O]
 	{
 
-		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G) :SubselectFormula[G, _ <: SubselectOf[G], V, O] =
-//				:SubselectComponent[G, D, T, E, H, V, _ >: D <: FromClause, O] forSome { type D <: SubselectOf[G] } =
+		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G)
+				:SubselectFormula[G, _ <: SubselectOf[G], V, O] =
 		{
 			type Ext = SubselectOf[G] //pretend this is the actual type S after rebasing to the extension clause G
 			val upcast = from :FromClause //scalac bug workaround
-			val stretched = upcast.asSubselectOf(clause)(ev.asInstanceOf[upcast.Outer ExtendedBy G]).asInstanceOf[Ext]
-			val subselectTables = stretched.size - clause.size
+			val stretched = upcast.asSubselectOf(base)(ev.asInstanceOf[upcast.Outer ExtendedBy G]).asInstanceOf[Ext]
+			val subselectTables = stretched.size - base.size
 			val table = header.from
 			val replacement =
 				if (table.shift < subselectTables) table.asInstanceOf[SQLRelation[Ext, T, E, Ext]]
@@ -595,14 +587,13 @@ object SelectFormula {
 	private class ArbitrarySubselect[-F <: FromClause, S <: SubselectOf[F], V, O](subclause :S, header :SQLFormula[S, V])
 		extends ArbitrarySelectFormula[F, S, V, O](subclause, header) with SubselectFormula[F, S, V, O]
 	{
-		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G)
+		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G)
 				:SubselectFormula[G, _  <: SubselectOf[G], V, O] =
 		{
 			type Ext = FromClause { type Outer = G }
 			val upcast = from :FromClause //scalac bug workaround
-			val stretched = upcast.asSubselectOf(clause)(ev.asInstanceOf[upcast.Outer ExtendedBy G])
-				.asInstanceOf[Ext]
-			val substitute = With.shiftAside[S, Ext](stretched.size - clause.size, ev.length)
+			val stretched = upcast.asSubselectOf(base)(ev.asInstanceOf[upcast.Outer ExtendedBy G]).asInstanceOf[Ext]
+			val substitute = With.shiftBack[S, Ext](from, stretched, ev.length, upcast.subselectSize)
 			new ArbitrarySubselect[G, Ext, V, O](stretched, substitute(header))
 		}
 
@@ -672,14 +663,13 @@ object SelectFormula {
 	                                      (clause :S, override val header :ColumnFormula[S, V])
 		extends ArbitrarySelectColumn[F, S, V, O](clause, header) with SubselectColumn[F, S, V, O]
 	{
-		override def stretch[U <: F, G <: FromClause](clause :G)(implicit ev :U ExtendedBy G)
+		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G)
 				:SubselectColumn[G, _ <: SubselectOf[G], V, O] =
 		{
 			type Ext = FromClause { type Outer = G }
 			val upcast :FromClause = from
-			val stretched = upcast.asSubselectOf(clause)(ev.asInstanceOf[upcast.Outer ExtendedBy G])
-				.asInstanceOf[Ext]
-			val substitute = With.shiftAside[S, Ext](stretched.size - clause.size, ev.length)
+			val stretched = upcast.asSubselectOf(base)(ev.asInstanceOf[upcast.Outer ExtendedBy G]).asInstanceOf[Ext]
+			val substitute = With.shiftBack[S, Ext](from, stretched, ev.length, upcast.subselectSize)
 			new ArbitrarySubselectColumn[G, Ext, V, O](stretched, substitute(header))
 		}
 	}

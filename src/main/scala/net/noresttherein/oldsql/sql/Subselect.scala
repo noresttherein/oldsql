@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.Mapping.MappingFrom
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Join.TypedJoin
-import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation
+import net.noresttherein.oldsql.sql.MappingFormula.{JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -70,7 +70,9 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 	override def asSubselectOf[O <: FromClause](newOuter :O)(implicit extension :Outer ExtendedBy O)
 		:(O Subselect T) { type Outer = newOuter.Generalized } =
 	{
-		val substitute = With.shiftAside[Generalized, newOuter.Generalized With T](1, extension.length)
+		//todo: refactor joins so they take functions creating conditions and move this to the constructor
+		val unfiltered = withLeft[newOuter.type](newOuter)(True)
+		val substitute = With.shiftBack(generalized, unfiltered.generalized, extension.length, 1)
 		withLeft[newOuter.type](newOuter)(substitute(condition))
 	}
 
@@ -118,7 +120,7 @@ object Subselect {
 
 			override def self :left.type Subselect R = this
 
-			override def withFilter(filter :BooleanFormula[left.Generalized With R]) :This =
+			override def withCondition(filter :BooleanFormula[left.Generalized With R]) :This =
 				Subselect[left.type, R, S](left, last)(filter)
 
 			override def withRight[T[O] <: TypedMapping[X, O], X]
@@ -140,14 +142,15 @@ object Subselect {
 
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
-		case _ :Subselect.* => Some(join.left -> join.right)
-		case _ => None
-	}
+	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, JoinedRelation[FromClause With R, R])] =
+		join match {
+			case _ :Subselect.* => Some(join.left -> join.last)
+			case _ => None
+		}
 
-	def unapply(from :FromClause) :Option[(FromClause, RowSource.*)] =
+	def unapply(from :FromClause) :Option[(FromClause, JoinedRelation.*)] =
 		from match {
-			case join :Subselect.* => Some(join.left -> join.right)
+			case join :Subselect.* => Some(join.left -> join.last)
 			case _ => None
 		}
 

@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.ProperJoin.TypedProperJoin
 import net.noresttherein.oldsql.sql.SelectFormula.{SubselectColumn, SubselectFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula}
-import net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents
+import net.noresttherein.oldsql.sql.SQLScribe.{ReplaceRelation, SubstituteComponents}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
 import net.noresttherein.oldsql.sql.With.TypedWith
@@ -190,21 +190,14 @@ object Join {
 			val source = FromClause.AliasedSource[R, A](last.source, alias)
 			val aliased = SQLRelation.last[(R As A)#T, (R As A)#T, S](source)
 			type Res = left.Generalized With (R As A)#T
-			val substitute = new SubstituteComponents[left.Generalized With R, Res] {
-
-				override def relation[T[F] <: TypedMapping[E, F], E, O >: Generalized <: FromClause]
-				                     (e :SQLRelation[Generalized, T, E, O])
-						:BaseComponentFormula[Res, M, T, _ >: Res <: FromClause] forSome { type M[F] <: MappingFrom[F] } =
-					(if (e.shift == 0) aliased else e)
-						.asInstanceOf[BaseComponentFormula[Res, MappingFrom, T, Res]]
-
-				//todo: implement subselects
-				override def subselect[U <: SubselectOf[Generalized], V, O](e :SubselectFormula[Generalized, U, V, O]) = ???
-
-				override def subselect[U <: SubselectOf[Generalized], V, O](e :SubselectColumn[Generalized, U, V, O]) = ???
-			}
+			val unfiltered = copy[left.Generalized, (R As A)#T, S](left.generalized, source)(True)
+			val replacement = aliased \ unfiltered.last.mapping.egg
+			val substitute = new ReplaceRelation[R, S, (R As A)#T, S, Generalized, Res](
+				generalized, unfiltered)(last, replacement
+			)
 			withRight[(R As A)#T, S](aliased)(substitute(condition))
 		}
+
 
 	}
 
@@ -387,7 +380,7 @@ object InnerJoin {
 			protected override def self :left.type InnerJoin R = this
 
 			//needs to be private because the result is This
-			override def withFilter(filter :BooleanFormula[left.Generalized With R]) =
+			override def withCondition(filter :BooleanFormula[left.Generalized With R]) =
 				newJoin[R, S](left, last)(condition)
 
 
@@ -496,7 +489,7 @@ object OuterJoin {
 			protected override def self :left.type OuterJoin R = this
 
 			//needs to be private because the result is This
-			override def withFilter(filter :BooleanFormula[left.Generalized With R]) =
+			override def withCondition(filter :BooleanFormula[left.Generalized With R]) =
 				OuterJoin[left.type, R, S](left, last)(condition)
 
 
@@ -592,7 +585,7 @@ object LeftJoin {
 
 			override protected def self :left.type LeftJoin R = this
 
-			override protected def withFilter(filter :BooleanFormula[left.Generalized With R]) :This =
+			override protected def withCondition(filter :BooleanFormula[left.Generalized With R]) :This =
 				LeftJoin[left.type, R, S](left :left.type, last)(condition)
 
 			override def withRight[T[A] <: TypedMapping[X, A], X]
@@ -686,7 +679,7 @@ object RightJoin {
 
 			override protected def self = this
 
-			protected override def withFilter(filter :BooleanFormula[left.Generalized With R]) :This =
+			protected override def withCondition(filter :BooleanFormula[left.Generalized With R]) :This =
 				RightJoin[left.type, R, S](left, last)(filter)
 
 			override def withRight[T[O] <: TypedMapping[X, O], X]
@@ -791,7 +784,7 @@ object From {
 
 
 
-			protected override  def withFilter(filter :BooleanFormula[FromClause With M]) =
+			protected override  def withCondition(filter :BooleanFormula[FromClause With M]) =
 				newJoin[M, S](last)(filter)
 
 			override def withRight[T[O] <: TypedMapping[X, O], X]

@@ -6,12 +6,12 @@ import net.noresttherein.oldsql.sql.ArithmeticFormula.{ArithmeticMatcher, CaseAr
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ColumnPromotionConversion, ConversionMatcher, OrNull, PromotionConversion}
-import net.noresttherein.oldsql.sql.SQLCondition.{CaseCondition, Comparison, ConditionMatcher, Equality, Inequality}
+import net.noresttherein.oldsql.sql.SQLCondition.{CaseCondition, Comparison, ConditionMatcher, Equality, In, Inequality}
 import net.noresttherein.oldsql.sql.LogicalFormula.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, Formula, FormulaMatcher, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
 import net.noresttherein.oldsql.sql.SQLTerm.{BoundParameter, CaseTerm, False, SQLLiteral, TermMatcher, True}
-import net.noresttherein.oldsql.sql.SQLTuple.{CaseTuple, TupleMatcher}
+import net.noresttherein.oldsql.sql.SQLTuple.{CaseTuple, SeqTuple, TupleMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionMatcher}
 import net.noresttherein.oldsql.sql.MappingFormula.{CaseMapping, ColumnComponentFormula, FreeColumn, MappingColumnMatcher, MappingMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.{AliasedColumn, ColumnFormulaMatcher}
@@ -21,9 +21,6 @@ import net.noresttherein.oldsql.sql.MappingFormula.ColumnComponentFormula.CaseCo
 import net.noresttherein.oldsql.sql.MappingFormula.FreeColumn.CaseFreeColumn
 import net.noresttherein.oldsql.sql.SelectFormula.{CaseSelect, CaseSelectColumn, SelectColumnMatcher, SelectMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
-
-
-
 import slang._
 
 
@@ -43,33 +40,30 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 //	      (path :ComponentPath[T, C, O, E, L])(implicit lift :SQLTypePromotion[L, R, X]) :SetComponent[F, T, C, O, E, L, R, X] =
 //		SetComponent(path, this :SQLFormula[F, R])
 
-	def ==?[O, X](value :O)(implicit lift :SQLTypePromotion[V, O, X], form :SQLForm[O]) :BooleanFormula[F] =
+	def ==?[X, Y](value :X)(implicit lift :SQLTypePromotion[V, X, Y], form :SQLForm[X]) :BooleanFormula[F] =
 		this === value.?
 
-	def ===[S <: F, O, X](that :SQLFormula[S, O])(implicit lift :SQLTypePromotion[V, O, X]) :BooleanFormula[S] =
+	def ===[S <: F, X, U](that :SQLFormula[S, X])(implicit lift :SQLTypePromotion[V, X, U]) :BooleanFormula[S] =
 		Equality(lift.left(this), lift.right(that))
 
-	def <>[S <: F, O, X](that :SQLFormula[S, O])(implicit lift :SQLTypePromotion[V, O, X]) :BooleanFormula[S] =
+	def <>[S <: F, X, U](that :SQLFormula[S, X])(implicit lift :SQLTypePromotion[V, X, U]) :BooleanFormula[S] =
 		Inequality(lift.left(this), lift.right(that))
 
-	def <=[S <: F, O, X](that :SQLFormula[S, O])
-	                    (implicit lift :SQLTypePromotion[V, O, X], ordering :SQLOrdering[X]) :BooleanFormula[S] =
+	def <=[S <: F, X, U](that :SQLFormula[S, X])
+	                    (implicit lift :SQLTypePromotion[V, X, U], ordering :SQLOrdering[U]) :BooleanFormula[S] =
 		Comparison(lift.left(this), Comparison.LTE, lift.right(that))
 
-	def <[S <: F, O, X](that :SQLFormula[S, O])
-	                   (implicit lift :SQLTypePromotion[V, O, X], ordering :SQLOrdering[X]) :BooleanFormula[S] =
+	def <[S <: F, X, U](that :SQLFormula[S, X])
+	                   (implicit lift :SQLTypePromotion[V, X, U], ordering :SQLOrdering[U]) :BooleanFormula[S] =
 		Comparison(lift.left(this), Comparison.LT, lift.right(that))
 
-	def >=[S <: F, O, X](that :SQLFormula[S, O])
-	                    (implicit lift :SQLTypePromotion[V, O, X], ordering :SQLOrdering[X]) :BooleanFormula[S] =
+	def >=[S <: F, X, U](that :SQLFormula[S, X])
+	                    (implicit lift :SQLTypePromotion[V, X, U], ordering :SQLOrdering[U]) :BooleanFormula[S] =
 		Comparison(lift.left(this), Comparison.GTE, lift.right(that))
 
-	def >[S <: F, O, X](that :SQLFormula[S, O])
-	                   (implicit lift :SQLTypePromotion[V, O, X], ordering :SQLOrdering[X]) :BooleanFormula[S] =
+	def >[S <: F, X, U](that :SQLFormula[S, X])
+	                   (implicit lift :SQLTypePromotion[V, X, U], ordering :SQLOrdering[U]) :BooleanFormula[S] =
 		Comparison(lift.left(this), Comparison.GT, lift.right(that))
-
-//	def in [S <: F, U >: V, O, X](that :SeqTuple[S, O])(implicit lift :SQLTypePromotion[U, O, X]) :BooleanFormula[S] =
-//		new In[S, X](lift.left(this), SeqTuple(that.parts.map(lift.right.apply[S])))
 
 
 
@@ -115,7 +109,7 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 
 	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
 	  * the clause `F` this expression is based on. */
-	def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] //= stretch[U, S]
+	def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V]
 
 
 
@@ -143,20 +137,6 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 
 	/** Is this expression independent of any relations from the FROM clause? */
 	def isFree :Boolean = freeValue.isDefined
-
-	/** An SQL formula is said to be ''grounded in `JoinedRelation`s F1,...,FN'' if it can be evaluated based on the
-	  * collective column set represented by mappings of sources of those formulas. In other words, it depends
-	  * only on those parts of the ''from'' clause.
-	  */
-//	def isGroundedIn(tables :Iterable[AnyJoinedRelation]) :Boolean
-
-/*
-	def evaluate(values :RowValues[F]) :V = get(values) getOrElse {
-		throw new IllegalArgumentException(s"Couldn't evaluate $this from $values")
-	}
-
-	def get(values :RowValues[F]) :Option[V]
-*/
 
 
 
@@ -228,6 +208,11 @@ object SQLFormula {
 	trait ColumnFormula[-F <: FromClause, V] extends SQLFormula[F, V] {
 		override def readForm :ColumnReadForm[V]
 
+
+		def in [S <: F, X, U](that :SeqTuple[S, X])(implicit lift :SQLTypePromotion[V, X, U]) :BooleanFormula[S] =
+			new In[S, U](lift.left(this), SeqTuple(that.parts.map(lift.right.apply[S])))
+
+
 		override def to[X](implicit lift :Lift[V, X]) :ColumnFormula[F, X] =
 			ColumnPromotionConversion(this, lift)
 
@@ -237,7 +222,7 @@ object SQLFormula {
 		override def basedOn[E <: FromClause](implicit subtype :E <:< F) :ColumnFormula[E, V] =
 			this.asInstanceOf[ColumnFormula[E, V]]
 
-		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V]
+		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V]
 
 		override def subselectFrom(from :F) :ColumnFormula[from.Outer, Rows[V]] =
 			SelectFormula.subselect[from.Outer, from.type, V, Any](from, this)
@@ -320,11 +305,9 @@ object SQLFormula {
 
 	trait CompositeFormula[-F <: FromClause, V] extends SQLFormula[F, V] {
 		def inOrder :Seq[SQLFormula[F, _]] = parts
+
 		protected def parts :Seq[SQLFormula[F, _]]
 
-
-//		override def isGroundedIn(tables: Iterable[AnyJoinedRelation]): Boolean =
-//			parts.forall(_.isGroundedIn(tables))
 
 		protected override def reverseCollect[X](fun: PartialFunction[Formula[_], X], acc: List[X]): List[X] =
 			(super.reverseCollect(fun, acc) /: inOrder)((collected, member) => member.reverseCollect(fun, collected))
@@ -334,8 +317,8 @@ object SQLFormula {
 		def map[S <: FromClause](mapper :SQLScribe[F, S]) :SQLFormula[S, V]
 
 
-		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] =
-			map(SQLScribe.stretcher(target))
+		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] =
+			map(SQLScribe.stretcher(base))
 
 
 
@@ -392,8 +375,6 @@ object SQLFormula {
 		{
 			def composite[X](e :CompositeFormula[F, X]) :Y[X]
 
-//			override def composite[X](e :CompositeColumnFormula[F, X]) :Y[X] = composite(e :CompositeFormula[F, X])
-
 			override def tuple[X](e :SQLTuple[F, X]) :Y[X] = composite(e)
 
 			override def conversion[Z, X](e :AutoConversionFormula[F, Z, X]) :Y[X] = composite(e)
@@ -409,8 +390,8 @@ object SQLFormula {
 	trait CompositeColumnFormula[-F <: FromClause, X] extends CompositeFormula[F, X] with ColumnFormula[F, X] {
 		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, X]
 
-		override def stretch[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, X] =
-			map(SQLScribe.stretcher(target))
+		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, X] =
+			map(SQLScribe.stretcher(base))
 
 	}
 
@@ -504,6 +485,7 @@ object SQLFormula {
 			}
 
 			def apply[F <: FromClause](expr :SQLFormula[F, X]) :SQLFormula[F, Y] = expr.to(this)
+			def apply[F <: FromClause](expr :ColumnFormula[F, X]) :ColumnFormula[F, Y] = expr.to(this)
 		}
 
 
@@ -523,12 +505,16 @@ object SQLFormula {
 
 				override def apply[S <: FromClause](expr: SQLFormula[S, X]): SQLFormula[S, Z] =
 					next(prev(expr))
+
+				override def apply[F <: FromClause](expr :ColumnFormula[F, X]) :ColumnFormula[F, Z] =
+					next(prev(expr))
 			}
 
 			private[this] val ident = new Lift[Any, Any] {
 				override def apply(value: Any): Any = value
 				override def inverse(value: Any): Option[Any] = Some(value)
 				override def apply[S <: FromClause](expr: SQLFormula[S, Any]): SQLFormula[S, Any] = expr
+				override def apply[S <: FromClause](expr: ColumnFormula[S, Any]) :ColumnFormula[S, Any] = expr
 				override def toString = "_"
 			}
 
@@ -539,6 +525,8 @@ object SQLFormula {
 				override def inverse(value: Option[Any]): Option[Any] = value
 
 				override def apply[S <: FromClause](expr: SQLFormula[S, Any]): SQLFormula[S, Option[Any]] = expr.opt
+				override def apply[F <: FromClause](expr :ColumnFormula[F, Any]) :ColumnFormula[F, Option[Any]] = expr.opt
+
 				override def toString = "Option[_]"
 			}
 
@@ -550,7 +538,7 @@ object SQLFormula {
 			}
 
 			private[this] val selectRows = new Lift[Rows[Any], Seq[Any]] {
-				override def apply(value: Rows[Any]): Seq[Any] = Seq(value.seq)
+				override def apply(value: Rows[Any]): Seq[Any] = value.seq
 				override def inverse(value: Seq[Any]): Option[Rows[Any]] = value match {
 					case Seq(row) => Some(Rows(row))
 					case _ => None
