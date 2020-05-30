@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Mapping, SQLForm, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.ArithmeticFormula.{ArithmeticMatcher, CaseArithmetic}
-import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectFrom}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ColumnPromotionConversion, ConversionMatcher, OrNull, PromotionConversion}
 import net.noresttherein.oldsql.sql.SQLCondition.{CaseCondition, Comparison, ConditionMatcher, Equality, In, Inequality}
@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.sql.SQLFormula.CompositeColumnFormula.{CaseCompo
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
 import net.noresttherein.oldsql.sql.MappingFormula.ColumnComponentFormula.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingFormula.FreeColumn.CaseFreeColumn
-import net.noresttherein.oldsql.sql.SelectFormula.{CaseSelect, CaseSelectColumn, SelectColumnMatcher, SelectMatcher}
+import net.noresttherein.oldsql.sql.SelectFormula.{CaseSelect, CaseSelectColumn, FreeSelectColumn, FreeSelectFormula, SelectColumn, SelectColumnMatcher, SelectMatcher, SubselectColumn, SubselectFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
 import slang._
 
@@ -94,10 +94,18 @@ trait SQLFormula[-F <: FromClause, V] { //todo: add a type parameter which is Bo
 	def to[X](implicit lift :Lift[V, X]) :SQLFormula[F, X] = PromotionConversion(this, lift)
 
 	/** Lift this expression to one typed `Option[V]`, without any effect on the actual generated sql. */
-	def opt :SQLFormula[F, Option[V]] = to[Option[V]] //OrNull(this)
+	def opt :SQLFormula[F, Option[V]] = to[Option[V]]
 
 
-	def subselectFrom(from :F) :SQLFormula[from.Outer, Rows[V]] =
+
+	/** Creates a `SelectFormula` with this expression as the ''select'' clause and the given `from` clause. */
+	def selectFrom[S <: F with OuterFrom, O](from :S) :FreeSelectFormula[V, O] =
+		throw new UnsupportedOperationException(
+			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
+		)
+
+	/** Creates a subselect expression selecting this expression from the given `from` clause. */
+	def subselectFrom[S <: F, O](from :S) :SubselectFormula[from.Implicit, V, O] = //subtype S needed in SQLRelation
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
 		)
@@ -224,8 +232,13 @@ object SQLFormula {
 
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V]
 
-		override def subselectFrom(from :F) :ColumnFormula[from.Outer, Rows[V]] =
-			SelectFormula.subselect[from.Outer, from.type, V, Any](from, this)
+
+
+		override def selectFrom[S <: F with OuterFrom, O](from :S) :FreeSelectColumn[V, O] =
+			SelectFormula(from, this)
+
+		override def subselectFrom[S <: F, O](from :S) :SubselectColumn[from.Implicit, V, O] =
+			SelectFormula.subselect[from.Implicit, from.type, V, O](from, this)
 
 
 

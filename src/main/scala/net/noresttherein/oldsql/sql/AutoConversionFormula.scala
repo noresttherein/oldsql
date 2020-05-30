@@ -7,6 +7,8 @@ import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeColumnFo
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.sql.AutoConversionFormula.ColumnPromotionConversion.ColumnPromotionMatcher
 import net.noresttherein.oldsql.sql.AutoConversionFormula.PromotionConversion.{CasePromotion, PromotionMatcher}
+import net.noresttherein.oldsql.sql.FromClause.{OuterFrom, SubselectFrom}
+import net.noresttherein.oldsql.sql.SelectFormula.{FreeSelectFormula, SubselectFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
 
@@ -26,9 +28,12 @@ trait AutoConversionFormula[-F <: FromClause, S, T] extends CompositeFormula[F, 
 
 	override def freeValue :Option[T] = expr.freeValue.map(convert)
 
-	override def subselectFrom(from :F) :SQLFormula[from.Outer, Rows[T]] =
-		SelectFormula.subselect[from.Outer, from.type, S, T, Any](from, this)
 
+	override def selectFrom[G <: F with OuterFrom, O](from :G) :FreeSelectFormula[T, O] =
+		SelectFormula(from, this)
+
+	override def subselectFrom[G <: F, O](from :G) :SubselectFormula[from.Implicit, T, O] =
+		SelectFormula.subselect[from.Implicit, from.type, S, T, O](from, this)
 
 
 	override def applyTo[Y[_]](matcher: FormulaMatcher[F, Y]): Y[T] = matcher.conversion(this)

@@ -5,14 +5,15 @@ import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectFrom}
 import net.noresttherein.oldsql.sql.SQLFormula.{CompositeFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple.{CaseChain, ChainHead, ChainMatcher}
 import net.noresttherein.oldsql.sql.SQLTuple.SeqTuple.{CaseSeq, SeqMatcher}
-
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
+
+import net.noresttherein.oldsql.sql.SelectFormula.{FreeSelectFormula, SubselectFormula}
 
 
 
@@ -23,8 +24,12 @@ trait SQLTuple[-F <: FromClause, T] extends CompositeFormula[F, T] {
 
 	override def sameAs(other :CompositeFormula[Nothing, _]) :Boolean = other.isInstanceOf[SQLTuple[_, _]]
 
-	override def subselectFrom(from :F) :SQLFormula[from.Outer, Rows[T]] =
-		SelectFormula.subselect[from.Outer, from.type, T, Any](from, this)
+
+	override def selectFrom[S <: F with OuterFrom, O](from :S) :FreeSelectFormula[T, O] =
+		SelectFormula(from, this)
+
+	override def subselectFrom[S <: F, O](from :S) :SubselectFormula[from.Implicit, T, O] =
+		SelectFormula.subselect[from.Implicit, from.type, T, O](from, this)
 }
 
 

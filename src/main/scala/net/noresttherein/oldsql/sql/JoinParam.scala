@@ -37,8 +37,8 @@ import net.noresttherein.oldsql.sql.With.TypedWith
   * `NamedParamSource[N, X]#Row` for a mapping labeled with a string literal `N &lt;: String with Singleton`.
   * This join is typically written in an abbreviated form `FromClause WithParam X` (or `FromClause <=? X`)
   * and `FromClause JoinParam ("name" ?: X)#T` for the parameter named with a string literal.
-  * This class declares its `Outer` clause as `Nothing` (rather than the `Outer` of the left side) to ensure that
-  * neither it nor any extension clause containing it does not conform to `FromClause.SubselectOf[F#Outer]`,
+  * This class declares its `Implicit` clause as `Nothing` (rather than the `Implicit` of the left side) to ensure that
+  * neither it nor any extension clause containing it does not conform to `FromClause.SubselectOf[F#Implicit]`,
   * thus preventing it from being used as a part of a subselect of the outer clause, which would hide the existence
   * of a parameter and make its outer source appear not parameterized. As the result, only top-level select statement
   * from clauses can include unbound parameters.
@@ -48,7 +48,8 @@ import net.noresttherein.oldsql.sql.With.TypedWith
   * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam.WithParam]]
   */ //consider: should F be bound by CompleteFrom, or would it be too limiting?
-sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M] {
+sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M] { thisClause =>
+
 	type Param = M[FromLast]#Subject
 
 	override def subselectSize = 0
@@ -56,7 +57,10 @@ sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M
 	@inline final def from :F = left
 
 	override type This >: this.type <: F JoinParam M
-	override type WithLeft[+L <: FromClause] <: L JoinParam M
+
+	override type WithLeft[+L <: FromClause] = L JoinParam M
+
+	override type Self = left.Self JoinParam M
 
 
 	override type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R] =
@@ -67,15 +71,19 @@ sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M
 
 
 
-	override type Outer = Nothing
+	override type Implicit = Nothing
 
 	override def outer = throw new UnsupportedOperationException(s"JoinParam[$this].outer")
 
-	override type Inner = left.Inner With M
+	override type Explicit = left.Explicit With M
+
+	override type Outer = Nothing
+
+	override type Inner = left.Inner JoinParam M
 
 	override type AsSubselectOf[O <: FromClause] = Nothing
 
-	override def asSubselectOf[O <: FromClause](outer :O)(implicit extension :Outer ExtendedBy O) :Nothing =
+	override def asSubselectOf[O <: FromClause](outer :O)(implicit extension :Implicit ExtendedBy O) :Nothing =
 		throw new UnsupportedOperationException(
 			s"JoinParam[$this].asSubselectOf: join parameters can't appear as a part of a subselect from clause."
 		)
@@ -166,8 +174,7 @@ object JoinParam {
 			override val size = left.size + 1
 
 			override type This = left.type JoinParam M
-			override type WithLeft[+C <: FromClause] = C JoinParam M
-			override def self :left.type JoinParam M = this
+			override def narrow :left.type JoinParam M = this
 
 			override def withLeft[F <: FromClause]
 			                     (left :F)(filter :BooleanFormula[left.Generalized With M]) :F JoinParam M =
@@ -195,7 +202,7 @@ object JoinParam {
 	def unapply(from :FromClause)
 			:Option[(FromClause, JoinedRelation[FromClause With M, M] forSome { type M[A] <: FromParam[_, A] })] =
 		from match {
-			case param :JoinParam.* => Some(param.left -> param.last)
+			case param :JoinParam.* @unchecked => Some(param.left -> param.last)
 			case _ => None
 		}
 
@@ -273,8 +280,8 @@ object JoinParam {
 
 
 
-	/** A `Mapping` instance representing a query parameter the value of which is not known. While the `BoundParameter`
-	  * formula can be used to represent a statement parameter, its value must be known when the formula is created.
+	/** A `Mapping` type representing a query parameter the value of which is not known. While the `BoundParameter`
+	  * expression can be used to represent a statement parameter, its value must be known when the formula is created.
 	  * By representing a statement parameter as a mapping that can be used in the same way as table mappings
 	  * in `FromClause` table lists, we can represent any value obtainable from `P`
 	  * by a function `P => T` as a component `(P #? _)#Component[T]` wrapping that function, which can be used
@@ -324,14 +331,30 @@ object JoinParam {
 
 
 
+		/** Create an artificial component with subject type `T`, extractable from the parameter type.
+		  * The component is ''not'' listed on any of the component lists, but can be used in SQL expressions
+		  * in the same way as components of mappings for real relations.
+		  */
 		def apply[T :SQLForm](pick :P => T) :Component[T] = new ParamComponent[T](Extractor.req(pick))
 
+		/** Create an artificial component with subject type `T`, extractable from the parameter type.
+		  * The component is ''not'' listed on any of the component lists, but can be used in SQL expressions
+		  * in the same way as components of mappings for real relations.
+		  */
 		def opt[T :SQLForm](pick :P => Option[T]) :Component[T] = new ParamComponent[T](Extractor(pick))
 
 
 
+		/** Create an artificial column with subject type `T`, extractable from the parameter type.
+		  * The column is ''not'' listed on any of the column lists, but can be used in SQL expressions
+		  * in the same way as components of mappings for real relations.
+		  */
 		def col[T :ColumnForm](pick :P => T) :Column[T] = new ParamColumn[T](Extractor.req(pick))
 
+		/** Create an artificial column with subject type `T`, extractable from the parameter type.
+		  * The column is ''not'' listed on any of the column lists, but can be used in SQL expressions
+		  * in the same way as components of mappings for real relations.
+		  */
 		def optcol[T :ColumnForm](pick :P => Option[T]) :Column[T] = new ParamColumn[T](Extractor(pick))
 
 		def toColumn(implicit form :ColumnForm[P]) :Column[P] = new ParamColumn[P](Extractor.ident[P])

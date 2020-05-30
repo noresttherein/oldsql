@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.TypedMapping
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SubselectFrom}
 import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation
 import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
@@ -33,9 +33,11 @@ sealed class Dual private () extends FromClause {
 
 
 
-	override type Generalized = FromClause
+	override type Self = Dual
 
-	override def generalized :Dual = this
+	override def self :Dual = this
+
+	override type Generalized = FromClause
 
 
 
@@ -50,15 +52,19 @@ sealed class Dual private () extends FromClause {
 	override def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
 	                             (prefix :F, firstJoin :Join.*, nextJoin :this.type Join T)
 			:ExtendJoinedWith[F, firstJoin.LikeJoin, nextJoin.LikeJoin, T] =
-		firstJoin.copy[F, T, X](prefix, nextJoin.right)(nextJoin.condition :BooleanFormula[Generalized With T])
+		firstJoin.likeJoin[F, T, X](prefix, nextJoin.right)(nextJoin.condition :BooleanFormula[Generalized With T])
 
 
 
-	override type Outer = FromClause
+	override type Implicit = FromClause
 
 	override def outer :Dual = this
 
-	override type Inner = FromClause
+	override type Explicit = FromClause
+
+	override type Outer = Dual
+
+	override type Inner = Dual
 
 
 
@@ -66,6 +72,9 @@ sealed class Dual private () extends FromClause {
 //
 //	override def asSubselectOf[F <: FromClause](outer :F)(implicit extension :FromClause ExtendedBy F) :F = outer
 //
+
+//	override def asSubselect :Option[SubselectFrom { type Implicit = FromClause }] = None
+
 	override type AsSubselectOf[F <: FromClause] = Nothing
 
 	override def asSubselectOf[F <: FromClause](outer :F)(implicit extension :FromClause ExtendedBy F) :Nothing =
@@ -77,10 +86,9 @@ sealed class Dual private () extends FromClause {
 		F Subselect T
 
 	override def extendAsSubselectOf[F <: FromClause, T[A] <: TypedMapping[S, A], S]
-	                                (outer :F, next :this.type ProperJoin T)(implicit extension :FromClause ExtendedBy F)
-			:outer.type Subselect T =
-		Subselect[outer.type, T, T, S](outer, next.right, next.condition) //todo: make sure to reuse the mapping
-
+	                                (newOuter :F, next :this.type ProperJoin T)(implicit extension :FromClause ExtendedBy F)
+			:newOuter.type Subselect T =
+		Subselect[newOuter.type, T, T, S](newOuter, next.right, next.condition) //todo: make sure to reuse the mapping
 
 
 	override type Row = @~

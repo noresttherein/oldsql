@@ -5,12 +5,13 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginPr
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, RowSource, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, PrefixOf, TableShift}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, PrefixOf, SubselectFrom, TableShift}
 import net.noresttherein.oldsql.sql.MappingFormula.ColumnComponentFormula.{CaseColumnComponent, ColumnComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula.{CaseComponent, ComponentMatcher, ProperComponent}
 import net.noresttherein.oldsql.sql.MappingFormula.FreeColumn.FreeColumnMatcher
 import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent.{CaseFreeComponent, FreeComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.{CaseRelation, RelationMatcher}
+import net.noresttherein.oldsql.sql.SelectFormula.{SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnMapping, SubselectFormula, SubselectMapping}
 import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.ColumnFormulaMatcher
 import slang._
@@ -279,6 +280,16 @@ object MappingFormula {
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S)
 				:ComponentFormula[S, T, E, M, V, _ >: S <: FromClause]
 
+
+
+		override def selectFrom[S <: F with OuterFrom, A](from :S) :SelectMapping[S, M, V, A] =
+			SelectFormula(from, this)
+
+		override def subselectFrom[S <: F, A](from :S) :SubselectAs[from.Implicit, M[A]] =
+			SelectFormula.subselect[from.Implicit, from.type, T, E, M, V, O, A](from, this)
+
+
+
 		override def \[K <: Mapping, C[A] <: TypedMapping[X, A], X]
 		              (component :K)(implicit inferer :Conforms[K, C[O], TypedMapping[X, O]])
 				:ComponentFormula[F, T, E, C, X, O] =
@@ -371,9 +382,6 @@ object MappingFormula {
 
 			override val readForm :SQLReadForm[V] = extract.export.selectForm
 
-			override def subselectFrom(from :F) :SQLFormula[from.Outer, Rows[V]] =
-				SelectFormula.subselect[from.Outer, from.type, T, E, M, V, O, O](from, this)
-
 			override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G)
 					:ProperComponent[G, T, E, M, V, _ >: G <: FromClause] =
 				new ProperComponent[G, T, E, M, V, G](  //type G as O is incorrect, but a correct O exists and we upcast anyway
@@ -434,6 +442,12 @@ object MappingFormula {
 	{
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S)
 				:ColumnComponentFormula[S, T, E, M, V, _ >: S <: FromClause]
+
+		override def selectFrom[S <: F with OuterFrom, A](from :S) :SelectColumnMapping[S, M, V, A] =
+			SelectFormula(from, this)
+
+		override def subselectFrom[S <: F, A](from :S) :SubselectColumnMapping[from.Implicit, from.type, M, V, A] =
+			SelectFormula.subselect[from.Implicit, from.type, T, E, M, V, O, A](from, this) //todo: from.type is ugly!
 
 		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[V] = matcher.component(this)
 
@@ -604,6 +618,16 @@ object MappingFormula {
 		override def toSQLRelation :Some[SQLRelation[O, T, E, O]] = Some(actualType)
 
 		override def upcast :BaseComponentFormula[O, T, T, O] = this
+
+
+
+		override def selectFrom[S <: O with OuterFrom, A](from :S) :SelectMapping[S, T, E, A] =
+			SelectFormula(from, actualType)
+
+		override def subselectFrom[S <: O, A](from :S) :SubselectAs[from.Implicit, T[A]] =
+			SelectFormula.subselect[from.Implicit, from.type, T, E, T, E, O, A](from, actualType)
+
+
 
 		override def \[K <: Mapping, C[A] <: TypedMapping[X, A], X]
 		              (component :K)(implicit inferer :Conforms[K, C[O], TypedMapping[X, O]])

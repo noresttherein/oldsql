@@ -57,8 +57,8 @@ import scala.annotation.implicitNotFound
   * @author Marcin Mościcki
   */
 @implicitNotFound("Cannot infer type arguments: type ${X} is not a subtype of ${T} with ${U}.\n" +
-	                  "This may be caused by type ${T} occurring outside of the InferTypeParams[${X}, ${T}, ${U}] " +
-	                  "(alias Conforms) in the method signature, including its result type.")
+	                  "This may be caused by the second type parameter occurring outside of the " +
+	                  "InferTypeParams[${X}, ${T}, ${U}] in the method signature, including its result type.")
 sealed abstract class InferTypeParams[X, T, +U] extends (X => T) {
 	/** Witness of equivalency between the argument type `X` and the type `T` with inferred type arguments
 	  * for their supertype `U`, used in the implementation of the method.

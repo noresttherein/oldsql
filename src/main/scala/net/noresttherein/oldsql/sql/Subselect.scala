@@ -30,25 +30,31 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * @tparam T Right side of this join - the first table of the ''from'' clause of the represented subselect.
   * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]]
   */
-trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
+trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] { thisClause =>
 
 	override type LikeJoin[+L <: FromClause, R[O] <: MappingFrom[O]] = L Subselect R
 
 	override type This >: this.type <: F Subselect T
 
-	override def copy[L <: FromClause, R[O] <: TypedMapping[X, O], X]
-	                 (left :L, right :RowSource[R])(filter :BooleanFormula[left.Generalized With R]) :L Subselect R =
+	override def likeJoin[L <: FromClause, R[O] <: TypedMapping[X, O], X]
+	                     (left :L, right :RowSource[R])(filter :BooleanFormula[left.Generalized With R]) :L Subselect R =
 		Subselect[L, R, X](left, LastRelation[R, X](right))(filter)
 
 
+	override def isSubselect = true
 
 	override def subselectSize = 1
 
-	override type Outer = left.Generalized
+	override type Implicit = left.Generalized
 
-	override def outer :Outer = left.generalized
+	override type Outer = left.Self
 
-	override type Inner = FromClause With T
+	override def outer :Outer = left.self
+
+	override type Inner = FromClause Subselect T
+
+	override type Explicit = FromClause With T
+
 
 
 
@@ -67,8 +73,8 @@ trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] {
 
 	override type AsSubselectOf[O <: FromClause] = O Subselect T
 
-	override def asSubselectOf[O <: FromClause](newOuter :O)(implicit extension :Outer ExtendedBy O)
-		:(O Subselect T) { type Outer = newOuter.Generalized } =
+	override def asSubselectOf[O <: FromClause](newOuter :O)(implicit extension :Implicit ExtendedBy O)
+			:(O Subselect T) { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 	{
 		//todo: refactor joins so they take functions creating conditions and move this to the constructor
 		val unfiltered = withLeft[newOuter.type](newOuter)(True)
@@ -118,7 +124,7 @@ object Subselect {
 			override type WithRight[T[A] <: MappingFrom[A]] = left.type Subselect T
 			override type This = left.type Subselect R
 
-			override def self :left.type Subselect R = this
+			override def narrow :left.type Subselect R = this
 
 			override def withCondition(filter :BooleanFormula[left.Generalized With R]) :This =
 				Subselect[left.type, R, S](left, last)(filter)

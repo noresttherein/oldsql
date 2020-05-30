@@ -640,7 +640,6 @@ object Mapping {
 	implicit def mappingSQLFormula[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[X, A], X, N <: Numeral]
                  (mapping :C)(implicit conforms :Conforms[C, M[F], TypedMapping[X, F]], offset :TableShift[F, M, N])
 			:FreeComponent[F, M, X] =
-//		conforms(mapping).toComponentSQL[F, M]
 		FreeComponent(mapping, offset.tables)
 
 

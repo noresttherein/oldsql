@@ -92,12 +92,13 @@ object SQLScribe {
 
 
 
-		override def subselect[S <: SubselectOf[F], V, O](e :SubselectColumn[F, S, V, O]) :ColumnFormula[G, Rows[V]] = ???
+		override def subselect[V, O](e :SubselectColumn[F, V, O]) :ColumnFormula[G, Rows[V]] =
+			subselect(e :SubselectFormula[F, V, O]).asInstanceOf[ColumnFormula[G, Rows[V]]]
 
-		override def subselect[S <: SubselectOf[F], V, O](e :SubselectFormula[F, S, V, O]) :SQLFormula[G, Rows[V]] = {
+		override def subselect[V, O](e :SubselectFormula[F, V, O]) :SQLFormula[G, Rows[V]] = {
 			val replacement = subselectClause(e.from)//(e.from.outer)
 			val newSubselect :replacement.clause.Generalized = replacement.clause.generalized
-			val oldExtension = replacement.newExtension.asInstanceOf[oldClause.Generalized ExtendedBy S]
+			val oldExtension = replacement.newExtension.asInstanceOf[oldClause.Generalized ExtendedBy e.From]
 			val scribe = extended(e.from, newSubselect)(oldExtension, replacement.newExtension)
 			scribe(e.header).subselectFrom(newSubselect).asInstanceOf[SQLFormula[G, Rows[V]]]
 		}
@@ -139,12 +140,12 @@ object SQLScribe {
 
 
 	private trait SubstituteComponentsSubselectExtension[O <: FromClause, N <: FromClause] {
-		val clause :FromClause { type Outer = N }
+		val clause :FromClause { type Implicit = N }
 		implicit val newExtension :N ExtendedBy clause.Generalized
 	}
 
 	private def SubstituteComponentsSubselectExtension[O <: FromClause, N <: FromClause]
-	            (result :FromClause {type Outer = N})(implicit extension :N ExtendedBy result.Generalized)
+	            (result :FromClause { type Implicit = N })(implicit extension :N ExtendedBy result.Generalized)
 			:SubstituteComponentsSubselectExtension[O, N] =
 		new SubstituteComponentsSubselectExtension[O, N] {
 			override val clause :result.type = result
@@ -223,9 +224,9 @@ object SQLScribe {
 			(table \ e.mapping).upcast
 		}
 
-		override def subselect[S <: SubselectOf[F], V, O](e :SubselectFormula[F, S, V, O]) = e
+		override def subselect[V, O](e :SubselectFormula[F, V, O]) = e
 
-		override def subselect[S <: SubselectOf[F], V, O](e :SelectFormula.SubselectColumn[F, S, V, O]) = e
+		override def subselect[V, O](e :SubselectColumn[F, V, O]) = e
 	}
 
 

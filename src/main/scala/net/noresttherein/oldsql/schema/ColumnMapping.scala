@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
-import net.noresttherein.oldsql.sql.FromClause.TableCount
+import net.noresttherein.oldsql.sql.FromClause.{TableCount, TableShift}
 import net.noresttherein.oldsql.sql.MappingFormula.{FreeColumn, FreeComponent}
 import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula
 
@@ -338,16 +338,10 @@ object ColumnMapping {
 
 
 
-/*
 	implicit def columnSQLFormula[F <: FromClause, C <: ColumnMapping[_, _], M[A] <: ColumnMapping[S, A], S, N <: Numeral]
-	             (column :C)(implicit conforms :Conforms[C, M[F], ColumnMapping[S, F]], offset :TableCount[F, N])
-			:FreeComponent[F, M, S] =
-		if (offset.count <= 0)
-			throw new IllegalArgumentException(
-				s"Can't convert column $column to an SQL formula as its Origin type has zero tables.")
-		else
-			FreeColumn(column, offset.count - 1)
-*/
+	             (column :C)(implicit conforms :Conforms[C, M[F], ColumnMapping[S, F]], offset :TableShift[F, M, N])
+			:FreeColumn[F, M, S] =
+		FreeColumn(column, offset.tables)
 
 
 

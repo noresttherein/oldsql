@@ -3,11 +3,10 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
 import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables, SubselectOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
-import net.noresttherein.oldsql.sql.MappingFormula.{BaseComponentFormula, ComponentFormula, JoinedRelation, SQLRelation}
-import net.noresttherein.oldsql.sql.SelectFormula.{SubselectColumn, SubselectFormula}
+import net.noresttherein.oldsql.sql.MappingFormula.{BaseComponentFormula, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -39,7 +38,7 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.Subselect]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
-trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =>
+trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisClause =>
 
 	/** A `FromClause` constituting a pre-existing joined list of relations - may be empty (`Dual`). */
 	val left :L
@@ -67,7 +66,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 	/** This type with the `FromClause` of the left side substituted for `F`. */
 	type WithLeft[+F <: FromClause] <: F With R
 
-	protected def self :WithLeft[left.type]
+	protected def narrow :WithLeft[left.type]
 
 
 
@@ -81,10 +80,16 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 
 	override type Init = left.Init
 
+
+	override type Self <: WithLeft[left.Self] { type Self = thisClause.Self }
+
+	override def self :Self = this.asInstanceOf[Self]
+
 	override type Generalized = left.Generalized With R
 
-	override def generalized :Generalized = this.asInstanceOf[Generalized]
 
+
+	override def isSubselect = left.isSubselect
 
 
 	@volatile private var initializedFilter :BooleanFormula[Generalized] = _
@@ -136,8 +141,12 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { join =
 		J[AsSubselectOf[O], M]
 
 	override def extendAsSubselectOf[O <: FromClause, T[A] <: TypedMapping[X, A], X]
-	                                (newOuter :O, next :this.type ProperJoin T)(implicit extension :Outer ExtendedBy O)
-			:ExtendAsSubselectOf[O, next.LikeJoin, T] { type Outer = newOuter.Generalized; type Inner = next.Inner } =
+	                                (newOuter :O, next :this.type ProperJoin T)(implicit extension :Implicit ExtendedBy O)
+			:ExtendAsSubselectOf[O, next.LikeJoin, T] {
+				type Implicit = newOuter.Generalized
+				type Outer = newOuter.Self
+				type Explicit = next.Explicit
+			} =
 	{
 		val subselectR = asSubselectOf(newOuter)
 //		implicit val extendNext = extension.asInstanceOf[next.Generalized ExtendedBy (subselectR.Generalized With T)]
@@ -254,16 +263,13 @@ object With {
 
 	/** An SQL expression rewriter shifting back references to all relations before the last `Subselect` join
 	  * by `extension` positions. Used when a subselect clause is 'transplanted' onto another clause,
-	  * extending the `Outer` clause of the subselect.
-	  * @param sub the new subselect clause
-	  * @tparam F a subselect clause
-	  * @tparam G a new subselect clause with some additional relations inserted between F#Outer and the mapping
-	  *           joined in with a `Subselect` join.
-	  *///fixme: this class is whole wrong! G is not an extension of F!
-//	private[sql] def shiftBack[F <: FromClause, G <: FromClause]
-//	                          (old :F, sub :G)(implicit extension :old.Outer ExtendedBy sub.Outer) :SQLScribe[F, G] =
-//		shiftBack(old, sub, extension.length, old.subselectSize)
-//
+	  * extending the `Implicit` clause of the subselect.
+	  * @param old a subselect clause serving as SQL expression base.
+	  * @param extending a new subselect clause with some additional relations inserted between `F#Implicit`
+	  *                  and the mapping joined in with a `Subselect` join.
+	  * @param extension the difference in relations number between `F` and `G`.
+	  * @param threshold number of relations in the explicit ''from'' clause of subselects `F` and `G` (`subselectSize`).
+	  */
 	private[sql] def shiftBack[F <: FromClause, G <: FromClause]
 	                          (old :F, extending :G, extension :Int, threshold :Int) :SQLScribe[F, G] =
 		new SubstituteComponents[F, G] {
