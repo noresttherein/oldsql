@@ -396,8 +396,8 @@ object Chain extends ChainFactory {
 
 
 	@implicitNotFound("Can't insert ${X] at the ${N}-th position into chain ${C}: either the index type is abstract, " +
-		                  "the chain starts with an abstract Chain (rather than @~) and the index is non-negative, " +
-		                  "${N} > length, ${N} < -length - 1, the result can't be unified with ${R}, or we ran out of integers.")
+	                  "the chain starts with an abstract Chain (rather than @~) and the index is non-negative, " +
+	                  "${N} > length, ${N} < -length - 1, the result can't be unified with ${R}, or we ran out of integers.")
 	sealed abstract class ChainInsert[-C <: Chain, N <: Numeral, X, +R <: Chain] private {
 		def apply(chain :C, elem :X) :R
 	}
@@ -1195,7 +1195,7 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
 
 
 
-/** A variant of `Chain` where all elements a pairs `(L, Any)`, with `L` being a singleton type
+/** A variant of `Chain` where all elements are pairs `(L, Any)`, with `L` being a singleton type
   * (intended to be a literal type). It exists to decrease the reliance on implicit witnesses for all operations
   * and putting a static upper bound on such chains, simplifying generic operations, especially when the chain
   * is abstract. The keys are not stored in the chain, only the values. This means that in order to extract
@@ -1212,6 +1212,7 @@ sealed trait LiteralIndex extends Chain
 
 
 object LiteralIndex extends ChainIndexFactory {
+
 	/** The upper bound type of the first member of each tuple in the index. */
 	override type Key = Singleton
 	/** The upper bound for the second member of each tuple in the index */
@@ -1239,7 +1240,7 @@ object LiteralIndex extends ChainIndexFactory {
 	/** An entry of `LiteralIndex`, indexed solely on the type level by the singleton type `K` and storing only
 	  * the value `V`.
 	  */
-	class :~[+K, +V](val value :V) { //todo: extends AnyVal started crashing the compiler ??!
+	class :~[+K, +V](val value :V) extends AnyVal {
 		type Key <: K
 		type Value <: V
 
@@ -1263,6 +1264,7 @@ object LiteralIndex extends ChainIndexFactory {
 	  * }}}
 	  */
 	object :~ {
+
 		/** Returns a factory with an `apply[V](value :V)` method which creates a `K :~ V` instance.
 		  * This split allows specifying explicitly only the key type, with the value type being inferred by the compiler.
 		  */
@@ -1384,8 +1386,9 @@ object LiteralIndex extends ChainIndexFactory {
 
 	/** Operations on the index `I` */
 	implicit class LiteralIndexOps[I <: LiteralIndex](private val self :I) extends AnyVal {
+
 		/** Extends the index with another entry `N`, becoming the new last entry. */
-		@inline def |~[N <: Singleton :~ Any](next :N) :I |~ N = new |~(self, next)
+		@inline def |~[N <: Key :~ Value](next :N) :I |~ N = new |~(self, next)
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
@@ -1395,7 +1398,7 @@ object LiteralIndex extends ChainIndexFactory {
 		  * @tparam K a singleton type of the key (a literal type in non-abstract contexts).
 		  * @tparam V the type of the value associated with the key `K`.
 		  */
-		@inline def apply[K <: Singleton, V](key :K)(implicit get :IndexGet[I, K, V]) :V = get(self, key)
+		@inline def apply[K <: Key, V](key :K)(implicit get :IndexGet[I, K, V]) :V = get(self, key)
 
 		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
 		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
@@ -1429,7 +1432,8 @@ object LiteralIndex extends ChainIndexFactory {
 		def apply(monkey: @~) = Nil
 	}
 
-	implicit def toMap[I <: LiteralIndex, K <: U, L <: U :ValueOf, U <: Key, V](bounds :ToMap[I, K, V]) :ToMap[I |~ (L :~ V), U, V]  =
+	implicit def toMap[I <: LiteralIndex, K <: U, L <: U :ValueOf, U <: Key, V]
+	                  (bounds :ToMap[I, K, V]) :ToMap[I |~ (L :~ V), U, V]  =
 		new ToMap[I |~ (L :~ V), U, V] {
 			def apply(index :I |~ (L :~ V)) = (valueOf[L], index.last.value)::bounds(index.init)
 		}
@@ -1494,7 +1498,7 @@ object ChainMap extends ChainMapFactory {
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	class &~[+I <: ChainMap, +L <: (Singleton, Any)](val init :I, val last :L) extends ~[I, L] with ChainMap {
+	class &~[+I <: ChainMap, +L <: (Key, Any)](val init :I, val last :L) extends ~[I, L] with ChainMap {
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[&~[_, _]]
 
@@ -1505,13 +1509,13 @@ object ChainMap extends ChainMapFactory {
 		}
 
 		override def toString :String = {
-			def entry(sb :StringBuilder, e :(Singleton, Any)) :StringBuilder =
+			def entry(sb :StringBuilder, e :(Key, Any)) :StringBuilder =
 				if (e._1.isInstanceOf[Chain] || e._2.isInstanceOf[Chain])
 					sb append "(" append e._1 append "->" append e._2 append ")"
 				else
                     sb append e._1 append "->" append e._2
 
-			def rec(t :ChainMap, h: (Singleton, Any)) :StringBuilder = t match {
+			def rec(t :ChainMap, h: (Key, Any)) :StringBuilder = t match {
 				case r &~ e => entry(rec(r, e) append " &~ ", h)
 				case _ => entry(new StringBuilder(), h)
 			}
@@ -1532,11 +1536,11 @@ object ChainMap extends ChainMapFactory {
 	  * }}}
 	  */
 	object &~ {
-		@inline def apply[T <: ChainMap, H <: (Singleton, Any)](tail :T, head :H) :T &~ H = new &~(tail, head)
+		@inline def apply[T <: ChainMap, H <: (Key, Any)](tail :T, head :H) :T &~ H = new &~(tail, head)
 
-		@inline def unapply[T<: ChainMap, H <: (Singleton, Any)](index :T &~ H) :T &~ H = index
+		@inline def unapply[T<: ChainMap, H <: (Key, Any)](index :T &~ H) :T &~ H = index
 
-		@inline def unapply(index :ChainMap) :Option[(ChainMap, (Singleton, Any))] = index match {
+		@inline def unapply(index :ChainMap) :Option[(ChainMap, (Key, Any))] = index match {
 			case nonEmpty: &~[_, _] => Some(nonEmpty.init -> nonEmpty.last)
 			case _ => None
 		}
@@ -1554,8 +1558,9 @@ object ChainMap extends ChainMapFactory {
 
 	/** Operations on the index `I` */
 	class ChainMapOps[I <: ChainMap](private val self :I) extends AnyVal {
+
 		/** Extends the index with another entry `N`, becoming the new last entry. */
-		@inline def &~[N <: (Singleton, Any)](next :N) :I &~ N = new &~(self, next)
+		@inline def &~[N <: (Key, Value)](next :N) :I &~ N = new &~(self, next)
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
@@ -1570,7 +1575,7 @@ object ChainMap extends ChainMapFactory {
 		  * @tparam K a singleton type of the key (a literal type in non-abstract contexts).
 		  * @tparam V the type of the value associated with the key `K`.
 		  */
-		@inline def apply[K <: Singleton, V](key :K)(implicit get :IndexGet[I, K, V]) :V = get(self, key)
+		@inline def apply[K <: Key, V](key :K)(implicit get :IndexGet[I, K, V]) :V = get(self, key)
 
 		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
 		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
@@ -1582,7 +1587,7 @@ object ChainMap extends ChainMapFactory {
 		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
 		  * `IllegalArgumentException` will be thrown.
 		  */
-		@inline def update[K <: Singleton, V, R <: ChainMap](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
+		@inline def update[K <: Key, V, R <: ChainMap](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
 		/** Appends the given chain to the end of this chain. */
@@ -1725,6 +1730,7 @@ object Record extends ChainMapFactory {
 
 
 	implicit class RecordOps[I <: Record](private val self :I) extends AnyVal {
+
 		/** Appends a next entry to the end of the record. */
 		@inline def |#[E <: (Key, Any)](entry :E) :I |# E = new |#(self, entry)
 

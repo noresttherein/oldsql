@@ -7,10 +7,10 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.sql.SQLOrdering.{MappedSQLOrdering, ReverseSQLOrdering}
 
 
+
 /**
   * @author Marcin Mościcki
   */
-
 sealed trait SQLOrdering[X] extends Ordering[X] with Serializable {
 	def unmap[Y](lower :Y => X) :SQLOrdering[Y] = new MappedSQLOrdering(lower)(this)
 

@@ -1,29 +1,29 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.ColumnReadForm
-import net.noresttherein.oldsql.sql.ArithmeticFormula.Divide.{CaseDivide, DivideMatcher}
-import net.noresttherein.oldsql.sql.ArithmeticFormula.Minus.{CaseMinus, MinusMatcher}
-import net.noresttherein.oldsql.sql.ArithmeticFormula.Plus.{CasePlus, PlusMatcher}
-import net.noresttherein.oldsql.sql.ArithmeticFormula.Remainder.CaseRemainder
-import net.noresttherein.oldsql.sql.ArithmeticFormula.Times.{CaseTimes, TimesMatcher}
-import net.noresttherein.oldsql.sql.SQLFormula.{ColumnFormula, CompositeColumnFormula}
+import net.noresttherein.oldsql.sql.ArithmeticSQL.Divide.{CaseDivide, DivideMatcher}
+import net.noresttherein.oldsql.sql.ArithmeticSQL.Minus.{CaseMinus, MinusMatcher}
+import net.noresttherein.oldsql.sql.ArithmeticSQL.Plus.{CasePlus, PlusMatcher}
+import net.noresttherein.oldsql.sql.ArithmeticSQL.Remainder.{CaseRemainder, RemainderMatcher}
+import net.noresttherein.oldsql.sql.ArithmeticSQL.Times.{CaseTimes, TimesMatcher}
+import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL
 
 
 
 /**
   * @author Marcin Mościcki
   */
-trait ArithmeticFormula[-F <: FromClause, V] extends CompositeColumnFormula[F, V]
+trait ArithmeticSQL[-F <: FromClause, V] extends CompositeColumnSQL[F, V]
 
 
 
 
 
 
-object ArithmeticFormula {
-	
+object ArithmeticSQL {
+
 	sealed trait SQLArithmetic[T] extends Serializable//extends SQLOrdering[T]
-	
+
 	object SQLArithmetic {
 		private class Adapter[T] extends SQLArithmetic[T]
 
@@ -38,69 +38,69 @@ object ArithmeticFormula {
 		implicit val OfBigInt = adapt[BigInt]
 		implicit val OfBigDecimal = adapt[BigDecimal]
 	}
-	
-	
-	
-	
-	
-	
-	class Plus[-F <: FromClause, V](val left :ColumnFormula[F, V], val right :ColumnFormula[F, V])
-	                               (implicit val arithmetic :SQLArithmetic[V]) 
-		extends ArithmeticFormula[F, V]  
+
+
+
+
+
+
+	class Plus[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
+	                               (implicit val arithmetic :SQLArithmetic[V])
+		extends ArithmeticSQL[F, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
-		
-		protected override def parts :Seq[ColumnFormula[F, V]] = left::right::Nil
+
+		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, V] =
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Plus(mapper(left), mapper(right))
-		
-		override def applyTo[Y[_]](matcher :ColumnFormula.ColumnFormulaMatcher[F, Y]) :Y[V] = matcher.plus(this)
 
-		
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.plus(this)
+
+
 		override def toString = "(" + left + " + " + right + ")"
 	}
-	
-	
-	
+
+
+
 	object Plus {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnFormula[F, V], right :ColumnFormula[F, V]) :Plus[F, V] =
+		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Plus[F, V] =
 			new Plus(left, right)
-		
-		def unapply[F <: FromClause, V](e :SQLFormula[F, V]) :Option[(ColumnFormula[F, V], ColumnFormula[F, V], SQLArithmetic[V])] =
+
+		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
 			e match {
 				case sum :Plus[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
 				case  _ => None
 			}
-		
+
 		trait PlusMatcher[+F <: FromClause, +Y[X]] {
 			def plus[V](e :Plus[F, V]) :Y[V]
 		}
-		
+
 		type MatchPlus[+F <: FromClause, +Y[X]] = PlusMatcher[F, Y]
-		
+
 		type CasePlus[+F <: FromClause, +Y[X]] = PlusMatcher[F, Y]
 	}
 
-	
-	
-	
 
 
-	class Minus[-F <: FromClause, V](val left :ColumnFormula[F, V], val right :ColumnFormula[F, V])
+
+
+
+	class Minus[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
 	                               (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticFormula[F, V]
+		extends ArithmeticSQL[F, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
 
-		protected override def parts :Seq[ColumnFormula[F, V]] = left::right::Nil
+		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, V] =
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Minus(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnFormula.ColumnFormulaMatcher[F, Y]) :Y[V] = matcher.minus(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.minus(this)
 
 
 		override def toString = "(" + left + " - " + right + ")"
@@ -109,10 +109,10 @@ object ArithmeticFormula {
 
 
 	object Minus {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnFormula[F, V], right :ColumnFormula[F, V]) :Minus[F, V] =
+		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Minus[F, V] =
 			new Minus(left, right)
 
-		def unapply[F <: FromClause, V](e :SQLFormula[F, V]) :Option[(ColumnFormula[F, V], ColumnFormula[F, V], SQLArithmetic[V])] =
+		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
 			e match {
 				case sum :Minus[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
 				case  _ => None
@@ -132,19 +132,19 @@ object ArithmeticFormula {
 
 
 
-	class Times[-F <: FromClause, V](val left :ColumnFormula[F, V], val right :ColumnFormula[F, V])
+	class Times[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
 	                                (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticFormula[F, V]
+		extends ArithmeticSQL[F, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
 
-		protected override def parts :Seq[ColumnFormula[F, V]] = left::right::Nil
+		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, V] =
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Times(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnFormula.ColumnFormulaMatcher[F, Y]) :Y[V] = matcher.times(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.times(this)
 
 
 		override def toString = "(" + left + " * " + right + ")"
@@ -153,10 +153,10 @@ object ArithmeticFormula {
 
 
 	object Times {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnFormula[F, V], right :ColumnFormula[F, V]) :Times[F, V] =
+		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Times[F, V] =
 			new Times(left, right)
 
-		def unapply[F <: FromClause, V](e :SQLFormula[F, V]) :Option[(ColumnFormula[F, V], ColumnFormula[F, V], SQLArithmetic[V])] =
+		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
 			e match {
 				case sum :Times[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
 				case  _ => None
@@ -176,19 +176,19 @@ object ArithmeticFormula {
 
 
 
-	class Divide[-F <: FromClause, V](val left :ColumnFormula[F, V], val right :ColumnFormula[F, V])
+	class Divide[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
 	                                (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticFormula[F, V]
+		extends ArithmeticSQL[F, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
 
-		protected override def parts :Seq[ColumnFormula[F, V]] = left::right::Nil
+		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, V] =
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Divide(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnFormula.ColumnFormulaMatcher[F, Y]) :Y[V] = matcher.divide(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.divide(this)
 
 
 		override def toString = "(" + left + " / " + right + ")"
@@ -197,10 +197,10 @@ object ArithmeticFormula {
 
 
 	object Divide {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnFormula[F, V], right :ColumnFormula[F, V]) :Divide[F, V] =
+		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Divide[F, V] =
 			new Divide(left, right)
 
-		def unapply[F <: FromClause, V](e :SQLFormula[F, V]) :Option[(ColumnFormula[F, V], ColumnFormula[F, V], SQLArithmetic[V])] =
+		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
 			e match {
 				case sum :Divide[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
 				case  _ => None
@@ -220,19 +220,19 @@ object ArithmeticFormula {
 
 
 
-	class Remainder[-F <: FromClause, V](val left :ColumnFormula[F, V], val right :ColumnFormula[F, V])
+	class Remainder[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
 	                                (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticFormula[F, V]
+		extends ArithmeticSQL[F, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
 
-		protected override def parts :Seq[ColumnFormula[F, V]] = left::right::Nil
+		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnFormula[S, V] =
+		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Remainder(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnFormula.ColumnFormulaMatcher[F, Y]) :Y[V] = matcher.remainder(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.remainder(this)
 
 
 		override def toString = "(" + left + " % " + right + ")"
@@ -241,10 +241,10 @@ object ArithmeticFormula {
 
 
 	object Remainder {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnFormula[F, V], right :ColumnFormula[F, V]) :Remainder[F, V] =
+		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Remainder[F, V] =
 			new Remainder(left, right)
 
-		def unapply[F <: FromClause, V](e :SQLFormula[F, V]) :Option[(ColumnFormula[F, V], ColumnFormula[F, V], SQLArithmetic[V])] =
+		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
 			e match {
 				case sum :Remainder[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
 				case  _ => None
@@ -263,17 +263,17 @@ object ArithmeticFormula {
 
 
 
-	
-	trait ArithmeticMatcher[+F <: FromClause, +Y[X]] 
+
+	trait ArithmeticMatcher[+F <: FromClause, +Y[X]]
 		extends PlusMatcher[F, Y] with MinusMatcher[F, Y] with TimesMatcher[F, Y] with DivideMatcher[F, Y]
-		   with CaseRemainder[F, Y]
-	
+		   with RemainderMatcher[F, Y]
+
 	type MatchArithmetic[+F <: FromClause, +Y[X]] = ArithmeticMatcher[F, Y]
-	
-	trait CaseArithmetic[+F <: FromClause, +Y[X]] extends MatchArithmetic[F, Y]  
+
+	trait CaseArithmetic[+F <: FromClause, +Y[X]] extends MatchArithmetic[F, Y]
 		with CasePlus[F, Y] with CaseMinus[F, Y] with CaseTimes[F, Y] with CaseDivide[F, Y] with CaseRemainder[F, Y]
 	{
-		def arithmetic[V](e :ArithmeticFormula[F, V]) :Y[V]
+		def arithmetic[V](e :ArithmeticSQL[F, V]) :Y[V]
 		
 		override def plus[V](e :Plus[F, V]) :Y[V] = arithmetic(e)
 

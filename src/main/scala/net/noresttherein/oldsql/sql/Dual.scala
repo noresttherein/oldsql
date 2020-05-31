@@ -4,12 +4,11 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.TypedMapping
 import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SubselectFrom}
-import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation
-import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
-import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation
+import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
-import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 
 
 
@@ -52,7 +51,7 @@ sealed class Dual private () extends FromClause {
 	override def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
 	                             (prefix :F, firstJoin :Join.*, nextJoin :this.type Join T)
 			:ExtendJoinedWith[F, firstJoin.LikeJoin, nextJoin.LikeJoin, T] =
-		firstJoin.likeJoin[F, T, X](prefix, nextJoin.right)(nextJoin.condition :BooleanFormula[Generalized With T])
+		firstJoin.likeJoin[F, T, X](prefix, nextJoin.right)(nextJoin.condition :SQLBoolean[Generalized With T])
 
 
 
@@ -121,13 +120,13 @@ sealed class Dual private () extends FromClause {
 
 
 
-	override def filter :BooleanFormula[FromClause] = True
+	override def filter :SQLBoolean[FromClause] = True
 
-	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :BooleanFormula[E] =
+	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :SQLBoolean[E] =
 		filter
 
 	override def subselectFilter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E)
-			:BooleanFormula[E] =
+			:SQLBoolean[E] =
 		filter
 
 
@@ -147,14 +146,14 @@ sealed class Dual private () extends FromClause {
 
 
 
-/** An empty row source, serving both as a source for expressions not needing any input tables
-  * (like 'SELECT _ ''from'' DUAL' in Oracle) and terminator element for With lists
-  * (by default any chain of With[_, _] classes is eventually terminated by a Dual instance).
+/** An empty ''from'' clause, serving both as a base for expressions not needing any input tables
+  * (like 'SELECT _ FROM DUAL' in Oracle), and terminator element for join lists
+  * (by default any chain of `With` classes is eventually terminated by a `Dual` instance).
   */
 object Dual extends Dual {
 
 	protected[sql] override def selfInnerJoin[T[A] <: TypedMapping[X, A], X]
-	                                         (right :LastRelation[T, X])(filter :BooleanFormula[FromClause With T])
+	                                         (right :LastRelation[T, X])(filter :SQLBoolean[FromClause With T])
 			:From[T] with (this.type InnerJoin T) =
 		From.newJoin[T, X](right)(filter)
 

@@ -2,18 +2,20 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, TypedMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, SubselectOf}
-import net.noresttherein.oldsql.sql.MappingFormula.{BaseComponentFormula, CaseMapping, ColumnComponentFormula, ComponentFormula, FreeColumn, FreeComponent, JoinedRelation, SQLRelation}
-import net.noresttherein.oldsql.sql.SelectFormula.{CaseFreeSelect, CaseFreeSelectColumn, FreeSelectColumn, FreeSelectFormula, SubselectColumn, SubselectFormula}
-import net.noresttherein.oldsql.sql.SQLFormula.{CaseFormula, ColumnFormula, CompositeColumnFormula, CompositeFormula, FormulaMatcher}
-import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.{CaseColumnFormula, ColumnFormulaMatcher}
-import net.noresttherein.oldsql.sql.SQLFormula.CompositeColumnFormula.CaseCompositeColumn
-import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.CaseComposite
+import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumnExpression, ColumnExpressionMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
+import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, CaseMapping, ColumnComponentSQL, ComponentSQL, FreeColumn, FreeComponent, SQLRelation}
+import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectColumn, FreeSelectColumn, FreeSelectSQL, SubselectColumn, SubselectSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
+import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMatcher}
 import net.noresttherein.oldsql.sql.SQLScribe.{ColumnResult, FormulaResult}
 import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnTerm, True}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.CaseColumnTerm
+
+
+//here be implicits
 import slang._
 
 
@@ -22,9 +24,9 @@ import slang._
   * @author Marcin Mościcki
   */
 trait SQLScribe[+F <: FromClause, -R <: FromClause]
-	extends FormulaMatcher[F, FormulaResult[R]#T] with ColumnFormulaMatcher[F, ColumnResult[R]#T]
+	extends ExpressionMatcher[F, FormulaResult[R]#T] with ColumnExpressionMatcher[F, ColumnResult[R]#T]
 {
-	def apply[X](e :ColumnFormula[F, X]) :ColumnFormula[R, X] = e.applyTo(this)
+	def apply[X](e :ColumnSQL[F, X]) :ColumnSQL[R, X] = e.applyTo(this)
 }
 
 
@@ -32,27 +34,27 @@ trait SQLScribe[+F <: FromClause, -R <: FromClause]
 
 
 object SQLScribe {
-	type FormulaResult[F <: FromClause] = { type T[X] = SQLFormula[F, X] }
-	type ColumnResult[F <: FromClause] = { type T[X] = ColumnFormula[F, X] }
+	type FormulaResult[F <: FromClause] = { type T[X] = SQLExpression[F, X] }
+	type ColumnResult[F <: FromClause] = { type T[X] = ColumnSQL[F, X] }
 
 
 
 	trait AbstractSQLScribe[+F <: FromClause, -R <: FromClause] extends SQLScribe[F, R]
 		with CaseComposite[F, FormulaResult[R]#T] with CaseCompositeColumn[F, ColumnResult[R]#T]
 		with CaseTerm[F, FormulaResult[R]#T] with CaseColumnTerm[F, ColumnResult[R]#T]
-		with CaseFreeSelect[F, FormulaResult[R]#T] with CaseFreeSelectColumn[F, FormulaResult[R]#T]
+		with CaseFreeSelect[F, FormulaResult[R]#T] with CaseFreeSelectColumn[F, ColumnResult[R]#T]
 	{
-		override def composite[X](e :CompositeFormula[F, X]) :SQLFormula[R, X] = e.map(this)
+		override def composite[X](e :CompositeSQL[F, X]) :SQLExpression[R, X] = e.map(this)
 
-		override def composite[X](e :CompositeColumnFormula[F, X]) :ColumnFormula[R, X] = e.map(this)
+		override def composite[X](e :CompositeColumnSQL[F, X]) :ColumnSQL[R, X] = e.map(this)
 
-		override def term[X](e :SQLTerm[X]) :SQLFormula[R, X] = e
+		override def term[X](e :SQLTerm[X]) :SQLExpression[R, X] = e
 
-		override def term[X](e :ColumnTerm[X]) :ColumnFormula[R, X] = e
+		override def term[X](e :ColumnTerm[X]) :ColumnSQL[R, X] = e
 
-		override def freeSelect[V, O](e :FreeSelectFormula[V, O]) :SQLFormula[R, Rows[V]] = e
+		override def freeSelect[V, O](e :FreeSelectSQL[V, O]) :SQLExpression[R, Rows[V]] = e
 
-		override def freeSelect[V, O](e :FreeSelectColumn[V, O]) :ColumnFormula[R, Rows[V]] = e
+		override def freeSelect[V, O](e :FreeSelectColumn[V, O]) :ColumnSQL[R, Rows[V]] = e
 	}
 
 
@@ -65,22 +67,22 @@ object SQLScribe {
 		protected[this] val newClause :G
 
 		override def component[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ComponentFormula[F, T, E, M, V, O]) :SQLFormula[G, V] =
+		                      (e :ComponentSQL[F, T, E, M, V, O]) :SQLExpression[G, V] =
 		{
 			val table = relation(e.from).from.asInstanceOf[SQLRelation[G, T, E, G]]
 			if (table eq e.from)
-				e.asInstanceOf[ComponentFormula[G, T, E, M, V, G]]
+				e.asInstanceOf[ComponentSQL[G, T, E, M, V, G]]
 			else
 				(table \ e.mapping.withOrigin[G]).upcast
 		}
 
 
 		override def component[T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ColumnComponentFormula[F, T, E, M, V, O]) :ColumnFormula[G, V] =
+		                      (e :ColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[G, V] =
 		{
 			val table = relation(e.from).from.asInstanceOf[SQLRelation[G, T, E, G]]
 			if (table eq e.from)
-				e.asInstanceOf[ColumnFormula[G, V]]
+				e.asInstanceOf[ColumnSQL[G, V]]
 			else
 				(table \ e.mapping.withOrigin[G]).upcast
 		}
@@ -88,19 +90,19 @@ object SQLScribe {
 
 
 		override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
-				:BaseComponentFormula[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] }
+				:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] }
 
 
 
-		override def subselect[V, O](e :SubselectColumn[F, V, O]) :ColumnFormula[G, Rows[V]] =
-			subselect(e :SubselectFormula[F, V, O]).asInstanceOf[ColumnFormula[G, Rows[V]]]
+		override def subselect[V, O](e :SubselectColumn[F, V, O]) :ColumnSQL[G, Rows[V]] =
+			subselect(e :SubselectSQL[F, V, O]).asInstanceOf[ColumnSQL[G, Rows[V]]]
 
-		override def subselect[V, O](e :SubselectFormula[F, V, O]) :SQLFormula[G, Rows[V]] = {
+		override def subselect[V, O](e :SubselectSQL[F, V, O]) :SQLExpression[G, Rows[V]] = {
 			val replacement = subselectClause(e.from)//(e.from.outer)
 			val newSubselect :replacement.clause.Generalized = replacement.clause.generalized
 			val oldExtension = replacement.newExtension.asInstanceOf[oldClause.Generalized ExtendedBy e.From]
 			val scribe = extended(e.from, newSubselect)(oldExtension, replacement.newExtension)
-			scribe(e.header).subselectFrom(newSubselect).asInstanceOf[SQLFormula[G, Rows[V]]]
+			scribe(e.header).subselectFrom(newSubselect).asInstanceOf[SQLExpression[G, Rows[V]]]
 		}
 
 		private def subselectClause(subselect :FromClause)
@@ -121,11 +123,11 @@ object SQLScribe {
 
 
 		override def freeComponent[O >: F <: FromClause, M[A] <: TypedMapping[X, A], X]
-		                          (e :FreeComponent[O, M, X]) :MappingFormula[G, M[O]] =
+		                          (e :FreeComponent[O, M, X]) :MappingSQL[G, M[O]] =
 			unhandled(e)
 
 		override def freeComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-		                          (e :FreeColumn[O, M, V]) :ColumnFormula[G, V] =
+		                          (e :FreeColumn[O, M, V]) :ColumnSQL[G, V] =
 			unhandled(e)
 
 
@@ -158,12 +160,12 @@ object SQLScribe {
 	class ReplaceRelation[T[X] <: TypedMapping[E, X], E, N[X] <: TypedMapping[V, X], V, F <: FromClause, G <: FromClause]
 	                     (override val oldClause :F, override val newClause :G)
                          (relation :SQLRelation[F, T, E, _ >: F <: FromClause],
-                          replacement :ComponentFormula[G, N, V, T, E, _ >: G <: FromClause])
+                          replacement :ComponentSQL[G, N, V, T, E, _ >: G <: FromClause])
 		extends SubstituteComponents[F, G]
 	{
 		override def relation[M[X] <: TypedMapping[S, X], S, J >: F <: FromClause](e :SQLRelation[F, M, S, J]) =
 			(if (e.shift == relation.shift) replacement else e)
-				.asInstanceOf[BaseComponentFormula[G, MappingFrom, M, G]]
+				.asInstanceOf[BaseComponentSQL[G, MappingFrom, M, G]]
 
 		protected[this] override def extended[S <: FromClause, H <: FromClause]
 		                                     (subselect :S, replacement :H)
@@ -184,12 +186,12 @@ object SQLScribe {
 		new Stretcher[F, R](clause)
 
 	private class Stretcher[+F <: FromClause, R <: FromClause](clause :R)(implicit extension :F ExtendedBy R)
-		extends CaseFormula[F, FormulaResult[R]#T] with CaseColumnFormula[F, ColumnResult[R]#T]
+		extends CaseExpression[F, FormulaResult[R]#T] with CaseColumnExpression[F, ColumnResult[R]#T]
 		   with AbstractSQLScribe[F, R] //overrides the catch-all from the preceding traits
 	{
-		override def formula[X](e :SQLFormula[F, X]) :SQLFormula[R, X] = e.stretch(clause)
+		override def expression[X](e :SQLExpression[F, X]) :SQLExpression[R, X] = e.stretch(clause)
 
-		override def column[X](e :ColumnFormula[F, X]) :ColumnFormula[R, X] = e.stretch(clause)
+		override def column[X](e :ColumnSQL[F, X]) :ColumnSQL[R, X] = e.stretch(clause)
 	}
 
 
@@ -197,7 +199,7 @@ object SQLScribe {
 
 
 
-	def groundFreeComponents[F <: FromClause, X](from :F)(e :ColumnFormula[F, X]) :ColumnFormula[F, X] =
+	def groundFreeComponents[F <: FromClause, X](from :F)(e :ColumnSQL[F, X]) :ColumnSQL[F, X] =
 		e.applyTo(new GroundFreeComponents(from))
 
 
@@ -205,26 +207,26 @@ object SQLScribe {
 	private class GroundFreeComponents[F <: FromClause](from :F)
 		extends CaseMapping[F, FormulaResult[F]#T] with AbstractSQLScribe[F, F]
 	{
-		override def mapping[M <: Mapping](e :MappingFormula[F, M]) :SQLFormula[F, M#Subject] = e
+		override def mapping[M <: Mapping](e :MappingSQL[F, M]) :SQLExpression[F, M#Subject] = e
 
 		override def component[T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ColumnComponentFormula[F, T, E, M, V, O]) :ColumnFormula[F, V] = e
+		                      (e :ColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[F, V] = e
 
 		override def freeComponent[J >: F <: FromClause, M[A] <: TypedMapping[X, A], X]
-		                          (e :FreeComponent[J, M, X]) :SQLFormula[F, X] =
+		                          (e :FreeComponent[J, M, X]) :SQLExpression[F, X] =
 		{
 			val table = from.tableStack(e.shift).asInstanceOf[SQLRelation[F, MappingOf[Any]#TypedProjection, Any, J]]
 			(table \ e.mapping).upcast
 		}
 
 		override def freeComponent[J >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-		                          (e :FreeColumn[J, M, V]) :ColumnFormula[F, V] =
+		                          (e :FreeColumn[J, M, V]) :ColumnSQL[F, V] =
 		{
 			val table = from.tableStack(e.shift).asInstanceOf[SQLRelation[F, MappingOf[Any]#TypedProjection, Any, J]]
 			(table \ e.mapping).upcast
 		}
 
-		override def subselect[V, O](e :SubselectFormula[F, V, O]) = e
+		override def subselect[V, O](e :SubselectSQL[F, V, O]) = e
 
 		override def subselect[V, O](e :SubselectColumn[F, V, O]) = e
 	}

@@ -6,11 +6,10 @@ import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
-import net.noresttherein.oldsql.sql.MappingFormula.{BaseComponentFormula, JoinedRelation, SQLRelation}
-import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
+import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents
 import net.noresttherein.oldsql.sql.SQLTerm.True
-import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 
 
 
@@ -57,7 +56,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisCl
 	  * condition, as it doesn't include any join conditions defined on the left side of this join.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
 	  */
-	val condition :BooleanFormula[Generalized]
+	val condition :SQLBoolean[Generalized]
 
 
 
@@ -70,11 +69,11 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisCl
 
 
 
-	protected def withCondition(filter :BooleanFormula[Generalized]) :This
+	protected def withCondition(filter :SQLBoolean[Generalized]) :This
 
-	def withLeft[F <: FromClause](left :F)(filter :BooleanFormula[left.Generalized With R]) :WithLeft[F]
+	def withLeft[F <: FromClause](left :F)(filter :SQLBoolean[left.Generalized With R]) :WithLeft[F]
 
-//	def withLeft[F <: FromClause](left :F)(filter :WithLeft[left.type] => BooleanFormula[left.Generalized With R]) :WithLeft[F] = ???
+//	def withLeft[F <: FromClause](left :F)(filter :WithLeft[left.type] => SQLBoolean[left.Generalized With R]) :WithLeft[F] = ???
 
 
 
@@ -92,10 +91,10 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisCl
 	override def isSubselect = left.isSubselect
 
 
-	@volatile private var initializedFilter :BooleanFormula[Generalized] = _
-	private var cachedFilter  :BooleanFormula[Generalized] = _
+	@volatile private var initializedFilter :SQLBoolean[Generalized] = _
+	private var cachedFilter  :SQLBoolean[Generalized] = _
 
-	override def filter :BooleanFormula[Generalized] = {
+	override def filter :SQLBoolean[Generalized] = {
 		if (cachedFilter == null) {
 			var filt = initializedFilter
 			if (filt == null) {
@@ -107,7 +106,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisCl
 		cachedFilter
 	}
 
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :BooleanFormula[E] =
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
 		left.filter(target)(extension.stretchFront[left.Generalized, R]) && condition.stretch(target)
 
 
@@ -126,12 +125,12 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisCl
 	override def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
 	                             (prefix :F, firstJoin :Join.*, nextJoin :Join[this.type, T])
 			:nextJoin.LikeJoin[JoinedWith[F, firstJoin.LikeJoin], T] =
-		nextJoin.withLeft(joinedWith(prefix, firstJoin))(nextJoin.condition :BooleanFormula[Generalized With T])
+		nextJoin.withLeft(joinedWith(prefix, firstJoin))(nextJoin.condition :SQLBoolean[Generalized With T])
 
 
 
 	override def subselectFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
-			:BooleanFormula[E] =
+			:SQLBoolean[E] =
 		left.subselectFilter(target)(extension.stretchFront[left.Generalized, R]) && condition.stretch(target)
 
 
@@ -160,12 +159,12 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisCl
 
 
 
-	/** A function accepting the last relation of this clause, as a formula over a join between this clause
-	  * and a following mapping `T`, and the formula for the mapping `T`, being the last relation in the join,
-	  * and returning the join condition for the two relations as a `BooleanFormula` for the join clause. */
+	/** A function accepting the last relation of this clause, as a expression over a join between this clause
+	  * and a following mapping `T`, and the expression for the mapping `T`, being the last relation in the join,
+	  * and returning the join condition for the two relations as a `SQLBoolean` for the join clause. */
 	override type JoinFilter[T[O] <: MappingFrom[O]] =
 		(JoinedRelation[FromClause With R With T, R], JoinedRelation[FromClause With T, T])
-			=> BooleanFormula[FromClause With R With T]
+			=> SQLBoolean[FromClause With R With T]
 
 
 	/** Apply a join condition to the last two relations in this clause. This works exactly like 'where', but
@@ -176,7 +175,7 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisCl
 	  * @param condition a function accepting the formulas for the last two relations in this clause and creating a
 	  *                  an SQL expression for the join condition.
 	  * @return a `With` instance of the same kind as this one, with the same left and right sides,
-	  *         but with the join condition being the conjunction of this join's condition and the `BooleanFormula`
+	  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
 	  *         returned by the passed filter function.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#JoinFilter]]
 	  */
@@ -187,11 +186,11 @@ trait With[+L <: FromClause, R[O] <: MappingFrom[O]] extends FromClause { thisCl
 	}
 
 
-	def whereLast(condition :JoinedRelation[FromClause With R, R] => BooleanFormula[FromClause With R]) :This =
+	def whereLast(condition :JoinedRelation[FromClause With R, R] => SQLBoolean[FromClause With R]) :This =
 		withCondition(this.condition && SQLScribe.groundFreeComponents(generalized)(condition(last)))
 
 
-	def where[F >: L <: FromClause](condition :JoinedTables[Generalized] => BooleanFormula[Generalized]) :This = {
+	def where[F >: L <: FromClause](condition :JoinedTables[Generalized] => SQLBoolean[Generalized]) :This = {
 		val cond = condition(new JoinedTables[Generalized](generalized))
 		withCondition(this.condition && SQLScribe.groundFreeComponents(generalized)(cond))
 	}
@@ -244,7 +243,7 @@ object With {
 		InnerJoin(left, right)
 
 	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
-	         (left :L, right :RowSource[R], filter :BooleanFormula[L#Generalized With R])
+	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R])
 	         (implicit cast :InferSubject[left.type, InnerJoin, R, T, S]) :L InnerJoin R =
 		InnerJoin(left, right, filter)
 
@@ -277,7 +276,7 @@ object With {
 			protected[this] override val newClause = extending
 
 			override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
-					:BaseComponentFormula[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] } =
+					:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] } =
 				(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
 				 else SQLRelation[G, T, E](e.source, e.shift + extension)).asInstanceOf[SQLRelation[G, T, E, G]]
 

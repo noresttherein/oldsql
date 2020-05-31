@@ -4,32 +4,31 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.MappingFrom
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectFrom}
-import net.noresttherein.oldsql.sql.SQLFormula.{CompositeFormula, Formula, FormulaMatcher}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom}
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral
-import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple.{CaseChain, ChainHead, ChainMatcher}
-import net.noresttherein.oldsql.sql.SQLTuple.SeqTuple.{CaseSeq, SeqMatcher}
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.{CaseChain, ChainHead, ChainMatcher}
+import net.noresttherein.oldsql.sql.TupleSQL.SeqTuple.{CaseSeq, SeqMatcher}
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.sql.SelectFormula.{FreeSelectFormula, SubselectFormula}
+import net.noresttherein.oldsql.sql.SelectSQL.{FreeSelectSQL, SubselectSQL}
 
 
 
-/** `SQLTuple` represents an SQL expression consisting of several individual values.
+/** `TupleSQL` represents an SQL expression consisting of several individual column values.
   * In its literal form it is written as `(col1, col2, ..., colN)`.
   */
-trait SQLTuple[-F <: FromClause, T] extends CompositeFormula[F, T] {
+trait TupleSQL[-F <: FromClause, T] extends CompositeSQL[F, T] {
 
-	override def sameAs(other :CompositeFormula[Nothing, _]) :Boolean = other.isInstanceOf[SQLTuple[_, _]]
+	override def sameAs(other :CompositeSQL[Nothing, _]) :Boolean = other.isInstanceOf[TupleSQL[_, _]]
 
 
-	override def selectFrom[S <: F with OuterFrom, O](from :S) :FreeSelectFormula[T, O] =
-		SelectFormula(from, this)
+	override def selectFrom[S <: F with OuterFrom, O](from :S) :FreeSelectSQL[T, O] =
+		SelectSQL(from, this)
 
-	override def subselectFrom[S <: F, O](from :S) :SubselectFormula[from.Implicit, T, O] =
-		SelectFormula.subselect[from.Implicit, from.type, T, O](from, this)
+	override def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Implicit, T, O] =
+		SelectSQL.subselect[from.Implicit, from.type, T, O](from, this)
 }
 
 
@@ -37,10 +36,10 @@ trait SQLTuple[-F <: FromClause, T] extends CompositeFormula[F, T] {
 
 
 
-object SQLTuple {
+object TupleSQL {
 
-	def unapply[F <: FromClause](expr: SQLFormula[F, _]): Option[Seq[SQLFormula[F, _]]] = expr match {
-		case t: SQLTuple[_, _] => Some(t.inOrder.asInstanceOf[Seq[SQLFormula[F, _]]])
+	def unapply[F <: FromClause](expr: SQLExpression[F, _]): Option[Seq[SQLExpression[F, _]]] = expr match {
+		case t: TupleSQL[_, _] => Some(t.inOrder.asInstanceOf[Seq[SQLExpression[F, _]]])
 		case _ => None
 	}
 
@@ -49,8 +48,8 @@ object SQLTuple {
 
 
 
-	case class SeqTuple[-F <: FromClause, T](override val parts :Seq[SQLFormula[F, T]]) extends SQLTuple[F, Seq[T]] {
-		override def inOrder :Seq[SQLFormula[F, T]] = parts
+	case class SeqTuple[-F <: FromClause, T](override val parts :Seq[SQLExpression[F, T]]) extends TupleSQL[F, Seq[T]] {
+		override def inOrder :Seq[SQLExpression[F, T]] = parts
 
 		override def readForm :SQLReadForm[Seq[T]] = SQLReadForm.seq(inOrder.map(_.readForm))
 
@@ -66,7 +65,7 @@ object SQLTuple {
 
 
 
-		override def applyTo[Y[_]](matcher: FormulaMatcher[F, Y]): Y[Seq[T]] = matcher.seq(this)
+		override def applyTo[Y[_]](matcher: ExpressionMatcher[F, Y]): Y[Seq[T]] = matcher.seq(this)
 
 		override def map[S <: FromClause](mapper: SQLScribe[F, S]) =
 			SeqTuple(inOrder.map(mapper(_)))
@@ -81,7 +80,7 @@ object SQLTuple {
 		implicit def literalSeq[T :SQLForm](items :Seq[T]) :SeqTuple[FromClause, T] =
 			new SeqTuple[FromClause, T](items.map(SQLLiteral(_)))
 
-		implicit def expressionSeq[R<:FromClause, T](items :Seq[SQLFormula[R, T]]) :SeqTuple[R, T] =
+		implicit def expressionSeq[R<:FromClause, T](items :Seq[SQLExpression[R, T]]) :SeqTuple[R, T] =
 			new SeqTuple[R, T](items)
 
 
@@ -99,11 +98,11 @@ object SQLTuple {
 
 
 
-	sealed trait ChainTuple[-F <: FromClause, T <: Chain] extends SQLTuple[F, T] {
+	sealed trait ChainTuple[-F <: FromClause, T <: Chain] extends TupleSQL[F, T] {
 		def size :Int
 
-		protected override def parts :Seq[SQLFormula[F, _]] = {
-			@tailrec def rec(formula :ChainTuple[F, _], acc :List[SQLFormula[F, _]] = Nil) :Seq[SQLFormula[F, _]] =
+		protected override def parts :Seq[SQLExpression[F, _]] = {
+			@tailrec def rec(formula :ChainTuple[F, _], acc :List[SQLExpression[F, _]] = Nil) :Seq[SQLExpression[F, _]] =
 				formula match {
 					case ChainHead(tail, head) => rec(tail, head::acc)
 					case _ => acc
@@ -111,9 +110,9 @@ object SQLTuple {
 			rec(this)
 		}
 
-		def toSeq :Seq[SQLFormula[F, _]] = parts
+		def toSeq :Seq[SQLExpression[F, _]] = parts
 
-		override def applyTo[Y[_]](matcher :FormulaMatcher[F, Y]) :Y[T] = matcher.chain(this)
+		override def applyTo[Y[_]](matcher :ExpressionMatcher[F, Y]) :Y[T] = matcher.chain(this)
 
 		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T]
 
@@ -127,7 +126,7 @@ object SQLTuple {
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
 			map(SQLScribe.stretcher(base))
 
-		def ~[S <: F, H](head :SQLFormula[S, H]) :ChainHead[S, T, H] = new ChainHead(this, head)
+		def ~[S <: F, H](head :SQLExpression[S, H]) :ChainHead[S, T, H] = new ChainHead(this, head)
 
 		override def toString :String = inOrder.mkString("(", " ~ ", ")")
 	}
@@ -143,7 +142,7 @@ object SQLTuple {
 		type CaseChain[+F <: FromClause, +Y[X]] = ChainMatcher[F, Y]
 
 		trait MatchChain[+F <: FromClause, +Y[X]] extends ChainMatcher[F, Y] {
-			def chainHead[T <: Chain, H](tail :ChainTuple[F, T], head :SQLFormula[F, H]) :Y[T ~ H]
+			def chainHead[T <: Chain, H](tail :ChainTuple[F, T], head :SQLExpression[F, H]) :Y[T ~ H]
 			def emptyChain :Y[@~]
 
 			override def chain[X <: Chain](e :ChainTuple[F, X]) :Y[X] = (e match {
@@ -154,7 +153,7 @@ object SQLTuple {
 
 
 
-		case class ChainHead[-F <: FromClause, T <: Chain, H](init :ChainTuple[F, T], last :SQLFormula[F, H])
+		case class ChainHead[-F <: FromClause, T <: Chain, H](init :ChainTuple[F, T], last :SQLExpression[F, H])
 			extends ChainTuple[F, T ~ H]
 		{
 			override def size :Int = init.size + 1
@@ -207,7 +206,7 @@ object SQLTuple {
 
 
 	trait CaseTuple[+F <: FromClause, +Y[X]] extends TupleMatcher[F, Y] with MatchTuple[F, Y] {
-		def tuple[X](e: SQLTuple[F, X]): Y[X]
+		def tuple[X](e: TupleSQL[F, X]): Y[X]
 
 		override def chain[X <: Chain](e :ChainTuple[F, X]) :Y[X] = tuple(e)
 

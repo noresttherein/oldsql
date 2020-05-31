@@ -1,14 +1,8 @@
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
-import net.noresttherein.oldsql.morsels.Origin.Rank
-import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, TypedMapping, Mapping, MappingSchema}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
-import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaComponent
+import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, MappingSchema}
+import net.noresttherein.oldsql.schema.Mapping.{MappingFrom}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
-import net.noresttherein.oldsql.schema.MappingPath.SelfPath
-import net.noresttherein.oldsql.sql.{FromClause, SQLOrdering}
-import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, SQLTypePromotion}
 
 
 
@@ -20,10 +14,20 @@ object playground extends App {
 	case class Gun(make :String, model :String, caliber :Double)
 	case class Human(gun :Gun, backup :Gun, secondBackup :Gun)
 
-	def guns[O] = MappingSchema[Gun, O].col(_.make).col(_.model).col(_.caliber).map(Gun.apply _)
+	def guns[O] =
+		MappingSchema[Gun, O].col(_.make).col(_.model).col(_.caliber).map(Gun.apply _)
+
 	def humans[O] =
 		MappingSchema[Human, O].comp(_.gun, guns[O].:@["gun"]).comp(_.backup, guns[O].:@["backup"]).comp(_.secondBackup, guns[O].:@["second"])
 //		MappingSchema[O, Human].comp(_.gun, guns[O]).comp(_.backup, guns[O]).comp(_.secondBackup, guns[O])
+
+//	val hummus = humans["X"].map(Human.apply _)
+//	hummus.withOrigin["O"] :Nothing
+
+	def unifyCons[M[A] <: MappingFrom[A], O](mapping :M[O]) :M[O] = mapping
+
+//	val h = unifyCons(hummus)
+//	h :Nothing
 
 	class Humans[O] extends AbstractSchemaMapping(humans[O]) {
 		val gun = schema / 0

@@ -1,57 +1,65 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SQLReadForm, TypedMapping}
-import net.noresttherein.oldsql.schema.support.{LazyMapping, StableMapping}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, TypedMapping}
+import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:
 import net.noresttherein.oldsql.schema.Buff.NoSelectByDefault
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.MappingSchema.SchemaFlattening
+import net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.sql.AutoConversionFormula.PromotionConversion
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumnExpression, ColumnExpressionMatcher}
+import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectOf}
 import net.noresttherein.oldsql.sql.JoinParam.FromParam
-import net.noresttherein.oldsql.sql.MappingFormula.{ColumnComponentFormula, ComponentFormula, JoinedRelation, SQLRelation}
-import net.noresttherein.oldsql.sql.SQLCondition.Exists
-import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CaseFormula, ColumnFormula, Formula, FormulaMatcher}
-import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula.{CaseColumnFormula, ColumnFormulaMatcher}
-import net.noresttherein.oldsql.sql.SQLTerm.BoundParameter
-import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple.MatchChain
-import net.noresttherein.oldsql.sql.SQLTuple.{ChainTuple, SeqTuple}
+import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, SQLRelation}
+import net.noresttherein.oldsql.sql.SelectSQL.SelectAs
+import net.noresttherein.oldsql.sql.ConditionSQL.ExistsSQL
+import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMatcher}
+import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.MatchChain
+import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, SeqTuple}
+
+
+//here be implicits
 import slang._
 
 
-/** Representation of an SQL select as an SQL formula used in the context of source `F`. If the source is
-  * the abstract `FromClause`, this will be a `FreeSelectFormula` instance - a select independent of any external
+/** Representation of an SQL select as an SQL expression used in the context of source `F`. If the source is
+  * the abstract `FromClause`, this will be a `FreeSelectSQL` instance - a select independent of any external
   * tables or parameters, in which all formulas (''select'' clause, ''where'' clause, etc) can be evaluated
   * based on the values of the tables in its ''from'' clause. If `F` is not `FromClause`, but contains tables, this is
   * a subselect nested inside a select for source `F` - in its header, ''from'' or ''where'' clause. The source for
-  * this formula, given by the member type `From`, is always an extension of `F`. Subclasses should extend the trait
-  * for one of the above cases: [[net.noresttherein.oldsql.sql.SelectFormula.FreeSelectFormula FreeSelectFormula]] or
-  * [[net.noresttherein.oldsql.sql.SelectFormula.SubselectFormula SubselectFormula]], instead of deriving directly
+  * this expression, given by the member type `From`, is always an extension of `F`. Subclasses should extend the trait
+  * for one of the above cases: [[net.noresttherein.oldsql.sql.SelectSQL.FreeSelectSQL FreeSelectSQL]] or
+  * [[net.noresttherein.oldsql.sql.SelectSQL.SubselectSQL SubselectSQL]], instead of deriving directly
   * from this trait.
   *
-  * Apart from being an SQL formula, it is also a `TypedMapping[V, O]`, so it can be used as other mappings inside
+  * Apart from being an SQL expression, it is also a `TypedMapping[V, O]`, so it can be used as other mappings inside
   * a ''from'' clause.
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the mapped header type representing a single row.
   */
-sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]] with TypedMapping[V, O] {
+sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]] with TypedMapping[V, O] {
+
 	/** The from clause of this select. */
 	type From <: SubselectOf[F]
 
 	trait SelectedColumn[X] {
 		def name :String
-		def formula :ColumnFormula[From, X]
+		def expression :ColumnSQL[From, X]
 	}
 
-	val header :SQLFormula[From, V]
+	val header :SQLExpression[From, V]
 
 	def headerColumns :Seq[SelectedColumn[_]]
 
@@ -59,18 +67,42 @@ sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]
 
 	def tables :Seq[SQLRelation.AnyIn[from.Generalized]] = from.subselectTableStack
 
-	def filter :BooleanFormula[from.Generalized] = from.filter
+	def filter :SQLBoolean[from.Generalized] = from.filter
 
 	def isSubselect :Boolean = from.isSubselect
 
 
-	def exists :ColumnFormula[F, Boolean] = Exists(this)
 
-	def notExists :ColumnFormula[F, Boolean] = !Exists(this)
+	def as[X <: FlatSchemaMapping[_, _, _, _], M <: FlatSchemaMapping[C, R, S, A], C <: Chain, R <: Chain, S, A]
+	      (mapping :X)(implicit typer :Conforms[X, M, FlatSchemaMapping[C, R, S, A]], tuple :V =:= R) :SelectAs[F, M] = ???
 
-	def single :SQLFormula[F, V] = to[V]
+	def as[FC <: Chain, FR <: Chain, X <: SchemaMapping[_, _, _, _], M <: SchemaMapping[C, R, S, A], C <: Chain, R <: Chain, S, A]
+	      (mapping :X)(implicit typer :Conforms[X, M, SchemaMapping[C, R, S, A]],
+	                   flat :SchemaFlattening[C, R, S, O, FC, FR], tuple :V =:= R) :SelectAs[F, M] = ???
 
-	def rows :SQLFormula[F, Seq[V]] = to[Seq[V]]
+	def exists :ColumnSQL[F, Boolean] = ExistsSQL(this)
+
+	def notExists :ColumnSQL[F, Boolean] = !ExistsSQL(this)
+
+	def single :SQLExpression[F, V] = to[V]
+
+	def rows :SQLExpression[F, Seq[V]] = to[Seq[V]]
+
+
+
+	def assemble[X](f :V => X) :SelectSQL[F, X, O]
+
+	def assemble[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+			:SelectSQL[F, X, O] =
+		assemble(applyFun(f))
+
+	protected def applyFun[Fun, C <: Chain, X]
+	                      (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :V => X =
+		{ v => application(f, isChain(v)) }
+
+
+
+	override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SelectSQL[S, V, O]
 
 
 
@@ -82,33 +114,29 @@ sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]
 
 
 
-	override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SelectFormula[S, V, O]
-
-
-
-	protected override def reverseCollect[X](fun: PartialFunction[Formula[_], X], acc: List[X]): List[X] =
+	protected override def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] =
 		reverseCollect(filter)(fun, reverseCollect(header)(fun, super.reverseCollect(fun, acc)))
 
 
 
-	override def isomorphic(expression: Formula[_]): Boolean = expression match {
-		case s :SelectFormula[_, _, _] =>
+	override def isomorphic(expression: SQLExpression.*): Boolean = expression match {
+		case s :SelectSQL[_, _, _] =>
 			(s eq this) || (s canEqual this) && (s.header isomorphic header) && (s.from == from)
 		case _ => false
 	}
 
-	private[oldsql] override def equivalent(expression: Formula[_]): Boolean = expression match {
-		case s :SelectFormula[_, _, _] =>
+	private[oldsql] override def equivalent(expression: SQLExpression.*): Boolean = expression match {
+		case s :SelectSQL[_, _, _] =>
 			(s eq this) || (s canEqual this) && (s.header equivalent header) && (s.from == from)
 		case _ => false
 	}
 
 
 
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[SelectFormula[_, _, _]]
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[SelectSQL[_, _, _]]
 
 	override def equals(that :Any) :Boolean = that match {
-		case s :SelectFormula[_, _, _] => (s eq this) || (s canEqual this) && s.header == header && s.from == from
+		case s :SelectSQL[_, _, _] => (s eq this) || (s canEqual this) && s.header == header && s.from == from
 		case _ => false
 	}
 
@@ -123,52 +151,52 @@ sealed trait SelectFormula[-F <: FromClause, V, O] extends SQLFormula[F, Rows[V]
 
 
 
-object SelectFormula {
+object SelectSQL {
 
 	def apply[F <: OuterFrom, T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, I >: F <: FromClause, O]
-	         (from :F, header :ComponentFormula[F, T, E, M, V, I]) :SelectMapping[F, M, V, O] =
+	         (from :F, header :ComponentSQL[F, T, E, M, V, I]) :SelectMapping[F, M, V, O] =
 		new SelectComponent[F, T, E, M, V, I, O](from, header)
 
 	def apply[F <: OuterFrom, T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, I >: F <: FromClause, O]
-	         (from :F, column :ColumnComponentFormula[F, T, E, M, V, I]) :SelectColumnMapping[F, M, V, O] =
+	         (from :F, column :ColumnComponentSQL[F, T, E, M, V, I]) :SelectColumnMapping[F, M, V, O] =
 		new ArbitraryFreeSelectColumn[F, V, O](from, column) with SelectColumnMapping[F, M, V, O] {
 			override val mapping :M[O] = column.mapping.asInstanceOf[M[O]]
 			override val header = column
 		}
 
-	def apply[F <: OuterFrom, V, O](from :F, header :SQLTuple[F, V]) :FreeSelectFormula[V, O] =
+	def apply[F <: OuterFrom, V, O](from :F, header :TupleSQL[F, V]) :FreeSelectSQL[V, O] =
 		new ArbitraryFreeSelect[F, V, O](from, header)
 
-	def apply[F <: OuterFrom, X, Y, O](from :F, header :AutoConversionFormula[F, X, Y]) :FreeSelectFormula[Y, O] =
+	def apply[F <: OuterFrom, X, Y, O](from :F, header :ConversionSQL[F, X, Y]) :FreeSelectSQL[Y, O] =
 		new ArbitraryFreeSelect[F, Y, O](from, header)
 
-	def apply[F <: OuterFrom, V, O](from :F, header :ColumnFormula[F, V]) :FreeSelectColumn[V, O] =
+	def apply[F <: OuterFrom, V, O](from :F, header :ColumnSQL[F, V]) :FreeSelectColumn[V, O] =
 		new ArbitraryFreeSelectColumn(from, header)
 
 
 
 	def subselect[F <: FromClause, S <: SubselectOf[F],
 		          T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
-	             (from :S, header :ComponentFormula[S, T, E, M, V, I]) :SubselectMapping[F, S, M, V, O] =
+	             (from :S, header :ComponentSQL[S, T, E, M, V, I]) :SubselectMapping[F, S, M, V, O] =
 		new SubselectComponent[F, S, T, E, M, V, I, O](from, header)
 
 	def subselect[F <: FromClause, S <: SubselectOf[F],
 	              T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, I >: S <: FromClause, O]
-	             (from :S, column :ColumnComponentFormula[S, T, E, M, V, I]) :SubselectColumnMapping[F, S, M, V, O] =
+	             (from :S, column :ColumnComponentSQL[S, T, E, M, V, I]) :SubselectColumnMapping[F, S, M, V, O] =
 		new ArbitrarySubselectColumn[F, S, V, O](from, column) with SubselectColumnMapping[F, S, M, V, O] {
 			override val mapping :M[O] = column.mapping.asInstanceOf[M[O]]
 			override val header = column
 		}
 
-	def subselect[F <: FromClause, S <: SubselectOf[F], V, O](from :S, header :SQLTuple[S, V])
-			:SubselectFormula[F, V, O] =
+	def subselect[F <: FromClause, S <: SubselectOf[F], V, O](from :S, header :TupleSQL[S, V])
+			:SubselectSQL[F, V, O] =
 		new ArbitrarySubselect[F, S, V, O](from, header)
 
-	def subselect[F <: FromClause, S <: SubselectOf[F], X, Y, O](from :S, header :AutoConversionFormula[S, X, Y])
-			:SubselectFormula[F, Y, O] =
+	def subselect[F <: FromClause, S <: SubselectOf[F], X, Y, O](from :S, header :ConversionSQL[S, X, Y])
+			:SubselectSQL[F, Y, O] =
 		new ArbitrarySubselect[F, S, Y, O](from, header)
 
-	def subselect[F <: FromClause, S <: SubselectOf[F], V, O](from :S, header :ColumnFormula[S, V])
+	def subselect[F <: FromClause, S <: SubselectOf[F], V, O](from :S, header :ColumnSQL[S, V])
 			:SubselectColumn[F, V, O] =
 		new ArbitrarySubselectColumn(from, header)
 
@@ -177,15 +205,23 @@ object SelectFormula {
 
 
 
-	type * = SelectFormula[_ <: FromClause, _, _]
+	type * = SelectSQL[_ <: FromClause, _, _]
 
 
 
-	trait SelectColumn[-F <: FromClause, V, O] extends SelectFormula[F, V, O] with ColumnFormula[F, Rows[V]] {
-		override val header :ColumnFormula[From, V]
+	trait SelectColumn[-F <: FromClause, V, O] extends SelectSQL[F, V, O] with ColumnSQL[F, Rows[V]] {
+		override val header :ColumnSQL[From, V]
+
 		override def readForm :ColumnReadForm[Rows[V]] = header.readForm.map(Rows(_))
 
-		override def single :ColumnFormula[F, V] = to[V]
+		override def single :ColumnSQL[F, V] = to[V]
+
+		override def assemble[X](f :V => X) :SelectColumn[F, X, O]
+
+		override def assemble[Fun, C <: Chain, X]
+		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+				:SelectColumn[F, X, O] =
+			assemble(applyFun(f))
 
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SelectColumn[S, V, O]
 	}
@@ -199,50 +235,81 @@ object SelectFormula {
 	  * i.e. it is not dependent on any outside rows. Such an expression is a valid select statement in opposition to
 	  * subselect expressions.
 	  */
-	trait FreeSelectFormula[V, O] extends SelectFormula[FromClause, V, O] {
+	trait FreeSelectSQL[V, O] extends SelectSQL[FromClause, V, O] {
 		override type From <: OuterFrom
 
+		override def assemble[X](f :V => X) :FreeSelectSQL[X, O] =
+			new ArbitraryFreeSelect[From, X, O](from, header.map(f))
+
+		override def assemble[Fun, C <: Chain, X]
+		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+				:FreeSelectSQL[X, O] =
+			assemble(applyFun(f))
+
 		override def stretch[U <: FromClause, S <: FromClause]
-		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectFormula[V, O] =
+		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectSQL[V, O] =
 			this
 
-		override def applyTo[Y[_]](matcher: FormulaMatcher[FromClause, Y]): Y[Rows[V]] = matcher.freeSelect(this)
+		override def applyTo[Y[_]](matcher: ExpressionMatcher[FromClause, Y]): Y[Rows[V]] = matcher.freeSelect(this)
 	}
 
 
 
-	trait FreeSelectColumn[V, O] extends FreeSelectFormula[V, O] with SelectColumn[FromClause, V, O] {
+	trait FreeSelectColumn[V, O] extends FreeSelectSQL[V, O] with SelectColumn[FromClause, V, O] {
+
+		override def assemble[X](f :V => X) :FreeSelectColumn[X, O] =
+			new ArbitraryFreeSelectColumn[From, X, O](from, header.map(f))
+
+		override def assemble[Fun, C <: Chain, X]
+		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+				:FreeSelectColumn[X, O] =
+			assemble(applyFun(f))
 
 		override def stretch[U <: FromClause, S <: FromClause]
 		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectColumn[V, O] =
 			this
 
-		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[FromClause, Y]) :Y[Rows[V]] = matcher.freeSelect(this)
+		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[FromClause, Y]) :Y[Rows[V]] = matcher.freeSelect(this)
 	}
 
 
 
-	//todo: fix inconsistency: subselects are parameterized with From, but selects not.
 	/** A base trait for all SQL select expressions nested under another SQL select.
 	  * @tparam F the ''from'' clause of the outer select, forming a prefix of `S` until the last occurrence
 	  *           of a `Subselect` join kind.
 	  * @tparam O marker origin type serving as a unique alias for different members of a FROM clause.
 	  * @tparam V the type of the scala value selected by this subselect.
 	  */
-	trait SubselectFormula[-F <: FromClause, V, O] extends SelectFormula[F, V, O] {
+	trait SubselectSQL[-F <: FromClause, V, O] extends SelectSQL[F, V, O] {
+
+		override def assemble[X](f :V => X) :SubselectSQL[F, X, O] =
+			new ArbitrarySubselect[F, From, X, O](from, header.map(f))
+
+		override def assemble[Fun, C <: Chain, X]
+		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+				:SubselectSQL[F, X, O] =
+			assemble(applyFun(f))
 
 		override def stretch[U <: F, G <: FromClause](base :G)(implicit extension :U ExtendedBy G)
-			:SubselectFormula[G, V, O]
+			:SubselectSQL[G, V, O]
 
-		override def applyTo[Y[_]](matcher: FormulaMatcher[F, Y]): Y[Rows[V]] = matcher.subselect(this)
+		override def applyTo[Y[_]](matcher: ExpressionMatcher[F, Y]): Y[Rows[V]] = matcher.subselect(this)
 	}
 
-	trait SubselectColumn[-F <: FromClause, V, O] extends SubselectFormula[F, V, O] with SelectColumn[F, V, O] {
+	trait SubselectColumn[-F <: FromClause, V, O] extends SubselectSQL[F, V, O] with SelectColumn[F, V, O] {
+
+		override def assemble[X](f :V => X) :SubselectColumn[F, X, O] =
+			new ArbitrarySubselectColumn[F, From, X, O](from, header.map(f))
+
+		override def assemble[Fun, C <: Chain, X]
+		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+				:SubselectColumn[F, X, O] =
+			assemble(applyFun(f))
 
 		override def stretch[U <: F, G <: FromClause](base :G)(implicit extension :U ExtendedBy G)
 				:SubselectColumn[G, V, O]
 
-		override def applyTo[Y[_]](matcher :ColumnFormulaMatcher[F, Y]) :Y[Rows[V]] = matcher.subselect(this)
+		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Rows[V]] = matcher.subselect(this)
 	}
 
 
@@ -250,33 +317,33 @@ object SelectFormula {
 
 
 
-	/** A `SelectFormula` interface exposing the mapping type `H` used as the header.
+	/** A `SelectSQL` interface exposing the mapping type `H` used as the header.
 	  * Extending classes work as adapters for that mapping.
 	  */
-	trait SelectAs[-F <: FromClause, H <: Mapping] extends SelectFormula[F, H#Subject, H#Origin] {
+	trait SelectAs[-F <: FromClause, H <: Mapping] extends SelectSQL[F, H#Subject, H#Origin] {
 		val mapping :H
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[SelectAs[_, _]]
 
-		override def equals(that :Any) :Boolean = super[SelectFormula].equals(that)
+		override def equals(that :Any) :Boolean = super[SelectSQL].equals(that)
 
-		override def hashCode :Int = super[SelectFormula].hashCode
+		override def hashCode :Int = super[SelectSQL].hashCode
 
-		override def toString :String = super[SelectFormula].toString
+		override def toString :String = super[SelectSQL].toString
 	}
 
 
 
-	trait FreeSelectAs[H <: Mapping] extends SelectAs[FromClause, H] with FreeSelectFormula[H#Subject, H#Origin]
+	trait FreeSelectAs[H <: Mapping] extends SelectAs[FromClause, H] with FreeSelectSQL[H#Subject, H#Origin]
 
-	trait SubselectAs[-F <: FromClause, H <: Mapping] extends SelectAs[F, H] with SubselectFormula[F, H#Subject, H#Origin]
+	trait SubselectAs[-F <: FromClause, H <: Mapping] extends SelectAs[F, H] with SubselectSQL[F, H#Subject, H#Origin]
 
 	trait SelectMapping[F <: OuterFrom, H[A] <: TypedMapping[V, A], V, O] extends FreeSelectAs[H[O]] {
 		override type From = F
 	}
 
 	trait SubselectMapping[-F <: FromClause, S <: SubselectOf[F], H[A] <: TypedMapping[V, A], V, O]
-		extends SubselectFormula[F, V, O] with SubselectAs[F, H[O]]
+		extends SubselectSQL[F, V, O] with SubselectAs[F, H[O]]
 	{
 		override type From = S
 	}
@@ -292,10 +359,10 @@ object SelectFormula {
 
 
 
-	private abstract class SelectComponentFormula[-F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E,
+	private abstract class SelectComponentSQL[-F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E,
 	                                              H[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
-	                       (override val from :S, override val  header :ComponentFormula[S, T, E, H, V, I])
-		extends SelectFormula[F, V, O] with SelectAs[F, H[O]] with ShallowProxy[V, O]
+	                       (override val from :S, override val  header :ComponentSQL[S, T, E, H, V, I])
+		extends SelectSQL[F, V, O] with SelectAs[F, H[O]] with ShallowProxy[V, O]
 	{
 		override type From = S
 
@@ -306,7 +373,7 @@ object SelectFormula {
 
 		private def include[X](column :ColumnMapping[X, I]) :SelectedColumn[X] = new SelectedColumn[X] {
 			override val name :String = column.name
-			override val formula  = header \ column
+			override val expression  = header \ column
 		}
 
 
@@ -321,19 +388,19 @@ object SelectFormula {
 
 	private class SelectComponent[F <: OuterFrom, T[A] <: TypedMapping[E, A], E,
 		                          H[A] <: TypedMapping[V, A], V, I >: F <: FromClause, O]
-	                             (from :F, header :ComponentFormula[F, T, E, H, V, I])
-		extends SelectComponentFormula[FromClause, F, T, E, H, V, I, O](from, header) with SelectMapping[F, H, V, O]
+	                             (from :F, header :ComponentSQL[F, T, E, H, V, I])
+		extends SelectComponentSQL[FromClause, F, T, E, H, V, I, O](from, header) with SelectMapping[F, H, V, O]
 
 
 
 	private class SubselectComponent[-F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E,
 	                                 H[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
-	                                (subselect :S, component :ComponentFormula[S, T, E, H, V, I])
-		extends SelectComponentFormula[F, S, T, E, H, V, I, O](subselect, component)
+	                                (subselect :S, component :ComponentSQL[S, T, E, H, V, I])
+		extends SelectComponentSQL[F, S, T, E, H, V, I, O](subselect, component)
 		   with SubselectMapping[F, S, H, V, O]
 	{
 
-		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G) :SubselectFormula[G, V, O] = {
+		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G) :SubselectSQL[G, V, O] = {
 			type Ext = SubselectOf[G] //pretend this is the actual type S after rebasing to the extension clause G
 			val upcast = from :FromClause //scalac bug workaround
 			val stretched = upcast.asSubselectOf(base)(ev.asInstanceOf[upcast.Implicit ExtendedBy G]).asInstanceOf[Ext]
@@ -352,80 +419,80 @@ object SelectFormula {
 
 
 
-	/** A select formula based on the given row source and selecting an arbitrary expression `header` in its ''select''
+	/** A select expression based on the given row source and selecting an arbitrary expression `header` in its ''select''
 	  * clause. This header will be translated by recursively flat mapping the header expression to obtain a flat sequence
-	  * of columns. In particular, any sequences/tuples are inlined, and any `ComponentFormula`s referring to components
+	  * of columns. In particular, any sequences/tuples are inlined, and any `ComponentSQL`s referring to components
 	  * of tables or whole table rows themselves are replaced with their columns. Column list declared by this mapping
-	  * is thus created by recursively applying the following rules to the header formula:
+	  * is thus created by recursively applying the following rules to the header expression:
 	  *
-	  *     1. If the formula is a `ColumnFormula`, it is taken as a basis for a `SelectedColumn`;
-	  *     1. If the formula is a component mapping, create a column for every export column of the declared mapping;
-	  *     1. If the formula is a tuple formula such as a tuple, recursively flatMap over it by applying these rules;
-	  *     1. If the formula is a conversion, proceed with the base expression;
+	  *     1. If the expression is a `ColumnSQL`, it is taken as a basis for a `SelectedColumn`;
+	  *     1. If the expression is a component mapping, create a column for every export column of the declared mapping;
+	  *     1. If the expression is a tuple expression such as a tuple, recursively flatMap over it by applying these rules;
+	  *     1. If the expression is a conversion, proceed with the base expression;
 	  *     1. Other types of expressions encountered anyone inside the `header` result in throwing an exception.
 	  *
 	  * Note that the above column list should be considered in the context of this instance as a mapping and represents
 	  * all columns that potentially might be a part of the select clause. Existence of non-selectable and optional
 	  * columns means that resulting select query may not contain all of the above. This distinction is also present
 	  * when using this instance to assemble results of the created select statement; as individual columns
-	  * in the select header may be any formulas, the source of values for evaluating the header formula are not values
-	  * of the tables of the underlying source, but values for the whole column formulas. For example, a header formula
+	  * in the select header may be any formulas, the source of values for evaluating the header expression are not values
+	  * of the tables of the underlying source, but values for the whole column formulas. For example, a header expression
 	  * in the form of `(current_date - birth_date, address, (first_name, family_name)) from users` could translate
-	  * into a select formula declaring columns: `('col1', street, zip, city, country, first_name, family_name)`.
+	  * into a select expression declaring columns: `('col1', street, zip, city, country, first_name, family_name)`.
 	  * Such columns would be available for any formulas using this mapping in their FromClause and are considered
 	  * 'available header columns'. However, when using this instance as a mapping for assembling the header value,
 	  * we don't have values for individual columns of the users table in the above example, but values for the columns
 	  * declared by this mapping. This means that we need a bit of creative term rewriting to assemble the scala value
-	  * as it would be evaluated by the original header formula. In particular, in the above example, the address object
+	  * as it would be evaluated by the original header expression. In particular, in the above example, the address object
 	  * would be reassembled based on the values of individual columns included in the final select.
 	  */
 	private abstract class ArbitrarySelect[-F <: FromClause, S <: SubselectOf[F], V, O] protected
-	                                      (override val from :S, override val header :SQLFormula[S, V])
-		extends SelectFormula[F, V, O] with LazyMapping[V, O]
+	                                      (override val from :S, override val header :SQLExpression[S, V])
+		extends SelectSQL[F, V, O] with LazyMapping[V, O]
 	{ outer =>
 
 		override type From = S
 
 		/** A column in the header of owning select.
-		  * @param formula sql expression providing the value for the column.
+		  * @param expression sql expression providing the value for the column.
 		  * @param name column name (sqlName) and suggested alias for the column in the select clause.
 		  */
-		class ColumnExpression[T](override val formula :ColumnFormula[S, T], override val name :String)
-		                         (implicit override val form :ColumnForm[T] = //implicit only so that the arg list can be omitted
-		                             formula.readForm <> ColumnWriteForm.dummy[T](formula.readForm.sqlType))
+		class HeaderColumn[T](override val expression :ColumnSQL[S, T], override val name :String)
+		                     (implicit override val form :ColumnForm[T] = //implicit only so that the arg list can be omitted
+		                      expression.readForm <> ColumnWriteForm.dummy[T](expression.readForm.sqlType))
 			extends ColumnMapping[T, O] with SelectedColumn[T]
 
 
 
 		private type Assembler[T] = Pieces => Option[T]
 
-		private class AssemblerAssembler extends FormulaMatcher[S, Assembler]
-			with CaseFormula[S, Assembler] with CaseColumnFormula[S, Assembler] with MatchChain[S, Assembler]
+		private class AssemblerAssembler extends ExpressionMatcher[S, Assembler]
+			with CaseExpression[S, Assembler] with CaseColumnExpression[S, Assembler] with MatchChain[S, Assembler]
 		{
-			var columns :List[ColumnExpression[_]] = Nil
+			var columns :List[HeaderColumn[_]] = Nil
 			private[this] var names :Set[String] = Set("") //used column names, disallowing ""
 
 
-			override def column[X](e :ColumnFormula[S, X]) :Pieces => Option[X] = {
+			override def column[X](e :ColumnSQL[S, X]) :Pieces => Option[X] = {
 				implicit val form :ColumnForm[X] = e.readForm match {
 					case form :ColumnForm[X @unchecked] => form
 					case form => form <> ColumnWriteForm.dummy(form.sqlType)
 				}
-				val column = new ColumnExpression(e, nameFor(e))
+				val column = new HeaderColumn(e, nameFor(e))
 				columns = column::columns
 				pieces => pieces.get(column)
 			}
 
 
 			override def component[T[B] <: TypedMapping[E, B], E, M[B] <: TypedMapping[X, B], X, A >: S <: FromClause]
-			                      (e :ComponentFormula[S, T, E, M, X, A]) =
+			                      (e :ComponentSQL[S, T, E, M, X, A]) =
 			{
 				val table = e.table
 
-				def headerColumn[C](column :table.Column[C]) :Assoc[table.Component, ColumnExpression, C] = {
+				def headerColumn[C](column :table.Column[C]) :Assoc[table.Component, HeaderColumn, C] = {
 					val expr = e.from \ column
-					val selected = new ColumnExpression[C](e.from \ column, nameFor(expr))
-					Assoc[table.Component, ColumnExpression, C](column, selected)
+					val selected = new HeaderColumn[C](e.from \ column, nameFor(expr))
+					Assoc[table.Component, HeaderColumn, C](column, selected)
 				}
 				val mapping = e.mapping
 				val columnMappings = mapping.selectable.view.map(table.export(_)).filter(NoSelectByDefault.disabled)
@@ -446,7 +513,7 @@ object SelectFormula {
 
 
 
-			override def conversion[T, U](e :AutoConversionFormula[S, T, U]) = {
+			override def conversion[T, U](e :ConversionSQL[S, T, U]) = {
 				val base = this(e.expr)
 				pieces => base(pieces).map(e.convert)
 			}
@@ -455,7 +522,7 @@ object SelectFormula {
 
 			override def emptyChain = _ => Some(@~)
 
-			override def chainHead[T <: Chain, H](tail :ChainTuple[S, T], head :SQLFormula[S, H]) = {
+			override def chainHead[T <: Chain, H](tail :ChainTuple[S, T], head :SQLExpression[S, H]) = {
 				val tl = apply(tail)
 				val hd = apply(head)
 				pieces => for (t <- tl(pieces); h <- hd(pieces)) yield t ~ h
@@ -471,20 +538,20 @@ object SelectFormula {
 
 
 
-			override def formula[X](e :SQLFormula[S, X]) =
+			override def expression[X](e :SQLExpression[S, X]) =
 				throw new IllegalArgumentException(
-					s"SQLFormula $e cannot be used in a SelectFormula header expression."
+					s"SQLExpression $e cannot be used in a SelectSQL header expression."
 				)
 
 
 
-			private def nameFor(f :ColumnFormula[S, _]) :String = {
+			private def nameFor(f :ColumnSQL[S, _]) :String = {
 				val name :String = f match {
 					case FromParam(param, extract) =>
 						if (extract.isIdentity && !names(param.name)) param.name
 						else param.name + "_" + columns.size
 
-					case ComponentFormula(_, MappingExtract(_, _, component)) =>
+					case ComponentSQL(_, MappingExtract(_, _, component)) =>
 						val name :String = component match {
 							case column :ColumnMapping[_, _] => column.name
 							case label @: _ => label
@@ -492,7 +559,7 @@ object SelectFormula {
 						}
 						if (!names(name)) name else name + "_" + columns.size
 
-					case BoundParameter(_, Some(name)) => //unlikely to appear in this position
+					case SQLParameter(_, Some(name)) => //unlikely to appear in this position
 						if (!names(name)) name else name + "_" + columns.size
 
 					case _ => "_" + columns.size
@@ -507,13 +574,13 @@ object SelectFormula {
 
 		private type Extractors[X] = Seq[Assoc[Column, ({ type E[T] = ColumnMappingExtract[X, T, O]})#E, _]]
 
-		private class ExtractsCollector extends FormulaMatcher[S, Extractors]
-			with CaseFormula[S, Extractors] with CaseColumnFormula[S, Extractors] with MatchChain[S, Extractors]
+		private class ExtractsCollector extends ExpressionMatcher[S, Extractors]
+			with CaseExpression[S, Extractors] with CaseColumnExpression[S, Extractors] with MatchChain[S, Extractors]
 		{
 			private[this] var columnStack = outer.headerColumns.toList
 
-			override def column[X](e :ColumnFormula[S, X]) :Extractors[X] = {
-				val column = columnStack.head.asInstanceOf[ColumnExpression[X]]
+			override def column[X](e :ColumnSQL[S, X]) :Extractors[X] = {
+				val column = columnStack.head.asInstanceOf[HeaderColumn[X]]
 				columnStack = columnStack.tail
 				type ColumnEx[T] = ColumnMappingExtract[X, T, O]
 				Assoc[Column, ColumnEx, X](column, MappingExtract.ident(column))::Nil
@@ -522,7 +589,7 @@ object SelectFormula {
 
 
 			override def component[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[X, A], X, G >: S <: FromClause]
-			                      (e :ComponentFormula[S, T, E, M, X, G]) :Extractors[X] =
+			                      (e :ComponentSQL[S, T, E, M, X, G]) :Extractors[X] =
 			{
 				val table = e.table
 				val component = e.mapping
@@ -532,7 +599,7 @@ object SelectFormula {
 				columnStack = tail
 				type ColumnEx[C] = ColumnMappingExtract[X, C, O]
 
-				def extract[C](selectColumn :ColumnExpression[C], componentColumn :component.Column[_]) = {
+				def extract[C](selectColumn :HeaderColumn[C], componentColumn :component.Column[_]) = {
 					val compatible = componentColumn.asInstanceOf[component.Column[C]]
 					val componentExtract = component(compatible)
 					val selectExtract = MappingExtract(selectColumn)(componentExtract)
@@ -544,7 +611,7 @@ object SelectFormula {
 
 
 
-			override def conversion[Z, X](e :AutoConversionFormula[S, Z, X]) = {
+			override def conversion[Z, X](e :ConversionSQL[S, Z, X]) = {
 				val extracts = apply(e.expr)
 				extracts.map(schema.composeColumnExtractAssoc(outer, Extractor.none :X =?> Z)(_))
 			}
@@ -557,12 +624,12 @@ object SelectFormula {
 
 
 			override def seq[X](e :SeqTuple[S, X]) = {
-				e.inOrder.view.zipWithIndex.flatMap { entry :(SQLFormula[S, X], Int) =>
+				e.inOrder.view.zipWithIndex.flatMap { entry :(SQLExpression[S, X], Int) =>
 					apply(entry._1).map(schema.composeColumnExtractAssoc(outer, (seq :Seq[X]) => seq(entry._2))(_))
 				}.toList
 			}
 
-			override def chainHead[T <: Chain, H](tail :ChainTuple[S, T], head :SQLFormula[S, H]) = {
+			override def chainHead[T <: Chain, H](tail :ChainTuple[S, T], head :SQLExpression[S, H]) = {
 				val tailExs = apply(tail).map(schema.composeColumnExtractAssoc(outer, (_ :(T ~ H)).init)(_))
 				val headExs = apply(head).map(schema.composeColumnExtractAssoc(outer, (_:(T ~ H)).last)(_))
 				headExs ++: tailExs
@@ -572,7 +639,7 @@ object SelectFormula {
 
 
 
-			override def formula[X](e :SQLFormula[S, X]) = unhandled(e)
+			override def expression[X](e :SQLExpression[S, X]) = unhandled(e)
 		}
 
 
@@ -598,15 +665,15 @@ object SelectFormula {
 
 
 
-	private class ArbitraryFreeSelect[S <: OuterFrom, V, O](from :S, header :SQLFormula[S, V])
-		extends ArbitrarySelect[FromClause, S, V, O](from, header) with FreeSelectFormula[V, O]
+	private class ArbitraryFreeSelect[S <: OuterFrom, V, O](from :S, header :SQLExpression[S, V])
+		extends ArbitrarySelect[FromClause, S, V, O](from, header) with FreeSelectSQL[V, O]
 
 
 
-	private class ArbitrarySubselect[-F <: FromClause, S <: SubselectOf[F], V, O](subclause :S, header :SQLFormula[S, V])
-		extends ArbitrarySelect[F, S, V, O](subclause, header) with SubselectFormula[F, V, O]
+	private class ArbitrarySubselect[-F <: FromClause, S <: SubselectOf[F], V, O](subclause :S, header :SQLExpression[S, V])
+		extends ArbitrarySelect[F, S, V, O](subclause, header) with SubselectSQL[F, V, O]
 	{
-		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G) :SubselectFormula[G, V, O] = {
+		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G) :SubselectSQL[G, V, O] = {
 			type Ext = FromClause { type Implicit = G }
 			val upcast = from :FromClause //scalac bug workaround
 			val stretched = upcast.asSubselectOf(base)(ev.asInstanceOf[upcast.Implicit ExtendedBy G]).asInstanceOf[Ext]
@@ -622,7 +689,7 @@ object SelectFormula {
 
 
 	private abstract class ArbitrarySelectColumn[-F <: FromClause, S <: SubselectOf[F], V, O]
-	                                            (override val from :S, override val header :ColumnFormula[S, V])
+	                                            (override val from :S, override val header :ColumnSQL[S, V])
 		extends SelectColumn[F, V, O]
 	{
 		override type From = S
@@ -631,14 +698,14 @@ object SelectFormula {
 			override val name :String = header match {
 				case FromParam(param, extract) => param.name
 
-				case ComponentFormula(_, MappingExtract(_, _, component)) =>
+				case ComponentSQL(_, MappingExtract(_, _, component)) =>
 					component match {
 						case column :ColumnMapping[_, _] => column.name
 						case label @: _ => label
 						case _ => component.sqlName getOrElse "result"
 					}
 
-				case BoundParameter(_, Some(name)) => name //unlikely to appear in this position
+				case SQLParameter(_, Some(name)) => name //unlikely to appear in this position
 
 				case _ => "result"
 			}
@@ -648,7 +715,7 @@ object SelectFormula {
 				case form => form <> ColumnWriteForm.dummy(form.sqlType)
 			}
 
-			override def formula = header
+			override def expression = header
 		}
 
 		private[this] val column = new HeaderColumn
@@ -684,13 +751,13 @@ object SelectFormula {
 
 
 
-	private class ArbitraryFreeSelectColumn[S <: OuterFrom, V, O](from :S, header :ColumnFormula[S, V])
+	private class ArbitraryFreeSelectColumn[S <: OuterFrom, V, O](from :S, header :ColumnSQL[S, V])
 		extends ArbitrarySelectColumn[FromClause, S, V, O](from, header) with FreeSelectColumn[V, O]
 
 
 
 	private class ArbitrarySubselectColumn[-F <: FromClause, S <: SubselectOf[F], V, O]
-	                                      (clause :S, override val header :ColumnFormula[S, V])
+	                                      (clause :S, override val header :ColumnSQL[S, V])
 		extends ArbitrarySelectColumn[F, S, V, O](clause, header) with SubselectColumn[F, V, O]
 	{
 		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G) :SubselectColumn[G, V, O] = {
@@ -745,26 +812,26 @@ object SelectFormula {
 
 
 	trait FreeSelectMatcher[+F <: FromClause, +Y[X]] extends FreeSelectColumnMatcher[F, Y] {
-		def freeSelect[V, O](e :FreeSelectFormula[V, O]) :Y[Rows[V]]
+		def freeSelect[V, O](e :FreeSelectSQL[V, O]) :Y[Rows[V]]
 	}
 
 	type MatchFreeSelect[+F <: FromClause, +Y[X]] = CaseFreeSelect[F, Y]
 
 	trait CaseFreeSelect[+F <: FromClause, +Y[X]] extends FreeSelectMatcher[F, Y] with CaseFreeSelectColumn[F, Y] {
-		override def freeSelect[V, O](e :FreeSelectColumn[V, O]) :Y[Rows[V]] = freeSelect(e :FreeSelectFormula[V, O])
+		override def freeSelect[V, O](e :FreeSelectColumn[V, O]) :Y[Rows[V]] = freeSelect(e :FreeSelectSQL[V, O])
 	}
 
 
 
 	trait SubselectMatcher[+F <: FromClause, +Y[X]] {
-		def subselect[V, O](e :SubselectFormula[F, V, O]) :Y[Rows[V]]
+		def subselect[V, O](e :SubselectSQL[F, V, O]) :Y[Rows[V]]
 	}
 
 	type MatchSubselect[+F <: FromClause, +Y[X]] = CaseSubselect[F, Y]
 
 	trait CaseSubselect[+F <: FromClause, +Y[X]] extends SubselectMatcher[F, Y] with CaseSubselectColumn[F, Y] {
 		override def subselect[V, O](e :SubselectColumn[F, V, O]) :Y[Rows[V]] =
-			subselect(e :SubselectFormula[F, V, O])
+			subselect(e :SubselectSQL[F, V, O])
 	}
 
 
@@ -776,11 +843,11 @@ object SelectFormula {
 		with CaseFreeSelect[F, Y] with CaseSubselect[F, Y]
 
 	trait CaseSelect[+F <: FromClause, +Y[X]] extends MatchSelect[F, Y] {
-		def select[V, O](e :SelectFormula[F, V, O]) :Y[Rows[V]]
+		def select[V, O](e :SelectSQL[F, V, O]) :Y[Rows[V]]
 
-		def subselect[V, O](e: SubselectFormula[F, V, O]): Y[Rows[V]] = select(e)
+		def subselect[V, O](e: SubselectSQL[F, V, O]): Y[Rows[V]] = select(e)
 
-		def freeSelect[V, O](e: FreeSelectFormula[V, O]): Y[Rows[V]] = select(e :SelectFormula[F, V, O])
+		def freeSelect[V, O](e: FreeSelectSQL[V, O]): Y[Rows[V]] = select(e :SelectSQL[F, V, O])
 	}
 
 

@@ -13,8 +13,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
 import net.noresttherein.oldsql.sql.FromClause.{TableCount, TableShift}
-import net.noresttherein.oldsql.sql.MappingFormula.{FreeColumn, FreeComponent}
-import net.noresttherein.oldsql.sql.SQLFormula.ColumnFormula
+import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, FreeComponent}
 
 
 

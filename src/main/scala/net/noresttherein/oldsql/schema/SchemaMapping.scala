@@ -77,7 +77,7 @@ import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQ
   * @author Marcin Mościcki
   */
 trait SchemaMapping[C <:Chain, R <: Chain, S, O] extends TypedMapping[S, O] { outer =>
-
+//fixme: type O leaks into type C and projection on Origin leaves references to O intact
 	/** The chain listing components in this schema. In default implementation, these are all direct, non-synthetic
 	  * components. Customizing this mapping by including and excluding certain components for the purpose of
 	  * a particular SQL statement will produce `SchemaMapping` instances with schemas being subsequences

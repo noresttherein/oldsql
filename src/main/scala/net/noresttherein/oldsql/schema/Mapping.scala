@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
 import net.noresttherein.oldsql.sql.FromClause.TableShift
-import net.noresttherein.oldsql.sql.MappingFormula.FreeComponent
+import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
 
 
 

@@ -11,16 +11,15 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause.GetTableByIndex.GetTableByNegativeIndex
 import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByLabel, BySubject, ByTypeConstructor}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables, OuterFrom, SubselectFrom, TableShift}
-import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, FreeColumn, FreeComponent, JoinedRelation, SQLRelation}
-import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula}
-import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
+import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, FreeColumn, JoinedRelation, SQLRelation}
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.JoinParam.{ParamSource, WithParam}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
-import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
-import net.noresttherein.oldsql.sql.SelectFormula.{FreeSelectAs, FreeSelectColumn, FreeSelectFormula, SelectAs, SelectColumn, SelectMapping, SubselectAs, SubselectColumn, SubselectFormula}
+import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation.LastRelation
+import net.noresttherein.oldsql.sql.SelectSQL.{SelectAs, SelectColumn}
 
 
 
@@ -28,7 +27,7 @@ import net.noresttherein.oldsql.sql.SelectFormula.{FreeSelectAs, FreeSelectColum
 
 /** In its basic use, a `FromClause` is a representation of the ''FROM'' and ''WHERE'' clauses in an SQL ''SELECT''
   * statement, declaring the relations taking part in a query. More generally, it is the domain over which SQL
-  * expressions (instances of the [[net.noresttherein.oldsql.sql.SQLFormula SQLFormula]] class hierarchy) are defined,
+  * expressions (instances of the [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] class hierarchy) are defined,
   * providing all non-constant values available to them. It consists of a a list of `Mapping`s, together with an optional
   * filter working on those mappings, especially any required join conditions. While the individual elements of a clause
   * are referred to often as tables for simplicity, they can not only be arbitrary relations such as other ''selects'',
@@ -36,7 +35,7 @@ import net.noresttherein.oldsql.sql.SelectFormula.{FreeSelectAs, FreeSelectColum
   * to be replaced at a later time with references to concrete tables, parameters or constants. As such, it
   * doesn't necessarily represent a valid fragment of a select from the application's schema.
   * In that case it's best thought as a signature containing declarations of terms (mappings and parameters)
-  * over which SQL formulas can be defined; hence `SQLFormula` is parameterized with a `FromClause`.
+  * over which SQL formulas can be defined; hence `SQLExpression` is parameterized with a `FromClause`.
   *
   * The mappings taking part in the query are encoded in the static type of the standard implementation, which
   * builds both the instance and its type by recursively applying the [[net.noresttherein.oldsql.sql.With With]]
@@ -125,8 +124,8 @@ trait FromClause { thisClause =>
 
 	/** The type of this clause with all join kinds replaced with the root type `With` and initial `Dual`
 	  * with `FromClause`. It forms the class of abstraction of clauses with the same relations (and in the same order),
-	  * which are considered equivalent for many purposes, in particular as the basis for SQL expressions `SQLFormula`.
-	  * Most `SQLFormula` instances returned by this clause are parameterized with this type.
+	  * which are considered equivalent for many purposes, in particular as the basis for SQL expressions `SQLExpression`.
+	  * Most `SQLExpression` instances returned by this clause are parameterized with this type.
 	  */
 	type Generalized <: FromLast { type Generalized <: thisClause.Generalized }
 
@@ -138,13 +137,13 @@ trait FromClause { thisClause =>
 	/** The ''WHERE'' part of this clause representing the filter condition as SQL AST.
 	  * It is the conjunction of join conditions for all joins in this clause.
 	  */
-	def filter :BooleanFormula[Generalized] = filter(generalized)
+	def filter :SQLBoolean[Generalized] = filter(generalized)
 
-	/** The combined join conditions of all joins in this clause as a formula based on an extending clause.
+	/** The combined join conditions of all joins in this clause as a expression based on an extending clause.
 	  * Used by zero-argument `filter` to request the individual join conditions as formulas based on the clause
 	  * it was called for.
 	  */
-	def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :BooleanFormula[E]
+	def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E]
 
 
 
@@ -156,13 +155,13 @@ trait FromClause { thisClause =>
 	  */
 	type Row <: Chain
 
-	/** Create an SQL tuple formula containing `JoinedRelation` formulas for all joined elements in their order
+	/** Create an SQL tuple expression containing `JoinedRelation` formulas for all joined elements in their order
 	  * of appearance. It will contain entries for all mappings in this clause, including parameter mappings
 	  * and mappings listed in this clause's `Implicit` prefix (if this clause is a subselect clause).
 	  */
 	def row :ChainTuple[Generalized, Row] = row(generalized)
 
-	/** Create an SQL tuple formula, based on some extending clause `E`, containing `JoinedRelation` formulas
+	/** Create an SQL tuple expression, based on some extending clause `E`, containing `JoinedRelation` formulas
 	  * for all joined elements in their order of appearance. It will contain entries for all mappings in this clause,
 	  * including parameter mappings and mappings listed in this clause's `Implicit` prefix (if this clause
 	  * is a subselect clause. This overloaded variant is used by the zero-argument `row` to obtain the chain prefix
@@ -320,13 +319,13 @@ trait FromClause { thisClause =>
 	/** The ''WHERE'' part of this subselect clause representing the explicit filter condition as SQL AST.
 	  * It is the conjunction of join conditions for all joins in this clause since the last `Subselect` join.
 	  */
-	def subselectFilter :BooleanFormula[Generalized] = subselectFilter(generalized)
+	def subselectFilter :SQLBoolean[Generalized] = subselectFilter(generalized)
 
-	/** The combined join conditions of all joins since the last `Subselect` join as a formula based on an extending
+	/** The combined join conditions of all joins since the last `Subselect` join as a expression based on an extending
 	  * clause. Used by zero-argument `filter` to request the individual join conditions as formulas based on the clause
 	  * it was called for.
 	  */
-	def subselectFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :BooleanFormula[E]
+	def subselectFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E]
 
 
 
@@ -341,14 +340,14 @@ trait FromClause { thisClause =>
 	  */
 	type SubselectRow <: Chain
 
-	/** Create an SQL tuple formula containing `JoinedRelation` formulas for all joined elements of the most deeply
+	/** Create an SQL tuple expression containing `JoinedRelation` formulas for all joined elements of the most deeply
 	  * nested subselect clause, in their order of appearance. This includes all relations in this clause following
 	  * the most recent `Subselect` 'join', marking the first relation following the `Implicit` clause prefix.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
 	  */
 	def subselectRow :ChainTuple[Generalized, SubselectRow] = subselectRow(generalized)
 
-	/** Create an SQL tuple formula containing `JoinedRelation` formulas for all joined elements of the most deeply
+	/** Create an SQL tuple expression containing `JoinedRelation` formulas for all joined elements of the most deeply
 	  * nested subselect clause, in their order of appearance. The formulas are based on some extending clause `E`,
 	  * so they can be used by the zero-argument `subselectRow` as the chain prefix of its result.
 	  */
@@ -442,7 +441,7 @@ trait FromClause { thisClause =>
 	  * and the ''select'' clause consisting of all selectable columns of the passed mapping.
 	  */
 	def selectAs[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[S, A], S, O >: Generalized <: FromClause]
-	            (component :ComponentFormula[Generalized, T, E, M, S, O]) :Implicit SelectAs M[Any] =
+	            (component :ComponentSQL[Generalized, T, E, M, S, O]) :Implicit SelectAs M[Any] =
 		if (isSubselect) {
 			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
 			component.subselectFrom(this.asInstanceOf[AsSubselect])
@@ -453,24 +452,24 @@ trait FromClause { thisClause =>
 	/** Creates an SQL ''select'' expression with this clause used for the ''from'' and ''where'' clauses
 	  * and the expression returned by the passed function as its ''select'' clause.
 	  */
-	@inline def select[V](header :JoinedTables[Generalized] => SQLFormula[Generalized, V])
-			:SelectFormula[Implicit, V, _] =
+	@inline def select[V](header :JoinedTables[Generalized] => SQLExpression[Generalized, V])
+			:SelectSQL[Implicit, V, _] =
 		select(header(generalized.tables))
 
 
 	/** Creates an SQL ''select'' expression selecting a single column, as defined by the result of the passed function,
 	  * and this instance as the source of its ''from'' and ''where'' clauses.
 	  */
-	@inline def selectColumn[V](header :JoinedTables[Generalized] => ColumnFormula[Generalized, V])
+	@inline def selectColumn[V](header :JoinedTables[Generalized] => ColumnSQL[Generalized, V])
 			:SelectColumn[Implicit, V, _] =
 		select(header(generalized.tables))
 
 
-	/** Creates an SQL ''select'' expression selecting an arbitrary `SQLFormula`. The ''from'' and ''where'' clauses
+	/** Creates an SQL ''select'' expression selecting an arbitrary `SQLExpression`. The ''from'' and ''where'' clauses
 	  * are defined by this instance, while the ''select'' clause consists of all column sub-expressions constituting
 	  * the `header` subexpressions.
 	  */
-	def select[V](header :SQLFormula[Generalized, V]) :SelectFormula[Implicit, V, _] =
+	def select[V](header :SQLExpression[Generalized, V]) :SelectSQL[Implicit, V, _] =
 		if (thisClause.isSubselect) {
 			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
 			header.subselectFrom(this.asInstanceOf[AsSubselect])
@@ -478,10 +477,10 @@ trait FromClause { thisClause =>
 			header.selectFrom(this.asInstanceOf[Generalized with OuterFrom])
 
 
-	/** Creates an SQL ''select'' expression selecting a single column, as defined by the passed `header` `ColumnFormula`,
+	/** Creates an SQL ''select'' expression selecting a single column, as defined by the passed `header` `ColumnSQL`,
 	  * and this instance as the source of its ''from'' and ''where'' clauses.
 	  */
-	def select[V](header :ColumnFormula[Generalized, V]) :SelectColumn[Implicit, V, _] =
+	def select[V](header :ColumnSQL[Generalized, V]) :SelectColumn[Implicit, V, _] =
 		if (thisClause.isSubselect) {
 			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
 			header.subselectFrom(this.asInstanceOf[AsSubselect])
@@ -501,7 +500,7 @@ trait FromClause { thisClause =>
 	  */
 	type JoinFilter[T[O] <: MappingFrom[O]] <:
 		(JoinedRelation[FromLast With T, LastMapping], JoinedRelation[FromClause With T, T])
-			=> BooleanFormula[FromLast With T]
+			=> SQLBoolean[FromLast With T]
 
 
 
@@ -512,7 +511,7 @@ trait FromClause { thisClause =>
 	  * to a method to eliminate casting in pattern matching.
 	  */
 	protected[sql] def selfInnerJoin[T[A] <: TypedMapping[X, A], X]
-	                                (right :LastRelation[T, X])(filter :BooleanFormula[Generalized With T])
+	                                (right :LastRelation[T, X])(filter :SQLBoolean[Generalized With T])
 			:this.type InnerJoin T =
 		InnerJoin.newJoin[T, X](this, right)(filter)
 
@@ -954,7 +953,7 @@ object FromClause {
 		private def naturalFilter[T[O] <: TypedMapping[_, O]]
 		                         (tables :JoinedTables[thisClause.Generalized With T])
 		                         (implicit prev :GetTableByNegativeIndex[thisClause.Generalized With T, -2])
-				:BooleanFormula[thisClause.Generalized With T] =
+				:SQLBoolean[thisClause.Generalized With T] =
 		{
 			val firstTable = tables.prev
 			val secondTable = tables.last
@@ -1081,26 +1080,26 @@ object FromClause {
 			}
 
 		def selectAs[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :ComponentFormula[F, T, E, M, S, O])
+		            (component :ComponentSQL[F, T, E, M, S, O])
 				:thisClause.Implicit SelectAs M[Any] =
 			if (thisClause.isSubselect)
 				component.subselectFrom(thisClause)
 			else
 				component.selectFrom(thisClause.asInstanceOf[OuterFrom]).asInstanceOf[SelectAs[thisClause.Implicit, M[Any]]]
 
-		@inline def select[V](header :JoinedTables[F] => SQLFormula[F, V]) :SelectFormula[thisClause.Implicit, V, _] =
+		@inline def select[V](header :JoinedTables[F] => SQLExpression[F, V]) :SelectSQL[thisClause.Implicit, V, _] =
 			select(header(thisClause.tables))
 
-		@inline def selectColumn[V](header :JoinedTables[F] => ColumnFormula[F, V]) :SelectColumn[thisClause.Implicit, V, _] =
+		@inline def selectColumn[V](header :JoinedTables[F] => ColumnSQL[F, V]) :SelectColumn[thisClause.Implicit, V, _] =
 			select(header(thisClause.tables))
 
-		def select[V](header :SQLFormula[F, V]) :SelectFormula[thisClause.Implicit, V, _] =
+		def select[V](header :SQLExpression[F, V]) :SelectSQL[thisClause.Implicit, V, _] =
 			if (thisClause.isSubselect)
 				header.selectFrom(thisClause)
 			else
-				header.selectFrom(thisClause.asInstanceOf[OuterFrom]).asInstanceOf[SelectFormula[thisClause.Implicit, V, _]]
+				header.selectFrom(thisClause.asInstanceOf[OuterFrom]).asInstanceOf[SelectSQL[thisClause.Implicit, V, _]]
 
-		def select[V](header :ColumnFormula[F, V]) :SelectColumn[thisClause.Implicit, V, _] =
+		def select[V](header :ColumnSQL[F, V]) :SelectColumn[thisClause.Implicit, V, _] =
 			if (thisClause.isSubselect)
 				header.selectFrom(thisClause)
 			else
@@ -1123,20 +1122,20 @@ object FromClause {
 		}
 
 		def selectAs[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :ComponentFormula[F, T, E, M, S, O])
+		            (component :ComponentSQL[F, T, E, M, S, O])
 				:thisClause.Implicit SubselectAs M[Any] =
 			component.subselectFrom(thisClause)
 
-		def select[V](header :JoinedTables[F] => SQLFormula[F, V]) :SubselectFormula[thisClause.Implicit, V, _] =
+		def select[V](header :JoinedTables[F] => SQLExpression[F, V]) :SubselectSQL[thisClause.Implicit, V, _] =
 			header(thisClause.tables).subselectFrom(thisClause)
 
-		def selectColumn[V](header :JoinedTables[F] => ColumnFormula[F, V]) :SubselectColumn[thisClause.Implicit, V, _] =
+		def selectColumn[V](header :JoinedTables[F] => ColumnSQL[F, V]) :SubselectColumn[thisClause.Implicit, V, _] =
 			header(thisClause.tables).subselectFrom(thisClause)
 
-		def select[V](header :SQLFormula[F, V]) :SubselectFormula[thisClause.Implicit, V, _] =
+		def select[V](header :SQLExpression[F, V]) :SubselectSQL[thisClause.Implicit, V, _] =
 			header.subselectFrom(thisClause)
 
-		def select[V](header :ColumnFormula[F, V]) :SubselectColumn[thisClause.Implicit, V, _] =
+		def select[V](header :ColumnSQL[F, V]) :SubselectColumn[thisClause.Implicit, V, _] =
 			header.subselectFrom(thisClause)
 	}
 
@@ -1155,20 +1154,20 @@ object FromClause {
 		}
 
 		def selectAs[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :ComponentFormula[F, T, E, M, S, O])
+		            (component :ComponentSQL[F, T, E, M, S, O])
 				:FreeSelectAs[M[Any]] =
 			component.selectFrom(self)
 
-		def select[V](header :JoinedTables[F] => SQLFormula[F, V]) :FreeSelectFormula[V, _] =
+		def select[V](header :JoinedTables[F] => SQLExpression[F, V]) :FreeSelectSQL[V, _] =
 			header(self.tables).selectFrom(self)
 
-		def selectColumn[V](header :JoinedTables[F] => ColumnFormula[F, V]) :FreeSelectColumn[V, _] =
+		def selectColumn[V](header :JoinedTables[F] => ColumnSQL[F, V]) :FreeSelectColumn[V, _] =
 			header(self.tables).selectFrom(self)
 
-		def select[V](header :SQLFormula[F, V]) :FreeSelectFormula[V, _] =
+		def select[V](header :SQLExpression[F, V]) :FreeSelectSQL[V, _] =
 			header.selectFrom(self)
 
-		def select[V](header :ColumnFormula[F, V]) :FreeSelectColumn[V, _] =
+		def select[V](header :ColumnSQL[F, V]) :FreeSelectColumn[V, _] =
 			header.selectFrom(self)
 	}
 */
@@ -1229,7 +1228,7 @@ object FromClause {
 
 
 	/** A facade to a `FromClause` of type `F`, providing access to all joined relations as
-	  * [[net.noresttherein.oldsql.sql.MappingFormula.JoinedRelation JoinedRelation]] SQL expressions
+	  * [[net.noresttherein.oldsql.sql.MappingSQL.JoinedRelation JoinedRelation]] SQL expressions
 	  * which can be directly, or through its components/columns, used in any SQL expressions based on this clause.
 	  */
 	class JoinedRelations[F <: FromClause](private val thisClause :F) extends AnyVal {
@@ -1668,16 +1667,16 @@ object FromClause {
 	  * A non-obvious implication of being contravariant in the extending type `S` is that if `F` is incomplete,
 	  * this instance is also a witness that subtypes of `S` which replace the initial `FromClause` with a join list
 	  * are likewise extensions of `F`, in this way covering both extensions from the back (right side) and front
-	  * (left side). The purpose of this class is to allow `SQLFormula` instances based on one clause `F` be converted
+	  * (left side). The purpose of this class is to allow `SQLExpression` instances based on one clause `F` be converted
 	  * into isomorphic expressions based on a second clause `S`, as long as all mappings in `F`'s static type
-	  * form a continuous subsequence of mappings listed in `S`. Note that `SQLFormula` is contravariant in
+	  * form a continuous subsequence of mappings listed in `S`. Note that `SQLExpression` is contravariant in
 	  * its clause type parameter, meaning that an abstract `FromClause` occurring at the start of the from clause
-	  * type parameter doesn't 'hide' any mappings used by that formula, but to the contrary, serves to signify that
+	  * type parameter doesn't 'hide' any mappings used by that expression, but to the contrary, serves to signify that
 	  * it doesn't rely in any form on that portion of the clause it is based on. As a result, this proof
-	  * is indeed a valid representation that such a conversion from `F` to `S` is possible for any `SQLFormula`.
+	  * is indeed a valid representation that such a conversion from `F` to `S` is possible for any `SQLExpression`.
 	  * Due to this contravariance in `S`, this isn't any form of a generalized subtyping relation
 	  * and should be relied upon only in the context of the actual extension.
-	  */ //it could in theory be covariant, but we rely in SQLFormula.extend that the relation remains the first one
+	  */ //it could in theory be covariant, but we rely in SQLExpression.extend that the relation remains the first one
 	@implicitNotFound("FromClause ${F} is not a prefix of the clause ${S} (ignoring join kinds).")
 	class ExtendedBy[+F <: FromClause, -S <: FromClause] private[FromClause] (val length :Int) extends AnyVal {
 		/** A transitive proof that a clause extending `S` with a single relation (mapping) also extends `F`. */
@@ -1765,31 +1764,6 @@ object FromClause {
 		                   (implicit ev :F PrefixOf L) :F PrefixOf S = //todo: verify type inference works
 			new PrefixOf(ev.suffix + 1)
 	}
-	
-//	import Zipper._
-////	todo: zipper
-//	trait Zipper[P <: FromClause, S <: ZipperSuffix]
-//
-//	object Zipper {
-//		trait >>[O] extends TypedMapping[Any, O]
-//
-//		trait ZipperSuffix[S] {
-//			type Next[O] <: MappingFrom[O]
-//			val next :JoinedRelation[Joined[FromClause With Next], Next]
-//
-//			type Joined[+F <: FromClause] <: FromClause
-//		}
-//
-//		class LastMapping[M[O] <: MappingFrom[O]](val next :LastRelation[M]) extends ZipperSuffix[M] {
-//			override type Next[O] = M[O]
-//			override type Joined[+F <: FromClause] = F
-//		}
-//
-//		trait >>:[S] {
-//			type LastMapping[O] <: MappingFrom[O]
-////			def apply[F <: FromClause](prefix :F) :J[F]
-//		}
-//	}
 
 }
 

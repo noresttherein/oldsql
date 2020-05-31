@@ -11,12 +11,11 @@ import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
-import net.noresttherein.oldsql.sql.MappingFormula.{ComponentFormula, JoinedRelation, SQLRelation}
-import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
+import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.SQLTerm.True
-import net.noresttherein.oldsql.sql.SQLTuple.ChainTuple
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.JoinParam.ParamFrom
-import net.noresttherein.oldsql.sql.MappingFormula.SQLRelation.LastRelation
+import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.With.TypedWith
 
 
@@ -30,7 +29,7 @@ import net.noresttherein.oldsql.sql.With.TypedWith
   * `M[O] &lt;: FromParam[X, O]`, representing a query parameter `X`. It allows to filter a given from clause
   * using values unknown at this time, which can be obtained by applying an arbitrary scala function to `X`.
   * The mapping, aside from representing the parameter value itself, can also be used to create additional
-  * subcomponents with values derived from the parameter value, which can be used in an `SQLFormula` as any other
+  * subcomponents with values derived from the parameter value, which can be used in an `SQLExpression` as any other
   * component. The mappings themselves are however only shills, replaced when creating the select statement,
   * and only their associated `SQLForm`s are being used in the mapping process.
   * The type constructor for a parameter mapping with type `X` is `ParamSource[X]#Row` and
@@ -166,7 +165,7 @@ object JoinParam {
 
 	private[sql] def apply[L <: FromClause, M[O] <: FromParam[X, O], X]
 	                      (from :L, param :LastRelation[M, X])(
-	                       filter :BooleanFormula[from.Generalized With M]) :L JoinParam M =
+	                       filter :SQLBoolean[from.Generalized With M]) :L JoinParam M =
 		new JoinParam[from.type, M] with TypedWith[from.type, M, X] {
 			override val left = from
 			override val last = param
@@ -177,10 +176,10 @@ object JoinParam {
 			override def narrow :left.type JoinParam M = this
 
 			override def withLeft[F <: FromClause]
-			                     (left :F)(filter :BooleanFormula[left.Generalized With M]) :F JoinParam M =
+			                     (left :F)(filter :SQLBoolean[left.Generalized With M]) :F JoinParam M =
 				JoinParam[F, M, X](left, last)(filter)
 
-			override def withCondition(filter :BooleanFormula[left.Generalized With M]) :This =
+			override def withCondition(filter :SQLBoolean[left.Generalized With M]) :This =
 				JoinParam[left.type, M, X](left, last)(filter)
 
 
@@ -280,13 +279,13 @@ object JoinParam {
 
 
 
-	/** A `Mapping` type representing a query parameter the value of which is not known. While the `BoundParameter`
-	  * expression can be used to represent a statement parameter, its value must be known when the formula is created.
+	/** A `Mapping` type representing a query parameter the value of which is not known. While the `SQLParameter`
+	  * expression can be used to represent a statement parameter, its value must be known when the expression is created.
 	  * By representing a statement parameter as a mapping that can be used in the same way as table mappings
 	  * in `FromClause` table lists, we can represent any value obtainable from `P`
 	  * by a function `P => T` as a component `(P #? _)#Component[T]` wrapping that function, which can be used
 	  * to create component formulas for that function. In particular, a `TableFormula[S, FromParam[P]]`
-	  * is a formula which value will be substituted by a statement parameter `P`.
+	  * is a expression which value will be substituted by a statement parameter `P`.
 	  * @param name a suggested name of the parameter for debugging purposes.
 	  * @tparam P the parameter type needed to prepare statements using this mapping in their sources.
 	  * @tparam O a marker type serving as a unique alias for this mapping within a `FromClause`.
@@ -383,15 +382,15 @@ object JoinParam {
 
 
 
-		def unapply[X](expr :SQLFormula[_, X]) :Option[ParamMapping[P, X, O]] = expr match {
-			case ComponentFormula(_, MappingExtract(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
+		def unapply[X](expr :SQLExpression[_, X]) :Option[ParamMapping[P, X, O]] = expr match {
+			case ComponentSQL(_, MappingExtract(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
 				Some(comp.asInstanceOf[ParamMapping[P, X, O]])
 			case _ => None
 		}
 
 		/** An extractor matching ComponentFormulas for components of this mapping, that is actual sql statement parameters. */
-		def ParamForm :Extractor[SQLFormula[_, _], SQLWriteForm[P]] = Extractor(
-			(sql :SQLFormula[_, _]) => unapply(sql).map(_.derivedForm)
+		def ParamForm :Extractor[SQLExpression[_, _], SQLWriteForm[P]] = Extractor(
+			(sql :SQLExpression[_, _]) => unapply(sql).map(_.derivedForm)
 		)
 
 	}
@@ -405,9 +404,9 @@ object JoinParam {
 		def apply[P, N <: String with Singleton](name :N)(implicit form :SQLForm[P]) :FromParam[P, N] =
 			new FromParam(name)
 
-		def unapply[X](expr :SQLFormula[_, X]) :Option[(FromParam[P, O], MappingExtract[P, X, O])] forSome { type P; type O } =
+		def unapply[X](expr :SQLExpression[_, X]) :Option[(FromParam[P, O], MappingExtract[P, X, O])] forSome { type P; type O } =
 			expr match {
-				case ComponentFormula(_, extractor) if extractor.export.isInstanceOf[ParamMapping[_, _, _]] =>
+				case ComponentSQL(_, extractor) if extractor.export.isInstanceOf[ParamMapping[_, _, _]] =>
 					val param = extractor.export.asInstanceOf[ParamMapping[Any, X, Any]]
 					Some(param.root -> param.extract)
 				case _ => None
