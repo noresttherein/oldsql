@@ -17,7 +17,8 @@ import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm,
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
   */
-trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
+trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
+
 	override final def readColumns = 1
 
 	/** Target method of `apply` and `opt` which reads the value of the column at the given index in the ResultSet
@@ -78,7 +79,7 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 
 
 
-	override def asOpt :ColumnReadForm[Option[T]] = ColumnReadForm.OptionColumnReadForm(this)
+	override def toOpt :ColumnReadForm[Option[T]] = ColumnReadForm.OptionColumnReadForm(this)
 
 
 	override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
@@ -109,8 +110,6 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with BaseColumnForm {
 	}
 
 
-
-	override def toString :String = sqlType.toString + ">"
 
 }
 
@@ -242,7 +241,7 @@ object ColumnReadForm {
 			if (isInitialized) form.optMap(fun)
 			else Lazy(form.optMap(fun))
 
-		override def asOpt :ColumnReadForm[Option[T]] = if (isInitialized) form.asOpt else Lazy(form.asOpt)
+		override def toOpt :ColumnReadForm[Option[T]] = if (isInitialized) form.toOpt else Lazy(form.toOpt)
 
 		override def orElse[S >: T](fallback :ColumnReadForm[S]) :ColumnReadForm[S] =
 			if (isInitialized) form orElse fallback

@@ -35,12 +35,12 @@ trait EmptyMapping[S, O] extends TypedMapping[S, O] {
 	override def autoInserted :Unique[Column[_]] = Unique.empty
 
 
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = SQLForm.NothingForm
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = SQLForm[Nothing]
 	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
 	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
 	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
 	
-	override def selectForm :SQLReadForm[S] = SQLForm.NothingForm
+	override def selectForm :SQLReadForm[S] = SQLForm[Nothing]
 	override def queryForm :SQLWriteForm[S] = SQLWriteForm.empty
 	override def updateForm :SQLWriteForm[S] = SQLWriteForm.empty
 	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty

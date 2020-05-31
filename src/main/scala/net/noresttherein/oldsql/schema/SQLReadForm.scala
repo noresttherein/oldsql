@@ -27,7 +27,7 @@ import scala.collection.immutable.Seq
   * @see [[net.noresttherein.oldsql.schema.SQLForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnReadForm]]
   */
-trait SQLReadForm[+T] extends Serializable {
+trait SQLReadForm[+T] extends SQLForms {
 
 	/** Reads the column values from columns `&lt;position..position + this.readColumns)` of the passed `ResultSet`
 	  * and creates an instance of `T`. The default implementation delegates to `opt` and fallbacks to `nullValue`
@@ -191,7 +191,7 @@ trait SQLReadForm[+T] extends Serializable {
 	  * by this form) are mapped to `Some(None)`, while a returned `None` indicates that this form returned `None`.
 	  * Basically this means that the returned form uses this form's `opt` method as its `apply` implementation.
 	  */
-	def asOpt :SQLReadForm[Option[T]] = SQLReadForm.OptionReadForm(this)
+	def toOpt :SQLReadForm[Option[T]] = SQLReadForm.OptionReadForm(this)
 
 
 
@@ -222,10 +222,6 @@ trait SQLReadForm[+T] extends Serializable {
 
 	def compatible(other :SQLReadForm[_]) :Boolean = this == other
 
-
-	def canEqual(that :Any) :Boolean = that.getClass == getClass
-
-	override def toString :String = this.innerClassName
 }
 
 
@@ -624,7 +620,7 @@ object SQLReadForm extends ScalaReadForms {
 		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] = form.map(fun)
 		override def flatMap[X :NullValue](fun :T => Option[X]) :SQLReadForm[X] = form.flatMap(fun)
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] = form.optMap(fun)
-		override def asOpt :SQLReadForm[Option[T]] = form.asOpt
+		override def toOpt :SQLReadForm[Option[T]] = form.toOpt
 
 
 		override def nulls :NullValue[T] = form.nulls
@@ -678,7 +674,7 @@ object SQLReadForm extends ScalaReadForms {
 
 		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :SQLReadForm[X] = form.optMap(fun)
 
-		override def asOpt :SQLReadForm[Option[T]] = form.asOpt
+		override def toOpt :SQLReadForm[Option[T]] = form.toOpt
 
 		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = form orElse fallback
 

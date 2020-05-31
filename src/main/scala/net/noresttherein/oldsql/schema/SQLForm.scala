@@ -7,11 +7,31 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
-import net.noresttherein.oldsql.schema.SQLForm.{NullValue, Tuple2Form}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{ChainIndexReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, SeqReadForm}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainMapWriteForm, ChainWriteForm, EmptyWriteForm, EvalOrNullWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, NonLiteralWriteForm, RecordWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 import scala.collection.immutable.Seq
+import scala.reflect.ClassTag
+
+import net.noresttherein.oldsql.schema.ScalaForms.Tuple2Form
+import net.noresttherein.oldsql.slang
+
+
+
+
+
+
+/** Base trait combining companion traits to objects containing implicit form declarations.
+  * Extended by both read and write forms, it brings those implicits into the search scope for all form types.
+  */
+trait SQLForms extends JDBCTypes with ScalaForms with JavaForms with Serializable {
+
+	def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+	override def toString :String = this.innerClassName
+
+}
 
 
 
@@ -111,7 +131,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * by this form) are mapped to `Some(None)`, while a returned `None` indicates that this form returned `None`.
 	  * Basically this means that the returned form uses this form's `opt` method as its `apply` implementation.
 	  */
-	override def asOpt :SQLForm[Option[T]] = SQLForm.OptionForm(this)
+	override def toOpt :SQLForm[Option[T]] = ScalaForms.OptionForm(this)
 
 
 	def *[O](other :SQLForm[O]) :SQLForm[(T, O)] = Tuple2Form(this, other)
@@ -120,10 +140,6 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 	def compatible(other :SQLForm[_]) :Boolean = this == other
 
-	override def canEqual(that :Any) :Boolean = that.getClass == getClass
-
-	override def toString :String = this.innerClassName
-
 }
 
 
@@ -131,7 +147,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 
 
-object SQLForm extends JDBCTypes with ScalaForms {
+object SQLForm {
 
 	/** Summon an implicit instance of `SQLForm[T]`. */
 	def apply[T :SQLForm] :SQLForm[T] = implicitly[SQLForm[T]]
@@ -383,6 +399,29 @@ object SQLForm extends JDBCTypes with ScalaForms {
 	trait NonLiteralForm[T] extends SQLForm[T] with NonLiteralWriteForm[T]
 
 
+
+	/** A convenience base `SQLForm` class relying on implicit `NullValue[T]` as well as `ClassTag[T]`
+	  * for its `toString` implementation.
+	  */
+	abstract class ReifiedForm[T](implicit override val nulls :NullValue[T], clazz :ClassTag[T])
+		extends SQLForm[T]
+	{
+		override def nullValue :T = nulls.value
+
+		def runtimeClass :Class[_] = clazz.runtimeClass
+
+		override def equals(that :Any) :Boolean = that match {
+			case same :ReifiedForm[_] => (same eq this) || (same canEqual this) && same.runtimeClass == runtimeClass
+			case _ => false
+		}
+
+		override def hashCode :Int = clazz.runtimeClass.hashCode
+
+		override def toString :String = slang.innerClassName(clazz.runtimeClass)
+	}
+
+
+
 	/** A base class for forms which do not read or write any columns. Read methods always return `nullValue`,
 	  * implementation of which is left to the subclass.
 	  */
@@ -412,20 +451,6 @@ object SQLForm extends JDBCTypes with ScalaForms {
 
 
 
-
-
-
-	implicit case object UnitForm extends EmptyForm[Unit](()) {
-		override def toString = "UNIT"
-	}
-
-	case object NothingForm extends EmptyForm[Nothing](throw new UnsupportedOperationException("SQLForm.NothingForm")) {
-		override def toString = "NOTHING"
-	}
-
-	case object NoneForm extends EmptyForm[Option[Nothing]](None) {
-		override def toString = "NONE"
-	}
 
 
 

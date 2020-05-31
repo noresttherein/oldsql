@@ -23,30 +23,37 @@ package object slang {
 
 
 	private[oldsql] implicit class UnqualifiedClassName[T](private val value :T) extends AnyVal {
-		def unqualifiedClassName :String = {
-			val qualified = value.getClass.getName
-			val i = qualified.lastIndexOf('.')
-			qualified.substring(i + 1, if (qualified.last != '$') qualified.length else qualified.length-1)
-		}
+		@inline def unqualifiedClassName :String = slang.unqualifiedClassName(value.getClass)
 
-		def innerClassName :String = {
-			val qualified = value.getClass.getName
-			val len = qualified.length
-			val unqualified = qualified.lastIndexOf('.') + 1
-			val anon = qualified.indexOf("$anon", unqualified)
-			val end =
-				if (anon >= 0) anon
-				else {
-					var i = len - 1
-					while (i > unqualified && qualified(i) == '$')
-						i -= 1
-					i
-				}
-			val innermost = qualified.lastIndexOf('$', end - 1)
-			if (innermost < 0) qualified.substring(unqualified, end)
-			else qualified.substring(innermost + 1, end)
-		}
+		@inline def innerClassName :String = slang.innerClassName(value.getClass)
 	}
+
+	def unqualifiedClassName(clazz :Class[_]) :String = {
+		val qualified = clazz.getName
+		val i = qualified.lastIndexOf('.')
+		qualified.substring(i + 1, if (qualified.last != '$') qualified.length else qualified.length-1)
+
+	}
+
+	def innerClassName(clazz :Class[_]) :String = {
+		val qualified = clazz.getName
+		val len = qualified.length
+		val unqualified = qualified.lastIndexOf('.') + 1
+		val anon = qualified.indexOf("$anon", unqualified)
+		val end =
+			if (anon >= 0) anon
+			else {
+				var i = len - 1
+				while (i > unqualified && qualified(i) == '$')
+					i -= 1
+				i
+			}
+		val innermost = qualified.lastIndexOf('$', end - 1)
+		if (innermost < 0) qualified.substring(unqualified, end)
+		else qualified.substring(innermost + 1, end)
+	}
+
+
 
 
 

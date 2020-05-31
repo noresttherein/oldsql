@@ -16,7 +16,8 @@ import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstWriteForm, EvalOrNullW
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
   */
-trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
+trait ColumnWriteForm[-T] extends SQLWriteForm[T] with SuperColumnForm {
+
 	final override def writtenColumns = 1
 
 	override def setNull(position :Int)(statement :PreparedStatement) :Unit =
@@ -45,7 +46,7 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 	}
 
 
-	override def asOpt :ColumnWriteForm[Option[T]] = ColumnWriteForm.OptionColumnWriteForm(this)
+	override def toOpt :ColumnWriteForm[Option[T]] = ColumnWriteForm.OptionColumnWriteForm(this)
 
 
 
@@ -64,8 +65,6 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with BaseColumnForm {
 	}
 
 
-
-	override def toString :String = "<" + sqlType
 }
 
 
@@ -275,7 +274,7 @@ object ColumnWriteForm {
 		override def flatUnmap[X](fun :X => Option[T]) :ColumnWriteForm[X] =
 			if (isInitialized) form.flatUnmap(fun) else Lazy(form.flatUnmap(fun))
 
-		override def asOpt :ColumnWriteForm[Option[T]] = if (isInitialized) form.asOpt else Lazy(form.asOpt)
+		override def toOpt :ColumnWriteForm[Option[T]] = if (isInitialized) form.toOpt else Lazy(form.toOpt)
 
 		override def <>[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] =
 			if (isInitialized) read <> this

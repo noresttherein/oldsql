@@ -31,7 +31,7 @@ import scala.collection.immutable.Seq
   * @see [[net.noresttherein.oldsql.schema.SQLForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   */
-trait SQLWriteForm[-T] extends Serializable {
+trait SQLWriteForm[-T] extends SQLForms {
 
 	/** Set the values of parameters `&lt;position..position+writtenColumns)` of the given `PreparedStatement` to
 	  * the values obtained from the given value of `T`. This method simply delegates to `set` or `setNull`, depending
@@ -146,7 +146,7 @@ trait SQLWriteForm[-T] extends Serializable {
 	/** Lift this form to represent `Option[T]`, where `Some` values are delegated to this instance's `set` method,
 	  * while `None` results in calling this form's `setNull` instead.
 	  */
-	def asOpt :SQLWriteForm[Option[T]] = SQLWriteForm.OptionWriteForm(this)
+	def toOpt :SQLWriteForm[Option[T]] = SQLWriteForm.OptionWriteForm(this)
 
 	/** Combine this form with another form, to create a form for the `(T, O)` pair. The parameters for the second form
 	  * are expected to immediately follow this form's statement parameters.
@@ -172,10 +172,6 @@ trait SQLWriteForm[-T] extends Serializable {
 
 
 	def compatible(other :SQLWriteForm[_]) :Boolean = this == other
-
-	def canEqual(that :Any) :Boolean = that.getClass == getClass
-
-	override def toString :String = this.innerClassName
 
 }
 
@@ -650,7 +646,7 @@ object SQLWriteForm extends ScalaWriteForms {
 		override def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] =
 			form.flatUnmap(fun)
 
-		override def asOpt :SQLWriteForm[Option[T]] = form.asOpt
+		override def toOpt :SQLWriteForm[Option[T]] = form.toOpt
 
 		override def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = form * other
 
