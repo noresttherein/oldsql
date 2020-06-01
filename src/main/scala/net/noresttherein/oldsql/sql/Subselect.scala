@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.MappingFrom
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Join.TypedJoin
@@ -29,9 +29,9 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * @tparam T Right side of this join - the first table of the ''from'' clause of the represented subselect.
   * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]]
   */
-trait Subselect[+F <: FromClause, T[O] <: MappingFrom[O]] extends Join[F, T] { thisClause =>
+trait Subselect[+F <: FromClause, T[O] <: MappingAt[O]] extends Join[F, T] { thisClause =>
 
-	override type LikeJoin[+L <: FromClause, R[O] <: MappingFrom[O]] = L Subselect R
+	override type LikeJoin[+L <: FromClause, R[O] <: MappingAt[O]] = L Subselect R
 
 	override type This >: this.type <: F Subselect T
 
@@ -97,7 +97,7 @@ object Subselect {
 	final val template :Subselect.* = Subselect(Dual, RowSource.Dummy)
 
 
-	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R] = True)
 	         (implicit cast :InferSubject[left.type, Subselect, R, T, S]) :L Subselect R =
 		cast(Subselect[left.type, T, S](left, LastRelation[T, S](cast(right)))(cast(filter)))
@@ -120,7 +120,7 @@ object Subselect {
 			override val condition = filter
 			override val size = left.size + 1
 
-			override type WithRight[T[A] <: MappingFrom[A]] = left.type Subselect T
+			override type WithRight[T[A] <: MappingAt[A]] = left.type Subselect T
 			override type This = left.type Subselect R
 
 			override def narrow :left.type Subselect R = this
@@ -147,7 +147,7 @@ object Subselect {
 
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, JoinedRelation[FromClause With R, R])] =
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](join :L With R) :Option[(L, JoinedRelation[FromClause With R, R])] =
 		join match {
 			case _ :Subselect.* => Some(join.left -> join.last)
 			case _ => None
@@ -161,7 +161,7 @@ object Subselect {
 
 
 
-	type * = Subselect[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
+	type * = Subselect[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
 
 
 }

@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnM
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly, ValuedBuffType}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -1425,7 +1425,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 
 	private class ReadForm(columns :Unique[ColumnMapping[_, O]],
-	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingFrom[O]).selectForm)
+	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S]
 	{
 		override val readColumns: Int = (0 /: columns)(_ + read(_).readColumns)

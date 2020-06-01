@@ -5,7 +5,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.TypedMapping.AnyFrom
 import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy}
@@ -28,7 +28,7 @@ import net.noresttherein.oldsql.sql.With.TypedWith
   * This represents all joins of real relations, encompassing all proper joins and subselect 'joins', but
   * not the synthetic `JoinParam`/`WithParam` class which restricts itself to the `FromParam` mapping class.
   */
-trait Join[+L <: FromClause, R[O] <: MappingFrom[O]] extends With[L, R] { join =>
+trait Join[+L <: FromClause, R[O] <: MappingAt[O]] extends With[L, R] { join =>
 
 	def likeJoin[F <: FromClause, T[O] <: TypedMapping[X, O], X]
 	            (left :F, right :RowSource[T])(filter: SQLBoolean[left.Generalized With T]) :F LikeJoin T
@@ -37,19 +37,19 @@ trait Join[+L <: FromClause, R[O] <: MappingFrom[O]] extends With[L, R] { join =
 	             (right :LastRelation[T, X])(filter :SQLBoolean[left.Generalized With T]) :WithRight[T]
 
 
-	type LikeJoin[+F <: FromClause, T[O] <: MappingFrom[O]] <: (F Join T) {
-		type LikeJoin[+S <: FromClause, M[O] <: MappingFrom[O]] = join.LikeJoin[S, M]
+	type LikeJoin[+F <: FromClause, T[O] <: MappingAt[O]] <: (F Join T) {
+		type LikeJoin[+S <: FromClause, M[O] <: MappingAt[O]] = join.LikeJoin[S, M]
 	}
 
 	type WithLeft[+F <: FromClause] = F LikeJoin R
 
-	type WithRight[T[O] <: MappingFrom[O]] <: L LikeJoin T
+	type WithRight[T[O] <: MappingAt[O]] <: L LikeJoin T
 
 	override type Self = left.Self LikeJoin R
 
 	override type This >: this.type <: L Join R
 
-	override type JoinedWith[+P <: FromClause, +J[+K <: FromClause, T[O] <: MappingFrom[O]] <: K Join T] =
+	override type JoinedWith[+P <: FromClause, +J[+K <: FromClause, T[O] <: MappingAt[O]] <: K Join T] =
 		left.ExtendJoinedWith[P, J, LikeJoin, R]
 
 	/** Specify an alias for the last last in the join. This is not necessary and may be overriden in case of conflicts,
@@ -71,22 +71,22 @@ object Join {
 	/** Create a cross join between the left side, given as a (possibly empty) clause/list of tables,
 	  * and the the mapping on the right side representing a table, some other relation or some temporary table surrogate.
 	  */
-	def apply[L[O] <: MappingFrom[O], LA[O] <: TypedMapping[A, O], A,
-		      R[O] <: MappingFrom[O], RB[O] <: TypedMapping[B, O], B]
+	def apply[L[O] <: MappingAt[O], LA[O] <: TypedMapping[A, O], A,
+		      R[O] <: MappingAt[O], RB[O] <: TypedMapping[B, O], B]
 	         (left :RowSource[L], right :RowSource[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	          castR :InferSubject[From[L], InnerJoin, R, RB, B])
 			:From[L] InnerJoin R =
 		InnerJoin(left, right)
 
-	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R] = True)
 	         (implicit cast :InferSubject[left.type, InnerJoin, R, T, S]) :L InnerJoin R =
 		InnerJoin(left, right, filter)
 
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L Join R) :Option[(L, RowSource[R])] =
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](join :L Join R) :Option[(L, RowSource[R])] =
 		Some(join.left -> join.right)
 
 	def unapply(from :FromClause) :Option[(FromClause, RowSource.*)]  =
@@ -104,8 +104,8 @@ object Join {
 		              "${R}[O] <: ${T}[O] with ${U}. This may be caused by the inferred type ${T} or its subject type S " +
 	                  "occurring before the implicit parameter JoinedRelationSubject[${J}, ${R}, ${T}, ${U}] " +
 	                  "(alias InferSubject[${J}, ${R}, ${T}, S?]) or in the method's result type.")
-	sealed abstract class JoinedRelationSubject[J[M[O] <: MappingFrom[O]] <: _ Join M,
-	                                            R[O] <: MappingFrom[O], T[O] <: U[O], +U[O] <: TypedMapping[_, O]]
+	sealed abstract class JoinedRelationSubject[J[M[O] <: MappingAt[O]] <: _ Join M,
+	                                            R[O] <: MappingAt[O], T[O] <: U[O], +U[O] <: TypedMapping[_, O]]
 		extends (J[T] => J[R])
 	{
 		def apply(rows :RowSource[R]) :RowSource[T]
@@ -122,8 +122,8 @@ object Join {
 
 
 	class DerivedJoinedRelationSubjects {
-		@inline implicit def derived[J[M[O] <: MappingFrom[O]] <: _ Join M,
-		                            R[O] <: MappingFrom[O], T[O] <: U[O], U[O] <: TypedMapping[_, O]]
+		@inline implicit def derived[J[M[O] <: MappingAt[O]] <: _ Join M,
+		                            R[O] <: MappingAt[O], T[O] <: U[O], U[O] <: TypedMapping[_, O]]
 		                           (implicit subject :JoinedRelationSubject[J, R, T, U])
 				:JoinedRelationSubject[J, T, T, U] =
 			subject.self
@@ -147,16 +147,16 @@ object Join {
 				override def self = this
 			}
 
-		implicit def identity[J[M[O] <: MappingFrom[O]] <: _ Join M, R[O] <: TypedMapping[_, O]]
+		implicit def identity[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: TypedMapping[_, O]]
 				:JoinedRelationSubject[J, R, R, R] =
 			instance.asInstanceOf[JoinedRelationSubject[J, R, R, R]]
 
-		type InferSubject[L <: FromClause, J[+F <: FromClause, M[O] <: MappingFrom[O]] <: F Join M,
-		                  R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S] =
+		type InferSubject[L <: FromClause, J[+F <: FromClause, M[O] <: MappingAt[O]] <: F Join M,
+		                  R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S] =
 			JoinedRelationSubject[JoinWith[L, J]#F, R, T, MappingOf[S]#TypedProjection]
 
-		type JoinWith[L <: FromClause, J[F <: FromClause, R[O] <: MappingFrom[O]] <: F Join R] = {
-			type F[R[O] <: MappingFrom[O]] = L J R
+		type JoinWith[L <: FromClause, J[F <: FromClause, R[O] <: MappingAt[O]] <: F Join R] = {
+			type F[R[O] <: MappingAt[O]] = L J R
 		}
 	}
 
@@ -168,7 +168,7 @@ object Join {
 	/** An existential upper bound of all `Join` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
 	  */
-	type * = Join[_ <: FromClause, T] forSome { type T[O] <: MappingFrom[O] }
+	type * = Join[_ <: FromClause, T] forSome { type T[O] <: MappingAt[O] }
 
 
 
@@ -212,14 +212,14 @@ object Join {
 /** Base trait for join implementations representing real SQL joins between relations, rather than a synthetic
   * `Subselect` representing a subselect of another select expression.
   */
-sealed trait ProperJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends Join[L, R] { thisClause =>
+sealed trait ProperJoin[+L <: FromClause, R[O] <: MappingAt[O]] extends Join[L, R] { thisClause =>
 
 	override def subselectSize :Int = left.subselectSize + 1
 
 
 
-	override type LikeJoin[+F <: FromClause, T[O] <: MappingFrom[O]] <: (F ProperJoin T) {
-		type LikeJoin[+S <: FromClause, M[O] <: MappingFrom[O]] = thisClause.LikeJoin[S, M]
+	override type LikeJoin[+F <: FromClause, T[O] <: MappingAt[O]] <: (F ProperJoin T) {
+		type LikeJoin[+S <: FromClause, M[O] <: MappingAt[O]] = thisClause.LikeJoin[S, M]
 	}
 
 	override type This >: this.type <: L ProperJoin R
@@ -263,22 +263,22 @@ object ProperJoin {
 	/** Create a cross join between the left side, given as a (possibly empty) clause/list of relations,
 	  * and the the mapping on the right side representing a table, some other relation or a surrogate mapping.
 	  */
-	def apply[L[O] <: MappingFrom[O], LA[O] <: TypedMapping[A, O], A,
-		      R[O] <: MappingFrom[O], RB[O] <: TypedMapping[B, O], B]
+	def apply[L[O] <: MappingAt[O], LA[O] <: TypedMapping[A, O], A,
+		      R[O] <: MappingAt[O], RB[O] <: TypedMapping[B, O], B]
 	         (left :RowSource[L], right :RowSource[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	          castR :InferSubject[From[L], InnerJoin, R, RB, B])
 			:From[L] InnerJoin R =
 		InnerJoin(left, right)
 
-	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R] = True)
 	         (implicit cast :InferSubject[left.type, InnerJoin, R, T, S]) :L InnerJoin R =
 		InnerJoin(left, right, filter)
 
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L ProperJoin R) :Option[(L, RowSource[R])] =
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](join :L ProperJoin R) :Option[(L, RowSource[R])] =
 		Some(join.left -> join.right)
 
 	def unapply(from :FromClause) :Option[(FromClause, RowSource.*)]  =
@@ -292,7 +292,7 @@ object ProperJoin {
 	/** An existential upper bound of all `ProperJoin` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
 	  */
-	type * = ProperJoin[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
+	type * = ProperJoin[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
 
 	trait TypedProperJoin[+L <: FromClause, R[O] <: TypedMapping[S, O], S]
 		extends TypedJoin[L, R, S] with ProperJoin[L, R]
@@ -321,9 +321,9 @@ object ProperJoin {
   * on the right, narrowed down by the conjunction of this join's condition with the combined filter expression
   * of the left side.
   */
-sealed trait InnerJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends ProperJoin[L, R] {
+sealed trait InnerJoin[+L <: FromClause, R[O] <: MappingAt[O]] extends ProperJoin[L, R] {
 
-	override type LikeJoin[+F <: FromClause, T[O] <: MappingFrom[O]] = F InnerJoin T
+	override type LikeJoin[+F <: FromClause, T[O] <: MappingAt[O]] = F InnerJoin T
 	override type This >: this.type <: L InnerJoin R
 
 
@@ -351,15 +351,15 @@ object InnerJoin {
 	/** Create a cross join between the left side, given as a (possibly empty) clause/list of relations,
 	  * and the the mapping on the right side representing a table, some other relation or a surrogate mapping.
 	  */
-	def apply[L[O] <: MappingFrom[O], LA[O] <: TypedMapping[A, O], A,
-		      R[O] <: MappingFrom[O], RB[O] <: TypedMapping[B, O], B]
+	def apply[L[O] <: MappingAt[O], LA[O] <: TypedMapping[A, O], A,
+		      R[O] <: MappingAt[O], RB[O] <: TypedMapping[B, O], B]
 	         (left :RowSource[L], right :RowSource[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	          castR :InferSubject[From[L], InnerJoin, R, RB, B])
 			:From[L] InnerJoin R =
 		castR(apply(From(left), LastRelation[RB, B](castR(right)))(True))
 
-	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R] = True)
 	         (implicit cast :InferSubject[left.type, InnerJoin, R, T, S]) :L InnerJoin R =
 		cast(apply[left.type, T, S](left, LastRelation(cast(right)))(cast(filter)))
@@ -383,7 +383,7 @@ object InnerJoin {
 			override val size = left.size + 1
 
 			override type This = left.type InnerJoin R
-			override type WithRight[T[O] <: MappingFrom[O]] = left.type InnerJoin T
+			override type WithRight[T[O] <: MappingAt[O]] = left.type InnerJoin T
 
 			protected override def narrow :left.type InnerJoin R = this
 
@@ -400,7 +400,7 @@ object InnerJoin {
 
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
 		case _ :CrossJoin[_, _, _] => Some(join.left -> join.right)
 		case _ => None
 	}
@@ -416,7 +416,7 @@ object InnerJoin {
 	/** An existential upper bound of all `InnerJoin` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
 	  */
-	type * = InnerJoin[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
+	type * = InnerJoin[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
 
 	private type AnyCrossJoin = CrossJoin[_ <: FromClause, M, _] forSome { type M[O] <: TypedMapping[_, O] }
 
@@ -437,9 +437,9 @@ object InnerJoin {
   * on the right, narrowed down by the conjunction of this join's condition with the combined filter expression
   * of the left side.
   */
-sealed trait OuterJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends ProperJoin[L, R] {
+sealed trait OuterJoin[+L <: FromClause, R[O] <: MappingAt[O]] extends ProperJoin[L, R] {
 
-	override type LikeJoin[+F <: FromClause, T[O] <: MappingFrom[O]] = F OuterJoin T
+	override type LikeJoin[+F <: FromClause, T[O] <: MappingAt[O]] = F OuterJoin T
 	override type This >: this.type <: L OuterJoin R
 
 	override def likeJoin[F <: FromClause, T[O] <: TypedMapping[X, O], X]
@@ -466,15 +466,15 @@ object OuterJoin {
 	/** Create an outer join between the left side, given as a (possibly empty) source/list of  tables,
 	  * and the the mapping on the right side representing a table or some last proxy.
 	  */
-	def apply[L[O] <: MappingFrom[O], LA[O] <: TypedMapping[A, O], A,
-		      R[O] <: MappingFrom[O], RB[O] <: TypedMapping[B, O], B]
+	def apply[L[O] <: MappingAt[O], LA[O] <: TypedMapping[A, O], A,
+		      R[O] <: MappingAt[O], RB[O] <: TypedMapping[B, O], B]
 	         (left :RowSource[L], right :RowSource[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	          castR :InferSubject[From[L], OuterJoin, R, RB, B])
 			:From[L] OuterJoin R =
 		castR(apply(From(left), LastRelation[RB, B](castR(right)))(True))
 
-	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R] = True)
 	         (implicit cast :InferSubject[left.type, OuterJoin, R, T, S]) :L OuterJoin R =
 		cast(apply[left.type, T, S](left, LastRelation(cast(right)))(cast(filter)))
@@ -491,7 +491,7 @@ object OuterJoin {
 			override val size = left.size + 1
 
 			override type This = left.type OuterJoin R
-			override type WithRight[T[O] <: MappingFrom[O]] = left.type OuterJoin T
+			override type WithRight[T[O] <: MappingAt[O]] = left.type OuterJoin T
 
 			protected override def narrow :left.type OuterJoin R = this
 
@@ -508,7 +508,7 @@ object OuterJoin {
 
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
 		case _ :OuterJoin.* => Some(join.left -> join.right)
 		case _ => None
 	}
@@ -524,7 +524,7 @@ object OuterJoin {
 	/** An existential upper bound of all `OuterJoin` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
 	  */
-	type * = OuterJoin[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
+	type * = OuterJoin[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
 
 }
 
@@ -533,9 +533,9 @@ object OuterJoin {
 
 
 
-sealed trait LeftJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends ProperJoin[L, R] {
+sealed trait LeftJoin[+L <: FromClause, R[O] <: MappingAt[O]] extends ProperJoin[L, R] {
 
-	override type LikeJoin[+F <: FromClause, T[O] <: MappingFrom[O]] = F LeftJoin T
+	override type LikeJoin[+F <: FromClause, T[O] <: MappingAt[O]] = F LeftJoin T
 	override type This >: this.type <: L LeftJoin R
 
 	override def likeJoin[F <: FromClause, T[O] <: TypedMapping[X, O], X]
@@ -563,15 +563,15 @@ object LeftJoin {
 	/** Create a cross join between the left side, given as a (possibly empty) source/list of  tables,
 	  * and the the mapping on the right side representing a last or some last proxy.
 	  */
-	def apply[L[O] <: MappingFrom[O], LA[O] <: TypedMapping[A, O], A,
-		      R[O] <: MappingFrom[O], RB[O] <: TypedMapping[B, O], B]
+	def apply[L[O] <: MappingAt[O], LA[O] <: TypedMapping[A, O], A,
+		      R[O] <: MappingAt[O], RB[O] <: TypedMapping[B, O], B]
 	         (left :RowSource[L], right :RowSource[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	          castR :InferSubject[From[L], LeftJoin, R, RB, B])
 			:From[L] LeftJoin R =
 		castR(apply(From(left), LastRelation[RB, B](castR(right)))(True))
 
-	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R] = True)
 	         (implicit cast :InferSubject[left.type, LeftJoin, R, T, S]) :L LeftJoin R =
 		cast(apply[left.type, T, S](left, LastRelation(cast(right)))(cast(filter)))
@@ -587,7 +587,7 @@ object LeftJoin {
 			override val condition = filter
 			override val size = left.size + 1
 
-			override type WithRight[T[A] <: MappingFrom[A]] = left.type LeftJoin T
+			override type WithRight[T[A] <: MappingAt[A]] = left.type LeftJoin T
 			override type This = left.type LeftJoin R
 
 			override protected def narrow :left.type LeftJoin R = this
@@ -603,7 +603,7 @@ object LeftJoin {
 
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
 		case _ :LeftJoin[_, _] => Some(join.left -> join.right)
 		case _ => None
 	}
@@ -616,7 +616,7 @@ object LeftJoin {
 
 
 
-	type * = LeftJoin[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
+	type * = LeftJoin[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
 
 }
 
@@ -625,9 +625,9 @@ object LeftJoin {
 
 
 
-sealed trait RightJoin[+L <: FromClause, R[O] <: MappingFrom[O]] extends ProperJoin[L, R] {
+sealed trait RightJoin[+L <: FromClause, R[O] <: MappingAt[O]] extends ProperJoin[L, R] {
 
-	override type LikeJoin[+F <: FromClause, T[O] <: MappingFrom[O]] = F RightJoin T
+	override type LikeJoin[+F <: FromClause, T[O] <: MappingAt[O]] = F RightJoin T
 	override type This >: this.type <: L RightJoin R
 
 
@@ -657,15 +657,15 @@ object RightJoin {
 	/** Create a cross join between the left side, given as a (possibly empty) source/list of  tables,
 	  * and the the mapping on the right side representing a last or some last proxy.
 	  */
-	def apply[L[O] <: MappingFrom[O], LA[O] <: TypedMapping[A, O], A,
-		      R[O] <: MappingFrom[O], RB[O] <: TypedMapping[B, O], B]
+	def apply[L[O] <: MappingAt[O], LA[O] <: TypedMapping[A, O], A,
+		      R[O] <: MappingAt[O], RB[O] <: TypedMapping[B, O], B]
 	         (left :RowSource[L], right :RowSource[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	          castR :InferSubject[From[L], RightJoin, R, RB, B])
 			:From[L] RightJoin R =
 		castR(RightJoin(From(left), LastRelation[RB, B](castR(right)))(True))
 
-	def apply[L <: FromClause, R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R] = True)
 	         (implicit cast :InferSubject[left.type, RightJoin, R, T, S]) :L RightJoin R =
 		cast(RightJoin[left.type, T, S](left, LastRelation(cast(right)))(cast(filter)))
@@ -681,7 +681,7 @@ object RightJoin {
 			override val condition = filter
 			override val size = left.size + 1
 
-			override type WithRight[T[O] <: MappingFrom[O]] = left.type RightJoin T
+			override type WithRight[T[O] <: MappingAt[O]] = left.type RightJoin T
 			override type This = left.type RightJoin R
 
 			override protected def narrow = this
@@ -697,7 +697,7 @@ object RightJoin {
 
 
 
-	def unapply[L <: FromClause, R[O] <: MappingFrom[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](join :L With R) :Option[(L, RowSource[R])] = join match {
 		case _ :RightJoin[_, _] => Some(join.left -> join.right)
 		case _ => None
 	}
@@ -710,7 +710,7 @@ object RightJoin {
 
 
 
-	type * = RightJoin[_ <: FromClause, M] forSome { type M[O] <: MappingFrom[O] }
+	type * = RightJoin[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
 
 }
 
@@ -723,10 +723,10 @@ object RightJoin {
   * This is just a bit of sugar for Join[Dual, T], so that we can write the type From[T] instead, especially
   * in larger clauses like `From[Children] Join Daemons`.
   */ //todo: maybe this should simply be a type alias?
-sealed trait From[T[O] <: MappingFrom[O]] extends InnerJoin[Dual, T] {
+sealed trait From[T[O] <: MappingAt[O]] extends InnerJoin[Dual, T] {
 	override val left :Dual = Dual
 
-	override type WithRight[R[O] <: MappingFrom[O]] <: From[R]
+	override type WithRight[R[O] <: MappingAt[O]] <: From[R]
 	override type This >: this.type <: From[T]
 	override type Generalized = FromClause With T
 
@@ -761,7 +761,7 @@ object From {
 	/** A template `From` instance using a dummy mapping for use as a polymorphic factory of `From`/`InnerJoin` clauses. */
 	final val template :From.* = From(RowSource.Dummy)
 
-	def apply[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+	def apply[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 	         (source :RowSource[R])(implicit cast :JoinedRelationSubject[From, R, T, MappingOf[S]#TypedProjection])
 			:From[R] =
 		cast(newJoin(LastRelation[T, S](cast(source)))(True))
@@ -786,7 +786,7 @@ object From {
 			override def size = 1
 
 			override def narrow :left.type InnerJoin M = this
-			override type WithRight[R[O] <: MappingFrom[O]] = From[R] with (Dual.type InnerJoin R)
+			override type WithRight[R[O] <: MappingAt[O]] = From[R] with (Dual.type InnerJoin R)
 			override type This = From[M] with (left.type InnerJoin M)
 
 
@@ -802,7 +802,7 @@ object From {
 
 
 
-	def unapply[M[O] <: MappingFrom[O]](from :FromClause With M) :Option[RowSource[M]] = from match {
+	def unapply[M[O] <: MappingAt[O]](from :FromClause With M) :Option[RowSource[M]] = from match {
 		case _ :From.* => Some(from.right)
 		case _ => None
 	}
@@ -812,7 +812,7 @@ object From {
 		case _ => None
 	}
 
-	type * = From[M] forSome { type M[O] <: MappingFrom[O] }
+	type * = From[M] forSome { type M[O] <: MappingAt[O] }
 
 }
 

@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.TypedMapping
-import net.noresttherein.oldsql.schema.Mapping.MappingFrom
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation
 import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation.LastRelation
@@ -40,12 +40,12 @@ sealed class Dual private () extends FromClause {
 
 
 
-	override type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R] = P
+	override type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingAt[O]] <: L Join R] = P
 
 	override def joinedWith[F <: FromClause](prefix :F, firstJoin :Join.*) :F = prefix
 
-	override type ExtendJoinedWith[+F <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R,
-	                               +N[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R, T[O] <: MappingFrom[O]]
+	override type ExtendJoinedWith[+F <: FromClause, +J[+L <: FromClause, R[O] <: MappingAt[O]] <: L Join R,
+	                               +N[+L <: FromClause, R[O] <: MappingAt[O]] <: L Join R, T[O] <: MappingAt[O]]
 		= J[F, T]
 
 	override def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
@@ -80,8 +80,8 @@ sealed class Dual private () extends FromClause {
 		throw new UnsupportedOperationException("Can't represent Dual as a subselect of " + outer)
 
 
-	override type ExtendAsSubselectOf[F <: FromClause, J[+L <: FromClause, R[A] <: MappingFrom[A]] <: L Join R,
-	                                  T[A] <: MappingFrom[A]] =
+	override type ExtendAsSubselectOf[F <: FromClause, J[+L <: FromClause, R[A] <: MappingAt[A]] <: L Join R,
+	                                  T[A] <: MappingAt[A]] =
 		F Subselect T
 
 	override def extendAsSubselectOf[F <: FromClause, T[A] <: TypedMapping[S, A], S]
@@ -130,7 +130,7 @@ sealed class Dual private () extends FromClause {
 		filter
 
 
-	override type JoinFilter[T[O] <: MappingFrom[O]] = Nothing
+	override type JoinFilter[T[O] <: MappingAt[O]] = Nothing
 
 
 

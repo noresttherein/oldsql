@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.support.FormMapping
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, MappingExtract, RowSource, SQLForm, SQLWriteForm, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, OriginProjection}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
 import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.JoinParam.ParamFrom
+import net.noresttherein.oldsql.sql.JoinParam.ParamAt
 import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.With.TypedWith
 
@@ -47,7 +47,7 @@ import net.noresttherein.oldsql.sql.With.TypedWith
   * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam.WithParam]]
   */ //consider: should F be bound by CompleteFrom, or would it be too limiting?
-sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M] { thisClause =>
+sealed trait JoinParam[+F <: FromClause, M[O] <: ParamAt[O]] extends With[F, M] { thisClause =>
 
 	type Param = M[FromLast]#Subject
 
@@ -62,7 +62,7 @@ sealed trait JoinParam[+F <: FromClause, M[O] <: ParamFrom[O]] extends With[F, M
 	override type Self = left.Self JoinParam M
 
 
-	override type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R] =
+	override type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingAt[O]] <: L Join R] =
 		left.JoinedWith[P, J] JoinParam M
 
 	override def joinedWith[P <: FromClause](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
@@ -157,7 +157,7 @@ object JoinParam {
 //		def apply[T[O] <: TypedMapping[S, O], S](from :RowSource[T])(implicit form :SQLForm[X]) :From[T] WithParam X =
 //			JoinParam[From[T], ParamSource[X]#Row, X](From(from), LastRelation(ParamSource[X]()))(True)
 //
-//		def apply[T[O] <: MappingFrom[O]](from :RowSource[T], name :String)(implicit form :SQLForm[X]) :From[T] WithParam X =
+//		def apply[T[O] <: MappingAt[O]](from :RowSource[T], name :String)(implicit form :SQLForm[X]) :From[T] WithParam X =
 //			JoinParam[From[T], ParamSource[X]#Row, X](From(from), LastRelation(ParamSource[X](name)))(True)
 	}
 
@@ -273,9 +273,13 @@ object JoinParam {
 
 
 
-	type ParamFrom[O] = AnyParam with MappingFrom[O]
-
+	/** Non-parameterized root base type of 'synthetic relation' `Mapping` classes wrapping SQL statement parameters.
+	  * @see [[net.noresttherein.oldsql.sql.JoinParam.ParamAt]]
+	  * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
+	  */
 	sealed trait AnyParam
+
+	type ParamAt[O] = AnyParam with MappingAt[O]
 
 
 

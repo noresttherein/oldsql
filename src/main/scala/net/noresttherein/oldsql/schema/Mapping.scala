@@ -8,7 +8,7 @@ import scala.collection.immutable.ArraySeq
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingReadForm, MappingWriteForm, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, MappingWriteForm, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
@@ -78,9 +78,9 @@ import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
   * are impossible to reliably implement without asserting that the handles `Mapping` actually defines those types
   * (that is, those types are equal for all instances of the mapping type). This is done through the type aliases
   * defined here [[net.noresttherein.oldsql.schema.Mapping#Component[T] Component]],
-  * [[net.noresttherein.oldsql.schema.Mapping.MappingFrom MappingFrom]] and their global, static counterparts
+  * [[net.noresttherein.oldsql.schema.Mapping.MappingAt MappingAt]] and their global, static counterparts
   * from the companion object: [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]],
-  * [[net.noresttherein.oldsql.schema.Mapping.MappingFrom MappingFrom]],
+  * [[net.noresttherein.oldsql.schema.Mapping.MappingAt MappingAt]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingOf MappingOf]]. For uniformity and interoperability, these
   * are all defined as structural narrowing of the trait `Mapping` itself rather than separate classes, but all
   * concrete implementations should extend at least [[net.noresttherein.oldsql.schema.TypedMapping]] instead
@@ -121,8 +121,8 @@ sealed trait Mapping {
 	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] companion implicit is introduced.
 	  * The library will not cast a `Mapping` directly, but rely on existence of that implicit
 	  * (or a `Mapping` factory [[net.noresttherein.oldsql.schema.RowSource RowSource]]. Default implicit value for
-	  * the former will cast any `MappingFrom[X]` to `MappingFrom[Y]`, which will be in most cases unsuitable.
-	  * If you wish to declare that your `MappingFrom[X]` subtype can be safely projected from one origin to another,
+	  * the former will cast any `MappingAt[X]` to `MappingAt[Y]`, which will be in most cases unsuitable.
+	  * If you wish to declare that your `MappingAt[X]` subtype can be safely projected from one origin to another,
 	  * introduce an implicit `OriginProjection` in implicit scope (such as in the mapping's companion object).
 	  * It will be delegated to for such projections, even when it is a no-op cast (as it should be). The simplest
 	  * method however is to extend either [[net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin OfFreeOrigin]]
@@ -143,7 +143,7 @@ sealed trait Mapping {
 	  * `Origin` type and the same `Subject` type as this mapping. Used primarily in the expression
 	  * `MappingOf[S]#TypedProjection` as a sort of a curried type constructor for the `TypedMapping` trait.
 	  * @see [[net.noresttherein.oldsql.schema.TypedMapping]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#GenericComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping#TypedComponent]]
 	  */
 	type TypedProjection[O] = TypedMapping[Subject, O]
 
@@ -202,9 +202,9 @@ sealed trait Mapping {
 	  * analogue of `AnyColumn`, as the `ColumnMapping` trait, extending `TypedMapping` defines both
 	  * the `Origin` and the `Subject` types.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping#Component]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingFrom]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingAt]]
 	  */
-	type AnyComponent = MappingFrom[Origin]
+	type AnyComponent = MappingAt[Origin]
 
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin type as this mapping
 	  * and unknown (but determined) `Subject` type.
@@ -217,13 +217,13 @@ sealed trait Mapping {
 	/** Any [[net.noresttherein.oldsql.schema.TypedMapping TypedMapping]] with the same `Origin` type as this
 	  * mapping and the provided `Subject` type. It is typically used not in the context of components of this
 	  * mapping, which is the domain of the more generic `Component` member type, but as part of a pseudo curried
-	  * type constructor `MappingFrom[O]#GenericComponent`, to simply denote any `TypedMapping` instance with
+	  * type constructor `MappingAt[O]#TypedComponent`, to simply denote any `TypedMapping` instance with
 	  * the provided `Subject` and `Origin` types.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping#Component]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping#TypedProjection]]
 	  * @see [[net.noresttherein.oldsql.schema.TypedMapping]]
 	  */
-	type GenericComponent[T] = TypedMapping[T, Origin]
+	type TypedComponent[T] = TypedMapping[T, Origin]
 
 	/** A type alias for a dictionary mapping all components (and subcomponents) of this mapping, both their export,
 	  * original, and any in between forms, to their extracts. The dictionary is type safe in regard to the components'
@@ -664,7 +664,7 @@ object Mapping {
 	  * to type `B`.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection]]
 	  */
-	implicit class MappingAliasing[M[O] <: MappingFrom[O], A](private val self :M[_]) extends AnyVal {
+	implicit class MappingAliasing[M[O] <: MappingAt[O], A](private val self :M[_]) extends AnyVal {
 		/** Substitutes the `Origin` type of this mapping to type `B`. Follow this method call with `()`
 		  * to apply the result and infer the result type. The returned mapping type is provided by an implicit
 		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]], see its documentation for
@@ -713,18 +713,18 @@ object Mapping {
 		def apply(mapping :X) :Y
 	}
 
-//	def OriginProjection[M <: MappingFrom[O], O, AM <: MappingFrom[A], A](alias :M => AM) :OriginProjection[M, O, AM, A] =
+//	def OriginProjection[M <: MappingAt[O], O, AM <: MappingAt[A], A](alias :M => AM) :OriginProjection[M, O, AM, A] =
 //		alias(_)
 
-	@inline def OriginProjection[M[O] <: MappingFrom[O], A, B]() :OriginProjection[M[A], A, M[B], B] = AnyOrigin()
+	@inline def OriginProjection[M[O] <: MappingAt[O], A, B]() :OriginProjection[M[A], A, M[B], B] = AnyOrigin()
 
 
-	private[oldsql] def AnyOrigin[M <: MappingFrom[O], O, AM <: MappingFrom[A], A]() =
+	private[oldsql] def AnyOrigin[M <: MappingAt[O], O, AM <: MappingAt[A], A]() =
 		CastingProjection.asInstanceOf[OriginProjection[M, O, AM, A]]
 
 	private[this] final val CastingProjection :OriginProjection[Mapping, Any, Mapping, Any] = mapping => mapping
 
-	@inline implicit def BaseMappingProjection[O, A] :OriginProjection[MappingFrom[O], O, MappingFrom[A], A] =
+	@inline implicit def BaseMappingProjection[O, A] :OriginProjection[MappingAt[O], O, MappingAt[A], A] =
 		AnyOrigin()
 
 	@inline implicit def RefinedMappingProjection[S, O, A]
@@ -771,16 +771,16 @@ object Mapping {
 	  * While mapping types are expected to have the `Origin` as a free type parameter, conversion from one
 	  * origin type to another may require more
 	  */
-	type MappingFrom[O] = Mapping { type Origin = O }
+	type MappingAt[O] = Mapping { type Origin = O }
 
 	/** Narrowing of the `Mapping` trait to subtypes which define the `Subject` type as `S` and `Origin` as `O`. */
 	type RefinedMapping[S, O] = Mapping { type Subject = S; type Origin = O }
 
 	type RefinedOf[O] = RefinedMapping[_, O]
 
-	type RefinedFrom[S] = RefinedMapping[S, _]
+	type RefinedAt[S] = RefinedMapping[S, _]
 
-	type AnyFrom[O] = M[O] forSome { type M[A] <: MappingFrom[A] }
+	type AnyAt[O] = M[O] forSome { type M[A] <: MappingAt[A] }
 
 	type AnyOf[S] = M[S] forSome { type M[X] <: MappingOf[X] }
 
@@ -789,7 +789,7 @@ object Mapping {
 //
 //	type WithOrigin[O] = { type M[S] = RefinedMapping[S, O] }
 
-//	type * = T[O] forSome { type T[A] <: MappingFrom[A]; type O }
+//	type * = T[O] forSome { type T[A] <: MappingAt[A]; type O }
 //	type SingletonMapping = Mapping with Singleton
 //	type SingletonOf[S] = Mapping with Singleton { type Subject = S }
 //	type SingletonFrom[O] = Mapping with Singleton { type Origin = O }
@@ -840,7 +840,7 @@ object Mapping {
 		def filter[O](columns :Unique[ColumnMapping[_, O]]) :Unique[ColumnMapping[_, O]] =
 			columns.filter(test[O])
 
-		def test[O](column :MappingFrom[O]) :Boolean
+		def test[O](column :MappingAt[O]) :Boolean
 
 		def read[S](mapping :MappingOf[S]) :SQLReadForm[S] =
 			MappingReadForm[S, mapping.Origin](mapping, apply(mapping :mapping.type))
@@ -855,7 +855,7 @@ object Mapping {
 
 		def apply(pred :Mapping => Boolean) :ColumnFilter =
 			new ColumnFilter {
-				override def test[O](column :MappingFrom[O]) :Boolean = pred(column)
+				override def test[O](column :MappingAt[O]) :Boolean = pred(column)
 			}
 
 
@@ -864,14 +864,14 @@ object Mapping {
 			def components[S](mapping :MappingOf[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
 
-			def test[O](column :MappingFrom[O]): Boolean = buff.enabled(column)
+			def test[O](column :MappingAt[O]): Boolean = buff.enabled(column)
 		}
 
 		class WithoutBuff(buff :BuffType) extends ColumnFilter {
 			def components[S](mapping :MappingOf[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
 
-			def test[O](column :MappingFrom[O]): Boolean = buff.disabled(column)
+			def test[O](column :MappingAt[O]): Boolean = buff.disabled(column)
 		}
 
 		class WriteFilter(modifier :BuffType) extends WithoutBuff(modifier) {
@@ -902,7 +902,7 @@ object Mapping {
 		case object AllColumns extends ColumnFilter {
 			override def apply[S](mapping :MappingOf[S]) :Unique[mapping.Column[_]] = mapping.columns
 			override def filter[O](columns :Unique[ColumnMapping[_, O]]) :Unique[ColumnMapping[_, O]] = columns
-			override def test[O](column :MappingFrom[O]) = true
+			override def test[O](column :MappingAt[O]) = true
 		}
 	}
 
@@ -913,7 +913,7 @@ object Mapping {
 
 	private[schema] class MappingReadForm[S, O] private[schema]
 	                      (mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
-	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingFrom[O]).selectForm)
+	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S]
 	{
 		private[this] val columnArray = columns.toArray
@@ -949,12 +949,12 @@ object Mapping {
 	object MappingReadForm {
 
 		def apply[S, O](mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
-		                forms :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingFrom[O]).selectForm) :SQLReadForm[S] =
+		                forms :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm) :SQLReadForm[S] =
 			new MappingReadForm[S, O](mapping, columns, forms)
 
 
 
-		def select[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingFrom[O]]) :SQLReadForm[S] = {
+		def select[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]]) :SQLReadForm[S] = {
 			//todo: we should clearly require that components of an export component are export themselves
 			val columns = components.map(mapping.export(_)).flatMap(_.selectable)
 
@@ -1078,8 +1078,8 @@ object Mapping {
 			new MappingWriteForm[S, O](mapping, columns, replacement, write)
 
 
-		def query[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingFrom[O]],
-		                write :MappingFrom[O] => SQLWriteForm[_] = (_:MappingFrom[O]).queryForm) :SQLWriteForm[S] =
+		def query[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]],
+		                write :MappingAt[O] => SQLWriteForm[_] = (_:MappingAt[O]).queryForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoQuery, ExtraQuery, write)
 
 		def defaultQuery[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
@@ -1090,8 +1090,8 @@ object Mapping {
 
 
 
-		def update[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingFrom[O]],
-		                 write :MappingFrom[O] => SQLWriteForm[_] = (_:MappingFrom[O]).updateForm) :SQLWriteForm[S] =
+		def update[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]],
+		                 write :MappingAt[O] => SQLWriteForm[_] = (_:MappingAt[O]).updateForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoUpdate, ExtraUpdate, write)
 
 		def defaultUpdate[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
@@ -1102,8 +1102,8 @@ object Mapping {
 
 
 
-		def insert[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingFrom[O]],
-		                 write :MappingFrom[O] => SQLWriteForm[_] = (_:MappingFrom[O]).insertForm) :SQLWriteForm[S] =
+		def insert[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]],
+		                 write :MappingAt[O] => SQLWriteForm[_] = (_:MappingAt[O]).insertForm) :SQLWriteForm[S] =
 			custom(mapping, components, NoInsert, ExtraInsert, write)
 
 		def defaultInsert[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
@@ -1114,9 +1114,9 @@ object Mapping {
 
 
 
-		private def custom[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingFrom[O]],
+		private def custom[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]],
 		                         prohibit :BuffType, mandatory :ValuedBuffType,
-		                         write :MappingFrom[O] => SQLWriteForm[_]) :SQLWriteForm[S] =
+		                         write :MappingAt[O] => SQLWriteForm[_]) :SQLWriteForm[S] =
 		{
 			if (components.exists(prohibit.enabled))
 				throw new IllegalArgumentException(
@@ -1173,7 +1173,7 @@ trait TypedMapping[S, O] extends Mapping { self =>
 	//for nicer compiler output
 	override type Extract[T] = MappingExtract[S, T, O]
 	override type ColumnExtract[T] = ColumnMappingExtract[S, T, O]
-	override type AnyComponent = MappingFrom[O]
+	override type AnyComponent = MappingAt[O]
 	override type Component[T] = RefinedMapping[T, O]
 	override type Column[T] = ColumnMapping[T, O]
 

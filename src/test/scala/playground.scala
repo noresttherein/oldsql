@@ -1,7 +1,7 @@
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, MappingSchema}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 
 
@@ -24,7 +24,7 @@ object playground extends App {
 //	val hummus = humans["X"].map(Human.apply _)
 //	hummus.withOrigin["O"] :Nothing
 
-	def unifyCons[M[A] <: MappingFrom[A], O](mapping :M[O]) :M[O] = mapping
+	def unifyCons[M[A] <: MappingAt[A], O](mapping :M[O]) :M[O] = mapping
 
 //	val h = unifyCons(hummus)
 //	h :Nothing

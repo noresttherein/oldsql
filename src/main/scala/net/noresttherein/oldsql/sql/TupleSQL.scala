@@ -117,7 +117,7 @@ object TupleSQL {
 		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T]
 
 
-//		override def stretch[M[O] <: MappingFrom[O]] :ChainTuple[F With M, T] =
+//		override def stretch[M[O] <: MappingAt[O]] :ChainTuple[F With M, T] =
 //			stretch[F, F With M]
 //
 //		override def stretch[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
@@ -188,7 +188,7 @@ object TupleSQL {
 
 			override def map[S <: FromClause](mapper :SQLScribe[FromClause, S]) :ChainTuple[S, @~] = this
 
-//			override def stretch[M[O] <: MappingFrom[O]] = this
+//			override def stretch[M[O] <: MappingAt[O]] = this
 //
 //			override def stretch[U <: FromClause, S <: FromClause](implicit ev :U ExtendedBy S) = this
 

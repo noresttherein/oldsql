@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.schema.{ColumnMapping, RowSource, SQLForm, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
@@ -75,7 +75,7 @@ import net.noresttherein.oldsql.sql.SelectSQL.{SelectAs, SelectColumn}
 trait FromClause { thisClause =>
 
 	/** Type of the last mapping in this join (the rightmost one) if not empty. */
-	type LastMapping[O] <: MappingFrom[O]
+	type LastMapping[O] <: MappingAt[O]
 
 	/** Table alias proxy for the last table (or table-like expression) in this list as seen from some `FromClause`
 	  * type `F` containing this instance in its 'tail'. In other words, this projects the type of the last element
@@ -188,15 +188,15 @@ trait FromClause { thisClause =>
 	  * in order to `P`, using the same join kinds. The join type `J` is used as the join between the last relation
 	  * in `P` and the first relation in `this`.
 	  */
-	type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R] <: Generalized
+	type JoinedWith[+P <: FromClause, +J[+L <: FromClause, R[O] <: MappingAt[O]] <: L Join R] <: Generalized
 
 	/** An auxiliary type used in definitions of `JoinedWith` in join classes. Similar to `JoinedWith`,
 	  * it is a cross join between a prefix clause `F`, this clause, and mapping `T`. The last join with `T` becomes
 	  * either the join `J`, if this clause contains no mappings itself (i.e. the result becomes `J[F, T]`),
 	  * or `N` if this clause is non empty, resulting in `N[,JoinedWith[F, J], T]`.
 	  */
-	type ExtendJoinedWith[+F <: FromClause, +J[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R,
-	                      +N[+L <: FromClause, R[O] <: MappingFrom[O]] <: L Join R, T[O] <: MappingFrom[O]] <:
+	type ExtendJoinedWith[+F <: FromClause, +J[+L <: FromClause, R[O] <: MappingAt[O]] <: L Join R,
+	                      +N[+L <: FromClause, R[O] <: MappingAt[O]] <: L Join R, T[O] <: MappingAt[O]] <:
 		Generalized With T
 
 	/** A join of relations from the clause `F` with relations of this clause. This is the type resulting
@@ -384,8 +384,8 @@ trait FromClause { thisClause =>
 	  * It uses the `J#LikeJoin` to join `this.AsSubselectOf[F]` with `R`, unless this instance is `Dual`, in which
 	  * case a `Subselect` join is used.
 	  */
-	type ExtendAsSubselectOf[F <: FromClause, J[+L <: FromClause, R[A] <: MappingFrom[A]] <: L ProperJoin R,
-	                         T[A] <: MappingFrom[A]] <:
+	type ExtendAsSubselectOf[F <: FromClause, J[+L <: FromClause, R[A] <: MappingAt[A]] <: L ProperJoin R,
+	                         T[A] <: MappingAt[A]] <:
 		FromClause With T
 
 	/** For subselect clauses - that is subtypes with a `Subselect` join kind occurring somewhere in their definition,
@@ -421,7 +421,7 @@ trait FromClause { thisClause =>
 	/** Creates an SQL ''select'' expression with this clause used for the ''from'' and ''where'' clauses
 	  * and the ''select'' clause consisting of all selectable columns of the mapping returned by the passed function.
 	  */
-	def selectAs[C[A] <: MappingFrom[A], M[A] <: TypedMapping[S, A], S, O >: Generalized <: FromClause]
+	def selectAs[C[A] <: MappingAt[A], M[A] <: TypedMapping[S, A], S, O >: Generalized <: FromClause]
 	            (component :JoinedTables[Generalized] => C[O])
 	            (implicit typer :Conforms[C[O], M[O], TypedMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
 			:Implicit SelectAs M[Any] =
@@ -498,7 +498,7 @@ trait FromClause { thisClause =>
 	  * a `With` clause is abstract or empty, i.e. that the clause contains at least two relations and their
 	  * types are known.
 	  */
-	type JoinFilter[T[O] <: MappingFrom[O]] <:
+	type JoinFilter[T[O] <: MappingAt[O]] <:
 		(JoinedRelation[FromLast With T, LastMapping], JoinedRelation[FromClause With T, T])
 			=> SQLBoolean[FromLast With T]
 
@@ -588,12 +588,12 @@ object FromClause {
 
 	/** A wrapper type adapting the labeled mapping type `L @: M` to a form with a single-argument type constructor
 	  * accepting the `Origin` type for use in `With` classes and other types accepting such a type constructor:
-	  * `Dual With (Humans As "humans")#T` (where `Humans[O] &lt;: MappingFrom[O]`).
+	  * `Dual With (Humans As "humans")#T` (where `Humans[O] &lt;: MappingAt[O]`).
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
 	  */
-	type As[M[O] <: MappingFrom[O], L <: Label] = { type T[O] = L @: M[O] }
+	type As[M[O] <: MappingAt[O], L <: Label] = { type T[O] = L @: M[O] }
 
-	class AliasedSource[T[O] <: MappingFrom[O], A <: Label](source :RowSource[T], val alias :A)
+	class AliasedSource[T[O] <: MappingAt[O], A <: Label](source :RowSource[T], val alias :A)
 		extends NamedSource[A, (T As A)#T]
 	{
 		override def name :A = alias
@@ -602,7 +602,7 @@ object FromClause {
 			(alias @: source[O].asInstanceOf[RefinedMapping[Any, Any]]).asInstanceOf[A @: T[O]]
 	}
 
-	def AliasedSource[T[O] <: MappingFrom[O], A <: Label](source :RowSource[T], alias :A) :NamedSource[A, (T As A)#T] =
+	def AliasedSource[T[O] <: MappingAt[O], A <: Label](source :RowSource[T], alias :A) :NamedSource[A, (T As A)#T] =
 		new AliasedSource(source, alias)
 
 
@@ -662,7 +662,7 @@ object FromClause {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
-		@inline def join[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def join[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                (table :RowSource[R])
 		                (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S]) :F InnerJoin R =
 		InnerJoin(thisClause, table)
@@ -676,7 +676,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  */
-		@inline def join[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def join[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                (table :R[A])
 		                (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
 		                 alias :OriginProjection[R[A], A, R[Any], Any]) :F InnerJoin R =
@@ -702,7 +702,7 @@ object FromClause {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
-		@inline def outerJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                    (table :RowSource[R])
 		                    (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S]) :F OuterJoin R =
 			OuterJoin(thisClause, table)
@@ -716,7 +716,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  */
-		@inline def outerJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                    (table :R[A])
 		                    (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
 		                     alias :OriginProjection[R[A], A, R[Any], Any]) :F OuterJoin R =
@@ -742,7 +742,7 @@ object FromClause {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
-		@inline def leftJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                    (table :RowSource[R])
 		                    (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S]) :F LeftJoin R =
 			LeftJoin(thisClause, table)
@@ -756,7 +756,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  */
-		@inline def leftJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                    (table :R[A])
 		                    (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
 		                     alias :OriginProjection[R[A], A, R[Any], Any]) :F LeftJoin R =
@@ -782,7 +782,7 @@ object FromClause {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
-		@inline def rightJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                     (table :RowSource[R])
 		                     (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S]) :F RightJoin R =
 			RightJoin(thisClause, table)
@@ -796,7 +796,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  */
-		@inline def rightJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                     (table :R[A])
 		                     (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
 		                      alias :OriginProjection[R[A], A, R[Any], Any]) :F RightJoin R =
@@ -823,7 +823,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def naturalJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                       (table :RowSource[R])
 		                       (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
 		                        last :GetTableByNegativeIndex[thisClause.Generalized, -1]) :F InnerJoin R =
@@ -839,7 +839,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def naturalJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                       (table :R[A])
 		                       (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
 		                        alias :OriginProjection[R[A], A, R[Any], Any],
@@ -857,7 +857,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalOuterJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def naturalOuterJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                            (table :RowSource[R])
 		                            (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
 		                             last :GetTableByNegativeIndex[thisClause.Generalized, -1]) :F OuterJoin R =
@@ -873,7 +873,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalOuterJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def naturalOuterJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                            (table :R[A])
 		                            (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
 		                             alias :OriginProjection[R[A], A, R[Any], Any],
@@ -891,7 +891,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalLeftJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def naturalLeftJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                           (table :RowSource[R])
 		                           (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
 		                            last :GetTableByNegativeIndex[thisClause.Generalized, -1]) :F LeftJoin R =
@@ -907,7 +907,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalLeftJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def naturalLeftJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                           (table :R[A])
 		                           (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
 		                            alias :OriginProjection[R[A], A, R[Any], Any],
@@ -925,7 +925,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalRightJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def naturalRightJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                            (table :RowSource[R])
 		                            (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
 		                             last :GetTableByNegativeIndex[thisClause.Generalized, -1]) :F RightJoin R =
@@ -941,7 +941,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalRightJoin[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def naturalRightJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                            (table :R[A])
 		                            (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
 		                             alias :OriginProjection[R[A], A, R[Any], Any],
@@ -991,7 +991,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
-		@inline def subselectFrom[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S]
+		@inline def subselectFrom[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
 		                         (table :RowSource[R])
 		                         (implicit cast :InferSubject[thisClause.type, Subselect, R, T, S]) :F Subselect R =
 			Subselect(thisClause, table)
@@ -1011,7 +1011,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
-		@inline def subselectFrom[R[O] <: MappingFrom[O], T[O] <: TypedMapping[S, O], S, A]
+		@inline def subselectFrom[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
 		                         (table :R[A])
 		                         (implicit cast :InferSubject[thisClause.type, Subselect, R, T, S],
 		                          alias :OriginProjection[R[A], A, R[Any], Any]) :F Subselect R =
@@ -1067,7 +1067,7 @@ object FromClause {
 /*
 	implicit class FromSelectMethods[F <: FromClause](val thisClause :F) extends AnyVal {
 
-		def selectAs[C[A] <: MappingFrom[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
+		def selectAs[C[A] <: MappingAt[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
 		            (component :JoinedTables[F] => C[O])
 		            (implicit typer :Conforms[C[O], M[O], TypedMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
 				:thisClause.Implicit SelectAs M[Any] =
@@ -1111,7 +1111,7 @@ object FromClause {
 
 	implicit class SubselectFromSelectMethods[F <: SubselectFrom](val thisClause :F) extends AnyVal {
 
-		def selectAs[C[A] <: MappingFrom[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
+		def selectAs[C[A] <: MappingAt[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
 		            (component :JoinedTables[F] => C[O])
 		            (implicit typer :Conforms[C[O], M[O], TypedMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
 				:thisClause.Implicit SubselectAs M[Any] =
@@ -1143,7 +1143,7 @@ object FromClause {
 
 	implicit class OuterFromSelectMethods[F <: OuterFrom](private val self :F) extends AnyVal {
 
-		def selectAs[C[A] <: MappingFrom[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
+		def selectAs[C[A] <: MappingAt[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
 		            (component :JoinedTables[F] => C[O])
 		            (implicit typer :Conforms[C[O], M[O], TypedMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
 				:FreeSelectAs[M[Any]] =
@@ -1178,7 +1178,7 @@ object FromClause {
 
 
 	/** A facade to a ''from'' clause of type `F`, providing access to mappings for all relations listed in its type.
-	  * The `Origin` type of every returned `M[O] &lt;: MappingFrom[O]` instance (and, by transition, its components)
+	  * The `Origin` type of every returned `M[O] &lt;: MappingAt[O]` instance (and, by transition, its components)
 	  * is the generalized super type of `F` formed by replacing all mappings preceding `M` in its type definition
 	  * with the abstract `FromClause`, and all join kinds with the base `With` type. As the result, the mapping `M`
 	  * becomes the first mapping in the origin clause, and the number of all mappings defines the index of the mapping
@@ -1201,7 +1201,7 @@ object FromClause {
 		/** Returns the `Mapping` instance for the last relation using the provided mapping type.
 		  * @tparam M a `Mapping` type constructor accepting the `Origin` type.
 		  */
-		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :M[get.J] =
+		def apply[M[O] <: MappingAt[O]](implicit get :ByTypeConstructor.Get[F, M]) :M[get.J] =
 			get(thisClause).mapping
 
 
@@ -1239,7 +1239,7 @@ object FromClause {
 		/** Returns the `JoinedRelation` instance for the last relation using the provided mapping type.
 		  * @tparam M a `Mapping` type constructor accepting the `Origin` type.
 		  */
-		def apply[M[O] <: MappingFrom[O]](implicit get :ByTypeConstructor.Get[F, M]) :JoinedRelation[get.J, M] =
+		def apply[M[O] <: MappingAt[O]](implicit get :ByTypeConstructor.Get[F, M]) :JoinedRelation[get.J, M] =
 			get(thisClause)
 
 		/** Returns the `JoinedRelation` instance for the last relation using a `LabeledMapping` with label type `A`.
@@ -1287,7 +1287,7 @@ object FromClause {
 	object FromClauseSize {
 		implicit val DualCount :FromClauseSize[Dual, 0] = new FromClauseSize[Dual, 0](0)
 
-		implicit def moreTables[L <: FromClause, R[O] <: MappingFrom[O], M <: Numeral, N <: Numeral]
+		implicit def moreTables[L <: FromClause, R[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
 		                       (implicit count :FromClauseSize[L, M], plus :Inc[M, N]) :FromClauseSize[L With R, N] =
 			new FromClauseSize[L With R, N](plus.n)
 	}
@@ -1305,7 +1305,7 @@ object FromClause {
 		implicit val fromClauseHasZero :TableCount[FromClause, 0] = new TableCount[FromClause, 0](0)
 		implicit val dualHasZero :TableCount[Dual, 0] = new TableCount[Dual, 0](0)
 
-		implicit def forOneTableMore[F <: FromClause, L <: FromClause, R[O] <: MappingFrom[O], M <: Numeral, N <: Numeral]
+		implicit def forOneTableMore[F <: FromClause, L <: FromClause, R[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
 		                            (implicit split :Conforms[F, F, L With R], count :TableCount[L, M], inc :Inc[M, N])
 				:TableCount[F, N] =
 			new TableCount[F, N](inc.n)
@@ -1316,22 +1316,22 @@ object FromClause {
 	@implicitNotFound("Relation mapping ${M} is not the first mapping of the FROM clause ${F}. " +
 	                  "An implicit TableShift[${F}, ${M}, ${N}] will only exist if the clause F starts with either" +
 	                  "FromClause or Dual joined with the mapping M. Note that TableShift is invariant both " +
-	                  "in its F <: FromClause and M[O] <: MappingFrom[O] type parameters.")
-	class TableShift[F <: FromClause, M[O] <: MappingFrom[O], N <: Numeral](private val n :Int) extends AnyVal {
+	                  "in its F <: FromClause and M[O] <: MappingAt[O] type parameters.")
+	class TableShift[F <: FromClause, M[O] <: MappingAt[O], N <: Numeral](private val n :Int) extends AnyVal {
 		@inline def tables :N = n.asInstanceOf[N] //val tables :N crashes scalac
 	}
 
 	object TableShift {
-		implicit def joinedWithDual[F <: FromClause, R[A] <: MappingFrom[A]]
+		implicit def joinedWithDual[F <: FromClause, R[A] <: MappingAt[A]]
 		                           (implicit split :Conforms[F, F, Dual With R]) :TableShift[F, R, 0] =
 			new TableShift[F, R, 0](0)
 
-		implicit def joinedWithFromClause[F <: FromClause, R[A] <: MappingFrom[A]]
+		implicit def joinedWithFromClause[F <: FromClause, R[A] <: MappingAt[A]]
 		                                 (implicit split :Conforms[F, F, FromClause With R]) :TableShift[F, R, 0] =
 			new TableShift[F, R, 0](0)
 
-		implicit def joinedEarlier[F <: FromClause, L <: FromClause, R[A] <: MappingFrom[A],
-		                           T[A] <: MappingFrom[A], M <: Numeral, N <: Numeral]
+		implicit def joinedEarlier[F <: FromClause, L <: FromClause, R[A] <: MappingAt[A],
+		                           T[A] <: MappingAt[A], M <: Numeral, N <: Numeral]
 		                          (implicit split :Conforms[F, F, L With R], prev :TableShift[L, T, M], inc :Inc[M, N])
 				:TableShift[F, T, N] =
 			new TableShift[F, T, N](inc.n)
@@ -1361,7 +1361,7 @@ object FromClause {
 		type J >: F <: FromClause
 
 		/** The mapping type of the relation at index `N`. */
-		type T[O] <: MappingFrom[O]
+		type T[O] <: MappingAt[O]
 
 		val stretch :FromClause With T PrefixOf J
 
@@ -1385,7 +1385,7 @@ object FromClause {
 		}
 
 
-		implicit def lastNegative[M[O] <: MappingFrom[O]]
+		implicit def lastNegative[M[O] <: MappingAt[O]]
 				:GetTableByNegativeIndex[FromClause With M, -1] { type T[O] = M[O]; type J = FromClause With M } =
 			new GetTableByNegativeIndex[FromClause With M, -1] {
 				override type T[O] = M[O]
@@ -1397,7 +1397,7 @@ object FromClause {
 			}
 
 
-		implicit def previousNegative[L <: FromClause, R[O] <: MappingFrom[O], N <: Numeral, M <: Numeral]
+		implicit def previousNegative[L <: FromClause, R[O] <: MappingAt[O], N <: Numeral, M <: Numeral]
 		                             (implicit minus :Inc[N, M], get :GetTableByNegativeIndex[L, M])
 				:GetTableByNegativeIndex[L With R, N] { type T[O] = get.T[O]; type J = get.J With R } =
 			new GetTableByNegativeIndex[L With R, N] {
@@ -1418,7 +1418,7 @@ object FromClause {
 			type I = M
 		}
 
-		implicit def lastPositive[L <: FromClause, R[O] <: MappingFrom[O], N <: Numeral]
+		implicit def lastPositive[L <: FromClause, R[O] <: MappingAt[O], N <: Numeral]
 		                         (implicit count :FromClauseSize[L, N])
 				:GetTableByPositiveIndex[L With R, N, -1] { type T[O] = R[O]; type J = FromClause With R } =
 			new GetTableByPositiveIndex[L With R, N, -1] {
@@ -1430,7 +1430,7 @@ object FromClause {
 				override def table(from :L With R) = from.last
 			}
 
-		implicit def previousPositive[L <: FromClause, R[O] <: MappingFrom[O], N <: Numeral, I <: Numeral, J <: Numeral]
+		implicit def previousPositive[L <: FromClause, R[O] <: MappingAt[O], N <: Numeral, I <: Numeral, J <: Numeral]
 		                             (implicit get :GetTableByPositiveIndex[L, N, J], minus :Inc[I, J])
 				:GetTableByPositiveIndex[L With R, N, I] { type T[O] = get.T[O]; type J = get.J With R } =
 			new GetTableByPositiveIndex[L With R, N, I] {
@@ -1463,12 +1463,12 @@ object FromClause {
 		  * @tparam X the input key of the search: the type provided by the accessor, such as a label for a `LabeledMapping`.
 		  */
 		@implicitNotFound("Mapping ${M} does not match the key type ${X}.")
-		final class Predicate[-M[A] <: MappingFrom[A], X]
+		final class Predicate[-M[A] <: MappingAt[A], X]
 
-		private[this] final val predicate = new Predicate[MappingFrom, Any]
+		private[this] final val predicate = new Predicate[MappingAt, Any]
 
 		/** Subclasses can use this method as the implicit */
-		protected def report[M[A] <: MappingFrom[A], X] :Predicate[M, X] =
+		protected def report[M[A] <: MappingAt[A], X] :Predicate[M, X] =
 			predicate.asInstanceOf[Predicate[M, X]]
 
 
@@ -1483,7 +1483,7 @@ object FromClause {
 		@implicitNotFound("Cannot find a mapping for key type ${X} in the clause ${F}.")
 		sealed abstract class Found[-F <: FromClause, X, I <: Numeral] {
 			/** The accessed `Mapping` type. */
-			type T[O] <: MappingFrom[O]
+			type T[O] <: MappingAt[O]
 
 			type J >: F <: FromClause
 
@@ -1498,7 +1498,7 @@ object FromClause {
 			def table(from :F) :JoinedRelation[FromClause With T, T]
 		}
 
-		implicit def last[M[O] <: MappingFrom[O], X](implicit pred :Predicate[M, X])
+		implicit def last[M[O] <: MappingAt[O], X](implicit pred :Predicate[M, X])
 				:Found[FromClause With M, X, -1] { type T[O] = M[O]; type J = FromClause With M } =
 			new Found[FromClause With M, X, -1] {
 				override type T[O] = M[O]
@@ -1511,7 +1511,7 @@ object FromClause {
 				override def table(from :FromClause With M) = from.last
 			}
 
-		implicit def previous[L <: FromClause, R[O] <: MappingFrom[O], X, I <: Numeral, J <: Numeral]
+		implicit def previous[L <: FromClause, R[O] <: MappingAt[O], X, I <: Numeral, J <: Numeral]
 		                     (implicit get :Found[L, X, J], minus :Inc[I, J])
 				:Found[L With R, X, I] { type T[O] = get.T[O]; type J = get.J With R } =
 			new Found[L With R, X, I] {
@@ -1545,7 +1545,7 @@ object FromClause {
 			type I <: Numeral
 
 			/** The last mapping type matching `X` in `F`. */
-			type T[O] <: MappingFrom[O]
+			type T[O] <: MappingAt[O]
 
 			/** A supertype of the ''from'' clause owning the table starting with `FromClause With T` and upcasting
 			  * all following joins to `With`. */
@@ -1624,13 +1624,13 @@ object FromClause {
 		  * parameters as long as all of them are fixed by using a ''type lambda'' as the argument:
 		  * `({ type M[O] = SomeMapping[X1, X2, ..., O] })#M`. */
 		object ByTypeConstructor extends GetTableByPredicate {
-			implicit def satisfies[M[A] <: MappingFrom[A]] :Predicate[M, M[Any]] = report[M, M[Any]]
+			implicit def satisfies[M[A] <: MappingAt[A]] :Predicate[M, M[Any]] = report[M, M[Any]]
 
 			/** An implicit accessor object for the last relation in `F` with `Mapping` type `M[_]`.
 			  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`. */
 			@implicitNotFound("No relation with type constructor ${M} in the from clause ${F}:\n" +
 			                  "no implicit value for ByTypeConstructor.Found[${F}, ${M}].")
-			sealed abstract class Get[-F <: FromClause, M[O] <: MappingFrom[O]] {
+			sealed abstract class Get[-F <: FromClause, M[O] <: MappingAt[O]] {
 				type I <: Numeral
 				/** A unique origin type with the negative index of the relation encoded in it. */
 				type T[O] = M[O]
@@ -1640,7 +1640,7 @@ object FromClause {
 				def shift :I
 			}
 
-			implicit def Get[F <: FromClause, M[O] <: MappingFrom[O], N <: Numeral]
+			implicit def Get[F <: FromClause, M[O] <: MappingAt[O], N <: Numeral]
 			                (implicit found :Found[F, M[Any], N] { type T[O] = M[O] })
 					:Get[F, M] { type J = found.J; type I = N } =
 				new Get[F, M] {
@@ -1681,11 +1681,11 @@ object FromClause {
 	class ExtendedBy[+F <: FromClause, -S <: FromClause] private[FromClause] (val length :Int) extends AnyVal {
 		/** A transitive proof that a clause extending `S` with a single relation (mapping) also extends `F`. */
 		@inline
-		def stretch[R[O] <: MappingFrom[O]] :F ExtendedBy (S With R) = new ExtendedBy(length + 1)
+		def stretch[R[O] <: MappingAt[O]] :F ExtendedBy (S With R) = new ExtendedBy(length + 1)
 
 		/** A transitive proof that a clause extended by `F` with a single relation(mapping) is also extended by `S`. */
 		@inline
-		def stretchFront[L <: FromClause, R[O] <: MappingFrom[O]](implicit front :F <:< (L With R)) :L ExtendedBy S =
+		def stretchFront[L <: FromClause, R[O] <: MappingAt[O]](implicit front :F <:< (L With R)) :L ExtendedBy S =
 			new ExtendedBy(length + 1)
 
 		@inline
@@ -1714,7 +1714,7 @@ object FromClause {
 
 		implicit def itself[F <: FromClause] :ExtendedBy[F, F] = instance.asInstanceOf[F ExtendedBy F]
 
-		implicit def extend[S <: FromClause, L <: FromClause, R[A] <: MappingFrom[A]]
+		implicit def extend[S <: FromClause, L <: FromClause, R[A] <: MappingAt[A]]
 		                   (implicit ev :S ExtendedBy L) :S ExtendedBy (L With R) =
 			new ExtendedBy(ev.length + 1)
 	}
@@ -1738,7 +1738,7 @@ object FromClause {
 
 		/** A transitive proof that a clause extending `S` with a single relation (mapping) also extends `F`. */
 		@inline
-		def stretch[R[O] <: MappingFrom[O]] :F PrefixOf (S With R) = new PrefixOf(suffix + 1)
+		def stretch[R[O] <: MappingAt[O]] :F PrefixOf (S With R) = new PrefixOf(suffix + 1)
 
 		@inline
 		def stretch[C <: FromClause](implicit next :S PrefixOf C) :F PrefixOf C =
@@ -1760,7 +1760,7 @@ object FromClause {
 
 		implicit def itself[F <: FromClause] :PrefixOf[F, F] = instance.asInstanceOf[F PrefixOf F]
 
-		implicit def extend[F <: FromClause, S <: L With R, L <: FromClause, R[A] <: MappingFrom[A]]
+		implicit def extend[F <: FromClause, S <: L With R, L <: FromClause, R[A] <: MappingAt[A]]
 		                   (implicit ev :F PrefixOf L) :F PrefixOf S = //todo: verify type inference works
 			new PrefixOf(ev.suffix + 1)
 	}

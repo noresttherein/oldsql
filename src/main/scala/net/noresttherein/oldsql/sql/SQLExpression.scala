@@ -166,14 +166,14 @@ object SQLExpression {
 	implicit def implicitLiteral[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
 
 /*
-	implicit def typingCast[J[M[O] <: MappingFrom[O]] <: _ Join M, R[O] <: MappingFrom[O], T[O] <: TypedMapping[_, O], X]
+	implicit def typingCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: TypedMapping[_, O], X]
 	                       (e :SQLExpression[J[R], X])
-	                       (implicit cast :JoinedRelationSubject[J, R, T, TypedMapping.AnyFrom]) :SQLExpression[J[T], X] =
+	                       (implicit cast :JoinedRelationSubject[J, R, T, TypedMapping.AnyAt]) :SQLExpression[J[T], X] =
 		cast(e)
 
-	implicit def typingColumnCast[J[M[O] <: MappingFrom[O]] <: _ Join M, R[O] <: MappingFrom[O], T[O] <: TypedMapping[_, O], X]
+	implicit def typingColumnCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: TypedMapping[_, O], X]
 	                             (e :ColumnSQL[J[R], X])
-	                             (implicit cast :JoinedRelationSubject[J, R, T, TypedMapping.AnyFrom])
+	                             (implicit cast :JoinedRelationSubject[J, R, T, TypedMapping.AnyAt])
 			:ColumnSQL[J[T], X] =
 		cast(e)
 */

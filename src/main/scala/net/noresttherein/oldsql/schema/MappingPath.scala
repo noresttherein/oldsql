@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, RefinedMapping, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping, MappingOf}
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, ConcatPath, SelfPath}
 import net.noresttherein.oldsql.slang.InferTypeParams
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms

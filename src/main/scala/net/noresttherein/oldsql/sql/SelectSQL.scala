@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:
 import net.noresttherein.oldsql.schema.Buff.NoSelectByDefault
 import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
@@ -501,7 +501,7 @@ object SelectSQL {
 				val aliases = NaturalMap(columnMappings :_*)
 
 				{ pieces :Pieces =>
-					val values = ComponentValues[X, A](new (MappingFrom[A]#Component =#> Option) {
+					val values = ComponentValues[X, A](new (MappingAt[A]#Component =#> Option) {
 						override def apply[C](x :RefinedMapping[C, A]) = aliases.get(x) match {
 							case Some(column) => pieces.get(column)
 							case _ => None

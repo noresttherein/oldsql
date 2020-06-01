@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, Numeral, Positive, PositiveInc}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingFrom, MappingNest, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingAt, MappingNest, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.MappingSchema.{ExtensibleNonEmptySchema, FlatMappedSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, MappedSchema, SchemaFlattening}

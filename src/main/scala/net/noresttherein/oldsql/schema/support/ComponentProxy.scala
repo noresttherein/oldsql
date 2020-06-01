@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingNest, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingNest, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, TypedMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
@@ -248,7 +248,7 @@ object ComponentProxy {
 	abstract class EagerDeepProxy[+M <: MappingOf[S], S, O] private
 		                         (protected override val egg :M,
 	                              exports :mutable.Map[Mapping, MappingExtract[S, _, O]],
-	                              originals :mutable.Map[MappingFrom[O], Mapping])
+	                              originals :mutable.Map[MappingAt[O], Mapping])
 		extends DeepProxy[S, O] with MappingNest[M]
 	{
 		//a private constructor with mutable maps ensures that extract entries can be created as method side effects,
@@ -308,7 +308,7 @@ object ComponentProxy {
 		}
 
 		private[this] def alias[T](exports :mutable.Map[Mapping, Extract[_]],
-		                           originals :mutable.Map[MappingFrom[O], Mapping],
+		                           originals :mutable.Map[MappingAt[O], Mapping],
 		                           component :egg.Component[T]) :Component[T] =
 			exports.getOrElse(component, {
 				val base = egg.apply(component)
@@ -320,7 +320,7 @@ object ComponentProxy {
 			}).export.asInstanceOf[Component[T]]
 
 		private[this] def alias[T](exports :mutable.Map[Mapping, Extract[_]],
-		                           originals :mutable.Map[MappingFrom[O], Mapping],
+		                           originals :mutable.Map[MappingAt[O], Mapping],
 		                           column :egg.Column[T]) :Column[T] =
 			alias(exports, originals, column :egg.Component[T]).asInstanceOf[Column[T]]
 

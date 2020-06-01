@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, FallbackValues, StickyComponentValues}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.slang
 
@@ -346,7 +346,7 @@ trait ComponentValues[S, O] {
 	  * in terms of the component as created or adapted by them. Aliasing causes all mappings in the hierarchy
 	  * to use the same, operative or 'export', version as made public by the root mapping.
 	  */
-	def aliased(root :MappingFrom[O]) :ComponentValues[S, O] = aliased(ComponentValues.aliasing(root))
+	def aliased(root :MappingAt[O]) :ComponentValues[S, O] = aliased(ComponentValues.aliasing(root))
 
 	/** Crate proxy `ComponentValues` which will perform aliasing of all component arguments (including those in
 	  * `MappingExtract` and `MappingPath` instances as well as the root mapping to which this instance is dedicated)
@@ -365,7 +365,7 @@ trait ComponentValues[S, O] {
 	  * by the intermediate components in terms of the component as created or adapted by them. Aliasing causes
 	  * all mappings in the hierarchy to use the same, operative or 'export', version as made public by the root mapping.
 	  */
-	def aliased(extracts :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Extract]) :ComponentValues[S, O] =
+	def aliased(extracts :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Extract]) :ComponentValues[S, O] =
 		aliased(ComponentValues.aliasing(extracts))
 
 	/** Crate proxy `ComponentValues` which will perform aliasing of all component arguments (including those in
@@ -384,7 +384,7 @@ trait ComponentValues[S, O] {
 	  * in terms of the component as created or adapted by them. Aliasing causes all mappings in the hierarchy
 	  * to use the same, operative or 'export', version as made public by the root mapping.
 	  */
-	def aliased(export :MappingFrom[O]#Component =#> MappingFrom[O]#Component) :ComponentValues[S, O] =
+	def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) :ComponentValues[S, O] =
 		new AliasedComponentValues[S, O](this, export)
 
 
@@ -412,7 +412,7 @@ trait ComponentValues[S, O] {
 	  * for selected subcomponents and fallback to default algorithm for all other.
 	  */
 	def stickTo[X](mapping :RefinedMapping[S, O]) :ComponentValues[X, O] = {
-		val assoc = NaturalMap.single[MappingFrom[O]#Component, ComponentValues.Origin[O]#T, S](mapping, this)
+		val assoc = NaturalMap.single[MappingAt[O]#Component, ComponentValues.Origin[O]#T, S](mapping, this)
 		new StickyComponentValues[S, O](assoc).crosscast[X]
 	}
 
@@ -427,7 +427,7 @@ trait ComponentValues[S, O] {
 	  * values specific to the path of original definition.
 	  */
 	def stick[T](component :RefinedMapping[T, O]) :ComponentValues[S, O] = {
-		val assoc = NaturalMap.single[MappingFrom[O]#Component, ComponentValues.Origin[O]#T, T](
+		val assoc = NaturalMap.single[MappingAt[O]#Component, ComponentValues.Origin[O]#T, T](
 			component, this \ component
 		)
 		new StickyComponentValues[S, O](assoc, this)
@@ -477,7 +477,7 @@ object ComponentValues {
 	  * You can supply a `NaturalMap` as an argument.
 	  * @param values factory of values for components.
 	  */
-	def apply[S, O](values :MappingFrom[O]#Component =#> Option) :ComponentValues[S, O] =
+	def apply[S, O](values :MappingAt[O]#Component =#> Option) :ComponentValues[S, O] =
 		new CustomValues[S, O](values)
 
 
@@ -512,7 +512,7 @@ object ComponentValues {
 	  * @param index A function returning the index of the value for the component in the given sequence.
 	  *              If the component has no preset value, it should return a negative number.
 	  */
-	def apply[S, O](values :IndexedSeq[Option[Any]], index :MappingFrom[O] => Int) :ComponentValues[S, O] =
+	def apply[S, O](values :IndexedSeq[Option[Any]], index :MappingAt[O] => Int) :ComponentValues[S, O] =
 		new IndexedValues(values, index)
 
 
@@ -729,7 +729,7 @@ object ComponentValues {
 		  * You can supply a `NaturalMap` as an argument.
 		  * @param values factory of values for components.
 		  */
-		def apply(values :MappingFrom[O]#Component =#> Option) :ComponentValues[S, O] =
+		def apply(values :MappingAt[O]#Component =#> Option) :ComponentValues[S, O] =
 			new CustomValues[S, O](values) with MappingAliasing[S, O] {
 				override val mapping = outer.mapping
 			}
@@ -749,7 +749,7 @@ object ComponentValues {
 		  * @param index A function returning the index of the value for the component in the given sequence.
 		  *              If the component has no preset value, it should return a negative number.
 		  */
-		def apply(values :IndexedSeq[Option[Any]])(index :MappingFrom[O] => Int)
+		def apply(values :IndexedSeq[Option[Any]])(index :MappingAt[O] => Int)
 				:ComponentValues[S, O] =
 			new IndexedValues[S, O](values, index) with MappingAliasing[S, O] {
 				override val mapping = outer.mapping
@@ -808,14 +808,14 @@ object ComponentValues {
 
 
 
-	private def aliasing[O](extracts :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Extract])
-			:MappingFrom[O]#Component =#> MappingFrom[O]#Component =
-		new (MappingFrom[O]#Component =#> MappingFrom[O]#Component) {
+	private def aliasing[O](extracts :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Extract])
+			:MappingAt[O]#Component =#> MappingAt[O]#Component =
+		new (MappingAt[O]#Component =#> MappingAt[O]#Component) {
 			override def apply[T](x :RefinedMapping[T, O]):RefinedMapping[T, O] = extracts(x).export
 		}
 
-	private def aliasing[O](root :MappingFrom[O]) :MappingFrom[O]#Component =#> MappingFrom[O]#Component =
-		new (MappingFrom[O]#Component =#> MappingFrom[O]#Component) {
+	private def aliasing[O](root :MappingAt[O]) :MappingAt[O]#Component =#> MappingAt[O]#Component =
+		new (MappingAt[O]#Component =#> MappingAt[O]#Component) {
 			override def apply[T](x :RefinedMapping[T, O]) =
 				if (x eq root) root.asInstanceOf[RefinedMapping[T, O]]
 				else root.export(x)
@@ -862,7 +862,7 @@ object ComponentValues {
 
 
 	trait MappingAliasing[S, O] extends ComponentValuesAliasing[S, O] {
-		protected val mapping :MappingFrom[O]
+		protected val mapping :MappingAt[O]
 
 		override protected def alias[T](component :RefinedMapping[T, O]) :RefinedMapping[T, O] =
 			mapping.export(component)
@@ -874,12 +874,12 @@ object ComponentValues {
 
 
 	private class AliasedComponentValues[S, O]
-	              (values :ComponentValues[S, O], alias :MappingFrom[O]#Component =#> MappingFrom[O]#Component)
+	              (values :ComponentValues[S, O], alias :MappingAt[O]#Component =#> MappingAt[O]#Component)
 		extends ComponentValues[S, O]
 	{ outer =>
 
 		def this(values :ComponentValues[S, O],
-		         extracts :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Extract]) =
+		         extracts :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Extract]) =
 			this(values, aliasing(extracts))
 
 		def this(values :ComponentValues[S, O], root :RefinedMapping[_, O]) =
@@ -934,7 +934,7 @@ object ComponentValues {
 
 
 
-		override def aliased(export :MappingFrom[O]#Component =#> MappingFrom[O]#Component) =
+		override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) =
 			new AliasedComponentValues(values, alias andThen export)
 
 
@@ -985,7 +985,7 @@ object ComponentValues {
 
 
 	private class StickyComponentValues[S, O] private[ComponentValues]
-	              (values :NaturalMap[MappingFrom[O]#Component, Origin[O]#T], default :ComponentValues[S, O] = Empty[S, O])
+	              (values :NaturalMap[MappingAt[O]#Component, Origin[O]#T], default :ComponentValues[S, O] = Empty[S, O])
 		extends ComponentValues[S, O]
 	{
 		override def preset(root: RefinedMapping[S, O]): Option[S] = values.get(root).flatMap(_.preset(root))
@@ -1014,7 +1014,7 @@ object ComponentValues {
 
 
 
-		override def aliased(export :MappingFrom[O]#Component =#> MappingFrom[O]#Component) :ComponentValues[S, O] =
+		override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) :ComponentValues[S, O] =
 			new StickyComponentValues[S, O](values, default aliased export)
 
 
@@ -1163,7 +1163,7 @@ object ComponentValues {
 		extends PresetMappingValue[S, O]
 	{
 		def this(mapping :RefinedMapping[S, O], result :Some[S],
-		         extracts :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Extract]) =
+		         extracts :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Extract]) =
 			this(mapping, result, aliasing(extracts))
 
 		def this(mapping :RefinedMapping[S, O], result :Some[S], root :RefinedMapping[_, O]) =
@@ -1200,7 +1200,7 @@ object ComponentValues {
 
 
 
-		override def aliased(export :MappingFrom[O]#Component =#> MappingFrom[O]#Component) =
+		override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) =
 			new AliasedOverrideMappingValue(mapping, result, export andThen alias)
 
 
@@ -1280,11 +1280,11 @@ object ComponentValues {
 
 
 	private class SelectedDisassembledValues[R, S, O]
-	              (value :R, components :Unique[MappingFrom[O]],
+	              (value :R, components :Unique[MappingAt[O]],
 	               extracts :NaturalMap[RefinedMapping[R, O]#Component, RefinedMapping[R, O]#Extract])
 		extends UniversalValues[S, O]
 	{
-		def this(mapping :RefinedMapping[R, O], value :R, components :Unique[MappingFrom[O]]) =
+		def this(mapping :RefinedMapping[R, O], value :R, components :Unique[MappingAt[O]]) =
 			this(value, components,
 			     mapping.extracts.updated[RefinedMapping[R, O]#Extract, R](mapping, MappingExtract.ident(mapping))
 		     )
@@ -1325,7 +1325,7 @@ object ComponentValues {
 
 
 
-	private class IndexedValues[S, O](values :IndexedSeq[Option[Any]], index :MappingFrom[O] => Int)
+	private class IndexedValues[S, O](values :IndexedSeq[Option[Any]], index :MappingAt[O] => Int)
 		extends UniversalValues[S, O]
 	{
 		override def preset(component :RefinedMapping[S, O]) :Option[S] = {

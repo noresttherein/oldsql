@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.{-#>, Assoc}
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.schema.bits.CustomizedMapping.{exclude, include}
   * @author Marcin Mościcki
   */
 class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] private
-                       (override val egg :M, protected val substitutions :NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component])
+                       (override val egg :M, protected val substitutions :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component])
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
 {
 	protected def this(source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
@@ -43,8 +43,8 @@ class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] private
 
 
 object CustomizedMapping {
-	type Override[X, O] = Assoc[MappingFrom[O]#Component, MappingFrom[O]#Component, X]
-	type Overrides[O] = NaturalMap[MappingFrom[O]#Component, MappingFrom[O]#Component]
+	type Override[X, O] = Assoc[MappingAt[O]#Component, MappingAt[O]#Component, X]
+	type Overrides[O] = NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component]
 
 
 	def select[M <: RefinedMapping[S, O], S, O]
@@ -90,7 +90,7 @@ object CustomizedMapping {
 	                               prohibited :BuffType, explicit :BuffType)
 			:Overrides[O] =
 	{
-		val builder = NaturalMap.newBuilder[MappingFrom[O]#Component, MappingFrom[O]#Component]
+		val builder = NaturalMap.newBuilder[MappingAt[O]#Component, MappingAt[O]#Component]
 		for (component <- components)
 			include(mapping, component, prohibited, explicit, builder)
 		builder.result()
@@ -132,7 +132,7 @@ object CustomizedMapping {
 	                               optional :BuffType, nonDefault :FlagBuffType)
 			:Overrides[O] =
 	{
-		val builder = NaturalMap.newBuilder[MappingFrom[O]#Component, MappingFrom[O]#Component]
+		val builder = NaturalMap.newBuilder[MappingAt[O]#Component, MappingAt[O]#Component]
 		for (component <- components)
 			exclude(mapping, component, optional, nonDefault, builder)
 		builder.result()

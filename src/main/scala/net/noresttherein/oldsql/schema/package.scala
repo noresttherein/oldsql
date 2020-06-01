@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang._
@@ -165,12 +165,12 @@ package object schema {
 			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
 		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
 
-	@inline private[oldsql] def composeExtractAssoc[S, X, T, O](mapping :MappingFrom[O], extractor :S =?> X)
+	@inline private[oldsql] def composeExtractAssoc[S, X, T, O](mapping :MappingAt[O], extractor :S =?> X)
 	                            (entry :Assoc[RefinedMapping[X, O]#Component, RefinedMapping[X, O]#Extract, T])
 			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
 		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
 
-	@inline private[oldsql] def composeExtractAssoc[S, X, T, O](mapping :MappingFrom[O], f : S => X)
+	@inline private[oldsql] def composeExtractAssoc[S, X, T, O](mapping :MappingAt[O], f : S => X)
 	                            (entry :Assoc[RefinedMapping[X, O]#Component, RefinedMapping[X, O]#Extract, T])
 			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
 		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](entry._1, entry._2 compose f)
@@ -184,13 +184,13 @@ package object schema {
 		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
 
 	@inline private[oldsql] def composeColumnExtractAssoc[S, X, T, O]
-	                            (mapping :MappingFrom[O], extractor : S =?> X)
+	                            (mapping :MappingAt[O], extractor : S =?> X)
 	                            (entry :Assoc[RefinedMapping[X, O]#Column, RefinedMapping[X, O]#ColumnExtract, T])
 	:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
 		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
 
 	@inline private[oldsql] def composeColumnExtractAssoc[S, X, T, O]
-	                            (mapping :MappingFrom[O], f : S => X)
+	                            (mapping :MappingAt[O], f : S => X)
 	                            (entry :Assoc[RefinedMapping[X, O]#Column, RefinedMapping[X, O]#ColumnExtract, T])
 	:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
 		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose f)

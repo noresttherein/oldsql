@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, RowSource, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
@@ -238,7 +238,7 @@ object MappingSQL {
 
 
 
-	trait BaseComponentSQL[-F <: FromClause, T[A] <: MappingFrom[A], M[A] <: MappingFrom[A], O >: F <: FromClause]
+	trait BaseComponentSQL[-F <: FromClause, T[A] <: MappingAt[A], M[A] <: MappingAt[A], O >: F <: FromClause]
 		extends MappingSQL[F, M[O]]
 	{
 		type Origin = O
@@ -423,7 +423,7 @@ object MappingSQL {
 
 
 
-	trait BaseColumnComponentSQL[-F <: FromClause, T[A] <: MappingFrom[A],
+	trait BaseColumnComponentSQL[-F <: FromClause, T[A] <: MappingAt[A],
 	                                 M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
 		extends BaseComponentSQL[F, T, M, O] with ColumnSQL[F, V]
 	{
@@ -540,13 +540,13 @@ object MappingSQL {
 
 
 
-	sealed trait JoinedRelation[F <: FromClause, T[A] <: MappingFrom[A]] extends BaseComponentSQL[F, T, T, F] {
+	sealed trait JoinedRelation[F <: FromClause, T[A] <: MappingAt[A]] extends BaseComponentSQL[F, T, T, F] {
 		type Self = SQLRelation[F, M, T[F]#Subject, F] forSome { type M[A] <: TypedMapping[T[F]#Subject, A] with T[A] }
 		def shift :Int
 
 		override def from :JoinedRelation[F, T] = this
 
-		def extend[M[A] <: MappingFrom[A]] :JoinedRelation[F With M, T]
+		def extend[M[A] <: MappingAt[A]] :JoinedRelation[F With M, T]
 
 		/** This method is equivalent to `this.stretch()`, but doesn't require the `G` clause as the parameter
 		  * and returns a `JoinedRelation`. The `stretch` method cannot be overriden here to return a `JoinedRelation`
@@ -593,9 +593,9 @@ object MappingSQL {
 
 
 
-		type * = JoinedRelation[_ <: FromClause, T] forSome { type T[O] <: MappingFrom[O] }
+		type * = JoinedRelation[_ <: FromClause, T] forSome { type T[O] <: MappingAt[O] }
 
-		type AnyIn[F <: FromClause] = JoinedRelation[F, T] forSome { type T[O] <: MappingFrom[O] }
+		type AnyIn[F <: FromClause] = JoinedRelation[F, T] forSome { type T[O] <: MappingAt[O] }
 
 		type Typed[F <: FromClause, V] = JoinedRelation[F, T] forSome { type T[O] <: RefinedMapping[V, O] }
 
@@ -654,7 +654,7 @@ object MappingSQL {
 			new SQLRelation[G, T, E, G](source, shift + ev.length) //G is incorrect, but we lose this information anyway
 
 
-		override def extend[M[A] <: MappingFrom[A]] :SQLRelation[F With M, T, E, O With M] =
+		override def extend[M[A] <: MappingAt[A]] :SQLRelation[F With M, T, E, O With M] =
 			new SQLRelation[F With M, T, E, O With M](source, shift)
 
 		override def extend[G <: FromClause](implicit extension :O PrefixOf G) :SQLRelation[G, T, E, G] =
@@ -671,7 +671,7 @@ object MappingSQL {
 
 	object SQLRelation {
 
-		def apply[F <: FromClause, M[A] <: MappingFrom[A], T[A] <: TypedMapping[S, A], S]
+		def apply[F <: FromClause, M[A] <: MappingAt[A], T[A] <: TypedMapping[S, A], S]
 		         (table :M[F])
 		         (implicit cast :Conforms[M[F], T[F], TypedMapping[S, F]], shift :TableShift[F, M, _ <: Numeral],
 		          alias :OriginProjection[T[F], F, T[Any], Any])
@@ -683,7 +683,7 @@ object MappingSQL {
 			new SQLRelation[F, T, T[Any]#Subject, F](source, index)
 
 
-		def last[M[A] <: MappingFrom[A], T[A] <: TypedMapping[S, A], S]
+		def last[M[A] <: MappingAt[A], T[A] <: TypedMapping[S, A], S]
 		        (source :RowSource[M])
 		        (implicit inference :Conforms[M[Any], T[Any], TypedMapping[S, Any]]) :LastRelation[T, S] =
 			new SQLRelation[FromClause With T, T, S, FromClause With T](source.asInstanceOf[RowSource[T]], 0)

@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.Mapping.{MappingFrom, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, TypedMapping}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumnExpression, ColumnExpressionMatcher, CompositeColumnSQL}
@@ -90,7 +90,7 @@ object SQLScribe {
 
 
 		override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
-				:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingFrom[A] }
+				:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingAt[A] }
 
 
 
@@ -109,7 +109,7 @@ object SQLScribe {
 				:SubstituteComponentsSubselectExtension[oldClause.Generalized, newClause.Generalized] =
 			subselect match {
 				case j :ProperJoin[_, _] =>
-					val join = j.asInstanceOf[FromClause ProperJoin MappingFrom]
+					val join = j.asInstanceOf[FromClause ProperJoin MappingAt]
 					val sub = subselectClause(join.left)
 					val newExtension = sub.newExtension.stretch[join.LastMapping]
 					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
@@ -165,7 +165,7 @@ object SQLScribe {
 	{
 		override def relation[M[X] <: TypedMapping[S, X], S, J >: F <: FromClause](e :SQLRelation[F, M, S, J]) =
 			(if (e.shift == relation.shift) replacement else e)
-				.asInstanceOf[BaseComponentSQL[G, MappingFrom, M, G]]
+				.asInstanceOf[BaseComponentSQL[G, MappingAt, M, G]]
 
 		protected[this] override def extended[S <: FromClause, H <: FromClause]
 		                                     (subselect :S, replacement :H)
