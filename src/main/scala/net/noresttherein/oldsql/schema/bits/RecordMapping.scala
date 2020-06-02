@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.{Chain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -178,7 +178,7 @@ object RecordMapping {
 	                                       (prefix :FlatRecordMapping[C, R, O], key :K, next :M)
 		extends NonEmptyFlatRecordSchema[C, M, R, K, T, R |# (K #> T), O](
 		                                 prefix.asPrefix[K #> T], key, next,
-		                                 MappingExtract.req(next)((row :R |# (K #> T)) => row.last._2))
+		                                 ColumnExtract.req(next)((row :R |# (K #> T)) => row.last._2))
 		   with FlatRecordMapping[C ~ M, R |# (K #> T), O]
 
 

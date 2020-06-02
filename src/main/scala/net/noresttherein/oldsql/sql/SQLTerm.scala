@@ -3,14 +3,14 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
-import net.noresttherein.oldsql.sql.ColumnSQL.ColumnExpressionMatcher
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.SQLExpression.ExpressionMatcher
-import net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn.{ParameterColumnMatcher, CaseParameterColumn}
-import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter
-import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter.{ParameterMatcher, CaseParameter}
+import net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn.{CaseParameterColumn, ParameterColumnMatcher}
+import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter.{CaseParameter, ParameterMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnLiteral.{CaseColumnLiteral, ColumnLiteralMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.ColumnTermMatcher
+import net.noresttherein.oldsql.sql.SQLTerm.CompositeNULL.{CaseCompositeNull, CompositeNullMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.NativeColumnTerm.{CaseNativeColumnTerm, NativeColumnTermMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral.{CaseLiteral, LiteralMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.NativeTerm.{CaseNative, NativeMatcher}
@@ -27,30 +27,39 @@ trait SQLTerm[T] extends SQLExpression[FromClause, T] {
 
 	override def stretch[U <: FromClause, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLTerm[T] = this
 
-	override def isomorphic(expression: SQLExpression.*): Boolean = this == expression
-
-	private[oldsql] override def equivalent(expression: SQLExpression.*): Boolean = this == expression
-
-}
 
 
+	def sameAs(that :Any) :Boolean = canEqual(that)
 
-
-
-
-abstract class MultiColumnTerms {
-
-	implicit class TermFormulas[T :SQLForm](term :T) {
-		def ? = SQLParameter(term)
+	override def isomorphic(expression: SQLExpression.*): Boolean = expression match { //this == expression
+		case self :AnyRef if self eq this => true
+		case term :SQLTerm[_] if term sameAs this => term.freeValue == freeValue
+		case _ => false
 	}
 
+
+
+	override def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+	override def equals(that :Any) :Boolean = that match {
+		case self :AnyRef if self eq this => true
+		case term :SQLTerm[_] if term.canEqual(this) =>
+			term.freeValue == freeValue && term.form == form
+		case _ => false
+	}
+
+
+
+	override def hashCode :Int = freeValue.hashCode * 31 + form.hashCode
+
 }
 
 
 
 
 
-object SQLTerm extends MultiColumnTerms {
+
+object SQLTerm {
 
 	trait ColumnTerm[T] extends SQLTerm[T] with ColumnSQL[FromClause, T] {
 		override def form :ColumnForm[T]
@@ -65,13 +74,14 @@ object SQLTerm extends MultiColumnTerms {
 
 
 	object ColumnTerm {
+
 		trait ColumnTermMatcher[+F <: FromClause, +Y[X]]
-			extends ColumnLiteralMatcher[F, Y] with ParameterColumnMatcher[F, Y]
-			   with NullMatcher[F, Y] with NativeColumnTermMatcher[F, Y]
+			extends ColumnLiteralMatcher[F, Y] with NullMatcher[F, Y] with ParameterColumnMatcher[F, Y]
+			   with NativeColumnTermMatcher[F, Y]
 
 		trait MatchColumnTerm[+F <: FromClause, +Y[X]] extends ColumnTermMatcher[F, Y]
-			with CaseColumnLiteral[F, Y] with CaseParameterColumn[F, Y]
-			with CaseNull[F, Y] with CaseNativeColumnTerm[F, Y]
+			with CaseColumnLiteral[F, Y] with CaseNull[F, Y] with CaseParameterColumn[F, Y]
+			with CaseNativeColumnTerm[F, Y]
 
 		trait CaseColumnTerm[+F <: FromClause, +Y[X]] extends MatchColumnTerm[F, Y] {
 			def term[X](e :ColumnTerm[X]) :Y[X]
@@ -98,19 +108,6 @@ object SQLTerm extends MultiColumnTerms {
 
 
 		override def applyTo[Y[_]](matcher: ExpressionMatcher[FromClause, Y]): Y[T] = matcher.literal(this)
-
-
-
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLLiteral[_]]
-
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case other :SQLLiteral[_] if canEqual(other) && other.canEqual(this) =>
-				value == other.value && form == other.form
-			case _ => false
-		}
-
-		override def hashCode :Int = (if (value == null) 0 else value.hashCode) * 31 + form.hashCode
 
 
 		override def toString :String = String.valueOf(value)
@@ -143,6 +140,9 @@ object SQLTerm extends MultiColumnTerms {
 
 
 
+
+
+
 	class ColumnLiteral[T](literal :T)(implicit override val form :ColumnForm[T])
 		extends SQLLiteral[T](literal) with ColumnTerm[T]
 	{
@@ -165,9 +165,7 @@ object SQLTerm extends MultiColumnTerms {
 //		override def to[X](implicit lift :Lift[T, X]) :ColumnSQL[FromClause, X] =
 //			new ColumnLiteral[X](lift(value))(form.bimapNull(lift.apply)(lift.lower))
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[FromClause, Y]) :Y[T] = matcher.literal(this)
-
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnLiteral[_]]
+		override def applyTo[Y[_]](matcher :ColumnMatcher[FromClause, Y]) :Y[T] = matcher.literal(this)
 
 	}
 
@@ -210,26 +208,21 @@ object SQLTerm extends MultiColumnTerms {
 		override def readForm :SQLReadForm[T] = form
 		override val writeForm :SQLWriteForm[Unit] = SQLWriteForm.const[T](value)
 
-
-//		override def to[X](implicit lift :Lift[T, X]) :SQLParameter[X] =
-//			new SQLParameter[X](lift(value))(form.bimapNull(lift.apply)(lift.lower))
-
 		override def freeValue = Some(value)
 
 
 		override def applyTo[Y[_]](matcher: ExpressionMatcher[FromClause, Y]): Y[T] = matcher.param(this)
 
 
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLParameter[_]]
-
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
 			case p :SQLParameter[_] if canEqual(p) && p.canEqual(this) =>
-				value == p.value && form == p.form
+				name == p.name && value == p.value && form == p.form
 			case _ => false
 		}
 
-		override def hashCode :Int = (if (value == null) 0 else value.hashCode) * 31 + form.hashCode
+		override def hashCode :Int =
+			((if (value == null) 0 else value.hashCode) * 31 + name.hashCode) * 31 + form.hashCode
 
 
 		override def toString :String = "?" + value
@@ -261,16 +254,15 @@ object SQLTerm extends MultiColumnTerms {
 
 
 
+
+
+
 	class SQLParameterColumn[T](param :T, name :Option[String] = None)(implicit override val form :ColumnForm[T])
 		extends SQLParameter[T](param, name) with ColumnTerm[T]
 	{
 		override val writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.const(value)
 
-//		override def to[X](implicit lift :Lift[T, X]) :SQLParameterColumn[X] =
-//			new SQLParameterColumn[X](lift(value))(form.bimapNull(lift.apply)(lift.lower))
-
-
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[FromClause, Y]) :Y[T] = matcher.param(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[FromClause, Y]) :Y[T] = matcher.param(this)
 	}
 
 
@@ -299,34 +291,72 @@ object SQLTerm extends MultiColumnTerms {
 
 
 
-	class NULL[T] private[SQLTerm](implicit override val form :ColumnForm[T]) extends ColumnTerm[T] {
 
-		override def writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.none[T]
+	class CompositeNULL[T] private[SQLTerm](implicit override val form :SQLForm[T]) extends SQLTerm[T] {
+
+		override def writeForm :SQLWriteForm[Unit] = SQLWriteForm.none[T]
 
 		override def freeValue :Option[T] = readForm.nulls.toOption
 
 //		override def to[X](implicit lift :Lift[T, X]) :ColumnSQL[FromClause, X] =
 //		    NULL[X](ColumnForm[T].bimapNull(lift.apply)(lift.lower))
 
-		override def opt: ColumnSQL[FromClause, Option[T]] = NULL[Option[T]]
+		override def opt: SQLExpression[FromClause, Option[T]] = CompositeNULL[Option[T]]
 
 
+		override def applyTo[Y[_]](matcher :ExpressionMatcher[FromClause, Y]) :Y[T] = matcher.sqlNull(this)
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[FromClause, Y]) :Y[T] = matcher.sqlNull(this)
 
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[NULL[_]]
-
-		override def equals(that :Any) :Boolean = that match {
-			case n :NULL[_] => freeValue == n.freeValue
-			case _ => false
-		}
-
-		override def hashCode :Int = NULL.hashCode
-
-		override def toString = "Null"
+		override def toString :String =
+			freeValue.filter(_ != null).map(v => form.literal(v) + ":NULL") getOrElse form.nullLiteral
 	}
 
 
+
+	object CompositeNULL {
+		def apply[T :SQLForm] = new CompositeNULL[T]
+
+		def unapply(expression :SQLExpression[_, _]) :Boolean = expression match {
+			case null => true
+			case _ :CompositeNULL[_] => true
+			case SQLLiteral(null) => true
+			case _ => false
+		}
+
+		trait CompositeNullMatcher[+F <: FromClause, +Y[X]] extends NullMatcher[F, Y] {
+			def sqlNull[X](e :CompositeNULL[X]) :Y[X]
+		}
+
+		type MatchCompositeNull[+F <: FromClause, +Y[X]] = CaseCompositeNull[F, Y]
+
+		trait CaseCompositeNull[+F <: FromClause, +Y[X]] extends CompositeNullMatcher[F, Y] {
+			override def sqlNull[X](e :NULL[X]) :Y[X] = sqlNull(e :CompositeNULL[X])
+		}
+
+	}
+
+
+
+
+
+
+	class NULL[T] private[SQLTerm] (implicit override val form :ColumnForm[T])
+		extends CompositeNULL[T] with ColumnTerm[T]
+	{
+		override def writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.none[T]
+
+		override def opt: ColumnSQL[FromClause, Option[T]] = NULL[Option[T]]
+
+		override def applyTo[Y[_]](matcher :ColumnMatcher[FromClause, Y]) :Y[T] = matcher.sqlNull(this)
+
+
+		override def toString :String =
+			freeValue.filter(_ != null).map(_ + ":NULL") getOrElse "NULL"
+	}
+
+
+
+//	def NULL[T :ColumnForm] = new NULL[T]
 
 	object NULL {
 		def apply[T :ColumnForm] = new NULL[T]
@@ -337,6 +367,7 @@ object SQLTerm extends MultiColumnTerms {
 			case SQLLiteral(null) => true
 			case _ => false
 		}
+
 
 
 		trait NullMatcher[+F <: FromClause, +Y[X]] {
@@ -403,7 +434,7 @@ object SQLTerm extends MultiColumnTerms {
 
 
 
-	case class NativeTerm[T](sql :String)(implicit override val form :SQLForm[T]) extends SQLTerm[T] {
+	class NativeTerm[T](val sql :String)(implicit override val form :SQLForm[T]) extends SQLTerm[T] {
 		override def readForm :SQLReadForm[T] = SQLForm[T]
 
 		override def writeForm :SQLWriteForm[Unit] = new EmptyWriteForm[Unit] {
@@ -417,12 +448,39 @@ object SQLTerm extends MultiColumnTerms {
 		override def applyTo[Y[_]](matcher: ExpressionMatcher[FromClause, Y]): Y[T] =
 			matcher.native(this)
 
+
+
+		override def isomorphic(expression :SQLExpression.*) :Boolean = expression match {
+			case self :AnyRef if self eq this => true
+			case native :NativeTerm[_] if sameAs(native) && (native sameAs this) => sql == native.sql
+			case _ => false
+		}
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case native :NativeTerm[_] if native canEqual this => sql == native.sql && form == native.form
+			case _ => false
+		}
+
+		override def hashCode :Int = sql.hashCode * 31 + form.hashCode
+
+
 		override def toString :String = sql
 	}
 
 
 
 	object NativeTerm {
+
+		def apply[T :SQLForm](sql :String) :NativeTerm[T] = new NativeTerm[T](sql)
+
+		def unapply(e :SQLExpression[_, _]) :Option[String] = e match {
+			case native :NativeTerm[_] => Some(native.sql)
+			case _ => None
+		}
+
+
+
 		trait NativeMatcher[+F <: FromClause, +Y[X]] extends NativeColumnTermMatcher[F, Y] {
 			def native[X](e :NativeTerm[X]) :Y[X]
 		}
@@ -443,7 +501,7 @@ object SQLTerm extends MultiColumnTerms {
 	class NativeColumnTerm[T](sql :String)(implicit override val form :ColumnForm[T])
 		extends NativeTerm[T](sql) with ColumnTerm[T]
 	{
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[FromClause, Y]) :Y[T] = matcher.native(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[FromClause, Y]) :Y[T] = matcher.native(this)
 	}
 
 
@@ -474,10 +532,10 @@ object SQLTerm extends MultiColumnTerms {
 
 
 	trait TermMatcher[+S <: FromClause, +Y[X]] extends ColumnTermMatcher[S, Y]
-		with LiteralMatcher[S, Y] with ParameterMatcher[S, Y] with NullMatcher[S, Y] with NativeMatcher[S, Y]
+		with LiteralMatcher[S, Y]  with CompositeNullMatcher[S, Y] with ParameterMatcher[S, Y] with NativeMatcher[S, Y]
 
 	trait MatchTerm[+S <: FromClause, +Y[X]]
-		extends CaseLiteral[S, Y] with CaseParameter[S, Y] with CaseNull[S, Y] with CaseNative[S, Y]
+		extends CaseLiteral[S, Y]  with CaseCompositeNull[S, Y] with CaseParameter[S, Y] with CaseNative[S, Y]
 
 	trait CaseTerm[+S <: FromClause, +Y[X]] extends TermMatcher[S, Y] with MatchTerm[S, Y] {
 		def term[X](e :SQLTerm[X]) :Y[X]
@@ -486,7 +544,7 @@ object SQLTerm extends MultiColumnTerms {
 
 		def literal[X](e: SQLLiteral[X]): Y[X] = term(e)
 
-		def sqlNull[X](e: NULL[X]): Y[X] = term(e)
+		def sqlNull[X](e: CompositeNULL[X]): Y[X] = term(e)
 
 		def native[X](e: NativeTerm[X]): Y[X] = term(e)
 

@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.TypedMapping
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
 import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation
 import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * (like 'SELECT _ FROM DUAL' in Oracle) and an initial element for `With` lists
   * (any chain of `With` classes starts by joining with `Dual`).
   */
-sealed class Dual private () extends FromClause {
+sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends FromClause {
 
 	override type LastMapping[O] = Nothing
 	override type LastTable[-F <: FromClause] = Nothing
@@ -120,8 +120,6 @@ sealed class Dual private () extends FromClause {
 
 
 
-	override def filter :SQLBoolean[FromClause] = True
-
 	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :SQLBoolean[E] =
 		filter
 
@@ -130,15 +128,38 @@ sealed class Dual private () extends FromClause {
 		filter
 
 
+
 	override type JoinFilter[T[O] <: MappingAt[O]] = Nothing
+
+
+
+	protected override def withCondition(filter :SQLBoolean[FromClause]) :Dual =
+		if (filter == this.filter) this
+		else new Dual(filter)
+
+	override def where(condition :JoinedTables[FromClause] => SQLBoolean[FromClause]) :Dual = {
+		val bool = condition(new JoinedTables(this))
+		if (bool == True) this
+		else new Dual(filter && bool)
+	}
+
+
+
+	override type Params = @~
 
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]
 
-	override def equals(that :Any) :Boolean = that.isInstanceOf[Dual]
+	override def equals(that :Any) :Boolean = that match {
+		case dual :Dual => (dual eq this) || dual.filter == filter
+		case _ => false
+	}
 
-	override def toString = "Dual"
+
+
+	override def toString :String = if (filter == True) "Dual" else "Dual where " + filter
+
 }
 
 
@@ -150,7 +171,7 @@ sealed class Dual private () extends FromClause {
   * (like 'SELECT _ FROM DUAL' in Oracle), and terminator element for join lists
   * (by default any chain of `With` classes is eventually terminated by a `Dual` instance).
   */
-object Dual extends Dual {
+object Dual extends Dual(True) {
 
 	protected[sql] override def selfInnerJoin[T[A] <: TypedMapping[X, A], X]
 	                                         (right :LastRelation[T, X])(filter :SQLBoolean[FromClause With T])

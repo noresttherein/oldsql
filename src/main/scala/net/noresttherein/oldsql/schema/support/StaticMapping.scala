@@ -35,7 +35,7 @@ trait StaticMapping[S, O] extends TypedMapping[S, O] {
 	  * all `NoSuchElementException` exceptions (thrown by default by components `apply` method when no value can
 	  * be assembled or is preset) are caught and result in returning `None`. All other exceptions,
 	  * including `NullPointerException` which may result from unavailable columns, are propagated. Subclasses should
-	  * override those methods instead of `assemble`.
+	  * override those methods instead of `map`.
 	  * @return `Some(construct(pieces))` if `isDefined(pieces)` returns `true` or `None` if it returns `false` or
 	  *        a `NoSuchElementException` is caught.
 	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct]]
@@ -48,10 +48,10 @@ trait StaticMapping[S, O] extends TypedMapping[S, O] {
 			case _ :NoSuchElementException => None
 		}
 
-	/** The final target of the assembly process for this mapping invoked directly by `assemble` (and, indirectly,
+	/** The final target of the assembly process for this mapping invoked directly by `map` (and, indirectly,
 	  * `optionally`/`apply`. It is left to implement for subclasses and, in order to make it the simplest possible,
 	  * is not responsible for recognizing whether a value can be assembled, but rather this functionality is
-	  * shared by `isDefined` method, which can force `assemble` to return `None` without calling `construct`,
+	  * shared by `isDefined` method, which can force `map` to return `None` without calling `construct`,
 	  * and catching later any `NoSuchElementException`s thrown from  this method and resulting from a failed assembly
 	  * of a subcomponent. Another difference is that `pieces` is declared as an implicit parameter, which coupled
 	  * with an implicit conversion of `RefinedMapping[O, T]` to `T` in its presence, allows to use the components directly
@@ -71,19 +71,19 @@ trait StaticMapping[S, O] extends TypedMapping[S, O] {
 	  *     }
 	  * }}}
 	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined]]
-	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.assemble map]]
 	  */
 	protected def construct(implicit pieces :Pieces) :S
 
 	/** Verifies the presence of necessary subcomponents in the input pieces for the assembly to be successful.
-	  * This method is called from `assemble` in order to possibly prevent it from proceeding with the assembly
+	  * This method is called from `map` in order to possibly prevent it from proceeding with the assembly
 	  * and  calling `construct`, but return `None` instead. The contract obliges it only detect the situations
 	  * where `construct` would certainly fail with an exception, but not necessarily all of them. It is designed
 	  * primarily with the thought of outer joins where all columns of a last can carry `null` values.
 	  * For this reason, it simply always returns `true`, but entity tables override it with a check of availability
 	  * of the primary key. The subclasses are free to implement any condition here.
 	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct]]
-	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.assemble map]]
 	  */
 	protected def isDefined(pieces :Pieces) :Boolean = true
 

@@ -53,10 +53,10 @@ object ArithmeticSQL {
 		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Plus(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.plus(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.plus(this)
 
 
 		override def toString = "(" + left + " + " + right + ")"
@@ -97,10 +97,10 @@ object ArithmeticSQL {
 		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Minus(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.minus(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.minus(this)
 
 
 		override def toString = "(" + left + " - " + right + ")"
@@ -141,10 +141,10 @@ object ArithmeticSQL {
 		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Times(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.times(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.times(this)
 
 
 		override def toString = "(" + left + " * " + right + ")"
@@ -185,10 +185,10 @@ object ArithmeticSQL {
 		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Divide(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.divide(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.divide(this)
 
 
 		override def toString = "(" + left + " / " + right + ")"
@@ -229,10 +229,10 @@ object ArithmeticSQL {
 		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			Remainder(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.remainder(this)
+		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.remainder(this)
 
 
 		override def toString = "(" + left + " % " + right + ")"

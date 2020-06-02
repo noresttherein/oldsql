@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, TypedMapping, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly, ValuedBuffType}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
@@ -1074,7 +1074,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * (including export versions of non-direct columns) when the column's initialization is being performed.
 	  */
 	protected def extractFor[T](column :FrameColumn[T]) :ColumnExtract[T] =
-		MappingExtract[S, T, O](column)(column.extractor)
+		ColumnExtract[S, T, O](column)(column.extractor)
 /*
 	private[this] var initExtracts = MutableNaturalMap.freezable[Component, Extract]
 	private[this] var initColumnExtracts = MutableNaturalMap.freezable[Column, ColumnExtract]
@@ -1449,7 +1449,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 				case column :MappingFrame[_, _]#FrameColumn[_] => column.index
 				case _ => -1
 			}
-//			mapping.assemble(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
+//			mapping.map(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
 //				optional.map(_.value) orElse extra.map(_.value)
 			frame.optionally(pieces)
 		}

@@ -52,6 +52,12 @@ trait Join[+L <: FromClause, R[O] <: MappingAt[O]] extends With[L, R] { join =>
 	override type JoinedWith[+P <: FromClause, +J[+K <: FromClause, T[O] <: MappingAt[O]] <: K Join T] =
 		left.ExtendJoinedWith[P, J, LikeJoin, R]
 
+
+
+	type Params = left.Params
+
+
+
 	/** Specify an alias for the last last in the join. This is not necessary and may be overriden in case of conflicts,
 	  * but can be used as the default value and/or help with debugging.
 	  * @param alias the alias for the last as in 'from users as u'

@@ -1,8 +1,11 @@
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
-import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, MappingSchema}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt}
+import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, MappingSchema, SchemaMapping}
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.MappingSchema.FlatMappingSchema
+import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, SchemaColumn}
 
 
 
@@ -11,16 +14,27 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping
   */
 object playground extends App {
 
+	type Schema[O] = {
+		type I[S] = SchemaColumn[S, O]
+		type Mapping[C <: Chain, R <: Chain, S] = SchemaMapping[C, R, S, O]
+		type FlatMapping[C <: Chain, R <: Chain, S] = FlatSchemaMapping[C, R, S, O]
+		type Schema[C <: Chain, R <: Chain, S] = MappingSchema[C, R, S, O]
+		type FlatSchema[C <: Chain, R <: Chain, S] = FlatMappingSchema[C, R, S, O]
+	}
+
 	case class Gun(make :String, model :String, caliber :Double)
 	case class Human(gun :Gun, backup :Gun, secondBackup :Gun)
 
-	def guns[O] =
+	def guns[O] :Schema[O]#FlatMapping[@~ ~ Schema[O]#I[String] ~ Schema[O]#I[String] ~ Schema[O]#I[Double], @~ ~ String ~ String ~ Double, Gun] =
 		MappingSchema[Gun, O].col(_.make).col(_.model).col(_.caliber).map(Gun.apply _)
 
 	def humans[O] =
 		MappingSchema[Human, O].comp(_.gun, guns[O].:@["gun"]).comp(_.backup, guns[O].:@["backup"]).comp(_.secondBackup, guns[O].:@["second"])
 //		MappingSchema[O, Human].comp(_.gun, guns[O]).comp(_.backup, guns[O]).comp(_.secondBackup, guns[O])
 
+	type SchemaFrom[O]
+	val gun = guns["X"].withOrigin["O"]
+//	gun :Nothing
 //	val hummus = humans["X"].map(Human.apply _)
 //	hummus.withOrigin["O"] :Nothing
 

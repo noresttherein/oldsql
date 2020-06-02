@@ -5,7 +5,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher}
 import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnExpressionMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ConversionSQL.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion.{CasePromotion, PromotionMatcher}
 import net.noresttherein.oldsql.sql.FromClause.OuterFrom
@@ -69,7 +69,7 @@ object ConversionSQL {
 
 		override def readForm :ColumnReadForm[U] = expr.readForm.mapNull(convert)
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[U] = matcher.conversion(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[U] = matcher.conversion(this)
 	}
 
 
@@ -81,7 +81,7 @@ object ConversionSQL {
 
 		override def convert(s :T) :U = f(s)
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, U] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, U] =
 			new MappedSQL(mapper(expr))(f)
 
 		override def sameAs(other :CompositeSQL[Nothing, _]) :Boolean = other match {
@@ -99,7 +99,7 @@ object ConversionSQL {
 	(override val expr :ColumnSQL[F, T])(fun :T => U)
 		extends MappedSQL[F, T, U](expr)(fun) with ColumnConversionSQL[F, T, U]
 	{
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnConversionSQL[S, T, U] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnConversionSQL[S, T, U] =
 			new MappedColumnSQL(mapper(expr))(fun)
 	}
 
@@ -113,7 +113,7 @@ object ConversionSQL {
 	{
 		override def convert(s :T) :U = lift(s)
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, U] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, U] =
 			new PromotionConversion(mapper(expr))
 
 
@@ -167,10 +167,10 @@ object ConversionSQL {
 	(override val expr :ColumnSQL[F, T])(implicit lift :Lift[T, U])
 		extends PromotionConversion[F, T, U](expr) with ColumnConversionSQL[F, T, U]
 	{
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, U] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, U] =
 			new ColumnPromotionConversion(mapper(expr))
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[U] = matcher.promotion(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[U] = matcher.promotion(this)
 	}
 
 

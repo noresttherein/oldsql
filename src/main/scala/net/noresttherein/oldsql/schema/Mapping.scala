@@ -155,7 +155,7 @@ sealed trait Mapping {
 	  */
 	type ColumnProjection[O] = ColumnMapping[Subject, O]
 
-	/** A container with values for components of this mapping required to assemble the subject.
+	/** A container with values for components of this mapping required to map the subject.
 	  * It is a [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] instance parameterized with
 	  * the subject of this mapping. Each `Pieces` instance is, at least in theory, dedicated
 	  * to a particular component instance (its class and position in the larger mapping structure).
@@ -248,26 +248,26 @@ sealed trait Mapping {
 
 
 
-	/** Attempts to retrieve or assemble the value of `Subject` from the passed `ComponentValues` for this instance.
+	/** Attempts to retrieve or map the value of `Subject` from the passed `ComponentValues` for this instance.
 	  * Standard implementation will test several sources together with `pieces` before giving up:
 	  * a ready value present for this mapping in the `pieces`, assembling the result from subcomponents and, finally,
 	  * a default coming from an attached `OptionalSelect` (or related). By default it forwards to
 	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and should stay consistent with it.
-	  * Mapping implementations for concrete domain model classes should typically override `assemble` instead of
+	  * Mapping implementations for concrete domain model classes should typically override `map` instead of
 	  * this method directly.
 	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble map]]
 	  */
 	def apply(pieces: Pieces): Subject =
 		optionally(pieces) getOrElse {
-			throw new NoSuchElementException(s"Can't assemble $this from $pieces.")
+			throw new NoSuchElementException(s"Can't map $this from $pieces.")
 		}
 
-	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
+	/** Attempts to retrieve or map the value for the mapped `Subject` from the given `ComponentValues`.
 	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
-	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.assemble assemble]] method
+	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.assemble map]] method
 	  * of `ComponentValues` (which, by default, will first check if it has a predefined value stored for this mapping,
-	  * and, only if not, forward to this instance's [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  * and, only if not, forward to this instance's [[net.noresttherein.oldsql.schema.Mapping.assemble map]]
 	  * method which is responsible for the actual assembly of the subject from the values of the subcomponents,
 	  * recursively obtained from `pieces`.
 	  *
@@ -286,11 +286,11 @@ sealed trait Mapping {
 	  * default 'missing' value; it is ultimately always up to the mapping implementation to handle the matter.
 	  * The above distinction is complicated further by the fact that the mapped type `Subject` itself can be
 	  * an `Option` type, used to signify either or both of these cases.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble map]]
 	  */
 	def optionally(pieces: Pieces): Option[Subject]
 
-	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
+	/** Attempts to map the value of this mapping from the values of subcomponents stored in the passed
 	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
 	  * in [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] and should not be called directly.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
@@ -493,7 +493,7 @@ sealed trait Mapping {
 
 
 	/** Lifts this mapping by encapsulating the subject values in an `Option`. The created mapping will
-	  * always return `Some(x)` from its `optionally` and `assemble` methods, where `x` is the value returned by
+	  * always return `Some(x)` from its `optionally` and `map` methods, where `x` is the value returned by
 	  * the method of this instance. This means that `Some(None)` is returned when this component has no value
 	  * associated in a given `Pieces` instance, and that `apply(Pieces)` method of the returned mapping will
 	  * never fail. This instance is exposed as the public `get` field of the returned mapping, allowing direct
@@ -927,7 +927,7 @@ object Mapping {
 			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
 			val columnValues = columnArray.map { c => i += 1; read(c).opt(i - 1)(res) }
 			val pieces = ComponentValues(mapping)(ArraySeq.unsafeWrapArray(columnValues))(columns.indexOf)
-//			mapping.assemble(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
+//			mapping.map(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
 //				optional.map(_.value) orElse extra.map(_.value)
 			mapping.optionally(pieces)
 		}
@@ -1181,7 +1181,7 @@ trait TypedMapping[S, O] extends Mapping { self =>
 
 	override def apply(pieces: Pieces): S =
 		optionally(pieces) getOrElse {
-			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
+			throw new IllegalArgumentException(s"Can't map $this from $pieces")
 		}
 
 	override def optionally(pieces: Pieces): Option[S] = pieces.assemble(this) match {

@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnExpressionMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.LogicalSQL.AND.{ANDMatcher, CaseAND}
 import net.noresttherein.oldsql.sql.LogicalSQL.NOT.{CaseNot, NotMatcher}
 import net.noresttherein.oldsql.sql.LogicalSQL.OR.{CaseOR, ORMatcher}
@@ -36,9 +36,9 @@ object LogicalSQL {
 			formula
 
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] = matcher.not(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.not(this)
 
-		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = NOT(mapper(formula))
+		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = NOT(mapper(formula))
 
 		override def toString = "NOT " + formula
 	}
@@ -93,9 +93,9 @@ object LogicalSQL {
 
 
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] = matcher.and(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.and(this)
 
-		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = new AND(parts.map(mapper(_)))
+		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = new AND(parts.map(mapper(_)))
 
 
 
@@ -163,9 +163,9 @@ object LogicalSQL {
 
 
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] = matcher.or(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.or(this)
 
-		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = new OR(parts.map(mapper(_)))
+		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = new OR(parts.map(mapper(_)))
 
 
 

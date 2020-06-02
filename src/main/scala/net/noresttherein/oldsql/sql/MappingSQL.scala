@@ -2,10 +2,10 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, RowSource, SQLReadForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, RowSource, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.ColumnSQL.ColumnExpressionMatcher
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, PrefixOf, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.{CaseColumnComponent, ColumnComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL.{CaseComponent, ComponentMatcher, ProperComponent}
@@ -173,7 +173,7 @@ object MappingSQL {
 			new FreeColumn[S, M, V](column.asInstanceOf[M[S]], shift + ev.length)
 
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[V] =
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[V] =
 			matcher.freeComponent[F, M, V](this)
 
 	}
@@ -453,7 +453,7 @@ object MappingSQL {
 		override def subselectFrom[S <: F, A](from :S) :SubselectColumnMapping[from.Implicit, from.type, M, V, A] =
 			SelectSQL.subselect[from.Implicit, from.type, T, E, M, V, O, A](from, this) //todo: from.type is ugly!
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.component(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[V] = matcher.component(this)
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnComponentSQL.* @unchecked]
 	}
@@ -678,9 +678,10 @@ object MappingSQL {
 				:SQLRelation[F, T, S, F] =
 			new SQLRelation[F, T, S, F](RowSource[T, F](cast(table))(alias), table, shift.tables)
 
-		private[sql] def apply[F <: FromClause, T[A] <: TypedMapping[S, A], S](source :RowSource[T], index :Int)
-				:SQLRelation[F, T, T[Any]#Subject, F] =
-			new SQLRelation[F, T, T[Any]#Subject, F](source, index)
+		private[sql] def apply[F <: FromClause, T[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
+		                      (source :RowSource[T], index :Int)
+				:SQLRelation[F, T, T[Any]#Subject, O] =
+			new SQLRelation[F, T, T[Any]#Subject, O](source, index)
 
 
 		def last[M[A] <: MappingAt[A], T[A] <: TypedMapping[S, A], S]

@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, TypedMapping}
 import net.noresttherein.oldsql.sql.ArithmeticSQL.{ArithmeticMatcher, CaseArithmetic}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
-import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnExpressionMatcher}
+import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
 import net.noresttherein.oldsql.sql.ConcatSQL.{CaseConcat, ConcatMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseColumnConversion, ColumnConversionMatcher, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
@@ -95,9 +95,9 @@ trait ColumnSQL[-F <: FromClause, V] extends SQLExpression[F, V] {
 
 
 	override def applyTo[Y[_]](matcher :ExpressionMatcher[F, Y]) :Y[V] =
-		applyTo(matcher :ColumnExpressionMatcher[F, Y])
+		applyTo(matcher :ColumnMatcher[F, Y])
 
-	def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[V]
+	def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[V]
 }
 
 
@@ -114,10 +114,10 @@ object ColumnSQL {
 
 		override def readForm :ColumnReadForm[V] = column.readForm
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
 			new AliasedColumn(mapper(column), alias)
 
-		override def applyTo[Y[X]](matcher :ColumnExpressionMatcher[F, Y]) :Y[V] = matcher.alias(this)
+		override def applyTo[Y[X]](matcher :ColumnMatcher[F, Y]) :Y[V] = matcher.alias(this)
 
 	}
 
@@ -136,10 +136,10 @@ object ColumnSQL {
 
 
 	trait CompositeColumnSQL[-F <: FromClause, X] extends CompositeSQL[F, X] with ColumnSQL[F, X] {
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, X]
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, X]
 
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ColumnSQL[S, X] =
-			map(SQLScribe.stretcher(base))
+			rephrase(SQLScribe.stretcher(base))
 
 	}
 
@@ -172,15 +172,15 @@ object ColumnSQL {
 
 
 
-	trait ColumnExpressionMatcher[+F <: FromClause, +Y[X]]
+	trait ColumnMatcher[+F <: FromClause, +Y[X]]
 		extends ColumnTermMatcher[F, Y] with CompositeColumnMatcher[F, Y] with MappingColumnMatcher[F, Y]
 			with SelectColumnMatcher[F, Y]
 
-	trait MatchColumnExpression[+F <: FromClause, +Y[X]] extends ColumnExpressionMatcher[F, Y]
+	trait MatchColumn[+F <: FromClause, +Y[X]] extends ColumnMatcher[F, Y]
 		with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
 		with CaseColumnComponent[F, Y] with CaseFreeColumn[F, Y] with CaseSelectColumn[F, Y]
 
-	trait CaseColumnExpression[+F <: FromClause, +Y[X]] extends MatchColumnExpression[F, Y] {
+	trait CaseColumn[+F <: FromClause, +Y[X]] extends MatchColumn[F, Y] {
 		def column[X](e :ColumnSQL[F, X]) :Y[X]
 
 		override def composite[X](e :CompositeColumnSQL[F, X]) :Y[X] = column(e)

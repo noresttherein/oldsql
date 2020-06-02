@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping, SQLForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping, SQLForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedFlatSchema, FlatMappedSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchemaMapping, SchemaColumn}
@@ -177,7 +177,7 @@ object ChainMapping {
 	private class NonEmptyFlatChainMapping[C <: Chain, M <: ColumnMapping[T, O], R <: Chain, T, O]
 	                                      (prefix :FlatChainMapping[C, R, O], next :M)
 		extends FlatNonEmptySchema[C, M, R, T, R ~ T, O](
-		                       prefix.asPrefix[T], next, MappingExtract.req(next)((row :R ~ T) => row.last))
+		                       prefix.asPrefix[T], next, ColumnExtract.req(next)((row :R ~ T) => row.last))
 		   with FlatChainMapping[C ~ M, R ~ T, O]
 
 

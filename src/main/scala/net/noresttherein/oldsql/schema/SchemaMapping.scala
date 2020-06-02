@@ -459,7 +459,7 @@ object SchemaMapping {
 		def apply[N <: Label, S :ColumnForm, O](label :N, name :String, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
 			new StandardColumn[S, O](name, buffs) with LabeledSchemaColumn[N, S, O] {
 				override val schema :FlatMappingSchema[@~ ~ SchemaColumn[S, O], @~ ~ S, S, O] =
-					MappingSchema[S, O].col(this, MappingExtract.ident[S, O](this))
+					MappingSchema[S, O].col(this, ColumnExtract.ident[S, O](this))
 			}
 
 //		implicit def LabeledSchemaColumnProjection[N <: Label, S, A, B]

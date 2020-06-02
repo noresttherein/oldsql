@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:
@@ -17,7 +17,7 @@ import net.noresttherein.oldsql.schema.MappingSchema.SchemaFlattening
 import net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumnExpression, ColumnExpressionMatcher}
+import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectOf}
 import net.noresttherein.oldsql.sql.JoinParam.FromParam
@@ -90,11 +90,11 @@ sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]]
 
 
 
-	def assemble[X](f :V => X) :SelectSQL[F, X, O]
+	def map[X](f :V => X) :SelectSQL[F, X, O]
 
-	def assemble[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+	def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 			:SelectSQL[F, X, O] =
-		assemble(applyFun(f))
+		map(applyFun(f))
 
 	protected def applyFun[Fun, C <: Chain, X]
 	                      (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :V => X =
@@ -216,12 +216,12 @@ object SelectSQL {
 
 		override def single :ColumnSQL[F, V] = to[V]
 
-		override def assemble[X](f :V => X) :SelectColumn[F, X, O]
+		override def map[X](f :V => X) :SelectColumn[F, X, O]
 
-		override def assemble[Fun, C <: Chain, X]
+		override def map[Fun, C <: Chain, X]
 		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 				:SelectColumn[F, X, O] =
-			assemble(applyFun(f))
+			map(applyFun(f))
 
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SelectColumn[S, V, O]
 	}
@@ -238,13 +238,13 @@ object SelectSQL {
 	trait FreeSelectSQL[V, O] extends SelectSQL[FromClause, V, O] {
 		override type From <: OuterFrom
 
-		override def assemble[X](f :V => X) :FreeSelectSQL[X, O] =
+		override def map[X](f :V => X) :FreeSelectSQL[X, O] =
 			new ArbitraryFreeSelect[From, X, O](from, header.map(f))
 
-		override def assemble[Fun, C <: Chain, X]
+		override def map[Fun, C <: Chain, X]
 		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 				:FreeSelectSQL[X, O] =
-			assemble(applyFun(f))
+			map(applyFun(f))
 
 		override def stretch[U <: FromClause, S <: FromClause]
 		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectSQL[V, O] =
@@ -257,19 +257,19 @@ object SelectSQL {
 
 	trait FreeSelectColumn[V, O] extends FreeSelectSQL[V, O] with SelectColumn[FromClause, V, O] {
 
-		override def assemble[X](f :V => X) :FreeSelectColumn[X, O] =
+		override def map[X](f :V => X) :FreeSelectColumn[X, O] =
 			new ArbitraryFreeSelectColumn[From, X, O](from, header.map(f))
 
-		override def assemble[Fun, C <: Chain, X]
+		override def map[Fun, C <: Chain, X]
 		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 				:FreeSelectColumn[X, O] =
-			assemble(applyFun(f))
+			map(applyFun(f))
 
 		override def stretch[U <: FromClause, S <: FromClause]
 		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectColumn[V, O] =
 			this
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[FromClause, Y]) :Y[Rows[V]] = matcher.freeSelect(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[FromClause, Y]) :Y[Rows[V]] = matcher.freeSelect(this)
 	}
 
 
@@ -282,13 +282,13 @@ object SelectSQL {
 	  */
 	trait SubselectSQL[-F <: FromClause, V, O] extends SelectSQL[F, V, O] {
 
-		override def assemble[X](f :V => X) :SubselectSQL[F, X, O] =
+		override def map[X](f :V => X) :SubselectSQL[F, X, O] =
 			new ArbitrarySubselect[F, From, X, O](from, header.map(f))
 
-		override def assemble[Fun, C <: Chain, X]
+		override def map[Fun, C <: Chain, X]
 		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 				:SubselectSQL[F, X, O] =
-			assemble(applyFun(f))
+			map(applyFun(f))
 
 		override def stretch[U <: F, G <: FromClause](base :G)(implicit extension :U ExtendedBy G)
 			:SubselectSQL[G, V, O]
@@ -298,18 +298,18 @@ object SelectSQL {
 
 	trait SubselectColumn[-F <: FromClause, V, O] extends SubselectSQL[F, V, O] with SelectColumn[F, V, O] {
 
-		override def assemble[X](f :V => X) :SubselectColumn[F, X, O] =
+		override def map[X](f :V => X) :SubselectColumn[F, X, O] =
 			new ArbitrarySubselectColumn[F, From, X, O](from, header.map(f))
 
-		override def assemble[Fun, C <: Chain, X]
+		override def map[Fun, C <: Chain, X]
 		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 				:SubselectColumn[F, X, O] =
-			assemble(applyFun(f))
+			map(applyFun(f))
 
 		override def stretch[U <: F, G <: FromClause](base :G)(implicit extension :U ExtendedBy G)
 				:SubselectColumn[G, V, O]
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Rows[V]] = matcher.subselect(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Rows[V]] = matcher.subselect(this)
 	}
 
 
@@ -434,7 +434,7 @@ object SelectSQL {
 	  * Note that the above column list should be considered in the context of this instance as a mapping and represents
 	  * all columns that potentially might be a part of the select clause. Existence of non-selectable and optional
 	  * columns means that resulting select query may not contain all of the above. This distinction is also present
-	  * when using this instance to assemble results of the created select statement; as individual columns
+	  * when using this instance to map results of the created select statement; as individual columns
 	  * in the select header may be any formulas, the source of values for evaluating the header expression are not values
 	  * of the tables of the underlying source, but values for the whole column formulas. For example, a header expression
 	  * in the form of `(current_date - birth_date, address, (first_name, family_name)) from users` could translate
@@ -442,7 +442,7 @@ object SelectSQL {
 	  * Such columns would be available for any formulas using this mapping in their FromClause and are considered
 	  * 'available header columns'. However, when using this instance as a mapping for assembling the header value,
 	  * we don't have values for individual columns of the users table in the above example, but values for the columns
-	  * declared by this mapping. This means that we need a bit of creative term rewriting to assemble the scala value
+	  * declared by this mapping. This means that we need a bit of creative term rewriting to map the scala value
 	  * as it would be evaluated by the original header expression. In particular, in the above example, the address object
 	  * would be reassembled based on the values of individual columns included in the final select.
 	  */
@@ -467,7 +467,7 @@ object SelectSQL {
 		private type Assembler[T] = Pieces => Option[T]
 
 		private class AssemblerAssembler extends ExpressionMatcher[S, Assembler]
-			with CaseExpression[S, Assembler] with CaseColumnExpression[S, Assembler] with MatchChain[S, Assembler]
+			with CaseExpression[S, Assembler] with CaseColumn[S, Assembler] with MatchChain[S, Assembler]
 		{
 			var columns :List[HeaderColumn[_]] = Nil
 			private[this] var names :Set[String] = Set("") //used column names, disallowing ""
@@ -547,7 +547,7 @@ object SelectSQL {
 
 			private def nameFor(f :ColumnSQL[S, _]) :String = {
 				val name :String = f match {
-					case FromParam(param, extract) =>
+					case FromParam(param, extract, _) =>
 						if (extract.isIdentity && !names(param.name)) param.name
 						else param.name + "_" + columns.size
 
@@ -575,7 +575,7 @@ object SelectSQL {
 		private type Extractors[X] = Seq[Assoc[Column, ({ type E[T] = ColumnMappingExtract[X, T, O]})#E, _]]
 
 		private class ExtractsCollector extends ExpressionMatcher[S, Extractors]
-			with CaseExpression[S, Extractors] with CaseColumnExpression[S, Extractors] with MatchChain[S, Extractors]
+			with CaseExpression[S, Extractors] with CaseColumn[S, Extractors] with MatchChain[S, Extractors]
 		{
 			private[this] var columnStack = outer.headerColumns.toList
 
@@ -583,7 +583,7 @@ object SelectSQL {
 				val column = columnStack.head.asInstanceOf[HeaderColumn[X]]
 				columnStack = columnStack.tail
 				type ColumnEx[T] = ColumnMappingExtract[X, T, O]
-				Assoc[Column, ColumnEx, X](column, MappingExtract.ident(column))::Nil
+				Assoc[Column, ColumnEx, X](column, ColumnExtract.ident(column))::Nil
 			}
 
 
@@ -602,7 +602,7 @@ object SelectSQL {
 				def extract[C](selectColumn :HeaderColumn[C], componentColumn :component.Column[_]) = {
 					val compatible = componentColumn.asInstanceOf[component.Column[C]]
 					val componentExtract = component(compatible)
-					val selectExtract = MappingExtract(selectColumn)(componentExtract)
+					val selectExtract = ColumnExtract(selectColumn)(componentExtract)
 					Assoc[Column, ColumnEx, C](selectColumn, selectExtract)
 				}
 
@@ -696,7 +696,7 @@ object SelectSQL {
 
 		class HeaderColumn extends ColumnMapping[V, O] with SelectedColumn[V] {
 			override val name :String = header match {
-				case FromParam(param, extract) => param.name
+				case FromParam(param, _, _) => param.name
 
 				case ComponentSQL(_, MappingExtract(_, _, component)) =>
 					component match {
@@ -722,7 +722,7 @@ object SelectSQL {
 
 		override val headerColumns = column::Nil
 
-		override val extracts = NaturalMap.single[Component, Extract, V](column, MappingExtract.ident(column))
+		override val extracts = NaturalMap.single[Component, Extract, V](column, ColumnExtract.ident(column))
 
 		override def columnExtracts =
 			extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]

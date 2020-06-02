@@ -1,31 +1,27 @@
 package net.noresttherein.oldsql.schema
 
+import scala.annotation.implicitNotFound
+import scala.reflect.runtime.universe.TypeTag
+
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, ChainContains, ChainGet, ForAllItems, ItemExists}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, ChainContains, ChainGet, ItemExists}
+import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.model.PropertyPath
-import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
+import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, Numeral, Positive, PositiveInc}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral, PositiveInc}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.{FreeOriginMapping, MappingAt, MappingNest, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
-import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping, MappingAdapter}
-import net.noresttherein.oldsql.schema.MappingSchema.{ExtensibleNonEmptySchema, FlatMappedSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, MappedSchema, SchemaFlattening}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, MappingLabel}
+import net.noresttherein.oldsql.schema.support.{ConstantMapping, LazyMapping}
+import net.noresttherein.oldsql.schema.MappingSchema.{FlatMappedSchema, GetLabeledComponent, GetSchemaComponent, MappedSchema}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, LabeledSchemaComponent, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import scala.annotation.{implicitNotFound, tailrec}
-import scala.reflect.runtime.universe.TypeTag
-
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
-import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.witness.Or
 import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
 import net.noresttherein.oldsql.schema.MappingSchema.CustomizeSchema.FilterSchema
-import net.noresttherein.oldsql.schema.bits.CustomizedMapping.Overrides
-import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
 
 
 
@@ -41,7 +37,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
   * but is more typically used as the basis of a `SchemaMapping` instance for some entity type `S`.
   * This can happen either by directly mapping the chain of values `R` with its
   * [[net.noresttherein.oldsql.schema.MappingSchema#map map]] method, or indirectly in an enclosing mapping's
-  * `assemble` method, where components in this schema can be individually accessed, without constructing
+  * `map` method, where components in this schema can be individually accessed, without constructing
   * an intermediate chain of values. There is an automatically available implicit conversion from non-empty
   * schemas (where `C` and `R` are not empty) which add methods for retrieving its components:
   * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaMethods#last last]],
@@ -60,7 +56,7 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping]]
   */
-trait MappingSchema[C <: Chain, R <: Chain, S, O] extends FreeOriginMapping[R, O] { outer =>
+trait MappingSchema[C <: Chain, R <: Chain, S, O] extends TypedMapping[R, O] { outer =>
 
 	protected val outerBuffs :Seq[Buff[S]] = Nil
 
@@ -811,7 +807,6 @@ object MappingSchema {
 		extends ExtensibleMappingSchema[C, R, S, O] with FlatMappingSchema[C, R, S, O]
 	{
 
-
 		protected[MappingSchema] override def carryOver[M <: Component[T], T]
 		                                               (component :M, extractor :S =?> T)
 				:ExtensibleFlatMappingSchema[C ~ M, R ~ T, S, O] =
@@ -1325,7 +1320,7 @@ object MappingSchema {
 	  * @tparam I the upper bound of the chain variant which this schema's subject(s) conform to; it is the upper bound
 	  *           for the `init` part of the chain link `L[_, _]`.
 	  * @tparam L the link type constructor accepting the chain being a subtype of `I` of initial component subjects
-	  *           the and an entry value ''derived'' from the subject of the last component.
+	  *           and an entry value ''derived'' from the subject of the last component.
 	  * @tparam E the upper bound of all elements in the chains of type `I`, serving as a bound for the link type `L`.
 	  * @tparam C the (regular) `Chain` listing the types of all preceding components in the schema.
 	  * @tparam M the type of the last component, contained by this instance.

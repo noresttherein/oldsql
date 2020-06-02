@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnExpressionMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 
 
 
@@ -20,12 +20,12 @@ class ConcatSQL[-F <: FromClause] private (protected override val parts :List[Co
 			case _ => new ConcatSQL(other :: parts)
 		}
 
-	override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, String] =
+	override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, String] =
 		new ConcatSQL(parts.map(mapper.apply))
 
 	override def readForm :ColumnReadForm[String] = implicitly[ColumnForm[String]]
 
-	override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[String] = matcher.concat(this)
+	override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[String] = matcher.concat(this)
 
 
 	override def toString :String = parts.view.reverse.map("'" + _ + "'").mkString(" + ")

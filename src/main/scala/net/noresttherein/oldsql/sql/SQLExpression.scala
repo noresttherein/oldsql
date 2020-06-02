@@ -7,15 +7,14 @@ import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
-import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL}
+import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLExpression.SQLTypePromotion.Lift
-import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, False, NULL, SQLLiteral, SQLParameter, TermMatcher, True}
+import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, False, NULL, SQLLiteral, SQLParameter, SQLParameterColumn, TermMatcher, True}
 import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, TupleMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, MappingMatcher}
-import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnExpressionMatcher}
+import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchCompositeColumn}
-import net.noresttherein.oldsql.sql.LogicalSQL.{AND, NOT, OR}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelect, FreeSelectSQL, SelectMatcher, SubselectSQL}
 
 
@@ -32,13 +31,15 @@ import slang._
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
   */
 trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is Bound || Unbound (flag if it contains any abstract/unbound parts)
-	import SQLTerm.TermFormulas
+	import SQLExpression.boundParameterSQL
 
 	def readForm :SQLReadForm[V]
 
 //	def =:[T <: RefinedMapping[O, E], C <: RefinedMapping[O, L], O, E, L, R >: V, X]
 //	      (path :ComponentPath[T, C, O, E, L])(implicit lift :SQLTypePromotion[L, R, X]) :SetComponent[F, T, C, O, E, L, R, X] =
 //		SetComponent(path, this :SQLExpression[F, R])
+
+	def isNull :SQLBoolean[F] = IsNULL(this)
 
 	def ==?[X, Y](value :X)(implicit lift :SQLTypePromotion[V, X, Y], form :SQLForm[X]) :SQLBoolean[F] =
 		this === value.?
@@ -155,7 +156,17 @@ trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is
 
 
 
-object SQLExpression {
+sealed abstract class SQLMultiColumnTerms {
+
+	implicit def implicitMultiNull[T :SQLForm](value :Null) :SQLTerm[T] = CompositeNULL[T]
+
+	implicit def implicitLiteral[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
+
+}
+
+
+
+object SQLExpression extends SQLMultiColumnTerms {
 
 	implicit def implicitNull[T :ColumnForm](value :Null) :ColumnTerm[T] = NULL[T]
 
@@ -163,7 +174,30 @@ object SQLExpression {
 
 	implicit def implicitColumnLiteral[T :ColumnForm](value :T) :ColumnTerm[T] = ColumnLiteral(value)
 
-	implicit def implicitLiteral[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
+
+
+	implicit class boundParameterSQL[T, P <: SQLParameter[T]]
+	                                (value :T)(implicit factory :BoundParameterExpressions[T, P])
+	{
+		def ? :P = factory(value)
+	}
+
+//	implicit def boundParameterExpressions[T, P](term :T) :boundParameterExpressions[T] =
+//		new boundParameterExpressions(term)
+
+	sealed abstract class BoundParameterExpressions[T, E <: SQLParameter[T]] {
+		implicit def apply(value :T) :E
+	}
+
+	implicit def BoundParameterExpressions[T :SQLForm] :BoundParameterExpressions[T, SQLParameter[T]] =
+		new BoundParameterExpressions[T, SQLParameter[T]] {
+			implicit override def apply(value :T) = SQLParameter(value)
+		}
+
+	implicit def BoundParameterColumnExpressions[T :ColumnForm] :BoundParameterExpressions[T, SQLParameterColumn[T]] =
+		new BoundParameterExpressions[T, SQLParameterColumn[T]] {
+			override implicit def apply(value :T) = SQLParameterColumn(value)
+		}
 
 /*
 	implicit def typingCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: TypedMapping[_, O], X]
@@ -205,11 +239,11 @@ object SQLExpression {
 
 
 
-		def map[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, V]
+		def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, V]
 
 
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V] =
-			map(SQLScribe.stretcher(base))
+			rephrase(SQLScribe.stretcher(base))
 
 
 
@@ -434,7 +468,7 @@ object SQLExpression {
 	  * for the base literal. In this way, the standard delegation chain for any column expression always starts
 	  * by delegating to the non-column method. It is however possible to change by mixing in one or more
 	  * of the `Match`''Expr'' or `Case`''Expr'' traits for particular column expression types after the general
-	  * matcher traits. For example, `CaseExpression[F, Y] with CaseColumnExpression[F, Y]` will change it
+	  * matcher traits. For example, `CaseExpression[F, Y] with CaseColumn[F, Y]` will change it
 	  * to the opposite: all callbacks for column formulas reach the `column` callback for the root `ColumnSQL`
 	  * and, only then, delegate to the `expression` method for `SQLExpression`. An exception to these rules exists
 	  * in `MatchComposite`, which includes all methods of `MatchCompositeColumn`. By mixing in a selection
@@ -442,10 +476,10 @@ object SQLExpression {
 	  * are handled in detail and which are glossed over.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.MatchExpression]]
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.CaseExpression]]
-	  * @see [[net.noresttherein.oldsql.sql.ColumnSQL.ColumnExpressionMatcher]]
+	  * @see [[net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher]]
 	  */
 	trait ExpressionMatcher[+F <: FromClause, +Y[X]]
-		extends ColumnExpressionMatcher[F, Y] with CompositeMatcher[F, Y] with MappingMatcher[F, Y]
+		extends ColumnMatcher[F, Y] with CompositeMatcher[F, Y] with MappingMatcher[F, Y]
 		   with SelectMatcher[F, Y] with TermMatcher[F, Y]
 	{
 		def apply[X](f: SQLExpression[F, X]): Y[X] = f.applyTo(this)

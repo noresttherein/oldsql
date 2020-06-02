@@ -1,15 +1,13 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.model.PropertyPath
-import net.noresttherein.oldsql.model.PropertyPath.{==>, ReflectedPropertyPath}
+import net.noresttherein.oldsql.model.PropertyPath.ReflectedPropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract}
-import net.noresttherein.oldsql.schema.MappingExtract.{ConstantExtract, EmptyExtract, GenericMappingExtract, IdentityExtract, OptionalExtract, RequisiteExtract}
+import net.noresttherein.oldsql.schema.{ColumnMapping, GenericMappingExtract, Mapping}
+import net.noresttherein.oldsql.schema.GenericMappingExtract.{ConstantExtract, EmptyExtract, IdentityExtract, OptionalExtract, RequisiteExtract}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.bits.ComponentProperty.{ConstantProperty, EmptyProperty}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-
 import scala.reflect.runtime.universe.{typeOf, typeTag, Type, TypeTag}
 
 

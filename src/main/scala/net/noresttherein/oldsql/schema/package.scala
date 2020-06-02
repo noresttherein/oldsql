@@ -2,13 +2,16 @@ package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.collection.NaturalMap
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+
+
+//here be implicits
 import net.noresttherein.oldsql.slang._
+
+
 
 /**
   * @author Marcin Mościcki
@@ -25,7 +28,7 @@ package object schema {
 	  *     defined for all subcomponents of a mapping.
 	  * This is a type alias for a template class parameterized with the component mapping type, specified as
 	  * the most generic [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping[T, O] ]].
-	  * @see [[net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract]]
+	  * @see [[net.noresttherein.oldsql.schema.GenericMappingExtract]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](RefinedMapping[T] ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  * @tparam S the subject type of the parent mapping.
@@ -37,7 +40,7 @@ package object schema {
 	/** A `MappingExtract` for a column with subject type `T` of a parent mapping with subject type `S` and origin
 	  * type `O`.
 	  * @see [[net.noresttherein.oldsql.schema.MappingExtract]]
-	  * @see [[net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract]]
+	  * @see [[net.noresttherein.oldsql.schema.GenericMappingExtract]]
 	  */
 	type ColumnMappingExtract[S, T, O] = GenericMappingExtract[ColumnMapping[T, O], S, T, O]
 

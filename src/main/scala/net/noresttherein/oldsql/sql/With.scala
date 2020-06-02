@@ -69,7 +69,7 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 
 
 
-	protected def withCondition(filter :SQLBoolean[Generalized]) :This
+	protected override def withCondition(filter :SQLBoolean[Generalized]) :This //to grant access to With
 
 	def withLeft[F <: FromClause](left :F)(filter :SQLBoolean[left.Generalized With R]) :WithLeft[F]
 
@@ -190,7 +190,7 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 		withCondition(this.condition && SQLScribe.groundFreeComponents(generalized)(condition(last)))
 
 
-	def where[F >: L <: FromClause](condition :JoinedTables[Generalized] => SQLBoolean[Generalized]) :This = {
+	override def where(condition :JoinedTables[Generalized] => SQLBoolean[Generalized]) :This = {
 		val cond = condition(new JoinedTables[Generalized](generalized))
 		withCondition(this.condition && SQLScribe.groundFreeComponents(generalized)(cond))
 	}
@@ -278,7 +278,7 @@ object With {
 			override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
 					:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingAt[A] } =
 				(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
-				 else SQLRelation[G, T, E](e.source, e.shift + extension)).asInstanceOf[SQLRelation[G, T, E, G]]
+				 else SQLRelation[G, T, E, G](e.source, e.shift + extension)).asInstanceOf[SQLRelation[G, T, E, G]]
 
 
 			protected[this] override def extended[S <: FromClause, N <: FromClause]

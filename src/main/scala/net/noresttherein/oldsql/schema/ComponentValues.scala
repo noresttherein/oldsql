@@ -23,7 +23,7 @@ import slang._
   * `x :S` by disassembling `x` into `ComponentValues`, substituting the values for the components we want to change,
   * and reassembling it again to `S` using the mapping.
   *
-  * It is designed to support a hierarchical assembly process, where a mapping will assemble the final result from
+  * It is designed to support a hierarchical assembly process, where a mapping will map the final result from
   * the values of its direct components, which might not be defined explicitly in this instance, but assembled themselves
   * on request from lower level components' values. Specifying the values only for the bottom components, i.e. columns,
   * is the typical use case, but it is possible to set a value for any component in the tree. In the latter case, when
@@ -79,7 +79,7 @@ trait ComponentValues[S, O] {
 	  * should always have the last say on the result. This is implemented by a triple
 	  * dispatch process - `mapping.apply()/optionally()` invokes this method and performs any validation or modification,
 	  * such as providing a default value if none could be obtained. This method in turn will first check
-	  * if `preset()` will return a result, and resorts to `mapping.assemble()` if nothing was set.
+	  * if `preset()` will return a result, and resorts to `mapping.map()` if nothing was set.
 	  * @param mapping the root mapping associated with this instance. Note that ComponentValues should be always
 	  *                statically typed for the singleton type of the associated (this) mapping and passing it to other
 	  *                instances of the same mapping type is not supported in general. In fact, some implementations
@@ -100,7 +100,7 @@ trait ComponentValues[S, O] {
 
 	/** Is there a predefined - explicitly set on creation of this/parent `ComponentValues` instance -
 	  * value for the top level mapping associated with this instance? If this method returns `Some(x)`,
-	  * `assemble` will also return `Some(x)`. If it returns `None`, `assemble` will delegate to `root.assemble(this)`.
+	  * `map` will also return `Some(x)`. If it returns `None`, `map` will delegate to `root.map(this)`.
 	  * @param root the mapping associated with this instance.
 	  */
 	def preset(root :RefinedMapping[S, O]) :Option[S]
@@ -177,7 +177,7 @@ trait ComponentValues[S, O] {
 	  * of the mapping and to allow the preset values be recognized regardless of the version of the component,
 	  * by any component in the hierarchy. If this instance is not aliased, a component on the path must be
 	  * the exact same instance (or equal to it) for which a value was preset (if any) in order for it to be picked up,
-	  * otherwise the values will return `None`. If no value is found, `path.end` will be used to assemble it
+	  * otherwise the values will return `None`. If no value is found, `path.end` will be used to map it
 	  * from the values of lower level components.
 	  * @param path a path from the mapping associated with this instance to the component for the desired subject type.
 	  * @throws NoSuchElementException if no value could be provided, be it preset, assembled or default.
@@ -254,7 +254,7 @@ trait ComponentValues[S, O] {
 	  * and to allow the preset values be recognized regardless of the version of the component, by any component in the
 	  * hierarchy. If this instance is not aliased, a component on the path must be the exact same instance
 	  * (or equal to it) for which a value was preset (if any) in order for it to be picked up, otherwise the values
-	  * will return `None`. If no value is found, `path.end` will be used to assemble it from the values
+	  * will return `None`. If no value is found, `path.end` will be used to map it from the values
 	  * of lower level components.
 	  * @param path a path from the mapping associated with this instance to the component for the desired subject type.
 	  * @throws NoSuchElementException if no value could be provided, be it preset, assembled or default.
@@ -453,7 +453,7 @@ trait ComponentValues[S, O] {
   * into `ComponentValues`, substituting the values for the components one wants to change, and reassembling it again
   * to `S` using the mapping.
   *
-  * It is designed to support a hierarchical assembly process, where a mapping will assemble the final result from
+  * It is designed to support a hierarchical assembly process, where a mapping will map the final result from
   * the values of its direct components, which might not be defined explicitly in this instance, but assembled themselves
   * on request from lower level component values. Specifying the values only for the bottom components, i.e. columns,
   * is the typical use case, but it is possible to set a value for any component in the tree. In the latter case, when
@@ -530,7 +530,7 @@ object ComponentValues {
 
 	/** An empty instance, returning always `None` or throwing `NoSuchElementException`. This instance does ''not''
 	  * perform aliasing in order to obtain the operative version of the components before calling their
-	  * `optionally`, `apply`, `assemble` methods, which may result in incorrect result in the cases where
+	  * `optionally`, `apply`, `map` methods, which may result in incorrect result in the cases where
 	  * some buffs are inherited from an owning mapping (or it is modified in any other way for the purpose
 	  * of the component). You may wish to consider using `ComponentValues(mapping)()` instead, which is compatible
 	  * with any mapping.
@@ -539,7 +539,7 @@ object ComponentValues {
 
 	/** An empty instance, returning always `None` or throwing a `NoSuchElementException`. This instance does ''not''
 	  * perform aliasing in order to obtain the operative version of the components before calling their
-	  * `optionally`, `apply`, `assemble` methods, which may result in incorrect result in the cases where
+	  * `optionally`, `apply`, `map` methods, which may result in incorrect result in the cases where
 	  * some buffs are inherited from an owning mapping (or it is modified in any other way for the purpose
 	  * of the component). You may wish to consider using `ComponentValues(mapping)()` instead, which is compatible
 	  * with any mapping.
@@ -553,7 +553,7 @@ object ComponentValues {
 	/** Create `ComponentValues` for the given mapping and its subject. All values returned by this instance will use
 	  * the `MappingExtract` provided by their owning mapping to extract the value from the given argument.
 	  * The values for the subcomponents of the mapping are ''always'' extracted from the preset value using
-	  * the mapping's `MappingExtract` for the component; the components' `optionally` (or `apply` and `assemble`)
+	  * the mapping's `MappingExtract` for the component; the components' `optionally` (or `apply` and `map`)
 	  * methods are never called and neither are they being aliased to their operative version provided by the extract.
 	  * The root mapping's `optionally`/`apply` method is being called as normal, allowing it to modify the preset result.
 	  * You may wish to consider using `ComponentValues(mapping)(value)` instead, which follows exactly the general
@@ -566,7 +566,7 @@ object ComponentValues {
 	/** Create `ComponentValues` for the given mapping and its subject. All values returned by this instance will use
 	  * the `MappingExtract` provided by their owning mapping to extract the value from the given argument.
 	  * The values for the subcomponents of the mapping are ''always'' extracted from the preset value using
-	  * the mapping's `MappingExtract` for the component; the components' `optionally` (or `apply` and `assemble`)
+	  * the mapping's `MappingExtract` for the component; the components' `optionally` (or `apply` and `map`)
 	  * methods are never called and neither are they being aliased to their operative version provided by the extract.
 	  * The root mapping's `optionally`/`apply` method is being called as normal, allowing it to modify the preset result.
 	  * You may wish to consider using `ComponentValues(mapping)(value)` instead, which follows exactly the general
@@ -584,7 +584,7 @@ object ComponentValues {
 	  * directly (rather than extracting it from its assembled subject), it will likely bypass the check for the preset
 	  * value and obtain `None` instead, resulting in a failed or incorrect assembly. The values for the subcomponents
 	  * of the mapping are ''always'' extracted from the preset value using the mapping's `MappingExtract`
-	  * for the component; the components' `optionally` (or `apply` and `assemble`) methods are never called and neither
+	  * for the component; the components' `optionally` (or `apply` and `map`) methods are never called and neither
 	  * are they being aliased to their operative version provided by the extract. The root mapping's
 	  * `optionally`/`apply` methods are being called as normal, allowing it to modify the preset result.
 	  * You may wish to consider using `ComponentValues(mapping)(value, components)` instead, which follows exactly
@@ -599,7 +599,7 @@ object ComponentValues {
 	/** Similar to `Preset[S, O](mapping, value)`, but the value is not computed until actually needed. The expression
 	  * will be evaluated at most once. The values for the subcomponents of the mapping
 	  * are ''always'' extracted from the preset value using the mapping's `MappingExtract` for the component;
-	  * the components' `optionally` (or `apply` and `assemble`) methods are never called and neither are they
+	  * the components' `optionally` (or `apply` and `map`) methods are never called and neither are they
 	  * being aliased to their operative version provided by the extract. The root mapping's `optionally`/`apply`
 	  * method is being called as normal, allowing it to modify the preset result.
 	  */
@@ -610,7 +610,7 @@ object ComponentValues {
 	  * Similar to `Lazy`, but the expression might not produce a value (return `None`), and used generally as a fallback
 	  * default value for when the first choice couldn't be obtained. The values for the subcomponents of the mapping
 	  * are ''always'' extracted from the preset value using the mapping's `MappingExtract` for the component;
-	  * the components' `optionally` (or `apply` and `assemble`) methods are never called and neither are they
+	  * the components' `optionally` (or `apply` and `map`) methods are never called and neither are they
 	  * being aliased to their operative version provided by the extract. The root mapping's `optionally`/`apply`
 	  * method is being called as normal, allowing it to modify the preset result.
 	  */
@@ -687,7 +687,7 @@ object ComponentValues {
 		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before invoking their `optionally`
 		  * (or `apply`) method. Note that while you can supply any components, not only columns, if any mapping
 		  * in the hierarchy relies in its assembly on a value of a non-direct subcomponent, it can bypass the
-		  * value preset here. This will likely result in its failure to assemble its subject.
+		  * value preset here. This will likely result in its failure to map its subject.
 		  * @param value subject of the root mapping serving as input for values of the given components.
 		  * @param components list of components which should be used as sources in the assembly process.
 		  */
@@ -1261,8 +1261,8 @@ object ComponentValues {
 	  * If no preset value for the component is available, it will be assembled. Calls for `ComponentValues` instances
 	  * for subcomponents work similarly: if this instance contains a preset value `x`, `Preset(x)` is
 	  * returned; otherwise this instance simply casts itself to the component type. A non obvious implication
-	  * of this algorithm is that this instance's `preset` method ''always'' returns `None` and `assemble`
-	  * delegates straight to `mapping.assemble`, as the check for the preset value occurred earlier.
+	  * of this algorithm is that this instance's `preset` method ''always'' returns `None` and `map`
+	  * delegates straight to `mapping.map`, as the check for the preset value occurred earlier.
 	  * @tparam M type of the target mapping defining the components for which this instance contains values.
 	  *           In non-abstract cases the singleton type of the mapping object used for assembly
 	  */

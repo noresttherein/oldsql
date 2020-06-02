@@ -4,10 +4,9 @@ import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingNest, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, TypedMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, GenericMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
-import net.noresttherein.oldsql.schema.MappingExtract.GenericMappingExtract
 import scala.collection.mutable
 
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -54,7 +53,7 @@ object ComponentProxy {
 		
 		override def apply[T](column :Column[T]) :ColumnExtract[T] =
 			(if (column eq egg)
-				MappingExtract.ident(column)
+				ColumnExtract.ident(column)
 			else
 				 egg(column)
 			).asInstanceOf[ColumnExtract[T]]
@@ -66,7 +65,7 @@ object ComponentProxy {
 
 		override def columnExtracts :NaturalMap[Column, ColumnExtract] = egg match {
 			case column :ColumnMapping[S @unchecked, O @unchecked] =>
-				NaturalMap.single[Column, ColumnExtract, S](column, MappingExtract.ident(column))
+				NaturalMap.single[Column, ColumnExtract, S](column, ColumnExtract.ident(column))
 			case _ =>
 				egg.columnExtracts
 		}
@@ -112,7 +111,7 @@ object ComponentProxy {
 
 
 
-		override def assemble(pieces :Pieces) :Option[S] = //use egg.assemble to bypass buffs on the egg
+		override def assemble(pieces :Pieces) :Option[S] = //use egg.map to bypass buffs on the egg
 			egg.assemble(pieces.asInstanceOf[egg.Pieces]) //and use only those on the proxy
 
 
@@ -137,9 +136,9 @@ object ComponentProxy {
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] =
 			if (column eq egg)
-				MappingExtract.ident(adaptEgg.asInstanceOf[Column[S]]).asInstanceOf[ColumnExtract[T]]
+				ColumnExtract.ident(adaptEgg.asInstanceOf[Column[S]]).asInstanceOf[ColumnExtract[T]]
 			else
-				MappingExtract[S, T, O](export(column))(egg.apply(dealias(column)))
+				ColumnExtract[S, T, O](export(column))(egg.apply(dealias(column)))
 		
 
 
@@ -173,7 +172,7 @@ object ComponentProxy {
 		override def columnExtracts :NaturalMap[Column, ColumnExtract] = {
 			def mapEntry[X](entry :Assoc[egg.Column, egg.ColumnExtract, X]) = {
 				val export = alias(entry._1)
-				val extract = MappingExtract(export)(entry._2)
+				val extract = ColumnExtract(export)(entry._2)
 				Assoc[Column, ColumnExtract, X](entry._1.asInstanceOf[Column[X]], extract)::
 					Assoc[Column, ColumnExtract, X](export, extract)::Nil
 			}

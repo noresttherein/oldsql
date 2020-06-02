@@ -2,12 +2,13 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnExpressionMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ConditionSQL.ComparisonSQL.{CaseComparison, ComparisonMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.EqualitySQL.EqualityMatcher
 import net.noresttherein.oldsql.sql.ConditionSQL.ExistsSQL.{CaseExists, ExistsMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.In.{CaseIn, InMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.InequalitySQL.InequalityMatcher
+import net.noresttherein.oldsql.sql.ConditionSQL.IsNULL.{CaseIsNull, IsNullMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.LikeSQL.{CaseLike, LikeMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.OrderComparisonSQL.OrderComparisonMatcher
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL
@@ -27,9 +28,37 @@ trait ConditionSQL[-F <: FromClause] extends CompositeColumnSQL[F, Boolean] {
 
 
 object ConditionSQL {
-	//todo: uniform naming convention for classes.
 
-	trait ComparisonSQL[-F <: FromClause, T] extends ConditionSQL[F] with CompositeSQL[F, Boolean] {
+	case class IsNULL[-F <: FromClause, T](expr :SQLExpression[F, T]) extends ConditionSQL[F] {
+		protected override def parts :Seq[SQLExpression[F, T]] = expr::Nil
+
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
+			new IsNULL(mapper(expr))
+
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] =
+			matcher.isNull(this)
+
+		override def toString = "(" + expr + "is null)"
+	}
+
+
+
+	object IsNULL {
+		trait IsNullMatcher[+F <: FromClause, +Y[X]] {
+			def isNull[T](e :IsNULL[F, T]) :Y[Boolean]
+		}
+
+		type MatchIsNull[+F <: FromClause, +Y[X]] = IsNullMatcher[F, Y]
+
+		type CaseIsNull[+F <: FromClause, +Y[X]] = IsNullMatcher[F, Y]
+	}
+
+
+
+
+
+
+	trait ComparisonSQL[-F <: FromClause, T] extends ConditionSQL[F] {
 		val left :SQLExpression[F, T]
 		val right :SQLExpression[F, T]
 		def symbol :String
@@ -105,11 +134,11 @@ object ConditionSQL {
 				}
 
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :SQLBoolean[S] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :SQLBoolean[S] =
 			new OrderComparisonSQL(ordering, mapper(left), symbol, mapper(right))
 
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] =
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] =
 			matcher.order(this)
 
 	}
@@ -146,9 +175,9 @@ object ConditionSQL {
 
 
 
-		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = EqualitySQL(mapper(left), mapper(right))
+		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = EqualitySQL(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] = matcher.equality(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.equality(this)
 
 	}
 
@@ -177,9 +206,9 @@ object ConditionSQL {
 
 
 
-		override def map[S <: FromClause](mapper: SQLScribe[F, S]) = InequalitySQL(mapper(left), mapper(right))
+		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = InequalitySQL(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] = matcher.inequality(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.inequality(this)
 
 	}
 
@@ -203,10 +232,10 @@ object ConditionSQL {
 	case class LikeSQL[-F <: FromClause](expr :ColumnSQL[F, String], pattern :String) extends ConditionSQL[F] {
 		protected override def parts :Seq[SQLExpression[F, String]]= expr::Nil
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
 			LikeSQL(mapper(expr), pattern)
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] = matcher.like(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.like(this)
 
 		override def toString = s"'$expr' like '$pattern'"
 	}
@@ -232,7 +261,7 @@ object ConditionSQL {
 	case class ExistsSQL[-F <: FromClause, V, O](select :SelectSQL[F, V, O]) extends ConditionSQL[F] {
 		protected override def parts :Seq[SQLExpression[F, _]] = select::Nil
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
 			mapper(select) match {
 				case sel :SelectSQL[S, V, _] => sel.exists
 				case other =>
@@ -241,7 +270,7 @@ object ConditionSQL {
 					)
 			}
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] = matcher.exists(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.exists(this)
 
 		override def toString :String = s"EXISTS($select)"
 	}
@@ -268,10 +297,10 @@ object ConditionSQL {
 	{
 		override protected def parts :Seq[SQLExpression[F, _]] = left::right::Nil
 
-		override def map[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
+		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
 			In(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnExpressionMatcher[F, Y]) :Y[Boolean] = matcher.in(this)
+		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.in(this)
 
 		override def toString :String = s"($left IN $right)"
 	}
@@ -294,13 +323,16 @@ object ConditionSQL {
 
 
 	trait ConditionMatcher[+F <: FromClause, +Y[X]]
-		extends ComparisonMatcher[F, Y] with LikeMatcher[F, Y] with ExistsMatcher[F, Y] with InMatcher[F, Y]
+		extends IsNullMatcher[F, Y] with ComparisonMatcher[F, Y] with LikeMatcher[F, Y]
+		   with ExistsMatcher[F, Y] with InMatcher[F, Y]
 
 	trait MatchCondition[+F <: FromClause, +Y[X]]
-		extends CaseComparison[F, Y] with CaseLike[F, Y] with CaseExists[F, Y] with CaseIn[F, Y]
+		extends CaseIsNull[F, Y] with CaseComparison[F, Y] with CaseLike[F, Y] with CaseExists[F, Y] with CaseIn[F, Y]
 
 	trait CaseCondition[+F <: FromClause, +Y[X]] extends ConditionMatcher[F, Y] with MatchCondition[F, Y] {
 		def condition(e :ConditionSQL[F]) :Y[Boolean]
+
+		override def isNull[T](e :IsNULL[F, T]) :Y[Boolean] = condition(e)
 
 		override def comparison[X](e :ComparisonSQL[F, X]) :Y[Boolean] = condition(e)
 

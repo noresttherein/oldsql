@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn
@@ -175,7 +175,7 @@ object LiteralIndexMapping {
 	                                      (prefix :FlatLiteralIndexMapping[C, R, O], key :K, next :M)
 		extends NonEmptyFlatIndexSchema[C, M, R, K, T, R |~ (K :~ T), O](
 		                                prefix.asPrefix[K :~ T], key, next,
-		                                MappingExtract.req(next)((row :R |~ (K :~ T)) => row.last.value))
+		                                ColumnExtract.req(next)((row :R |~ (K :~ T)) => row.last.value))
 		   with FlatLiteralIndexMapping[C ~ M, R |~ (K :~ T), O]
 	
 	

@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, FreeComponent}
 
 /** A `Mapping` representing a single SQL column of a table or select result.
   * It is special in that it is atomic, the smallest building block in the `Mapping` component hierarchy.
-  * Columns are never assembled (their `assemble` method returns `None`) but must be present in `ComponentValues`
+  * Columns are never assembled (their `map` method returns `None`) but must be present in `ComponentValues`
   * for the mapping to produce a value. Additionally, it can never have any components (or subcomponents),
   * but it is its own column to maintain the invariant that the `columns` property always returns the complete list
   * of columns comprising any mapping. As follows, the rest of the column lists are either empty or contain
@@ -64,7 +64,7 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 
 	override def apply[T](component :Component[T]) :Extract[T] =
 		if (component == this)
-			MappingExtract.ident[S, O](this).asInstanceOf[Extract[T]]
+			ColumnExtract.ident[S, O](this).asInstanceOf[Extract[T]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
@@ -72,7 +72,7 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 
 	override def apply[T](column :Column[T]) :ColumnExtract[T] =
 		if (column == this)
-			MappingExtract.ident[S, O](this).asInstanceOf[ColumnExtract[T]]
+			ColumnExtract.ident[S, O](this).asInstanceOf[ColumnExtract[T]]
 		else
 			throw new IllegalArgumentException(
 				s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
@@ -81,10 +81,10 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 
 
 	override def columnExtracts :NaturalMap[Column, ColumnExtract] =
-		NaturalMap.single[Column, ColumnExtract, S](this, MappingExtract.ident(this))
+		NaturalMap.single[Column, ColumnExtract, S](this, ColumnExtract.ident(this))
 
 	override def extracts :NaturalMap[Component, ColumnExtract] =
-		NaturalMap.single[Component, ColumnExtract, S](this, MappingExtract.ident(this))
+		NaturalMap.single[Component, ColumnExtract, S](this, ColumnExtract.ident(this))
 
 
 
@@ -378,7 +378,7 @@ object ColumnMapping {
 		override val updateForm :SQLWriteForm[S] = super.updateForm
 		override val insertForm :SQLWriteForm[S] = super.insertForm
 
-		private[this] val selfExtract = MappingExtract.ident(this)
+		private[this] val selfExtract = ColumnExtract.ident(this)
 
 		override val extracts :NaturalMap[Component, ColumnExtract] =
 			NaturalMap.single[Component, ColumnExtract, S](this, selfExtract)
