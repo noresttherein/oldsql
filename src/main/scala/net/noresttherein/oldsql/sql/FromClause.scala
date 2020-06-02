@@ -9,11 +9,11 @@ import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause.GetTableByIndex.GetTableByNegativeIndex
-import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByLabel, BySubject, ByTypeConstructor}
+import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByLabel, ByParamName, BySubject, ByTypeConstructor}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables, OuterFrom, SubselectFrom, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, FreeColumn, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.JoinParam.{?:, FromParam, ParamSource, WithParam}
+import net.noresttherein.oldsql.sql.JoinParam.{?:, FromParam, LabeledFromParam, NamedParamSource, ParamSource, WithParam}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import scala.annotation.implicitNotFound
 
@@ -1076,7 +1076,7 @@ object FromClause {
 
 
 
-		/** Applies this clause to its parameters, removes all `JoinParam` joins and substituting all references
+		/** Applies this clause to its parameters: removes all `JoinParam` joins and substitutes all references
 		  * to parameter components with SQL literals extracted from parameter values.
 		  * @param params a chain consisting of subject types of all parameter mappings of all `JoinParam` joins
 		  *               in this clause in order of their appearance.
@@ -1157,7 +1157,7 @@ object FromClause {
 		  * @param alias a `String` literal used as the label of the accessed mapping.
 		  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping]]
 		  */
-		def apply[A <: String with Singleton](alias :A)(implicit get :ByLabel.Get[F, A]) :get.T[get.J] =
+		def apply[A <: Label](alias :A)(implicit get :ByLabel.Get[F, A]) :get.T[get.J] =
 			get(thisClause).mapping
 
 		/** Returns the `Mapping` instance for the last relation using the provided mapping type.
@@ -1184,6 +1184,21 @@ object FromClause {
 
 		/** Returns the `Mapping` instance for the second-last relation in this clause (counting from the right). */
 		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :get.T[get.J] = get(thisClause).mapping
+
+
+
+		//todo: ByParamIndex
+		/** Returns the `Mapping` instance for the last clause parameter of type `X`. */
+		def ?[X](implicit get :ByTypeConstructor.Get[F, ParamSource[X]#Row]) :get.T[get.J] =
+			get(thisClause).mapping
+
+		/** Returns the `Mapping` instance for the last clause parameter with name `name` as its label.
+		  * This takes into account only `JoinParam (N ?: _)#T` joins, that is with the name listed as
+		  *  a mapping label in its type, not the actual parameter names which might have been given to
+		  *  standard `ParamSource[X]` instances.
+		  */
+		def ?[N <: Label](name :N)(implicit get :ByParamName.Get[F, N]) :get.T[get.J] =
+			get.apply(thisClause).mapping
 
 	}
 
@@ -1232,6 +1247,21 @@ object FromClause {
 
 		/** Returns the `JoinedRelation` instance for the second-last relation in this clause (counting from the right). */
 		def prev(implicit get :GetTableByNegativeIndex[F, -2]) :JoinedRelation[get.J, get.T] = get(thisClause)
+
+
+
+		//todo: ByParamIndex
+		/** Returns the `Mapping` instance for the last clause parameter of type `X`. */
+		def ?[X](implicit get :ByTypeConstructor.Get[F, ParamSource[X]#Row]) :JoinedRelation[get.J, get.T] =
+			get(thisClause)
+
+		/** Returns the `Mapping` instance for the last clause parameter with name `name` as its label.
+		  * This takes into account only `JoinParam (N ?: _)#T` joins, that is with the name listed as
+		  *  a mapping label in its type, not the actual parameter names which might have been given to
+		  *  standard `ParamSource[X]` instances.
+		  */
+		def ?[N <: Label](name :N)(implicit get :ByParamName.Get[F, N]) :JoinedRelation[get.J, get.T] =
+			get(thisClause)
 
 	}
 
@@ -1417,10 +1447,9 @@ object FromClause {
 	  */
 	class GetTableByPredicate {
 
-		/** Witnesses that mapping `M[Any]` (where `Any` is the `Origin` type) satisfies the sarch predicate
-		  * and should be returned. Note that the predicate is invariant with the regards to a mapping, so
-		  * it will not match subclasses of a matching mapping, but this can be controlled by the variance of the
-		  * implicit value declaration to achieve that effect.
+		/** Witnesses that mapping `M[Any]` (where `Any` is the `Origin` type) satisfies the search predicate
+		  * and should be returned. Note that the predicate is contravariant with the regards to the mapping type,
+		  * so all subtypes of a mapping `M[_]` satisfying the predicate satisfy it, too.
 		  * @tparam M the type constructor of the mapping of the relation, accepting an arbitrary `Origin` type parameter.
 		  * @tparam X the input key of the search: the type provided by the accessor, such as a label for a `LabeledMapping`.
 		  */
@@ -1519,6 +1548,7 @@ object FromClause {
 			/** Returns the found relation from the input `FromClause`. */
 			def apply(from :F) :JoinedRelation[J, T]
 		}
+
 	}
 
 
@@ -1534,8 +1564,8 @@ object FromClause {
 			/** An implicit accessor object for the last relation in `F` with `Subject` type `S`.
 			  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`. */
 			@implicitNotFound("No relation with Subject type ${S} in the from clause ${F}:\n" +
-			                  "no implicit value for BySubject.Found[${F}, ${S}].")
-			sealed abstract class Get[-F <: FromClause, S] extends super.BaseGet[F, S]
+			                  "no implicit value for BySubject.Get[${F}, ${S}].")
+			sealed abstract class Get[-F <: FromClause, S] extends BaseGet[F, S]
 
 			implicit def Get[F <: FromClause, S, N <: Numeral]
 			                (implicit found :Found[F, S, N] { type T[O] <: RefinedMapping[S, O] })
@@ -1548,6 +1578,7 @@ object FromClause {
 					override def shift = found.shift
 					override def apply(from :F) :JoinedRelation[J, T] = found(from)
 				}
+
 		}
 
 
@@ -1559,9 +1590,9 @@ object FromClause {
 			implicit def satisfies[M[A] <: LabeledMapping[L, _, A], L <: Label] :Predicate[M, L] = report[M, L]
 
 			/** Accessor for the right-most relation in `F` with mapping conforming to `LabeledMapping[A, _, _]`. */
-			@implicitNotFound("No relation with Alias type ${A} in the from clause ${F}:\n" +
-			                  "no implicit value for ByLabel.Found[${F}, ${A}].")
-			sealed abstract class Get[-F <: FromClause, A <: Label] extends super.BaseGet[F, A] {
+			@implicitNotFound("No relation with alias type ${A} in the from clause ${F}:\n" +
+			                  "no implicit value for ByLabel.Get[${F}, ${A}].")
+			sealed abstract class Get[-F <: FromClause, A <: Label] extends BaseGet[F, A] {
 				type T[O] <: LabeledMapping[A, _, O]
 			}
 
@@ -1581,7 +1612,7 @@ object FromClause {
 
 
 		/** Accesses relations in a `FromClause` based on the type constructor for the mapping accepting
-		  * the `Origin` type. The provided type constructor may be for a super type of the actual mapping.
+		  * the `Origin` type. The provided type constructor may be for a supertype of the actual mapping.
 		  * While the input to match accepts only a single parameter, it is possible to match mappings with multiple
 		  * parameters as long as all of them are fixed by using a ''type lambda'' as the argument:
 		  * `({ type M[O] = SomeMapping[X1, X2, ..., O] })#M`. */
@@ -1591,7 +1622,7 @@ object FromClause {
 			/** An implicit accessor object for the last relation in `F` with `Mapping` type `M[_]`.
 			  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`. */
 			@implicitNotFound("No relation with type constructor ${M} in the from clause ${F}:\n" +
-			                  "no implicit value for ByTypeConstructor.Found[${F}, ${M}].")
+			                  "no implicit value for ByTypeConstructor.Get[${F}, ${M}].")
 			sealed abstract class Get[-F <: FromClause, M[O] <: MappingAt[O]] {
 				type I <: Numeral
 				/** A unique origin type with the negative index of the relation encoded in it. */
@@ -1611,6 +1642,37 @@ object FromClause {
 					override def shift = found.shift
 					override def apply(from :F) = found(from)
 				}
+
+		}
+
+
+
+		/** Accesses parameters of a `FromClause` based on the given parameter name used as their label.
+		  * Implicit ByParamName.Get[F, N] returns the last relation for the synthetic parameter mapping
+		  * `LabeledFromParam[N, X, O]` in `F`.
+		  */
+		object ByParamName extends GetTableByPredicate {
+			implicit def satisfies[M[A] <: LabeledFromParam[N, _, A], N <: Label] :Predicate[M, N] = report[M, N]
+
+			/** Accessor for the right-most relation in `F` with mapping conforming to `LabeledFromParam[A, _, _]`. */
+			@implicitNotFound("No parameter with name type ${A} in the from clause ${F}:\n" +
+                              "no implicit value for ByParamName.Get[${F}, ${A}].")
+			sealed abstract class Get[-F <: FromClause, A <: Label] extends BaseGet[F, A] {
+				type T[O] <: LabeledFromParam[A, _, O]
+			}
+
+			implicit def Get[F <: FromClause, A <: Label, N <: Numeral]
+			                (implicit found :Found[F, A, N] { type T[O] <: LabeledFromParam[A, _, O] })
+					:Get[F, A] { type T[O] = found.T[O]; type J = found.J; type I = N } =
+				new Get[F, A] {
+					override type I = N
+					override type T[O] = found.T[O]
+					override type J = found.J
+
+					override def shift = found.shift
+					override def apply(from :F) :JoinedRelation[J, T] = found(from)
+				}
+
 		}
 
 	}
@@ -1621,8 +1683,8 @@ object FromClause {
 
 
 	@implicitNotFound("Cannot apply FROM clause ${F} to parameters ${P}. I cannot prove that the parameter chain P " +
-	                  "is a subtype of F#Params - most likely F is incomplete or has With joins in it.\n"+
-	                  "Missing implicit valuel ApplyJoinParams[${F}, ${P}, ${U}].")
+	                  "is a subtype of F#Params - most likely F is incomplete or contains With joins.\n"+
+	                  "Missing implicit value ApplyJoinParams[${F}, ${P}, ${U}].")
 	sealed abstract class ApplyJoinParams[-F <: FromClause, -P <: Chain, +U <: UnparameterizedFrom] {
 		def apply(from :F, params :P) :U
 	}
@@ -1779,9 +1841,10 @@ object FromClause {
 
 		implicit def itself[F <: FromClause] :PrefixOf[F, F] = instance.asInstanceOf[F PrefixOf F]
 
-		implicit def extend[F <: FromClause, S <: L With R, L <: FromClause, R[A] <: MappingAt[A]]
-		                   (implicit ev :F PrefixOf L) :F PrefixOf S = //todo: verify type inference works
-			new PrefixOf(ev.suffix + 1)
+		implicit def extend[F <: FromClause, L <: FromClause,
+		                    J[A <: FromClause, B[O] <: MappingAt[O]] <: A With B, R[A] <: MappingAt[A]]
+		                   (implicit ev :F PrefixOf L) :F PrefixOf (L J R) =
+			new PrefixOf[F, L J R](ev.suffix + 1)
 	}
 
 }
