@@ -541,7 +541,9 @@ object MappingSQL {
 
 
 	sealed trait JoinedRelation[F <: FromClause, T[A] <: MappingAt[A]] extends BaseComponentSQL[F, T, T, F] {
+
 		type Self = SQLRelation[F, M, T[F]#Subject, F] forSome { type M[A] <: TypedMapping[T[F]#Subject, A] with T[A] }
+
 		def shift :Int
 
 		override def from :JoinedRelation[F, T] = this

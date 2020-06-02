@@ -351,7 +351,7 @@ object SQLTerm {
 
 
 		override def toString :String =
-			freeValue.filter(_ != null).map(_ + ":NULL") getOrElse "NULL"
+			freeValue.filter(_ != null).map(_.toString + ":NULL") getOrElse "NULL"
 	}
 
 

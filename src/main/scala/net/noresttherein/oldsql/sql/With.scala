@@ -123,7 +123,7 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 		N[JoinedWith[F, J], T]
 
 	override def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
-	                             (prefix :F, firstJoin :Join.*, nextJoin :Join[this.type, T])
+	                             (prefix :F, firstJoin :Join.*, nextJoin :this.type Join T)
 			:nextJoin.LikeJoin[JoinedWith[F, firstJoin.LikeJoin], T] =
 		nextJoin.withLeft(joinedWith(prefix, firstJoin))(nextJoin.condition :SQLBoolean[Generalized With T])
 

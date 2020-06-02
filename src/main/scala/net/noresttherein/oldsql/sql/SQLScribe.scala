@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.sql
 
+import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, TypedMapping}
 import net.noresttherein.oldsql.slang
@@ -190,6 +191,57 @@ object SQLScribe {
 			val comp = newRelation \ this.replacement.mapping.asInstanceOf[T[H]]
 			new ReplaceRelation[T, E, N, V, S, H](subselect, replacement)(shift, comp)
 		}
+	}
+
+
+
+
+
+
+	class ReplaceParam[+F <: FromClause, -G <: FromClause, O >: G <: FromClause, M[A] <: FromParam[X, A], X, P]
+	                  (protected[this] override val oldClause :F, protected[this] override val newClause :G)
+	                  (param :SQLRelation[G, M, X, O], extractor :X =?> P)
+		extends RecursiveScribe[F, G]
+	{
+		private[this] val Idx = param.shift
+
+		protected[this] override def extended[S <: FromClause, N <: FromClause]
+		                                     (subselect :S, replacement :N)
+		                                     (implicit oldExt :oldClause.Generalized ExtendedBy S,
+		                                               newExt :newClause.Generalized ExtendedBy N) =
+			new ReplaceParam[S, N, N, M, X, P](subselect, replacement)(
+				SQLRelation[N, M, X, N](param.source, param.shift + newExt.length), extractor
+			)
+
+
+
+		override def component[T[A] <: TypedMapping[E, A], E, C[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
+		                      (e :ColumnComponentSQL[F, T, E, C, V, O]) :ColumnSQL[G, V] =
+			e match {
+				case param.mapping(old) if e.from.shift == param.shift =>
+					val column = param.mapping.col(extractor andThen old.extract.asInstanceOf[P =?> V])(old.form)
+					(param \ column).upcast
+				case _ =>
+					e.asInstanceOf[ColumnSQL[G, V]]
+			}
+
+
+		override def component[T[A] <: TypedMapping[E, A], E, C[A] <: TypedMapping[V, A], V, O >: F <: FromClause]
+		                      (e :ComponentSQL[F, T, E, C, V, O]) :SQLExpression[G, V] =
+			e match {
+				case param.mapping(old) if e.from.shift == param.shift =>
+					val component = param.mapping(extractor andThen old.extract.asInstanceOf[P =?> V])(old.form)
+					(param \ component).upcast
+				case _ =>
+					e.asInstanceOf[SQLExpression[G, V]]
+			}
+
+		override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause]
+		                     (e :SQLRelation[F, T, E, O]) :SQLExpression[G, E] =
+			if (e.shift == param.shift)
+				param.asInstanceOf[SQLExpression[G, E]]
+			else
+				SQLRelation[G, T, E, G](e.source, e.shift)
 	}
 
 

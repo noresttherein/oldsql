@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByLabel, ByS
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables, OuterFrom, SubselectFrom, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, FreeColumn, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.JoinParam.{FromParam, ParamSource, WithParam}
+import net.noresttherein.oldsql.sql.JoinParam.{?:, FromParam, ParamSource, WithParam}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import scala.annotation.implicitNotFound
 
@@ -1076,6 +1076,25 @@ object FromClause {
 
 
 
+		/** Applies this clause to its parameters, removes all `JoinParam` joins and substituting all references
+		  * to parameter components with SQL literals extracted from parameter values.
+		  * @param params a chain consisting of subject types of all parameter mappings of all `JoinParam` joins
+		  *               in this clause in order of their appearance.
+		  * @tparam U `FromClause` subtype obtained by removing all `JoinParam` instances from this clause's type.
+		  */
+		def apply[U <: UnparameterizedFrom](params :thisClause.Params)
+		                                   (implicit apply :ApplyJoinParams[F, thisClause.Params, U]) :U =
+			apply(thisClause, params)
+
+	}
+
+
+
+
+
+
+	implicit class OuterFromMethods[F <: OuterFrom](private val thisClause :F) extends AnyVal {
+
 		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
 		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
 		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
@@ -1099,132 +1118,21 @@ object FromClause {
 		  */
 		@inline def param[X :SQLForm](name :String) :F WithParam X = JoinParam(thisClause, ParamSource[X](name))
 
-
-
-		/** Applies this clause to its parameters, removes all `JoinParam` joins and substituting all references
-		  * to parameter components with SQL literals extracted from parameter values.
-		  * @param params a chain consisting of subject types of all parameter mappings of all `JoinParam` joins
-		  *               in this clause in order of their appearance.
-		  * @tparam U `FromClause` subtype obtained by removing all `JoinParam` instances from this clause's type.
+		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
+		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
+		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
+		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
+		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
+		  * as a parameter of SQL statements created using the returned instance.
+		  * @tparam N a string literal used as the label for the mapping and suggested parameter name.
+		  * @tparam X parameter type.
+		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
+		  * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
 		  */
-		def apply[U <: UnparameterizedFrom](params :thisClause.Params)
-		                                   (implicit apply :ApplyJoinParams[F, thisClause.Params, U]) :U =
-			apply(thisClause, params)
+		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F JoinParam (N ?: X)#T =
+			JoinParam(thisClause, form ?: (name.value :N))
 
 	}
-
-
-
-
-
-
-/*
-	implicit class FromSelectMethods[F <: FromClause](val thisClause :F) extends AnyVal {
-
-		def selectAs[C[A] <: MappingAt[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :JoinedTables[F] => C[O])
-		            (implicit typer :Conforms[C[O], M[O], TypedMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
-				:thisClause.Implicit SelectAs M[Any] =
-			if (thisClause.isSubselect) {
-				type Sub = SubselectFrom { type Implicit = thisClause.Implicit }
-				thisClause.asInstanceOf[Sub].selectAs(component.asInstanceOf[JoinedTables[Sub] => C[O]])
-			} else {
-				type Implicit = OuterFrom with FromClause { type Implicit = thisClause.Implicit }
-				thisClause.asInstanceOf[Implicit].selectAs(component.asInstanceOf[JoinedTables[Implicit] => C[O]])
-			}
-
-		def selectAs[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :ComponentSQL[F, T, E, M, S, O])
-				:thisClause.Implicit SelectAs M[Any] =
-			if (thisClause.isSubselect)
-				component.subselectFrom(thisClause)
-			else
-				component.selectFrom(thisClause.asInstanceOf[OuterFrom]).asInstanceOf[SelectAs[thisClause.Implicit, M[Any]]]
-
-		@inline def select[V](header :JoinedTables[F] => SQLExpression[F, V]) :SelectSQL[thisClause.Implicit, V, _] =
-			select(header(thisClause.tables))
-
-		@inline def selectColumn[V](header :JoinedTables[F] => ColumnSQL[F, V]) :SelectColumn[thisClause.Implicit, V, _] =
-			select(header(thisClause.tables))
-
-		def select[V](header :SQLExpression[F, V]) :SelectSQL[thisClause.Implicit, V, _] =
-			if (thisClause.isSubselect)
-				header.selectFrom(thisClause)
-			else
-				header.selectFrom(thisClause.asInstanceOf[OuterFrom]).asInstanceOf[SelectSQL[thisClause.Implicit, V, _]]
-
-		def select[V](header :ColumnSQL[F, V]) :SelectColumn[thisClause.Implicit, V, _] =
-			if (thisClause.isSubselect)
-				header.selectFrom(thisClause)
-			else
-				header.selectFrom(thisClause.asInstanceOf[OuterFrom]).asInstanceOf[SelectColumn[thisClause.Implicit, V, _]]
-
-	}
-
-
-
-	implicit class SubselectFromSelectMethods[F <: SubselectFrom](val thisClause :F) extends AnyVal {
-
-		def selectAs[C[A] <: MappingAt[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :JoinedTables[F] => C[O])
-		            (implicit typer :Conforms[C[O], M[O], TypedMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
-				:thisClause.Implicit SubselectAs M[Any] =
-		{
-			val table = thisClause.tableStack(shift.tables).asInstanceOf[SQLRelation[F, MappingOf[S]#TypedProjection, S, O]]
-			val comp = table \ component(thisClause.tables)
-			comp.subselectFrom[F, Any](thisClause)
-		}
-
-		def selectAs[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :ComponentSQL[F, T, E, M, S, O])
-				:thisClause.Implicit SubselectAs M[Any] =
-			component.subselectFrom(thisClause)
-
-		def select[V](header :JoinedTables[F] => SQLExpression[F, V]) :SubselectSQL[thisClause.Implicit, V, _] =
-			header(thisClause.tables).subselectFrom(thisClause)
-
-		def selectColumn[V](header :JoinedTables[F] => ColumnSQL[F, V]) :SubselectColumn[thisClause.Implicit, V, _] =
-			header(thisClause.tables).subselectFrom(thisClause)
-
-		def select[V](header :SQLExpression[F, V]) :SubselectSQL[thisClause.Implicit, V, _] =
-			header.subselectFrom(thisClause)
-
-		def select[V](header :ColumnSQL[F, V]) :SubselectColumn[thisClause.Implicit, V, _] =
-			header.subselectFrom(thisClause)
-	}
-
-
-
-	implicit class OuterFromSelectMethods[F <: OuterFrom](private val self :F) extends AnyVal {
-
-		def selectAs[C[A] <: MappingAt[A], M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :JoinedTables[F] => C[O])
-		            (implicit typer :Conforms[C[O], M[O], TypedMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
-				:FreeSelectAs[M[Any]] =
-		{
-			val table = self.tableStack(shift.tables).asInstanceOf[SQLRelation[F, MappingOf[S]#TypedProjection, S, O]]
-			val comp = table \ component(self.tables)
-			comp.selectFrom[F, Any](self)
-		}
-
-		def selectAs[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
-		            (component :ComponentSQL[F, T, E, M, S, O])
-				:FreeSelectAs[M[Any]] =
-			component.selectFrom(self)
-
-		def select[V](header :JoinedTables[F] => SQLExpression[F, V]) :FreeSelectSQL[V, _] =
-			header(self.tables).selectFrom(self)
-
-		def selectColumn[V](header :JoinedTables[F] => ColumnSQL[F, V]) :FreeSelectColumn[V, _] =
-			header(self.tables).selectFrom(self)
-
-		def select[V](header :SQLExpression[F, V]) :FreeSelectSQL[V, _] =
-			header.selectFrom(self)
-
-		def select[V](header :ColumnSQL[F, V]) :FreeSelectColumn[V, _] =
-			header.selectFrom(self)
-	}
-*/
 
 
 
