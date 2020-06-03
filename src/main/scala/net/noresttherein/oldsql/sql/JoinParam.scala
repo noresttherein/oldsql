@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.JoinParam.{?:, ParamAt}
 import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation.LastRelation
-import net.noresttherein.oldsql.sql.SQLScribe.ReplaceParam
+import net.noresttherein.oldsql.sql.SQLScribe.{RemoveParam, ReplaceParam}
 import net.noresttherein.oldsql.sql.With.TypedWith
 
 
@@ -50,6 +50,7 @@ import net.noresttherein.oldsql.sql.With.TypedWith
   */
 sealed trait JoinParam[+F <: FromClause, M[O] <: ParamAt[O]] extends With[F, M] { thisClause =>
 
+	/** The type of this parameter, that is the subject type of the joined mapping. */
 	type Param = M[FromLast]#Subject
 
 	override def subselectSize = 0
@@ -98,11 +99,17 @@ sealed trait JoinParam[+F <: FromClause, M[O] <: ParamAt[O]] extends With[F, M] 
 
 
 
-	type Params = left.Params ~ M[_]#Subject
+	type Params = left.Params ~ Param
 
 
 
-	def as[N <: Label](name :N) :F JoinParam (N ?: last.Subject)#T
+	/** Substitutes the joined parameter mapping for one labeled with `String` literal `name`. */
+	def as[N <: Label](name :N) :F JoinParam (N ?: Param)#T
+
+	/** Provides the value for the joined parameter, removing it from this clause and replacing all references to it
+	  * with bound parameters in the form of `SQLParameter` instances.
+	  */
+	def apply(value :Param) :F#This
 
 
 
@@ -163,12 +170,6 @@ object JoinParam {
 
 		def apply[F <: OuterFrom](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
 			JoinParam[F, ParamSource[X]#Row, X](from, LastRelation(ParamSource[X](name)))(True)
-
-//		def apply[T[O] <: TypedMapping[S, O], S](from :RowSource[T])(implicit form :SQLForm[X]) :From[T] WithParam X =
-//			JoinParam[From[T], ParamSource[X]#Row, X](From(from), LastRelation(ParamSource[X]()))(True)
-//
-//		def apply[T[O] <: MappingAt[O]](from :RowSource[T], name :String)(implicit form :SQLForm[X]) :From[T] WithParam X =
-//			JoinParam[From[T], ParamSource[X]#Row, X](From(from), LastRelation(ParamSource[X](name)))(True)
 	}
 
 
@@ -190,7 +191,7 @@ object JoinParam {
 				JoinParam[F, M, X](left, last)(filter)
 
 			override def withCondition(filter :SQLBoolean[left.Generalized With M]) :This =
-				JoinParam[left.type, M, X](left, last)(filter)
+				JoinParam[left.type, M, X](left, last)(condition && filter)
 
 
 			override def subselectTableStack[E <: FromClause]
@@ -207,6 +208,11 @@ object JoinParam {
 						generalized, unfiltered.generalized)(replacement, Extractor.ident[X]
                     )
 				JoinParam[left.type, (N ?: X)#T, X](left, replacement)(substitute(condition))
+			}
+
+			override def apply(value :X) :left.This = {
+				val substitute = new RemoveParam(generalized, left.generalized, value, 0)
+				left.where(_ => substitute(condition))
 			}
 
 		}

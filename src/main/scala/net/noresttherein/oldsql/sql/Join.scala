@@ -30,19 +30,35 @@ import net.noresttherein.oldsql.sql.With.TypedWith
   */
 trait Join[+L <: FromClause, R[O] <: MappingAt[O]] extends With[L, R] { join =>
 
+	/** Creates a join of the same kind as this one between the `left` prefix clause and `right` relation given
+	  * as parameters, using the provided `filter` as the `condition` stored in the created join.
+	  */
 	def likeJoin[F <: FromClause, T[O] <: TypedMapping[X, O], X]
 	            (left :F, right :RowSource[T])(filter: SQLBoolean[left.Generalized With T]) :F LikeJoin T
 
+	/** Creates a `FromClause` of the same class as this one between the current `left` side of this clause
+	  * and the new `right` relation, using the provided `filter` as the `condition` stored in the created join.
+	  * It is not the same as `likeJoin(this.left, right)(filter)`, as it preserves the special status of the `From`
+	  * class, which `likeJoin` would replace into an `Dual InnerJoin R`.
+	  * @see [[net.noresttherein.oldsql.sql.Join.likeJoin likeJoin]]
+	  */
 	def withRight[T[O] <: TypedMapping[X, O], X]
 	             (right :LastRelation[T, X])(filter :SQLBoolean[left.Generalized With T]) :WithRight[T]
 
 
+	/** This join type, fully parameterized with arbitrary prefix clause and relation mapping. Used by copy constructors
+	  * of this class.
+	  * @see [[net.noresttherein.oldsql.sql.Join.likeJoin]]
+	  */
 	type LikeJoin[+F <: FromClause, T[O] <: MappingAt[O]] <: (F Join T) {
 		type LikeJoin[+S <: FromClause, M[O] <: MappingAt[O]] = join.LikeJoin[S, M]
 	}
 
-	type WithLeft[+F <: FromClause] = F LikeJoin R
+	override type WithLeft[+F <: FromClause] = F LikeJoin R
 
+	/** The type constructor for this `FromClause` type accepting an arbitrary mapping for the last relation.
+	  * @see [[net.noresttherein.oldsql.sql.Join.withRight]]
+	  */
 	type WithRight[T[O] <: MappingAt[O]] <: L LikeJoin T
 
 	override type Self = left.Self LikeJoin R
@@ -395,7 +411,7 @@ object InnerJoin {
 
 			//needs to be private because the result is This
 			override def withCondition(filter :SQLBoolean[left.Generalized With R]) =
-				newJoin[R, S](left, last)(condition)
+				newJoin[R, S](left, last)(condition && filter)
 
 
 			override def withRight[T[O] <: TypedMapping[X, O], X] //needs to be private because WithRight is invariant in L
@@ -503,7 +519,7 @@ object OuterJoin {
 
 			//needs to be private because the result is This
 			override def withCondition(filter :SQLBoolean[left.Generalized With R]) =
-				OuterJoin[left.type, R, S](left, last)(condition)
+				OuterJoin[left.type, R, S](left, last)(condition && filter)
 
 
 			override def withRight[T[O] <: TypedMapping[X, O], X] //needs to be private because WithRight is invariant in L
@@ -599,7 +615,7 @@ object LeftJoin {
 			override protected def narrow :left.type LeftJoin R = this
 
 			override protected def withCondition(filter :SQLBoolean[left.Generalized With R]) :This =
-				LeftJoin[left.type, R, S](left :left.type, last)(condition)
+				LeftJoin[left.type, R, S](left :left.type, last)(condition && filter)
 
 			override def withRight[T[A] <: TypedMapping[X, A], X]
 			                      (right :LastRelation[T, X])(filter :SQLBoolean[left.Generalized With T]) :WithRight[T] =
@@ -693,7 +709,7 @@ object RightJoin {
 			override protected def narrow = this
 
 			protected override def withCondition(filter :SQLBoolean[left.Generalized With R]) :This =
-				RightJoin[left.type, R, S](left, last)(filter)
+				RightJoin[left.type, R, S](left, last)(condition && filter)
 
 			override def withRight[T[O] <: TypedMapping[X, O], X]
 			                      (right :LastRelation[T, X])(filter :SQLBoolean[left.Generalized With T]) :WithRight[T] =
@@ -798,7 +814,7 @@ object From {
 
 
 			protected override def withCondition(filter :SQLBoolean[FromClause With M]) =
-				newJoin[M, S](last)(filter)
+				newJoin[M, S](last)(condition && filter)
 
 			override def withRight[T[O] <: TypedMapping[X, O], X]
 			                      (right :LastRelation[T, X])(filter :SQLBoolean[FromClause With T]) =

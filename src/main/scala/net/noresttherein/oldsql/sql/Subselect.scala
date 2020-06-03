@@ -126,7 +126,7 @@ object Subselect {
 			override def narrow :left.type Subselect R = this
 
 			override def withCondition(filter :SQLBoolean[left.Generalized With R]) :This =
-				Subselect[left.type, R, S](left, last)(filter)
+				Subselect[left.type, R, S](left, last)(condition && filter)
 
 			override def withRight[T[O] <: TypedMapping[X, O], X]
 			                      (right :LastRelation[T, X])(filter :SQLBoolean[left.Generalized With T])

@@ -36,7 +36,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.From]]
   * @see [[net.noresttherein.oldsql.sql.Subselect]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-  */
+  *///consider: we might need the 'With' name for the SQL keyword; possible alternatives: Extend, Expand, Widen, Augment, Broaden
 trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClause =>
 
 	/** A `FromClause` constituting a pre-existing joined list of relations - may be empty (`Dual`). */
@@ -65,11 +65,12 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 	/** This type with the `FromClause` of the left side substituted for `F`. */
 	type WithLeft[+F <: FromClause] <: F With R
 
+	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
+	  * using member types of `FromClause`, as they become proper path types instead of projections.
+	  */
 	protected def narrow :WithLeft[left.type]
 
 
-
-	protected override def withCondition(filter :SQLBoolean[Generalized]) :This //to grant access to With
 
 	def withLeft[F <: FromClause](left :F)(filter :SQLBoolean[left.Generalized With R]) :WithLeft[F]
 
@@ -167,12 +168,13 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 			=> SQLBoolean[FromClause With R With T]
 
 
-	/** Apply a join condition to the last two relations in this clause. This works exactly like 'where', but
-	  * instead of a single argument representing all joined relations, the filter function should take as its arguments
-	  * the last two relations, i.e, the last relation defined by the left side of this join, if any, and the right side
-	  * of this join. Static type checking enforces that this method can't be called on 'joins' where the left side
-	  * is empty (single table sources).
-	  * @param condition a function accepting the formulas for the last two relations in this clause and creating a
+	/** Apply a join condition to the last two relations in this clause. The condition is combined using `&&` with
+	  * `this.condition` and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
+	  * This works exactly like 'where', but instead of a single argument representing all joined relations,
+	  * the filter function should take as its arguments the last two relations, i.e, the last relation defined
+	  * by the left side of this join, if any, and the right side of this join. Static type checking enforces
+	  * that this method can't be called on 'joins' where the left side is empty (single table sources).
+	  * @param condition a function accepting the expressions for the last two relations in this clause and creating
 	  *                  an SQL expression for the join condition.
 	  * @return a `With` instance of the same kind as this one, with the same left and right sides,
 	  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
@@ -181,18 +183,36 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 	  */
 	def on(condition :left.JoinFilter[R]) :WithLeft[L] = {
 		val joinFilter = condition(left.last.extend[R], last)
-		val grounded = SQLScribe.groundFreeComponents(generalized)(joinFilter)
+		val grounded = SQLScribe.groundFreeComponents(generalized, joinFilter)
 		withLeft[L](left)(this.condition && grounded)
 	}
 
 
+	/** Apply a filter condition to the last relation in this clause. The condition is combined using `&&` with
+	  * `this.condition` and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
+	  * It is equivalent to `this.where(tables => condition(tables.last))`.
+	  * @param condition a function accepting the expression for the last relation in this clause and creating
+	  *                  an additional SQL expression for the join condition.
+	  * @return a `With` instance of the same kind as this one, with the same left and right sides,
+	  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
+	  *         returned by the passed filter function.
+	  */
 	def whereLast(condition :JoinedRelation[FromClause With R, R] => SQLBoolean[FromClause With R]) :This =
-		withCondition(this.condition && SQLScribe.groundFreeComponents(generalized)(condition(last)))
+		withCondition(SQLScribe.groundFreeComponents(generalized, condition(last)))
 
 
+	/** Apply a filter condition to this clause. The condition is combined using `&&` with `this.condition`
+	  * and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
+	  * @param condition a function which accepts a `JoinedTables` instance working as a facade to this clause, providing
+	  *                  easy access to all its relations, and returns an SQL expression for the new join/filter
+	  *                  condition.
+	  * @return a `With` instance of the same kind as this one, with the same left and right sides,
+	  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
+	  *         returned by the passed filter function.
+	  */
 	override def where(condition :JoinedTables[Generalized] => SQLBoolean[Generalized]) :This = {
 		val cond = condition(new JoinedTables[Generalized](generalized))
-		withCondition(this.condition && SQLScribe.groundFreeComponents(generalized)(cond))
+		withCondition(SQLScribe.groundFreeComponents(generalized, cond))
 	}
 
 
@@ -215,6 +235,7 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 
 
 
+	/** Name of the join for use by the `toString` method. */
 	protected def joinType :String
 
 	override def toString :String =

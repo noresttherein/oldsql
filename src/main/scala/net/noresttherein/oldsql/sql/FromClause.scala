@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.sql.FromClause.GetTableByPredicate.{ByLabel, ByP
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables, OuterFrom, SubselectFrom, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, FreeColumn, JoinedRelation, SQLRelation}
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.JoinParam.{?:, FromParam, LabeledFromParam, NamedParamSource, ParamSource, WithParam}
+import net.noresttherein.oldsql.sql.JoinParam.{?:, FromParam, LabeledFromParam, ParamSource, WithParam}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import scala.annotation.implicitNotFound
 
@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation.LastRelation
 import net.noresttherein.oldsql.sql.SelectSQL.{SelectAs, SelectColumn}
-import net.noresttherein.oldsql.sql.SQLScribe.{SubstituteComponents, SubstituteParams}
+import net.noresttherein.oldsql.sql.SQLScribe.RemoveParams
 
 
 
@@ -518,17 +518,26 @@ trait FromClause { thisClause =>
 
 
 
+	/** Creates a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
+	  * instance's filter and the given `SQLBoolean`.
+	  */
 	protected def withCondition(filter :SQLBoolean[Generalized]) :This
 
+	/** Apply an additional filter to this clause.
+	  * @param condition a function accepting a facade to this clause, which provides access to all its relations,
+	  *                  and returning a new filter condition based on these relations.
+	  * @return a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
+	  *         instance's filter and the `SQLBoolean` returned by the function.
+	  */
 	def where(condition :JoinedTables[Generalized] => SQLBoolean[Generalized]) :This
 
 
 
 	/** A `Chain` listing all parameters of this clause joined with
-	  * the [[net.noresttherein.oldsql.sql.FromClause.FromClauseMethods.param param]] method.
+	  * the [[net.noresttherein.oldsql.sql.FromClause.OuterFromMethods.param param]] method.
 	  * In particular, a `FromClause` subtype with no `JoinParam` joins in its full type has this type equal to `@~`.
 	  * This is can be used to statically enforce that a clause is unparameterized by refining on this type:
-	  * `from :FromClause { type Params = @~ }`, or `from :UnparameterizedFrom` as a less bug-prone alternative.
+	  * `from :FromClause { type Params = @~ }`, or `from :ParameterlessFrom` as a less bug-prone alternative.
 	  */
 	type Params <: Chain
 
@@ -617,10 +626,20 @@ object FromClause {
 
 	/** An upper bound for all ''from'' clauses which do not contain any `JoinParam` 'joins' in their complete type.
 	  * In order to prove this conformity the clause type must be complete and cannot contain `With` joins
-	  * (all joins in its static type must be of some proper `With` subclass).
+	  * (all joins in its static type must be of some proper `With` subclass). It is possible however to propagate
+	  * this constraint to incomplete clauses simply by declaring them as `ParameterlessFrom Join X ...` instead of
+	  * `FromClause Join X ...`.
 	  */
-	type UnparameterizedFrom = FromClause {
+	type ParameterlessFrom = FromClause {
 		type Params = @~
+	}
+
+	/** An upper bound for all ''from'' clauses which are known to contain at least one `JoinParam` 'join' in their
+	  * static type. Note that a `FromClause` not conforming to this type does not mean that it indeed contains
+	  * no parameters, as the information may have been lost by type abstraction.
+	  */
+	type ParameterizedFrom = FromClause {
+		type Params <: Chain ~ _
 	}
 
 
@@ -1082,8 +1101,8 @@ object FromClause {
 		  *               in this clause in order of their appearance.
 		  * @tparam U `FromClause` subtype obtained by removing all `JoinParam` instances from this clause's type.
 		  */
-		def apply[U <: UnparameterizedFrom](params :thisClause.Params)
-		                                   (implicit apply :ApplyJoinParams[F, thisClause.Params, U]) :U =
+		def apply[U <: ParameterlessFrom](params :thisClause.Params)
+		                                 (implicit apply :ApplyJoinParams[F, thisClause.Params, U]) :U =
 			apply(thisClause, params)
 
 	}
@@ -1685,24 +1704,24 @@ object FromClause {
 	@implicitNotFound("Cannot apply FROM clause ${F} to parameters ${P}. I cannot prove that the parameter chain P " +
 	                  "is a subtype of F#Params - most likely F is incomplete or contains With joins.\n"+
 	                  "Missing implicit value ApplyJoinParams[${F}, ${P}, ${U}].")
-	sealed abstract class ApplyJoinParams[-F <: FromClause, -P <: Chain, +U <: UnparameterizedFrom] {
+	sealed abstract class ApplyJoinParams[-F <: FromClause, -P <: Chain, +U <: ParameterlessFrom] {
 		def apply(from :F, params :P) :U
 	}
 
 
 
 	object ApplyJoinParams {
-		private[this] val none = new ApplyJoinParams[UnparameterizedFrom, @~, UnparameterizedFrom] {
-			override def apply(from :UnparameterizedFrom, params: @~) = from
+		private[this] val none = new ApplyJoinParams[ParameterlessFrom, @~, ParameterlessFrom] {
+			override def apply(from :ParameterlessFrom, params: @~) = from
 		}
 
 
-		implicit def unparameterized[F <: UnparameterizedFrom] :ApplyJoinParams[F, @~, F] =
+		implicit def unparameterized[F <: ParameterlessFrom] :ApplyJoinParams[F, @~, F] =
 			none.asInstanceOf[ApplyJoinParams[F, @~, F]]
 
 
 		implicit def skipNonParam[L <: FromClause, J[A <: FromClause, B[O] <: MappingAt[O]] <: A Join B,
-		                          R[A] <: MappingAt[A], P <: Chain, U <: UnparameterizedFrom]
+		                          R[A] <: MappingAt[A], P <: Chain, U <: ParameterlessFrom]
 		                         (implicit prev :ApplyJoinParams[L, P, U])
 				:ApplyJoinParams[L J R, P, J[L, R]#WithLeft[U]] =
 			new ApplyJoinParams[L J R, P, (L J R)#WithLeft[U]] {
@@ -1713,7 +1732,7 @@ object FromClause {
 						val left = prev(from.left, params)
 						val unfiltered = from.withLeft[left.type](left)(True)
 						val generalized = from.generalized
-						val substitute = new SubstituteParams(
+						val substitute = new RemoveParams(
 							generalized, unfiltered.generalized)(params.asInstanceOf[generalized.Params]
                         )
 						from.withLeft(left)(substitute(from.condition))
@@ -1721,13 +1740,13 @@ object FromClause {
 			}
 
 
-		implicit def applyParam[L <: FromClause, R[A] <: FromParam[X, A], X, I <: Chain, U <: UnparameterizedFrom]
+		implicit def applyParam[L <: FromClause, R[A] <: FromParam[X, A], X, I <: Chain, U <: ParameterlessFrom]
 		                       (implicit prev :ApplyJoinParams[L, I, U]) :ApplyJoinParams[L JoinParam R, I ~ X, U] =
 			new ApplyJoinParams[L JoinParam R, I ~ X, U] {
 				override def apply(from :JoinParam[L, R], params :I ~ X) = {
 					val res = prev(from.left, params.init)
 					val generalized = from.generalized
-					val substitute = new SubstituteParams(generalized, res.generalized)(params.asInstanceOf[generalized.Params])
+					val substitute = new RemoveParams(generalized, res.generalized)(params.asInstanceOf[generalized.Params])
 					(res withCondition substitute(from.condition)).asInstanceOf[U]
 				}
 			}
@@ -1757,7 +1776,7 @@ object FromClause {
 	  * is indeed a valid representation that such a conversion from `F` to `S` is possible for any `SQLExpression`.
 	  * Due to this contravariance in `S`, this isn't any form of a generalized subtyping relation
 	  * and should be relied upon only in the context of the actual extension.
-	  */ //it could in theory be covariant, but we rely in SQLExpression.extend that the relation remains the first one
+	  */
 	@implicitNotFound("FromClause ${F} is not a prefix of the clause ${S} (ignoring join kinds).")
 	class ExtendedBy[+F <: FromClause, -S <: FromClause] private[FromClause] (val length :Int) extends AnyVal {
 		/** A transitive proof that a clause extending `S` with a single relation (mapping) also extends `F`. */
