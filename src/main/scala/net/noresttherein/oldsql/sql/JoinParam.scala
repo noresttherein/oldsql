@@ -241,7 +241,6 @@ object JoinParam {
 	abstract class GenericParamSource[X, M[O] <: FromParam[X, O]](val name :String)(implicit val form :SQLForm[X])
 		extends RowSource[M]
 	{
-//		override type Row[O] = FromParam[X, O]
 
 		override def sql :String = name + "?:" + form
 

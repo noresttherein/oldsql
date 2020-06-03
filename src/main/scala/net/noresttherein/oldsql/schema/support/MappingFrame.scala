@@ -1489,8 +1489,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :this.type AdaptedAs X =
 		MappedMapping[this.type, S, X, O](this, there, back)
 
-	override def flatMap[X](there :S => Option[X], back :X => Option[S])
-	                       (implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
+	override def optMap[X](there :S => Option[X], back :X => Option[S])
+	                      (implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
 		MappedMapping.opt[this.type, S, X, O](this, there, back)
 
 

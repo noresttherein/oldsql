@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, FreeComponent}
 
 /** A `Mapping` representing a single SQL column of a table or select result.
   * It is special in that it is atomic, the smallest building block in the `Mapping` component hierarchy.
-  * Columns are never assembled (their `map` method returns `None`) but must be present in `ComponentValues`
+  * Columns are never assembled (their `assemble` method returns `None`) but must be present in `ComponentValues`
   * for the mapping to produce a value. Additionally, it can never have any components (or subcomponents),
   * but it is its own column to maintain the invariant that the `columns` property always returns the complete list
   * of columns comprising any mapping. As follows, the rest of the column lists are either empty or contain
@@ -276,7 +276,7 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 			if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
 		)
 
-	override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
+	override def optMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
 		new StandardColumn[X, O](name, schema.flatMapBuffs(this)(there, back))(
 			if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 		)
@@ -433,7 +433,7 @@ object ColumnMapping {
 		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
 			as(Extractor.req(there), Extractor.req(back))
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
+		override def optMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
 			as(Extractor(there), Extractor(back))
 
 //		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LiteralColumn[_, _, _]]
@@ -461,7 +461,7 @@ object ColumnMapping {
 		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
 			as(Extractor.req(there), Extractor.req(back))
 
-		override def flatMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
+		override def optMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
 			as(Extractor.opt(there), Extractor.opt(back))
 
 /*

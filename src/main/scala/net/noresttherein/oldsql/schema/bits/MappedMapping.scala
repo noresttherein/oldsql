@@ -135,7 +135,7 @@ trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends Shallow
 
 
 	/** The subject value `S` that database `null`s should map to, used by the read forms. It is initialized
-	  * with the `nulls` parameter of the `Mapping.map` method creating `MappedMapping` instances. If the latter
+	  * with the `nulls` parameter of the `Mapping.optMap` method creating `MappedMapping` instances. If the latter
 	  * is `null` (the field, not the wrapped value) it defaults to mapping the `nullValue` of the adapted mapping
 	  * with `map`.
 	  */
@@ -152,8 +152,8 @@ trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends Shallow
 	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
 		MappedMapping[M, T, X, O](egg, map andThen there, unmap compose back)(mapNulls(there))
 
-	override def flatMap[X](there :S => Option[X], back :X => Option[S])
-	                       (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+	override def optMap[X](there :S => Option[X], back :X => Option[S])
+	                      (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
 		MappedMapping[M, T, X, O](egg, map andThen Extractor(there), unmap composeOpt back)(flatMapNulls(there))
 
 

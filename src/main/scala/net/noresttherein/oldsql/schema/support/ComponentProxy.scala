@@ -111,7 +111,7 @@ object ComponentProxy {
 
 
 
-		override def assemble(pieces :Pieces) :Option[S] = //use egg.map to bypass buffs on the egg
+		override def assemble(pieces :Pieces) :Option[S] = //use egg.assemble to bypass buffs on the egg
 			egg.assemble(pieces.asInstanceOf[egg.Pieces]) //and use only those on the proxy
 
 

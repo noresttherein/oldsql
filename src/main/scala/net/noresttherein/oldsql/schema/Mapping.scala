@@ -155,7 +155,7 @@ sealed trait Mapping {
 	  */
 	type ColumnProjection[O] = ColumnMapping[Subject, O]
 
-	/** A container with values for components of this mapping required to map the subject.
+	/** A container with values for components of this mapping required to assemble the subject.
 	  * It is a [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] instance parameterized with
 	  * the subject of this mapping. Each `Pieces` instance is, at least in theory, dedicated
 	  * to a particular component instance (its class and position in the larger mapping structure).
@@ -248,28 +248,28 @@ sealed trait Mapping {
 
 
 
-	/** Attempts to retrieve or map the value of `Subject` from the passed `ComponentValues` for this instance.
+	/** Attempts to retrieve or assemble the value of `Subject` from the passed `ComponentValues` for this instance.
 	  * Standard implementation will test several sources together with `pieces` before giving up:
 	  * a ready value present for this mapping in the `pieces`, assembling the result from subcomponents and, finally,
 	  * a default coming from an attached `OptionalSelect` (or related). By default it forwards to
 	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and should stay consistent with it.
-	  * Mapping implementations for concrete domain model classes should typically override `map` instead of
+	  * Mapping implementations for concrete domain model classes should typically override `assemble` instead of
 	  * this method directly.
 	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble map]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
 	def apply(pieces: Pieces): Subject =
 		optionally(pieces) getOrElse {
-			throw new NoSuchElementException(s"Can't map $this from $pieces.")
+			throw new NoSuchElementException(s"Can't assemble $this from $pieces.")
 		}
 
-	/** Attempts to retrieve or map the value for the mapped `Subject` from the given `ComponentValues`.
+	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
 	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
-	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.assemble map]] method
-	  * of `ComponentValues` (which, by default, will first check if it has a predefined value stored for this mapping,
-	  * and, only if not, forward to this instance's [[net.noresttherein.oldsql.schema.Mapping.assemble map]]
-	  * method which is responsible for the actual assembly of the subject from the values of the subcomponents,
-	  * recursively obtained from `pieces`.
+	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.assemble assemble]]
+	  * method of `ComponentValues` (which, by default, will first check if it has a predefined value stored
+	  * for this mapping, and, only if not, forward to this instance's
+	  * [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] method which is responsible for the actual
+	  * assembly of the subject from the values of the subcomponents, recursively obtained from `pieces`.
 	  *
 	  * If all of the above fails, this method will check for a predefined value stored in an attached
 	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] (or related) buff if it exists.
@@ -286,11 +286,11 @@ sealed trait Mapping {
 	  * default 'missing' value; it is ultimately always up to the mapping implementation to handle the matter.
 	  * The above distinction is complicated further by the fact that the mapped type `Subject` itself can be
 	  * an `Option` type, used to signify either or both of these cases.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble map]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
 	def optionally(pieces: Pieces): Option[Subject]
 
-	/** Attempts to map the value of this mapping from the values of subcomponents stored in the passed
+	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
 	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
 	  * in [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] and should not be called directly.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
@@ -493,7 +493,7 @@ sealed trait Mapping {
 
 
 	/** Lifts this mapping by encapsulating the subject values in an `Option`. The created mapping will
-	  * always return `Some(x)` from its `optionally` and `map` methods, where `x` is the value returned by
+	  * always return `Some(x)` from its `optionally` and `assemble` methods, where `x` is the value returned by
 	  * the method of this instance. This means that `Some(None)` is returned when this component has no value
 	  * associated in a given `Pieces` instance, and that `apply(Pieces)` method of the returned mapping will
 	  * never fail. This instance is exposed as the public `get` field of the returned mapping, allowing direct
@@ -523,8 +523,8 @@ sealed trait Mapping {
 	  * implicitly provided here `NullValue.value` will be returned. If `back` returns `None`, `null` value will
 	  * be written in the database.
 	  */
-	def flatMap[X](there :Subject => Option[X], back :X => Option[Subject])
-	              (implicit nulls :NullValue[X] = null) :Component[X] =
+	def optMap[X](there :Subject => Option[X], back :X => Option[Subject])
+	             (implicit nulls :NullValue[X] = null) :Component[X] =
 		MappedMapping.opt[this.type, Subject, X, Origin](this, there, back)
 
 
@@ -912,8 +912,8 @@ object Mapping {
 
 
 	private[schema] class MappingReadForm[S, O] private[schema]
-	                      (mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
-	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
+	                      (private val mapping :RefinedMapping[S, O], private val columns :Unique[ColumnMapping[_, O]],
+	                       private val read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S]
 	{
 		private[this] val columnArray = columns.toArray
@@ -936,9 +936,20 @@ object Mapping {
 
 		override def nulls :NullValue[S] = mapping.nullValue
 
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case form :MappingReadForm[_, _] if form canEqual this =>
+				form.mapping == mapping && form.columns == columns && form.columns.map(form.read) == columns.map(read)
+			case _ => false
+		}
+
+		override def hashCode :Int = mapping.hashCode * 31 + columns.hashCode
+
 		private def mappingString = mapping.sqlName getOrElse mapping.unqualifiedClassName
 
 		override def toString :String = columns.map(read).mkString(s"<$mappingString{", ",", "}")
+
 	}
 
 
@@ -991,11 +1002,10 @@ object Mapping {
 
 
 	private[schema] class MappingWriteForm[S, O] private[schema]
-	                      (mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
-	                       substitute :ValuedBuffType, write :ColumnMapping[_, O] => SQLWriteForm[_])
+	                      (private val mapping :RefinedMapping[S, O], private val columns :Unique[ColumnMapping[_, O]],
+	                       private val extra :ValuedBuffType, write :ColumnMapping[_, O] => SQLWriteForm[_])
 		extends SQLWriteForm[S]
 	{
-//		private[this] val extras = columns.map(substitute.Value.unapply(_))(breakOut) :IndexedSeq[Option[Any]]
 		private[this] val extracts = columns.toArray.map(mapping(_))
 
 		override def set(position :Int)(statement :PreparedStatement, value :S) :Unit =
@@ -1009,7 +1019,7 @@ object Mapping {
 					val column = c.asInstanceOf[ColumnMapping[Any, O]]
 					val form = write(column).asInstanceOf[SQLWriteForm[Any]]
 					//extras(columns.indexOf(column))
-					val columnValue = substitute.Value(column) match {
+					val columnValue = extra.Value(column) match {
 						case some :Some[_] => some
 						case _ => extracts(i).get(subject)
 					}
@@ -1063,7 +1073,20 @@ object Mapping {
 		override val writtenColumns: Int = (0 /: columns)(_ + write(_).writtenColumns)
 
 
-		override def toString :String = columns.map(write).mkString(s"$mapping{", ",", "}>")
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case form :MappingWriteForm[_, _] if form canEqual this =>
+				form.mapping == mapping && form.columns == columns && form.extra == extra
+			case _ => false
+		}
+
+		override def hashCode :Int = (mapping.hashCode * 31 + extra.hashCode) * 31 + columns.hashCode
+
+
+		private def mappingString = mapping.sqlName getOrElse mapping.unqualifiedClassName
+
+		override def toString :String = columns.map(write).mkString(s"$mappingString{", ",", "}>")
 	}
 
 
@@ -1181,7 +1204,7 @@ trait TypedMapping[S, O] extends Mapping { self =>
 
 	override def apply(pieces: Pieces): S =
 		optionally(pieces) getOrElse {
-			throw new IllegalArgumentException(s"Can't map $this from $pieces")
+			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
 		}
 
 	override def optionally(pieces: Pieces): Option[S] = pieces.assemble(this) match {
