@@ -182,6 +182,7 @@ object ComponentProxy {
 
 
 		private[this] def alias[T](component :egg.Component[T]) :Component[T] = component match {
+			case _ if component eq egg => adaptEgg.asInstanceOf[Component[T]]
 			case column :ColumnMapping[_, _] =>
 				adapt(egg.export(column.asInstanceOf[egg.Column[T]]))
 			case _ =>
@@ -257,16 +258,16 @@ object ComponentProxy {
 
 		preInit()
 
+		private[this] val adaptedEgg = adaptEgg
+		exports.put(egg, MappingExtract.ident(adaptedEgg))
+		originals.put(adaptedEgg, egg)
+
 		for (Assoc(comp, base) <- egg.extracts) {
 			val export = adaptExport(base.export)
 			val extract = exports.getOrElse(base.export, MappingExtract(export)(base))
 			exports.put(comp, extract)
 			originals.put(export, base.export)
 		}
-
-		private[this] val adaptedEgg = adaptEgg
-		exports.put(egg, MappingExtract.ident(adaptedEgg))
-		originals.put(adaptedEgg, egg)
 
 		override val columns :Unique[Column[_]] = egg.columns.map(alias(exports, originals, _))
 		override val selectable :Unique[Column[_]] = columnsWithout(NoSelect)
@@ -302,6 +303,7 @@ object ComponentProxy {
 
 
 		private[this] def adaptExport[T](component :egg.Component[T]) = component match {
+			case _ if component eq egg => adaptedEgg.asInstanceOf[Component[T]]
 			case column :ColumnMapping[_, _] => adapt(column.asInstanceOf[egg.Column[T]])
 			case _ => adapt(component)
 		}

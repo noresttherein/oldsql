@@ -462,11 +462,21 @@ object Buff {
 	/** A simple mapping buff which doesn't perform any function in the mapping itself, but serves
 	  * instead as a switch checked at certain points to modify the behaviour of the annotated component,
 	  * such as including an extra column in the update.
+	  * There is an implicit conversion from `FlagBuffType` to `Buff[T]` for any type `T`, so in most cases
+	  * it is possible to omit the type parameter of the factory `apply` method.
 	  */
 	trait FlagBuffType extends BuffType {
 		private[this] val buff = new FlagBuff[Nothing](this)
 
+		/** Creates a new instance of this buff type for a column/component with subject type `T`.
+		  * All instances created by this `BuffType` are equal.
+		  */
 		def apply[T] :Buff[T] = buff.asInstanceOf[Buff[T]]
+
+//		/** Creates a new instance of this buff type for a column/component with subject type `T`.
+//		  * This is the same as `apply[T]`, but the type parameter in most cases will be inferred and can be omitted.
+//		  */
+//		@inline def ^[T] :Buff[T] = apply[T]
 
 		@inline final def unapply[T](buff :Buff[T]) :Boolean = enabled(buff)
 		@inline final def unapply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
