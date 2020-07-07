@@ -23,7 +23,7 @@ import scala.reflect.runtime.universe
   * where `T` is some constrained entity. Instances of this type are typically tested with a predicate
   * or compared with other instances to produce Boolean conditions.
   * @see [[net.noresttherein.oldsql.model.Restraint.Restrainer Restrainer]]
-  */
+  */ //todo: awkward name, think of something better
 sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable with implicits {
 
 //	def toFunction :T => V = this

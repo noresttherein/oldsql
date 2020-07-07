@@ -596,7 +596,7 @@ object Restraint {
 	  * The patterns accepted here are '''not''' in the SQL format, but rather common glob format:
 	  *   - '?' will match any single character;
 	  *   - '*' will match any number of characters;
-	  *   - '\' is used to escape the former;
+	  *   - '\' is used to escape the next character;
 	  *   - any other character matches itself.
 	  */
 	object StringLike {
@@ -616,27 +616,48 @@ object Restraint {
 			case _ => None
 		}
 
-		/** Compares the given literaL string `term` with the provided pattern. */
-		def matches(term :String, pattern :String) :Boolean = {
-			val quoted = Regex.quote(pattern)
-			val regex = new StringBuilder(quoted.length)
+		/** Compares the given literal string `term` with the provided pattern. */
+		def matches(term :String, pattern :String) :Boolean = regex(pattern).matches(term)
 
-			var i = 0; var escapes = 0; val len = quoted.length
+		def regex(pattern :String) :Regex = {
+			val len = pattern.length
+			val capacity = if (len < (Int.MaxValue - 8) / 2) len * 2 else Int.MaxValue - 8
+			val regex = new StringBuilder(capacity)
+
+			regex ++=  "\\Q"
+			var i = 0; var escapes = 0
 			while (i < len) {
-				quoted(i) match {
-					case '\\' => escapes += 1; regex += '\\'
-					case '*' if escapes % 2 == 0 => escapes = 0; regex ++= ".*"
-					case '?' if escapes % 2 == 0 => escapes = 0; regex ++= "."
-					case c => escapes = 0; regex += c
+				pattern(i) match {
+					case '\\' =>
+						escapes += 1
+						if ((escapes & 1) == 0) regex += '\\'
+					case 'E' =>
+						if (escapes < 2) regex += 'E' //last char in the buffer is not a '\'
+						else regex ++= "\\EE\\Q" //unquote, 'E', quote
+						escapes = 0
+					case '*' =>
+						if ((escapes & 1) == 0) regex ++= "\\E.*\\Q"
+						else regex += '*'
+						escapes = 0
+					case '?' =>
+						if ((escapes & 1) == 0) regex ++= "\\E.\\Q"
+						else regex += '.'
+						escapes = 0
+					case c =>
+						escapes = 0; regex += c
 				}
 				i += 1
 			}
+			if ((escapes & 1) == 1) regex ++= "\\\\E"
+			else regex ++= "\\E"
 
-			new Regex(regex.toString).unapplySeq(term).isDefined
+			new Regex(regex.toString)
 		}
 
 		private case class Like[T](term :Restrictive[T, String], pattern :String) extends Restraint[T] {
-			override def apply(t :T) :Boolean = matches(term.derive(t), pattern)
+			private[this] val matcher = regex(pattern)
+
+			override def apply(t :T) :Boolean = matcher.matches(term.derive(t))
 
 			override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 				new Like(term compose nest, pattern)
