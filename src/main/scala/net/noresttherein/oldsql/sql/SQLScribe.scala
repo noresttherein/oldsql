@@ -292,7 +292,7 @@ object SQLScribe {
 	{
 
 		def this(oldClause :F, newClause :G)(params :oldClause.Params) =
-			this(oldClause, newClause, params.all.toIndexedSeq,
+			this(oldClause, newClause, params.toList.toIndexedSeq,
 				/*{
 					def rec(clause :FromClause) :List[Int] = clause match {
 						case Dual => Nil

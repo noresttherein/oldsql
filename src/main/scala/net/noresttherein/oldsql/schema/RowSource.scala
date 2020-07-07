@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.support.ConstantMapping
+import net.noresttherein.oldsql.schema.bits.ConstantMapping
+import net.noresttherein.oldsql.schema.Mapping.{FunctorProjection, MappingAt, OriginProjection}
 import net.noresttherein.oldsql.sql.Join
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 
@@ -29,14 +29,14 @@ object RowSource {
 	type * = RowSource[M] forSome { type M[O] <: MappingAt[O] }
 
 
-	def apply[M[O] <: MappingAt[O], A](name :String, template :M[A])
-	                                  (implicit alias :OriginProjection[M[A], A, M[Any], Any]) :RowSource[M] =
-		new AliasingSource(template, name)
+	def apply[M <: Mapping](name :String, template :M)
+	                       (implicit alias :OriginProjection[M]) :RowSource[alias.WithOrigin] =
+		new ProjectingSource[alias.WithOrigin](alias[Any](template), name)(alias.ismorphism)
 
 
-	def apply[M[O] <: MappingAt[O], A](template :M[A])
-	                                  (implicit alias :OriginProjection[M[A], A, M[Any], Any]) :RowSource[M] =
-		new AliasingSource(template)
+	def apply[M <: Mapping](template :M)
+	                       (implicit alias :OriginProjection[M]) :RowSource[alias.WithOrigin] =
+		new ProjectingSource[alias.WithOrigin](alias[Any](template))(alias.ismorphism)
 
 
 
@@ -53,18 +53,19 @@ object RowSource {
 
 
 
-	class AliasingSource[M[O] <: MappingAt[O], A](protected val template :M[A], override val sql :String)
-	                                             (implicit protected val alias :OriginProjection[M[A], A, M[Any], Any])
+	private class ProjectingSource[M[O] <: MappingAt[O]]
+	                              (protected val template :M[_], override val sql :String)
+	                              (implicit protected val alias :FunctorProjection[M])
 		extends RowSource[M]
 	{
-		def this(template :M[A])(implicit alias :OriginProjection[M[A], A, M[Any], Any]) =
+		def this(template :M[_])(implicit alias :FunctorProjection[M]) =
 			this(template, template.sqlName getOrElse {
 				throw new IllegalArgumentException(
 					s"Can't create a RowSource with template mapping $template as it has an empty sqlName."
 				)
 			})
 
-		override def apply[O] :M[O] = alias.asInstanceOf[OriginProjection[M[A], A, M[O], O]](template)
+		override def apply[O] :M[O] = alias(template)
 	}
 
 
@@ -86,43 +87,14 @@ object RowSource {
 
 	object Table {
 
-		def apply[M[O] <: MappingAt[O], A](tableName :String, template :M[A])
-		                                  (implicit alias :OriginProjection[M[A], A, M[Any], Any]) :Table[M] =
-			new AliasingSource[M, A](template, tableName) with Table[M] {
+		def apply[M <: Mapping](tableName :String, template :M)
+		                       (implicit alias :OriginProjection[M]) :Table[alias.WithOrigin] =
+			new ProjectingSource[alias.WithOrigin](alias[Any](template), tableName)(alias.ismorphism)
+				with Table[alias.WithOrigin]
+			{
 				override val sql = tableName
 				override def name = sql
 			}
-
-
-
-		def apply[M[O] <: MappingAt[O]](tableName :String)
-		                               (implicit mapping :String => M[_],
-		                                   alias :OriginProjection[M[AnyRef], AnyRef, M[Any], Any]) :Table[M] =
-			new Table[M] {
-				override val name = tableName
-				override def apply[O]  = mapping(name).asInstanceOf[M[O]]
-			}
-
-
-
-		def apply[N <: String with Singleton, M[O] <: MappingAt[O]]
-		         (implicit tableName :ValueOf[N], mapping :String => M[_],
-		          alias :OriginProjection[M[AnyRef], AnyRef, M[Any], M[Any]]) :StaticTable[N, M] =
-			new StaticTable[N, M] {
-				override val name = valueOf[N]
-				override def apply[O] = mapping(name).asInstanceOf[M[O]]
-			}
-
-
-
-		def of[S] :TableConstructor[S] = new TableConstructor[S] {}
-
-		sealed trait TableConstructor[S] extends Any {
-			def apply[M[O] <: RefinedMapping[S, O]](name :String)
-			                                       (implicit mapping :String => M[_],
-			                                   alias :OriginProjection[M[AnyRef], AnyRef, M[Any], Any]) :Table[M] =
-				Table(name, mapping(name).asInstanceOf[M[AnyRef]])
-		}
 
 
 
@@ -133,7 +105,6 @@ object RowSource {
 
 
 
-	private[oldsql] val Dummy = RowSource[({ type M[O] = ConstantMapping["Dummy", O] })#M, "Dummy"](
-		new ConstantMapping["Dummy", "Dummy"]("Dummy")
-	)
+	private[oldsql] val Dummy = RowSource(new ConstantMapping["Dummy", "Dummy"]("Dummy"))
+
 }

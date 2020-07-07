@@ -5,8 +5,14 @@ import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, Select
 import net.noresttherein.oldsql.schema.TypedMapping
 import net.noresttherein.oldsql.slang._
 
-/**
-  * @author Marcin Mościcki
+/** Base trait for client implementations of the `Mapping` type, having subjects from the application domain model.
+  * Extending classes typically provide individual access to its columns and components, with detailed types
+  * for the latter, so they can be used as part of SQL expressions. For this reason, they are also typically accessible
+  * through a stable path in the application code, adding further to their static nature.
+  * Overrides `optionally` and `assemble`: the former for efficiency, making use of precomputed `Buff` data,
+  * the latter for convenience, declaring `Pieces` as implicit and providing implicit conversion
+  * from a `Component[T]` to `T`, allowing their use directly as constructor parameters to the assembled subject.
+  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame]]
   */
 trait StaticMapping[S, O] extends TypedMapping[S, O] {
 
@@ -92,7 +98,7 @@ trait StaticMapping[S, O] extends TypedMapping[S, O] {
 	/** Implicitly convert a component of this instance into its subject value by assembling it from implicitly
 	  * available `Pieces` for this mapping. This will work for both direct components and indirect subcomponents.
 	  */
-	implicit def valueOf[T](component :Component[T])(implicit pieces :Pieces) :T =
+	@inline implicit final def valueOf[T](component :Component[T])(implicit pieces :Pieces) :T =
 		pieces(apply(component))
 
 

@@ -1,15 +1,35 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.schema.{ColumnMapping, TypedMapping, Mapping}
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
-import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.support.OpenNest
+import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
+/** Super type for `Mapping` implementations marked with a `String` literal type for the purpose of identification
+  * and ease of reference. Note that the mapping is labeled on type-level only by default and the label value is not
+  * required to be present. This is the most generic common interface, actual subclasses should generally extend
+  * [[net.noresttherein.oldsql.schema.bits.LabeledMapping LabeledMapping]]] instead.
+  * You can label any mapping with the right associative method `@:` defined by implicit conversion. This will
+  * return [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@: N @: M]], adapting the mapping `M`
+  * to this interface, while preserving its type for access.
+  * @tparam N a `String` literal with a name serving as an identifier for this mapping.
+  */
+trait AbstractLabeledMapping[N <: Label] extends Mapping { self :MappingSeal =>
+//	type Wrap[M <: Mapping] = N @: M
 
-trait LabeledMapping[N <: Label, S, O] extends TypedMapping[S, O]
+//	type LabeledProjection[O] = AbstractLabeledMapping[N] { type Subject = self.Subject; type Origin = O }
+}
+
+
+
+/** A base trait for custom `LabeledMapping` implementations. */
+trait LabeledMapping[N <: Label, S, O] extends TypedMapping[S, O] with AbstractLabeledMapping[N] {
+	type LabeledProjection[A] = LabeledMapping[N, S, A]
+}
 
 
 
@@ -17,21 +37,60 @@ trait LabeledMapping[N <: Label, S, O] extends TypedMapping[S, O]
 
 
 object LabeledMapping {
+
 	/** A type of string literals used to label mappings on the type level for ease of access. */
 	type Label = String with Singleton
 
+	/** A refinement of `LabeledMapping[N]` to `Subject` type `S` (conforming to `MappingOf[S]`). */
+	type LabeledMappingOf[N <: Label, S] = LabeledMapping[N, S, _]// { type Subject = S }
+
+	/** A refinement of `LabeledMapping[N]` to `Origin` type `O` (conforming to `MappingAt[O]`). */
+	type LabeledMappingAt[N <: Label, O] = LabeledMapping[N, _, O]// { type Origin = O }
+
+	/** A refinement of `LabeledMapping[N]` to `Subject` type `S` and `Origin` type `O`
+	  * (conforming to `RefinedMapping[S, O]`). */
+//	type RefinedLabeledMapping[N <: Label, S, O] = LabeledMapping[N] { type Subject = S; type Origin = O }
+
+
+
+	/** A base trait for labeled columns. */
 	trait LabeledColumn[N <: Label, S, O] extends ColumnMapping[S, O] with LabeledMapping[N, S, O]
 
+	def LabeledColumn[N <: Label, S, O](label :N, column :ColumnMapping[S, O]) :N @: ColumnMapping[S, O] =
+		new ColumnLabel[N, S, O](column)(new ValueOf[N](label))
 
 
-	def apply[N <: Label, M <: RefinedMapping[S, O], S, O]
-	         (label :N, mapping :M)(implicit infer :Conforms[M, M, RefinedMapping[S, O]]) :N @: M =
+
+	def apply[N <: Label, M <: RefinedMapping[S, O], S, O](label :N, mapping :M) :N @: M =
 		new MappingLabel[N, M, S, O](mapping)(new ValueOf[N](label))
 
 
 
-	sealed trait @:[N <: Label, M <: Mapping] extends Adapted[M] with LabeledMapping[N, M#Subject, M#Origin] {
+	/** Adapter mapping attaching a `String` literal type `N` as a label to the mapping type `M`.
+	  * Note that this mapping's `Origin` and `Subject` types are equal to the types defined in the adapted mapping,
+	  * but are not declared in the type signature directly. For this reason instances of this type won't be
+	  * adapted automatically to `MappingOf`.
+	  */
+	sealed trait @:[N <: Label, M <: Mapping] extends LabeledMapping[N, M#Subject, M#Origin] {
+		this :MappingSeal =>
+
 		def label :N
+		//fixme: make egg.Origin =:= M#Origin
+		val egg :M //{ type Origin = M#Origin }
+
+/*
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[@:[_, _]]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case labeled: @:[_, _] if labeled canEqual this => label == labeled.label && egg == labeled.egg
+			case _ => false
+		}
+
+		override def hashCode :Int = egg.hashCode * 31 + label.hashCode
+*/
+
+		override def toString = "'" + label + "@:" + egg
 	}
 
 
@@ -44,18 +103,15 @@ object LabeledMapping {
 
 		def unapply[N <: Label, M <: Mapping](labeled :N @: M) :Some[(N, M)] =
 			Some(labeled.label -> labeled.egg)
+
+
+		type LabeledProjection[L <: Label, M[O] <: MappingAt[O]] = { type WithOrigin[O] = L @: M[O] }
+
+		implicit def projection[L <: Label, M <: Mapping](implicit body :OriginProjection[M])
+				:OriginProjection[L @: M] { type WithOrigin[O] = L @: body.WithOrigin[O] } =
+			body.substitute[({ type T[X <: Mapping] = L @: X })#T, M]
+
 	}
-
-
-
-	implicit def LabeledMappingProjection[N <: Label, S, A, B]
-			:OriginProjection[LabeledMapping[N, S, A], A, LabeledMapping[N, S, B], B] =
-		OriginProjection()
-
-	implicit def LabeledMappingAdapterProjection[N <: Label, M <: Mapping, A, R <: Mapping, B]
-	                                            (implicit alias :OriginProjection[M, A, R, B])
-			:OriginProjection[N @: M, A, N @: R, B] =
-		labeled => (labeled.label @: alias(labeled.egg).asInstanceOf[RefinedMapping[Any, Any]]).asInstanceOf[N @: R]
 
 
 
@@ -64,17 +120,53 @@ object LabeledMapping {
 	{
 		def this(label :N, egg :M) = this(egg)(new ValueOf(label))
 
+		override type Subject = S
+		override type Origin = O
+
 		val label :N = singleton.value
 
-		override def equals(that :Any) :Boolean = that match {
-			case other :MappingLabel[_, _, _, _] =>
-				(other eq this) || (other canEqual this) && other.label == label && other.egg == egg
-			case _ => false
-		}
-		override def hashCode :Int = egg.hashCode * 31 + label.hashCode
+//		override def equals(that :Any) :Boolean = that match {
+//			case other :MappingLabel[_, _, _, _] =>
+//				(other eq this) || (other canEqual this) && other.label == label && other.egg == egg
+//			case _ => false
+//		}
+//		override def hashCode :Int = egg.hashCode * 31 + label.hashCode
 
-		override def toString :String = "'" + label + "@:" + egg
+	}
 
+
+
+	class ColumnLabel[N <: Label, S, O](columnName :String, columnBuffs :Seq[Buff[S]] = Nil)
+	                                   (implicit form :ColumnForm[S], labelValue :ValueOf[N])
+		extends BaseColumn[S, O](columnName, columnBuffs) with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
+	{ //consider: extending StandardColumn instead
+		def this(column :ColumnMapping[S, _])(implicit label :ValueOf[N]) =
+			this(column.name, column.buffs)(column.form, label)
+
+		override val label :N = labelValue.value
+
+		override val egg :ColumnMapping[S, O] = this
+
+
+
+//		override def canEqual(that :Any) :Boolean = that.isInstanceOf[@:[_, _]] || that.isInstanceOf[ColumnMapping[_, _]]
+//
+//		override def equals(that :Any) :Boolean = that match {
+//			case self :AnyRef if self eq this => true
+//			case column :ColumnLabel[_, _, _] if column canEqual this =>
+//				label == column.label && name == column.name && form == column.form && buffs == column.buffs
+//			case labeled: @:[_, _] if labeled canEqual this =>
+//				labeled.label == label && (labeled.egg match {
+//					case column :ColumnMapping[_, _] if column canEqual this =>
+//						column.name == name && column.form == form && column.buffs == buffs
+//					case _ => false
+//				})
+//			case _ => false
+//		}
+//
+//		override def hashCode :Int = super[ColumnMapping].hashCode * 31 + label.hashCode
+
+		override def toString = "'" + label + "@:" + name + "[" + form + "]"
 	}
 
 

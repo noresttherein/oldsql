@@ -8,7 +8,7 @@ import scala.collection.immutable.ArraySeq
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, MappingWriteForm, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, MappingReadForm, MappingSeal, MappingWriteForm, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
@@ -100,34 +100,34 @@ import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
   * @see [[MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
-sealed trait Mapping {
+trait Mapping { this :MappingSeal =>
+
 	/** The mapped entity type. */
 	type Subject
 
 
 	/** A phantom marker type denoting the origin of this mapping. It is used to statically distinguish between
 	  * different instances of the same mapping class, but mapping different portions of the result set -
-	  * in particular, they work like aliases for repeated occurrence of a table and its components in a joined query.
+	  * in particular, they work like aliases for repeated occurrences of a table and its components in a joined query.
 	  * In addition, it is used by the SQL DSL to ensure that an SQL expression refers only to components
 	  * coming from the one particular query, preventing accidental use of other, non-joined mappings.
 	  * This type should ''not'' be used for other purposes, keep values or be interpreted in any way, such as actual
 	  * alias names for joined tables. All concrete `Mapping` implementations are expected to take `Origin`
-	  * as a type parameter (by convention, and to leverage scala's partial kind unification, the last one).
-	  * Casting a `Mapping` to a different `Origin` should be safe. It is possible however for a `Mapping` type to
-	  * have other type parameters which depend on the `Origin` type, in which case simple projection on that
-	  * parameter alone will not work. This is the case for example with
-	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]], which lists all its components
-	  * in a type parameter, which may require additional casting. For that reason,
-	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] companion implicit is introduced.
-	  * The library will not cast a `Mapping` directly, but rely on existence of that implicit
-	  * (or a `Mapping` factory [[net.noresttherein.oldsql.schema.RowSource RowSource]]. Default implicit value for
-	  * the former will cast any `MappingAt[X]` to `MappingAt[Y]`, which will be in most cases unsuitable.
-	  * If you wish to declare that your `MappingAt[X]` subtype can be safely projected from one origin to another,
-	  * introduce an implicit `OriginProjection` in implicit scope (such as in the mapping's companion object).
-	  * It will be delegated to for such projections, even when it is a no-op cast (as it should be). The simplest
-	  * method however is to extend either [[net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin OfFreeOrigin]]
-	  * or [[net.noresttherein.oldsql.schema.Mapping.FreeOriginMapping]] which will introduce such an implicit
-	  * automatically.
+	  * as a type parameter (by convention, and to leverage scala's partial kind unification, the last one) for
+	  * seamless use in SQL expressions.
+	  *
+	  * Casting a `Mapping` to a different `Origin` should be safe. In order to abbreviate the code and provide
+	  * better type safety, direct casting to that effect should be avoided, and instead the implicitly available
+	  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]] method should
+	  * be used. It relies on the existence of an implicit
+	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which defines the result type
+	  * of such a cast. If the type inferer can unify a mapping type `X` with some
+	  * `M[O] &lt;: Mapping { type Origin = O }`, which will happen automatically for any mapping class which accepts
+	  * its origin type as the last type parameter, an implicit `OriginProjection[M]` will exist, and
+	  * `m.withOrigin[O] =:= M[O]` for any `m :M[_]`. If such a conversion cannot be performed or is unsuitable,
+	  * the mapping class should declare its own implicit `OriginProjection` within its companion object.
+	  * This makes it possible to define the result type of the cast in case a mapping class doesn't accept
+	  * the `Origin` type as its last type parameter, or it can appear in more than one place in the type signature.
 	  */
 	type Origin
 
@@ -138,6 +138,8 @@ sealed trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping#Component]]
 	  */
 	type Projection[O] = RefinedMapping[Subject, O]
+
+	def refine :RefinedMapping[Subject, Origin] = this
 
 	/** A type alias for the [[net.noresttherein.oldsql.schema.TypedMapping TypedMapping]] trait with the provided
 	  * `Origin` type and the same `Subject` type as this mapping. Used primarily in the expression
@@ -476,10 +478,10 @@ sealed trait Mapping {
 
 
 
-
+	//consider: all renaming/mapping methods to lose Origin in order to *not* be components of this mapping
 	/** An adapter of this mapping with the names of all its public columns prefixed with the given string.
 	  * This is equivalent to `prefixed(prefix + ".")` unless prefix is an empty string, in which case it is
-	  * a no-op (or at least returns a mapping with exact same column nams).
+	  * a no-op (or at least returns a mapping with exact same column name).
 	  */
 	def qualified(prefix :String) :Component[Subject]
 
@@ -507,7 +509,7 @@ sealed trait Mapping {
 	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
 	  * `NullValue.value` will be returned. If `back` extractor will return `None`, a `null` value will be written
 	  * to the database.
-	  */
+	  *///consider: renaming to map if it won't interfere with type inference
 	def as[X](there :Subject =?> X, back :X =?> Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
 		MappedMapping[this.type, Subject, X, Origin](this, there, back)
 
@@ -528,27 +530,6 @@ sealed trait Mapping {
 		MappedMapping.opt[this.type, Subject, X, Origin](this, there, back)
 
 
-
-/*
-	protected[oldsql] def toComponentSQL[F <: FromClause, M[O] <: TypedMapping[Subject, O]]
-	                                    (shift :Int)(implicit supertype :this.type <:< M[F])
-			:FreeComponent[F, M, Subject] =
-		FreeComponent(supertype(this), shift)
-
-	def toComponentSQL[F <: FromClause, M[O] <: TypedMapping[Subject, O]]
-	                  (implicit supertype :this.type <:< M[F], shift :TableShift[F, M, _ <: Numeral])
-			:FreeComponent[F, M, Subject] = //todo: we should make sure this is the first relation in F
-		FreeComponent(supertype(this), shift.count)
-
-	protected[oldsql] def toSQLRelation[F <: FromClause, M[O] <: TypedMapping[Subject, O]]
-	                                   (shift :Int)(implicit supertype :this.type <:< M[F])
-			:SQLRelation[F, M, Subject] = ???
-//		new JoinedRelation[F, M](???, supertype(this), shift)
-
-	def toSQLRelation[F <: FromClause, M[O] <: TypedMapping[Subject, O]]
-	                 (implicit supertype :this.type <:< M[F], shift :TableShift[F, M, _ <: Numeral])
-			:SQLRelation[F, M, Subject] = ??? //todo: we should make sure this is the first relation in F
-*/
 
 	/** Unused by most `Mapping` classes as, by default, they do not override referential equality behaviour.
 	  * Provided here for those few classes which do and to future proof us against overrides without
@@ -610,7 +591,23 @@ sealed trait Mapping {
 
 
 
-object Mapping {
+sealed abstract class LowPriorityMappingImplicits {
+	@inline implicit def refinedMappingOriginProjection[S, A]
+			:OriginProjection[RefinedMapping[S, A]] { type WithOrigin[O] = RefinedMapping[S, O] } =
+		Mapping.arbitraryOriginProjection[RefinedMapping[S, _], MappingOf[S]#Projection]
+
+}
+
+
+
+object Mapping extends LowPriorityMappingImplicits {
+
+	//enforcing extension of TypedMapping is needed because of a bug in scalac where using RefinedMapping as a type parameter
+	/** Self type declared by the root `Mapping` trait used to enforce that all concrete `Mapping` implementations
+	  * extend `TypedMapping` without sealing the trait `Mapping` itself.
+	  */
+	sealed trait MappingSeal extends Mapping
+
 
 
 	@inline implicit def mappingPathConstructor[X <: Mapping, M <: RefinedMapping[S, O], S, O]
@@ -638,20 +635,27 @@ object Mapping {
 
 
 	implicit def mappingSQLFormula[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[X, A], X, N <: Numeral]
-                 (mapping :C)(implicit conforms :Conforms[C, M[F], TypedMapping[X, F]], offset :TableShift[F, M, N])
+                 (mapping :C)
+                 (implicit conforms :Conforms[C, M[F], TypedMapping[X, F]], offset :TableShift[F, M, N],
+                  projection :FunctorProjection[M])
 			:FreeComponent[F, M, X] =
 		FreeComponent(mapping, offset.tables)
 
 
 
-	/** Adds a right-associative method `@:` to any `Mapping` with well defined `Origin` and `Subject` types,
+	/** Adds a right-associative method `@:` to any `Mapping` with defined `Origin` and `Subject` types,
 	  * which attaches a label type to it by wrapping it in `L @: M`.
 	  */
 	implicit class MappingLabeling[M <: RefinedMapping[_, _]](private val self :M) extends AnyVal {
 		/** Attaches a label (a string literal) to this mapping, transforming it into a `LabeledMapping` with the
 		  * literal type included as its type parameter.
 		  */
-		def @:[L <: Label](label :L) :L @: M = LabeledMapping[L, M, M#Subject, M#Origin](label, self)
+		@inline def @:[L <: Label](label :L) :L @: M = LabeledMapping[L, M, M#Subject, M#Origin](label, self)
+
+		/** Attaches a label `L` (a string literal) to this mapping, transforming it into a `LabeledMapping` with the
+		  * literal type included as its type parameter.
+		  */
+		@inline def :@[L <: Label :ValueOf] :L @: M = LabeledMapping[L, M, M#Subject, M#Origin](valueOf[L], self)
 	}
 
 
@@ -664,103 +668,126 @@ object Mapping {
 	  * to type `B`.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection]]
 	  */
-	implicit class MappingAliasing[M[O] <: MappingAt[O], A](private val self :M[_]) extends AnyVal {
-		/** Substitutes the `Origin` type of this mapping to type `B`. Follow this method call with `()`
-		  * to apply the result and infer the result type. The returned mapping type is provided by an implicit
-		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]], see its documentation for
-		  * more information.
+	implicit class MappingOriginProjection[M <: Mapping](private val self :M) extends AnyVal {
+
+		/** Converts this mapping to one where `type Origin = O`. The result type is determined by the implicit
+		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]].
+		  * If `M &lt;: C[A1, ..., AN, A]` where `C[_, ..., _, O] &lt;: TypedMapping[_, O]`, then the result type will
+		  * be inferred as `C[A1, ..., AN, O]`. If the origin type parameter `A` is not the last one, or the mapping
+		  * defines its `Origin` type by other means entirely, type inference will fail and an implicit
+		  * `OriginProjection` value with the correct `WithOrigin` type should be provided in the companion object to `M`.
+		  * See the [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] class documentation
+		  * for a detailed information about providing custom projections and cases when it is required.
 		  */
-		@inline def withOrigin[B] :M[B] = self.asInstanceOf[M[B]]//new ApplyOriginProjection[M, B](self)
-	}
+		@inline def withOrigin[O](implicit projection :OriginProjection[M]) :projection.WithOrigin[O] =
+			self.asInstanceOf[projection.WithOrigin[O]]
 
-	/** An applicable wrapper over mapping `M` which converts it to `Origin` type `B` by the use of an implicit
-	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]].
-	  */
-	class ApplyOriginProjection[M <: Mapping, B](private val self :M) extends AnyVal {
-		@inline def apply[A, R <: Mapping]()(implicit alias :OriginProjection[M, A, R, B]) :R = alias(self)
 	}
 
 
 
-	/** Converts a mapping `M` with `Origin=A` to a mapping with `Origin=B`. While the erased value itself doesn't
-	  * generally need any conversion other than casting from erased type parameter `A` to `B`, the type
-	  * of the aliased mapping depends on the specific `Mapping` subclass.  Default conversion will produce only
-	  * the generic `Mapping` and `TypedMapping` type instances as the aliased types. If you wish
-	  * your custom mapping class be retained in the aliased type, provide your own implicit value of this class
-	  * in the mapping companion's object (or another related scope, with the option of explicit import).
-	  * In most cases, such as with `TypedMapping[S, O]`, this is a simple erased casting
-	  * `(_ :M[A]).asInstanceOf[M[B]]`. A convenience method `OriginProjection[M, A, B]() :OriginProjection[M[A], A, M[B], B]`
-	  * can be then used for the implicit value. Furthermore, if the `Origin` type parameter is the last type parameter
-	  * of the class, all type parameters can be inferred from the expected return type:
+	/** Converts a mapping `M` with `type Origin = A forSome { type A }` to a mapping with `type Origin = B`, where `B`
+	  * is the type parameter of the `apply` method. This conversion must be complete in the sense that in the projected
+	  * mapping type `WithOrigin[B]` all references to `A` are replaced with the type `B`. If the mapping type `M`
+	  * is a generic type which defines its `Origin` type to be equal to its last type parameter `O` (typically
+	  * by extending `TypedMapping[_, O]`) and `O` doesn't occur anywhere else in the definition of `M`,
+	  * as is the recommended practice, then `M =:= WithOrigin[A]` and type `WithOrigin` is inferred automatically
+	  * by the compiler by partial unification. An implicit value of this class is in that case provided by the eponymous
+	  * companion method. There are cases however when either the appropriate projection type cannot be inferred
+	  * or is inferred incorrectly. Typical examples of the former include `Mapping` subclasses with their `Origin`
+	  * type parameter not in the last position, or types which define their `Origin` type in terms of the `Origin` type
+	  * of some value, such as the labeled mapping wrapper `N @: M`, which defines its origin type to be equal to the
+	  * `Origin` of the adapted mapping. An example of the latter would be a class which requires that the `Origin` type
+	  * argument occurs elsewhere in `M` for the value to be valid, such as:
 	  * {{{
-	  *     abstract class Table[E, O] extends TypedMapping[E, O]
+	  *     abstract class Adapter[M <: Mapping, S, O](val component :M) extends TypedMapping[S, O]
 	  *
-	  *     implicit def TableAlias[A, B] :OriginProjection[Table[E, A], A, Table[E, B], B] = OriginProjection()
+	  *     val a :Adapter[TypedMapping[Int, "A"], Int, "A"] = ???
+	  *     //a.component is a valid component of a
+	  *     val b = a.withOrigin["B"] //b :Adapter[TypedMapping[Int, "A"], Int, "B"]
+	  *     //b.component is not a valid component of b as it has a different `Origin` type.
+	  * }}}
+	  * Such practice is strongly discouraged, but not strictly prohibited. Both situations can be amended by
+	  * defining an implicit `OriginProjection[M]` in the companion object to the class of `M`. Fixing the above example
+	  * would require:
+	  * {{{
+	  *     object Adapter {
+	  *
+	  *         implicit def projection[M <: Mapping, X](implicit m :OriginProjection[M])
+	  *                 :OriginProjection[Adapter[M, X, _] { type WithOrigin[A] = Adapter[m.WithOrigin[A], X, A], X, A] } =
+	  *             m.lift[({ type L[T <: Mapping, A] = Adapter[T, X, A] })#L, M]
+	  *     }
+	  *
+	  *     val c = a.withOrigin["C"] //c :Adapter[TypedMapping[Int, "C"], Int, "C"]
 	  * }}}
 	  *
-	  * Note however that this conversion should replace all occurrences of the origin type `A` with `B` in the
-	  * aliased type's definition. If the type refers to its `Origin` in its other type arguments, those arguments
-	  * should be rewritten, too: in that case the above example is not sufficient.
-	  * Alternatively, a `Mapping` can extend [[net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin OfFreeOrigin]]
-	  * (or [[net.noresttherein.oldsql.schema.Mapping.FreeOriginMapping]] to declare that they can be safely cast
-	  * from one origin type (which must be their last type parameter) to another.
-	  * This automatically will introduce an implicit `MappingAlias[M[X1, X2,..., A], A, M[X1, X2, ..., B], B]`.
+	  * The only source of `OriginProjection` instances is the eponymous factory method and transformation
+	  * methods defined in this class.
 	  */
-	@implicitNotFound("Cannot alias mapping ${X} from origin ${A} as ${Y} from origin ${B}. " +
-	                  "If the aliased mapping type depends on the Origin type, provide your own implicit aliasing" +
-	                  "OriginProjection[X, A, Y, B] in the mapping's companion object.")
-	abstract class OriginProjection[-X <: Mapping, A, +Y <: Mapping, B] {
-		def apply(mapping :X) :Y
+	@implicitNotFound("Cannot project mapping ${M} to another Origin type: no (unique) implicit OriginProjection[${M}].")
+	sealed abstract class OriginProjection[-M <: Mapping] { self =>
+
+		/** A type such that `M &lt;: WithOrigin[_]` which does not reference the origin type `O` in its signature
+		  * anywhere except as the type parameter. In other words, a conversion `WithOrigin[A] => WithOrigin[B]`
+		  * replaces every reference to `A` with the type `B`. This in particular means that all components and extracts
+		  * returned by the mapping after conversion define their `Origin` type as `B`, consistently with the converted
+		  * mapping.
+		  */
+		type WithOrigin[O] <: MappingAt[O]
+
+		@inline final def apply[O](mapping :M) :WithOrigin[O] = mapping.asInstanceOf[WithOrigin[O]]
+
+
+		/** A projection from any `WithOrigin[_]` to `WithOrigin[O]`. */
+		@inline def ismorphism :FunctorProjection[WithOrigin] = this.asInstanceOf[FunctorProjection[WithOrigin]]
+
+		/** Lifts a projection of mapping type `M` to one casting from mapping `T[M]` to `T[WithOrigin[O]]`.
+		  * It is the responsibility of the caller to make sure that type `T` does not reference directly the origin type
+		  * in its definition.
+		  */
+		@inline implicit def substitute[T[_ <: Mapping] <: Mapping, S <: M]
+				:OriginProjection[T[S]] { type WithOrigin[O] = T[self.WithOrigin[O]] } =
+			this.asInstanceOf[OriginProjection[T[S]] { type WithOrigin[O] = T[self.WithOrigin[O]] }]
+
+		/** Lifts a projection of mapping type `M` to one casting from mapping `T[M, _]` to `T[WithOrigin[O], O]`.
+		  * It is the responsibility of the caller to make sure that type `T` does not reference directly the origin type
+		  * in its definition.
+		  */
+		@inline def lift[T[_ <: Mapping, O] <: MappingAt[O], S <: M]
+				:OriginProjection[T[S, _]] { type WithOrigin[O] = T[self.WithOrigin[O], O] } =
+			this.asInstanceOf[OriginProjection[T[S, _]] { type WithOrigin[O] = T[self.WithOrigin[O], O] }]
+
 	}
 
-//	def OriginProjection[M <: MappingAt[O], O, AM <: MappingAt[A], A](alias :M => AM) :OriginProjection[M, O, AM, A] =
-//		alias(_)
-
-	@inline def OriginProjection[M[O] <: MappingAt[O], A, B]() :OriginProjection[M[A], A, M[B], B] = AnyOrigin()
 
 
-	private[oldsql] def AnyOrigin[M <: MappingAt[O], O, AM <: MappingAt[A], A]() =
-		CastingProjection.asInstanceOf[OriginProjection[M, O, AM, A]]
-
-	private[this] final val CastingProjection :OriginProjection[Mapping, Any, Mapping, Any] = mapping => mapping
-
-	@inline implicit def BaseMappingProjection[O, A] :OriginProjection[MappingAt[O], O, MappingAt[A], A] =
-		AnyOrigin()
-
-	@inline implicit def RefinedMappingProjection[S, O, A]
-			:OriginProjection[RefinedMapping[S, O], O, RefinedMapping[S, A], A] =
-		AnyOrigin()
-
-	@inline implicit def TypedMappingProjection[S, O, A]
-			:OriginProjection[TypedMapping[S, O], O, TypedMapping[S, A], A] =
-		AnyOrigin()
-
-	@inline implicit def FreeOriginProjection[M[O] <: OfFreeOrigin[O], A, B] :OriginProjection[M[A], A, M[B], B] =
-		AnyOrigin()
-
-
-	/** A marker `Mapping` base trait declaring that extending classes can be safely cast from one `O` type argument
-	  * to another and that it substitutes all references to the `Origin` member types in all its fields and
-	  * other type parameters. Extending this trait will automatically introduce a
-	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] implicit value to perform the
-	  * projection. There is a subtype `FreeOriginMapping[S, O]` which can  be used as a replacement base type
-	  * for `TypedMapping` which performs the same function.
+	/** Type alias for `OriginProjection` of single-argument functor types, accepting their `Origin` type
+	  * as their argument. This shortens the notation considerably, especially if `M` is a natural single-argument type
+	  * constructor (and not a type lambda).
 	  */
-	trait OfFreeOrigin[O] extends Mapping {
-		override type Origin = O
+	type FunctorProjection[M[O] <: MappingAt[O]] = OriginProjection[M[_]] { type WithOrigin[O] = M[O] }
+
+	/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which accepts
+	  * its `WithOrigin` type as the second argument `P`. This shortens the notation considerably if `P` is a natural
+	  * single-argument type constructor (and not a type lambda).
+	  */
+	type ProjectsAs[-M <: Mapping, P[O] <: MappingAt[O]] = OriginProjection[M] { type WithOrigin[O] = P[O] }
+
+
+
+	implicit def originProjection[M[O] <: MappingAt[O]] :M[_] ProjectsAs M =
+		CastingProjection.asInstanceOf[M[_] ProjectsAs M]
+
+	private[this] final val CastingProjection :OriginProjection[Mapping] = new OriginProjection[Mapping] {
+		override type WithOrigin[O] = MappingAt[O]
 	}
 
-	/** A base trait for mappings which do not interpret their origin type in any way, in particular never handle
-	  * any values of that type, and casting of which from their `Origin` type parameter (which must come last)
-	  * to another is safe and completely converts the mapping to another origin, i.e. replaces all occurrences
-	  * of the old origin with the new one.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#Origin]]
-	  */
-	trait FreeOriginMapping[S, O] extends TypedMapping[S, O] with OfFreeOrigin[O] {
-		override type Origin = O
-	}
+	private[oldsql] def arbitraryOriginProjection[M <: Mapping, P[O] <: MappingAt[O]] :M ProjectsAs P =
+		CastingProjection.asInstanceOf[M ProjectsAs P]
+
+
+
+
 
 
 
@@ -780,22 +807,6 @@ object Mapping {
 
 	type RefinedAt[S] = RefinedMapping[S, _]
 
-	type AnyAt[O] = M[O] forSome { type M[A] <: MappingAt[A] }
-
-	type AnyOf[S] = M[S] forSome { type M[X] <: MappingOf[X] }
-
-
-//	type WithSubject[S] = { type M[O] = RefinedMapping[S, O] }
-//
-//	type WithOrigin[O] = { type M[S] = RefinedMapping[S, O] }
-
-//	type * = T[O] forSome { type T[A] <: MappingAt[A]; type O }
-//	type SingletonMapping = Mapping with Singleton
-//	type SingletonOf[S] = Mapping with Singleton { type Subject = S }
-//	type SingletonFrom[O] = Mapping with Singleton { type Origin = O }
-//	type TypedSingleton[S, O] = RefinedMapping[S, O] with Singleton //Mapping with Singleton { type Origin = O; type Subject = S }
-
-
 	type CompatibleMapping[M <: Mapping] = Mapping {
 		type Origin = M#Origin
 		type Subject = M#Subject
@@ -804,28 +815,6 @@ object Mapping {
 	type ConcreteSubclass[M <: Mapping] = M {
 		type Origin = M#Origin
 		type Subject = M#Subject
-	}
-
-
-
-
-
-
-	/** Skeletal base trait for mappings enclosing another mapping `egg`. It is the root of the hierarchy of various
-	  * proxies, adapters and mapped mappings.
-	  */
-	trait MappingNest[+M <: Mapping] extends Mapping { this :Mapping =>
-		protected val egg :M
-
-		override def sqlName :Option[String] = egg.sqlName
-
-		override def toString :String = egg.toString
-	}
-
-
-
-	trait OpenNest[+M <: Mapping] extends MappingNest[M] { this :Mapping =>
-		override val egg :M
 	}
 
 
@@ -1190,7 +1179,7 @@ object Mapping {
   *           included in a query can be used in the creation of SQL expressions used by that query.
   *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
   */
-trait TypedMapping[S, O] extends Mapping { self =>
+trait TypedMapping[S, O] extends MappingSeal { self =>
 	override type Origin = O
 	override type Subject = S
 	//for nicer compiler output
@@ -1251,16 +1240,16 @@ trait TypedMapping[S, O] extends Mapping { self =>
 
 
 	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.select(this :this.type, include, exclude)
+		CustomizedMapping.select[TypedMapping[S, O], S, O](this, include, exclude)
 
 	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.query(this :this.type, include, exclude)
+		CustomizedMapping.query[TypedMapping[S, O], S, O](this, include, exclude)
 
 	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.update(this :this.type, include, exclude)
+		CustomizedMapping.update[TypedMapping[S, O], S, O](this, include, exclude)
 
 	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.insert(this :this.type, include, exclude)
+		CustomizedMapping.insert[TypedMapping[S, O], S, O](this, include, exclude)
 
 
 

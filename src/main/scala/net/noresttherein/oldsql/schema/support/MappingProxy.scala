@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingNest, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, GenericMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
@@ -17,7 +17,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 /**
   * @author Marcin Mościcki
   */
-trait ComponentProxy[S, O] extends TypedMapping[S, O] with MappingNest[MappingOf[S]] {
+trait MappingProxy[S, O] extends TypedMapping[S, O] with MappingNest[MappingOf[S]] {
 
 	override def buffs :Seq[Buff[S]] = egg.buffs
 
@@ -30,14 +30,13 @@ trait ComponentProxy[S, O] extends TypedMapping[S, O] with MappingNest[MappingOf
 
 
 
-object ComponentProxy {
+object MappingProxy {
 
 
 	/** A skeleton of a mapping proxy which uses the components of the proxied mapping as-is. */
-	trait ShallowProxy[S, O] extends ComponentProxy[S, O] with ShallowAdapter[RefinedMapping[S, O], S, S, O] {
-		
-		protected override val egg :Component[S]
+	trait ShallowProxy[S, O] extends MappingProxy[S, O] with ShallowAdapter[RefinedMapping[S, O], S, O] {
 
+		protected override val egg :Component[S]
 
 
 		override def assemble(pieces :Pieces) :Option[S] = egg.assemble(pieces)
@@ -50,7 +49,7 @@ object ComponentProxy {
 			 else
 				 egg(component)
 			).asInstanceOf[Extract[T]]
-		
+
 		override def apply[T](column :Column[T]) :ColumnExtract[T] =
 			(if (column eq egg)
 				ColumnExtract.ident(column)
@@ -71,7 +70,7 @@ object ComponentProxy {
 		}
 
 
-		
+
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 			if (components.contains(egg)) egg.selectForm(egg.selectable)
 			else egg.selectForm(components)
@@ -97,7 +96,7 @@ object ComponentProxy {
 //		override def readForm(filter :Mapping.ColumnFilter) :SQLReadForm[S] = egg.readForm(filter)
 
 
-		override def toString :String = "->" + egg
+		override def toString :String = "^" + egg
 
 	}
 
@@ -107,7 +106,7 @@ object ComponentProxy {
 
 
 	/** A skeleton trait for a mapping proxy which needs to adapt every component of the proxied mapping. */
-	trait DeepProxy[S, O] extends ComponentProxy[S, O] {
+	trait DeepProxy[S, O] extends MappingProxy[S, O] {
 
 
 
@@ -231,7 +230,7 @@ object ComponentProxy {
 
 
 
-		override def toString :String = "->>" + egg
+		override def toString :String = "^{" + egg + "}"
 
 	}
 

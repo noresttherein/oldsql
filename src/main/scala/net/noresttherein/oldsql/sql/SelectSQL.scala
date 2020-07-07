@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:
 import net.noresttherein.oldsql.schema.Buff.NoSelectByDefault
-import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.MappingSchema.SchemaFlattening
 import net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping
 import net.noresttherein.oldsql.slang
@@ -73,12 +73,12 @@ sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]]
 
 
 
-	def as[X <: FlatSchemaMapping[_, _, _, _], M <: FlatSchemaMapping[C, R, S, A], C <: Chain, R <: Chain, S, A]
-	      (mapping :X)(implicit typer :Conforms[X, M, FlatSchemaMapping[C, R, S, A]], tuple :V =:= R) :SelectAs[F, M] = ???
+	def as[X <: FlatSchemaMapping[_, _, _, _], M <: FlatSchemaMapping[S, R, C, A], S, R <: Chain, C <: Chain, A]
+	      (mapping :X)(implicit typer :Conforms[X, M, FlatSchemaMapping[S, R, C, A]], tuple :V =:= R) :SelectAs[F, M] = ???
 
-	def as[FC <: Chain, FR <: Chain, X <: SchemaMapping[_, _, _, _], M <: SchemaMapping[C, R, S, A], C <: Chain, R <: Chain, S, A]
-	      (mapping :X)(implicit typer :Conforms[X, M, SchemaMapping[C, R, S, A]],
-	                   flat :SchemaFlattening[C, R, S, O, FC, FR], tuple :V =:= R) :SelectAs[F, M] = ???
+	def as[FC <: Chain, FR <: Chain, X <: SchemaMapping[_, _, _, _], M <: SchemaMapping[S, R, C, A], S, R <: Chain, C <: Chain, A]
+	      (mapping :X)(implicit typer :Conforms[X, M, SchemaMapping[S, R, C, A]],
+	                   flat :SchemaFlattening[R, C, FR, FC], tuple :V =:= R) :SelectAs[F, M] = ???
 
 	def exists :ColumnSQL[F, Boolean] = ExistsSQL(this)
 
@@ -152,7 +152,7 @@ sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]]
 
 
 object SelectSQL {
-
+//todo: union, minus, product, symdiff
 	def apply[F <: OuterFrom, T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, I >: F <: FromClause, O]
 	         (from :F, header :ComponentSQL[F, T, E, M, V, I]) :SelectMapping[F, M, V, O] =
 		new SelectComponent[F, T, E, M, V, I, O](from, header)
@@ -319,7 +319,7 @@ object SelectSQL {
 
 	/** A `SelectSQL` interface exposing the mapping type `H` used as the header.
 	  * Extending classes work as adapters for that mapping.
-	  */
+	  *///todo: the infix notation is confusing, as F is the Outer clause, not the explicit Inner clause
 	trait SelectAs[-F <: FromClause, H <: Mapping] extends SelectSQL[F, H#Subject, H#Origin] {
 		val mapping :H
 

@@ -6,8 +6,7 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
-import net.noresttherein.oldsql.schema.ColumnMapping.{NumberedColumn, StandardColumn}
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
@@ -28,7 +27,7 @@ import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, FreeComponent}
   * of columns comprising any mapping. As follows, the rest of the column lists are either empty or contain
   * this sole instance itself, depending on the presence of specific buffs. Unlike other mapping implementations,
   * which are adaptable by operations such as mapping and prefixing, transformation methods on columns
-  * return a new instance, using the form (and, where suitable, buffs and name) of the original as their basis.
+  * return a new instance, using the form (and, where suitable, the name and buffs) of the original as their basis.
   */
 trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 
@@ -100,7 +99,7 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 	final override def subcomponents :Unique[Component[_]] = Unique.empty
 
 	/** Returns `Unique(this)`. */
-	final override def columns :Unique[Column[S]] = Unique(this)
+	final override def columns :Unique[Column[S]] = Unique.single(this)
 
 	final override def selectable :Unique[Column[S]] = selfUnless(NoSelect)
 	final override def queryable :Unique[Column[S]] = selfUnless(NoQuery)
@@ -254,15 +253,16 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 		prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
 
 
-	def numbered(index :Int) :NumberedColumn[S, O] = new NumberedColumn[S, O](index, name, buffs)(form)
-
-
 
 	/** Attaches a label to this column, transforming it into a `LabeledColumn`.
-	  * This does not change the name of the column.
+	  * This does not change the name of the column. Created column uses the same buffs and form as `this`,
+	  * but is otherwise an independent instance not retaining a direct reference to `this`.
 	  */
-	def @:[N <: Label](label :Label) :LabeledColumn[N, S, O] =
+	def labeled[N <: Label](label :Label) :LabeledColumn[N, S, O] =
 		new StandardColumn[S, O](name, buffs)(form) with LabeledColumn[N, S, O]
+
+
+
 
 
 
@@ -280,21 +280,6 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 		new StandardColumn[X, O](name, schema.flatMapBuffs(this)(there, back))(
 			if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 		)
-
-
-
-/*
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnMapping[_, _]]
-
-	override def equals(that :Any) :Boolean = that match {
-		case self :AnyRef if self eq this => true
-		case column :ColumnMapping[_, _] if canEqual(column) && column.canEqual(this) =>
-			column.form == form && column.name == name && column.buffs == buffs
-		case _ => false
-	}
-
-	override def hashCode :Int = (buffs.hashCode * 31 + name.hashCode) * 31 + form.hashCode
-*/
 
 
 
@@ -344,19 +329,14 @@ object ColumnMapping {
 
 
 
-	implicit def ColumnProjection[S, A, B] :OriginProjection[ColumnMapping[S, A], A, ColumnMapping[S, B], B] = OriginProjection()
-
-	implicit def LabeledColumnProjection[N <: Label, S, A, B] :OriginProjection[LiteralColumn[N, S, A], A, LiteralColumn[N, S, B], B] =
-		OriginProjection()
-
-	implicit def NumberedColumnProjection[S, A, B] :OriginProjection[NumberedColumn[S, A], A, NumberedColumn[S, B], B] =
-		OriginProjection()
 
 
 
-
-
-
+	/** Basic (but full) `ColumnMapping` implementation. The difference from
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn StandardColumn]] is that the latter
+	  * precomputes many of its properties, storing them in `val`s. Usage of this class should be preferred when
+	  * the column (or its containing mapping) is created on demand, rather than at application initialization.
+	  */
 	class BaseColumn[S, O](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
 		extends ColumnMapping[S, O]
 	{
@@ -368,6 +348,7 @@ object ColumnMapping {
 
 
 
+	/** Defaults `ColumnMapping` implementation. Many of the properties are overriden as `val`s for efficiency. */
 	class StandardColumn[S, O](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
 		extends ColumnMapping[S, O]
 	{
@@ -411,6 +392,10 @@ object ColumnMapping {
 
 
 
+	/** A labeled `ColumnMapping` implementation. As an additional important constraint over
+	  * [[net.noresttherein.oldsql.schema.bits.LabeledMapping.LabeledColumn LabeledColumn]] is that the name of the
+	  * column is the same as the label.
+	  */
 	class LiteralColumn[N <: String with Singleton, S, O](override val buffs :Seq[Buff[S]] = Nil)
 	                                                     (implicit named :ValueOf[N], override val form :ColumnForm[S])
 		extends LabeledColumn[N, S, O]
@@ -438,44 +423,6 @@ object ColumnMapping {
 
 //		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LiteralColumn[_, _, _]]
 
-	}
-
-
-
-
-
-
-	class NumberedColumn[S, O](val number :Int, val name :String, override val buffs :Seq[Buff[S]])
-	                          (implicit val form :ColumnForm[S])
-		extends ColumnMapping[S, O]
-	{
-		override val isNullable :Boolean = super.isNullable
-
-		override def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[S, O] = new NumberedColumn(number, name, buffs)
-
-		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
-			new NumberedColumn[X, O](number, name, schema.mapBuffs(this)(there, back))(
-				schema.mapForm(form)(there, back)
-			)
-
-		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
-			as(Extractor.req(there), Extractor.req(back))
-
-		override def optMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X]) :NumberedColumn[X, O] =
-			as(Extractor.opt(there), Extractor.opt(back))
-
-/*
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[NumberedColumn[_, _]]
-
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case col :NumberedColumn[_, _] if canEqual(that) && col.canEqual(this) =>
-				number == col.number && form == col.form && name == col.name && buffs == col.buffs
-			case _ => false
-		}
-
-		override def hashCode :Int = super.hashCode * 31 + number.##
-*/
 	}
 
 }

@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValues, TypedMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.AllColumns
 import net.noresttherein.oldsql.schema.Mapping.{Component[_], Component}

@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.ComponentProxy.{EagerDeepProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.schema.Mapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter

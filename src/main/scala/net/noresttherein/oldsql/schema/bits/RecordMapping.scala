@@ -4,13 +4,13 @@ import net.noresttherein.oldsql.collection.{Chain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn
+import net.noresttherein.oldsql.schema.SchemaMapping.{@||, |-|, ||, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.RecordMapping.NonEmptyRecordMapping
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
+import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 
 
 /** A mapping of `Record` instances - maps indexed on the type level with string literals.
@@ -19,23 +19,23 @@ import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptySchema, EmptyS
   * on assembly.
   * @author Marcin Mościcki
   */
-trait RecordMapping[C <: Chain, R <: Record, O] extends BaseChainMapping[C, R, O] {
+trait RecordMapping[V <: Record, C <: Chain, O] extends BaseChainMapping[V, C, O] {
 
-	override val schema :RecordMapping[C, R, O] = this
+	override val schema :RecordMapping[V, C, O] = this
 
 	/** Appends a new column component to this schema. Full static type of the column will be encoded in the
 	  * component chain of the returned schema.
 	  */
-	protected def append[K <: Label, M <: Subschema[_, _, T], T](key :K, component :M)
-			:RecordMapping[C ~ M, R |# (K #> T), O] =
-		new NonEmptyRecordMapping[C, M, R, K, T, O](this, key, component)
+	protected def append[K <: Label, T, M <: |-|[T, _ <: Chain, _ <: Chain]](key :K, component :M)
+			:RecordMapping[V |# (K #> T), C ~ M, O] =
+		new NonEmptyRecordMapping[V, C, K, T, M, O](this, key, component)
 
 	/** Appends the given component to this schema.
 	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
 	  */
-	def comp[K <: Label, L <: Chain, V <: Chain, T](key :K, component :Subschema[L, V, T])
-			:RecordMapping[C ~ |*|[L, V, T], R |# (K #> T), O] =
-		new NonEmptyRecordMapping[C, |*|[L, V, T], R, K, T, O](this, key, component)
+	def comp[K <: Label, T, MV <: Chain, MC <: Chain](key :K, component: |-|[T, MV, MC])
+			:RecordMapping[V |# (K #> T), C ~ |-|[T, MV, MC], O] =
+		new NonEmptyRecordMapping[V, C, K, T, |-|[T, MV, MC], O](this, key, component)
 
 
 
@@ -45,8 +45,8 @@ trait RecordMapping[C <: Chain, R <: Record, O] extends BaseChainMapping[C, R, O
 	  * @tparam N the singleton type of the string literal used as the column name.
 	  * @tparam T the mapped column type.
 	  */
-	def col[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :RecordMapping[C ~ (N @|| T), R |# (N #> T), O] =
-		append[N, N @|| T, T](name, LabeledSchemaColumn[N, T, O](name, buffs:_*))
+	def col[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :RecordMapping[V |# (N #> T), C ~ (N @|| T), O] =
+		append[N, T, N @|| T](name, LabeledSchemaColumn[N, T, O](name, buffs:_*))
 
 	/** Appends to this schema a new column labeled with a string different from its name.
 	  * @param label the label used to access the column in the schema.
@@ -56,16 +56,16 @@ trait RecordMapping[C <: Chain, R <: Record, O] extends BaseChainMapping[C, R, O
 	  * @tparam T the mapped column type.
 	  */
 	def col[N <: Label, T :ColumnForm](label :N, name :String, buffs :Buff[T]*)
-			:RecordMapping[C ~ (N @|| T), R |# (N #> T), O] =
-		append[N, N @|| T, T](label, LabeledSchemaColumn[N, T, O](label, name, buffs:_*))
+			:RecordMapping[V |# (N #> T), C ~ (N @|| T), O] =
+		append[N, T, N @|| T](label, LabeledSchemaColumn[N, T, O](label, name, buffs:_*))
 
 
 
 
 
 
-	private[schema] def asPrefix[T <: Record.Item] :MappingSchema[C, R, R |# T, O] =
-		new ChainPrefixSchema[C, R, R, R |# T, O](this)
+	private[schema] def asPrefix[T <: Record.Item] :MappingSchema[V |# T, V, C, O] =
+		new ChainPrefixSchema[V |# T, V, C, O](this)
 
 }
 
@@ -84,28 +84,28 @@ object RecordMapping {
 
 
 
-	trait FlatRecordMapping[C <: Chain, R <: Record, O]
-		extends RecordMapping[C, R, O] with BaseFlatChainMapping[C, R, O]
+	trait FlatRecordMapping[V <: Record, C <: Chain, O]
+		extends RecordMapping[V, C, O] with BaseFlatChainMapping[V, C, O]
 	{
-		override val schema :FlatRecordMapping[C, R, O] = this
+		override val schema :FlatRecordMapping[V, C, O] = this
 
-		protected def col[K <: Label, M <: ||[T], T](key :K, component :M)
-				:FlatRecordMapping[C ~ M, R |# (K #> T), O] =
-			new NonEmptyFlatRecordMapping[C, M, R, K, T, O](this, key, component)
+		protected def col[K <: Label, T, M <: ||[T]](key :K, component :M)
+				:FlatRecordMapping[V |# (K #> T), C ~ M, O] =
+			new NonEmptyFlatRecordMapping[V, C, K, T, M, O](this, key, component)
 
 
 		override def col[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*)
-				:FlatRecordMapping[C ~ (N @|| T), R |# (N #> T), O] =
-			col[N, N @|| T, T](name, LabeledSchemaColumn(name, buffs:_*))
+				:FlatRecordMapping[V |# (N #> T), C ~ (N @|| T), O] =
+			col[N, T, N @|| T](name, LabeledSchemaColumn(name, buffs:_*))
 
 		override def col[N <: Label, T :ColumnForm](label :N, name :String, buffs :Buff[T]*)
-				:FlatRecordMapping[C ~ (N @|| T), R |# (N #> T), O] =
-			col[N, N @|| T, T](label, LabeledSchemaColumn(label, name, buffs:_*))
+				:FlatRecordMapping[V |# (N #> T), C ~ (N @|| T), O] =
+			col[N, T, N @|| T](label, LabeledSchemaColumn(label, name, buffs:_*))
 
 
 
-		private[schema] override def asPrefix[T <: Item] :FlatMappingSchema[C, R, R |# T, O] =
-			new FlatChainPrefixSchema[C, R, R, R |# T, O](this)
+		private[schema] override def asPrefix[T <: Item] :FlatMappingSchema[V |# T, V, C, O] =
+			new FlatChainPrefixSchema[V |# T, V, C, O](this)
 	}
 
 
@@ -117,69 +117,63 @@ object RecordMapping {
 
 
 
-	private class NonEmptyRecordSchema[C <: Chain, M <: RefinedMapping[T, O], R <: Record, K <: Key, T, S, O]
-	                                  (first :MappingSchema[C, R, S, O], key :K, next :M,
+	private class NonEmptyRecordSchema[S, V <: Record, C <: Chain, K <: Key, T, M <: |-|[T, _ <: Chain, _ <: Chain], O]
+	                                  (first :MappingSchema[S, V, C, O], key :K, next :M,
 	                                   extract :MappingExtract[S, T, O])
-		extends BaseNonEmptySchema[Record, |#, Item, C, M, R, T, K #> T, S, O](first, next, extract, _.last._2)
+		extends BaseNonEmptySchema[Record, Item, |#, S, V, C, T, K #> T, M, O](first, next, extract, _.last._2)
 	{
-		override protected def link(init :R, last :T) :R |# (K #> T) = init |# key #> last
+		override protected def link(init :V, last :T) :V |# (K #> T) = init |# key #> last
 
-		override def compose[X](extractor :X => S) :MappingSchema[C ~ M, R |# (K #> T), X, O] =
-			new NonEmptyRecordSchema[C, M, R, K, T, X, O](init.compose(extractor), key, last,
-			                                              this.extractor compose extractor)
+		override def compose[X](extractor :X => S) :MappingSchema[X, V |# (K #> T), C ~ M, O] =
+			new NonEmptyRecordSchema(init.compose(extractor), key, last, this.extractor compose extractor)
 
-		override def compose[X](extractor :X =?> S) :MappingSchema[C ~ M, R |# (K #> T), X, O] =
-			new NonEmptyRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
-			                                              this.extractor compose extractor)
+		override def compose[X](extractor :X =?> S) :MappingSchema[X, V |# (K #> T), C ~ M, O] =
+			new NonEmptyRecordSchema(init compose extractor, key, last, this.extractor compose extractor)
 
 	}
 
 
 
-	private class NonEmptyFlatRecordSchema[C <: Chain, M <: ColumnMapping[T, O], R <: Record, K <: Key, T, S, O]
-	                                      (override val init :FlatMappingSchema[C, R, S, O], key :K, next :M,
+	private class NonEmptyFlatRecordSchema[S, V <: Record, C <: Chain, K <: Key, T, M <: ||[T], O]
+	                                      (override val init :FlatMappingSchema[S, V, C, O], key :K, next :M,
 	                                       extract :MappingExtract[S, T, O])
-		extends NonEmptyRecordSchema[C, M, R, K, T, S, O](init, key, next, extract)
-			with FlatMappingSchema[C ~ M, R |# (K #> T), S, O]
+		extends NonEmptyRecordSchema[S, V, C, K, T, M, O](init, key, next, extract)
+		   with BaseNonEmptyFlatSchema[Record, Key #> Any, |#, S, V, C, T, K #> T, M, O]
+		   with FlatMappingSchema[S, V |# (K #> T), C ~ M, O]
 	{
-
-		override def prev[P <: Chain, V <: Chain](implicit comps :C ~ M <:< (P ~ Any), vals :R |# (K #> T) <:< (V ~ Any))
-				:FlatMappingSchema[P, V, S, O] =
-			init.asInstanceOf[FlatMappingSchema[P, V, S, O]]
-
 		override val selectForm = SQLReadForm.RecordReadForm(init.selectForm, new ValueOf(key), last.selectForm)
 		override val queryForm = SQLWriteForm.RecordWriteForm(init.queryForm, last.queryForm)
 		override val updateForm = SQLWriteForm.RecordWriteForm(init.updateForm, last.updateForm)
 		override val insertForm = SQLWriteForm.RecordWriteForm(init.insertForm, last.insertForm)
 
-		override def compose[X](extractor :X => S) :FlatMappingSchema[C ~ M, R |# (K #> T), X, O] =
-			new NonEmptyFlatRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
-			                                                  this.extractor compose extractor)
+		override def compose[X](extractor :X => S) :FlatMappingSchema[X, V |# (K #> T), C ~ M, O] =
+			new NonEmptyFlatRecordSchema(init compose extractor, key, last, this.extractor compose extractor)
 
-		override def compose[X](extractor :X =?> S) :FlatMappingSchema[C ~ M, R |# (K #> T), X, O] =
-			new NonEmptyFlatRecordSchema[C, M, R, K, T, X, O](init compose extractor, key, last,
-			                                                  this.extractor compose extractor)
+		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V |# (K #> T), C ~ M, O] =
+			new NonEmptyFlatRecordSchema(init compose extractor, key, last, this.extractor compose extractor)
 	}
 
 
 
 
 
-	private class NonEmptyRecordMapping[C <: Chain, M <: RefinedMapping[T, O], R <: Record, K <: Key, T, O]
-	                                   (prefix :RecordMapping[C, R, O], key :K, next :M)
-		extends NonEmptyRecordSchema[C, M, R, K, T, R |# (K #> T), O](
+	private class NonEmptyRecordMapping[V <: Record, C <: Chain, K <: Key, T, M <: |-|[T, _ <: Chain, _ <: Chain], O]
+	                                   (prefix :RecordMapping[V, C, O], key :K, next :M)
+		extends NonEmptyRecordSchema[V |# (K #> T), V, C, K, T, M, O](
 		                             prefix.asPrefix[K #> T], key, next,
-		                             MappingExtract.req(next)((row :R |# (K #> T)) => row.last._2))
-		   with RecordMapping[C ~ M, R |# (K #> T), O]
+		                             MappingExtract.req(next.refine.withOrigin[O]) {
+			                             (row :V |# (K #> T)) => row.last._2
+		                             })
+		   with RecordMapping[V |# (K #> T), C ~ M, O]
 
 
 
-	private class NonEmptyFlatRecordMapping[C <: Chain, M <: ColumnMapping[T, O], R <: Record, K <: Key, T, O]
-	                                       (prefix :FlatRecordMapping[C, R, O], key :K, next :M)
-		extends NonEmptyFlatRecordSchema[C, M, R, K, T, R |# (K #> T), O](
+	private class NonEmptyFlatRecordMapping[V <: Record, C <: Chain, K <: Key, T, M <: ||[T], O]
+	                                       (prefix :FlatRecordMapping[V, C, O], key :K, next :M)
+		extends NonEmptyFlatRecordSchema[V |# (K #> T), V, C, K, T, M, O](
 		                                 prefix.asPrefix[K #> T], key, next,
-		                                 ColumnExtract.req(next)((row :R |# (K #> T)) => row.last._2))
-		   with FlatRecordMapping[C ~ M, R |# (K #> T), O]
+		                                 ColumnExtract.req(next.withOrigin[O])((row :V |# (K #> T)) => row.last._2))
+		   with FlatRecordMapping[V |# (K #> T), C ~ M, O]
 
 
 }

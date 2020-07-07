@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{ColumnMappingExtract, SQLForm, SQLReadForm, SQLWriteForm, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.OfFreeOrigin
+import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm, TypedMapping}
 
 
-/**
-  * @author Marcin Mościcki
+/** A `Mapping` with no columns or other components. It follows that its write and read forms are empty
+  * implementations, reading and writing nothing. It can still produce a value from the `assemble` method
+  * if one has been preset for it in the `ComponentValues`.
   */
 trait EmptyMapping[S, O] extends TypedMapping[S, O] {
 
@@ -45,57 +45,6 @@ trait EmptyMapping[S, O] extends TypedMapping[S, O] {
 	override def updateForm :SQLWriteForm[S] = SQLWriteForm.empty
 	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty
 
-
-}
-
-
-
-
-
-
-class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] with OfFreeOrigin[O] {
-	private[this] val result = Some(subject)
-
-	override def assemble(values :Pieces) :Option[S] = result
-
-	override def optionally(values :Pieces) :Option[S] = result
-
-	override def apply(values :Pieces) :S = subject
-
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		SQLReadForm.const(subject, (0 /: components) { _ + _.columns.size })
-
-	override val selectForm :SQLReadForm[S] = SQLReadForm.const(subject)
-
-	override def toString :String = "Const(" + subject + ")"
-}
-
-
-
-
-
-
-class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O] {
-
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		if (components.isEmpty) SQLReadForm.nulls(form.nulls)
-		else if (components.size == 1 && components.head == this) form
-		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
-
-	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = insertForm(components)
-	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = insertForm(components)
-
-	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		if (components.isEmpty) SQLWriteForm.empty
-		else if (components.size == 1 && components.head == this) form
-		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
-
-
-
-	override def selectForm :SQLReadForm[S] = form
-	override def insertForm :SQLWriteForm[S] = form
-	override def queryForm :SQLWriteForm[S] = form
-	override def updateForm :SQLWriteForm[S] = form
 
 }
 

@@ -30,7 +30,8 @@ trait TupleSQL[-F <: FromClause, T] extends CompositeSQL[F, T] {
 	override def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Implicit, T, O] =
 		SelectSQL.subselect[from.Implicit, from.type, T, O](from, this)
 }
-
+//todo: MapSQL/LabeledTuple
+//todo: conversion to MappingSQL
 
 
 

@@ -19,7 +19,7 @@ trait Reference[+T] {
 	
 	override def hashCode = toOpt.hashCode
 	
-	override def toString = toOpt.map(o => s"@Full($o)") getOrElse "@Empty"
+	override def toString = toOpt.map(o => s"@Full($o)") getOrElse "@empty"
 
 
 }

@@ -2,17 +2,16 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping, SQLForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappedFlatSchema, FlatMappedSchema, FlatMappingSchema, FlatNonEmptySchema, GetLabeledComponent, GetSchemaComponent, MappedFlatSchema, MappedSchema, NonEmptySchema, SchemaFlattening}
-import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchemaMapping, SchemaColumn}
+import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSchema, NonEmptyFlatSchema, GetLabeledComponent, GetSchemaComponent, NonEmptySchema}
+import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 
 
 
@@ -20,28 +19,28 @@ import net.noresttherein.oldsql.schema.support.ComponentProxy.ShallowProxy
 
 
 /** A mapping for `Chain` heterogeneous lists which is a `SchemaMapping` and its own `MappingSchema` at the same time. */
-trait ChainMapping[C <: Chain, R <: Chain, O] extends BaseChainMapping[C, R, O] {
+trait ChainMapping[V <: Chain, C <: Chain, O] extends BaseChainMapping[V, C, O] {
 
-	override val schema :ChainMapping[C, R, O] = this
+	override val schema :ChainMapping[V, C, O] = this
 
 	/** Appends a new component to this schema. Full static type of the column will be encoded in the
 	  * component chain of the returned schema.
 	  */
-	protected def append[M <: Subschema[_, _, T], T](component :M) :ChainMapping[C ~ M, R ~ T, O] =
-		new NonEmptyChainMapping[C, M, R, T, O](this, component)
+	protected def append[T, M <: |-|[T, _ <: Chain, _ <: Chain]](component :M) :ChainMapping[V ~ T, C ~ M, O] =
+		new NonEmptyChainMapping(this, component)
 
 
 	/** Appends the given component to this schema.
 	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
 	  */
-	def comp[L <: Chain, V <: Chain, T](component :Subschema[L, V, T]) :ChainMapping[C ~ |*|[L, V, T], R ~ T, O] =
-		new NonEmptyChainMapping[C, |*|[L, V, T], R, T, O](this, component)
+	def comp[T, MV <: Chain, MC <: Chain](component: |-|[T, MV, MC]) :ChainMapping[V ~ T, C ~ |-|[T, MV, MC], O] =
+		new NonEmptyChainMapping[V, C, T, |-|[T, MV, MC], O](this, component)
 
 
 
 	/** Appends a new column to this schema with the given name. */
-	def col[T :ColumnForm](name :String, buffs :Buff[T]*) :ChainMapping[C ~ ||[T], R ~ T, O] =
-		append[||[T], T](SchemaColumn[T, O](name, buffs :_*))
+	def col[T :ColumnForm](name :String, buffs :Buff[T]*) :ChainMapping[V ~ T, C ~ ||[T], O] =
+		append[T, ||[T]](SchemaColumn[T, O](name, buffs :_*))
 
 
 
@@ -51,8 +50,8 @@ trait ChainMapping[C <: Chain, R <: Chain, O] extends BaseChainMapping[C, R, O] 
 	  * @tparam N the singleton type of the string literal used as the column name.
 	  * @tparam T the mapped column type.
 	  */
-	def lbl[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :ChainMapping[C ~ (N @|| T), R ~ T, O] =
-		append[N @|| T, T](LabeledSchemaColumn[N, T, O](name, buffs:_*))
+	def lbl[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :ChainMapping[V ~ T, C ~ (N @|| T), O] =
+		append[T, N @|| T](LabeledSchemaColumn[N, T, O](name, buffs:_*))
 
 	/** Appends to this schema a new column labeled with a string different from its name.
 	  * @param label the label used to access the column in the schema.
@@ -61,12 +60,12 @@ trait ChainMapping[C <: Chain, R <: Chain, O] extends BaseChainMapping[C, R, O] 
 	  * @tparam N the singleton type of the string literal used as the column name.
 	  * @tparam T the mapped column type.
 	  */
-	def lbl[N <: Label, T :ColumnForm](label :N, name :String, buffs :Buff[T]*) :ChainMapping[C ~ (N @|| T), R ~ T, O] =
-		append[N @|| T, T](LabeledSchemaColumn[N, T, O](label, name, buffs:_*))
+	def lbl[N <: Label, T :ColumnForm](label :N, name :String, buffs :Buff[T]*) :ChainMapping[V ~ T, C ~ (N @|| T), O] =
+		append[T, N @|| T](LabeledSchemaColumn[N, T, O](label, name, buffs:_*))
 
 
-	private[schema] def asPrefix[T] :MappingSchema[C, R, R ~ T, O] =
-		new ChainPrefixSchema[C, R, R, R ~ T, O](this)
+	private[schema] def asPrefix[T] :MappingSchema[V ~ T, V, C, O] =
+		new ChainPrefixSchema[V ~ T, V, C, O](this)
 
 }
 
@@ -83,73 +82,76 @@ object ChainMapping {
 
 
 
-	trait BaseChainMapping[C <: Chain, R <: Chain, O] extends SchemaMapping[C, R, R, O] with MappingSchema[C, R, R, O] {
+	trait BaseChainMapping[V <: Chain, C <: Chain, O] extends SchemaMapping[V, V, C, O] with MappingSchema[V, V, C, O] {
+		override type Unpacked = V
 		override type Components = C
-		override type Schema[Q] = MappingSchema[C, R, R, Q]
+		override type Schema = MappingSchema[V, V, C, O]
 
-		override val schema :MappingSchema[C, R, R, O] = this
+		override val schema :MappingSchema[V, V, C, O] = this
 
 		override def export[T](component :Component[T]) :Component[T] = component
 
 		override def export[T](column :Column[T]) :Column[T] = column
 
 
-		override val extracts :NaturalMap[Component, Extract] = outerExtracts
-
-		override val columnExtracts :NaturalMap[Column, ColumnExtract] = outerColumnExtracts
+//		abstract override val extracts :NaturalMap[Component, Extract] = packedExtracts
+//
+//		abstract override val columnExtracts :NaturalMap[Column, ColumnExtract] = packedColumnExtracts
 
 
 		override def apply[N <: Label, T]
-		                  (label :N)(implicit get :GetLabeledComponent[C, R, LabeledMapping[N, T, O], N, T, O])
-				:Extract[T] =
-			super.apply(label)
+		                  (label :N)(implicit get :GetLabeledComponent[N, V, C, T, @|-|[N, T, _, _]]) :Extract[T] =
+			get.extract(this, label)
 
-		override def /[M <: LabeledMapping[N, T, O], N <: Label, T]
-		              (label :N)(implicit get :GetLabeledComponent[C, R, M, N, T, O]) :M =
-			super./[M, N, T](label)
+		override def /[N <: Label, T, M <: @|-|[N, T, _, _]]
+		              (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M])
+				:projection.WithOrigin[O] =
+			projection(get(this, label))
 
 
 		override def apply[I <: Numeral, T]
-		                  (idx :I)(implicit get :GetSchemaComponent[C, R, Component[T], I, T, O])
-				:MappingExtract[R, T, O] =
-			super.apply[I, T](idx)
+		                  (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, |-|[T, _, _]])
+				:MappingExtract[V, T, O] =
+			get.extract(this, idx)
 
-		override def /[M <: Component[T], I <: Numeral, T]
-		              (idx :I)(implicit get :MappingSchema.GetSchemaComponent[C, R, M, I, T, O]) :M =
-			super./[M, I, T](idx)
+		override def /[I <: Numeral, T, M <: |-|[T, _, _]]
+		              (idx :I)
+		              (implicit get :MappingSchema.GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M])
+				:projection.WithOrigin[O] =
+			projection(get(this, idx))
 
 
 	}
 
 
 
-	trait BaseFlatChainMapping[C <: Chain, R <: Chain, O]
-		extends BaseChainMapping[C, R, O] with FlatSchemaMapping[C, R, R, O] with FlatMappingSchema[C, R, R, O]
+	trait BaseFlatChainMapping[V <: Chain, C <: Chain, O]
+		extends BaseChainMapping[V, C, O] with FlatSchemaMapping[V, V, C, O] with FlatMappingSchema[V, V, C, O]
 	{
-		override val schema :FlatMappingSchema[C, R, R, O] = this
+		override val schema :FlatMappingSchema[V, V, C, O] = this
 	}
 
 
 
 
 
-	trait FlatChainMapping[C <: Chain, R <: Chain, O]
-		extends ChainMapping[C, R, O] with BaseFlatChainMapping[C, R, O]
+	trait FlatChainMapping[V <: Chain, C <: Chain, O]
+		extends ChainMapping[V, C, O] with BaseFlatChainMapping[V, C, O]
 	{
-		override val schema :FlatChainMapping[C, R, O] = this
+		override val schema :FlatChainMapping[V, C, O] = this
 
-		protected def col[M <: ||[T], T](component :M) :FlatChainMapping[C ~ M, R ~ T, O] =
-			new NonEmptyFlatChainMapping[C, M, R, T, O](this, component)
+		protected def col[T, M <: ||[T]](component :M) :FlatChainMapping[V ~ T, C ~ M, O] =
+			new NonEmptyFlatChainMapping(this, component)
 
-		override def col[T :ColumnForm](name :String, buffs :Buff[T]*) :FlatChainMapping[C ~ ||[T], R ~ T, O] =
-			col[||[T], T](SchemaColumn[T, O](name, buffs:_*))
+		override def col[T :ColumnForm](name :String, buffs :Buff[T]*) :FlatChainMapping[V ~ T, C ~ ||[T], O] =
+			col[T, ||[T]](SchemaColumn(name, buffs:_*))
 
-		override def lbl[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :ChainMapping[C ~ (N @|| T), R ~ T, O] =
-			col[N @|| T, T](LabeledSchemaColumn(name, buffs:_*))
+		override def lbl[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :ChainMapping[V ~ T, C ~ (N @|| T), O] =
+			col[T, N @|| T](LabeledSchemaColumn(name, buffs:_*))
 
 
-		private[schema] override def asPrefix[T] :FlatMappingSchema[C, R, R ~ T, O] =
-			new FlatChainPrefixSchema[C, R, R, R ~ T, O](this)
+		private[schema] override def asPrefix[T] :FlatMappingSchema[V ~ T, V, C, O] =
+			new FlatChainPrefixSchema[V ~ T, V, C, O](this)
 	}
 
 
@@ -157,7 +159,7 @@ object ChainMapping {
 
 
 
-	private def prefix[C <: Chain] :(C ~ Any) => C = init.asInstanceOf[(C ~ Any) => C]
+	@inline private def prefix[C <: Chain] :(C ~ Any) => C = init.asInstanceOf[(C ~ Any) => C]
 	private[this] val init = (_:Chain ~ Any).init
 
 
@@ -166,103 +168,101 @@ object ChainMapping {
 
 
 
-	private class NonEmptyChainMapping[C <: Chain, M <: RefinedMapping[T, O], R <: Chain, T, O]
-	                                  (prefix :ChainMapping[C, R, O], next :M)
-		extends NonEmptySchema[C, M, R, T, R ~ T, O](
-				               prefix.asPrefix[T], next, MappingExtract.req(next)((row :R ~ T) => row.last))
-		   with ChainMapping[C ~ M, R ~ T, O]
+	private class NonEmptyChainMapping[V <: Chain, C <: Chain, T, M <: |-|[T, _ <: Chain, _ <: Chain], O]
+	                                  (prefix :ChainMapping[V, C, O], next :M)
+		extends NonEmptySchema[V ~ T, V, C, T, M, O](
+			                   prefix.asPrefix, next,
+			                   MappingExtract.req(next.refine.withOrigin[O])(Chain.last))
+		   with ChainMapping[V ~ T, C ~ M, O]
 
 
 
-	private class NonEmptyFlatChainMapping[C <: Chain, M <: ColumnMapping[T, O], R <: Chain, T, O]
-	                                      (prefix :FlatChainMapping[C, R, O], next :M)
-		extends FlatNonEmptySchema[C, M, R, T, R ~ T, O](
-		                       prefix.asPrefix[T], next, ColumnExtract.req(next)((row :R ~ T) => row.last))
-		   with FlatChainMapping[C ~ M, R ~ T, O]
+	private class NonEmptyFlatChainMapping[V <: Chain, C <: Chain, T, M <: ||[T], O]
+	                                      (prefix :FlatChainMapping[V, C, O], next :M)
+		extends NonEmptyFlatSchema[V ~ T, V, C, T, M, O](
+		                           prefix.asPrefix, next, ColumnExtract.req(next.withOrigin[O])(Chain.last))
+		   with FlatChainMapping[V ~ T, C ~ M, O]
 
 
 
 
 
-	/** Adapts a `MappingSchema` with the owning mapping's subject type `T &lt;: Chain` to a `MappingSchema` 
+	/** Adapts a `MappingSchema` with the owning mapping's subject type `V &lt;: Chain` to a `MappingSchema`
 	  * with outer subject type being a `Chain` longer by one entry. This is essentially a component
-	  * mapping for a prefix chain `R` of a chain `S`.
+	  * mapping for a prefix chain `V` of a chain `S`.
+	  * @tparam S the outer subject type of this schema.
+	  * @tparam V the subject chain type of this schema, a prefix of the chain `T`.
 	  * @tparam C the chain with all components in this schema.
-	  * @tparam R the subject chain type of this schema, a prefix of the chain `T`.
-	  * @tparam T the outer subject type of the extended schema, the init of the outer subject type of this mapping.
-	  * @tparam S the outer subject type of this schema.           
 	  */
-	private[schema] class ChainPrefixSchema[C <: Chain, R <: Chain, T <: Chain, S <: T ~ Any, O]
-	                                       (protected val egg :MappingSchema[C, R, T, O])
-		extends MappingSchema[C, R, S, O] with ShallowProxy[R, O]
+	private[schema] class ChainPrefixSchema[S <: V ~ Any, V <: Chain, C <: Chain, O]
+	                                       (protected val egg :MappingSchema[V, V, C, O])
+		extends MappingSchema[S, V, C, O] with ShallowProxy[V, O]
 	{
 
-		override def optionally(pieces :Pieces) :Option[R] = egg.optionally(pieces)
+		override def optionally(pieces :Pieces) :Option[V] = egg.optionally(pieces)
 
 
-		override def unapply(subject :S) :Option[R] = egg.unapply(subject.init)
+		override def unapply(subject :S) :Option[V] = egg.unapply(subject.init)
 
-		override def disassemble(subject :S) :R = egg.disassemble(subject.init)
+		override def disassemble(subject :S) :V = egg.disassemble(subject.init)
 
 
 
 		override def members :C = egg.members
 
-		override def last[M <: Component[_]](implicit nonEmpty :C <:< (Chain ~ M)) :M = egg.members.last
+		override def last[M](implicit nonEmpty :C <:< (Chain ~ M)) :M = egg.members.last
 
-		override def prev[I <: Chain, V <: Chain]
-		                 (implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any)) :MappingSchema[I, V, S, O] =
-			egg.prev compose prefix[T]
+		override def prev[I <: Chain, P <: Chain]
+		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :MappingSchema[S, I, P, O] =
+			egg.prev compose prefix[V]
 
 
 
 		override def extract[X](component :Component[X]) :MappingExtract[S, X, O] =
-			egg.extract(component) compose prefix[T]
+			egg.extract(component) compose prefix[V]
 
 		override def extract[X](column :Column[X]) :ColumnMappingExtract[S, X, O] =
-			egg.extract(column) compose prefix[T]
+			egg.extract(column) compose prefix[V]
 
 
 
-		override val outerExtracts :NaturalMap[Component, OuterExtract] =
-			egg.outerExtracts.map(schema.composeExtractAssoc(this, prefix[T])(_))
+		override val packedExtracts :NaturalMap[Component, PackedExtract] =
+			egg.packedExtracts.map(schema.composeExtractAssoc(this, prefix[V])(_))
 
-		override val outerColumnExtracts :NaturalMap[Column, OuterColumnExtract] =
-			egg.outerColumnExtracts.map(schema.composeColumnExtractAssoc(this, prefix[T])(_))
+		override val packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] =
+			egg.packedColumnExtracts.map(schema.composeColumnExtractAssoc(this, prefix[V])(_))
 
 
 
-		override def compose[X](extractor :X => S) :MappingSchema[C, R, X, O] =
-			egg compose (extractor andThen prefix[T])
+		override def compose[X](extractor :X => S) :MappingSchema[X, V, C, O] =
+			egg compose (extractor andThen prefix[V])
 
-		override def compose[X](extractor :X =?> S) :MappingSchema[C, R, X, O] =
-			egg compose (extractor andThen prefix[T])
+		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
+			egg compose (extractor andThen prefix[V])
 
 
 
 		override protected[schema] def componentsReversed :List[Component[_]] = egg.componentsReversed
-
 		override protected[schema] def subcomponentsReversed :List[Component[_]] = egg.subcomponentsReversed
-
 		override protected[schema] def columnsReversed :List[Column[_]] = egg.columnsReversed
 
 	}
 
 
 
-	private[schema] class FlatChainPrefixSchema[C <: Chain, R <: Chain, T <: Chain, S <: T ~ Any, O]
-	                                           (protected override val egg :FlatMappingSchema[C, R, T, O])
-		extends ChainPrefixSchema[C, R, T, S, O](egg) with FlatMappingSchema[C, R, S, O]
+	private[schema] class FlatChainPrefixSchema[S <: V ~ Any, V <: Chain, C <: Chain, O]
+	                                           (protected override val egg :FlatMappingSchema[V, V, C, O])
+		extends ChainPrefixSchema[S, V, C, O](egg) with FlatMappingSchema[S, V, C, O]
 	{
-		override def compose[X](extractor :X => S) :FlatMappingSchema[C, R, X, O] =
-			egg compose (extractor andThen prefix[T])
+		override def compose[X](extractor :X => S) :FlatMappingSchema[X, V, C, O] =
+			egg compose (extractor andThen prefix[V])
 
-		override def compose[X](extractor :X =?> S) :FlatMappingSchema[C, R, X, O] =
-			egg compose (extractor andThen prefix[T])
+		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V, C, O] =
+			egg compose (extractor andThen prefix[V])
 
-		override def prev[I <: Chain, V <: Chain]
-		                 (implicit comps :C <:< (I ~ Any), vals :R <:< (V ~ Any)) :FlatMappingSchema[I, V, S, O] =
-			egg.prev.compose(prefix[T])
+		override def prev[I <: Chain, P <: Chain]
+		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :FlatMappingSchema[S, I, P, O] =
+			egg.prev.compose(prefix[V])
 
 	}
 

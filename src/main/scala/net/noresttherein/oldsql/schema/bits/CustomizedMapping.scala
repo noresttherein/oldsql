@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.{-#>, Assoc}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter
@@ -21,7 +21,8 @@ import net.noresttherein.oldsql.schema.bits.CustomizedMapping.{exclude, include}
   * @author Marcin Mościcki
   */
 class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] private
-                       (override val egg :M, protected val substitutions :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component])
+                       (override val egg :M,
+                        protected val substitutions :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component])
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
 {
 	protected def this(source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
@@ -43,7 +44,7 @@ class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] private
 
 
 object CustomizedMapping {
-	type Override[X, O] = Assoc[MappingAt[O]#Component, MappingAt[O]#Component, X]
+	type Override[S, O] = Assoc[MappingAt[O]#Component, MappingAt[O]#Component, S]
 	type Overrides[O] = NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component]
 
 
@@ -116,7 +117,7 @@ object CustomizedMapping {
 					case sub =>
 						val comp = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
 						if (prohibited.disabled(comp) && explicit.enabled(comp))
-							builder += new Override(comp, BuffedMapping(comp, comp.buffs.filter(explicit.disabled) :_*))
+							builder += new Override[Any, O](comp, BuffedMapping(comp, comp.buffs.filter(explicit.disabled) :_*))
 				}
 
 		}

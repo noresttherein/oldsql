@@ -94,7 +94,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`. Will never be called
 	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
-	  */
+	  */ //todo: rename optMap
 	def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] = NullValue[X] match {
 		case null =>
 			SQLForm.flatMap(map)(unmap)(this, nulls.flatMap(map))
@@ -121,7 +121,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * is accessed. Similarly, any exceptions thrown by the `map` function will be propagated.
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
-	  */
+	  */ //todo: rename optMap ?
 	def biflatMapNull[X](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
 		biflatMap(map)(unmap)(nulls.flatMap(map))
 

@@ -518,12 +518,12 @@ object ComponentValues {
 
 	/** Creates a `ComponentValues` instance with a given preset for the specified mapping. If non-empty,
 	  * the values for subcomponents will be extracted from it using the `MappingExtract`s supplied by the mapping.
-	  * This is equivalent to `ComponentValues.Preset(mapping, result.get)` or `ComponentValues.Empty`, based
+	  * This is equivalent to `ComponentValues.preset(mapping, result.get)` or `ComponentValues.Empty`, based
 	  * on whether the `result` is defined.
 	  */
 	def apply[S, O](mapping :RefinedMapping[S, O], result :Option[S]) :ComponentValues[S, O] = result match {
 		case some :Some[S] => new OverrideMappingValue[S, O](mapping, some)
-		case _ => Empty[S, O]
+		case _ => empty[S, O]
 	}
 
 
@@ -535,7 +535,7 @@ object ComponentValues {
 	  * of the component). You may wish to consider using `ComponentValues(mapping)()` instead, which is compatible
 	  * with any mapping.
 	  */
-	def Empty[S, O] :ComponentValues[S, O] = empty.asInstanceOf[ComponentValues[S, O]]
+	def empty[S, O] :ComponentValues[S, O] = EmptyValues.asInstanceOf[ComponentValues[S, O]]
 
 	/** An empty instance, returning always `None` or throwing a `NoSuchElementException`. This instance does ''not''
 	  * perform aliasing in order to obtain the operative version of the components before calling their
@@ -546,7 +546,7 @@ object ComponentValues {
 	  * @param source a description of the original source which created this instance for more helpful message in
 	  *               thrown exceptions
 	  */
-	def Empty[S, O](source : => String) :ComponentValues[S, O] = new EmptyValues[S, O](source)
+	def empty[S, O](source : => String) :ComponentValues[S, O] = new EmptyValues[S, O](source)
 
 
 
@@ -560,7 +560,7 @@ object ComponentValues {
 	  * `ComponentValues` contract.
 	  * @param value the result, top-level value.
 	  */
-	def Preset[S, O](mapping :RefinedMapping[S, O], value :S) :ComponentValues[S, O] =
+	def preset[S, O](mapping :RefinedMapping[S, O], value :S) :ComponentValues[S, O] =
 		new OverrideMappingValue[S, O](mapping, Some(value))
 
 	/** Create `ComponentValues` for the given mapping and its subject. All values returned by this instance will use
@@ -573,12 +573,12 @@ object ComponentValues {
 	  * `ComponentValues` contract.
 	  * @param value the result, top-level value.
 	  */
-	def Preset[S, O](mapping :RefinedMapping[S, O], value :Some[S]) :ComponentValues[S, O] =
+	def preset[S, O](mapping :RefinedMapping[S, O], value :Some[S]) :ComponentValues[S, O] =
 		new OverrideMappingValue[S, O](mapping, value)
 
 	/** Create `ComponentValues` for the given mapping and its subject. All values returned by this instance will use
 	  * the `MappingExtract` provided by their owning mapping to extract the value from the given argument.
-	  * Unlike `Preset(mapping, value)`, only the components listed in the third argument will have their value preset,
+	  * Unlike `preset(mapping, value)`, only the components listed in the third argument will have their value preset,
 	  * with the others being assembled from their subcomponents. Note that while you can provide a value
 	  * for any component, not only columns, if any other subcomponent relies on the value of one of its subcomponents
 	  * directly (rather than extracting it from its assembled subject), it will likely bypass the check for the preset
@@ -591,12 +591,12 @@ object ComponentValues {
 	  * the general `ComponentValues` contract.
 	  * @param value the result, top-level value.
 	  */
-	def Preset[S, O](mapping :RefinedMapping[S, O], value :S, components :Unique[RefinedMapping[_, O]]) :ComponentValues[S, O] =
+	def preset[S, O](mapping :RefinedMapping[S, O], value :S, components :Unique[RefinedMapping[_, O]]) :ComponentValues[S, O] =
 		new SelectedDisassembledValues(mapping, value, components)
 
 
 
-	/** Similar to `Preset[S, O](mapping, value)`, but the value is not computed until actually needed. The expression
+	/** Similar to `preset[S, O](mapping, value)`, but the value is not computed until actually needed. The expression
 	  * will be evaluated at most once. The values for the subcomponents of the mapping
 	  * are ''always'' extracted from the preset value using the mapping's `MappingExtract` for the component;
 	  * the components' `optionally` (or `apply` and `assemble`) methods are never called and neither are they
@@ -985,7 +985,7 @@ object ComponentValues {
 
 
 	private class StickyComponentValues[S, O] private[ComponentValues]
-	              (values :NaturalMap[MappingAt[O]#Component, Origin[O]#T], default :ComponentValues[S, O] = Empty[S, O])
+	              (values :NaturalMap[MappingAt[O]#Component, Origin[O]#T], default :ComponentValues[S, O] = empty[S, O])
 		extends ComponentValues[S, O]
 	{
 		override def preset(root: RefinedMapping[S, O]): Option[S] = values.get(root).flatMap(_.preset(root))
@@ -1092,7 +1092,7 @@ object ComponentValues {
 		override def toString :String = source
 	}
 
-	private[this] val empty :ComponentValues[Any, Any] = new EmptyValues[Any, Any]
+	private[this] val EmptyValues :ComponentValues[Any, Any] = new EmptyValues[Any, Any]
 
 
 
@@ -1113,7 +1113,7 @@ object ComponentValues {
 			else None
 
 		override def \[T](extract :MappingExtract[S, T, O]) :ComponentValues[T, O] =
-			if (result.isEmpty) Empty[T, O]
+			if (result.isEmpty) empty[T, O]
 			else ComponentValues(extract.export, extract.get(result.get))
 
 
@@ -1177,7 +1177,7 @@ object ComponentValues {
 				val export = alias(extract.export)
 				export(new AliasedOverrideMappingValue[T, O](export, some, alias))
 			case _ =>
-				alias(extract.export)(Empty[T, O])
+				alias(extract.export)(empty[T, O])
 		}
 
 
@@ -1187,7 +1187,7 @@ object ComponentValues {
 				val export = alias(extract.export)
 				export.optionally(new AliasedOverrideMappingValue[T, O](export, some, alias))
 			case _ =>
-				alias(extract.export).optionally(Empty)
+				alias(extract.export).optionally(empty)
 		}
 
 		override def \[T](component :RefinedMapping[T, O]) :ComponentValues[T, O] = this \ mapping(component)
@@ -1195,7 +1195,7 @@ object ComponentValues {
 
 		override def \[T](extract :MappingExtract[S, T, O]) :ComponentValues[T, O] = extract.get(result.get) match {
 			case some :Some[T] => new AliasedOverrideMappingValue(alias(extract.export), some, alias)
-			case _ => Empty
+			case _ => empty
 		}
 
 
@@ -1259,7 +1259,7 @@ object ComponentValues {
 	  * of components, in particular columns. Each call for a value for a component of `M` results in this instance 
 	  * first checking if the `defined` method returns a value for the component and, if so, simply returns it. 
 	  * If no preset value for the component is available, it will be assembled. Calls for `ComponentValues` instances
-	  * for subcomponents work similarly: if this instance contains a preset value `x`, `Preset(x)` is
+	  * for subcomponents work similarly: if this instance contains a preset value `x`, `preset(x)` is
 	  * returned; otherwise this instance simply casts itself to the component type. A non obvious implication
 	  * of this algorithm is that this instance's `preset` method ''always'' returns `None` and `assemble`
 	  * delegates straight to `mapping.assemble`, as the check for the preset value occurred earlier.

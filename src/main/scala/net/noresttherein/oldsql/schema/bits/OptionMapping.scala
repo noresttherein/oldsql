@@ -31,7 +31,7 @@ object OptionMapping {
 
 
 	class DirectOptionMapping[M <: RefinedMapping[S, O], S, O](val egg :M)
-		extends OptionMapping[M, S, O] with ShallowAdapter[M, S, Option[S], O]
+		extends OptionMapping[M, S, O] with ShallowAdapter[M, Option[S], O]
 	{ box =>
 		val get :M = egg
 

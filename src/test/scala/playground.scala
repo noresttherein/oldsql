@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, MappingSchema, Sc
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.MappingSchema.FlatMappingSchema
-import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, SchemaColumn}
+import net.noresttherein.oldsql.schema.SchemaMapping.{||, FlatSchemaMapping, SchemaColumn}
 
 
 
@@ -15,21 +15,21 @@ import net.noresttherein.oldsql.schema.SchemaMapping.{FlatSchemaMapping, SchemaC
 object playground extends App {
 
 	type Schema[O] = {
-		type I[S] = SchemaColumn[S, O]
-		type Mapping[C <: Chain, R <: Chain, S] = SchemaMapping[C, R, S, O]
-		type FlatMapping[C <: Chain, R <: Chain, S] = FlatSchemaMapping[C, R, S, O]
-		type Schema[C <: Chain, R <: Chain, S] = MappingSchema[C, R, S, O]
-		type FlatSchema[C <: Chain, R <: Chain, S] = FlatMappingSchema[C, R, S, O]
+//		type I[S] = SchemaColumn[S, O]
+//		type Mapping[C <: Chain, R <: Chain, S] = SchemaMapping[C, R, S, O]
+		type FlatMapping[S, R <: Chain, C <: Chain] = FlatSchemaMapping[S, R, C, O]
+//		type Schema[C <: Chain, R <: Chain, S] = MappingSchema[C, R, S, O]
+//		type FlatSchema[C <: Chain, R <: Chain, S] = FlatMappingSchema[C, R, S, O]
 	}
 
 	case class Gun(make :String, model :String, caliber :Double)
 	case class Human(gun :Gun, backup :Gun, secondBackup :Gun)
 
-	def guns[O] :Schema[O]#FlatMapping[@~ ~ Schema[O]#I[String] ~ Schema[O]#I[String] ~ Schema[O]#I[Double], @~ ~ String ~ String ~ Double, Gun] =
+	def guns[O] :Schema[O]#FlatMapping[Gun, @~ ~ String ~ String ~ Double, @~ ~ ||[String] ~ ||[String] ~ ||[Double]] =
 		MappingSchema[Gun, O].col(_.make).col(_.model).col(_.caliber).map(Gun.apply _)
 
 	def humans[O] =
-		MappingSchema[Human, O].comp(_.gun, guns[O].:@["gun"]).comp(_.backup, guns[O].:@["backup"]).comp(_.secondBackup, guns[O].:@["second"])
+		MappingSchema[Human, O].comp("gun", _.gun, guns[O]).comp(_.backup, guns[O]["backup"]).comp(_.secondBackup, guns[O]["second"])
 //		MappingSchema[O, Human].comp(_.gun, guns[O]).comp(_.backup, guns[O]).comp(_.secondBackup, guns[O])
 
 	type SchemaFrom[O]
@@ -50,6 +50,7 @@ object playground extends App {
 		gun :LabeledMapping["gun", Gun, O]
 		backup :LabeledMapping["backup", Gun, O]
 		second :LabeledMapping["second", Gun, O]
+
 		override protected def construct(implicit pieces :Pieces) :Human =
 			Human(~"gun", ~"backup", ~"second")
 	}

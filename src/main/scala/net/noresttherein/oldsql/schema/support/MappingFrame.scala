@@ -13,10 +13,10 @@ import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly, ValuedBuffType}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedAs}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.{MappedMapping, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedTo}
 import net.noresttherein.oldsql.slang._
 import scala.collection.AbstractSeq
 import scala.collection.immutable.ArraySeq
@@ -1549,14 +1549,14 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 
 
-	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
+	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X] = null) :this.type AdaptedTo X =
 		MappedMapping[this.type, S, X, O](this, there, back)
 
-	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :this.type AdaptedAs X =
+	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :this.type AdaptedTo X =
 		MappedMapping[this.type, S, X, O](this, there, back)
 
 	override def optMap[X](there :S => Option[X], back :X => Option[S])
-	                      (implicit nulls :NullValue[X] = null) :this.type AdaptedAs X =
+	                      (implicit nulls :NullValue[X] = null) :this.type AdaptedTo X =
 		MappedMapping.opt[this.type, S, X, O](this, there, back)
 
 

@@ -288,7 +288,7 @@ object SQLExpression extends SQLMultiColumnTerms {
 
 
 
-	object CompositeSQL {
+	object CompositeSQL { //todo: FunctionSQL, ProcedureSQL
 		trait CompositeMatcher[+F <: FromClause, +Y[X]]
 			extends ConversionMatcher[F, Y] with TupleMatcher[F, Y] with CompositeColumnMatcher[F, Y]
 

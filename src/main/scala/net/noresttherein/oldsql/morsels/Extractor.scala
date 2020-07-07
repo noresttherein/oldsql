@@ -73,7 +73,13 @@ trait Extractor[-X, +Y] {
 
 
 
-object Extractor {
+sealed class ExtractorImplicits private [morsels] () {
+	implicit def requisiteExtractor[X, Y](f :X => Y) :RequisiteExtractor[X, Y] = Extractor.req(f)
+}
+
+
+
+object Extractor extends ExtractorImplicits {
 	/** A type alias for [[net.noresttherein.oldsql.morsels.Extractor Extractor]], allowing concise writing it
 	  * in the infix function format `X =?> Y`.
 	  */
@@ -86,17 +92,31 @@ object Extractor {
 	}
 
 
+	/** Wraps the given function in an `Extractor` retrieving an optional value of `Y` from the whole `X`. */
 	def apply[X, Y](extract :X => Option[Y]) :Extractor[X, Y] = new OptionalAdapter(extract)
 
+	/** Wraps the given function in an `Extractor` retrieving an optional value of `Y` from the whole `X`. */
 	def opt[X, Y](extract :X => Option[Y]) :Extractor[X, Y] = new OptionalAdapter(extract)
 
+	/** Wraps the given function in an `Extractor` retrieving a value of `Y` from the whole `X`. */
 	def req[X, Y](extract :X => Y) :RequisiteExtractor[X, Y] = new RequisiteAdapter(extract)
 
+	/** An `Extractor` which always returns the given `result`, regardless of the argument. */
 	def const[Y](result :Y) :ConstantExtractor[Any, Y] = new ConstantAdapter[Y](result)
 
+	/** An `Extractor` which never produces a value, i.e. always returns `None`. */
 	def none :EmptyExtractor[Any, Nothing] = Empty()
 
+	/** An `Extractor` wrapping an identity function, i.e. always returning `Some(arg)` for the given argument `arg :X`. */
 	def ident[X] :IdentityExtractor[X] = id.asInstanceOf[IdentityExtractor[X]]
+
+	/** An extractor which always returns the same result from its `apply` method.
+	  * This is equivalent to `Extractor.const` or `Extractor.none`, depending on whether the option contains a value.
+	  */
+	def maybe[X](value :Option[X]) :Extractor[Any, X] = value match {
+		case Some(x) => const(x)
+		case _ => none
+	}
 
 	private[this] val fail = new EmptyExtractor[Any, Nothing] {}
 	private[this] val id = new IdentityExtractor[Any] {}
@@ -113,16 +133,20 @@ object Extractor {
 
 
 
-//	implicit def functionExtractor[X, Y](f :X => Option[Y]) :Extractor[X, Y] = apply(f)
-
-	implicit def requisiteExtractor[X, Y](f :X => Y) :RequisiteExtractor[X, Y] = req(f)
+	implicit def optionalExtractor[X, Y](f :X => Option[Y]) :Extractor[X, Y] = opt(f)
 
 
 
 
 
 
+	/** Factory and matcher for extractors of optional values, i.e. `Extractor` instances which might return `None`. */
 	object Optional {
+		/** Lifts the given function literal for `X => Option[Y]` to an `Extractor[X, Y]` by the SAM conversion.
+		  * This is different than `Extractor.opt` in that produced extractor does not wrap a function, but instead
+		  * implements its `apply` and `get` methods directly with the body of the argument function literal.
+		  * @return f
+		  */
 		@inline def apply[X, Y](f :OptionalExtractor[X, Y]) :OptionalExtractor[X, Y] = f
 
 		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Option[X => Option[Y]] =
@@ -130,19 +154,35 @@ object Extractor {
 			else None
 	}
 
+	/** Factory and matcher for extractors which always produce a value for their argument, i.e.return `Some`. */
 	object Requisite {
+		/** Lifts the given function literal for `X => Y` to an `Extractor[X, Y]` by the SAM conversion.
+		  * This is different than `Extractor.req` in that produced extractor does not wrap a function, but instead
+		  * implements its `apply` and `get` methods directly with the body of the argument function literal.
+		  * @return f
+		  */
 		@inline def apply[X, Y](f :RequisiteExtractor[X, Y]) :RequisiteExtractor[X, Y] = f
 
 		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Option[X => Y] = extractor.requisite
 	}
 
+	/** Factory and matcher for identity extractors, i.e. `Extractor` instances which always return the given argument
+	  * from their `get` method.
+	  */
 	object Identity {
+		/** An `Extractor` wrapping an identity function, i.e. always returning `Some(arg)` for the given argument
+		  * `arg :X`. This is the same as `Extractor.ident[X]`, provided for consistency.
+		  */
 		def apply[X]() :IdentityExtractor[X] = id.asInstanceOf[IdentityExtractor[X]]
 
 		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Boolean = extractor.isInstanceOf[IdentityExtractor[_]]
 	}
 
+	/** Factory and matcher for extractors of constant, i.e. `Extractor` instances which always return the same value. */
 	object Constant {
+		/** An `Extractor` always returning `value` from its `get` method. This is the same as `Extractor.const`,
+		  * provided here for consistency.
+		  */
 		@inline def apply[Y](value :Y) :ConstantExtractor[Any, Y] = new ConstantAdapter[Y](value)
 
 		@inline def unapply[X, Y](extractor :Extractor[X, Y]) :Option[Y] = extractor match {
@@ -151,7 +191,13 @@ object Extractor {
 		}
 	}
 
+	/** Factory and matcher for extractors of non-existent values, i.e. `Extractor` instances which always return `None`
+	  * from their `apply` method.
+	  */
 	object Empty {
+		/** An `Extractor` always returning `None` from its `apply` method. This is the same as `Extractor.none`,
+		  * provided here for consistency.
+		  */
 		def apply() :EmptyExtractor[Any, Nothing] = fail
 
 		@inline def unapply(extractor :Extractor[_, _]) :Boolean = extractor.isInstanceOf[EmptyExtractor[_, _]]
@@ -329,7 +375,7 @@ object Extractor {
 		override def composeOpt[W](f :W => Option[X]) :W =?> Y = none
 
 
-		override def toString :String = "Empty"
+		override def toString :String = "empty"
 	}
 
 	private[this] val emptyOptional = (_ :Any) => None

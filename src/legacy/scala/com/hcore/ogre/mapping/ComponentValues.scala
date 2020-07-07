@@ -882,7 +882,7 @@ object ComponentValues {
 	
 
 	private[schema] class EmptyValues[M<:AnyMapping](source : =>String) extends ComponentValues[M] {
-		def this() = this("Empty")
+		def this() = this("empty")
 		
 
 		override def predefined(root: M): Option[M#ResultType] = None

@@ -10,7 +10,31 @@ import net.noresttherein.oldsql.morsels.generic.{Const, GenericFun, Self}
 import net.noresttherein.oldsql.morsels.LUB
 import scala.annotation.{implicitNotFound, tailrec}
 
+import net.noresttherein.oldsql.collection.ChainBound.BoundLink
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, NegativeInc, Numeral, Positive}
+
+
+
+trait ChainBound[+U] extends Serializable {
+	def isEmpty :Boolean
+
+	def length :Int
+}
+
+
+
+object ChainBound {
+
+	trait BoundLink[+I <: ChainBound[U], +L <: U, +U] {
+		def init :I
+		def last :U
+	}
+
+}
+
+
+
+
 
 
 /** A list-like collection of fixed length, with the types of all its elements encoded in its type.
@@ -33,11 +57,87 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, NegativeInc, Nume
   * @see [[net.noresttherein.oldsql.collection.Record]]
   * @author Marcin Mościcki
   */
-sealed trait Chain extends Serializable {
-	def isEmpty :Boolean = true
-	
-	def length = 0
+sealed trait Chain extends ChainBound[Any]
+
+
+
+
+
+
+/** An implementation artifact required to enforce required precedence of implicit values.
+  * @see [[net.noresttherein.oldsql.collection.ChainFactory]]
+   */
+sealed trait ChainFactoryBase {
+
+	/** Type of the companion class. */
+	type Type >: @~ <: Chain
+	/** Upper bound for all items in the chain. */
+	type Item
+	/** Non-singleton lowest upper bound of `Item`, or `Item` if it is not a singleton type nor does it contain one. */
+	type NonSingleton >: Item
+	/** The non-empty subtype of `Type`. */
+	type Link[+I <: Type, +L <: Item] <: (I ~ L) with Type
+
+
+	/** Factory method for non-empty chains of type `Type`. */
+	def link[I <: Type, L <: Item](init :I, last :L) :I Link L
+
+	private[this] final val noBound = new UpperBound[Type, Item]
+
+	/** This is the lowest priority implicit which can infer any type `U >: Item` as the upper bound of any chain.
+	  * It is used when both `C` is abstract (i.e, ends with `Type` rather than `@~`) and the bound is externally
+	  * constrained - usually by the caller specifying it explicitly. One design quirk is that it ''can'' infer
+	  * the singleton type `Item` (if it is, or contains a singleton type) as the bound, which the higher priority
+	  * implicit defined in `ChainFactory` cannot. This comes from the scala's compiler which strongly avoids
+	  * inferring a singleton type. Note that the seemingly superfluous `U >: Item` type parameter is required
+	  * to make this implicit lower priority than the wider definition declared in the extending `ChainFactory`.
+	  *
+	  */
+	implicit def noUpperBound[C <: Type, U >: Item] :UpperBound[C, U] = noBound.asInstanceOf[UpperBound[C, U]]
 }
+
+
+
+/** Base trait for `Chain` subclasses companion objects. In this minimal form, it contains only `UpperBound` implicits
+  * and type declarations for both the companion class and its type parameter bounds.
+  */
+trait ChainFactory extends ChainFactoryBase {
+	private[this] final val noBound = new UpperBound[Type, NonSingleton]
+
+	/** Fallback `UpperBound` implicit value used when the chain `C` is abstract, that is ends with `Chain`/`Type`
+	  * rather than `@~`. As the name implies, the type inferred will actually use the non-singleton version of*/
+	implicit def nonSingletonUpperBound[C <: Type] :UpperBound[C, NonSingleton] = noBound.asInstanceOf[UpperBound[C, NonSingleton]]
+
+
+
+	abstract class ChainConcat[P <: Type, S <: Type, C <: Type] private[ChainFactory] {
+		def apply(prefix :P, suffix :S) :C
+	}
+
+	private[this] final val cat_@~ = new ChainConcat[Type, @~, Type] {
+		override def apply(prefix :Type, suffix: @~) = prefix
+	}
+
+	implicit def emptyConcat[P <: Type] :ChainConcat[P, @~, P] = cat_@~.asInstanceOf[ChainConcat[P, @~, P]]
+
+	implicit def concatLast[P <: Type, S <: Type, C <: Type, L <: Item](implicit init :ChainConcat[P, S, C])
+			:ChainConcat[P, S Link L, C Link L] =
+		new ChainConcat[P, S Link L, C Link L] {
+			override def apply(prefix :P, suffix :Link[S, L]) = link(init(prefix, suffix.init), suffix.last)
+		}
+
+
+
+	implicit def ordering[I <: Type :Ordering, L <: Item :Ordering] :Ordering[I Link L] =
+		(left :I Link L, right :I Link L) => Ordering[I].compare(left.init, right.init) match {
+			case 0 => Ordering[L].compare(left.last, right.last)
+			case n => n
+		}
+
+}
+
+
+
 
 
 
@@ -63,9 +163,9 @@ object Chain extends ChainFactory {
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	sealed trait ~[+I <: Chain, +L] extends Chain {
-		def init :I
-		def last :L
+	trait ~[+I <: Chain, +L] extends Chain with BoundLink[I, L, Any] {
+		val init :I
+		val last :L
 
 		def get :(I, L) = init -> last
 
@@ -88,16 +188,19 @@ object Chain extends ChainFactory {
 
 		override def toString :String = {
 			def entry(sb :StringBuilder, e :Any) :StringBuilder = e match {
-				case _ : Chain => sb append "(" append e append ")"
+				case chain : Chain => rec(chain, sb append "(") append ")"
 				case _ => sb append e
 			}
-			def rec(chain :Chain) :StringBuilder = chain match {
-				case t ~ h => entry(rec(t) append "~", h)
-				case _ => new StringBuilder append chain
+			def rec(chain :Chain, prefix :StringBuilder) :StringBuilder = chain match {
+				case t ~< h => rec(h, rec(t, prefix) append "~<") append ">"
+				case t ~ h => entry(rec(t, prefix) append "~", h)
+				case _ => prefix append chain
 			}
-			rec(this).toString
+			rec(this, new StringBuilder).toString
 		}
 	}
+
+
 
 	object ~ {
 		@inline def apply[I <: Chain, L](init :I, last :L) :I ~ L = new link(init, last)
@@ -110,7 +213,40 @@ object Chain extends ChainFactory {
 		}
 	}
 
-	private[collection] class link[+I <: Chain, +L](val init :I, val last :L) extends (I ~ L)
+
+	/** A special chain link allowing encoding tree-like structures as a chain. It appends to the initial chain `I`
+	  * a new chain `L` of branches as a single value. Having a separate class allows to distinguish between
+	  * a 'natural' `Chain` element and an explicit branch.
+	  */
+	trait ~<[+I <: Chain, +L <: Chain] extends (I ~ L) {
+		@inline final def branches :L = last
+
+		override def canEqual(that :Any) = that.isInstanceOf[~<[_, _]]
+	}
+
+
+
+	object ~< {
+		@inline def apply[I <: Chain, L <: Chain](init :I, branches :L) :I ~< L = new branch(init, branches)
+
+		@inline def unapply[I <: Chain, L <: Chain](chain :I ~< L) :I ~< L = chain
+
+		def unapply[I <: Chain, L <: Chain](chain :I ~ L) :Option[(I, L)] = chain match {
+			case branch: ~<[I, L] => Some(branch.init -> branch.last)
+			case _ => None
+		}
+
+		def unapply(chain :Chain) :Option[(Chain, Chain)] = chain match {
+			case branch: ~<[_, _] => Some(branch.init -> branch.branches)
+			case _ => None
+		}
+	}
+
+
+
+	private class link[+I <: Chain, +L](val init :I, val last :L) extends (I ~ L)
+
+	private class branch[+I <: Chain, +L <: Chain](val init :I, val last :L) extends (I ~< L)
 
 
 
@@ -120,7 +256,12 @@ object Chain extends ChainFactory {
 	/** The type of all empty chains, with a single member being its companion object
 	  * [[net.noresttherein.oldsql.collection.Chain.@~$]].
 	  */
-	sealed class @~ private[Chain] extends Record with LiteralIndex
+	sealed class @~ private[Chain] extends ChainBound[Nothing] with Record with LiteralIndex {
+		override def isEmpty = true
+		override def length = 0
+	}
+
+
 
 	/** An empty `Chain`, which is also an instance of every `Chain` variants defined here. */
 	case object @~ extends @~ {
@@ -131,8 +272,11 @@ object Chain extends ChainFactory {
 
 	@inline implicit class ChainOps[C <: Chain](private val self :C) extends AnyVal {
 
-		/** Adds a new element at the end of the chain. */
+		/** Adds a new element at the end of this chain. */
 		@inline def ~[N](next :N) :C ~ N = new link(self, next)
+
+		/** Adds a new chain as top-level branches at the end of this chain. */
+		@inline def ~<[B <: Chain](branches :B) :C ~< B = new branch(self, branches)
 
 		/** Returns the element at the given index. The index must be an `Int` literal; if it is non-negative,
 		  * it must be less then the chain's length and counting goes from left to right, starting with zero.
@@ -180,9 +324,9 @@ object Chain extends ChainFactory {
 		  */
 		@inline def remove[N <: Numeral, R <: Chain](index :N)(implicit del :ChainDelete[C, N, R]) :R =
 			del(self)
-		
-		
-		
+
+
+
 		/** Maps this chain using the given generic (polymorphic) function.
 		  * @tparam XF type constructor which forms the type of every element in this chain. If this chain contains
 		  *            elements without a common type constructor, [[net.noresttherein.oldsql.morsels.generic.Self]]
@@ -242,10 +386,13 @@ object Chain extends ChainFactory {
 		@inline def toMap[K, V](implicit ub :UpperBound[C, (K, V)]) :Map[K, V] =
 			self.toSeq[(K, V)].toMap
 
-		/** All elements in this chain as they would be returned by `toList`, but without an upper bound. */
-		def all :List[Any] = toList(new UpperBound[C, Any])
 	}
 
+
+
+	@inline def last[T](c :Chain ~ T) :T = c.last
+
+	@inline def init[C <: Chain](c :C ~ Any) :C = c.init
 
 
 
@@ -256,7 +403,7 @@ object Chain extends ChainFactory {
 
 
 	@implicitNotFound("Type ${U} is not an upper bound of elements in chain ${C}.")
-	sealed class UpperBound[C <: Chain, +U] private[collection] ()
+	sealed class UpperBound[-C <: Chain, +U] private[collection] () {}
 
 	implicit final val EmptyChainBound = new UpperBound[@~, Nothing]
 
@@ -267,21 +414,21 @@ object Chain extends ChainFactory {
 
 
 
-	
+
 	@implicitNotFound("Can't prove that ${P}[X] for all X in chain ${C}.")
 	class ForAllItems[C <: Chain, P[_]] private()
-	
+
 	object ForAllItems {
 		private[this] val instance = new ForAllItems[Chain, List]
-		
+
 		implicit def empty[P[_]] :ForAllItems[@~, P] = instance.asInstanceOf[ForAllItems[@~, P]]
-		
+
 		implicit def induction[C <: Chain, X, P[_]](implicit init :ForAllItems[C, P], last :P[X]) :ForAllItems[C ~ X, P] =
 			instance.asInstanceOf[ForAllItems[C ~ X, P]]
 	}
-	
-	
-	
+
+
+
 	@implicitNotFound("Can't find an element X satisfying ${P}[X] in chain ${C}: implicit ${P}[${X}] not found.")
 	class ItemExists[C <: Chain, P[_], X] private (val found :P[X]) extends AnyVal
 
@@ -300,8 +447,8 @@ object Chain extends ChainFactory {
 
 
 
-	
-	
+
+
 	@implicitNotFound("Can't calculate the length of chain ${C}: either it is unknown " +
 	                  "(the chain starts with abstract Chain), it not equal ${N}, or we ran out of natural numbers.")
 	class ChainLength[-C <: Chain, N <: Numeral] private ()
@@ -331,7 +478,7 @@ object Chain extends ChainFactory {
 		private class GetPrev[-C <: Chain, N <: Numeral, +X](prev :ChainGet[C, _, X]) extends ChainGet[C ~ Any, N, X] {
 			override def apply(chain :C ~ Any) = prev(chain.init)
 		}
-		
+
 
 		implicit def getLastPositive[C <: Chain, N <: Numeral, X](implicit length :ChainLength[C, N]) :ChainGet[C ~ X, N, X] =
 			last.asInstanceOf[ChainGet[C ~ X, N, X]]
@@ -358,7 +505,7 @@ object Chain extends ChainFactory {
 	sealed abstract class ChainSet[-C <: Chain, N <: Numeral, X, +R <: Chain] private {
 		def apply(chain :C, elem :X) :R
 	}
-	
+
 	object ChainSet {
 		private[this] val last :ChainSet[Chain ~ Any, -1, Any, Chain ~ Any] =
 			new ChainSet[Chain ~ Any, -1, Any, Chain ~ Any] {
@@ -374,15 +521,15 @@ object Chain extends ChainFactory {
 		implicit def setLastPositive[C <: Chain, N <: Numeral, X]
 		                            (implicit length :ChainLength[C, N]) :ChainSet[C ~ Any, N, X, C ~ X] =
 			last.asInstanceOf[ChainSet[C ~ Any, N, X, C ~ X]]
-		
+
 		implicit def setEarlierPositive[C <: Chain, N <: Numeral, X, T, R <: Chain]
-		                               (implicit prev :ChainSet[C, N, X, R], positive :Positive[N]) 
+		                               (implicit prev :ChainSet[C, N, X, R], positive :Positive[N])
 				:ChainSet[C ~ T, N, X, R ~ T] =
 			new SetPrev(prev)
 
 		implicit def setLastNegative[C <: Chain, X] :ChainSet[C ~ Any, -1, X, C ~ X] =
 			last.asInstanceOf[ChainSet[C ~ Any, -1, X, C ~ X]]
-		
+
 		implicit def setEarlierNegative[C <: Chain, M <: Numeral, N <: Numeral, X, T, R <: Chain]
 		                               (implicit prev :ChainSet[C, N, X, R], negative :NegativeInc[M, N])
 				:ChainSet[C ~ T, M, X, R ~ T] =
@@ -432,16 +579,16 @@ object Chain extends ChainFactory {
 			new InsertPrev(prev)
 
 	}
-	
-	
-	
+
+
+
 	@implicitNotFound("Can't delete ${N}-th element from chain ${C}: either the index type is abstract, the chain " +
 	                  "starts with an abstract Chain (rather than @~) and the index is non-negative, ${N} >= length, " +
 	                  "${N} < -length, the result chain can't be unified with ${R}, or we ran out of known integers.")
 	sealed abstract class ChainDelete[-C <: Chain, N <: Numeral, +R <: Chain] private {
 		def apply(chain :C) :R
 	}
-	
+
 	object ChainDelete {
 		private[this] val last :ChainDelete[Chain ~ Any, 0, Chain] =
 			new ChainDelete[Chain ~ Any, 0, Chain] {
@@ -454,29 +601,29 @@ object Chain extends ChainFactory {
 			override def apply(chain :C ~ T) = prev(chain.init) ~ chain.last
 		}
 
-		implicit def deleteLastPositive[C <: Chain, N <: Numeral](implicit length :ChainLength[C, N]) 
+		implicit def deleteLastPositive[C <: Chain, N <: Numeral](implicit length :ChainLength[C, N])
 				:ChainDelete[C ~ Any, N, C] = last.asInstanceOf[ChainDelete[C ~ Any, N, C]]
 
 		implicit def deleteEarlierPositive[C <: Chain, X, N <: Numeral, R <: Chain]
-		                                  (implicit prev :ChainDelete[C, N, R], positive :Positive[N]) 
+		                                  (implicit prev :ChainDelete[C, N, R], positive :Positive[N])
 				:ChainDelete[C ~ X, N, R ~ X] =
 			new DeletePrev(prev)
 
-		implicit def deleteLastNegative[C <: Chain] :ChainDelete[C ~ Any, -1, C] = 
+		implicit def deleteLastNegative[C <: Chain] :ChainDelete[C ~ Any, -1, C] =
 			last.asInstanceOf[ChainDelete[C ~ Any, -1, C]]
-		
+
 		implicit def deleteEarlierNegative[C <: Chain, X, M <: Numeral, N <: Numeral, R <: Chain]
-		                                  (implicit prev :ChainDelete[C, N, R], negative :NegativeInc[M, N]) 
+		                                  (implicit prev :ChainDelete[C, N, R], negative :NegativeInc[M, N])
 				:ChainDelete[C ~ X, M, R ~ X] =
 			new DeletePrev(prev)
 
 	}
-	
-	
-	
-	
-	
-	
+
+
+
+
+
+
 	@implicitNotFound("Can't perform a natural transformation of the chain ${X} (of applied ${XF}) to a chain of ${YF}" +
 	                  "applied to all type arguments of elements of the mapped chain.")
 	sealed abstract class MapChain[XF[T], X <: Chain, YF[T], Y <: Chain] private {
@@ -500,7 +647,7 @@ object Chain extends ChainFactory {
 
 
 
-	
+
 	@implicitNotFound("Can't apply object ${F} to the chain ${X} with any known conversion.")
 	class ChainApplication[-X <: Chain, -F, +Y] private[Chain](application :(F, X) => Y) extends ((F, X) => Y) {
 		override def apply(f :F, x :X) :Y = application(f, x)
@@ -743,11 +890,11 @@ object Chain extends ChainFactory {
 					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last)
 		}
 
-	
-	
-	
-	
-	
+
+
+
+
+
 	implicit def applyTuple1[A, Y] :ChainApplication[@~ ~ A, Tuple1[A] => Y, Y] =
 		ChainApplication { (f :Tuple1[A] => Y, xs: @~ ~ A) => f(Tuple1(xs.last)) }
 
@@ -974,83 +1121,7 @@ object Chain extends ChainFactory {
 					xs16.last, xs15.last, xs14.last, xs13.last, xs12.last, xs11.last, xs10.last, xs9.last,
 					xs8.last, xs7.last, xs6.last, xs5.last, xs4.last, xs3.last, xs2.last, xs1.last, xs.last))
 		}
-	
 
-}
-
-
-
-
-
-
-/** An implementation artifact required to enforce required precedence of implicit values.
-  * @see [[net.noresttherein.oldsql.collection.ChainFactory]]
-   */
-sealed trait ChainFactoryBase {
-	/** Type of the companion class. */
-	type Type >: @~ <: Chain
-	/** Upper bound for all items in the chain. */
-	type Item
-	/** Non-singleton lowest upper bound of `Item`, or `Item` if it is not a singleton type nor does it contain one. */
-	type NonSingleton >: Item
-	/** The non-empty subtype of `Type`. */
-	type Link[+I <: Type, +L <: Item] <: (I ~ L) with Type
-
-
-	/** Factory method for non-empty chains of type `Type`. */
-	def link[I <: Type, L <: Item](init :I, last :L) :I Link L
-
-	private[this] final val noBound = new UpperBound[Type, Item]
-
-	/** This is the lowest priority implicit which can infer any type `U >: Item` as the upper bound of any chain.
-	  * It is used when both `C` is abstract (i.e, ends with `Type` rather than `@~`) and the bound is externally
-	  * constrained - usually by the caller specifying it explicitly. One design quirk is that it ''can'' infer
-	  * the singleton type `Item` (if it is, or contains a singleton type) as the bound, which the higher priority
-	  * implicit defined in `ChainFactory` cannot. This comes from the scala's compiler which strongly avoids
-	  * inferring a singleton type. Note that the seemingly superfluous `U >: Item` type parameter is required
-	  * to make this implicit lower priority than the wider definition declared in the extending `ChainFactory`.
-	  *
-	  */
-	implicit def noUpperBound[C <: Type, U >: Item] :UpperBound[C, U] = noBound.asInstanceOf[UpperBound[C, U]]
-}
-
-
-
-/** Base trait for `Chain` subclasses companion objects. In this minimal form, it contains only `UpperBound` implicits
-  * and type declarations for both the companion class and its type parameter bounds.
-  */
-trait ChainFactory extends ChainFactoryBase {
-	private[this] final val noBound = new UpperBound[Type, NonSingleton]
-
-	/** Fallback `UpperBound` implicit value used when the chain `C` is abstract, that is ends with `Chain`/`Type`
-	  * rather than `@~`. As the name implies, the type inferred will actually use the non-singleton version of*/
-	implicit def nonSingletonUpperBound[C <: Type] :UpperBound[C, NonSingleton] = noBound.asInstanceOf[UpperBound[C, NonSingleton]]
-
-
-
-	abstract class ChainConcat[P <: Type, S <: Type, C <: Type] private[ChainFactory] {
-		def apply(prefix :P, suffix :S) :C
-	}
-
-	private[this] final val cat_@~ = new ChainConcat[Type, @~, Type] {
-		override def apply(prefix :Type, suffix: @~) = prefix
-	}
-
-	implicit def emptyConcat[P <: Type] :ChainConcat[P, @~, P] = cat_@~.asInstanceOf[ChainConcat[P, @~, P]]
-
-	implicit def concatLast[P <: Type, S <: Type, C <: Type, L <: Item](implicit init :ChainConcat[P, S, C])
-			:ChainConcat[P, S Link L, C Link L] =
-		new ChainConcat[P, S Link L, C Link L] {
-			override def apply(prefix :P, suffix :Link[S, L]) = link(init(prefix, suffix.init), suffix.last)
-		}
-
-
-
-	implicit def Order[I <: Type :Ordering, L <: Item :Ordering] :Ordering[I Link L] =
-		(left :I Link L, right :I Link L) => Ordering[I].compare(left.init, right.init) match {
-			case 0 => Ordering[L].compare(left.last, right.last)
-			case n => n
-		}
 
 }
 
@@ -1204,8 +1275,8 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
   * 'from left to right', with the easy access to the last element rather than the first.
   * An empty `LiteralIndex` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$]].
   * @see [[net.noresttherein.oldsql.collection.LiteralIndex.|~]]
-  */
-sealed trait LiteralIndex extends Chain
+  *///consider: rename to LabeledChain to emphasise the relation to chain?
+sealed trait LiteralIndex extends Chain with ChainBound[Singleton :~ Any]
 
 
 
@@ -1305,7 +1376,7 @@ object LiteralIndex extends ChainIndexFactory {
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	class |~[+I <: Type, +L <: Item] private[collection] (val init :I, val last :L) extends ~[I, L] with LiteralIndex {
+	class |~[+I <: Type, +L <: Item] private[collection] (val init :I, val last :L) extends (I ~ L) with LiteralIndex {
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[|~[_, _]]
 
@@ -1478,7 +1549,7 @@ sealed trait ChainMapFactory extends ChainIndexFactory {
 
 
 
-sealed trait ChainMap extends Chain
+sealed trait ChainMap extends Chain with ChainBound[(Singleton, Any)]
 
 
 
@@ -1608,12 +1679,12 @@ object ChainMap extends ChainMapFactory {
 
 
 
-/** A `Record` is, simply put, just a `LiteralIndex` where the key types are string literals (singleton types).
+/** A `Record` is, simply put, just a `ChainMap` where the key types are string literals (singleton types).
   *
   * @see [[net.noresttherein.oldsql.collection.Record.|#]]
   * @see [[net.noresttherein.oldsql.collection.Record.#>]]
   */
-sealed trait Record extends ChainMap
+sealed trait Record extends ChainMap with ChainBound[(String with Singleton, Any)]
 
 
 
@@ -1701,7 +1772,7 @@ object Record extends ChainMapFactory {
 
 
 	/** A type alias for a tuple where the first element is a string singleton type. */
-	type #>[+K <: Key, V] = (K, V)
+	type #>[+K <: Key, V] = (K, V) //todo: rename to @>
 
 	/** An extractor for pairs being elements of a `Record`. Aside from introducing an infix format for the tuple,
 	  * it declares also an `unapply` method accepting a `Record` itself, matching it ''iff'' it contains

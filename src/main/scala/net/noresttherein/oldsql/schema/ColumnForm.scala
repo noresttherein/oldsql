@@ -39,10 +39,10 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 
 
 	override def bimap[X](map :T => X, nullValue :X)(unmap :X => T) :ColumnForm[X] =
-		bimap(map)(unmap)(NullValue(nullValue))
+		ColumnForm.map(map)(unmap)(this, NullValue(nullValue))
 
 	override def bimapNull[X](map :T => X)(unmap :X => T) :ColumnForm[X] =
-		bimap(map)(unmap)(nulls.map(map))
+		ColumnForm.map(map)(unmap)(this, nulls.map(map))
 
 
 	override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] = NullValue[X] match {
@@ -53,10 +53,10 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 	}
 
 	override def biflatMap[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :ColumnForm[X] =
-		biflatMap(map)(unmap)(NullValue(nullValue))
+		ColumnForm.flatMap(map)(unmap)(this, NullValue(nullValue))
 
 	override def biflatMapNull[X](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
-		biflatMap(map)(unmap)(nulls.flatMap(map))
+		ColumnForm.flatMap(map)(unmap)(this, nulls.flatMap(map))
 
 	override def toOpt :ColumnForm[Option[T]] = ColumnForm.OptionColumnForm(this)
 
@@ -97,13 +97,13 @@ object ColumnForm {
 
 
 	/** Creates a dummy form which always writes the null value as defined by the implicit `write` form,
-	  * and returns `None`/`nulls.value` when reading. 
+	  * and returns `None`/`nulls.value` when reading.
 	  */
 	def nulls[T :ColumnWriteForm :NullValue] :ColumnForm[T] =
 		combine(ColumnReadForm.nulls[T](ColumnWriteForm[T].sqlType), ColumnWriteForm.none[T])
 
 	/** Creates a dummy form which always writes the null value as defined by the implicit `write` form,
-	  * and returns `None` when reading. All calls to `apply` will result in a `NullPointerException`. 
+	  * and returns `None` when reading. All calls to `apply` will result in a `NullPointerException`.
 	  */
 	def none[T :ColumnWriteForm] :ColumnForm[T] =
 		combine(ColumnReadForm.none[T](ColumnWriteForm[T].sqlType), ColumnWriteForm.none[T])

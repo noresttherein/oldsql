@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.NULL.{CaseNull, NullMatcher}
 
 
 
-
+//todo: rename to TermSQL, same with subclassess
 trait SQLTerm[T] extends SQLExpression[FromClause, T] {
 	protected def form :SQLForm[T]
 

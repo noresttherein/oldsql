@@ -4,10 +4,10 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.support.FormMapping
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericMappingExtract, Mapping, MappingExtract, RowSource, SQLForm, SQLWriteForm, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
+import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom}
@@ -517,8 +517,6 @@ object JoinParam {
 
 
 
-		implicit def FromParamProjection[P, A, B] :OriginProjection[FromParam[P, A], A, FromParam[P, B], B] =
-			OriginProjection()
 	}
 
 

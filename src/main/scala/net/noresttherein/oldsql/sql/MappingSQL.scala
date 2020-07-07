@@ -607,7 +607,7 @@ object MappingSQL {
 
 
 
-
+	//todo: rename to RelationSQL
 	class SQLRelation[-F <: FromClause, T[A] <: TypedMapping[E, A], E, O >: F <: FromClause] private[sql]
 	                 (override val source :RowSource[T], override val mapping :T[O], override val shift :Int)
 		extends JoinedRelation[O, T] with ComponentSQL[F, T, E, T, E, O]
@@ -673,12 +673,22 @@ object MappingSQL {
 
 	object SQLRelation {
 
+//		def apply[F <: FromClause, M[A] <: MappingAt[A], T[A] <: TypedMapping[S, A], S]
+//		         (table :M[F])
+//		         (implicit cast :Conforms[M[F], T[F], TypedMapping[S, F]], shift :TableShift[F, M, _ <: Numeral],
+//		          alias :OriginProjection[T[F], F, T[Any], Any])
+//				:SQLRelation[F, T, S, F] =
+//			new SQLRelation[F, T, S, F](RowSource(cast(table))(alias), table, shift.tables)
+
 		def apply[F <: FromClause, M[A] <: MappingAt[A], T[A] <: TypedMapping[S, A], S]
-		         (table :M[F])
-		         (implicit cast :Conforms[M[F], T[F], TypedMapping[S, F]], shift :TableShift[F, M, _ <: Numeral],
-		          alias :OriginProjection[T[F], F, T[Any], Any])
+		         (table :RowSource[M]) //fixme: RowSource is invariant
+		         (implicit cast :Conforms[RowSource[M], RowSource[T], RowSource[MappingOf[S]#Projection]],
+		          shift :TableShift[F, M, _ <: Numeral])
 				:SQLRelation[F, T, S, F] =
-			new SQLRelation[F, T, S, F](RowSource[T, F](cast(table))(alias), table, shift.tables)
+		{
+			val typed = cast(table)
+			new SQLRelation[F, T, S, F](typed, typed[F], shift.tables)
+		}
 
 		private[sql] def apply[F <: FromClause, T[A] <: TypedMapping[S, A], S, O >: F <: FromClause]
 		                      (source :RowSource[T], index :Int)

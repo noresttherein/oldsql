@@ -3,9 +3,8 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.ComponentProxy.EagerDeepProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter
-import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
@@ -16,7 +15,7 @@ class BuffedMapping[+M <: RefinedMapping[S, O], S, O](override val egg :M, overr
 	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
 {
 	override protected def adapt[T](component :egg.Component[T]) :Component[T] =
-		new BuffedMapping(component, schema.cascadeBuffs(this)(egg(component)))
+		new BuffedMapping[Component[T], T, O](component, schema.cascadeBuffs(this)(egg(component)))
 
 	protected override def adapt[T](column :egg.Column[T]) :Column[T] =
 		column.withBuffs(schema.cascadeBuffs(this)(egg(column)))
