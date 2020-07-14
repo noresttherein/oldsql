@@ -35,8 +35,14 @@ object ScalaForms {
 	}
 
 	implicit case object NothingForm extends EmptyForm[Nothing](
-		throw new UnsupportedOperationException("SQLForm.NothingForm")
+		throw new UnsupportedOperationException("ScalaForms.NothingForm")
 	) {
+		override def set(position :Int)(statement :PreparedStatement, value :Nothing) :Nothing =
+			setNull(position)(statement)
+
+		override def setNull(position :Int)(statement :PreparedStatement) :Nothing =
+			throw new UnsupportedOperationException("ScalaForms.NothingForm")
+
 		override def toString = "Nothing"
 	}
 
@@ -217,21 +223,10 @@ object ScalaForms {
 
 
 
-	private[schema] class OptionForm[T](implicit some :SQLForm[T])
-		extends OptionWriteForm[T] with SQLForm[Option[T]]
+	private[schema] class OptionForm[T](implicit protected val form :SQLForm[T])
+		extends OptionWriteForm[T] with OptionReadForm[T] with SQLForm[Option[T]]
 	{
-		override def readColumns :Int = some.readColumns
-
-		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] =
-			some.opt(position)(res).map(Option.apply)
-
-		override def apply(position :Int)(res :ResultSet) :Option[T] =
-			some.opt(position)(res)
-
-		override def nullValue :Option[T] = None
-
-		protected override def form :SQLForm[T] = some
-
+		override def toString = "Option[" + form + "]"
 	}
 
 

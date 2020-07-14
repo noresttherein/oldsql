@@ -6,36 +6,63 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
-import net.noresttherein.oldsql.schema.support.MappingAdapter
+import net.noresttherein.oldsql.schema.support.DelegateMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import scala.collection.mutable.Builder
 
 import net.noresttherein.oldsql.schema.bits.CustomizedMapping.{exclude, include}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, DelegateAdapter}
 
 
 
 
 
 
-/** A `Mapping` adapter specifically modifying the buffs on
+/** A `Mapping` adapter specific to a single database operation. It modifies the buffs on a mapping
+  * to include or exclude certain columns from that operation by default.
   * @author Marcin Mościcki
   */
-class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] private
-                       (override val egg :M,
+class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] protected
+                       (protected override val backer :M,
                         protected val substitutions :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component])
-	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
+	extends EagerDeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
-	protected def this(source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
-	                   excludes :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType) =
+	def this(source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	         excludes :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType) =
 		this(source,
 		     include(source, includes, prohibited, explicit) ++ exclude(source, excludes, optional, nonDefault)
 		)
 
-	protected override def adapt[T](component :egg.Component[T]) :Component[T] =
+
+
+	protected override def adapt[T](component :backer.Component[T]) :Component[T] =
 		substitutions.getOrElse(component, component)
 
-	protected override def adapt[T](column :egg.Column[T]) :Column[T] =
+	protected override def adapt[T](column :backer.Column[T]) :Column[T] =
 		substitutions.getOrElse(column, column).asInstanceOf[Column[T]]
+
+
+
+	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
+
+	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
+
+	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
+
+	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(include, NoInsert, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
+
+	private def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
+	                        exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType) :Component[S] =
+	{
+		val includes = CustomizedMapping.include(backer, include, no, optional)
+		val excludes = CustomizedMapping.exclude(backer, exclude, optional, nonDefault)
+		new CustomizedMapping[M, S, O](backer, substitutions ++ includes ++ excludes)
+	}
+
 }
 
 
@@ -50,34 +77,34 @@ object CustomizedMapping {
 
 	def select[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :CustomizedMapping[M, S, O] =
-		customize(source, include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
+              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+		customize[M, S, O](source, include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
 
 	def query[M <: RefinedMapping[S, O], S, O]
 	         (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-	         (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :CustomizedMapping[M, S, O] =
-		customize(source, include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
+	         (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+		customize[M, S, O](source, include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
 
 	def update[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :CustomizedMapping[M, S, O] =
-		customize(source, include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
+              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+		customize[M, S, O](source, include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
 
 	def insert[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :CustomizedMapping[M, S, O] =
-		customize(source, include, NoInsert, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
+              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+		customize[M, S, O](source, include, NoInsert, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
 
 
 
-	private def customize[M <: RefinedMapping[S, O], S, O]
-	                     (source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
-	                      excludes :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
-		:CustomizedMapping[M, S, O] =
+	private[schema] def customize[M <: RefinedMapping[S, O], S, O]
+	                    (source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
+	                     excludes :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
+		:Adapted[M] =
 	{
 		val included = include(source, includes, prohibited, explicit)
 		val excluded = exclude(source, excludes, optional, nonDefault)
-		new CustomizedMapping[M, S, O](source, included ++ excluded)
+		new CustomizedMapping[M, S, O](source, included ++ excluded) with DelegateAdapter[M, S, O]
 	}
 
 
@@ -97,6 +124,7 @@ object CustomizedMapping {
 		builder.result()
 	}
 
+	//todo: for non-columns, include only their default subcomponents, not all of them.
 	private[schema] def include[T, O](mapping :RefinedMapping[_, O], component :RefinedMapping[T, O],
 	                                  prohibited :BuffType, explicit :BuffType,
 	                                  builder :Builder[Override[_, O], Overrides[O]]) :Unit =
@@ -109,6 +137,11 @@ object CustomizedMapping {
 				if (explicit.enabled(column))
 					builder += new Override(column, column.withBuffs(column.buffs.filter(explicit.disabled)))
 			case lifted =>
+				if (explicit.enabled(lifted)) {
+					val buffs = lifted.buffs.filter(explicit.disabled)
+					val buffed = BuffedMapping.nonCascade[RefinedMapping[T, O], T, O](lifted, buffs:_*)
+					builder += new Override[T, O](lifted, buffed)
+				}
 				lifted.subcomponents foreach {
 					case column :ColumnMapping[_, O @unchecked] =>
 						val col = mapping.export(column)
@@ -116,8 +149,11 @@ object CustomizedMapping {
 							builder += new Override(col, col.withBuffs(col.buffs.filter(explicit.disabled)))
 					case sub =>
 						val comp = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
-						if (prohibited.disabled(comp) && explicit.enabled(comp))
-							builder += new Override[Any, O](comp, BuffedMapping(comp, comp.buffs.filter(explicit.disabled) :_*))
+						if (prohibited.disabled(comp) && explicit.enabled(comp)) {
+							val buffs = comp.buffs.filter(explicit.disabled)
+							val buffed = BuffedMapping.cascade[RefinedMapping[Any, O], Any, O](comp, buffs :_*)
+							builder += new Override[Any, O](comp, buffed)
+						}
 				}
 
 		}
@@ -157,10 +193,18 @@ object CustomizedMapping {
 							builder += new Override[Any, O](col, col.withBuffs(nonDefault[Any] +: col.buffs))
 					case sub =>
 						val comp = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
-						if (nonDefault.disabled(comp) && optional.enabled(comp))
-							builder += new Override[Any, O](comp, BuffedMapping(comp, nonDefault[Any] +: comp.buffs :_*))
+						if (nonDefault.disabled(comp) && optional.enabled(comp)) {
+							val buffs = nonDefault[Any] +: comp.buffs
+							val buffed = BuffedMapping.cascade[RefinedMapping[Any, O], Any, O](comp, buffs :_*)
+							builder += new Override[Any, O](comp, buffed)
+						}
 				}
 
 		}
+
+
+
+//	private class CustomizedMappingAdapter[M <: RefinedMapping[S, O], S, O](mapping :M, substitutions :Overrides[O])
+//		extends CustomizedMapping[M, S, O](mapping, substitutions) with DelegateAdapter[M, S, O]
 
 }

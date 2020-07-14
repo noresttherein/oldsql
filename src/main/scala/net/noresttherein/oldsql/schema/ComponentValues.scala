@@ -811,7 +811,7 @@ object ComponentValues {
 	private def aliasing[O](extracts :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Extract])
 			:MappingAt[O]#Component =#> MappingAt[O]#Component =
 		new (MappingAt[O]#Component =#> MappingAt[O]#Component) {
-			override def apply[T](x :RefinedMapping[T, O]):RefinedMapping[T, O] = extracts(x).export
+			override def apply[T](x :RefinedMapping[T, O]) :RefinedMapping[T, O] = extracts(x).export
 		}
 
 	private def aliasing[O](root :MappingAt[O]) :MappingAt[O]#Component =#> MappingAt[O]#Component =

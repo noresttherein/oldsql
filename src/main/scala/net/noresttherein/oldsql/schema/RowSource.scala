@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
-import net.noresttherein.oldsql.schema.Mapping.{FunctorProjection, MappingAt, OriginProjection}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.FunctorProjection
 import net.noresttherein.oldsql.sql.Join
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 
@@ -31,12 +32,12 @@ object RowSource {
 
 	def apply[M <: Mapping](name :String, template :M)
 	                       (implicit alias :OriginProjection[M]) :RowSource[alias.WithOrigin] =
-		new ProjectingSource[alias.WithOrigin](alias[Any](template), name)(alias.ismorphism)
+		new ProjectingSource[alias.WithOrigin](alias[Any](template), name)(alias.isomorphism)
 
 
 	def apply[M <: Mapping](template :M)
 	                       (implicit alias :OriginProjection[M]) :RowSource[alias.WithOrigin] =
-		new ProjectingSource[alias.WithOrigin](alias[Any](template))(alias.ismorphism)
+		new ProjectingSource[alias.WithOrigin](alias[Any](template))(alias.isomorphism)
 
 
 
@@ -89,7 +90,7 @@ object RowSource {
 
 		def apply[M <: Mapping](tableName :String, template :M)
 		                       (implicit alias :OriginProjection[M]) :Table[alias.WithOrigin] =
-			new ProjectingSource[alias.WithOrigin](alias[Any](template), tableName)(alias.ismorphism)
+			new ProjectingSource[alias.WithOrigin](alias[Any](template), tableName)(alias.isomorphism)
 				with Table[alias.WithOrigin]
 			{
 				override val sql = tableName

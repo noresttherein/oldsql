@@ -5,7 +5,7 @@ import java.sql.ResultSet
 import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
-import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
+import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm, OptionColumnReadForm}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.{LazyColumnWriteForm, OptionColumnWriteForm}
 import net.noresttherein.oldsql.schema.ScalaForms.OptionForm
 import net.noresttherein.oldsql.schema.SQLForm.{CombinedForm, FlatMappedSQLForm, LazyForm, MappedSQLForm, NullableForm, NullValue, ReifiedForm}
@@ -165,10 +165,9 @@ object ColumnForm {
 
 	/** Lifts the implicit `ColumnForm[T]` implementation to `ColumnForm[Option[T]]`. */
 	implicit def OptionColumnForm[T :ColumnForm] :ColumnForm[Option[T]] =
-		new OptionForm[T] with OptionColumnWriteForm[T] with ColumnForm[Option[T]] {
+		new OptionForm[T] with OptionColumnWriteForm[T] with OptionColumnReadForm[T] with ColumnForm[Option[T]] {
 			override val form = ColumnForm[T]
-			override def read(position :Int)(res :ResultSet) :Option[T] = ColumnForm[T].opt(position)(res)
-			override def toString = super[OptionColumnWriteForm].toString
+			override def toString = super[OptionForm].toString
 		}
 
 	/** Lifts the implicit `ColumnForm[T]` implementation to `ColumnForm[Some[T]]`. */

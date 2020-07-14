@@ -14,7 +14,7 @@ trait ScalaReadForms {
 	
 	
 	implicit def OptionReadForm[T :SQLReadForm] :SQLReadForm[Option[T]] =
-		SQLReadForm[T].map(Option.apply, None)
+		new OptionReadForm[T] { override val form = SQLReadForm[T] }
 
 	implicit def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
 		SQLReadForm[T].mapNull(Some.apply)
@@ -180,6 +180,28 @@ trait ScalaReadForms {
 
 
 private[schema] object ScalaReadForms {
+
+
+	trait OptionReadForm[T] extends SQLReadForm[Option[T]] {
+		protected def form :SQLReadForm[T]
+		override def readColumns :Int = form.readColumns
+
+		override def apply(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
+		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = Some(form.opt(position)(res))
+		override def nullValue :Option[T] = None
+
+		override def equals(that :Any) :Boolean = that match  {
+			case self :AnyRef if self eq this => true
+			case opt :OptionReadForm[_] if opt canEqual this => opt.form == form
+			case _ => false
+		}
+
+		override def hashCode :Int = form.hashCode
+
+		override def toString :String = "Option[" + form + "]>"
+	}
+
+
 
 	trait AbstractTuple2ReadForm[L, R] extends SQLReadForm[(L, R)] {
 		val _1  :SQLReadForm[L]

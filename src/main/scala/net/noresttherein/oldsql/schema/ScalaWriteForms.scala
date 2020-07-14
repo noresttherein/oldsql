@@ -232,7 +232,7 @@ private[schema] object ScalaWriteForms {
 
 		override def hashCode :Int = form.hashCode
 
-		override def toString :String = "Option[" + form + "]"
+		override def toString :String = "<Option[" + form + "]"
 	}
 
 

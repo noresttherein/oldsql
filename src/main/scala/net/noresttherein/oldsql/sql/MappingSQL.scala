@@ -32,7 +32,7 @@ trait MappingSQL[-F <: FromClause, M <: Mapping] extends SQLExpression[F, M#Subj
 	type Subject = M#Subject
 
 	/** Returns `this` upcast to an `SQLExpression`. This method exists because many expressions,
-	  * such as `table \ component` producing some subtype of a `MappingSQL` in a place where
+	  * such as `table \ component`, producing some subtype of a `MappingSQL` in a place where
 	  * its supertype `SQLExpression[F, Subject]` is expected, will confuse the compiler and make type inference fail.
 	  * While simply splitting the above into a `val` assignment and its access would solve the issue, calling
 	  * `(table \ component).upcast` is the most concise way of separating the expression creation with the type
@@ -54,7 +54,8 @@ trait MappingSQL[-F <: FromClause, M <: Mapping] extends SQLExpression[F, M#Subj
 
 object MappingSQL {
 
-
+	//All these classes would benefit with being parameterized with RefinedMapping and kin instead of TypedMapping,
+	//but a bug in the compiler makes subclasses of a subclass of MappingSQL not conform to MappingSQL
 	/** An expression evaluating to a component mapping of an undetermined at this point relation. It needs to be
 	  * resolved by the `Origin` type of the component before the expression can be used.
 	  */

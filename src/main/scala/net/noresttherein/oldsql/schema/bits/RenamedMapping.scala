@@ -1,75 +1,52 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, ShallowProxy}
-import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.schema.support.MappingAdapter
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
+import net.noresttherein.oldsql.schema.support.DelegateMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
 
 
-class RenamedMapping[M <: RefinedMapping[S, O], S, O](name :String, override val egg :M)
-	extends ShallowProxy[S, O] with MappingAdapter[M, S, O]
+class RenamedMapping[M <: RefinedMapping[S, O], S, O](name :String, protected override val backer :M)
+	extends ShallowProxy[S, O] with DelegateMapping[M, S, O]
 {
 	override val sqlName = Some(name)
 
+
+	override def renamed(name :String) :Component[S] = RenamedMapping[M, S, O](name, backer)
+
+
 	override def equals(that :Any) :Boolean = that match {
 		case other :RenamedMapping[_, _, _] =>
-			(other eq this) || (other canEqual this) && other.sqlName == sqlName && other.egg == egg
+			(other eq this) || (other canEqual this) && other.sqlName == sqlName && other.backer == backer
 		case _ => false
 	}
 
-	override def hashCode :Int = egg.hashCode * 31 + name.hashCode
+	override def hashCode :Int = backer.hashCode * 31 + name.hashCode
 
-	override def toString :String = name + "->" + egg
+	override def toString :String = name + "->" + backer
 }
 
 
 
 object RenamedMapping {
-	def apply[S, O](name :String, mapping :RefinedMapping[S, O]) :RefinedMapping[S, O] =
-		if (mapping.columns.size == 1)
-			new DeeplyRenamedMapping[S, O](name, mapping)
-		else
-			new RenamedMapping[RefinedMapping[S, O], S, O](name, mapping)
 
-
-	def column[S, O](name :String, mapping :RefinedMapping[S, O]) :RefinedMapping[S, O] =
-		new DeeplyRenamedMapping(name, mapping)
-
-	def deep[S, O](name :String, mapping :RefinedMapping[S, O]) :Adapted[mapping.type] =
-		new RenamedMapping[mapping.type, S, O](name, mapping)
-
-	def shallow[S, O](name :String, mapping :RefinedMapping[S, O]) :Adapted[mapping.type] =
-		new RenamedMapping[mapping.type, S, O](name, mapping)
-
-	def generic[M <: Mapping, C <: RefinedMapping[S, O], S, O]
-	           (name :String, mapping :M)(implicit types :Conforms[M, C, RefinedMapping[S, O]]) :Adapted[C] =
-		new RenamedMapping[C, S, O](name, mapping)
-
-
-	//todo: remove this once the column refactor is complete
-	class DeeplyRenamedMapping[S, O](name :String, column :RefinedMapping[S, O])
-		extends EagerDeepProxy[RefinedMapping[S, O], S, O](column)
-	{
-		override val sqlName = Some(name)
-
-		protected override def adapt[T](component :egg.Component[T]) :Component[T] = component.renamed(name)
-
-		protected override def adapt[T](column :egg.Column[T]) :Column[T] = column.renamed(name)
-
-
-
-		override def equals(that :Any) :Boolean = that match {
-			case other :DeeplyRenamedMapping[_, _] =>
-				(other eq this) || (other canEqual this) && other.sqlName == sqlName && other.egg == egg
-			case _ => false
+	def apply[M <: RefinedMapping[S, O], S, O](name :String, mapping :M) :Adapted[M] =
+		new RenamedMapping[M, S, O](name, mapping) with DelegateAdapter[M, S, O] {
+			override def renamed(name :String) :Adapted[M] = RenamedMapping[M, S, O](name, mapping)
 		}
-		override def hashCode :Int = egg.hashCode * 31 + name.hashCode
 
-		override def toString :String = name + "->>" + egg
-	}
+//	def apply[M <: Mapping, C <: RefinedMapping[S, O], S, O]
+//	           (name :String, mapping :M)(implicit types :Conforms[M, C, RefinedMapping[S, O]]) :Adapted[C] =
+//		new RenamedMapping[C, S, O](name, mapping)
+
+	def apply[M <: MappingAt[O], S, O](name :String, mapping :MappingAdapter[M, S, O]) :MappingAdapter[M, S, O] =
+		new RenamedMapping[MappingAdapter[M, S, O], S, O](name, mapping) with ComposedAdapter[M, S, S, O] {
+			override def renamed(name :String) :MappingAdapter[M, S, O] = RenamedMapping[M, S, O](name, backer)
+		}
+
 }

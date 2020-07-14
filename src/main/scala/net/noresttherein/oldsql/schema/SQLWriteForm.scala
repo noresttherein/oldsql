@@ -13,6 +13,8 @@ import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedWriteForm, Tuple2Wr
 import net.noresttherein.oldsql.slang._
 import scala.collection.immutable.Seq
 
+import net.noresttherein.oldsql.schema.ScalaForms.NothingForm
+
 
 
 
@@ -213,7 +215,7 @@ object SQLWriteForm extends ScalaWriteForms {
 	  * and will be evaluated exactly once for every `set` and/or `setNull` call on the returned form. If it yields
 	  * `None`, the default `orElse` value will be written instead using the backing forms `set` method.
 	  */
-	def evalopt[T :SQLWriteForm](value: =>Option[T], orElse :T) :SQLWriteForm[Any] =
+	def evalopt[T :SQLWriteForm](value: => Option[T], orElse :T) :SQLWriteForm[Any] =
 		new EvalOrNullWriteForm[T](value)(SQLWriteForm[T], NullValue(orElse))
 
 	/** A form which will ignore all values provided as arguments and instead write the value resulting from evaluating
@@ -221,15 +223,24 @@ object SQLWriteForm extends ScalaWriteForms {
 	  * and will be evaluated exactly once for every `set` and/or `setNull` call on the returned form. If it yields
 	  * `None`, the 'null' variant of the literal/write method will be called on the backing form.
 	  */
-	def evalopt[T :SQLWriteForm](value: =>Option[T]) :SQLWriteForm[Any] =
+	def evalopt[T :SQLWriteForm](value: => Option[T]) :SQLWriteForm[Any] =
 		new EvalWriteForm[T](value)
 
 	/** A form which will ignore all values provided as arguments and instead write the value resulting from evaluating
 	  * the given by-name argument, using the implicit `SQLWriteForm[T]`. The given expression must be thread safe
 	  * and will be evaluated exactly once for every `set` and/or `setNull` call on the returned form.
 	  */
-	def eval[T :SQLWriteForm](value: =>T) :SQLWriteForm[Any] =
+	def eval[T :SQLWriteForm](value: => T) :SQLWriteForm[Any] =
 		new EvalWriteForm[T](Some(value))
+
+	/** A write form which will throw the given exception at every write attempt. */
+	def error(raise: => Nothing) :SQLWriteForm[Any] =
+		new EvalWriteForm[Nothing](raise)(NothingForm)
+
+	/** A write form which will throw an `UnsupportedOperationException` with the given message at every write attempt. */
+	def unsupported(message :String) :SQLWriteForm[Any] =
+		error(throw new UnsupportedOperationException(message))
+
 
 
 
@@ -289,11 +300,13 @@ object SQLWriteForm extends ScalaWriteForms {
 		override def hashCode :Int = getClass.hashCode
 	}
 
+	implicit val nothing :SQLWriteForm[Nothing] = ScalaForms.NothingForm
 
 
 
 
 
+	//fixme: implicit conflicts for Chain subclasses (and Nothing)
 	/** An implicit write form for empty chains which writes nothing (has `writtenColumns` equal zero).
 	  * Used as the terminator of write forms for various `Chain` subclasses.
 	  */

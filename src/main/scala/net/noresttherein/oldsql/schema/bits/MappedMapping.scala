@@ -1,21 +1,21 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{AdaptedTo, ShallowAdapter}
-import net.noresttherein.oldsql.schema.support.MappingAdapter
-
+import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{BaseAdapter, ComposedAdapter, DelegateAdapter, MappedTo}
+import net.noresttherein.oldsql.schema.support.DelegateMapping
 
 
 
 
 
-trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends ShallowAdapter[M, S, O] {
+trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[RefinedMapping[T, O], S, O] {
 
 	/** The subject value `S` that `null` values from the database are mapped to.
 	  * This is different from `this.nullValue` in that it is designed to hold the implicit method parameter
@@ -44,16 +44,16 @@ trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends Shallow
 
 /*
 	override def apply[X](component :Component[X]) :Extract[X] =
-		if (component eq egg)
+		if (component eq backer)
 			eggExtract.asInstanceOf[Extract[X]]
 		else
-			MappingExtract(component)(egg(component) compose unmap)
+			MappingExtract(component)(backer(component) compose unmap)
 
 	override def apply[X](column :Column[X]) :ColumnExtract[S, X, O] =
-		if (column eq egg)
+		if (column eq backer)
 			eggExtract.asInstanceOf[ColumnExtract[S, X, O]]
 		else
-			MappingExtract(column)(egg(column) compose unmap)
+			MappingExtract(column)(backer(column) compose unmap)
 */
 
 	if (map == null || unmap == null)
@@ -63,26 +63,26 @@ trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends Shallow
 	private[this] val mapFun = map.requisite.orNull
 	private[this] val unmapFun = unmap.requisite.orNull
 
-	private[this] val eggExtract :Extract[T] = MappingExtract(egg)(unmap)
+	private[this] val eggExtract :Extract[T] = MappingExtract(backer)(unmap)
 
 	override val extracts :NaturalMap[Component, Extract] =
-		schema.composeExtracts(egg, eggExtract).updated(egg, eggExtract)
+		schema.composeExtracts(backer, eggExtract).updated(backer, eggExtract)
 
-	override val columnExtracts :NaturalMap[Column, ColumnExtract] = egg match {
+	override val columnExtracts :NaturalMap[Column, ColumnExtract] = backer match {
 		case column :ColumnMapping[T @unchecked, O @unchecked] =>
 			NaturalMap.single[Column, ColumnExtract, T](column, eggExtract.asInstanceOf[ColumnExtract[T]])
 		case _ =>
-			schema.composeColumnExtracts(egg, eggExtract)
+			schema.composeColumnExtracts(backer, eggExtract)
 	}
 
 
 
-	override val components :Unique[Component[_]] = Unique.single(egg)//egg.components
+	override val components :Unique[Component[_]] = Unique.single(backer)//backer.components
 
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
-		val form = egg.selectForm(if (components.contains(egg)) egg.selectable else components)
+		val form = backer.selectForm(if (components.contains(backer)) backer.selectable else components)
 		if (nulls == null)
 			if (mapFun == null) form.flatMapNull(map.optional) else form.mapNull(mapFun)
 		else
@@ -90,41 +90,41 @@ trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends Shallow
 	}
 
 	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = {
-		val form = egg.queryForm(if (components.contains(egg)) egg.queryable else components)
+		val form = backer.queryForm(if (components.contains(backer)) backer.queryable else components)
 		if (unmapFun == null) form.flatUnmap(unmap.optional) else form.unmap(unmapFun)
 	}
 
 	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = {
-		val form = egg.updateForm(if (components.contains(egg)) egg.updatable else components)
+		val form = backer.updateForm(if (components.contains(backer)) backer.updatable else components)
 		if (unmapFun == null) form.flatUnmap(unmap.optional) else form.unmap(unmapFun)
 	}
 
 	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = {
-		val form = egg.insertForm(if (components.contains(egg)) egg.insertable else components)
+		val form = backer.insertForm(if (components.contains(backer)) backer.insertable else components)
 		if (unmapFun == null) form.flatUnmap(unmap.optional) else form.unmap(unmapFun)
 	}
 
 
 	override val selectForm :SQLReadForm[S] =
 		if (nulls == null)
-			if (mapFun == null) egg.selectForm.flatMapNull(map.optional)
-			else egg.selectForm.mapNull(mapFun)
+			if (mapFun == null) backer.selectForm.flatMapNull(map.optional)
+			else backer.selectForm.mapNull(mapFun)
 		else
-	        if (mapFun == null) egg.selectForm.flatMap(map.optional)
-			else egg.selectForm.map(mapFun)
+	        if (mapFun == null) backer.selectForm.flatMap(map.optional)
+			else backer.selectForm.map(mapFun)
 
 	override val queryForm :SQLWriteForm[S] =
-		if (unmapFun == null) egg.queryForm.flatUnmap(unmap.optional) else egg.queryForm.unmap(unmapFun)
+		if (unmapFun == null) backer.queryForm.flatUnmap(unmap.optional) else backer.queryForm.unmap(unmapFun)
 
 	override val updateForm :SQLWriteForm[S] =
-		if (unmapFun == null) egg.updateForm.flatUnmap(unmap.optional) else egg.updateForm.unmap(unmapFun)
+		if (unmapFun == null) backer.updateForm.flatUnmap(unmap.optional) else backer.updateForm.unmap(unmapFun)
 
 	override val insertForm :SQLWriteForm[S] =
-		if (unmapFun == null) egg.insertForm.flatUnmap(unmap.optional) else egg.insertForm.unmap(unmapFun)
+		if (unmapFun == null) backer.insertForm.flatUnmap(unmap.optional) else backer.insertForm.unmap(unmapFun)
 
 
 
-	override val buffs :Seq[Buff[S]] = schema.mapBuffs(egg)(map, unmap) //consider: should buffs use the NullValue?
+	override val buffs :Seq[Buff[S]] = schema.mapBuffs(backer)(map, unmap) //consider: should buffs use the NullValue?
 
 
 
@@ -141,20 +141,12 @@ trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends Shallow
 	  */
 	implicit override val nullValue :NullValue[S] =
 		if (nulls != null) nulls
-		else if (mapFun == null) egg.nullValue.flatMap(map.optional)
-		else egg.nullValue.map(mapFun)
+		else if (mapFun == null) backer.nullValue.flatMap(map.optional)
+		else backer.nullValue.map(mapFun)
 
+	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :Component[X] =
+		MappedMapping[RefinedMapping[T, O], T, X, O](backer, map andThen there, back andThen unmap)(mapNulls(there))
 
-
-	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
-		MappedMapping[M, T, X, O](egg, map andThen there, back andThen unmap)(mapNulls(there))
-
-	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
-		MappedMapping[M, T, X, O](egg, map andThen there, unmap compose back)(mapNulls(there))
-
-	override def optMap[X](there :S => Option[X], back :X => Option[S])
-	                      (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
-		MappedMapping[M, T, X, O](egg, map andThen Extractor(there), unmap composeOpt back)(flatMapNulls(there))
 
 
 
@@ -174,7 +166,7 @@ trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends Shallow
 
 
 
-	override def toString :String = "Mapped(" + egg  + ")"
+	override def toString :String = "Mapped(" + backer  + ")"
 
 }
 
@@ -185,29 +177,59 @@ trait MappedMapping[+M <: Mapping.RefinedMapping[T, O], T, S, O] extends Shallow
 
 object MappedMapping {
 
-	def apply[M <: RefinedMapping[S, O], S, T, O](mapping :M, mapped :S =?> T, unmapped :T =?> S)
-	                                             (implicit nulls :NullValue[T] = null) :M AdaptedTo T =
-		new MappedMappingAdapter[M, S, T, O](mapping, mapped, unmapped)
+	def apply[M <: RefinedMapping[T, O], T, S, O](mapping :M, mapped :T =?> S, unmapped :S =?> T)
+	                                             (implicit nulls :NullValue[S] = null) :M MappedTo S =
+		new MappedMappingAdapter[M, T, S, O](mapping, mapped, unmapped)
 
-	def sure[M <: RefinedMapping[S, O], S, T, O](mapping :M, mapped :S => T, unmapped :T => S)
-	                                            (implicit nulls :NullValue[T] = null) :M AdaptedTo T =
-		apply[M, S, T, O](mapping, Extractor.req(mapped), Extractor.req(unmapped))
-
-
-	def opt[M <: RefinedMapping[S, O], S, T, O](mapping :M, mapped :S => Option[T], unmapped :T => Option[S])
-	                                           (implicit nulls :NullValue[T] = null) :M AdaptedTo T =
-		apply[M, S, T, O](mapping, Extractor.opt(mapped), Extractor.opt(unmapped))
+	def map[M <: RefinedMapping[T, O], T, S, O](mapping :M, mapped :T => S, unmapped :S => T)
+	                                           (implicit nulls :NullValue[S] = null) :M MappedTo S =
+		apply[M, T, S, O](mapping, Extractor.req(mapped), Extractor.req(unmapped))
 
 
+	def opt[M <: RefinedMapping[T, O], T, S, O](mapping :M, mapped :T => Option[S], unmapped :S => Option[T])
+	                                           (implicit nulls :NullValue[S] = null) :M MappedTo S =
+		apply[M, T, S, O](mapping, Extractor.opt(mapped), Extractor.opt(unmapped))
 
 
 
+	def adapter[M <: MappingAt[O], T, S, O](mapping :MappingAdapter[M, T, O], mapped: T =?> S, unmapped :S =?> T)
+	                                       (implicit nulls :NullValue[S] = null) :M MappedTo S =
+		new MappedAdapter[M, T, S, O](mapping, mapped, unmapped)
 
-	class MappedMappingAdapter[M <: RefinedMapping[T, O], T, S, O]
-	                          (override val egg :M, override val map :T =?> S, override val unmap :S =?> T)
-	                          (implicit override val nulls :NullValue[S] = null)
-		extends MappedMapping[M, T, S, O] with MappingAdapter[M, S, O]
+	def mapAdapter[M <: MappingAt[O], T, S, O](mapping :MappingAdapter[M, T, O], mapped :T => S, unmapped :S => T)
+	                                          (implicit nulls :NullValue[S] = null) :M MappedTo S =
+		adapter(mapping, mapped, unmapped)
 
+	def optAdapter[M <: MappingAt[O], T, S, O]
+	              (mapping :MappingAdapter[M, T, O], mapped :T => Option[S], unmapped :S => Option[T])
+	              (implicit nulls :NullValue[S] = null) :M MappedTo S =
+		adapter(mapping, mapped, unmapped)
+
+
+
+
+	//consider: some better name distinction between the two, we might need them to be public
+	private class MappedMappingAdapter[+M <: RefinedMapping[T, O], T, S, O]
+	                                  (protected override val backer :M,
+	                                   protected override val map :T =?> S, protected override val unmap :S =?> T)
+	                                  (implicit protected override val nulls :NullValue[S] = null)
+		extends MappedMapping[T, S, O] with DelegateAdapter[M, S, O]
+	{
+		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+			MappedMapping[M, T, X, O](backer, map andThen there, back andThen unmap)(mapNulls(there))
+	}
+
+
+
+	private class MappedAdapter[+M <: MappingAt[O], T, S, O]
+	                           (protected override val backer :MappingAdapter[M, T, O],
+	                            protected override val map :T =?> S, protected override val unmap :S =?> T)
+	                           (implicit protected override val nulls :NullValue[S] = null)
+		extends MappedMapping[T, S, O] with ComposedAdapter[M, T, S, O]
+	{
+		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+			MappedMapping.adapter(backer, map andThen there, back andThen unmap)(mapNulls(there))
+	}
 
 }
 

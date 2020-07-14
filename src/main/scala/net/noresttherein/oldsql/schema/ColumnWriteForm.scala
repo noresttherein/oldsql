@@ -290,7 +290,7 @@ object ColumnWriteForm {
 	private[schema] trait OptionColumnWriteForm[T] extends OptionWriteForm[T] with ColumnWriteForm[Option[T]] {
 		protected override def form :ColumnWriteForm[T]
 		override def sqlType :JDBCSQLType = form.sqlType
-		override def toString :String = "Option[" + form + "]"
+		override def toString :String = super[OptionWriteForm].toString
 	}
 
 }

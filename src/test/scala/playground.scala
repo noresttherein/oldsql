@@ -1,11 +1,12 @@
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
-import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, MappingSchema, SchemaMapping}
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, Mapping, MappingSchema, SchemaMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
+import net.noresttherein.oldsql.schema.bits.{LabeledMapping, OptionMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.FlatMappingSchema
 import net.noresttherein.oldsql.schema.SchemaMapping.{||, FlatSchemaMapping, SchemaColumn}
+import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 
 
 
@@ -55,6 +56,15 @@ object playground extends App {
 			Human(~"gun", ~"backup", ~"second")
 	}
 
+	val projectHumans = OriginProjection[Humans["human"]]
+	implicitly[projectHumans.WithOrigin["hummus"] =:= Humans["hummus"]]
+
+//	val opt = OptionMapping(new Humans["human"])
+//	val projectOpt = OriginProjection[OptionMapping[Humans["human"], Human, "human"]](OptionMapping.optionMappingProjection)
+//	implicitly[projectOpt.WithOrigin["hummus"] =:= OptionMapping[Humans["hummus"], Human, "hummus"]]
+//	projectOpt["dupa"](opt) :Nothing
+//	cast :Nothing
+
 	trait Base {
 		def m :String
 
@@ -78,7 +88,6 @@ object playground extends App {
 //	trait Tagged[+T]
 
 //	class TaggedAny(val inner :Tagged[T]) extends Tagged
-
 	val record =   "key1" #> 1 |# "key2" #> 2 |# "key3" #> 3 : @~ |# ("key1", Int) |# ("key2", Int) |# ("key3", Int)
 
 	println(record)

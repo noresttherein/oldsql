@@ -195,74 +195,74 @@ object ChainMapping {
 	  * @tparam C the chain with all components in this schema.
 	  */
 	private[schema] class ChainPrefixSchema[S <: V ~ Any, V <: Chain, C <: Chain, O]
-	                                       (protected val egg :MappingSchema[V, V, C, O])
+	                                       (protected val backer :MappingSchema[V, V, C, O])
 		extends MappingSchema[S, V, C, O] with ShallowProxy[V, O]
 	{
 
-		override def optionally(pieces :Pieces) :Option[V] = egg.optionally(pieces)
+		override def optionally(pieces :Pieces) :Option[V] = backer.optionally(pieces)
 
 
-		override def unapply(subject :S) :Option[V] = egg.unapply(subject.init)
+		override def unapply(subject :S) :Option[V] = backer.unapply(subject.init)
 
-		override def disassemble(subject :S) :V = egg.disassemble(subject.init)
+		override def disassemble(subject :S) :V = backer.disassemble(subject.init)
 
 
 
-		override def members :C = egg.members
+		override def members :C = backer.members
 
-		override def last[M](implicit nonEmpty :C <:< (Chain ~ M)) :M = egg.members.last
+		override def last[M](implicit nonEmpty :C <:< (Chain ~ M)) :M = backer.members.last
 
 		override def prev[I <: Chain, P <: Chain]
 		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :MappingSchema[S, I, P, O] =
-			egg.prev compose prefix[V]
+			backer.prev compose prefix[V]
 
 
 
 		override def extract[X](component :Component[X]) :MappingExtract[S, X, O] =
-			egg.extract(component) compose prefix[V]
+			backer.extract(component) compose prefix[V]
 
 		override def extract[X](column :Column[X]) :ColumnMappingExtract[S, X, O] =
-			egg.extract(column) compose prefix[V]
+			backer.extract(column) compose prefix[V]
 
 
 
 		override val packedExtracts :NaturalMap[Component, PackedExtract] =
-			egg.packedExtracts.map(schema.composeExtractAssoc(this, prefix[V])(_))
+			backer.packedExtracts.map(schema.composeExtractAssoc(this, prefix[V])(_))
 
 		override val packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] =
-			egg.packedColumnExtracts.map(schema.composeColumnExtractAssoc(this, prefix[V])(_))
+			backer.packedColumnExtracts.map(schema.composeColumnExtractAssoc(this, prefix[V])(_))
 
 
 
 		override def compose[X](extractor :X => S) :MappingSchema[X, V, C, O] =
-			egg compose (extractor andThen prefix[V])
+			backer compose (extractor andThen prefix[V])
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
-			egg compose (extractor andThen prefix[V])
+			backer compose (extractor andThen prefix[V])
 
 
 
-		override protected[schema] def componentsReversed :List[Component[_]] = egg.componentsReversed
-		override protected[schema] def subcomponentsReversed :List[Component[_]] = egg.subcomponentsReversed
-		override protected[schema] def columnsReversed :List[Column[_]] = egg.columnsReversed
+		override protected[schema] def componentsReversed :List[Component[_]] = backer.componentsReversed
+		override protected[schema] def subcomponentsReversed :List[Component[_]] = backer.subcomponentsReversed
+		override protected[schema] def columnsReversed :List[Column[_]] = backer.columnsReversed
 
 	}
 
 
 
 	private[schema] class FlatChainPrefixSchema[S <: V ~ Any, V <: Chain, C <: Chain, O]
-	                                           (protected override val egg :FlatMappingSchema[V, V, C, O])
-		extends ChainPrefixSchema[S, V, C, O](egg) with FlatMappingSchema[S, V, C, O]
+	                                           (protected override val backer :FlatMappingSchema[V, V, C, O])
+		extends ChainPrefixSchema[S, V, C, O](backer) with FlatMappingSchema[S, V, C, O]
 	{
 		override def compose[X](extractor :X => S) :FlatMappingSchema[X, V, C, O] =
-			egg compose (extractor andThen prefix[V])
+			backer compose (extractor andThen prefix[V])
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V, C, O] =
-			egg compose (extractor andThen prefix[V])
+			backer compose (extractor andThen prefix[V])
 
 		override def prev[I <: Chain, P <: Chain]
 		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :FlatMappingSchema[S, I, P, O] =
-			egg.prev.compose(prefix[V])
+			backer.prev.compose(prefix[V])
 
 	}
 

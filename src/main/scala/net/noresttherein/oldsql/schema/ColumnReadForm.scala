@@ -5,6 +5,7 @@ import java.sql.ResultSet
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
+import net.noresttherein.oldsql.schema.ScalaReadForms.OptionReadForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm, FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, NullReadForm, OptionMappedSQLReadForm}
 
@@ -212,7 +213,7 @@ object ColumnReadForm {
 
 
 	implicit def OptionColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Option[T]] =
-		ColumnReadForm[T].map(Option.apply, None)
+		new OptionColumnReadForm[T] { override val form = ColumnReadForm[T] }
 
 	implicit def SomeColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Some[T]] =
 		ColumnReadForm[T].mapNull(Some.apply)
@@ -379,6 +380,16 @@ object ColumnReadForm {
 		override def toString :String = super[FallbackReadForm].toString
 	}
 
+
+
+	private[schema] trait OptionColumnReadForm[T] extends OptionReadForm[T] with ColumnReadForm[Option[T]] {
+		override def form :ColumnReadForm[T]
+		override def sqlType = form.sqlType
+
+		protected override def read(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
+
+		override def toString = super[OptionReadForm].toString
+	}
 
 }
 

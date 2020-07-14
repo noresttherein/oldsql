@@ -15,4 +15,6 @@ package object bits {
 	type ComponentProperty[-S, T, O] = GenericComponentProperty[RefinedMapping[T, O], S, T, O]
 
 	type ColumnProperty[-S, T, O] = GenericComponentProperty[ColumnMapping[T, O], S, T, O]
+
+//	type Export[M <: Mapping]
 }

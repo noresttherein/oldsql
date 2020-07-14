@@ -5,25 +5,22 @@ import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, ChainContains, ChainGet, ItemExists}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral, PositiveInc}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, MappingSeal, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.{GetLabeledComponent, GetSchemaComponent}
 import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, |||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, OptMappedFlatSchema, OptMappedSchema, SchemaColumn}
-import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, ConstantMapping, CustomizedMapping, LabeledMapping, MappedMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
-import net.noresttherein.oldsql.schema.support.{LazyMapping, MappingNest}
+import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.support.{DelegateMapping, LazyMapping}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
-import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.bits.MappedMapping.MappedMappingAdapter
-import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter
 
 
 
@@ -629,9 +626,7 @@ object MappingSchema {
 		  */
 		def col[T :ColumnForm](name :String, value :S => T, buffs :Buff[T]*)
 				:ExtensibleMappingSchema[S, V ~ T, C ~ ||[T], O] =
-			append[T, @~ ~ T, @~ ~ ||[T], ||[T]](
-				SchemaColumn[T, O](name, conveyBuffs(value, buffs) :_*), Extractor.req(value)
-			)
+			append[T, @~, @~, ||[T]](SchemaColumn[T, O](name, conveyBuffs(value, buffs) :_*), Extractor.req(value))
 
 		/** Appends a new column to this schema with the name being the reflected name of the zero-argument method
 		  * called on the argument by the extractor function `value`. The column will receive the buffs specified here,
@@ -650,8 +645,7 @@ object MappingSchema {
 				:ExtensibleMappingSchema[S, V ~ T, C ~ ||[T], O] =
 		{
 			val extractor = Extractor(value)
-			val column = SchemaColumn[T, O](name, conveyBuffs(extractor, buffs) :_*)
-			append[T, @~ ~ T, @~ ~ ||[T], ||[T]](column, extractor)
+			append[T, @~, @~, ||[T]](SchemaColumn[T, O](name, conveyBuffs(extractor, buffs) :_*), extractor)
 		}
 
 		/** Appends a new column to this schema with the name being the reflected name of the zero-argument method
@@ -691,7 +685,7 @@ object MappingSchema {
 				:ExtensibleMappingSchema[S, V ~ T, C ~ (N @|| T), O] =
 		{
 			val column = LabeledSchemaColumn[N, T, O](label, name, conveyBuffs(value, buffs) :_*)
-			append[T, @~ ~ T, @~ ~ ||[T], N @|| T](column, Extractor.req(value))
+			append[T, @~, @~, N @|| T](column, Extractor.req(value))
 		}
 
 
@@ -722,9 +716,8 @@ object MappingSchema {
 				:ExtensibleMappingSchema[S, V ~ T, C ~ (N @|| T), O] =
 		{
 			val extractor = Extractor(value)
-			append[T, @~ ~ T, @~ ~ ||[T], N @|| T](
-				LabeledSchemaColumn[N, T, O](label, name, conveyBuffs(extractor, buffs) :_*), extractor
-			)
+			val column = LabeledSchemaColumn[N, T, O](label, name, conveyBuffs(extractor, buffs) :_*)
+			append[T, @~, @~, N @|| T](column, extractor)
 		}
 
 	}
@@ -859,7 +852,7 @@ object MappingSchema {
 
 				override def apply[S, O](prefix :ExtensibleFlatMappingSchema[S, PV, PC, O],
 				                         suffix :FlatMappingSchema[S, SV ~ T, SC ~ M, O]) =
-					init(prefix, suffix.prev).carryOver[T, @~ ~ T, @~ ~ ||[T], M](suffix.last, suffix.lastExtract)
+					init(prefix, suffix.prev).carryOver[T, @~, @~, M](suffix.last, suffix.lastExtract)
 			}
 	}
 
@@ -920,7 +913,7 @@ object MappingSchema {
 				:SchemaFlattening[V ~ T, C ~ M, FV ~ T, FC ~ M] =
 			new SchemaFlattening[V ~ T, C ~ M, FV ~ T, FC ~ M] {
 				override def apply[S, O](schema :MappingSchema[S, V ~ T, C ~ M, O]) =
-					init(schema.prev).carryOver[T, @~ ~ T, @~ ~ ||[T], M](schema.last, schema.lastExtract)
+					init(schema.prev).carryOver[T, @~, @~, M](schema.last, schema.lastExtract)
 			}
 
 		implicit def appendIndexedColumn[V <: LiteralIndex, C <: Chain, T, M <: ||[T], FV <: Chain, FC <: Chain]
@@ -1458,33 +1451,33 @@ object MappingSchema {
 
 
 	private[schema] trait MappingSchemaProxy[S, V <: Chain, C <: Chain, O]
-		extends MappingSchema[S, V, C, O] with MappingNest[MappingSchema[S, V, C, O]]
+		extends MappingSchema[S, V, C, O] with DelegateMapping[MappingSchema[S, V, C, O], V, O]
 	{
-		override def unapply(subject :S) :Option[V] = egg.unapply(subject)
-		override def disassemble(subject :S) :V = egg.disassemble(subject)
-		override def members :C = egg.members
+		override def unapply(subject :S) :Option[V] = backer.unapply(subject)
+		override def disassemble(subject :S) :V = backer.disassemble(subject)
+		override def members :C = backer.members
 
-		override def assemble(pieces :Pieces) :Option[V] = egg.assemble(pieces)
+		override def assemble(pieces :Pieces) :Option[V] = backer.assemble(pieces)
 
-		override def last[M](implicit nonEmpty :C <:< (Chain ~ M)) :M = egg.last
+		override def last[M](implicit nonEmpty :C <:< (Chain ~ M)) :M = backer.last
 
 		override def prev[I <: Chain, P <: Chain](implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any))
 				:MappingSchema[S, I, P, O] =
-			egg.prev
+			backer.prev
 
-		override def packedExtracts :NaturalMap[Component, PackedExtract] = egg.packedExtracts
-		override def packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] = egg.packedColumnExtracts
+		override def packedExtracts :NaturalMap[Component, PackedExtract] = backer.packedExtracts
+		override def packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] = backer.packedColumnExtracts
 	}
 
 
 
 	private[schema] trait FlatMappingSchemaProxy[S, V <: Chain, C <: Chain, O]
 		extends MappingSchemaProxy[S, V, C, O] with FlatMappingSchema[S, V, C, O]
-		   with MappingNest[FlatMappingSchema[S, V, C, O]]
+		   with DelegateMapping[FlatMappingSchema[S, V, C, O], V, O]
 	{
 		override def prev[I <: Chain, P <: Chain]
 		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :FlatMappingSchema[S, I, P, O] =
-			egg.prev
+			backer.prev
 	}
 
 
@@ -1495,32 +1488,32 @@ object MappingSchema {
 	                       exclude :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
 		extends CustomizedMapping[MappingSchema[S, V, C, O], V, O](
 		                          filtered, include, prohibited, explicit, exclude, optional, nonDefault
-			) with MappingSchemaProxy[S, V, C, O]
+			) with MappingSchemaProxy[S, V, C, O] with DelegateAdapter[MappingSchema[S, V, C, O], V, O]
 	{
 
 		override def compose[X](extractor :X => S) :MappingSchema[X, V, C, O] =
-			new CustomizedSchema(egg compose extractor, include, prohibited, explicit, exclude, optional, nonDefault)
+			new CustomizedSchema(backer compose extractor, include, prohibited, explicit, exclude, optional, nonDefault)
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
-			new CustomizedSchema(egg compose extractor, include, prohibited, explicit, exclude, optional, nonDefault)
+			new CustomizedSchema(backer compose extractor, include, prohibited, explicit, exclude, optional, nonDefault)
 
 	}
 
 
 
 	private[schema] class CustomizedFlatSchema[S, V <: Chain, C <: Chain, O]
-	                      (override val egg :FlatMappingSchema[S, V, C, O],
+	                      (override val backer :FlatMappingSchema[S, V, C, O],
 	                       include :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
 	                       exclude :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
-		extends CustomizedSchema(egg, include, prohibited, explicit, exclude, optional, nonDefault)
-		   with FlatMappingSchemaProxy[S, V, C, O]
+		extends CustomizedSchema(backer, include, prohibited, explicit, exclude, optional, nonDefault)
+		   with FlatMappingSchemaProxy[S, V, C, O] with DelegateAdapter[FlatMappingSchema[S, V, C, O], V, O]
 	{
 		override def compose[X](extractor :X => S) :FlatMappingSchema[X, V, C, O] =
-			new CustomizedFlatSchema(egg compose extractor,
+			new CustomizedFlatSchema(backer compose extractor,
 			                         include, prohibited, explicit, exclude, optional, nonDefault)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V, C, O] =
-			new CustomizedFlatSchema(egg compose extractor,
+			new CustomizedFlatSchema(backer compose extractor,
 			                         include, prohibited, explicit, exclude, optional, nonDefault)
 	}
 

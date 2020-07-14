@@ -366,8 +366,8 @@ object SelectSQL {
 	{
 		override type From = S
 
-		protected override val egg = header.mapping.withOrigin[O]
-		override val mapping = egg
+		protected override val backer = header.mapping.withOrigin[O]
+		override val mapping = backer
 
 		override val headerColumns: Seq[SelectedColumn[_]] = header.mapping.selectable.toSeq.map(include(_))
 

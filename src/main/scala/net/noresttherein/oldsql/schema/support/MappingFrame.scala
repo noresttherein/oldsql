@@ -10,13 +10,11 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffMappingFailureException, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly, ValuedBuffType}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.bits.{MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, AdaptedTo}
 import net.noresttherein.oldsql.slang._
 import scala.collection.AbstractSeq
 import scala.collection.immutable.ArraySeq
@@ -202,7 +200,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 		/** Buffs 'inherited' from the enclosing mapping. It uses the value extract `S => T` to map all buffs applied
 		  * to the enclosing mapping to adapt them to this value type. This means that if there are any
-		  * [[net.noresttherein.oldsql.schema.Buff.ValuedBuff ValuedBuff]]s among the inherited buffs, this component
+		  * [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]s among the inherited buffs, this component
 		  * must have a value for the value associated with that buff or an exception will be thrown - either
 		  * when accessing/initializing the buff list or when the value for the buff is actually needed.
 		  */
@@ -239,26 +237,26 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * and buffs defined in it and any other enclosing components into the adapted component.
 	  * Its components are at the same time the export components of the enclosing mapping.
 	  */
-	private class ExportComponent[T](target :Component[T], val extractor :Extractor[S, T],
+	private class ExportComponent[T](override val backer :Component[T], val extractor :Extractor[S, T],
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
-		extends EagerDeepProxy[Component[T], T, O](target) with FrameComponent[T]
+		extends EagerDeepProxy[T, O](backer) with FrameComponent[T]
 	{
-		def adapted :Component[T] = egg
+		def adapted :Component[T] = backer
 
 		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
 			initSubcomponents += this
 			extracts foreach { exportExtract(_) }
-			initExtracts.getOrElse[frame.Extract, T](egg, extractFor(this))
+			initExtracts.getOrElse[frame.Extract, T](backer, extractFor(this))
 		}
 
 
-		override protected def adapt[X](component :egg.Component[X]) :Component[X] =
+		override protected def adapt[X](component :backer.Component[X]) :Component[X] =
 			exportSubcomponent(component)
 
-		override protected def adapt[X](column :egg.Column[X]) :Column[X] =
+		override protected def adapt[X](column :backer.Column[X]) :Column[X] =
 			exportColumn(column)
 
-		override def toString :String = "^" + egg + "^"
+		override def toString :String = "^" + backer + "^"
 
 	}
 
@@ -439,7 +437,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	private class CompositeComponent[T] private[MappingFrame]
 	                                (component :MappingOf[T], protected[schema] val extractor :Extractor[S, T],
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
-		extends EagerDeepProxy[MappingOf[T], T, O](component) with FrameComponent[T]
+		extends EagerDeepProxy[T, O](component) with FrameComponent[T]
 	{ nest =>
 
 		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
@@ -456,14 +454,14 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 			extract
 		}
 
-		protected override def adapt[X](component :egg.Component[X]) :Component[X] =
+		protected override def adapt[X](component :backer.Component[X]) :Component[X] =
 			exportSubcomponent(component.asInstanceOf[Component[X]])
 
-		protected override def adapt[X](component :egg.Column[X]) :Column[X] =
+		protected override def adapt[X](component :backer.Column[X]) :Column[X] =
 			exportColumn(component.asInstanceOf[Column[X]])
 
 
-		override def toString :String = "{{" + egg + "}}"
+		override def toString :String = "{{" + backer + "}}"
 
 	}
 
@@ -1544,28 +1542,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	override val queryForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.queryForm)
 	override val insertForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.insertForm)
 	override val updateForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.updateForm)
-
-
-
-
-
-	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X] = null) :this.type AdaptedTo X =
-		MappedMapping[this.type, S, X, O](this, there, back)
-
-	override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :this.type AdaptedTo X =
-		MappedMapping[this.type, S, X, O](this, there, back)
-
-	override def optMap[X](there :S => Option[X], back :X => Option[S])
-	                      (implicit nulls :NullValue[X] = null) :this.type AdaptedTo X =
-		MappedMapping.opt[this.type, S, X, O](this, there, back)
-
-
-
-	override def qualified(prefix :String) :Adapted[this.type] = PrefixedMapping.qualified(prefix, this)
-
-	override def prefixed(prefix :String) :Adapted[this.type] = PrefixedMapping(prefix, this)
-
-	override def renamed(name :String) :Adapted[this.type] = RenamedMapping.shallow(name, this)
 
 }
 

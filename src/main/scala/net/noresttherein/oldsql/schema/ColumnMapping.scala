@@ -9,6 +9,7 @@ import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, C
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, ColumnAdapterFactoryMethods}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
 import net.noresttherein.oldsql.sql.FromClause.{TableCount, TableShift}
@@ -29,7 +30,9 @@ import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, FreeComponent}
   * which are adaptable by operations such as mapping and prefixing, transformation methods on columns
   * return a new instance, using the form (and, where suitable, the name and buffs) of the original as their basis.
   */
-trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
+trait ColumnMapping[S, O] extends TypedMapping[S, O]
+	with ColumnAdapterFactoryMethods[({ type A[X] = ColumnMapping[X, O] })#A, S, O]
+{ column =>
 
 	/** Returns `Some(this.name)`. */
 	final override def sqlName = Some(name)
@@ -58,6 +61,8 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 			}
 
 	override def nullValue :NullValue[S] = form.nulls
+
+	protected def isNullable :Boolean = Nullable.enabled(buffs)
 
 
 
@@ -99,22 +104,22 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 	final override def subcomponents :Unique[Component[_]] = Unique.empty
 
 	/** Returns `Unique(this)`. */
-	final override def columns :Unique[Column[S]] = Unique.single(this)
+	override def columns :Unique[Column[S]] = Unique.single(this)
 
-	final override def selectable :Unique[Column[S]] = selfUnless(NoSelect)
-	final override def queryable :Unique[Column[S]] = selfUnless(NoQuery)
-	final override def updatable :Unique[Column[S]] = selfUnless(NoUpdate)
-	final override def autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
- 	final override def insertable :Unique[Column[S]] = selfUnless(NoInsert)
-	final override def autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
+	override def selectable :Unique[Column[S]] = selfUnless(NoSelect)
+	override def queryable :Unique[Column[S]] = selfUnless(NoQuery)
+	override def updatable :Unique[Column[S]] = selfUnless(NoUpdate)
+	override def autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
+ 	override def insertable :Unique[Column[S]] = selfUnless(NoInsert)
+	override def autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
 
 	/** An empty `Unique` if the given buff is ''disabled'' (not attached), or a singleton `Unique(this)` otherwise. */
 	@inline protected final def selfUnless(buff :BuffType) :Unique[Column[S]] =
-		if (buff.enabled(buffs)) Unique.empty else Unique.single(this)
+		if (buff.enabled(buffs)) Unique.empty else columns
 
 	/** An empty `Unique` if the given buff is ''enabled'' (attached), or a singleton `Unique(this)` otherwise. */
 	@inline protected final def selfIf(buff :BuffType) :Unique[Column[S]] =
-		if (buff.disabled(buffs)) Unique.empty else Unique.single(this)
+		if (buff.disabled(buffs)) Unique.empty else columns
 
 
 
@@ -124,7 +129,7 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 	  */
 	def form :ColumnForm[S]
 
-	/*** `this.form` adapted to a `SQLReadForm` by incorporating behaviour modifications caused by applied buffs.
+	/** `this.form` adapted to a `SQLReadForm` by incorporating behaviour modifications caused by applied buffs.
 	  * This includes default values from buffs like `OptionalSelect`, transformations from `AuditBuff`s and similar
 	  */
 	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
@@ -144,7 +149,8 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 	}
 
 	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
-	  * and `ExtraQuery`.
+	  * and `ExtraQuery`. `OptionalQuery` buff is ignored at this step: when omitting this column from a query
+	  * its form should not be used at all.
 	  */
 	override def queryForm :SQLWriteForm[S] = ExtraQuery.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
@@ -156,7 +162,8 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 	}
 
 	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
-	  * and `ExtraUpdate`.
+	  * and `ExtraUpdate`. `OptionalUpdate` buff is ignored at this step: when omitting this column from an update
+	  * its form should not be used at all.
 	  */
 	override def updateForm :SQLWriteForm[S] = ExtraUpdate.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
@@ -168,7 +175,8 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 	}
 
 	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
-	  * and `ExtraInsert`.
+	  * and `ExtraInsert`. `OptionalInsert` buff is ignored at this step: when omitting this column from an insert
+	  * its form should not be used at all.
 	  */
 	override def insertForm :SQLWriteForm[S] = ExtraInsert.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
@@ -203,54 +211,10 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 
 
 
+	protected override def thisColumn :ColumnMapping[S, O] = this
 
-	protected def customize(optional :BuffType, excluded :FlagBuffType, explicit :BuffType)
-	                       (include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
-		if (include.size > 1)
-			throw new IllegalArgumentException("Mappings " + include + " are not components of column " + this)
-		else if (exclude.size > 1)
-		     throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this)
-		else if (exclude.headOption.contains(this) && optional.enabled(this))
-		     ColumnMapping[S, O](name, excluded[S] +: buffs :_*)(form)
-		else if (include.headOption.contains(this) && explicit.enabled(this))
-		     ColumnMapping[S, O](name, buffs.filter(explicit.disabled) :_*)(form)
-		else
-			this
-
-	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
-		customize(OptionalSelect, NoSelectByDefault, ExplicitSelect)(include, exclude)
-
-	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
-		customize(OptionalQuery, NoQueryByDefault, ExplicitQuery)(include, exclude)
-
-	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
-		customize(OptionalUpdate, NoUpdateByDefault, ExplicitUpdate)(include, exclude)
-
-	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
-		customize(OptionalInsert, NoInsertByDefault, ExplicitInsert)(include, exclude)
-
-
-
-
-
-	protected def isNullable :Boolean = Nullable.enabled(buffs)
-
-
-
-	/** A new column, with the same name, form (and optionally other properties), but with the buffs replaced by
-	  * the provided list.
-	  */
-	def withBuffs(opts :Seq[Buff[S]]) :ColumnMapping[S, O] = ColumnMapping(name, opts:_*)(form)
-
-
-	override def renamed(name :String) :ColumnMapping[S, O] = ColumnMapping(name, buffs:_*)(form)
-
-	override def prefixed(prefix :String) :ColumnMapping[S, O] = ColumnMapping(prefix + name, buffs:_*)(form)
-
-	def prefixed(prefix :Option[String]) :ColumnMapping[S, O] = prefix.map(prefixed) getOrElse this
-
-	override def qualified(prefix :String) :ColumnMapping[S, O] =
-		prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
+	protected override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnMapping[S, O] =
+		new StandardColumn(name, buffs)(form)
 
 
 
@@ -262,23 +226,9 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 		new StandardColumn[S, O](name, buffs)(form) with LabeledColumn[N, S, O]
 
 
-
-
-
-
-	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :Component[X] =
+	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :ColumnMapping[X, O] =
 		new StandardColumn[X, O](name, schema.mapBuffs(this)(there, back))(
 			schema.mapForm(form)(there, back)
-		)
-
-	override def map[X](there :S => X, back :X => S)(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
-		new StandardColumn[X, O](name, buffs.map(_.bimap(there, back)))(
-			if (nulls != null) form.bimap(there)(back) else form.bimapNull(there)(back)
-		)
-
-	override def optMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :SQLForm.NullValue[X]) :ColumnMapping[X, O] =
-		new StandardColumn[X, O](name, schema.flatMapBuffs(this)(there, back))(
-			if (nulls != null) form.biflatMap(there)(back) else form.biflatMapNull(there)(back)
 		)
 
 
@@ -288,7 +238,6 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O] { column =>
 	override def debugString :String = buffs.mkString(toString + "(", ", ", ")")
 
 	override def columnString :String = toString
-
 
 }
 
@@ -301,11 +250,7 @@ object ColumnMapping {
 
 	type ColumnOf[S] = ColumnMapping[S, _]
 
-	type ColumnFrom[O] = ColumnMapping[_, O]
-
-//	type WithSubject[S] = { type M[O] = ColumnMapping[S, O] }
-//
-//	type WithOrigin[O] = { type M[S] = ColumnMapping[S, O] }
+	type ColumnAt[O] = ColumnMapping[_, O]
 
 
 
@@ -337,7 +282,8 @@ object ColumnMapping {
 	  * precomputes many of its properties, storing them in `val`s. Usage of this class should be preferred when
 	  * the column (or its containing mapping) is created on demand, rather than at application initialization.
 	  */
-	class BaseColumn[S, O](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
+	class BaseColumn[S, O](override val name :String, override val buffs :Seq[Buff[S]])
+	                      (implicit override val form :ColumnForm[S])
 		extends ColumnMapping[S, O]
 	{
 		override val isNullable :Boolean = super.isNullable
@@ -349,43 +295,9 @@ object ColumnMapping {
 
 
 	/** Defaults `ColumnMapping` implementation. Many of the properties are overriden as `val`s for efficiency. */
-	class StandardColumn[S, O](val name :String, override val buffs :Seq[Buff[S]])(implicit val form :ColumnForm[S])
-		extends ColumnMapping[S, O]
-	{
-		override val isNullable :Boolean = super.isNullable
-
-		override val selectForm :SQLReadForm[S] = super.selectForm
-		override val queryForm :SQLWriteForm[S] = super.queryForm
-		override val updateForm :SQLWriteForm[S] = super.updateForm
-		override val insertForm :SQLWriteForm[S] = super.insertForm
-
-		private[this] val selfExtract = ColumnExtract.ident(this)
-
-		override val extracts :NaturalMap[Component, ColumnExtract] =
-			NaturalMap.single[Component, ColumnExtract, S](this, selfExtract)
-
-		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
-			NaturalMap.single[Column, ColumnExtract, S](this, selfExtract)
-
-
-
-		override def apply[T](component :Component[T]) :Extract[T] =
-			if (component == this)
-				selfExtract.asInstanceOf[Extract[T]]
-			else
-				throw new IllegalArgumentException(
-					s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
-				)
-
-		override def apply[T](column :Column[T]) :ColumnExtract[T] =
-			if (column == this)
-				selfExtract.asInstanceOf[ColumnExtract[T]]
-			else
-				throw new IllegalArgumentException(
-					s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
-				)
-
-	}
+	class StandardColumn[S, O](override val name :String, override val buffs :Seq[Buff[S]])
+	                          (implicit override val form :ColumnForm[S])
+		extends StableColumn[S, O]
 
 
 
@@ -397,14 +309,14 @@ object ColumnMapping {
 	  * column is the same as the label.
 	  */
 	class LiteralColumn[N <: String with Singleton, S, O](override val buffs :Seq[Buff[S]] = Nil)
-	                                                     (implicit named :ValueOf[N], override val form :ColumnForm[S])
-		extends LabeledColumn[N, S, O]
+	                                                     (implicit label :ValueOf[N], override val form :ColumnForm[S])
+		extends LabeledColumn[N, S, O] with StableColumn[S, O]
 	{
 		def this(name :N, buffs :Seq[Buff[S]])(implicit form :ColumnForm[S]) =
 			this(buffs)(new ValueOf(name), form)
 
-		override val name :N = named.value
-		override val isNullable :Boolean = super.isNullable
+		override val name :N = label.value
+
 
 		override def withBuffs(buffs :Seq[Buff[S]]) :LiteralColumn[N, S, O] =
 			new LiteralColumn[N, S, O](buffs)(new ValueOf(name), form)
@@ -418,12 +330,73 @@ object ColumnMapping {
 		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
 			as(Extractor.req(there), Extractor.req(back))
 
-		override def optMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
+		override def optMap[X](there :S => Option[X], back :X => Option[S])(implicit nulls :NullValue[X])
+				:LiteralColumn[N, X, O] =
 			as(Extractor(there), Extractor(back))
-
-//		override def canEqual(that :Any) :Boolean = that.isInstanceOf[LiteralColumn[_, _, _]]
 
 	}
 
+
+
+	/** A convenience base column class declaring standard fields `name`, `buffs` and `form` ''without'' extending
+	  * `ColumnMapping`. This allows the latter to be mixed in later, overriding declarations from any other traits
+	  * (and classes) that the extending class might inherit.
+	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping.StableColumn]]
+	  */
+	abstract class ColumnSupport[S, O](val name :String, override val buffs :Seq[Buff[S]] = Nil)
+	                                  (implicit val form :ColumnForm[S])
+		extends TypedMapping[S, O]
+	{ this :ColumnMapping[S, O] => }
+
+
+
+	/** A late mix-in trait overriding all benefiting `ColumnMapping` methods with `val`s. Needs to be placed
+	  * in the linearization order after declarations of `name`, `buffs` and `form`.
+	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping.ColumnSupport]]
+	  */
+	trait StableColumn[S, O] extends ColumnMapping[S, O] {
+		final override val isNullable :Boolean = super.isNullable
+
+		override def apply[T](component :Component[T]) :Extract[T] =
+			if (component == this)
+				selfExtract.asInstanceOf[Extract[T]]
+			else
+				throw new IllegalArgumentException(
+					s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
+					)
+
+		override def apply[T](column :Column[T]) :ColumnExtract[T] =
+			if (column == this)
+				selfExtract.asInstanceOf[ColumnExtract[T]]
+			else
+				throw new IllegalArgumentException(
+					s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
+					)
+
+
+		private[this] val selfExtract = ColumnExtract.ident(this)
+
+		override val extracts :NaturalMap[Component, ColumnExtract] =
+			NaturalMap.single[Component, ColumnExtract, S](this, selfExtract)
+
+		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
+			NaturalMap.single[Column, ColumnExtract, S](this, selfExtract)
+
+
+		final override val columns :Unique[Column[S]] = Unique.single(this)
+
+		final override val selectable :Unique[Column[S]] = selfUnless(NoSelect)
+		final override val queryable :Unique[Column[S]] = selfUnless(NoQuery)
+		final override val updatable :Unique[Column[S]] = selfUnless(NoUpdate)
+		final override val autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
+		final override val insertable :Unique[Column[S]] = selfUnless(NoInsert)
+		final override val autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
+
+		final override val selectForm :SQLReadForm[S] = super.selectForm
+		final override val queryForm :SQLWriteForm[S] = super.queryForm
+		final override val updateForm :SQLWriteForm[S] = super.updateForm
+		final override val insertForm :SQLWriteForm[S] = super.insertForm
+
+	}
 }
 

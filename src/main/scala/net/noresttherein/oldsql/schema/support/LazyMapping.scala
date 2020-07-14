@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.{TypedMapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Mapping, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
 
@@ -13,6 +13,7 @@ import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, Select
   * `optionally` implementation is optimized by similarly storing lazily precomputed required buff information.
   * They all use [[net.noresttherein.oldsql.collection.Unique.delay]] or [[net.noresttherein.oldsql.morsels.Lazy Lazy]],
   * which are thread safe, invoke the initializer at most once, and don't incur any computational penalty once initialized.
+  * @see [[net.noresttherein.oldsql.schema.support.StableMapping]]
   */
 trait LazyMapping[S, O] extends TypedMapping[S, O] {
 
@@ -59,8 +60,11 @@ trait LazyMapping[S, O] extends TypedMapping[S, O] {
 
 /** A mixin trait which defines all column and component lists as `val`s initialized by the call to super.
   * It caches also extracts and some buff information required by `optionally` to provide a faster implementation.
+  * It must come in linearization order after the final definitions of all standard `Mapping` properties, which are
+  * in most cases overriden here as `abstract override` methods.
+  * @see [[net.noresttherein.oldsql.schema.support.LazyMapping]]
   */
-trait StableMapping[S, O] extends TypedMapping[S, O] {
+trait StableMapping[S, O] extends Mapping { this :TypedMapping[S, O] =>
 
 	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
 		case res if noBuffs => res
@@ -83,7 +87,7 @@ trait StableMapping[S, O] extends TypedMapping[S, O] {
 	abstract override val subcomponents :Unique[Component[_]] = super.subcomponents
 	abstract override val components :Unique[Component[_]] = super.components
 
-	abstract override val columns :Unique[Column[_]] = super.columns //components.flatMap(_.columns)
+	abstract override val columns :Unique[Column[_]] = super.columns
 
 	override val selectable :Unique[Column[_]] = super.selectable
 	override val queryable :Unique[Column[_]] = super.queryable
@@ -92,10 +96,10 @@ trait StableMapping[S, O] extends TypedMapping[S, O] {
 	override val insertable :Unique[Column[_]] = super.insertable
 	override val autoInserted :Unique[Column[_]] = super.autoInserted
 
-	override val selectForm: SQLReadForm[S] = super.selectForm
-	override val queryForm :SQLWriteForm[S] = super.queryForm
-	override val updateForm :SQLWriteForm[S] = super.updateForm
-	override val insertForm :SQLWriteForm[S] = super.insertForm
+	abstract override val selectForm: SQLReadForm[S] = super.selectForm
+	abstract override val queryForm :SQLWriteForm[S] = super.queryForm
+	abstract override val updateForm :SQLWriteForm[S] = super.updateForm
+	abstract override val insertForm :SQLWriteForm[S] = super.insertForm
 
 }
 

@@ -214,7 +214,7 @@ object Join {
 			val aliased = SQLRelation.last[(R As A)#T, (R As A)#T, S](source)
 			type Res = left.Generalized With (R As A)#T
 			val unfiltered = likeJoin[left.Generalized, (R As A)#T, S](left.generalized, source)(True)
-			val replacement = aliased \ unfiltered.last.mapping.egg
+			val replacement = aliased \ (unfiltered.last.mapping.body :R[FromClause With (R As A)#T])
 			val substitute = new ReplaceRelation[R, S, (R As A)#T, S, Generalized, Res](
 				generalized, unfiltered)(last, replacement
 			)

@@ -25,8 +25,10 @@ import scala.reflect.runtime.universe
   * @see [[net.noresttherein.oldsql.model.Restraint.Restrainer Restrainer]]
   */ //todo: awkward name, think of something better
 sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable with implicits {
-
-//	def toFunction :T => V = this
+//todo: def apply(whole :T) :V and self type to T => V. If only private classes implement T => V,
+// it will not count as an implicit conversion.
+//	/** Retrieve the value of part `V` described by this instance from the outer type `T`.*/
+//	def apply(whole :T) :V = derive(whole)
 
 	/** Retrieve the value of part `V` described by this instance from the outer type `T`.*/
 	def derive(whole :T) :V
@@ -41,7 +43,7 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 	def definedFor :Type
 
 
-	//todo: create a special type class for types which class/type can be tested; this makes little sense in most cases in SQL
+	//fixme: create a special type class for types which class/type can be tested; this makes little sense in most cases in SQL
 	def ifInstanceOf[S :ClassTag, O](subclass :Restrictive[S, O]) :Restrictive[T, Option[O]] =
 		new SubclassRestrictive(this, implicitly[ClassTag[S]].runtimeClass, subclass)
 

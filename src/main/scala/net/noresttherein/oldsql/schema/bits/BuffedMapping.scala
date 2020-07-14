@@ -1,35 +1,48 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.Buff
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
-import net.noresttherein.oldsql.schema.support.MappingAdapter
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.support.DelegateMapping
 
 
 /**
   * @author Marcin Mościcki
   */
-class BuffedMapping[+M <: RefinedMapping[S, O], S, O](override val egg :M, override val buffs :Seq[Buff[S]])
-	extends EagerDeepProxy[M, S, O](egg) with MappingAdapter[M, S, O]
+class BuffedMapping[+M <: RefinedMapping[S, O], S, O](protected override val backer :M, override val buffs :Seq[Buff[S]])
+	extends EagerDeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
-	override protected def adapt[T](component :egg.Component[T]) :Component[T] =
-		new BuffedMapping[Component[T], T, O](component, schema.cascadeBuffs(this)(egg(component)))
+	override protected def adapt[T](component :backer.Component[T]) :Component[T] =
+		new BuffedMapping[Component[T], T, O](component, schema.cascadeBuffs(this)(backer(component)))
 
-	protected override def adapt[T](column :egg.Column[T]) :Column[T] =
-		column.withBuffs(schema.cascadeBuffs(this)(egg(column)))
+	protected override def adapt[T](column :backer.Column[T]) :Column[T] =
+		column.withBuffs(schema.cascadeBuffs(this)(backer(column)))
 
-//	override def toString :String = buffs.mkString(mapping.toString + "(", ",", ")")
 }
 
 
 
 object BuffedMapping {
 
-	def apply[X <: Mapping, M <: RefinedMapping[S, O], S, O](mapping :X, buffs :Buff[S]*)
-	                                                        (implicit infer :Conforms[X, M, RefinedMapping[S, O]])
-			:MappingAdapter[M, S, O] =
-		new BuffedMapping[M, S, O](mapping, buffs)
+	def cascade[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
+		new BuffedMapping[M, S, O](mapping, buffs) with DelegateAdapter[M, S, O]
+
+	def cascade[M <: MappingAt[O], S, O](mapping :MappingAdapter[M, S, O], buffs :Buff[S]*) :MappingAdapter[M, S, O] =
+		new BuffedMapping[MappingAdapter[M, S, O], S, O](mapping, buffs) with ComposedAdapter[M, S, S, O]
+
+
+	def nonCascade[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
+		new NonCascadingBuffedMapping[M, S, O](mapping, buffs) with DelegateAdapter[M, S, O]
+
+	def nonCascade[M <: MappingAt[O], S, O](mapping :MappingAdapter[M, S, O], buffs :Buff[S]*) :MappingAdapter[M, S, O] =
+		new NonCascadingBuffedMapping[mapping.type, S, O](mapping, buffs) with ComposedAdapter[M, S, S, O]
+
+
+
+	private class NonCascadingBuffedMapping[+M <: RefinedMapping[S, O], S, O]
+	                                       (protected override val backer :M, override val buffs :Seq[Buff[S]])
+		extends ShallowProxy[S, O] with DelegateMapping[M, S, O]
 
 }

@@ -1,12 +1,13 @@
 package net.noresttherein.oldsql.schema.bits
 
+import scala.annotation.unchecked.uncheckedVariance
+
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, TypedMapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
-import net.noresttherein.oldsql.schema.support.OpenNest
-import net.noresttherein.oldsql.schema.ColumnMapping.BaseColumn
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterSeal, DelegateAdapter}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapter.ColumnFormAdapter
 
 
 /** Super type for `Mapping` implementations marked with a `String` literal type for the purpose of identification
@@ -18,11 +19,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
   * to this interface, while preserving its type for access.
   * @tparam N a `String` literal with a name serving as an identifier for this mapping.
   */
-trait AbstractLabeledMapping[N <: Label] extends Mapping { self :MappingSeal =>
-//	type Wrap[M <: Mapping] = N @: M
-
-//	type LabeledProjection[O] = AbstractLabeledMapping[N] { type Subject = self.Subject; type Origin = O }
-}
+trait AbstractLabeledMapping[N <: Label] extends Mapping { self :MappingSeal => }
 
 
 
@@ -71,100 +68,61 @@ object LabeledMapping {
 	  * but are not declared in the type signature directly. For this reason instances of this type won't be
 	  * adapted automatically to `MappingOf`.
 	  */
-	sealed trait @:[N <: Label, M <: Mapping] extends LabeledMapping[N, M#Subject, M#Origin] {
-		this :MappingSeal =>
+	sealed trait @:[N <: Label, +M <: Mapping]
+		extends LabeledMapping[N, M#Subject @uncheckedVariance, M#Origin @uncheckedVariance]
+		   with MappingAdapter[M, M#Subject @uncheckedVariance, M#Origin @uncheckedVariance]
+	{ this :MappingSeal with AdapterSeal =>
 
 		def label :N
-		//fixme: make egg.Origin =:= M#Origin
-		val egg :M //{ type Origin = M#Origin }
 
-/*
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[@:[_, _]]
-
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case labeled: @:[_, _] if labeled canEqual this => label == labeled.label && egg == labeled.egg
-			case _ => false
-		}
-
-		override def hashCode :Int = egg.hashCode * 31 + label.hashCode
-*/
-
-		override def toString = "'" + label + "@:" + egg
+		override def toString = "'" + label + "@:" + body
 	}
 
 
 
 	object @: {
 		def unapply(mapping :Mapping) :Option[(Label, Mapping)] = mapping match {
-			case labeled: @:[_, _] => Some(labeled.label -> labeled.egg)
+			case labeled: @:[_, _] => Some(labeled.label -> labeled.body)
 			case _ => None
 		}
 
 		def unapply[N <: Label, M <: Mapping](labeled :N @: M) :Some[(N, M)] =
-			Some(labeled.label -> labeled.egg)
+			Some(labeled.label -> labeled.body)
 
 
 		type LabeledProjection[L <: Label, M[O] <: MappingAt[O]] = { type WithOrigin[O] = L @: M[O] }
 
 		implicit def projection[L <: Label, M <: Mapping](implicit body :OriginProjection[M])
 				:OriginProjection[L @: M] { type WithOrigin[O] = L @: body.WithOrigin[O] } =
-			body.substitute[({ type T[X <: Mapping] = L @: X })#T, M]
+			body.substitute[({ type T[+X <: Mapping] = L @: X })#T, M]
 
 	}
 
 
 
-	class MappingLabel[N <: Label, M <: RefinedMapping[S, O], S, O](val egg :M)(implicit singleton :ValueOf[N])
-		extends ShallowProxy[S, O] with (N @: M)
+	class MappingLabel[N <: Label, M <: RefinedMapping[S, O], S, O](val backer :M)(implicit singleton :ValueOf[N])
+		extends ShallowProxy[S, O] with DelegateAdapter[M, S, O] with (N @: M)
 	{
-		def this(label :N, egg :M) = this(egg)(new ValueOf(label))
+		def this(label :N, backer :M) = this(backer)(new ValueOf(label))
 
 		override type Subject = S
 		override type Origin = O
 
-		val label :N = singleton.value
-
-//		override def equals(that :Any) :Boolean = that match {
-//			case other :MappingLabel[_, _, _, _] =>
-//				(other eq this) || (other canEqual this) && other.label == label && other.egg == egg
-//			case _ => false
-//		}
-//		override def hashCode :Int = egg.hashCode * 31 + label.hashCode
+		override val label :N = singleton.value
 
 	}
 
 
 
-	class ColumnLabel[N <: Label, S, O](columnName :String, columnBuffs :Seq[Buff[S]] = Nil)
+	class ColumnLabel[N <: Label, S, O](column :ColumnMapping[S, O], columnName :String, columnBuffs :Seq[Buff[S]] = Nil)
 	                                   (implicit form :ColumnForm[S], labelValue :ValueOf[N])
-		extends BaseColumn[S, O](columnName, columnBuffs) with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
-	{ //consider: extending StandardColumn instead
-		def this(column :ColumnMapping[S, _])(implicit label :ValueOf[N]) =
-			this(column.name, column.buffs)(column.form, label)
+		extends ColumnFormAdapter[ColumnMapping[S, O], S, S, O](column, columnName, columnBuffs)
+		   with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
+	{
+		def this(column :ColumnMapping[S, O])(implicit label :ValueOf[N]) =
+			this(column, column.name, column.buffs)(column.form, label)
 
 		override val label :N = labelValue.value
-
-		override val egg :ColumnMapping[S, O] = this
-
-
-
-//		override def canEqual(that :Any) :Boolean = that.isInstanceOf[@:[_, _]] || that.isInstanceOf[ColumnMapping[_, _]]
-//
-//		override def equals(that :Any) :Boolean = that match {
-//			case self :AnyRef if self eq this => true
-//			case column :ColumnLabel[_, _, _] if column canEqual this =>
-//				label == column.label && name == column.name && form == column.form && buffs == column.buffs
-//			case labeled: @:[_, _] if labeled canEqual this =>
-//				labeled.label == label && (labeled.egg match {
-//					case column :ColumnMapping[_, _] if column canEqual this =>
-//						column.name == name && column.form == form && column.buffs == buffs
-//					case _ => false
-//				})
-//			case _ => false
-//		}
-//
-//		override def hashCode :Int = super[ColumnMapping].hashCode * 31 + label.hashCode
 
 		override def toString = "'" + label + "@:" + name + "[" + form + "]"
 	}

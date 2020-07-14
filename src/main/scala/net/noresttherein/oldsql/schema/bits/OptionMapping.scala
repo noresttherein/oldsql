@@ -1,19 +1,22 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, TypedMapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.MappingAdapter.ShallowAdapter
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.RefinedProjection
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+
+//implicits
 import net.noresttherein.oldsql.slang._
 
 
-
-trait OptionMapping[M <: RefinedMapping[S, O], S, O] extends TypedMapping[Option[S], O] {
+//todo: uncheckedVariance
+sealed trait OptionMapping[+M <: Mapping, S, O] extends TypedMapping[Option[S], O] {
 	val get :M
 }
 
@@ -21,19 +24,33 @@ trait OptionMapping[M <: RefinedMapping[S, O], S, O] extends TypedMapping[Option
 
 object OptionMapping {
 
-	def singleton[S, O](mapping :RefinedMapping[S, O]) :OptionMapping[mapping.type, S, O] =
-		apply(mapping)
+	type Optional[M <: Mapping] = OptionMapping[M, M#Subject, M#Origin]
+
+	type OptionAt[M[A] <: MappingAt[A], O] = OptionMapping[M[O], M[O]#Subject, O]
 
 
-	def apply[M <: RefinedMapping[S, O], S, O](mapping :M) :OptionMapping[M, S, O] =
+	def apply[X <: Mapping, M <: RefinedMapping[S, O], S, O]
+	         (mapping :X)(implicit types :Conforms[X, M, RefinedMapping[S, O]]) :Optional[M] =
 		new DirectOptionMapping[M, S, O](mapping)
 
+	def singleton[S, O](mapping :RefinedMapping[S, O]) :Optional[mapping.type] =
+		apply[mapping.type, mapping.type, S, O](mapping)
 
 
-	class DirectOptionMapping[M <: RefinedMapping[S, O], S, O](val egg :M)
-		extends OptionMapping[M, S, O] with ShallowAdapter[M, Option[S], O]
+//todo: OriginProjection
+//	implicit def optionMappingProjection[M <: Mapping](implicit body :OriginProjection[M])
+//			:OriginProjection[Optional[M]] { type WithOrigin[A] = Optional[body.WithOrigin[A]] } =
+//		OriginProjection.projectAs[Optional[M], ({ type P[A] = Optional[body.WithOrigin[A]] })#P]
+//	implicit def optionMappingProjection[M <: RefinedMapping[S, O], S, O](implicit body :RefinedProjection[M, S])
+//			:OriginProjection[OptionMapping[M, S, O]] { type WithOrigin[A] = OptionMapping[body.WithOrigin[A], S, A] } =
+//		OriginProjection.projectAs[OptionMapping[M, S, O], ({ type P[A] = OptionMapping[body.WithOrigin[A], S, A] })#P]
+
+
+
+	private class DirectOptionMapping[+M <: RefinedMapping[S, O], S, O](protected override val backer :M)
+		extends OptionMapping[M, S, O] with ShallowDelegate[Option[S], O]
 	{ box =>
-		val get :M = egg
+		override val get :M = backer
 
 
 
@@ -63,13 +80,13 @@ object OptionMapping {
 			}
 */
 		override val extracts :NaturalMap[Component, Extract] =
-			egg.extracts.map(schema.composeExtractAssoc(eggExtract)(_)).updated(egg, eggExtract)
+			backer.extracts.map(schema.composeExtractAssoc(eggExtract)(_)).updated(backer, eggExtract)
 
-		override val columnExtracts :NaturalMap[Column, ColumnExtract] = egg match {
+		override val columnExtracts :NaturalMap[Column, ColumnExtract] = backer match {
 			case column :ColumnMapping[S @unchecked, O @unchecked] =>
 				NaturalMap.single[Column, ColumnExtract, S](column, eggExtract.asInstanceOf[ColumnExtract[S]])
 			case _ =>
-				egg.columnExtracts.map(schema.composeColumnExtractAssoc(eggExtract)(_))
+				backer.columnExtracts.map(schema.composeColumnExtractAssoc(eggExtract)(_))
 		}
 
 

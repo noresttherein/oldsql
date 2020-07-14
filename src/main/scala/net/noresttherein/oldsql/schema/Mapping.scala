@@ -10,11 +10,13 @@ import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, MappingReadForm, MappingSeal, MappingWriteForm, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
-import net.noresttherein.oldsql.schema.Buff.{AbstractValuedBuff, AutoInsert, AutoUpdate, BuffType, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValuedBuffType}
+import net.noresttherein.oldsql.schema.Buff.{AbstractValueBuff, AutoInsert, AutoUpdate, BuffType, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit, ValueBuffType}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingFrame
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{FunctorProjection, ProjectsAs}
+import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
@@ -22,13 +24,18 @@ import net.noresttherein.oldsql.sql.FromClause.TableShift
 import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
 
 
+//implicits
+import net.noresttherein.oldsql.collection.Unique.implicitUnique
+
+
+
 
 
 
 /** A `Mapping` describes how a scala type (declared as the member type `Subject` of this trait)
   * is decomposed into the relational format of the underlying database. In particular, it declares all the columns used,
-  * but it can have a hierarchical structure of arbitrary limit, with nested components - and indeed the columns
-  * themselves - being also `Mapping` implementations. It is bidirectional in its nature and invariant regarding
+  * but it can have a hierarchical structure of arbitrary level, with nested components - and indeed the columns
+  * themselves, being also `Mapping` implementations. It is bidirectional in its nature and invariant regarding
   * its subject type, but it is entirely possible to provide read-only (or write-only) implementations and mechanisms
   * exist to define which columns are included in which operations, allowing to automatically omit some from all INSERT
   * or UPDATE statements for example. In fact, the choice can be quite arbitrary and done in a case by case basis,
@@ -40,30 +47,31 @@ import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
   * `Mapping` instances used by this mapping to handle separate fragments of the mapped type are referred to as
   * ''Components'' throughout the library; it is important to note however that a `Mapping` for a database table,
   * for a whole query row of multiple joined tables, an 'Address' component of a handful of columns and a single
-  * column are not distinct in nature, with only the columns being treated specially in some rare circumstances.
+  * column are not distinct in nature, with only the columns being treated specially in some circumstances.
   *
   * This homomorphism and structural nature, apart from promoting reusability and encouraging data encapsulation
-  * in the domain model rather than flat, simple mappings, have several implications. First, a components
-  * of a component of a mapping are called sometimes subcomponents when the distinction is being made, but are
-  * themselves also valid components of this mapping. It is encouraged that the assembly (and disassembly) process
-  * remains strictly hierarchical, with any instance responsible only on handling the transformation between
-  * its subject type and the values of its direct components. This simplifies several implementation details and
-  * increases reusability, but is not always feasible and a `Mapping` can always check the value of any of its
-  * subcomponents or columns in its process.
+  * in the domain model rather than flat mappings, closely following the table schema, have several implications.
+  * First, a components of a component of a mapping are called sometimes subcomponents when the distinction
+  * is being made, but are themselves also valid components of this mapping. It is encouraged that the assembly
+  * (and disassembly) process remains strictly hierarchical, with any instance responsible only on handling
+  * the transformation between its subject type and the values of its direct components. This simplifies several
+  * implementation details and increases reusability, but is not always feasible and a `Mapping` can always check
+  * the value of any of its subcomponents or columns in its process.
   *
-  * Second, as a component type can easily appear several times as part
+  * Second, as a component type can easily appear several times as a part
   * of a larger mapping (a business having several addresses of different types, or a person having several phone
   * numbers), they naturally must use different column names. It is a good design principle to think ahead and
   * have reusable components accept at least a prefix/suffix to include in column names, but exceptions will always
   * exist, especially when dealing with preexisting schemas. A `Mapping` is therefore completely free to translate
-  * a component it uses by modifying the column names as it sees fit. Additionally, any mapping can (at least
-  * in theory) declare [[net.noresttherein.oldsql.schema.Buff Buffs]] which can modify the handling of all of its
-  * subcomponents (such as making them read-only). This means that a component being part of a larger mapping can
-  * exist in several versions: as declared in its own implementation, the final, effective version as used by
-  * an SQL statement, and possibly any number in between. The effective, 'public' version of each component is
-  * referred to as a ''export'' component, and only those public, export instances must appear in the components
-  * (and columns) lists declared as part of this generic interface (as opposed to the declarations of individual
-  * components). It is important to be furthermore aware that a component instance may be public/'export'
+  * a component it uses by modifying the column names as it sees fit. Additionally, any mapping can  declare
+  * [[net.noresttherein.oldsql.schema.Buff Buffs]] which can modify the handling of all of its subcomponents
+  * (such as making them read-only). Their handling is the responsibility of the mapping class and not all components
+  * support it. A logical component being part of a larger mapping can thus exist in several versions:
+  * the original instance of the implementing class, the operative version with modifications applied by the
+  * entity mapping, as used by an SQL statement, and possibly any number in between. The operative, 'public' version
+  * of each component is referred to as a ''export'' component, and only those public, export instances must appear
+  * in the components (and columns) lists declared as part of this generic interface (as opposed to the declarations
+  * of individual components). It is important to be furthermore aware that a component instance may be public/'export'
   * from a point of view of the enclosing mapping, but not the root mapping. The library performs this translation
   * automatically when passing on the `Pieces` with selected values and several base classes exist fully handling
   * this translation under scenes, but it is important to remember when implementing custom `Mapping`s
@@ -75,10 +83,9 @@ import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
   * public interface. Every concrete mapping however needs to define two types: the mapped scala type `Subject`
   * and a marker phantom type `Origin` which serves solely to introduce static type distinction between several
   * instances of the same component type but coming from different sources. In fact, many generic operations
-  * are impossible to reliably implement without asserting that the handles `Mapping` actually defines those types
-  * (that is, those types are equal for all instances of the mapping type). This is done through the type aliases
-  * defined here [[net.noresttherein.oldsql.schema.Mapping#Component[T] Component]],
-  * [[net.noresttherein.oldsql.schema.Mapping.MappingAt MappingAt]] and their global, static counterparts
+  * are impossible to reliably implement without asserting that the handled `Mapping` actually defines those types
+  * (that is, those types are equal for all instances of the mapping type). This is done through the type alias
+  * defined here [[net.noresttherein.oldsql.schema.Mapping#Component[T] Component]], and global, static refinements
   * from the companion object: [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingAt MappingAt]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingOf MappingOf]]. For uniformity and interoperability, these
@@ -86,16 +93,30 @@ import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
   * concrete implementations should extend at least [[net.noresttherein.oldsql.schema.TypedMapping]] instead
   * of this trait directly.
   *
-  * The reasons for these distinctions are twofold: first, several types rely heavily on the infix notation
+  * The reasons for these distinctions are threefold: first, several types rely heavily on the infix notation
   * of two-argument type constructors, preventing them from accepting the type parameters of `TypedMapping`
   * or `RefinedMapping`. Abstract type parameters of existential types such as `Component[_]` are not unified, leading
   * to absurd situations where 'obviously' equal types are not unified by the compiler, almost completely preventing
-  * their type safe use. The second reason is the limitation of the type inferer which, when faced with
-  * a method with a signature in the form of `[M &lt;: RefinedMapping[S, O], O, S](m :M)` will, when applied to
-  * `m :TypedMapping[O, Int]` infer types `TypedMapping[O, Int], Nothing, Nothing` causing a compile error.
+  * their type safe use. This is particularly visible with classes with a type parameter `C[M &lt;: RefinedMapping[_, _]]`
+  * or `C[M &lt;: TypedMapping[_, _]]`, defining their Origin and Subject as `M#Origin` and `M#Subject`. While from the
+  * inside of the class `m.Origin =:= this.Origin` where `m :M`, when parameterized with a
+  * `X &lt;: RefinedMapping[S, O]`, the classes `Subject` and `Origin` types are unrelated to `S, O`:
+  * {{{
+  *     trait C[M <: RefinedMapping[_, _]] extends TypedMapping[M#Subject, M#Origin]
+  *     def assemble[M <: RefinedMapping[S, O], S, O](c :C[M]) :TypedMapping[S, O] = c //type clash
+  * }}}
+  * The second reason is the limitation of the type inferer which, when faced with
+  * a method with a signature in the form of `[M &lt;: RefinedMapping[S, O], S, O](m :M)` will, when applied to
+  * `m :TypedMapping[Int, O]` infer types `TypedMapping[Int, O], Nothing, Nothing` causing a compile error.
   * On the other hand, defining the type parameter as `[M &lt;: RefinedMapping[_, _]]` assigns new distinct types to the
   * missing type parameters, which are not unified even with `m.Subject`/`m.Origin` itself, leading to a lot of issues.
   * This can be circumvented with implicit parameters, but at the cost of additional complexity.
+  * Finally, there is a bug in the compiler which prevents the use of a refining type constructor such as
+  * `RefinedMapping` as a type parameter in some scenarios, requiring a proper class type `TypedMapping`.
+  *
+  * Concrete implementing classes should accept a type parameter `O` defining their `Origin` type, so without much
+  * loss of generality, a type constructor `M[O] &lt;: MappingAt[O]` can be passed instead of the full mapping type.
+  *
   * @see [[net.noresttherein.oldsql.schema.TypedMapping]]
   * @see [[MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
@@ -367,46 +388,63 @@ trait Mapping { this :MappingSeal =>
 	/** Direct component mappings of this mapping, including any top-level columns. Always empty for columns.
 	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
 	  * or mapped components and aliases for other components of the `Mapping`. For all non-column components however
-	  * this list will cover all columns defined by the mapping.
+	  * this list will cover all columns defined directly by the mapping. The components on the list are always
+	  * the ''export'' versions, but their subcomponents are not, generally, the ''export'' versions from the point
+	  * of view of this mapping.
 	  */
 	def components :Unique[Component[_]]
 
 	/** All transitive components of this mapping (i.e. components/columns declared by it's components or
 	  * other subcomponents), or all that this mapping cares to expose, as instances of this.Component[_].
-	  * It is typically defined by recursive ''flat mapping''
-	  * over the `components` list and including the direct components themselves. This list is always empty
-	  * for columns, thus ending any similar recursion.
+	  * It is typically defined by recursive ''flat mapping'' over the `components` list and including
+	  * the direct components themselves. This list is always empty for columns, thus ending any similar recursion.
 	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
 	  * or mapped components and aliases for other components of the `Mapping`. For all non-column components however
-	  * this list will cover all columns defined by the mapping.
+	  * this list will cover all columns defined by the mapping. The components on the list are always
+	  * the ''export'' versions, but their subcomponents are not, generally, the ''export'' versions from the point
+	  * of view of this mapping.
 	  */
 	def subcomponents :Unique[Component[_]]
 
 
 	/** All direct and transitive columns declared within this mapping. This will include columns which are read-only,
-	  * write-only and so on. Column mappings returns a singleton list containing themselves. */
+	  * write-only and so on. Column mappings returns a singleton list containing themselves. All columns on the list
+	  * are the ''export'' (operative) versions from the point of view of this mapping.
+	  */
 	def columns :Unique[Column[_]]
 
-	/** All columns which can be listed in the select clause of an SQL statement (don't have the `NoSelect` buff). */
+	/** All columns which can be listed in the select clause of an SQL statement (don't have the `NoSelect` buff).
+	  * All columns on the list are the ''export'' (operative) versions from the point of view of this mapping.
+	  */
 	def selectable :Unique[Column[_]] = columnsWithout(NoSelect)
 
-	/** All columns which can be part of an SQL statement's where clause (don't have the `NoQuery` buff enabled). */
+	/** All columns which can be part of an SQL statement's where clause (don't have the `NoQuery` buff enabled).
+	  * All columns on the list are the ''export'' (operative) versions from the point of view of this mapping.
+	  */
 	def queryable :Unique[Column[_]] = columnsWithout(NoQuery)
 
-	/** All columns which can be updated on existing database records (don't have the `NoUpdate` buff enabled). */
+	/** All columns which can be updated on existing database records (don't have the `NoUpdate` buff enabled).
+	  * All columns on the list are the ''export'' (operative) versions from the point of view of this mapping.
+	  */
 	def updatable :Unique[Column[_]] = columnsWithout(NoUpdate)
 
 	/** All columns which are updated by the database on each update statement (have the `AutoUpdate` buff)
-	  * and could/should be returned to the application). */
+	  * and could/should be returned to the application). All columns on the list are the ''export'' (operative)
+	  * versions from the point of view of this mapping.
+	  */
 	def autoUpdated :Unique[Column[_]] = columnsWith(AutoUpdate)
 
-	/** All columns which can occur in an insert statement (don't have the `NoInsert` buff enabled). */
+	/** All columns which can occur in an insert statement (don't have the `NoInsert` buff enabled).
+	  * All columns on the list are the ''export'' (operative) versions from the point of view of this mapping.
+	  */
 	def insertable :Unique[Column[_]] = columnsWithout(NoInsert)
 
-	/** Columns autogenerated by the database on insert (have the `AutoInsert` buff); this implies being non-insertable. */
+	/** Columns autogenerated by the database on insert (have the `AutoInsert` buff); this implies being non-insertable.
+	  * All columns on the list are the ''export'' (operative) versions from the point of view of this mapping.
+	  */
 	def autoInserted :Unique[Column[_]] = columnsWith(AutoInsert)
 
-	/** All columns with a given buff enabled. */
+	/** All columns from the `columns` list with a given buff enabled. */
 	def columnsWith(buff :BuffType) :Unique[Column[_]] =
 		columns.filter(buff.enabled)
 
@@ -416,12 +454,57 @@ trait Mapping { this :MappingSeal =>
 
 
 
+	/** A modified version of this mapping with the given components included/excluded ''by default''
+	  * from the SQL select operations.
+	  * @param include components of this instance which should be included as part of the ''select'' clause.
+	  *                Their ''export'' versions must not have the `NoSelect` buff. All members will
+	  *                have their `ExplicitSelect` buff removed if present and so will their subcomponents.
+	  * @param exclude components of this instance which should be excluded from the ''select'' clause.
+	  *                All members must have the `OptionalSelect` buff present and will receive, together
+	  *                with all their selectable subcomponents, the `NoSelectByDefault` buff.
+	  * @return an adapter delegating to this mapping for assembly, but having some of its components recursively
+	  *         replaced as per the rules for the `include` and `exclude` lists.
+	  */
 	def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
+	/** A modified version of this mapping with the given components included/excluded ''by default''
+	  * from the column lists used as part of the ''where'' clause of an SQL select. This modifies the filter
+	  * conditions generated from SQL DSL (and higher level expressions) comparing subjects of this mapping.
+	  * @param include components of this instance which should be included as part of the ''where'' clause.
+	  *                Their ''export'' versions must not have the `NoQuery` buff. All members will
+	  *                have their `ExplicitQuery` buff removed if present and so will their subcomponents.
+	  * @param exclude components of this instance which should be excluded from the ''where'' clause.
+	  *                All members must have the `OptionalQuery` buff present and will receive, together
+	  *                with all their selectable subcomponents, the `NoQueryByDefault` buff.
+	  * @return an adapter delegating to this mapping for assembly, but having some of its components recursively
+	  *         replaced as per the rules for the `include` and `exclude` lists.
+	  */
 	def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
+	/** A modified version of this mapping with the given components included/excluded ''by default''
+	  * from the SQL update operations.
+	  * @param include components of this instance which should be included in the updated columns list.
+	  *                Their ''export'' versions must not have the `NoUpdate` buff. All members will
+	  *                have their `ExplicitUpdate` buff removed if present and so will their subcomponents.
+	  * @param exclude components of this instance which should be excluded from the updated columns list.
+	  *                All members must have the `OptionalUpdate` buff present and will receive, together
+	  *                with all their selectable subcomponents, the `NoUpdateByDefault` buff.
+	  * @return an adapter delegating to this mapping for assembly, but having some of its components recursively
+	  *         replaced as per the rules for the `include` and `exclude` lists.
+	  */
 	def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
+	/** A modified version of this mapping with the given components included/excluded ''by default''
+	  * from the SQL insert operations.
+	  * @param include components of this instance which should be included as part of the insert statement.
+	  *                Their ''export'' versions must not have the `NoInsert` buff. All members will
+	  *                have their `ExplicitInsert` buff removed if present and so will their subcomponents.
+	  * @param exclude components of this instance which should be excluded from the select clause.
+	  *                All members must have the `OptionalInsert` buff present and will receive, together
+	  *                with all their selectable subcomponents, the `NoInsertByDefault` buff.
+	  * @return an adapter delegating to this mapping for assembly, but having some of its components recursively
+	  *         replaced as per the rules for the `include` and `exclude` lists.
+	  */
 	def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
 
@@ -449,12 +532,6 @@ trait Mapping { this :MappingSeal =>
 	/** Default write form (included columns) of insert statements for this mapping. */
 	def insertForm :SQLWriteForm[Subject]
 
-//	/** A read form containing only the columns of this mapping selected by the given filter. */
-//	def readForm(filter :ColumnFilter) :SQLReadForm[Subject]
-//
-//	/** A write form containing only the columns of this mapping selected by the given filter. */
-//	def writeForm(filter :ColumnFilter) :SQLWriteForm[Subject]
-
 
 
 	/** Optional flags and annotations modifying the way this mapping is used. They are primarily used
@@ -467,25 +544,35 @@ trait Mapping { this :MappingSeal =>
 	  */
 	def buffs :Seq[Buff[Subject]]
 
+	/** A mapping like this instance but with [[net.noresttherein.oldsql.schema.Mapping#buffs buffs]] replaced
+	  * with the given list. The buffs cascade to the components of the new mapping: the ''export'' version
+	  * of every component from this mapping has the new buffs prepended to its list. Note that any buffs from
+	  * this mapping which cascaded to any of its components as part of its initialization are ''not'' removed
+	  * from that components.
+	  */
+//	def withBuffs(buffs :Seq[Buff[Subject]]) :Component[Subject] =
+//		BuffedMapping[RefinedMapping[Subject, Origin], Subject, Origin](this, buffs :_*)
+
 
 
 	/** The SQL/DDL-related name associated with this mapping. This must be defined for all column and table
 	  * mappings, but is typically empty in all other cases.
-	  */
+	  */ //consider: removing this altogether, probably once we've implemented acutal table schema
 	def sqlName :Option[String] = None
 
 
 
 
 
+
 	//consider: all renaming/mapping methods to lose Origin in order to *not* be components of this mapping
-	/** An adapter of this mapping with the names of all its public columns prefixed with the given string.
+	/** An adapter of this mapping with the names of all its ''export'' columns prefixed with the given string.
 	  * This is equivalent to `prefixed(prefix + ".")` unless prefix is an empty string, in which case it is
 	  * a no-op (or at least returns a mapping with exact same column name).
 	  */
 	def qualified(prefix :String) :Component[Subject]
 
-	/** An adapter of this mapping with the names of all its public columns prefixed with the given string. */
+	/** An adapter of this mapping with the names of all its ''export'' columns prefixed with the given string. */
 	def prefixed(prefix :String) :Component[Subject]
 
 	/** A Mapping with exactly the same components, buffs and implementation as this one, but with an `sqlName` equal
@@ -501,7 +588,7 @@ trait Mapping { this :MappingSeal =>
 	  * never fail. This instance is exposed as the public `get` field of the returned mapping, allowing direct
 	  * access to any components definitions in this mapping.
 	  */
-	def inOption :OptionMapping[this.type, Subject, Origin] = OptionMapping(this)
+	def inOption :Optional[this.type]
 
 
 
@@ -510,15 +597,14 @@ trait Mapping { this :MappingSeal =>
 	  * `NullValue.value` will be returned. If `back` extractor will return `None`, a `null` value will be written
 	  * to the database.
 	  *///consider: renaming to map if it won't interfere with type inference
-	def as[X](there :Subject =?> X, back :X =?> Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
-		MappedMapping[this.type, Subject, X, Origin](this, there, back)
+	def as[X](there :Subject =?> X, back :X =?> Subject)(implicit nulls :NullValue[X] = null) :Component[X]
 
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
 	  * by this mapping. If this mapping's `optionally` subject constructor returns `None`, implicitly provided here
 	  * `NullValue.value` will be returned.
 	  */
 	def map[X](there :Subject => X, back :X => Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
-		MappedMapping[this.type, Subject, X, Origin](this, there, back)
+		as(there, back)
 
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
 	  * by this mapping. If `there` or this mapping's `optionally` subject constructor returns `None`,
@@ -527,7 +613,7 @@ trait Mapping { this :MappingSeal =>
 	  */
 	def optMap[X](there :Subject => Option[X], back :X => Option[Subject])
 	             (implicit nulls :NullValue[X] = null) :Component[X] =
-		MappedMapping.opt[this.type, Subject, X, Origin](this, there, back)
+		as(there, back)
 
 
 
@@ -594,7 +680,7 @@ trait Mapping { this :MappingSeal =>
 sealed abstract class LowPriorityMappingImplicits {
 	@inline implicit def refinedMappingOriginProjection[S, A]
 			:OriginProjection[RefinedMapping[S, A]] { type WithOrigin[O] = RefinedMapping[S, O] } =
-		Mapping.arbitraryOriginProjection[RefinedMapping[S, _], MappingOf[S]#Projection]
+		OriginProjection.projectAs[RefinedMapping[S, _], MappingOf[S]#Projection]
 
 }
 
@@ -610,6 +696,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
+	/** Adds factory methods for `MappingPath`s from the implicitly enriched `Mapping` instance to its components. */
 	@inline implicit def mappingPathConstructor[X <: Mapping, M <: RefinedMapping[S, O], S, O]
 	                                           (self :X)(implicit hint :Conforms[X, M, RefinedMapping[S, O]])
 			:MappingPathConstructor[M, S, O] =
@@ -700,28 +787,27 @@ object Mapping extends LowPriorityMappingImplicits {
 	  * `Origin` of the adapted mapping. An example of the latter would be a class which requires that the `Origin` type
 	  * argument occurs elsewhere in `M` for the value to be valid, such as:
 	  * {{{
-	  *     abstract class Adapter[M <: Mapping, S, O](val component :M) extends TypedMapping[S, O]
+	  *     abstract class Adapter[+M <: Mapping, S, O](val component :M) extends TypedMapping[S, O]
 	  *
 	  *     val a :Adapter[TypedMapping[Int, "A"], Int, "A"] = ???
 	  *     //a.component is a valid component of a
 	  *     val b = a.withOrigin["B"] //b :Adapter[TypedMapping[Int, "A"], Int, "B"]
 	  *     //b.component is not a valid component of b as it has a different `Origin` type.
 	  * }}}
-	  * Such practice is strongly discouraged, but not strictly prohibited. Both situations can be amended by
-	  * defining an implicit `OriginProjection[M]` in the companion object to the class of `M`. Fixing the above example
-	  * would require:
+	  * Such practice is discouraged, but not prohibited as it can lead to shorter type signatures.
+	  * Both situations can be amended by defining an implicit `OriginProjection[M]` in the companion object
+	  * of the class of `M`. Fixing the above example would require:
 	  * {{{
 	  *     object Adapter {
-	  *
 	  *         implicit def projection[M <: Mapping, X](implicit m :OriginProjection[M])
 	  *                 :OriginProjection[Adapter[M, X, _] { type WithOrigin[A] = Adapter[m.WithOrigin[A], X, A], X, A] } =
-	  *             m.lift[({ type L[T <: Mapping, A] = Adapter[T, X, A] })#L, M]
+	  *             m.lift[({ type L[+T <: Mapping, A] = Adapter[T, X, A] })#L, M]
 	  *     }
 	  *
 	  *     val c = a.withOrigin["C"] //c :Adapter[TypedMapping[Int, "C"], Int, "C"]
 	  * }}}
 	  *
-	  * The only source of `OriginProjection` instances is the eponymous factory method and transformation
+	  * The only source of `OriginProjection` instances is the eponymous, implicit factory method and transformation
 	  * methods defined in this class.
 	  */
 	@implicitNotFound("Cannot project mapping ${M} to another Origin type: no (unique) implicit OriginProjection[${M}].")
@@ -735,17 +821,20 @@ object Mapping extends LowPriorityMappingImplicits {
 		  */
 		type WithOrigin[O] <: MappingAt[O]
 
+		/** Casts the mapping of type `M` to a type where all references to its current origin type are replaced
+		  * by the `O` type.
+		  */
 		@inline final def apply[O](mapping :M) :WithOrigin[O] = mapping.asInstanceOf[WithOrigin[O]]
 
 
 		/** A projection from any `WithOrigin[_]` to `WithOrigin[O]`. */
-		@inline def ismorphism :FunctorProjection[WithOrigin] = this.asInstanceOf[FunctorProjection[WithOrigin]]
+		@inline def isomorphism :FunctorProjection[WithOrigin] = this.asInstanceOf[FunctorProjection[WithOrigin]]
 
 		/** Lifts a projection of mapping type `M` to one casting from mapping `T[M]` to `T[WithOrigin[O]]`.
 		  * It is the responsibility of the caller to make sure that type `T` does not reference directly the origin type
 		  * in its definition.
 		  */
-		@inline implicit def substitute[T[_ <: Mapping] <: Mapping, S <: M]
+		@inline implicit def substitute[T[+_ <: Mapping] <: Mapping, S <: M]
 				:OriginProjection[T[S]] { type WithOrigin[O] = T[self.WithOrigin[O]] } =
 			this.asInstanceOf[OriginProjection[T[S]] { type WithOrigin[O] = T[self.WithOrigin[O]] }]
 
@@ -753,37 +842,56 @@ object Mapping extends LowPriorityMappingImplicits {
 		  * It is the responsibility of the caller to make sure that type `T` does not reference directly the origin type
 		  * in its definition.
 		  */
-		@inline def lift[T[_ <: Mapping, O] <: MappingAt[O], S <: M]
-				:OriginProjection[T[S, _]] { type WithOrigin[O] = T[self.WithOrigin[O], O] } =
-			this.asInstanceOf[OriginProjection[T[S, _]] { type WithOrigin[O] = T[self.WithOrigin[O], O] }]
+		@inline def lift[T[+_ <: MappingAt[O], O] <: MappingAt[O], C <: M]
+				:OriginProjection[T[C, _]] { type WithOrigin[O] = T[self.WithOrigin[O], O] } =
+			this.asInstanceOf[OriginProjection[T[C, _]] { type WithOrigin[O] = T[self.WithOrigin[O], O] }]
 
 	}
 
 
 
-	/** Type alias for `OriginProjection` of single-argument functor types, accepting their `Origin` type
-	  * as their argument. This shortens the notation considerably, especially if `M` is a natural single-argument type
-	  * constructor (and not a type lambda).
-	  */
-	type FunctorProjection[M[O] <: MappingAt[O]] = OriginProjection[M[_]] { type WithOrigin[O] = M[O] }
+	object OriginProjection {
 
-	/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which accepts
-	  * its `WithOrigin` type as the second argument `P`. This shortens the notation considerably if `P` is a natural
-	  * single-argument type constructor (and not a type lambda).
-	  */
-	type ProjectsAs[-M <: Mapping, P[O] <: MappingAt[O]] = OriginProjection[M] { type WithOrigin[O] = P[O] }
+		def apply[M <: Mapping](implicit projection :OriginProjection[M])
+				:OriginProjection[M] { type WithOrigin[O] = projection.WithOrigin[O] } =
+			projection
+
+		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]
+		  * which is guaranteed to preserve the `Subject` type of the projected mapping.
+		  */
+		type RefinedProjection[M <: Mapping, S] = OriginProjection[M] { type WithOrigin[O] <: RefinedMapping[S, O] }
+
+		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]
+		  * of single-argument functor types, accepting their `Origin` type as their argument. This shortens
+		  * the notation considerably, especially if `M` is a natural single-argument type constructor
+		  * (and not a type lambda).
+		  */
+		type FunctorProjection[M[O] <: MappingAt[O]] = OriginProjection[M[_]] { type WithOrigin[O] = M[O] }
+
+		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which accepts
+		  * its `WithOrigin` type as the second argument `P`. This shortens the notation considerably if `P`
+		  * is a natural single-argument type constructor (and not a type lambda).
+		  */
+		type ProjectsAs[-M <: Mapping, P[O] <: MappingAt[O]] = OriginProjection[M] { type WithOrigin[O] = P[O] }
 
 
 
-	implicit def originProjection[M[O] <: MappingAt[O]] :M[_] ProjectsAs M =
-		CastingProjection.asInstanceOf[M[_] ProjectsAs M]
+		def default[M[A] <: MappingAt[A]] :FunctorProjection[M] = CastingProjection.asInstanceOf[FunctorProjection[M]]
 
-	private[this] final val CastingProjection :OriginProjection[Mapping] = new OriginProjection[Mapping] {
-		override type WithOrigin[O] = MappingAt[O]
+		private[oldsql] def projectAs[M <: Mapping, P[O] <: MappingAt[O]] :M ProjectsAs P =
+			CastingProjection.asInstanceOf[M ProjectsAs P]
+
+
+		private[this] final val CastingProjection :OriginProjection[Mapping] = new OriginProjection[Mapping] {
+			override type WithOrigin[O] = MappingAt[O]
+		}
+
 	}
 
-	private[oldsql] def arbitraryOriginProjection[M <: Mapping, P[O] <: MappingAt[O]] :M ProjectsAs P =
-		CastingProjection.asInstanceOf[M ProjectsAs P]
+
+
+	//this is here to have clear precedence hierarchy with Mapping subtypes declaring their own projections
+	@inline implicit def originProjection[M[O] <: MappingAt[O]] :M[_] ProjectsAs M = OriginProjection.default[M]
 
 
 
@@ -797,7 +905,7 @@ object Mapping extends LowPriorityMappingImplicits {
 	/** Narrowing of the `Mapping` trait to subtypes which define the `Origin` type as `O`.
 	  * While mapping types are expected to have the `Origin` as a free type parameter, conversion from one
 	  * origin type to another may require more
-	  */
+	  */ //todo: at is not the proper preposition associated with 'Origin', but 'of' would be misleading. Rename Origin to ...? Lineage, sphere, family, line
 	type MappingAt[O] = Mapping { type Origin = O }
 
 	/** Narrowing of the `Mapping` trait to subtypes which define the `Subject` type as `S` and `Origin` as `O`. */
@@ -863,29 +971,27 @@ object Mapping extends LowPriorityMappingImplicits {
 			def test[O](column :MappingAt[O]): Boolean = buff.disabled(column)
 		}
 
-		class WriteFilter(modifier :BuffType) extends WithoutBuff(modifier) {
+		class ReadFilter(buff :BuffType) extends WithoutBuff(buff) {
+			override def write[S](mapping :MappingOf[S])(forms :mapping.Component[_] => SQLForm[_]) :SQLWriteForm[S] =
+				SQLWriteForm.unsupported(s"$this.write for $mapping")
+		}
+
+		class WriteFilter(buff :BuffType) extends WithoutBuff(buff) {
 			override def read[S](mapping: MappingOf[S]) =
 				EmptyForm(throw new UnsupportedOperationException(s"$this: read for $mapping"))
 		}
 
 
 
-		case object ForSelect extends WithoutBuff(NoSelectByDefault) {
+		case object ForSelect extends ReadFilter(NoSelectByDefault) {
 			override def read[S](mapping: MappingOf[S]) :SQLReadForm[S] = mapping.selectForm
-//			override def write[S](mapping: Mapping[S]) :SQLWriteForm[Any] = SQLWriteForm.empty
 		}
 
-		case object ForQuery extends WriteFilter(NoQueryByDefault) {
-//			override def write[S](mapping :Mapping[S]) :SQLWriteForm[S] = mapping.queryForm
-		}
+		case object ForQuery extends WriteFilter(NoQueryByDefault)
 
-		case object ForUpdate extends WriteFilter(NoUpdateByDefault) {
-//			override def write[S](mapping :Mapping[S]) :SQLWriteForm[S] = mapping.updateForm
-		}
+		case object ForUpdate extends WriteFilter(NoUpdateByDefault)
 
-		case object ForInsert extends WriteFilter(NoInsertByDefault) {
-//			override def write[S](mapping: Mapping[S]) :SQLWriteForm[S] = mapping.insertForm
-		}
+		case object ForInsert extends WriteFilter(NoInsertByDefault)
 
 
 		case object AllColumns extends ColumnFilter {
@@ -908,16 +1014,10 @@ object Mapping extends LowPriorityMappingImplicits {
 		private[this] val columnArray = columns.toArray
 		override val readColumns: Int = (0 /: columns)(_ + read(_).readColumns)
 
-//		private[this] val audits = SelectAudit.Audit(mapping)
-//		private[this] val optional = OptionalSelect.unapply(mapping)
-//		private[this] val extra = ExtraSelect.unapply(mapping)
-
 		override def opt(position: Int)(res: ResultSet): Option[S] = {
 			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
 			val columnValues = columnArray.map { c => i += 1; read(c).opt(i - 1)(res) }
 			val pieces = ComponentValues(mapping)(ArraySeq.unsafeWrapArray(columnValues))(columns.indexOf)
-//			mapping.map(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
-//				optional.map(_.value) orElse extra.map(_.value)
 			mapping.optionally(pieces)
 		}
 
@@ -954,14 +1054,20 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-		def select[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]]) :SQLReadForm[S] = {
-			//todo: we should clearly require that components of an export component are export themselves
-			val columns = components.map(mapping.export(_)).flatMap(_.selectable)
+		def select[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLReadForm[S] = {
+			val columns = components.toSeq.map(mapping.export(_)).flatMap(_.selectable.map(mapping.export(_))).toUnique
 
 			if (columns.exists(NoSelect.enabled))
 				throw new IllegalArgumentException(
 					s"Can't create a select form for $mapping using $components: NoSelect buff present among the selection."
 				)
+			val mandatory = mapping.selectable.filter(OptionalSelect.disabled(_))
+			val missing = mandatory.toSet - columns.toSet
+			if (missing.nonEmpty)
+				throw new IllegalArgumentException(missing.mkString(
+					s"Can't create a select form for $mapping using $components: missing mandatory columns ", ", ", "."
+				))
+
 			val extra = columns ++ ExtraSelect.Enabled(mapping)
 			new MappingReadForm[S, O](mapping, extra, _.selectForm)
 		}
@@ -992,7 +1098,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 	private[schema] class MappingWriteForm[S, O] private[schema]
 	                      (private val mapping :RefinedMapping[S, O], private val columns :Unique[ColumnMapping[_, O]],
-	                       private val extra :ValuedBuffType, write :ColumnMapping[_, O] => SQLWriteForm[_])
+	                       private val extra :ValueBuffType, private val write :ColumnMapping[_, O] => SQLWriteForm[_])
 		extends SQLWriteForm[S]
 	{
 		private[this] val extracts = columns.toArray.map(mapping(_))
@@ -1066,7 +1172,8 @@ object Mapping extends LowPriorityMappingImplicits {
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
 			case form :MappingWriteForm[_, _] if form canEqual this =>
-				form.mapping == mapping && form.columns == columns && form.extra == extra
+				form.mapping == mapping && form.columns == columns && form.extra == extra &&
+					form.columns.map(form.write) == columns.map(write)
 			case _ => false
 		}
 
@@ -1086,13 +1193,13 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		def apply[S, O](mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
 		                write :ColumnMapping[_, O] => SQLWriteForm[_],
-		                replacement :ValuedBuffType = AbstractValuedBuff) :SQLWriteForm[S] =
+		                replacement :ValueBuffType = AbstractValueBuff) :SQLWriteForm[S] =
 			new MappingWriteForm[S, O](mapping, columns, replacement, write)
 
 
 		def query[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]],
 		                write :MappingAt[O] => SQLWriteForm[_] = (_:MappingAt[O]).queryForm) :SQLWriteForm[S] =
-			custom(mapping, components, NoQuery, ExtraQuery, write)
+			custom(mapping, components, NoQuery, NoQueryByDefault, ExtraQuery, write)
 
 		def defaultQuery[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
 			default(mapping)(NoQuery, ExtraQuery, _.queryForm)
@@ -1104,7 +1211,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		def update[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]],
 		                 write :MappingAt[O] => SQLWriteForm[_] = (_:MappingAt[O]).updateForm) :SQLWriteForm[S] =
-			custom(mapping, components, NoUpdate, ExtraUpdate, write)
+			custom(mapping, components, NoUpdate, NoUpdateByDefault, ExtraUpdate, write)
 
 		def defaultUpdate[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
 			default(mapping)(NoUpdate, ExtraUpdate, _.updateForm)
@@ -1116,7 +1223,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		def insert[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]],
 		                 write :MappingAt[O] => SQLWriteForm[_] = (_:MappingAt[O]).insertForm) :SQLWriteForm[S] =
-			custom(mapping, components, NoInsert, ExtraInsert, write)
+			custom(mapping, components, NoInsert, NoInsertByDefault, ExtraInsert, write)
 
 		def defaultInsert[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
 			default(mapping)(NoInsert, ExtraInsert, (_:mapping.Component[_]).insertForm)
@@ -1126,27 +1233,37 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-		private def custom[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]],
-		                         prohibit :BuffType, mandatory :ValuedBuffType,
+		private def custom[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]],
+		                         prohibit :BuffType, nonDefault :BuffType, extra :ValueBuffType,
 		                         write :MappingAt[O] => SQLWriteForm[_]) :SQLWriteForm[S] =
 		{
-			if (components.exists(prohibit.enabled))
+			val exports = components.map(mapping.export(_))
+			if (exports.exists(prohibit.enabled))
 				throw new IllegalArgumentException(
-					s"Can't create a write form for $mapping using $components: $prohibit buff present among selection"
+					s"Can't create a write form for $mapping using $exports: $prohibit buff present among selection."
 				)
-			val extra = components flatMap {
-				c => mapping.export(c).columns.toSeq.filter(prohibit.disabled) ++ mandatory.Enabled(mapping)
+
+			val columns = exports flatMap {
+				c => c.columns.map(mapping.export(_)).filter(prohibit.disabled)
 			}
-			new MappingWriteForm[S, O](mapping, extra, mandatory, write)
+			val mandatory = mapping.columns.filter(nonDefault.disabled)
+			val missing = mandatory.toSet - columns.toSet
+			if (missing.nonEmpty)
+				throw new IllegalArgumentException(missing.mkString(
+					s"Can't create a write form for $mapping using $exports: missing mandatory columns ", ", ", "."
+				))
+
+			val extras = columns ++ extra.Enabled(mapping)
+			new MappingWriteForm[S, O](mapping, extras, extra, write)
 		}
 
-		private def default[S](mapping :MappingOf[S])(filterNot :BuffType, mandatory :ValuedBuffType,
+		private def default[S](mapping :MappingOf[S])(filterNot :BuffType, mandatory :ValueBuffType,
 		                                              write :mapping.Column[_] => SQLWriteForm[_]) :SQLWriteForm[S] = {
 			val columns = filterNot.Disabled(mapping) ++ mandatory.Enabled(mapping)
 			new MappingWriteForm[S, mapping.Origin](mapping, columns, mandatory, write)
 		}
 
-		private def full[S](mapping :MappingOf[S])(columns :Unique[mapping.Column[_]], extra :ValuedBuffType,
+		private def full[S](mapping :MappingOf[S])(columns :Unique[mapping.Column[_]], extra :ValueBuffType,
 		                                           write :mapping.Column[_] => SQLWriteForm[_]) :SQLWriteForm[S] =
 			new MappingWriteForm[S, mapping.Origin](mapping, columns ++ extra.Enabled(mapping), extra, write)
 
@@ -1155,9 +1272,6 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 }
-
-
-
 
 
 
@@ -1233,9 +1347,10 @@ trait TypedMapping[S, O] extends MappingSeal { self =>
 	override def queryForm: SQLWriteForm[S] = MappingWriteForm.defaultQuery(this)
 	override def updateForm: SQLWriteForm[S] = MappingWriteForm.defaultUpdate(this)
 	override def insertForm: SQLWriteForm[S] = MappingWriteForm.defaultInsert(this)
-	//fixme: ColumnFilter needs to know what type of read/write column form to use
-//	override def writeForm(filter :ColumnFilter) :SQLWriteForm[S] = filter.write(this)
-//	override def readForm(filter :ColumnFilter) :SQLReadForm[S] = filter.read(this)
+
+
+
+	override def buffs :Seq[Buff[S]] = Nil
 
 
 
@@ -1253,23 +1368,24 @@ trait TypedMapping[S, O] extends MappingSeal { self =>
 
 
 
-	override def buffs :Seq[Buff[S]] = Nil
-
-
-
-
-
-	def qualified(prefix :String) :Component[S] =
+	override def qualified(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
 		else prefixed(prefix + ".")
 
-	def prefixed(prefix :String) :Component[S] =
+	override def prefixed(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
-		else PrefixedMapping(prefix, this)
+		else PrefixedMapping[TypedMapping[S, O], S, O](prefix, this)
 
-	def renamed(name :String) :Component[S] =
+	override def renamed(name :String) :Component[S] =
 		if (sqlName.contains(name)) this
-		else RenamedMapping(name, this)
+		else RenamedMapping[TypedMapping[S, O], S, O](name, this)
+
+
+
+	override def inOption :Optional[this.type] = OptionMapping.singleton(this)
+
+	override def as[X](there :Subject =?> X, back :X =?> Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
+		MappedMapping[TypedMapping[S, O], S, X, O](this, there, back)
 
 }
 

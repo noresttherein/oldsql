@@ -18,11 +18,14 @@ import scala.reflect.ClassTag
   * annotated with a buff of a particular type and retrieve its information, if present.
   * See [[net.noresttherein.oldsql.schema.Buff.BuffType BuffType]] for more information.
   * @see [[net.noresttherein.oldsql.schema.Buff.FlagBuff FlagBuff]]
-  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuff ValuedBuff]]
+  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]
   * @see [[net.noresttherein.oldsql.schema.Buff.AuditBuff AuditBuff]]
   * @tparam T the value type of the annotated component.
   */
 trait Buff[T] {
+	//todo: cascade flag
+	//todo: contradictory buffs
+	//todo: dedicated buffs collection handling duplicates and implications
 
 	/** The type of this buff, i.e. the factory that created this instance. */
 	def buffType :BuffType
@@ -130,24 +133,24 @@ object Buff {
 	/** A factory for buffs marking that a given column/component can be omitted from the select clause.
 	  * It is still included by default and needs to be excluded explicitly. Created values carry a placeholder
 	  * value to assign to the annotated component on assembly. */
-	case object OptionalSelect extends GeneratedBuffType
+	case object OptionalSelect extends ComboValueBuffType
 
 	/** A factory for buffs marking that a given column/component is omitted by default from the select clause
 	  * and needs to be included explicitly. When not included, the value stored in the buff will be used
 	  * as the value for the annotated component. It implies `OptionalSelect` and `NoSelectByDefault`. */
-	case object ExplicitSelect extends ComboBuffType(OptionalSelect, NoSelectByDefault) with GeneratedBuffType
+	case object ExplicitSelect extends ComboValueBuffType(OptionalSelect, NoSelectByDefault)
 
 	/** A buff marking a column as non-selectable, and providing the value for the annotated component.
 	  * This can be used in particular for 'virtual' columns - components which take part in the mapping, but
 	  * aren't present in the database at all.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual]] */
-	case object ExtraSelect extends ComboBuffType(NoSelect) with GeneratedBuffType
+	case object ExtraSelect extends ComboValueBuffType(NoSelect)
 
 	/** A buff marking a component or column which does not exist in the database and will not be used as part
 	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,
 	  * the provided expression is used as its value. This can be useful during schema migrations, when a mapping
 	  * might need to cover several versions of the schema, or if it is reused for several similar tables. */
-	case object Virtual extends ComboBuffType(ExtraSelect, ReadOnly, NoQuery) with GeneratedBuffType
+	case object Virtual extends ComboValueBuffType(ExtraSelect, ReadOnly, NoQuery)
 
 
 
@@ -168,7 +171,7 @@ object Buff {
 	  * the value provided by the buff. It implies `NoSelect` and `NoQuery` and is used to artificially limit the number
 	  * of mapped entities.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped]] */
-	case object ExtraQuery extends ComboBuffType(NoSelect, NoQuery) with GeneratedBuffType
+	case object ExtraQuery extends ComboValueBuffType(NoSelect, NoQuery)
 
 	/** Marks that a column/component ''must'' be included as part of the where clause of any update statement. */
 	case object ForcedQuery extends FlagBuffType
@@ -185,8 +188,7 @@ object Buff {
 
 	/** Marks a column/component as having its value initialized by the expression provided by the buff
 	  * rather than the entity. Used particularly for 'created on' or 'created by' type of columns. */
-	case object ExtraInsert extends ComboBuffType(NoInsert) with GeneratedBuffType
-
+	case object ExtraInsert extends ComboValueBuffType(NoInsert)
 
 
 	/** A buff marking that a given column/component can be omitted from the update statement.
@@ -199,7 +201,7 @@ object Buff {
 
 	/** Marks a column/component as being updated with the value of the expression provided by the buff
 	  * rather than some property of the mapped entity. Useful for particularly for 'update timestamp' columns. */
-	case object ExtraUpdate extends ComboBuffType(NoUpdate) with GeneratedBuffType
+	case object ExtraUpdate extends ComboValueBuffType(NoUpdate)
 
 
 
@@ -211,7 +213,7 @@ object Buff {
 
 	/** Marks a column/component as having its value set by this buff rather than a property of the entity
 	  * at every write to the database. Implies `ReadOnly`, `ExtraInsert` and `ExtraUpdate`. */
-	case object ExtraWrite extends ComboBuffType(ReadOnly, ExtraInsert, ExtraUpdate) with GeneratedBuffType
+	case object ExtraWrite extends ComboValueBuffType(ReadOnly, ExtraInsert, ExtraUpdate)
 
 
 
@@ -221,7 +223,7 @@ object Buff {
 	  * of its rows. It implies both `ExtraQuery` and `ExtraWrite`, meaning that all queries against the last will
 	  * include the annotated column in the filter and all inserts and updates will set its value based on this buff.
 	  */
-	case object Unmapped extends ComboBuffType(ExtraQuery, ExtraWrite) with GeneratedBuffType
+	case object Unmapped extends ComboValueBuffType(ExtraQuery, ExtraWrite)
 
 
 
@@ -328,7 +330,7 @@ object Buff {
 	  * then also any extractor methods defined by the type `B` will pick up the data from buffs `A`.
 	  * This means that, for example, any `BuffType` can safely imply any instance of `FlagBuffType` and any additional
 	  * information carried by the buff being tested is ignored for the purpose of the check.
-	  * On the other hand, creating a `FlagBuffType` which implies `ValuedBuffType` would be an application error:
+	  * On the other hand, creating a `FlagBuffType` which implies `ValueBuffType` would be an application error:
 	  * while the valued type would recognize a buff created by the flag buff type in question in its
 	  * `enabled`/`disabled` methods, the `test` and `unapply` methods would yield `None`, as the buff does not conform
 	  * to the expected type. For the convenience of implementation, there are `ComboBuffType` and `ComboFlag`
@@ -518,28 +520,28 @@ object Buff {
 
 	/** A `Buff` which carries a value. These values are generally used instead of the the value carried
 	  * by an entity or read from the database, but the exact handling depends on the buff type.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  */
-	trait ValuedBuff[T] extends Buff[T] {
-		override def map[X](there :T => X) :ValuedBuff[X]
+	trait ValueBuff[T] extends Buff[T] {
+		override def map[X](there :T => X) :ValueBuff[X]
 
-		override def bimap[X](there :T => X, back :X => T) :ValuedBuff[X] = map(there)
+		override def bimap[X](there :T => X, back :X => T) :ValueBuff[X] = map(there)
 
 		def value :T
 
-		def buffType :ValuedBuffType
+		def buffType :ValueBuffType
 	}
 
 
 
-	object ValuedBuff {
+	object ValueBuff {
 		def unapply[T](buff :Buff[T]) :Option[T] = buff match {
-			case const :ValuedBuff[T] => Some(const.value)
+			case const :ValueBuff[T] => Some(const.value)
 			case _ => None
 		}
 
 		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
-			buffs collectFirst { case const :ValuedBuff[T] => const.value }
+			buffs collectFirst { case const :ValueBuff[T] => const.value }
 
 		@inline def unapply[T](column :MappingOf[T]) :Option[T] = unapply(column.buffs)
 	}
@@ -548,7 +550,7 @@ object Buff {
 
 	/** A `Buff` type which carries a value. These buff types are handled explicitly when creating and executing
 	  * individual SQL statements. Which statements are affected (and how the value is used) depends on which
-	  * of the `ValuedBuffType` instances are implied by the implementing class:
+	  * of the `ValueBuffType` instances are implied by the implementing class:
 	  *   - implying `ExtraSelect` means the annotated component is never included in the select header and the
 	  *     value provided by the buff is used instead;
 	  *   - implying `ExtraQuery` means that every select and update statement must include the annotated component
@@ -558,15 +560,15 @@ object Buff {
 	  *   - implying `ExtraUpdate` means that buff's value is used instead of any value carried by the entity
 	  *     when updating a row in the database.
 	  *  As always, extending classes can imply several of the above at the same time.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuff]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuff]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraSelect]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraQuery]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraInsert]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraUpdate]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraWrite]]
 	  */
-	trait ValuedBuffType extends DedicatedBuffType[ValuedBuff] {
-		protected[this] def classTag :ClassTag[_] = implicitly[ClassTag[ValuedBuff[Any]]]
+	trait ValueBuffType extends DedicatedBuffType[ValueBuff] {
+		protected[this] def classTag :ClassTag[_] = implicitly[ClassTag[ValueBuff[Any]]]
 
 		object Value {
 			@inline def unapply[T](buff :Buff[T]) :Option[T] = test(buff).map(_.value)
@@ -582,26 +584,29 @@ object Buff {
 
 
 
-	/** A `Buff` type without any instances, not applied to any components. */
-	case object AbstractValuedBuff extends ValuedBuffType {
-		override def test[T](buff :Buff[T]) :Option[ValuedBuff[T]] = None
-		override def test[T](buffs :Seq[Buff[T]]) :Option[ValuedBuff[T]] = None
+	/** A `Buff` type without any instances, not applied to any components. It is used in place a `ValueBuffType`
+	  * when no appropriate concrete implementation exists to render relevant code inactive, automatically fulfilling
+	  * a function normally performed by a `Option[ValueBuffType]`.
+	  */
+	case object AbstractValueBuff extends ValueBuffType {
+		override def test[T](buff :Buff[T]) :Option[ValueBuff[T]] = None
+		override def test[T](buffs :Seq[Buff[T]]) :Option[ValueBuff[T]] = None
 	}
 
 
 
 	/** A mapping buff which carries a constant value to be used instead of the value present in the entity or
 	  * the database, depending on the exact buff type.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType]]
 	  */
-	class ConstantBuff[T](val buffType :ConstantBuffType, val value :T) extends ValuedBuff[T] {
+	class ConstantBuff[T](val buffType :ConstantBuffType, val value :T) extends ValueBuff[T] {
 
 		override def map[X](there: T => X): ConstantBuff[X] = buffType(there(value))
 
 		override def cascade[X](there :T => X) :Option[ConstantBuff[X]] = Some(buffType(there(value)))
 
-		override def bimap[X](there :T => X, back :X => T) :ValuedBuff[X] = buffType(there(value))
+		override def bimap[X](there :T => X, back :X => T) :ValueBuff[X] = buffType(there(value))
 
 		override def equals(that: Any): Boolean = that match {
 			case self :AnyRef if self eq this => true
@@ -630,9 +635,9 @@ object Buff {
 	/** A base trait for factories of `Buff[T]` instances wrapping values of `T`.
 	  * By implying one of the predefined `ExtraSelect`, `ExtraQuery`, `ExtraInsert`, `ExtraUpdate` buff types,
 	  * extending classes specify when (with which statement types) these values should be used.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  */
-	trait ConstantBuffType extends ValuedBuffType {
+	trait ConstantBuffType extends ValueBuffType {
 		def apply[T](value :T) :ConstantBuff[T] = new ConstantBuff[T](this, value)
 	}
 
@@ -640,10 +645,10 @@ object Buff {
 
 	/** A buff which reevaluates encapsulated expression each time its `value` method is called.
 	  * This is similar to `ConstantBuff`, but the value is reevaluated with each call to `this.value`.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.GeneratedBuffType]]
 	  */
-	class GeneratedBuff[T](val buffType :GeneratedBuffType, generator: =>T) extends ValuedBuff[T] {
+	class GeneratedBuff[T](val buffType :GeneratedBuffType, generator: =>T) extends ValueBuff[T] {
 		def value :T = generator
 
 		override def map[X](there :T => X) :GeneratedBuff[X] = buffType(there(generator))
@@ -684,14 +689,29 @@ object Buff {
 	  * extending class. It is similar to `ConstantBuffType`, but the value provided by the buff is re-evaluated
 	  * at each access.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.GeneratedBuff]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ValuedBuffType]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType]]
 	  */
-	trait GeneratedBuffType extends ValuedBuffType {
+	trait GeneratedBuffType extends ValueBuffType {
 		/** Create a `Buff` which will reevaluate the given expression each time its `value` method is accessed. */
 		def apply[T](value: =>T) :GeneratedBuff[T] = new GeneratedBuff(this, value)
 	}
 
+
+
+	/** A general purpose base class for buff types carrying values, combining the `ComboBuffType`
+	  * with `GeneratedBuffType`, additionally providing a `ConstantBuffType` implying this instance as the
+	  * `const` property.
+	  */
+	class ComboValueBuffType(override val toString :String, implies :BuffType*)
+		extends ComboBuffType(implies :_*) with GeneratedBuffType
+	{ outer =>
+		def this(implies :BuffType*) = this(this.innerClassName, implies :_*)
+
+		val const :ConstantBuffType = new ComboValueBuffType(this) with ConstantBuffType {
+			override val toString :String = outer.toString + ".const"
+		}
+	}
 
 
 	/** A column/component `Buff` carrying a function `T=>T` which is used to modify the value read or written
@@ -755,14 +775,14 @@ object Buff {
 
 
 
-	/** A `ManagedBuff` is a combination of a `ValuedBuff` and `AuditBuff`, carrying both a by-name value
+	/** A `ManagedBuff` is a combination of a `ValueBuff` and `AuditBuff`, carrying both a by-name value
 	  * and inspection/scanning function. When each of these is used depends, as always, on the associated buff type.
 	  * This choice is made by implying one of the predefined 'audit' buff types: `SelectAudit`, `QueryAudit`,
 	  * `InsertAudit` and `UpdateAudit`.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuffType]]
 	  */
 	class ManagedBuff[T](override val buffType :ManagedBuffType, init: =>T, update :T => T)
-		extends AuditBuff[T](buffType, update) with ValuedBuff[T]
+		extends AuditBuff[T](buffType, update) with ValueBuff[T]
 	{
 		override def value :T = init
 
@@ -787,7 +807,7 @@ object Buff {
 
 
 
-	/** A `ManagedBuffType` is a combination of a `ValuedBuffType` and `AuditBuffType`, with the intention
+	/** A `ManagedBuffType` is a combination of a `ValueBuffType` and `AuditBuffType`, with the intention
 	  * of using one for some types of SQL statements and the other for other types. Most typically this means
 	  * using a generated value for insert and a modified value for update statements, but any combination
 	  * is possible as long as the sets of affected statements are disjoint. This selection is made, as with
@@ -795,7 +815,7 @@ object Buff {
 	  * `SelectAudit`, `QueryAudit`, `InsertAudit`, `UpdateAudit`.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuff]]
 	  */
-	trait ManagedBuffType extends ValuedBuffType with AuditBuffType with DedicatedBuffType[ManagedBuff] {
+	trait ManagedBuffType extends ValueBuffType with AuditBuffType with DedicatedBuffType[ManagedBuff] {
 		protected[this] override def classTag :ClassTag[_] = implicitly[ClassTag[ManagedBuff[Any]]]
 
 		override protected def apply[T](map :T => T) :AuditBuff[T] =
