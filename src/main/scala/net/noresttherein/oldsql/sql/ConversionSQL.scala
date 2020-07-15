@@ -24,7 +24,7 @@ trait ConversionSQL[-F <: FromClause, S, T] extends CompositeSQL[F, T] {
 
 	override def parts :Seq[SQLExpression[F, S]] = expr::Nil
 
-	override def readForm :SQLReadForm[T] = expr.readForm.mapNull(convert) //consider: NullValue?
+	override def readForm :SQLReadForm[T] = expr.readForm.nullMap(convert) //consider: NullValue?
 
 	override def freeValue :Option[T] = expr.freeValue.map(convert)
 
@@ -67,7 +67,7 @@ object ConversionSQL {
 
 		override def parts :Seq[ColumnSQL[F, T]] = expr::Nil
 
-		override def readForm :ColumnReadForm[U] = expr.readForm.mapNull(convert)
+		override def readForm :ColumnReadForm[U] = expr.readForm.nullMap(convert)
 
 		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[U] = matcher.conversion(this)
 	}

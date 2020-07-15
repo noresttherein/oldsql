@@ -1,13 +1,13 @@
 package net.noresttherein.oldsql.schema
 
-import java.sql.ResultSet
+import java.sql.{ResultSet, Types}
 
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
-import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
+import net.noresttherein.oldsql.schema.ColumnReadForm.{FallbackColumnReadForm, FlatMappedColumnReadForm, MappedColumnReadForm}
 import net.noresttherein.oldsql.schema.ScalaReadForms.OptionReadForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm, FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, NullReadForm, OptionMappedSQLReadForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm, FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, NullReadForm}
 
 
 
@@ -47,36 +47,46 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
 	def opt(column :String)(res :ResultSet) :Option[T] = opt(res.findColumn(column))(res)
 
 
-	override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] =
-		ColumnReadForm.map(fun)(this, NullValue[X])
+	override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] = {
+		val nullValue = NullValue[X] match {
+			case null => nulls.map(fun)
+			case nulls => nulls
+		}
+		new MappedSQLReadForm[T, X](fun)(this, nullValue) with MappedColumnReadForm[T, X]
+	}
 
 	override def map[X](fun :T => X, nullValue :X) :ColumnReadForm[X] = map(fun)(NullValue(nullValue))
 
-	override def mapNull[X](fun :T => X) :ColumnReadForm[X] = map(fun)(nulls.map(fun))
+	override def nullMap[X](fun :T => X) :ColumnReadForm[X] = map(fun)(nulls.map(fun))
 
 
 
-	override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] =
-		ColumnReadForm.flatMap(fun)(this, NullValue[X])
+	override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] = {
+		val nullValue = NullValue[X] match {
+			case null => nulls.flatMap(fun)
+			case nulls => nulls
+		}
+		new FlatMappedSQLReadForm[T, X](fun)(this, nullValue) with FlatMappedColumnReadForm[T, X]
+	}
 
 	override def flatMap[X](fun :T => Option[X], nullValue :X) :ColumnReadForm[X] = flatMap(fun)(NullValue(nullValue))
 
-	override def flatMapNull[X](fun :T => Option[X]) :ColumnReadForm[X] = flatMap(fun)(nulls.flatMap(fun))
+	override def nullFlatMap[X](fun :T => Option[X]) :ColumnReadForm[X] = flatMap(fun)(nulls.flatMap(fun))
 
 
 
-	override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
-		ColumnReadForm.optMap(fun)(this, NullValue[X])
-
-	override def optMap[X](fun :Option[T] => Option[X], nullValue :X) :SQLReadForm[X] = optMap(fun)(NullValue(nullValue))
-
-	override def andThen[X](extractor :T =?> X) :SQLReadForm[X] = extractor match {
-		case _ :IdentityExtractor[_] => this.asInstanceOf[SQLReadForm[X]]
-		case const :ConstantExtractor[_, _] => ColumnReadForm.const(sqlType, const.constant.asInstanceOf[X])
-		case req :RequisiteExtractor[_, _] => mapNull(req.getter.asInstanceOf[T => X])
-		case _ :EmptyExtractor[_, _] => ColumnReadForm.none(sqlType)
-		case _ => flatMapNull(extractor.optional)
+	override def to[X :NullValue](f :T =?> X) :ColumnReadForm[X] = f match {
+		case _ :EmptyExtractor[_, _] => ColumnReadForm.nulls(sqlType)
+		case _ :OptionalExtractor[_, _] => flatMap(f.optional)
+		case _ :IdentityExtractor[_] => this.asInstanceOf[ColumnReadForm[X]]
+		case const :ConstantExtractor[_, X @unchecked] => ColumnReadForm.const(sqlType, const.constant)
+		case _ :RequisiteExtractor[_, _] => map(f.requisite.get)
+		case _ => flatMap(f.optional)
 	}
+
+	override def to[X](f :T =?> X, nullValue :X) :ColumnReadForm[X] = to(f)(NullValue(nullValue))
+
+	override def nullTo[X](f :T =?> X) :ColumnReadForm[X] = to(f)(nulls.extract(f))
 
 
 
@@ -123,6 +133,22 @@ object ColumnReadForm {
 
 	/** Summons an implicit `ColumnReadForm[T]`. */
 	def apply[T :ColumnReadForm] :ColumnReadForm[T] = implicitly[ColumnReadForm[T]]
+
+
+
+	/** Creates a new `ColumnReadForm` using the given function to read the value from the result set.
+	  * If the column value is null as defined by `ResultSet.wasNull`, the implicitly available `NullValue[T]`
+	  * will be used as the result rather than the return value of the function.
+	  * @param columnType JDBC code for the SQL type of the read column
+	  * @param reader a function taking an SQL `ResultSet`, a column index, and reads the column as a value of `T`.
+	  */
+	def apply[T :NullValue](columnType :JDBCSQLType)(reader :(ResultSet, Int) => T) :ColumnReadForm[T] =
+		new ColumnReadForm[T] {
+			protected override def read(position :Int)(res :ResultSet) = reader(res, position)
+			override val nulls = NullValue[T]
+			override def nullValue = nulls.value
+			override val sqlType = columnType
+		}
 
 
 
@@ -185,6 +211,15 @@ object ColumnReadForm {
 		evalopt(jdbcType, Some(value))(NullValue.eval(value))
 
 
+	/** A form always throwing the given exception. This functions the same as `eval`, but can more clearly define intent. */
+	def error(raise : => Nothing, jdbcType :JDBCSQLType = JDBCSQLType.fromInt(Types.OTHER)) :ColumnReadForm[Nothing] =
+		eval(jdbcType, raise)
+
+	/** A  form which throws an `UnsupportedOperationException` with the given message with every read attempt. */
+	def unsupported(message :String, jdbcType :JDBCSQLType = JDBCSQLType.fromInt(Types.OTHER)) :ColumnReadForm[Nothing] =
+		error(throw new UnsupportedOperationException(message), jdbcType)
+
+
 
 	/** Creates a proxy form which will delegate all methods to another form, returned by the given by-name argument.
 	  * The expression is not evaluated until the form is actually needed. All mapping methods map this instance
@@ -197,18 +232,23 @@ object ColumnReadForm {
 
 
 
+	def apply[S, T](map :S =?> T)(implicit source :ColumnReadForm[S], nulls :NullValue[T] = null) :ColumnReadForm[T] =
+		source.to(map)
+
+	def apply[S :ColumnReadForm, T](map :S =?> T, nullValue: => T) :ColumnReadForm[T] =
+		apply(map)(ColumnReadForm[S], NullValue.eval(nullValue))
+
 	def map[S, T](map :S => T)(implicit source :ColumnReadForm[S], nulls :NullValue[T] = null) :ColumnReadForm[T] =
-		new MappedSQLReadForm[S, T](map) with MappedColumnReadForm[S, T]
+		source.map(map)
 
-	def flatMap[S :ColumnReadForm, T :NullValue](map :S => Option[T]) :ColumnReadForm[T] =
-		new FlatMappedSQLReadForm[S, T](map) with FlatMappedColumnReadForm[S, T]
+	def map[S :ColumnReadForm, T](map :S => T, nullValue: => T) :ColumnReadForm[T] =
+		this.map(map)(ColumnReadForm[S], NullValue.eval(nullValue))
 
-	def optMap[S :ColumnReadForm, T :NullValue](map :Option[S] => Option[T]) :ColumnReadForm[T] =
-		new OptionMappedSQLReadForm[S, T](map) with OptionMappedColumnReadForm[S, T]
+	def flatMap[S, T](map :S => Option[T])(implicit source :ColumnReadForm[S], nulls :NullValue[T] = null) :ColumnReadForm[T] =
+		source.flatMap(map)
 
-	def optMap[S :ColumnReadForm, T](map :Option[S] =>Option[T], nullValue : =>T) :ColumnReadForm[T] =
-		optMap(map)(implicitly[ColumnReadForm[S]], NullValue.eval(nullValue))
-
+	def flatMap[S :ColumnReadForm, T](map :S => Option[T], nullValue: => T) :ColumnReadForm[T] =
+		flatMap(map)(ColumnReadForm[S], NullValue.eval(nullValue))
 
 
 
@@ -216,7 +256,7 @@ object ColumnReadForm {
 		new OptionColumnReadForm[T] { override val form = ColumnReadForm[T] }
 
 	implicit def SomeColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Some[T]] =
-		ColumnReadForm[T].mapNull(Some.apply)
+		ColumnReadForm[T].nullMap(Some.apply)
 
 
 
@@ -238,10 +278,6 @@ object ColumnReadForm {
 			if (isInitialized) form.flatMap(fun)
 			else Lazy(form.flatMap(fun))
 
-		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
-			if (isInitialized) form.optMap(fun)
-			else Lazy(form.optMap(fun))
-
 		override def toOpt :ColumnReadForm[Option[T]] = if (isInitialized) form.toOpt else Lazy(form.toOpt)
 
 		override def orElse[S >: T](fallback :ColumnReadForm[S]) :ColumnReadForm[S] =
@@ -258,40 +294,6 @@ object ColumnReadForm {
 
 
 
-
-
-
-	private[schema] trait OptionMappedColumnReadForm[S, +T]
-		extends OptionMappedSQLReadForm[S, T] with SQLReadForm[T] with ColumnReadForm[T]
-	{
-		private def form :ColumnReadForm[S] = source.asInstanceOf[ColumnReadForm[S]]
-
-		override def sqlType: JDBCSQLType = form.sqlType
-
-		override def read(position :Int)(res :ResultSet) :T = {
-			val s = form.friendRead(position)(res)
-			if (res.wasNull)
-				null.asInstanceOf[T] //safe cast, because erased and won't be passed out of apply/opt
-			else
-				map(Some(s)) match {
-					case Some(x) => x
-					case _ => null.asInstanceOf[T]
-				}
-		}
-
-		override def apply(column: Int)(res: ResultSet): T = super[SQLReadForm].apply(column)(res)
-
-		override def opt(position: Int)(res: ResultSet): Option[T] = map(source.opt(position)(res))
-
-		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] = form.optMap(map(_).map(fun))
-
-		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] = form.optMap(map(_).flatMap(fun))
-
-		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
-			form.optMap((map :Option[S] => Option[T]) andThen fun)
-
-		override def toString :String = source.toString + "=>"
-	}
 
 
 
@@ -317,9 +319,6 @@ object ColumnReadForm {
 
 		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] = form.flatMap(map(_).flatMap(fun))
 
-		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
-			form.flatMap((map :S => Option[T]) andThen fun)
-
 		override def toString :String = source.toString + "=>"
 	}
 
@@ -341,9 +340,6 @@ object ColumnReadForm {
 
 		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] =
 			form.flatMap((map :S => T) andThen fun)
-
-		override def optMap[X :NullValue](fun :Option[T] => Option[X]) :ColumnReadForm[X] =
-			form.flatMap((s :S) => fun(Option(map(s))))
 
 		override def toString :String = source.toString + "=>"
 	}

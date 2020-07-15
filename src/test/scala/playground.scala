@@ -56,6 +56,7 @@ object playground extends App {
 			Human(~"gun", ~"backup", ~"second")
 	}
 
+	println("projectHumans")
 	val projectHumans = OriginProjection[Humans["human"]]
 	implicitly[projectHumans.WithOrigin["hummus"] =:= Humans["hummus"]]
 

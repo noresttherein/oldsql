@@ -17,7 +17,7 @@ trait ScalaReadForms {
 		new OptionReadForm[T] { override val form = SQLReadForm[T] }
 
 	implicit def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
-		SQLReadForm[T].mapNull(Some.apply)
+		SQLReadForm[T].nullMap(Some.apply)
 
 	
 	

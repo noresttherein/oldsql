@@ -84,7 +84,7 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
 		val form = backer.selectForm(if (components.contains(backer)) backer.selectable else components)
 		if (nulls == null)
-			if (mapFun == null) form.flatMapNull(map.optional) else form.mapNull(mapFun)
+			if (mapFun == null) form.nullFlatMap(map.optional) else form.nullMap(mapFun)
 		else
 			if (mapFun == null) form.flatMap(map.optional) else form.map(mapFun)
 	}
@@ -107,8 +107,8 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 
 	override val selectForm :SQLReadForm[S] =
 		if (nulls == null)
-			if (mapFun == null) backer.selectForm.flatMapNull(map.optional)
-			else backer.selectForm.mapNull(mapFun)
+			if (mapFun == null) backer.selectForm.nullFlatMap(map.optional)
+			else backer.selectForm.nullMap(mapFun)
 		else
 	        if (mapFun == null) backer.selectForm.flatMap(map.optional)
 			else backer.selectForm.map(mapFun)

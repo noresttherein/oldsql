@@ -708,7 +708,7 @@ object Buff {
 	{ outer =>
 		def this(implies :BuffType*) = this(this.innerClassName, implies :_*)
 
-		val const :ConstantBuffType = new ComboValueBuffType(this) with ConstantBuffType {
+		val const :ConstantBuffType = new ComboBuffType(this) with ConstantBuffType {
 			override val toString :String = outer.toString + ".const"
 		}
 	}

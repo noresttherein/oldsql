@@ -12,6 +12,7 @@ import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 
 
 
+/** Base trait for all forms used solely to bring into scope implicit declarations from its companion object. */
 trait ScalaForms
 
 
@@ -54,7 +55,7 @@ object ScalaForms {
 
 	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
 
-	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].bimapNull(Some.apply)(_.get)
+	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].nullBimap(Some.apply)(_.get)
 
 
 

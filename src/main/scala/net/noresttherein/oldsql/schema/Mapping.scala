@@ -818,7 +818,7 @@ object Mapping extends LowPriorityMappingImplicits {
 		  * replaces every reference to `A` with the type `B`. This in particular means that all components and extracts
 		  * returned by the mapping after conversion define their `Origin` type as `B`, consistently with the converted
 		  * mapping.
-		  */
+		  */ //fixme: this should preserve the subject type
 		type WithOrigin[O] <: MappingAt[O]
 
 		/** Casts the mapping of type `M` to a type where all references to its current origin type are replaced

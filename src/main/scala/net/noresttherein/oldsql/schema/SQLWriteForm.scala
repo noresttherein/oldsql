@@ -9,12 +9,11 @@ import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedWriteForm, Tuple2WriteForm}
-import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, CombinedWriteForm, FlatMappedSQLWriteForm, GenericChainWriteForm, MappedSQLWriteForm}
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.schema.ScalaForms.NothingForm
-
+//implicits
+import net.noresttherein.oldsql.slang._
 
 
 
@@ -69,11 +68,6 @@ trait SQLWriteForm[-T] extends SQLForms {
 
 
 
-//	def literal(value :Option[T]) :String = value match {
-//		case Some(x) => literal(x)
-//		case _ => nullLiteral
-//	}
-
 	/** The string representation of the given value of `T` as an SQL literal, ready to be embedded as a constant part
 	  * of an SQL statement. */
 	def literal(value :T) :String //todo: define whether it should handle null values and, if so, provide some ease-of-life support.
@@ -119,14 +113,41 @@ trait SQLWriteForm[-T] extends SQLForms {
 	  * The arguments are not tested for `null` values before being passed to `fun`, which should handle `null`s
 	  * gracefully if they are considered a valid value for the adapted form's use case.
 	  */
-	def unmap[X](fun :X => T) :SQLWriteForm[X] = SQLWriteForm.map(fun)(this)
+	def unmap[X](fun :X => T) :SQLWriteForm[X] =
+		new MappedSQLWriteForm[T, X] {
+			override val source = SQLWriteForm.this
+			override val unmap = fun
+		}
+
 
 	/** Create a write form for `X` which will try to map received values to `T` and pass them to this form.
 	  * If the given function yields `None`, this form's `setNull` method is used instead of `set`.
 	  * The arguments are not tested for `null` values before being passed to `fun`, which should handle `null`s
 	  * gracefully if they are considered a valid value for the adapted form's use case.
 	  */
-	def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X]  = SQLWriteForm.flatMap(fun)(this)
+	def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] =
+		new FlatMappedSQLWriteForm[T, X] {
+			override val source = SQLWriteForm.this
+			override val unmap = fun
+		}
+
+
+
+	/** Creates a write form for `X` which will use this form after extracting a value from `X` with the given
+	  * extractor. This is equivalent to `unmap` or `flatUnmap`, depending on whether the extractor is
+	  * a `RequisiteExtractor` instance. In corner cases, such as a constant extractor, a special `SQLWriteForm`
+	  * instance may be returned.
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.unmap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.flatUnmap]]
+	  */
+	def from[X](extractor :X =?> T) :SQLWriteForm[X] = extractor match {
+		case _ :IdentityExtractor[_] => this.asInstanceOf[SQLWriteForm[X]]
+		case const :ConstantExtractor[_, _] => SQLWriteForm.const(const.constant.asInstanceOf[T])(this)
+		case req :RequisiteExtractor[_, _] => unmap(req.getter.asInstanceOf[X => T])
+		case _ :EmptyExtractor[_, _] => SQLWriteForm.none(this)
+		case _ => flatUnmap(extractor.optional)
+	}
+
 
 
 	/** Creates a write form for `X` which will use this form after extracting a value from `X` with the given
@@ -153,7 +174,7 @@ trait SQLWriteForm[-T] extends SQLForms {
 	/** Combine this form with another form, to create a form for the `(T, O)` pair. The parameters for the second form
 	  * are expected to immediately follow this form's statement parameters.
 	  */
-	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = Tuple2WriteForm(this, other)
+	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = SQLWriteForm.Tuple2WriteForm(this, other)
 
 	/** Creates a write form which will first write any given value with this form, and then with the argument form,
 	  * starting at statement parameter position right after the position of last written parameter by this form.
@@ -182,10 +203,50 @@ trait SQLWriteForm[-T] extends SQLForms {
 
 
 
-object SQLWriteForm extends ScalaWriteForms {
+sealed trait SQLWriteFormLevel2Implicits {
+	implicit def ChainWriteForm[I <: Chain, L](implicit t :SQLWriteForm[I], h :SQLWriteForm[L]) :SQLWriteForm[I ~ L] =
+		new ChainWriteForm(t, h)
+}
+
+
+
+sealed trait SQLWriteFormLevel1Implicits extends SQLWriteFormLevel2Implicits {
+	implicit def ChainMapWriteForm[I <: ChainMap :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I &~ (K, V)] =
+		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_._2), SQLWriteForm[V], "&~")
+}
+
+
+
+
+
+
+object SQLWriteForm extends ScalaWriteForms with SQLWriteFormLevel1Implicits {
 
 	/** Summon an implicitly available `SQLWriteForm[T]`. */
 	def apply[T :SQLWriteForm] :SQLWriteForm[T] = implicitly[SQLWriteForm[T]]
+
+
+
+	/** Creates a non-literal `SQLWriteForm` using the given function to set statement parameters based on a value of `T`.
+	  * An implicit `NullValue[T]` is used as the written value when the `T` argument is null.
+	  * @param columns the number of set parameters
+	  * @param write a function taking a statement, index of the first parameter to set and an object from which
+	  *              the values of the parameters can be derived, and sets the consecutive `columns` number
+	  *              of parameters on the statement.
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.NonLiteralWriteForm]]
+	  */
+	def apply[T :NullValue](columns :Int)(write :(PreparedStatement, Int, T) => Unit) :SQLWriteForm[T] =
+		new NonLiteralWriteForm[T] {
+			override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
+				write(statement, position, value)
+
+			override def setNull(position :Int)(statement :PreparedStatement) :Unit =
+				write(statement, position, NullValue.value)
+
+			override def writtenColumns = columns
+
+			override def toString = "NonLiteralWriteForm@" + System.identityHashCode(this)
+		}
 
 
 
@@ -233,14 +294,14 @@ object SQLWriteForm extends ScalaWriteForms {
 	def eval[T :SQLWriteForm](value: => T) :SQLWriteForm[Any] =
 		new EvalWriteForm[T](Some(value))
 
+
 	/** A write form which will throw the given exception at every write attempt. */
-	def error(raise: => Nothing) :SQLWriteForm[Any] =
-		new EvalWriteForm[Nothing](raise)(NothingForm)
+	def error(raise: => Nothing, columns :Int = 0) :SQLWriteForm[Any] =
+		new ErrorWriteForm(columns, raise)
 
 	/** A write form which will throw an `UnsupportedOperationException` with the given message at every write attempt. */
-	def unsupported(message :String) :SQLWriteForm[Any] =
-		error(throw new UnsupportedOperationException(message))
-
+	def unsupported(message :String, columns :Int = 0) :SQLWriteForm[Any] =
+		error(throw new UnsupportedOperationException(message), columns)
 
 
 
@@ -255,28 +316,15 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
+	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#from from]] on the implicit form for `S`. */
+	def apply[S, T](map :T =?> S)(implicit writer :SQLWriteForm[S]) :SQLWriteForm[T] =
+		writer.from(map)
+
 	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#flatUnmap flatUnmap]] on the implicit form for `S`. */
-	def flatMap[S :SQLWriteForm, T](map :T => Option[S]) :SQLWriteForm[T] =
-		implicitly[SQLWriteForm[S]] match {
-			case a :ColumnWriteForm[_] =>
-				ColumnWriteForm.flatMap(map)(a.asInstanceOf[ColumnWriteForm[S]])
-			case f =>
-				new FlatMappedSQLWriteForm[S, T] {
-					override val source = f
-					override val unmap = map
-				}
-		}
+	def flatMap[S :SQLWriteForm, T](map :T => Option[S]) :SQLWriteForm[T] = SQLWriteForm[S].flatUnmap(map)
 
 	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#unmap unmap]] on the implicit form for `S`. */
-	def map[S :SQLWriteForm, T](map :T => S) :SQLWriteForm[T] = SQLWriteForm[S] match {
-		case a :ColumnWriteForm[_] =>
-			ColumnWriteForm.map(map)(a.asInstanceOf[ColumnWriteForm[S]])
-		case f =>
-			new MappedSQLWriteForm[S, T] {
-				override val source = f
-				override val unmap = map
-			}
-	}
+	def map[S :SQLWriteForm, T](map :T => S) :SQLWriteForm[T] = SQLWriteForm[S].unmap(map)
 
 
 
@@ -300,29 +348,21 @@ object SQLWriteForm extends ScalaWriteForms {
 		override def hashCode :Int = getClass.hashCode
 	}
 
-	implicit val nothing :SQLWriteForm[Nothing] = ScalaForms.NothingForm
 
 
 
 
 
-	//fixme: implicit conflicts for Chain subclasses (and Nothing)
 	/** An implicit write form for empty chains which writes nothing (has `writtenColumns` equal zero).
 	  * Used as the terminator of write forms for various `Chain` subclasses.
 	  */
 	implicit val EmptyChainWriteForm :SQLWriteForm[@~] = empty
 
-	implicit def ChainWriteForm[I <: Chain, L](implicit t :SQLWriteForm[I], h :SQLWriteForm[L]) :SQLWriteForm[I ~ L] =
-		new ChainWriteForm(t, h)
-
 	implicit def LiteralIndexWriteForm[I <: LiteralIndex :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I |~ (K :~ V)] =
-		new LiteralIndexWriteForm(SQLWriteForm[I], SQLWriteForm[V])
-
-	implicit def ChainMapWriteForm[I <: ChainMap :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I &~ (K, V)] =
-		new ChainMapWriteForm(SQLWriteForm[I], SQLWriteForm[V])
+		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_.value), SQLWriteForm[V], "|~")
 
 	implicit def RecordWriteForm[I <: Record :SQLWriteForm, K <: String with Singleton, V :SQLWriteForm] :SQLWriteForm[I |# (K, V)] =
-		new RecordWriteForm(SQLWriteForm[I], SQLWriteForm[V])
+		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_._2), SQLWriteForm[V], "|#")
 
 
 
@@ -365,6 +405,9 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
+	/** A mix-in trait for write forms of values which can't appear as literals in an SQL statement.
+	  * Throws an `UnsupportedOperationException` from all literal-related methods.
+	  */
 	trait NonLiteralWriteForm[-T] extends SQLWriteForm[T] {
 		override def literal(value: T): String =
 			throw new UnsupportedOperationException(toString + ".literal")
@@ -505,7 +548,22 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-	trait FlatMappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
+	private[schema] class ErrorWriteForm[T](columns :Int, error: => Nothing)
+		extends SQLWriteForm[T]
+	{
+		override def setNull(position :Int)(statement :PreparedStatement) :Unit = error
+		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit = error
+		override def literal(value :T) :String = error
+		override def nullLiteral :String = error
+		override def inlineLiteral(value :T) :String = error
+		override def inlineNullLiteral :String = error
+		override def writtenColumns = columns
+		override def toString = "ERROR"
+	}
+
+
+
+	private[schema] trait FlatMappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
 		val source :SQLWriteForm[S]
 		val unmap :T => Option[S]
 
@@ -543,7 +601,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-	trait MappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
+	private[schema] trait MappedSQLWriteForm[S, -T] extends SQLWriteForm[T] {
 		protected val source :SQLWriteForm[S]
 		protected val unmap :T => S
 
@@ -573,7 +631,7 @@ object SQLWriteForm extends ScalaWriteForms {
 	  * implementation which invokes `setNull` on all backing forms, appropriately increasing the offset of the first
 	  * written parameter.
 	  */
-	trait CompositeWriteForm[-T] extends SQLWriteForm[T] {
+	private[schema] trait CompositeWriteForm[-T] extends SQLWriteForm[T] {
 		protected def forms :Seq[SQLWriteForm[_]]
 
 		def writtenColumns :Int = (0 /: forms)(_ + _.writtenColumns)
@@ -597,7 +655,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-	trait ProxyWriteForm[-T] extends SQLWriteForm[T] {
+	private[schema] trait ProxyWriteForm[-T] extends SQLWriteForm[T] {
 		override def writtenColumns: Int = form.writtenColumns
 
 		protected def form :SQLWriteForm[T]
@@ -623,7 +681,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 		override def hashCode :Int = form.hashCode
 
-		override def toString :String = "~"+form
+		override def toString :String = "~" + form
 	}
 
 
@@ -763,7 +821,9 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 
-	private[schema] trait GenericChainWriteForm[C[+A <: I, +B <: L] <: A ~ B, -I <: Chain, -L] extends SQLWriteForm[C[I, L]] {
+	private[schema] trait AbstractChainWriteForm[C[+A <: I, +B <: L] <: A ~ B, -I <: Chain, -L]
+		extends SQLWriteForm[C[I, L]]
+	{
 		protected val init :SQLWriteForm[I]
 		protected val last :SQLWriteForm[L]
 
@@ -787,13 +847,13 @@ object SQLWriteForm extends ScalaWriteForms {
 		override def literal(value :I C L, inline :Boolean) :String = {
 			def rec(chain :Chain, form :SQLWriteForm[_], res :StringBuilder = new StringBuilder) :StringBuilder =
 				(chain, form) match {
-					case (t ~ h, f :GenericChainWriteForm[_, _, _]) =>
+					case (t ~ h, f :AbstractChainWriteForm[_, _, _]) =>
 						rec(t, f.init, res) ++= ", "
 						if (f.last.isInstanceOf[ChainWriteForm[_, _]])
 							res ++= "(" ++= f.last.asInstanceOf[SQLWriteForm[Any]].literal(h) ++= ")"
 						else
 							res ++= f.last.asInstanceOf[SQLWriteForm[Any]].literal(h)
-					case (null, f :GenericChainWriteForm[_, _, _]) =>
+					case (null, f :AbstractChainWriteForm[_, _, _]) =>
 						rec(null, f.init, res) ++= ", "
 					case _ =>
 						res
@@ -812,7 +872,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 		override def equals(that :Any) :Boolean = that match {
-			case chain :GenericChainWriteForm[_, _, _] =>
+			case chain :AbstractChainWriteForm[_, _, _] =>
 				(chain eq this) || (chain canEqual this) && chain.last == last && chain.init == init
 			case _ => false
 		}
@@ -821,7 +881,7 @@ object SQLWriteForm extends ScalaWriteForms {
 
 		override def toString :String =  {
 			def rec(form :SQLWriteForm[_], res :StringBuilder = new StringBuilder) :StringBuilder = form match {
-				case chain :GenericChainWriteForm[_, _, _] =>
+				case chain :AbstractChainWriteForm[_, _, _] =>
 					rec(chain.init, res) ++= symbol
 					chain.last match {
 						case _ :ChainWriteForm[_, _] => rec(chain.last, res ++= "(") ++= ")"
@@ -839,61 +899,27 @@ object SQLWriteForm extends ScalaWriteForms {
 
 
 	private[schema] class ChainWriteForm[-I <: Chain, -L]
-	                                    (protected val init :SQLWriteForm[I], protected val last :SQLWriteForm[L])
-		extends GenericChainWriteForm[~, I, L]
+	                      (protected override val init :SQLWriteForm[I], protected override val last :SQLWriteForm[L])
+		extends AbstractChainWriteForm[~, I, L]
 	{
 		override protected def symbol :String = "~"
 	}
 
 
 
-	private[schema] class LiteralIndexWriteForm[-I <: LiteralIndex, -K <: Singleton, -V]
-	                                           (protected val init :SQLWriteForm[I], protected val value :SQLWriteForm[V])
-		extends GenericChainWriteForm[|~, I, K :~ V]
+	private[schema] class GenericChainWriteForm[C[+A <: I, +B <: L] <: A ~ B, -I <: Chain, -L, -V]
+	                      (protected override val init :SQLWriteForm[I], protected override val last :SQLWriteForm[L],
+	                       protected val value :SQLWriteForm[V], protected override val symbol :String)
+		extends AbstractChainWriteForm[C, I, L]
 	{
-		override protected val last :SQLWriteForm[K :~ V] = value.unmap(_.value)
-
 		override def equals(that :Any) :Boolean = that match {
-			case other :LiteralIndexWriteForm[_, _, _] =>
-				(other eq this) || (other canEqual this) && init == other.init && value == other.value
+			case self :AnyRef if self eq this => true
+			case chain :GenericChainWriteForm[_, _, _, _] if chain canEqual this =>
+				chain.init == init && chain.value == value && chain.symbol == symbol
 			case _ => false
 		}
 
-		override protected def symbol :String = "|~"
-	}
-
-
-
-	private[schema] class ChainMapWriteForm[-I <: ChainMap, -K <: Singleton, -V]
-	                                       (protected val init :SQLWriteForm[I], protected val value :SQLWriteForm[V])
-		extends GenericChainWriteForm[&~, I, (K, V)]
-	{
-		override protected val last :SQLWriteForm[(K, V)] = value.unmap(_._2)
-
-		override def equals(that :Any) :Boolean = that match {
-			case other :ChainMapWriteForm[_, _, _] =>
-				(other eq this) || (other canEqual this) && init == other.init && value == other.value
-			case _ => false
-		}
-
-		override protected def symbol :String = "&~"
-	}
-
-
-
-	private[schema] class RecordWriteForm[-I <: Record, -K <: String with Singleton, -V]
-	                                     (protected val init :SQLWriteForm[I], protected val value :SQLWriteForm[V])
-		extends GenericChainWriteForm[|#, I, (K, V)]
-	{
-		override protected val last :SQLWriteForm[(K, V)] = value.unmap(_._2)
-
-		override def equals(that :Any) :Boolean = that match {
-			case other :RecordWriteForm[_, _, _] =>
-				(other eq this) || (other canEqual this) && init == other.init && value == other.value
-			case _ => false
-		}
-
-		override protected def symbol :String = "|#"
+		override def hashCode :Int = (init.hashCode * 31 + value.hashCode) * 31 + symbol.hashCode
 	}
 
 

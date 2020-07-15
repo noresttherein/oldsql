@@ -4,7 +4,9 @@ import java.sql.ResultSet
 
 import scala.reflect.ClassTag
 
-import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor}
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.schema.ColumnForm.{FlatMappedColumnForm, JDBCSQLType, MappedColumnForm}
 import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm, OptionColumnReadForm}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.{LazyColumnWriteForm, OptionColumnWriteForm}
 import net.noresttherein.oldsql.schema.ScalaForms.OptionForm
@@ -30,33 +32,48 @@ trait SuperColumnForm {
 
 trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteForm[T] {
 
-	override def bimap[X :NullValue](map :T => X)(unmap :X => T) :ColumnForm[X] = NullValue[X] match {
-		case null =>
-			ColumnForm.map[T, X](map)(unmap)(this, nulls.map(map))
-		case nulls =>
-			ColumnForm.map[T, X](map)(unmap)(this, nulls)
-	}
+	override def bimap[X :NullValue](map :T => X)(unmap :X => T) :ColumnForm[X] =
+		new MappedColumnForm[T, X](map, unmap)(this, NullValue[X] match {
+			case null => nulls.map(map)
+			case nulls => nulls
+		})
 
 
 	override def bimap[X](map :T => X, nullValue :X)(unmap :X => T) :ColumnForm[X] =
-		ColumnForm.map(map)(unmap)(this, NullValue(nullValue))
+		bimap(map)(unmap)(NullValue(nullValue))
 
-	override def bimapNull[X](map :T => X)(unmap :X => T) :ColumnForm[X] =
-		ColumnForm.map(map)(unmap)(this, nulls.map(map))
+	override def nullBimap[X](map :T => X)(unmap :X => T) :ColumnForm[X] =
+		bimap(map)(unmap)(nulls.map(map))
 
 
-	override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] = NullValue[X] match {
-		case null =>
-			ColumnForm.flatMap[T, X](map)(unmap)(this, nulls.flatMap(map))
-		case _ =>
-			ColumnForm.flatMap(map)(unmap)(this, NullValue[X])
-	}
+	override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
+		new FlatMappedColumnForm[T, X](map, unmap)(this, NullValue[X] match {
+			case null => nulls.flatMap(map)
+			case nulls => nulls
+		})
+
 
 	override def biflatMap[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :ColumnForm[X] =
-		ColumnForm.flatMap(map)(unmap)(this, NullValue(nullValue))
+		biflatMap(map)(unmap)(NullValue(nullValue))
 
-	override def biflatMapNull[X](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
-		ColumnForm.flatMap(map)(unmap)(this, nulls.flatMap(map))
+	override def nullBiflatMap[X](map :T => Option[X])(unmap :X => Option[T]) :ColumnForm[X] =
+		biflatMap(map)(unmap)(nulls.flatMap(map))
+
+
+	override def as[X :NullValue](map :T =?> X)(unmap :X =?> T) :ColumnForm[X] = (map, unmap) match {
+		case (_ :IdentityExtractor[_], _ :IdentityExtractor[_]) => this.asInstanceOf[ColumnForm[X]]
+		case (Extractor.Requisite(there), Extractor.Requisite(back)) => bimap(there)(back)
+		case _ => biflatMap(map.optional)(unmap.optional)
+//		ColumnForm.combine(extract(map), extracted(unmap))
+	}
+
+
+	override def as[X](map :T =?> X, nullValue :X)(unmap :X =?> T) :ColumnForm[X] =
+		as(map)(unmap)(NullValue(nullValue))
+
+	override def nullAs[X](map :T =?> X)(unmap :X =?> T) :ColumnForm[X] =
+		as(map)(unmap)(nulls.extract(map))
+
 
 	override def toOpt :ColumnForm[Option[T]] = ColumnForm.OptionColumnForm(this)
 
@@ -154,12 +171,18 @@ object ColumnForm {
 
 
 	/** Creates a `ColumnForm[T]` based on implicit `ColumnForm[S]` and, optionally, `NullValue[T]`. */
-	def map[S, T](map :S => T)(unmap :T => S)(implicit source :ColumnForm[S], nulls :NullValue[T] = null) :ColumnForm[T] =
-		new MappedColumnForm[S, T](map, unmap)
+	def apply[S, T](map :S =?> T)(unmap :T =?> S)(implicit source :ColumnForm[S], nulls :NullValue[T] = null) :ColumnForm[T] =
+		source.as(map)(unmap)
 
 	/** Creates a `ColumnForm[T]` based on implicit `ColumnForm[S]` and, optionally, `NullValue[T]`. */
-	def flatMap[S :ColumnForm, T :NullValue](map :S => Option[T])(unmap :T => Option[S]) :ColumnForm[T] =
-		new FlatMappedColumnForm[S, T](map, unmap)
+	def map[S, T](map :S => T)(unmap :T => S)(implicit source :ColumnForm[S], nulls :NullValue[T] = null) :ColumnForm[T] =
+		source.bimap(map)(unmap)
+
+	/** Creates a `ColumnForm[T]` based on implicit `ColumnForm[S]` and, optionally, `NullValue[T]`. */
+	def flatMap[S, T](map :S => Option[T])(unmap :T => Option[S])
+	                 (implicit source :ColumnForm[S], nulls :NullValue[T] = null) :ColumnForm[T] =
+		source.biflatMap(map)(unmap)
+
 
 
 
@@ -172,7 +195,7 @@ object ColumnForm {
 
 	/** Lifts the implicit `ColumnForm[T]` implementation to `ColumnForm[Some[T]]`. */
 	implicit def SomeColumnForm[T :ColumnForm] :ColumnForm[Some[T]] =
-		ColumnForm[T].bimapNull(Some.apply)(_.get)
+		ColumnForm[T].nullBimap(Some.apply)(_.get)
 
 
 
@@ -299,13 +322,13 @@ object ColumnForm {
 
 
 
-	class MappedColumnForm[S :ColumnForm, T :NullValue](map :S => T, unmap :T => S)
+	private[schema] class MappedColumnForm[S :ColumnForm, T :NullValue](map :S => T, unmap :T => S)
 		extends MappedSQLForm(map, unmap) with MappedColumnReadForm[S, T] with ColumnForm[T]
 	{
 		override def toString :String = super[MappedSQLForm].toString
 	}
 
-	class FlatMappedColumnForm[S :ColumnForm, T :NullValue](map :S => Option[T], unmap :T => Option[S])
+	private[schema] class FlatMappedColumnForm[S :ColumnForm, T :NullValue](map :S => Option[T], unmap :T => Option[S])
 		extends FlatMappedSQLForm(map, unmap) with FlatMappedColumnReadForm[S, T] with ColumnForm[T]
 	{
 		override def toString :String = super[FlatMappedSQLForm].toString
@@ -313,7 +336,8 @@ object ColumnForm {
 
 
 
-	class DerivedColumnForm[S :ColumnForm, T :NullValue](map :S => T, unmap :T => S, override val toString :String)
+	private[schema] class DerivedColumnForm[S :ColumnForm, T :NullValue]
+	                                       (map :S => T, unmap :T => S, override val toString :String)
 		extends MappedColumnForm[S, T](map, unmap)
 
 }

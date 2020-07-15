@@ -100,7 +100,7 @@ object SQLTerm {
 	class SQLLiteral[T](val value :T)(implicit override val form :SQLForm[T]) extends SQLTerm[T] {
 
 //		override def to[X](implicit lift :Lift[T, X]) :SQLExpression[FromClause, X] =
-//			new SQLLiteral[X](lift(value))(form.bimapNull(lift.apply)(lift.lower))
+//			new SQLLiteral[X](lift(value))(form.nullBimap(lift.apply)(lift.lower))
 
 		override val writeForm :SQLWriteForm[Unit] = SQLWriteForm.const(value)
 
@@ -163,7 +163,7 @@ object SQLTerm {
 		override val writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.const(value)
 
 //		override def to[X](implicit lift :Lift[T, X]) :ColumnSQL[FromClause, X] =
-//			new ColumnLiteral[X](lift(value))(form.bimapNull(lift.apply)(lift.lower))
+//			new ColumnLiteral[X](lift(value))(form.nullBimap(lift.apply)(lift.lower))
 
 		override def applyTo[Y[_]](matcher :ColumnMatcher[FromClause, Y]) :Y[T] = matcher.literal(this)
 
@@ -299,7 +299,7 @@ object SQLTerm {
 		override def freeValue :Option[T] = readForm.nulls.toOption
 
 //		override def to[X](implicit lift :Lift[T, X]) :ColumnSQL[FromClause, X] =
-//		    NULL[X](ColumnForm[T].bimapNull(lift.apply)(lift.lower))
+//		    NULL[X](ColumnForm[T].nullBimap(lift.apply)(lift.lower))
 
 		override def opt: SQLExpression[FromClause, Option[T]] = CompositeNULL[Option[T]]
 

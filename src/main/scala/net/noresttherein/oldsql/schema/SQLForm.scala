@@ -7,13 +7,15 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.SQLForm.{ChainForm, ChainMapForm, FlatMappedSQLForm, MappedSQLForm, NullValue}
 import net.noresttherein.oldsql.schema.SQLReadForm.{ChainIndexReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainMapWriteForm, ChainWriteForm, EmptyWriteForm, EvalOrNullWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, LiteralIndexWriteForm, MappedSQLWriteForm, NonLiteralWriteForm, RecordWriteForm, SeqWriteForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, EmptyWriteForm, EvalOrNullWriteForm, FlatMappedSQLWriteForm, GenericChainWriteForm, LazyWriteForm, MappedSQLWriteForm, NonLiteralWriteForm, SeqWriteForm}
 import net.noresttherein.oldsql.slang._
 import scala.collection.immutable.Seq
 import scala.reflect.ClassTag
 
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.ScalaForms.Tuple2Form
 import net.noresttherein.oldsql.slang
 
@@ -58,12 +60,12 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
-	def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] = NullValue[X] match {
-		case null =>
-			SQLForm.map[T, X](map)(unmap)(this, nulls.map(map))
-		case _ =>
-			SQLForm.map[T, X](map)(unmap)(this, NullValue[X])
-	}
+	def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] =
+		new MappedSQLForm[T, X](map, unmap)(this, NullValue[X] match {
+			case null => nulls.map(map)
+			case nulls => nulls
+		})
+
 
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying
@@ -82,7 +84,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */
-	def bimapNull[X](map :T => X)(unmap :X => T) :SQLForm[X] =
+	def nullBimap[X](map :T => X)(unmap :X => T) :SQLForm[X] =
 		bimap(map)(unmap)(nulls.map(map))
 
 
@@ -95,12 +97,11 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
 	  */ //todo: rename optMap
-	def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] = NullValue[X] match {
-		case null =>
-			SQLForm.flatMap(map)(unmap)(this, nulls.flatMap(map))
-		case _ =>
-			SQLForm.flatMap(map)(unmap)(this, NullValue[X])
-	}
+	def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
+		new FlatMappedSQLForm[T, X](map, unmap)(this, NullValue[X] match {
+			case null => nulls.flatMap(map)
+			case nulls => nulls
+		})
 
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying
@@ -109,7 +110,8 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * returns `None`, the form will call on this instance `setNull` instead of `set`.
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`. Will never be called
 	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
-	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
+	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement
+	  *              parameters.
 	  */
 	def biflatMap[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :SQLForm[X] =
 		biflatMap(map)(unmap)(NullValue(nullValue))
@@ -120,10 +122,53 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 	  * `None` for `this.nullValue`, a `NoSuchElementException` will be thrown when `nullValue` for the created form
 	  * is accessed. Similarly, any exceptions thrown by the `map` function will be propagated.
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`.
-	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
+	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement
+	  *              parameters.
 	  */ //todo: rename optMap ?
-	def biflatMapNull[X](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
+	def nullBiflatMap[X](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
 		biflatMap(map)(unmap)(nulls.flatMap(map))
+
+
+
+	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values with the given
+	  * extractor pair. If the underlying column(s) is null or `map` returns `None`, implicitly provided 'null' value
+	  * for type `X` is returned directly from `opt`/`apply` reading methods without mapping the 'null' value
+	  * of this type. Similarly, if `unmap` returns `None`, the new form will call `setNull` on this instance
+	  * instead of `set`.
+	  * @param map an `Extractor` mapping the result read from the `ResultSet` to the new type `X`. Will never be called
+	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
+	  * @param unmap an `Extractor` mapping values of `X` for passing them to this form before setting the statement
+	  *              parameters.
+	  */
+	def as[X :NullValue](map :T =?> X)(unmap :X =?> T) :SQLForm[X] = (map, unmap) match {
+		case (_ :IdentityExtractor[_], _:IdentityExtractor[_]) => this.asInstanceOf[SQLForm[X]]
+		case (Extractor.Requisite(there), Extractor.Requisite(back)) => bimap(there)(back)
+		case _ => biflatMap(map.optional)(unmap.optional)
+	}
+
+	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values with the given
+	  * extractor pair. If the underlying column(s) is null, or `map` returns `None`, the `nullValue` provided here
+	  * is returned directly from `opt`/`apply` reading methods without mapping the 'null' value of this type.
+	  * Similarly, if `unmap` returns `None`, the form will call on this instance `setNull` instead of `set`.
+	  * @param map an `Extractor` mapping the result read from the `ResultSet` to the new type `X`. Will never be called
+	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
+	  * @param unmap an `Extractor` mapping values of `X` for passing them to this form before setting the statement
+	  *              parameters.
+	  */
+	def as[X](map :T =?> X, nullValue :X)(unmap :X =?> T) :SQLForm[X] =
+		as(map)(unmap)(NullValue(nullValue))
+
+	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values with the given
+	  * extractor pair. The `nullValue` of the new form is the result of mapping this instance's `nulls` with the `map`
+	  * extractor, meaning it must handle `null` (or its counterpart for `T`) without throwing an exception.
+	  * If `map` returns `None` for `this.nullValue`, a `NoSuchElementException` will be thrown when `nullValue`
+	  * of the created form is accessed. Similarly, any exceptions thrown by the `map` extractor will be propagated.
+	  * @param map an `Extractor` mapping the result read from the `ResultSet` to the new type `X`.
+	  * @param unmap an `Extractor` mapping values of `X` for passing them to this form before setting the statement
+	  *              parameters.
+	  */
+	def nullAs[X](map :T =?> X)(unmap :X =?> T) :SQLForm[X] =
+		as(map)(unmap)(nulls.extract(map))
 
 
 	/** Lifts this form to represent `Option[T]`. The created form maps all values returned by this form using
@@ -147,7 +192,22 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 
 
-object SQLForm {
+sealed trait SQLFormLevel2Implicits {
+	implicit def ChainForm[I <: Chain, L](implicit i :SQLForm[I], l :SQLForm[L]) :SQLForm[I ~ L] =
+		new ChainForm(i, l)
+}
+
+sealed trait SQLFormLevel1Implicits extends SQLFormLevel2Implicits {
+	implicit def ChainMapForm[I <: ChainMap :SQLForm, K <: Singleton :ValueOf, V :SQLForm] :SQLForm[I &~ (K, V)] =
+		new ChainMapForm(SQLForm[I], valueOf[K], SQLForm[V])
+}
+
+
+
+
+
+
+object SQLForm extends SQLFormLevel1Implicits {
 
 	/** Summon an implicit instance of `SQLForm[T]`. */
 	def apply[T :SQLForm] :SQLForm[T] = implicitly[SQLForm[T]]
@@ -208,22 +268,15 @@ object SQLForm {
 
 
 
-	def flatMap[S :SQLForm, T :NullValue](map :S => Option[T])(unmap :T => Option[S]) :SQLForm[T] = SQLForm[S] match {
-		case t :ColumnForm[_] =>
-			ColumnForm.flatMap(map)(unmap)(t.asInstanceOf[ColumnForm[S]], NullValue[T])
-		case _ =>
-			new FlatMappedSQLForm[S, T](map, unmap)
-	}
+	def flatMap[S, T](map :S => Option[T])(unmap :T => Option[S])
+	                 (implicit source :SQLForm[S], nulls :NullValue[T] = null) :SQLForm[T] =
+		source.biflatMap(map)(unmap)
 
 	def map[S, T](map :S => T)(unmap :T => S)(implicit source :SQLForm[S], nulls :NullValue[T] = null) :SQLForm[T] =
-		SQLForm[S] match {
-			case t :ColumnForm[_] =>
-				ColumnForm.map(map)(unmap)(
-					t.asInstanceOf[ColumnForm[S]], if (nulls == null) source.nulls.map(map) else nulls
-				)
-			case _ =>
-				new MappedSQLForm[S, T](map, unmap)
-		}
+		source.bimap(map)(unmap)
+
+	def apply[S, T](map :S =?> T)(unmap :T =?> S)(implicit source :SQLForm[S], nulls :NullValue[T] = null) :SQLForm[T] =
+		source.as(map)(unmap)
 
 
 
@@ -237,17 +290,20 @@ object SQLForm {
 		override def toString = "@~"
 	}
 
-	implicit def ChainForm[I <: Chain, L](implicit i :SQLForm[I], l :SQLForm[L]) :SQLForm[I ~ L] =
-		new ChainForm(i, l)
-
 	implicit def LiteralIndexForm[I <: LiteralIndex :SQLForm, K <: Singleton :ValueOf, V :SQLForm] :SQLForm[I |~ (K :~ V)] =
 		new LiteralIndexForm(SQLForm[I], valueOf[K], SQLForm[V])
 
-	implicit def ChainMapForm[I <: ChainMap :SQLForm, K <: Singleton :ValueOf, V :SQLForm] :SQLForm[I &~ (K, V)] =
-		new ChainMapForm(SQLForm[I], valueOf[K], SQLForm[V])
-
 	implicit def RecordForm[I <: Record :SQLForm, K <: String with Singleton :ValueOf, V :SQLForm] :SQLForm[I |# (K, V)] =
 		new RecordForm(SQLForm[I], valueOf[K], SQLForm[V])
+
+
+
+
+
+
+	implicit class ChainFormConstructor[I <: Chain](private val self :SQLForm[I]) extends AnyVal {
+		def ~[L](implicit next :SQLForm[L]) :SQLForm[I ~ L] = ChainForm(self, next)
+	}
 
 
 
@@ -287,6 +343,22 @@ object SQLForm {
 			map(tnull => f(tnull) getOrElse {
 			 	throw new NoSuchElementException("No corresponding null value for " + tnull + " of " + this)
 			})
+
+		/** Adapt this null value to some other type `U`. In most cases, this will simply apply the function to
+		  * the wrapped value, but special instances may propagate themselves instead. If the function throws
+		  * an exception for the `value`, it will be swallowed and a `NullValue` instance which reevaluates
+		  * `map(this.value)` at each access will be returned. Returning `None` by the function has the same
+		  * effect as throwing a `NoSuchElementException`, which will be throw by the returned `NullValue` instead
+		  * of letting it out of this method.
+		  */
+		def extract[U](f :T =?> U) :NullValue[U] = f match {
+			case _ :EmptyExtractor[_, _] => NullValue.NotNull
+			case _ :OptionalExtractor[_, _] => flatMap(f.optional)
+			case _ :IdentityExtractor[_] => this.asInstanceOf[NullValue[U]]
+			case const :ConstantExtractor[_, U @unchecked] => NullValue(const.constant)
+			case _ :RequisiteExtractor[_, _] => map(f.requisite.get)
+			case _ => flatMap(f.optional)
+		}
 
 	}
 
@@ -576,7 +648,7 @@ object SQLForm {
 
 
 
-	private class ChainForm[I <: Chain, L](override val init :SQLForm[I], override val last :SQLForm[L])
+	private[schema] class ChainForm[I <: Chain, L](override val init :SQLForm[I], override val last :SQLForm[L])
 		extends ChainWriteForm(init, last) with ChainReadForm[I, L] with SQLForm[I ~ L]
 	{
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ChainForm[_, _]]
@@ -584,29 +656,31 @@ object SQLForm {
 		override def toString :String = super[ChainWriteForm].toString
 	}
 
+
 	private class LiteralIndexForm[I <: LiteralIndex, K <: Singleton, V]
 	                              (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
-		extends LiteralIndexWriteForm[I, K, V](init, value) with ChainIndexReadForm[|~, :~, I, K, V]
-		   with SQLForm[I |~ (K :~ V)]
+		extends GenericChainWriteForm[|~, I, K :~ V, V](init, value.unmap(_.value), value, "|~")
+		   with ChainIndexReadForm[|~, :~, I, K, V] with SQLForm[I |~ (K :~ V)]
 	{
 		protected[this] override def cons(init :I, value :V) :I |~ (K :~ V) = init |~ (key :~ value)
-		override def symbol :String = "|~"
 	}
 
-	private class ChainMapForm[I <: ChainMap, K <: Singleton, V]
+
+	private[schema] class ChainMapForm[I <: ChainMap, K <: Singleton, V]
 	                          (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
-		extends ChainMapWriteForm[I, K, V](init, value) with ChainIndexReadForm[&~, Tuple2, I, K, V] with SQLForm[I &~ (K, V)]
+		extends GenericChainWriteForm[&~, I, (K, V), V](init, value.unmap(_._2), value, "&~")
+		   with ChainIndexReadForm[&~, Tuple2, I, K, V] with SQLForm[I &~ (K, V)]
 	{
 		override protected[this] def cons(init :I, value :V) :I &~ (K, V) = init &~ (key -> value)
-		override def symbol :String = "&~"
 	}
+
 
 	private class RecordForm[I <: Record, K <: String with Singleton, V]
 	                        (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
-		extends RecordWriteForm[I, K, V](init, value) with ChainIndexReadForm[|#, Tuple2, I, K, V] with SQLForm[I |# (K, V)]
+		extends GenericChainWriteForm[|#, I, (K, V), V](init, value.unmap(_._2), value, "|#")
+		   with ChainIndexReadForm[|#, Tuple2, I, K, V] with SQLForm[I |# (K, V)]
 	{
 		override protected[this] def cons(init :I, value :V) :I |# (K, V) = init |# key -> value
-		override def symbol :String = "|#"
 	}
 
 
