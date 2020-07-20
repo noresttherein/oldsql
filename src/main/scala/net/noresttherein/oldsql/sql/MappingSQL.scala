@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, RowSource, SQLReadForm, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, RowSource, SQLReadForm, TypedMapping}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, PrefixOf, TableShift}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, PrefixOf, TableCount, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.{CaseColumnComponent, ColumnComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL.{CaseComponent, ComponentMatcher, ProperComponent}
 import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.FreeColumnMatcher
@@ -101,8 +101,8 @@ object MappingSQL {
 
 	object FreeComponent {
 
-		def apply[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[V, A], V]
-		         (mapping :C, shift :Int)(implicit conforms :Conforms[C, M[F], TypedMapping[V, F]])
+		private[oldsql] def apply[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[V, A], V]
+		                         (mapping :C, shift :Int)(implicit conforms :Conforms[C, M[F], TypedMapping[V, F]])
 				:FreeComponent[F, M, V] =
 			conforms(mapping) match {
 				case column :ColumnMapping[V @unchecked, F @unchecked] =>
@@ -113,7 +113,7 @@ object MappingSQL {
 
 		def apply[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[V, A], V]
 		         (mapping :C)
-		         (implicit conforms :Conforms[C, M[F], TypedMapping[V, F]], shift :TableShift[F, M, _ <: Numeral])
+		         (implicit conforms :Conforms[C, M[F], TypedMapping[V, F]], shift :TableCount[F, _ <: Numeral])
 				:FreeComponent[F, M, V] =
 				apply(mapping, shift.tables)
 

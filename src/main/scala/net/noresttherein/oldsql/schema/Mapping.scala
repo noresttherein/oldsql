@@ -15,12 +15,12 @@ import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, 
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.MappingFrame
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{FunctorProjection, ProjectsAs}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, FunctorProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
-import net.noresttherein.oldsql.sql.FromClause.TableShift
+import net.noresttherein.oldsql.sql.FromClause.{TableCount}
 import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
 
 
@@ -160,7 +160,7 @@ trait Mapping { this :MappingSeal =>
 	  */
 	type Projection[O] = RefinedMapping[Subject, O]
 
-	def refine :RefinedMapping[Subject, Origin] = this
+	@inline final def refine :RefinedMapping[Subject, Origin] = this
 
 	/** A type alias for the [[net.noresttherein.oldsql.schema.TypedMapping TypedMapping]] trait with the provided
 	  * `Origin` type and the same `Subject` type as this mapping. Used primarily in the expression
@@ -557,7 +557,7 @@ trait Mapping { this :MappingSeal =>
 
 	/** The SQL/DDL-related name associated with this mapping. This must be defined for all column and table
 	  * mappings, but is typically empty in all other cases.
-	  */ //consider: removing this altogether, probably once we've implemented acutal table schema
+	  */ //consider: removing this altogether, probably once we've implemented actutal table schema
 	def sqlName :Option[String] = None
 
 
@@ -678,10 +678,9 @@ trait Mapping { this :MappingSeal =>
 
 
 sealed abstract class LowPriorityMappingImplicits {
-	@inline implicit def refinedMappingOriginProjection[S, A]
-			:OriginProjection[RefinedMapping[S, A]] { type WithOrigin[O] = RefinedMapping[S, O] } =
-		OriginProjection.projectAs[RefinedMapping[S, _], MappingOf[S]#Projection]
-
+//	@inline implicit def refinedMappingOriginProjection[S, A]
+//			:OriginProjection[RefinedMapping[S, A], S] with ExactProjection[RefinedMapping[S, A]] { type WithOrigin[O] = TypedMapping[S, O] } =
+//		OriginProjection.projectAs[RefinedMapping[S, A], MappingOf[S]#TypedProjection]
 }
 
 
@@ -721,12 +720,12 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-	implicit def mappingSQLFormula[F <: FromClause, C <: Mapping, M[A] <: TypedMapping[X, A], X, N <: Numeral]
-                 (mapping :C)
-                 (implicit conforms :Conforms[C, M[F], TypedMapping[X, F]], offset :TableShift[F, M, N],
-                  projection :FunctorProjection[M])
-			:FreeComponent[F, M, X] =
-		FreeComponent(mapping, offset.tables)
+	implicit def mappingSQLFormula[C <: Mapping, M <: TypedMapping[S, F], S, F <: FromClause]
+                                  (mapping :C)
+                                  (implicit conforms :Conforms[C, M, TypedMapping[S, F]],
+                                            projection :OriginProjection[C, S], shift :TableCount[F, _ <: Numeral])
+			:FreeComponent[F, projection.WithOrigin, S] =
+		FreeComponent(mapping.withOrigin[F], shift.tables)
 
 
 
@@ -751,11 +750,14 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-	/** Adds a `withOrigin[B]()` method to any `Mapping` with a well defined `Origin` type, which substitutes its origin
-	  * to type `B`.
+	implicit def MappingOriginProjection[M <: Mapping, S](mapping :M)(implicit types :Conforms[M, _, MappingOf[S]])
+			:MappingOriginProjection[M, S] =
+		new MappingOriginProjection[M, S](mapping)
+
+	/** Adds a `withOrigin[O]()` method to any `Mapping` subtype, which substitutes its `Origin` type to type `O`.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection]]
 	  */
-	implicit class MappingOriginProjection[M <: Mapping](private val self :M) extends AnyVal {
+	class MappingOriginProjection[M <: Mapping, S](private val self :M) extends AnyVal {
 
 		/** Converts this mapping to one where `type Origin = O`. The result type is determined by the implicit
 		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]].
@@ -766,21 +768,32 @@ object Mapping extends LowPriorityMappingImplicits {
 		  * See the [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] class documentation
 		  * for a detailed information about providing custom projections and cases when it is required.
 		  */
-		@inline def withOrigin[O](implicit projection :OriginProjection[M]) :projection.WithOrigin[O] =
+		@inline def withOrigin[O](implicit projection :OriginProjection[M, S]) :projection.WithOrigin[O] =
 			self.asInstanceOf[projection.WithOrigin[O]]
+
+		/** Upcasts this instance to a type `P[M#Origin] &lt;: RefinedMapping[M#Subject, M#Origin]` such that
+		  * the type constructor `P` substitutes all occurrences of the `Origin` type in `M`'s type signature
+		  * with its type parameter. This is equivalent to simply calling
+		  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin[O]]] -
+		  * a useful alternative when the projection invariant mapping type is required without changing its origin,
+		  * as concrete `Origin` types are typically long.
+		  */
+		@inline def selfProjection(implicit projection :OriginProjection[M, S]) :projection.WithOrigin[M#Origin] =
+			self.asInstanceOf[projection.WithOrigin[M#Origin]]
 
 	}
 
 
 
 	/** Converts a mapping `M` with `type Origin = A forSome { type A }` to a mapping with `type Origin = B`, where `B`
-	  * is the type parameter of the `apply` method. This conversion must be complete in the sense that in the projected
-	  * mapping type `WithOrigin[B]` all references to `A` are replaced with the type `B`. If the mapping type `M`
+	  * is the type parameter of the `apply` method. On the value level, it is always a no-op cast
+	  * of the argument mapping. On the type level, it must be complete in the sense that, in the projected
+	  * mapping type `WithOrigin[B]`, all references to `A` are replaced with the type `B`. If the mapping type `M`
 	  * is a generic type which defines its `Origin` type to be equal to its last type parameter `O` (typically
-	  * by extending `TypedMapping[_, O]`) and `O` doesn't occur anywhere else in the definition of `M`,
+	  * by extending `TypedMapping[S, O]`) and `O` doesn't occur anywhere else in the definition of `M`,
 	  * as is the recommended practice, then `M =:= WithOrigin[A]` and type `WithOrigin` is inferred automatically
-	  * by the compiler by partial unification. An implicit value of this class is in that case provided by the eponymous
-	  * companion method. There are cases however when either the appropriate projection type cannot be inferred
+	  * by the compiler with partial unification. An implicit value of this class is in that case provided by the
+	  * `TypedMapping` object. There are cases however when either the appropriate projection type cannot be inferred
 	  * or is inferred incorrectly. Typical examples of the former include `Mapping` subclasses with their `Origin`
 	  * type parameter not in the last position, or types which define their `Origin` type in terms of the `Origin` type
 	  * of some value, such as the labeled mapping wrapper `N @: M`, which defines its origin type to be equal to the
@@ -795,31 +808,46 @@ object Mapping extends LowPriorityMappingImplicits {
 	  *     //b.component is not a valid component of b as it has a different `Origin` type.
 	  * }}}
 	  * Such practice is discouraged, but not prohibited as it can lead to shorter type signatures.
-	  * Both situations can be amended by defining an implicit `OriginProjection[M]` in the companion object
+	  * Both situations can be amended by defining an implicit `ExactProjection[M]` in the companion object
 	  * of the class of `M`. Fixing the above example would require:
 	  * {{{
 	  *     object Adapter {
-	  *         implicit def projection[M <: Mapping, X](implicit m :OriginProjection[M])
-	  *                 :OriginProjection[Adapter[M, X, _] { type WithOrigin[A] = Adapter[m.WithOrigin[A], X, A], X, A] } =
-	  *             m.lift[({ type L[+T <: Mapping, A] = Adapter[T, X, A] })#L, M]
+	  *         implicit def projection[M <: Mapping, X, O](implicit m :ExactProjection[M, _])
+	  *                 :ProjectionDef[Adapter[M, X, O], ({ type P[A] = Adapter[m.WithOrigin[A], X, A], X, A] })#P, X] =
+	  *             m.map[({ type L[+T <: Mapping, A] = Adapter[T, X, A] })#L, M]
 	  *     }
 	  *
 	  *     val c = a.withOrigin["C"] //c :Adapter[TypedMapping[Int, "C"], Int, "C"]
 	  * }}}
+	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection[M]]]
+	  * is the implementation subtype of `OriginProjection`, invariant in its type parameter; every instance
+	  * of `OriginProjection[M, _]` is also an instance of `ExactProjection[_ &lt;: M]`.
+	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef ProjectionDef]] is a type alias
+	  * which shortens the type signature and causes an implicit `ExactProjection[M]` to be picked up as the value
+	  * for an implicit parameter of `OriginProjection[M, M#Subject]` (which it would not by default).
 	  *
-	  * The only source of `OriginProjection` instances is the eponymous, implicit factory method and transformation
-	  * methods defined in this class.
+	  * Implicit values for `OriginProjection` should generally be provided in the form of an
+	  * `ExactProjection`/`ProjectionDef`. For mapping types which do not have other mapping types in their
+	  * type signature, the [[net.noresttherein.oldsql.schema.Mapping.OriginProjection#functor functor]] method
+	  * of the companion object will be generally sufficient. Adapters of other mappings, such as in the earlier example,
+	  * should use one of the transformation methods defined in the `ExactProjection`, if possible, with custom
+	  * instances being created only as a last resort, as offering no type safety.
+	  * @tparam M the type of the mapping being projected. In practice, `M &lt;: MappingOf[S]` always holds,
+	  *           but the constraint is removed here to simplify type signatures of methods accepting
+	  *           an `OriginProjection` as a parameter.
+	  * @tparam S the `Subject` type of the mapping `M`, preserved by the projected mapping `WithOrigin[_]`.
 	  */
-	@implicitNotFound("Cannot project mapping ${M} to another Origin type: no (unique) implicit OriginProjection[${M}].")
-	sealed abstract class OriginProjection[-M <: Mapping] { self =>
+	@implicitNotFound("Cannot project mapping ${M} (of ${S}) to another Origin type: " +
+		               "no (unique) implicit OriginProjection[${M}, ${S}].")
+	sealed trait OriginProjection[-M <: Mapping, S] { self =>
 
 		/** A type such that `M &lt;: WithOrigin[_]` which does not reference the origin type `O` in its signature
 		  * anywhere except as the type parameter. In other words, a conversion `WithOrigin[A] => WithOrigin[B]`
 		  * replaces every reference to `A` with the type `B`. This in particular means that all components and extracts
 		  * returned by the mapping after conversion define their `Origin` type as `B`, consistently with the converted
 		  * mapping.
-		  */ //fixme: this should preserve the subject type
-		type WithOrigin[O] <: MappingAt[O]
+		  */
+		type WithOrigin[O] <: TypedMapping[S, O]
 
 		/** Casts the mapping of type `M` to a type where all references to its current origin type are replaced
 		  * by the `O` type.
@@ -828,71 +856,155 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 		/** A projection from any `WithOrigin[_]` to `WithOrigin[O]`. */
-		@inline def isomorphism :FunctorProjection[WithOrigin] = this.asInstanceOf[FunctorProjection[WithOrigin]]
+		@inline def isomorphism[O] :FunctorProjection[WithOrigin, S, O] =
+			this.asInstanceOf[FunctorProjection[WithOrigin, S, O]]
 
-		/** Lifts a projection of mapping type `M` to one casting from mapping `T[M]` to `T[WithOrigin[O]]`.
-		  * It is the responsibility of the caller to make sure that type `T` does not reference directly the origin type
-		  * in its definition.
+
+		/** Lifts a projection of a mapping type `M` to one casting from mapping `A[M, _]` to `A[WithOrigin[O], O]`.
+		  * It is the responsibility of the caller to make sure that type `A` does not reference directly
+		  * the origin type in its definition. This method is suitable for mappings with `Subject` type
+		  * different from the subject of the adapted mapping.
+		  * @tparam C the type of mapping being projected, a subtype of `M`.
+		  * @tparam A type constructor of the adapter mapping for which the projection is being created,
+		  *           accepting the adapted mapping type and the `Origin` type as type parameters.
+		  * @tparam T the subject type of the argument mapping of the created projection.
 		  */
-		@inline implicit def substitute[T[+_ <: Mapping] <: Mapping, S <: M]
-				:OriginProjection[T[S]] { type WithOrigin[O] = T[self.WithOrigin[O]] } =
-			this.asInstanceOf[OriginProjection[T[S]] { type WithOrigin[O] = T[self.WithOrigin[O]] }]
+		@inline def mapCo[C <: M, A[+B <: Mapping, Q] <: TypedMapping[T, Q], T]
+				:ExactProjection[A[C, C#Origin]] { type WithOrigin[O] = A[self.WithOrigin[O], O] } =
+			this.asInstanceOf[ExactProjection[A[C, C#Origin]] { type WithOrigin[O] = A[self.WithOrigin[O], O] }]
 
-		/** Lifts a projection of mapping type `M` to one casting from mapping `T[M, _]` to `T[WithOrigin[O], O]`.
-		  * It is the responsibility of the caller to make sure that type `T` does not reference directly the origin type
-		  * in its definition.
+		/** Lifts a projection of a mapping type `M` to one casting from mapping `A[M, X, _]` to `A[WithOrigin[O], X, O]`.
+		  * This is equivalent to the `mapCo` method, differing only in the adapter type constructor `A` accepting
+		  * the subject type of the mapping as the type parameter, which matches the type signature of
+		  * [[net.noresttherein.oldsql.schema.bits.MappingAdapter MappingAdapter]].
+		  * It is the responsibility of the caller to make sure that type `A` does not reference directly
+		  * the origin type in its definition. This method is suitable for mappings with `Subject` type
+		  * different from the subject of the adapted mapping.
+		  * @tparam C the type of mapping being projected, a subtype of `M`.
+		  * @tparam A type constructor of the adapter mapping for which the projection is being created,
+		  *           accepting the adapted mapping type and the `Subject`/`Origin` type pair as type parameters.
+		  * @tparam T the subject type of the argument mapping of the created projection.
+		  * @tparam O the origin type of the argument mapping of the created projection.
 		  */
-		@inline def lift[T[+_ <: MappingAt[O], O] <: MappingAt[O], C <: M]
-				:OriginProjection[T[C, _]] { type WithOrigin[O] = T[self.WithOrigin[O], O] } =
-			this.asInstanceOf[OriginProjection[T[C, _]] { type WithOrigin[O] = T[self.WithOrigin[O], O] }]
-
+		@inline def adaptCo[C <: M, A[+B <: Mapping, X, Q] <: TypedMapping[X, Q], T, O]
+				:ExactProjection[A[C, T, O]] { type WithOrigin[X] = A[self.WithOrigin[X], T, X] } =
+			this.asInstanceOf[ExactProjection[A[C, T, O]] { type WithOrigin[X] = A[self.WithOrigin[X], T, X] }]
 	}
 
 
 
 	object OriginProjection {
 
-		def apply[M <: Mapping](implicit projection :OriginProjection[M])
-				:OriginProjection[M] { type WithOrigin[O] = projection.WithOrigin[O] } =
+		def apply[M <: Mapping, S](implicit projection :OriginProjection[M, S]) :projection.type =
 			projection
 
-		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]
-		  * which is guaranteed to preserve the `Subject` type of the projected mapping.
-		  */
-		type RefinedProjection[M <: Mapping, S] = OriginProjection[M] { type WithOrigin[O] <: RefinedMapping[S, O] }
+		@inline def apply[M <: Mapping](implicit projection :ExactProjection[M]) :projection.type =
+			projection
+
+
+
+		@implicitNotFound("Cannot project mapping ${M} to another Origin type: no (unique) implicit ExactProjection[${M}]")
+		trait ExactProjection[M <: Mapping] extends OriginProjection[M, M#Subject] { self =>
+
+			/** Lifts a projection of mapping type `M` to one casting from mapping `A[M]` to `A[WithOrigin[O]]`.
+			  * This method is an applicable projection source for `Mapping` types serving as proxies to their type
+			  * argument, having the same `Subject` and `Origin` types.  It is the responsibility of the caller
+			  * to make sure that type `A` does not reference directly the origin type in its definition.
+			  * @tparam A type constructor of the adapter mapping, accepting the mapping `M` as its type parameter.
+			  */
+			@inline def lift[A[B <: Mapping] <: TypedMapping[B#Subject, B#Origin]]
+					:ExactProjection[A[M]] { type WithOrigin[O] = A[self.WithOrigin[O]] } =
+				this.asInstanceOf[ExactProjection[A[M]] { type WithOrigin[O] = A[self.WithOrigin[O]] }]
+
+			/** Lifts a projection of a mapping type `M` to one casting from mapping `A[M, _]` to `A[WithOrigin[O], O]`.
+			  * It is the responsibility of the caller to make sure that type `A` does not reference directly
+			  * the origin type in its definition. This method is suitable for mappings with `Subject` type
+			  * different from the subject of the adapted mapping.
+			  * @tparam A type constructor of the adapter mapping for which the projection is being created,
+			  *           accepting the adapted mapping type and the `Origin` type as type parameters.
+			  * @tparam S the subject type of the argument mapping of the created projection.
+			  */
+			@inline def map[A[B <: Mapping, Q] <: TypedMapping[S, Q], S]
+					:ExactProjection[A[M, M#Origin]] { type WithOrigin[O] = A[self.WithOrigin[O], O] } =
+				this.asInstanceOf[ExactProjection[A[M, M#Origin]] { type WithOrigin[O] = A[self.WithOrigin[O], O] }]
+
+			/** Lifts a projection of a mapping type `M` to one casting from mapping `A[M, X, _]` to `A[WithOrigin[O], X, O]`.
+			  * This is equivalent to the `mapCo` method, differing only in the adapter type constructor `A` accepting
+			  * the subject type of the mapping as the type parameter, which matches the type signature of
+			  * [[net.noresttherein.oldsql.schema.bits.MappingAdapter MappingAdapter]].
+			  * It is the responsibility of the caller to make sure that type `A` does not reference directly
+			  * the origin type in its definition. This method is suitable for mappings with `Subject` type
+			  * different from the subject of the adapted mapping.
+			  * @tparam A type constructor of the adapter mapping for which the projection is being created,
+			  *           accepting the adapted mapping type and the `Subject`/`Origin` type pair as type parameters.
+			  * @tparam S the subject type of the argument mapping of the created projection.
+			  * @tparam O the origin type of the argument mapping of the created projection
+			  */
+			@inline def adapt[A[B <: Mapping, T, Q] <: TypedMapping[T, Q], S, O]
+					:ExactProjection[A[M, S, O]] { type WithOrigin[X] = A[self.WithOrigin[X], S, X] } =
+				this.asInstanceOf[ExactProjection[A[M, S, O]] { type WithOrigin[X] = A[self.WithOrigin[X], S, X] }]
+
+		}
+
+
 
 		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]
 		  * of single-argument functor types, accepting their `Origin` type as their argument. This shortens
 		  * the notation considerably, especially if `M` is a natural single-argument type constructor
 		  * (and not a type lambda).
 		  */
-		type FunctorProjection[M[O] <: MappingAt[O]] = OriginProjection[M[_]] { type WithOrigin[O] = M[O] }
+		type FunctorProjection[M[X] <: TypedMapping[S, X], S, O] =
+			ExactProjection[M[O]] { type WithOrigin[X] = M[X] }
+
+		type TypedProjection[M[X, Y] <: TypedMapping[X, Y], S, O] =
+			ExactProjection[M[S, O]] { type WithOrigin[X] = M[S, X] }
 
 		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which accepts
 		  * its `WithOrigin` type as the second argument `P`. This shortens the notation considerably if `P`
 		  * is a natural single-argument type constructor (and not a type lambda).
 		  */
-		type ProjectsAs[-M <: Mapping, P[O] <: MappingAt[O]] = OriginProjection[M] { type WithOrigin[O] = P[O] }
+		type ProjectsAs[M <: Mapping, P[O] <: TypedMapping[M#Subject, O]] =
+			ExactProjection[M] { type WithOrigin[O] = P[O] }
 
 
+		/** A somewhat superfluous type alias explicitly combining `ExactProjection[M]` with its supertype
+		  * `OriginProjection[M, S]`. This is because implicit declarations of the former are not picked up
+		  * as values for implicit parameters of the latter.
+		  */
+		type ProjectionDef[M <: Mapping, P[Q] <: TypedMapping[S, Q], S] =
+			OriginProjection[M, S] with ExactProjection[M] { type WithOrigin[X] = P[X] }
 
-		def default[M[A] <: MappingAt[A]] :FunctorProjection[M] = CastingProjection.asInstanceOf[FunctorProjection[M]]
 
-		private[oldsql] def projectAs[M <: Mapping, P[O] <: MappingAt[O]] :M ProjectsAs P =
-			CastingProjection.asInstanceOf[M ProjectsAs P]
+		/** A natural projection of a `TypedMapping` subtype made by providing a different `Origin` type
+		  * to its type constructor.
+		  * @tparam M a type constructor for a `TypedMapping` subtype which sets all references to the `Origin` type
+		  *           to its type parameter.
+		  * @tparam S the subject type of the projected mapping.
+		  * @tparam O the input origin typ of the projected mapping.
+		  */
+		def functor[M[A] <: TypedMapping[S, A], S, O] :FunctorProjection[M, S, O] =
+			CastingProjection.asInstanceOf[FunctorProjection[M, S, O]]
+
+		def typed[M[X, Y] <: TypedMapping[X, Y], S, O] :TypedProjection[M, S, O] =
+			CastingProjection.asInstanceOf[TypedProjection[M, S, O]]
+
+		private[oldsql] def projectAs[M <: Mapping, P[O] <: TypedMapping[M#Subject, O]]
+				:ExactProjection[M] { type WithOrigin[O] = P[O] } =
+			CastingProjection.asInstanceOf[ExactProjection[M] { type WithOrigin[O] = P[O] }]
 
 
-		private[this] final val CastingProjection :OriginProjection[Mapping] = new OriginProjection[Mapping] {
-			override type WithOrigin[O] = MappingAt[O]
+		private[this] final val CastingProjection = new ExactProjection[MappingOf[Any]] {
+			override type WithOrigin[O] = TypedMapping[Any, O]
 		}
 
 	}
 
 
 
-	//this is here to have clear precedence hierarchy with Mapping subtypes declaring their own projections
-	@inline implicit def originProjection[M[O] <: MappingAt[O]] :M[_] ProjectsAs M = OriginProjection.default[M]
-
+	//this is here to have a clear precedence hierarchy with Mapping subtypes declaring their own projections
+	@inline implicit def refinedMappingOriginProjection[S, A]
+			:ExactProjection[RefinedMapping[S, A]] { type WithOrigin[O] = TypedMapping[S, O] } =
+		OriginProjection.projectAs[RefinedMapping[S, A], MappingOf[S]#TypedProjection]
 
 
 
@@ -1404,6 +1516,14 @@ object TypedMapping {
 	type AnyFrom[O] = M[O] forSome { type M[A] <: TypedMapping[_, A] }
 
 	type AnyOf[S] = M[S] forSome { type M[X] <: TypedMapping[X, _] }
+
+
+
+	@inline implicit def typedMappingOriginProjection[M[A] <: TypedMapping[S, A], S, O]
+	                                                 (implicit types :Conforms[M[O], M[O], TypedMapping[S, O]])
+			:ProjectionDef[M[O], M, S] =
+		OriginProjection.functor[M, S, O]
+
 }
 
 

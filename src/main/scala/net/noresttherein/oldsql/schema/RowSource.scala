@@ -30,14 +30,14 @@ object RowSource {
 	type * = RowSource[M] forSome { type M[O] <: MappingAt[O] }
 
 
-	def apply[M <: Mapping](name :String, template :M)
-	                       (implicit alias :OriginProjection[M]) :RowSource[alias.WithOrigin] =
-		new ProjectingSource[alias.WithOrigin](alias[Any](template), name)(alias.isomorphism)
+	def apply[M <: Mapping, S](name :String, template :M)
+	                          (implicit projection :OriginProjection[M, S]) :RowSource[projection.WithOrigin] =
+		new ProjectingSource[projection.WithOrigin, S](projection[Any](template), name)(projection.isomorphism)
 
 
-	def apply[M <: Mapping](template :M)
-	                       (implicit alias :OriginProjection[M]) :RowSource[alias.WithOrigin] =
-		new ProjectingSource[alias.WithOrigin](alias[Any](template))(alias.isomorphism)
+	def apply[M <: Mapping, S](template :M)
+	                          (implicit projection :OriginProjection[M, S]) :RowSource[projection.WithOrigin] =
+		new ProjectingSource[projection.WithOrigin, S](projection[Any](template))(projection.isomorphism)
 
 
 
@@ -54,19 +54,19 @@ object RowSource {
 
 
 
-	private class ProjectingSource[M[O] <: MappingAt[O]]
-	                              (protected val template :M[_], override val sql :String)
-	                              (implicit protected val alias :FunctorProjection[M])
+	private class ProjectingSource[M[O] <: TypedMapping[S, O], S]
+	                              (protected val template :M[Any], override val sql :String)
+	                              (implicit protected val projection :FunctorProjection[M, S, Any])
 		extends RowSource[M]
 	{
-		def this(template :M[_])(implicit alias :FunctorProjection[M]) =
+		def this(template :M[Any])(implicit projection :FunctorProjection[M, S, Any]) =
 			this(template, template.sqlName getOrElse {
 				throw new IllegalArgumentException(
 					s"Can't create a RowSource with template mapping $template as it has an empty sqlName."
 				)
 			})
 
-		override def apply[O] :M[O] = alias(template)
+		override def apply[O] :M[O] = projection(template)
 	}
 
 
@@ -88,10 +88,10 @@ object RowSource {
 
 	object Table {
 
-		def apply[M <: Mapping](tableName :String, template :M)
-		                       (implicit alias :OriginProjection[M]) :Table[alias.WithOrigin] =
-			new ProjectingSource[alias.WithOrigin](alias[Any](template), tableName)(alias.isomorphism)
-				with Table[alias.WithOrigin]
+		def apply[M <: Mapping, S](tableName :String, template :M)
+		                          (implicit projection :OriginProjection[M, S]) :Table[projection.WithOrigin] =
+			new ProjectingSource[projection.WithOrigin, S](projection[Any](template), tableName)(projection.isomorphism)
+				with Table[projection.WithOrigin]
 			{
 				override val sql = tableName
 				override def name = sql

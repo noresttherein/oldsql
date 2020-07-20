@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSc
 import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 
 
@@ -104,7 +104,7 @@ object ChainMapping {
 			get.extract(this, label)
 
 		override def /[N <: Label, T, M <: @|-|[N, T, _, _]]
-		              (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M])
+		              (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M, T])
 				:projection.WithOrigin[O] =
 			projection(get(this, label))
 
@@ -115,8 +115,7 @@ object ChainMapping {
 			get.extract(this, idx)
 
 		override def /[I <: Numeral, T, M <: |-|[T, _, _]]
-		              (idx :I)
-		              (implicit get :MappingSchema.GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M])
+		              (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M, T])
 				:projection.WithOrigin[O] =
 			projection(get(this, idx))
 

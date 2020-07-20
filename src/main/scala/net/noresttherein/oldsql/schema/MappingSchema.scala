@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.{GetLabeledComponent, GetSchemaComponent}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, |||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, OptMappedFlatSchema, OptMappedSchema, SchemaColumn}
+import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, OptMappedFlatSchema, OptMappedSchema, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.{DelegateMapping, LazyMapping}
@@ -140,7 +140,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
 	  */
 	def /[N <: Label, T, M <: @|-|[N, T, _, _]]
-	     (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M])
+	     (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M, T])
 			:projection.WithOrigin[O] =
 		projection(get(this, label))
 
@@ -174,7 +174,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
 	  */
 	def /[I <: Numeral, T, M <: |-|[T, _, _]]
-	     (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M])
+	     (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M, T])
 			:projection.WithOrigin[O] =
 		projection(get(this, idx))
 
@@ -477,7 +477,7 @@ object MappingSchema {
 
 		/** Appends the given component to this schema. This component will not inherit any buffs associated
 		  * with this instance and its outer mapping.
-		  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
+		  * @param component a `SchemaMapping` with the same origin type `O` to add as the component.
 		  * @param value an extractor returning the value of this component for the subject type `S` of an owning mapping.
 		  */
 		def comp[T, MV <: Chain, MC <: Chain](component: |-|[T, MV, MC], value :S =?> T)
@@ -1299,7 +1299,7 @@ object MappingSchema {
 
 		override val members :C ~ M = init.members ~ element
 
-		@inline protected final def component :Component[T] = (element :RefinedMapping[T, element.Origin]).withOrigin[O]
+		@inline protected final def component :Component[T] = element.refine.withOrigin[O]
 
 		override def last[N](implicit nonEmpty :C ~ M <:< (Chain ~ N)) :N = component.asInstanceOf[N]
 
@@ -1324,14 +1324,14 @@ object MappingSchema {
 
 		private[this] val selfExtract :Extract[V L E] = MappingExtract.ident(this)
 		private[this] val initExtract :Extract[V] = MappingExtract.req(init) { vs :(V L E) => vs.init }
-		private[this] val componentExtract :Extract[T] = MappingExtract.req(component.withOrigin[O])(lastValue)
+		private[this] val componentExtract :Extract[T] = MappingExtract.req(component)(lastValue)
 
 
 
 		override val extracts :NaturalMap[Component, Extract] =
 			(init.extracts.map(schema.composeExtractAssoc(initExtract)(_)) ++
-				component.withOrigin[O].extracts.map(schema.composeExtractAssoc(componentExtract)(_))
-			).updated(init, initExtract).updated(component.withOrigin[O], componentExtract)
+				component.extracts.map(schema.composeExtractAssoc(componentExtract)(_))
+			).updated(init, initExtract).updated(component, componentExtract)
 
 
 		override val columnExtracts :NaturalMap[Column, ColumnExtract] =

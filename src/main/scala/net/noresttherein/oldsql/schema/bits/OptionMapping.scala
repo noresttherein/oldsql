@@ -5,9 +5,9 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.RefinedProjection
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.slang._
 
 
-//todo: uncheckedVariance
+
 sealed trait OptionMapping[+M <: Mapping, S, O] extends TypedMapping[Option[S], O] {
 	val get :M
 }
@@ -37,13 +37,9 @@ object OptionMapping {
 		apply[mapping.type, mapping.type, S, O](mapping)
 
 
-//todo: OriginProjection
-//	implicit def optionMappingProjection[M <: Mapping](implicit body :OriginProjection[M])
-//			:OriginProjection[Optional[M]] { type WithOrigin[A] = Optional[body.WithOrigin[A]] } =
-//		OriginProjection.projectAs[Optional[M], ({ type P[A] = Optional[body.WithOrigin[A]] })#P]
-//	implicit def optionMappingProjection[M <: RefinedMapping[S, O], S, O](implicit body :RefinedProjection[M, S])
-//			:OriginProjection[OptionMapping[M, S, O]] { type WithOrigin[A] = OptionMapping[body.WithOrigin[A], S, A] } =
-//		OriginProjection.projectAs[OptionMapping[M, S, O], ({ type P[A] = OptionMapping[body.WithOrigin[A], S, A] })#P]
+	implicit def optionMappingProjection[M <: RefinedMapping[S, O], S, O](implicit body :ExactProjection[M])
+			:ProjectionDef[OptionMapping[M, S, O], ({ type P[X] = OptionMapping[body.WithOrigin[X], S, X] })#P, Option[S]] =
+		body.map[({ type P[+X <: Mapping, Q] = OptionMapping[X, S, Q] })#P, Option[S]]
 
 
 
@@ -60,25 +56,19 @@ object OptionMapping {
 
 
 
-		private val eggExtract :Extract[S] = MappingExtract(get)(Extractor.fromOpt)
-
-/*
 		override def apply[T](component :Component[T]) :Extract[T] =
 			if (component eq get)
 				eggExtract.asInstanceOf[Extract[T]]
-			else {
-				val selector = get(component)
-				MappingExtract(selector.export)(Extractor.fromOpt[S] andThen selector)
-			}
+			else extracts(component)
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] =
 			if (column eq get)
 				eggExtract.asInstanceOf[ColumnExtract[T]]
-			else {
-				val selector = get(column)
-				MappingExtract(selector.export)(Extractor.fromOpt[S] andThen selector)
-			}
-*/
+			else columnExtracts(column)
+
+
+		private val eggExtract :Extract[S] = MappingExtract(get)(Extractor.fromOpt)
+
 		override val extracts :NaturalMap[Component, Extract] =
 			backer.extracts.map(schema.composeExtractAssoc(eggExtract)(_)).updated(backer, eggExtract)
 

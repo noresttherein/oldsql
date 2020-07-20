@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterSeal, DelegateAdapter}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapter.ColumnFormAdapter
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 
 
 /** Super type for `Mapping` implementations marked with a `String` literal type for the purpose of identification
@@ -92,9 +93,9 @@ object LabeledMapping {
 
 		type LabeledProjection[L <: Label, M[O] <: MappingAt[O]] = { type WithOrigin[O] = L @: M[O] }
 
-		implicit def projection[L <: Label, M <: Mapping](implicit body :OriginProjection[M])
-				:OriginProjection[L @: M] { type WithOrigin[O] = L @: body.WithOrigin[O] } =
-			body.substitute[({ type T[+X <: Mapping] = L @: X })#T, M]
+		implicit def projection[L <: Label, M <: Mapping](implicit body :ExactProjection[M])
+				:ProjectionDef[L @: M, ({ type P[X] = L @: body.WithOrigin[X] })#P, M#Subject] =
+			body.lift[({ type T[+X <: Mapping] = L @: X })#T]
 
 	}
 

@@ -1,25 +1,24 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
-import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.collection.Chain.@~
+import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn, MappingLabel}
-import net.noresttherein.oldsql.schema.support.{DelegateMapping, StableMapping, StaticMapping}
-import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnSupport, StableColumn, StandardColumn}
+import net.noresttherein.oldsql.schema.support.{DelegateMapping, StableMapping}
+import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnSupport, StableColumn}
 import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, ExtensibleFlatMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, SchemaFlattening}
 import net.noresttherein.oldsql.schema.SchemaMapping.{|-|, DelegateSchemaMapping, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaMapping, MappedFlatSchemaMapping, MappedSchemaMapping, MappingSchemaDelegate, SchemaComponentLabel, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
-import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, CustomizedMapping, LabeledMapping, MappedMapping, MappingAdapter, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, CustomizedMapping, LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, AdapterFactoryMethods, BaseAdapter, ColumnAdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
+import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, BaseAdapter, ColumnAdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
 import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.FunctorProjection
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.slang
 
 //implicits:
@@ -252,7 +251,9 @@ object SchemaMapping {
 
 
 	//implicit 'override' from |-| which will work for SchemaMapping subclasses as normal.
-	implicit def defaultOriginProjection[M[O] <: MappingAt[O]] :FunctorProjection[M] = OriginProjection.default
+	implicit def genericSchemaMappingProjection[M[Q] <: SchemaMapping[S, _, _, Q], S, O]
+			:ProjectionDef[M[O], M, S] =
+		OriginProjection.functor[M, S, O]
 
 
 
@@ -324,7 +325,7 @@ object SchemaMapping {
 		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
 		  */
 		def /[N <: Label, T, M <: @|-|[N, T, _, _]]
-		     (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M])
+		     (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M, T])
 				:projection.WithOrigin[Origin] =
 			projection(get(schema, label))
 
@@ -358,7 +359,7 @@ object SchemaMapping {
 		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
 		  */
 		def /[I <: Numeral, T, M <: |-|[T, _, _]]
-		     (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M])
+		     (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M, T])
 				:projection.WithOrigin[Origin] =
 			projection(get(schema, idx))
 
@@ -393,7 +394,7 @@ object SchemaMapping {
 
 	object |-| {
 		implicit def schemaMappingProjection[S, V <: Chain, C <: Chain]
-				:OriginProjection[|-|[S, V, C]] { type WithOrigin[O] = SchemaMapping[S, V, C, O] } =
+				:OriginProjection[|-|[S, V, C], S] { type WithOrigin[O] = SchemaMapping[S, V, C, O] } =
 			OriginProjection.projectAs[|-|[S, V, C], ({ type M[O] = SchemaMapping[S, V, C, O] })#M]
 	}
 
@@ -403,7 +404,7 @@ object SchemaMapping {
 
 	object ||| {
 		implicit def flatSchemaMappingProjection[S, V <: Chain, C <: Chain]
-				:OriginProjection[|||[S, V, C]] { type  WithOrigin[O] = FlatSchemaMapping[S, V, C, O] } =
+				:ExactProjection[|||[S, V, C]] { type  WithOrigin[O] = FlatSchemaMapping[S, V, C, O] } =
 			OriginProjection.projectAs[|||[S, V, C], ({ type M[O] = FlatSchemaMapping[S, V, C, O] })#M]
 	}
 
@@ -417,7 +418,7 @@ object SchemaMapping {
 	}
 
 	object || {
-		implicit def schemaColumnProjection[S] :OriginProjection[||[S]] { type WithOrigin[O] = SchemaColumn[S, O] } =
+		implicit def schemaColumnProjection[S] :ExactProjection[||[S]] { type WithOrigin[O] = SchemaColumn[S, O] } =
 			OriginProjection.projectAs[||[S], ({ type M[O] = SchemaColumn[S, O] })#M]
 	}
 
@@ -430,7 +431,7 @@ object SchemaMapping {
 
 	object @|-| {
 		implicit def labeledSchemaMappingProjection[L <: Label, S, V <: Chain, C <: Chain]
-				:OriginProjection[@|-|[L, S, V, C]] { type WithOrigin[O] = LabeledSchemaMapping[L, S, V, C, O] } =
+				:ExactProjection[@|-|[L, S, V, C]] { type WithOrigin[O] = LabeledSchemaMapping[L, S, V, C, O] } =
 			OriginProjection.projectAs[@|-|[L, S, V, C], ({ type M[O] = LabeledSchemaMapping[L, S, V, C, O] })#M]
 	}
 
@@ -443,7 +444,7 @@ object SchemaMapping {
 
 	object @||| {
 		implicit def labeledFlatSchemaMappingProjection[L <: Label, S, V <: Chain, C <: Chain]
-				:OriginProjection[@|||[L, S, V, C]] { type WithOrigin[O] = LabeledFlatSchemaMapping[L, S, V, C, O] } =
+				:ExactProjection[@|||[L, S, V, C]] { type WithOrigin[O] = LabeledFlatSchemaMapping[L, S, V, C, O] } =
 			OriginProjection.projectAs[@|||[L, S, V, C], ({ type M[O] = LabeledFlatSchemaMapping[L, S, V, C, O] })#M]
 	}
 
@@ -456,7 +457,7 @@ object SchemaMapping {
 
 	object @|| {
 		implicit def labeledSchemaColumnProjection[L <: Label, S]
-				:OriginProjection[@||[L, S]] { type WithOrigin[O] = LabeledSchemaColumn[L, S, O] } =
+				:ExactProjection[@||[L, S]] { type WithOrigin[O] = LabeledSchemaColumn[L, S, O] } =
 			OriginProjection.projectAs[L @|| S, ({ type M[O] = LabeledSchemaColumn[L, S, O] })#M]
 	}
 
@@ -521,7 +522,9 @@ object SchemaMapping {
 
 	object FlatSchemaMapping {
 		//implicit 'override' from ||| which will work for SchemaMapping subclasses as normal.
-		implicit def defaultOriginProjection[M[O] <: MappingAt[O]] :FunctorProjection[M] = OriginProjection.default
+		implicit def genericFlatSchemaMappingProjection[M[Q] <: FlatSchemaMapping[S, _, _, Q], S, O]
+				:ProjectionDef[M[O], M, S] =
+			OriginProjection.functor[M, S, O]
 	}
 
 
@@ -558,7 +561,8 @@ object SchemaMapping {
 			new ColumnSupport[S, O](name, buffs) with SchemaColumn[S, O] with StableColumn[S, O]
 
 		//implicit 'override' from || which will work for SchemaMapping subclasses as normal.
-		implicit def defaultOriginProjection[M[O] <: MappingAt[O]] :FunctorProjection[M] = OriginProjection.default
+		implicit def genericSchemaColumnProjection[M[Q] <: SchemaColumn[S, Q], S, O] :ProjectionDef[M[O], M, S] =
+			OriginProjection.functor[M, S, O]
 	}
 
 
@@ -580,7 +584,9 @@ object SchemaMapping {
 
 
 		//implicit 'override' from @|-| which will work for SchemaMapping subclasses as normal.
-		implicit def defaultOriginProjection[M[O] <: MappingAt[O]] :FunctorProjection[M] = OriginProjection.default
+		implicit def genericLabeledSchemaMappingProjection[M[Q] <: LabeledSchemaMapping[_, S, _, _, Q], S, O]
+				:ProjectionDef[M[O], M, S] =
+			OriginProjection.functor[M, S, O]
 
 
 
@@ -625,7 +631,9 @@ object SchemaMapping {
 			LabeledSchemaMapping(label, mapping)
 
 		//implicit 'override' from @||| which will work for SchemaMapping subclasses as normal.
-		implicit def defaultOriginProjection[M[O] <: MappingAt[O]] :FunctorProjection[M] = OriginProjection.default
+		implicit def genericLabeledFlatSchemaMappingProjection[M[Q] <: LabeledFlatSchemaMapping[_, S, _, _, Q], S, O]
+				:ProjectionDef[M[O], M, S] =
+			OriginProjection.functor[M, S, O]
 
 	}
 
@@ -665,7 +673,9 @@ object SchemaMapping {
 			}
 
 		//implicit 'override' from @|| which will work for SchemaMapping subclasses as normal.
-		implicit def defaultOriginProjection[M[O] <: MappingAt[O]] :FunctorProjection[M] = OriginProjection.default
+		implicit def genericLabeledSchemaColumnProjection[M[Q] <: LabeledSchemaColumn[_, S, Q], S, O]
+				:ProjectionDef[M[O], M, S] =
+			OriginProjection.functor[M, S, O]
 
 	}
 
@@ -703,7 +713,7 @@ object SchemaMapping {
 		  */
 		def ^[T, M <: @|-|[N, T, _, _]]
 		     (implicit schema :MappingSchema[S, V, C, O],
-		      get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M]) :projection.WithOrigin[O] =
+		      get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M, T]) :projection.WithOrigin[O] =
 			projection(get(schema, label))
 
 		/** Get the extractor for the component with this label from the implicit schema.

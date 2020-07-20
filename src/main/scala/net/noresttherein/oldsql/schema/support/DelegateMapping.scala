@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.{Mapping, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 
 
 

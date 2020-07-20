@@ -9,6 +9,7 @@ import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, AdapterSeal}
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 
 
 
@@ -91,9 +92,9 @@ object MappingAdapter {
 
 
 
-	implicit def adapterProjection[M <: MappingAt[A], S, A](implicit body :OriginProjection[M])
-			:OriginProjection[MappingAdapter[M, S, A]] { type WithOrigin[O] = MappingAdapter[body.WithOrigin[O], S, O] } =
-		body.lift[({ type P[+B <: Mapping, O] = MappingAdapter[B, S, O] })#P, M]
+	implicit def adapterProjection[M <: MappingAt[O], S, O](implicit body :ExactProjection[M])
+			:ProjectionDef[MappingAdapter[M, S, O], ({ type P[X] = MappingAdapter[body.WithOrigin[X], S, X] })#P, S] =
+		body.adapt[MappingAdapter, S, O]
 
 
 
