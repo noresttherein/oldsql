@@ -89,13 +89,13 @@ object Unique extends IterableFactory[Unique] {
 	  * on the proxy is called. It will be executed at most once, withing a `synchronized` block for the proxy.
 	  * Once computed, it remains thread safe but will incur no additional synchronization penalty.
 	  */
-	@inline def Lazy[T](init: => IterableOnce[T]) :Unique[T] = delay(from(init))
+	@inline def Lazy[T](init: => IterableOnce[T]) :Unique[T] = delayed(from(init))
 
 	/** A proxy to a lazily computed `Unique[T]`. The initializer will be called when any of the methods on the proxy
 	  * is called. It will be executed at most once, withing a `synchronized` block for the proxy.
 	  * Once computed, it remains thread safe but will incur no additional synchronization penalty.
 	  */
-	def delay[T](init: => Unique[T]) :Unique[T] = new LazyUnique[T](() => init)
+	def delayed[T](init: => Unique[T]) :Unique[T] = new LazyUnique[T](() => init)
 
 
 
@@ -109,10 +109,10 @@ object Unique extends IterableFactory[Unique] {
 	implicit class DelayedUnique[T](initializer: => Unique[T]) {
 		/** Treats the `this` argument as a ''by-name'' expression to be evaluated only when the created `Unique`
 		  * proxy's contents are accessed.
-		  * @return `Unique.delay(initializer)`.
-		  * @see [[net.noresttherein.oldsql.collection.Unique.delay delay]]
+		  * @return `Unique.delayed(initializer)`.
+		  * @see [[net.noresttherein.oldsql.collection.Unique.delayed delayed]]
 		  */
-		@inline def delayed :Unique[T] = Unique.delay(initializer)
+		@inline def delayed :Unique[T] = Unique.delayed(initializer)
 	}
 
 

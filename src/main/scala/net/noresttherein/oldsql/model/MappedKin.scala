@@ -21,7 +21,7 @@ trait MappedKin[S, +T] extends Kin[T] {
 
 
 object MappedKin {
-	sealed trait KinMapper[-X, +Y] extends (X=>Y) {
+	sealed trait KinMapper[-X, +Y] extends (X => Y) {
 		def apply(x :X) :Y
 		def apply(kin :Kin[X]) :Kin[Y] = kin.map(this)
 	}

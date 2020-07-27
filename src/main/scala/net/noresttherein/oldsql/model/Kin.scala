@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.model
 
-import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
-import net.noresttherein.oldsql.model.Kin.{Present, Unknown}
+import scala.collection.Factory
+
+import net.noresttherein.oldsql.model.ComposedOf.DecomposableTo
+import net.noresttherein.oldsql.model.Kin.Unknown
 import net.noresttherein.oldsql.model.MappedKin.{KinMapper, PropertyMapper}
 import net.noresttherein.oldsql.model.Restraint.{Restrainer, True}
-
-import scala.collection.generic.CanBuildFrom
-import scala.collection.Factory
+import net.noresttherein.oldsql.model.types.ValueTypes
 
 
 
@@ -22,7 +22,7 @@ import scala.collection.Factory
   * An instance thus might contain an associated, pre-fetched entity, or a foreign key to it.
   * They can be used for any type, including collections, and an empty `Kin` for a to-many relationship
   * can for example specify a reverse foreign key (foreign key on the target entity and the primary key on this entity).
-  * They can also serve as actual search filters - queries are after all only a filter specification on a last.
+  * They can also serve as actual search filters - queries are after all only a filter specification on a table.
   *
   * As a kin is immutable (at least in the interface - implementations may use mutable state as long as the client
   * will never see different results for the same call on the `Kin`), it is covariant in regards to the value type -
@@ -39,7 +39,7 @@ import scala.collection.Factory
   * @see [[net.noresttherein.oldsql.model.Kin.OptKin OptKin]]
   * @see [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]]
   */
-abstract class Kin[+T] extends Serializable {
+trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 //	type Item
 //
 //	def composer :T ComposableFrom Item
@@ -90,11 +90,11 @@ abstract class Kin[+T] extends Serializable {
 //	@inline final def map[O](f: T => O): Kin[O] =
 //		if (isEmpty) Unknown else Present(f(this.get))
 //
-//	@inline final def flatMap[O](f: T => Kin[O]): Kin[O] =
-//		if (isEmpty) Unknown else f(this.get)
-//
-//	@inline final def flatten[O](implicit ev: T <:< Kin[O]): Kin[O] =
-//		if (isEmpty) Unknown else ev(this.get)
+	@inline final def flatMap[O](f: T => Kin[O]): Kin[O] =
+		if (isEmpty) Unknown else f(this.get)
+
+	def flatten[O](implicit ev: T <:< Kin[O]): Kin[O] =
+		if (isEmpty) Unknown else ev(this.get)
 
 	/** If the given condition is false, return an `Unknown` instance. Otherwise return `this`.
 	  * Note that importing implicit conversion [[Kin$.?:]] will patch any type with the same method,
@@ -237,7 +237,7 @@ object Kin {
 
 
 	/** Container for a specification of a filter on type `T`, which can request to force the view of the result set
-	  * to a different type, depending on expected amount of values - it can be a single value, or just `Kin[T]`,
+	  * to a different type, depending on expected amount of values - it can be a single value (simply `Kin[T]`),
 	  * a `Kin[Option[T]]`, or of a collection. Resolving a `Kin` for which the number of results cannot be
 	  * coerced into the requested type will result in an error, rather than omitting extraneous results.
 	  * @tparam T the element type returned by a query from which the values of the `Kin` created by this instance
@@ -252,6 +252,12 @@ object Kin {
 		  * only when resolving the Kin.
 		  */
 		def optional :Kin[Option[T]] = as[Option[T]]
+
+		/** Return result set as zero or one elements. Note that `Kin[Option[T]]` is conceptually different than
+		  * `Option[Kin[T]]` - in the latter case the number of results is known before hand, while in the former
+		  * only when resolving the Kin.
+		  */
+		def opt :Kin[Option[T]] =  as[Option[T]]
 
 		/** Return the result set as a composite type `C`. A composite type is a type which can be constructed
 		  * and deconstructed to `Iterable[T]` (possibly with limitations to its size). The main examples for
@@ -397,17 +403,17 @@ object Kin {
 	  */
 	object Present {
 		/** Create a present `Kin` containing the given value and no other information. */
-		@inline def apply[T](value :T) :Kin[T] = new Present(value)
+		@inline def apply[@specialized(ValueTypes) T](value :T) :Kin[T] = new Present(value)
 
 		/** Check if this `Kin` has a present value associated with it.
 		  * It will always return the value of the passed reference, regardless of any other information about it
 		  * and whether it was created by this object or not.
 		  */
-		@inline def unapply[T](kin :Kin[T]) :Option[T] = kin.toOpt
+		@inline def unapply[T](kin :Kin[T]) :Kin[T] = kin
 
 	}
 
-	private[oldsql] class Present[+T] private[oldsql] (override val get :T) extends Kin[T] {
+	private[oldsql] class Present[@specialized(ValueTypes) +T] private[oldsql] (override val get :T) extends Kin[T] {
 		override def isEmpty = false
 
 		final override def toOpt :Some[T] = Some(get)
@@ -539,7 +545,7 @@ object Kin {
 
 
 	/** Reference all instances of a given type in some universe, as defined by the resolver.
-	  * Depending on the implementation of a handler, it can return all rows in a last, or in a collection of tables
+	  * Depending on the implementation of a handler, it can return all rows in a table, or in a collection of tables
 	  * for related types.
 	  */
 	object All {

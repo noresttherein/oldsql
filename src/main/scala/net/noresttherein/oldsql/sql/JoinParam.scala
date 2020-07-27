@@ -445,13 +445,11 @@ object JoinParam {
 				None
 		}
 
-
 		def unapply[X](expr :SQLExpression[_, X]) :Option[ParamMapping[P, X, O]] = expr match {
 			case ComponentSQL(_, MappingExtract(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
 				Some(comp.asInstanceOf[ParamMapping[P, X, O]])
 			case _ => None
 		}
-
 
 		def unapply[X](column :Column[X]) :Option[ParamColumn[X]] = column match {
 			case param :FromParam[_, _]#ParamColumn[_] if param.root == this =>
@@ -460,13 +458,11 @@ object JoinParam {
 				None
 		}
 
-
 		def unapply[X](component :Component[X]) :Option[ParamMapping[P, X, O]] = component match {
 			case param :ParamMapping[_, _, _] if param.root == this =>
 				Some(param.asInstanceOf[ParamComponent[X]])
 			case _ => None
 		}
-
 
 
 

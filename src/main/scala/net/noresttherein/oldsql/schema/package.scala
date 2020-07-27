@@ -49,15 +49,6 @@ package object schema {
 
 
 
-	private[schema] def mapForm[S, X](form :ColumnForm[S])(map :S =?> X, unmap :X =?> S)
-	                                 (implicit nulls :NullValue[X] = null) :ColumnForm[X] =
-		(map, unmap) match {
-			case (Requisite(there), Requisite(back)) => form.bimap(there)(back)
-			case _ => form.biflatMap(map.optional)(unmap.optional)
-		} //todo: implement form mapping with extractors.
-
-
-
 	private[schema] def mapBuffs[S, X](mapping :MappingOf[S])(map :S =?> X, unmap :X =?> S) :Seq[Buff[X]] =
 		mapping.buffs.map { buff =>
 			buff.bimap(

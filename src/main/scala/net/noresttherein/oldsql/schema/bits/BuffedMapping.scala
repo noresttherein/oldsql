@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.schema.Buff
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, EagerDeepProxy, ShallowProxy}
 import net.noresttherein.oldsql.schema.support.DelegateMapping
 
 

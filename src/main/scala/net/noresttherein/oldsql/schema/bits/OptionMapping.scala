@@ -10,6 +10,8 @@ import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.morsels.Extractor.=?>
 
 //implicits
 import net.noresttherein.oldsql.slang._
@@ -43,73 +45,43 @@ object OptionMapping {
 
 
 
-	private class DirectOptionMapping[+M <: RefinedMapping[S, O], S, O](protected override val backer :M)
-		extends OptionMapping[M, S, O] with ShallowDelegate[Option[S], O]
+	private class DirectOptionMapping[+M <: RefinedMapping[S, O], S, O]
+	                                 (protected override val backer :M,
+	                                  protected override val map :S =?> Option[S] = Extractor.Requisite(Some(_:S)),
+	                                  protected override val unmap :Option[S] =?> S = Extractor.fromOpt[S])
+		extends MappedMapping[S, Option[S], O] with OptionMapping[M, S, O]// with ShallowDelegate[Option[S], O]
 	{ box =>
 		override val get :M = backer
-
-
+		private[this] val eggExtract = apply(get)
 
 		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(eggExtract))
 
-		override def nullValue :NullValue[Option[S]] = NullValue.None
-
-
-
-		override def apply[T](component :Component[T]) :Extract[T] =
-			if (component eq get)
-				eggExtract.asInstanceOf[Extract[T]]
-			else extracts(component)
-
-		override def apply[T](column :Column[T]) :ColumnExtract[T] =
-			if (column eq get)
-				eggExtract.asInstanceOf[ColumnExtract[T]]
-			else columnExtracts(column)
-
-
-		private val eggExtract :Extract[S] = MappingExtract(get)(Extractor.fromOpt)
-
-		override val extracts :NaturalMap[Component, Extract] =
-			backer.extracts.map(schema.composeExtractAssoc(eggExtract)(_)).updated(backer, eggExtract)
-
-		override val columnExtracts :NaturalMap[Column, ColumnExtract] = backer match {
-			case column :ColumnMapping[S @unchecked, O @unchecked] =>
-				NaturalMap.single[Column, ColumnExtract, S](column, eggExtract.asInstanceOf[ColumnExtract[S]])
-			case _ =>
-				backer.columnExtracts.map(schema.composeColumnExtractAssoc(eggExtract)(_))
-		}
-
-
-
-		override val components :Unique[Component[_]] = Unique(get)
-		override val subcomponents :Unique[Component[_]] = get +: get.subcomponents
+		protected override def nulls :NullValue[Option[Nothing]] = NullValue.None
 
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[Option[S]] =
 			get.selectForm(if (components.contains(get)) get.selectable else components).toOpt
 
-		override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
-			get.queryForm(if (components.contains(get)) get.queryable else components).toOpt
+//		override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
+//			get.queryForm(if (components.contains(get)) get.queryable else components).toOpt
+//
+//		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
+//			get.updateForm(if (components.contains(get)) get.updatable else components).toOpt
+//
+//		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
+//			get.insertForm(if (components.contains(get)) get.insertable else components).toOpt
 
-		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
-			get.updateForm(if (components.contains(get)) get.updatable else components).toOpt
-
-		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
-			get.insertForm(if (components.contains(get)) get.insertable else components).toOpt
+		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
+			get.writeForm(op, if (components.contains(get)) op.columns(get) else components).toOpt
 
 		override val selectForm :SQLReadForm[Option[S]] = get.selectForm.toOpt
 		override val queryForm :SQLWriteForm[Option[S]] = get.queryForm.toOpt
 		override val updateForm :SQLWriteForm[Option[S]] = get.updateForm.toOpt
 		override val insertForm :SQLWriteForm[Option[S]] = get.insertForm.toOpt
+//		override def writeForm(op :WriteOperationType) :SQLWriteForm[Option[S]] = op.form(this)
 
 
-
-		override lazy val buffs :Seq[Buff[Option[S]]] =
-			get.buffs.map(_.bimap(Option(_), (_:Option[S]).get)) ++
-				(ExplicitSelect.enabled(get) ifTrue ExplicitSelect[Option[S]](None))
-
-
-		override def sqlName :Option[String] = get.sqlName
+//		override def sqlName :Option[String] = get.sqlName
 
 		override def toString :String = "Option[" + get + "]"
 	}

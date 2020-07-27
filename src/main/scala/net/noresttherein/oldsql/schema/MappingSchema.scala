@@ -51,7 +51,7 @@ import net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter
   *           `SchemaMapping.|-|[_, _, _]`.
   *           different fragments of a `ResultSet`, when more than one copy is present.
   * @tparam O a marker type denoting the origin of the mapping used to distinguish between different instances
-  *           of the same class but representing different tables or different occurrences of a last in the
+  *           of the same class but representing different tables or different occurrences of a table in the
   *           ''from'' clause of an SQL select.
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping]]
@@ -96,6 +96,29 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 
 	/** Base self type of this schema. */
 	type Schema = MappingSchema[S, V, C, O]
+
+
+
+	override def optionally(pieces :Pieces) :Option[V] = pieces.assemble(this) //no buffs.
+
+	protected def packedBuffs :Seq[Buff[S]] = Nil
+
+	private[schema] final def outerBuffs :Seq[Buff[S]] = packedBuffs
+
+	/** Returns the chain with the values of all components from the subject value of the enclosing `SchemaMapping`.
+	  * @return a chain of component values inside `Some` as long as all of them returned `Some`
+	  *         from their `optionally` method, and `None` in the case when at least one of them didn't have a value
+	  *         in the given subject.
+	  */
+	def unapply(subject :S) :Option[V]
+
+	/** Returns the chain with the values of all components from the subject value of the enclosing `SchemaMapping`
+	  * This method will ask the extractors given for all components to produce a value for that component.
+	  * If at least one of them fails, a `NoSuchElementException` will be thrown.
+	  * @return a chain of values for all components on the component chain `C`.
+	  */
+	def disassemble(subject :S) :V
+
 
 
 	/** Fully typed list of components in this schema as a `Chain`. This list might not be exhaustive and,
@@ -180,7 +203,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 
 
 
-	//todo: perhaps custom evidence?
+	//consider: perhaps custom evidence?
 	/** The last component on the list - same as `last` but more readable in code like `schema.prev.prev()`. */
 	def apply[M](implicit nonEmpty :C <:< (Chain ~ M)) :M = last
 
@@ -230,7 +253,8 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 
 
 	/** A `MappingExtract` presenting a component of this schema as a component
-	  * of the associated `SchemaMapping[S, V, C, O]`.
+	  * of the associated `SchemaMapping[S, V, C, O]`. This method, unlike its original template `apply(component)`
+	  * presenting a component as an extract ''of this schema'', must handle `this` as an argument.
 	  */
 	def extract[T](component :Component[T]) :MappingExtract[S, T, O] =
 		packedExtracts(component)
@@ -246,7 +270,8 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 
 	/** The extracts for all components in this schema, including indirect an synthetic ones, from the outer mapping's
 	  * subject type `Packed` (rather than the `Subject` of this mapping, which always is the value chain
-	  * with types of individual components.
+	  * with types of individual components. This map, unlike [[net.noresttherein.oldsql.schema.Mapping#extracts extracts]],
+	  * must contain the whole schema itself as a component key.
 	  */
 	def packedExtracts :NaturalMap[Component, PackedExtract]
 
@@ -258,7 +283,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 
 
 
-	//fixme: this doesn't map outerBuffs
+	//fixme: this doesn't map packedBuffs
 	/** Adapts this schema for some other subject type `X` from which the value of the current enclosing mapping
 	  * subject type `S` can be derived. This has the effect of composing the extractor for every component
 	  * in this schema with the given function.
@@ -293,7 +318,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
 	  */
 	def map(constructor :V => S) : SchemaMapping[S, V, C, O] =
-		new MappedSchema(this, constructor, outerBuffs)
+		new MappedSchema(this, constructor, packedBuffs)
 
 	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
 	  * provided with component and column definitions when building this schema for disassembly of its subject
@@ -320,7 +345,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
 	  */
 	def optMap(constructor :V => Option[S]) :SchemaMapping[S, V, C, O] =
-		new OptMappedSchema(this, constructor, outerBuffs)
+		new OptMappedSchema(this, constructor, packedBuffs)
 
 
 	/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
@@ -335,26 +360,6 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 	  */
 	def optMap[F](constructor :F)(implicit apply :ChainApplication[V, F, Option[S]]) :SchemaMapping[S, V, C, O] =
 		optMap { row :V => row.feedTo(constructor) }
-
-
-
-	override def optionally(pieces :Pieces) :Option[V] = pieces.assemble(this) //no buffs.
-
-	protected def outerBuffs :Seq[Buff[S]] = Nil
-
-	/** Returns the chain with the values of all components from the subject value of the enclosing `SchemaMapping`.
-	  * @return a chain of component values inside `Some` as long as all of them returned `Some`
-	  *         from their `optionally` method, and `None` in the case when at least one of them didn't have a value
-	  *         in the given subject.
-	  */
-	def unapply(subject :S) :Option[V]
-
-	/** Returns the chain with the values of all components from the subject value of the enclosing `SchemaMapping`
-	  * This method will ask the extractors given for all components to produce a value for that component.
-	  * If at least one of them fails, a `NoSuchElementException` will be thrown.
-	  * @return a chain of values for all components on the component chain `C`.
-	  */
-	def disassemble(subject :S) :V
 
 
 
@@ -404,7 +409,7 @@ object MappingSchema {
 
 
 		override def map(constructor :V => S) :FlatSchemaMapping[S, V, C, O] =
-			new MappedFlatSchema(this, constructor, outerBuffs)
+			new MappedFlatSchema(this, constructor, packedBuffs)
 
 		override def map[F](constructor :F)(implicit apply :ChainApplication[V, F, S]) :FlatSchemaMapping[S, V, C, O] =
 			map(apply(constructor, _))
@@ -412,7 +417,7 @@ object MappingSchema {
 
 
 		override def optMap(constructor :V => Option[S]) :FlatSchemaMapping[S, V, C, O] =
-			new OptMappedFlatSchema(this, constructor, outerBuffs)
+			new OptMappedFlatSchema(this, constructor, packedBuffs)
 
 		override def optMap[F](constructor :F)(implicit apply :ChainApplication[V, F, Option[S]])
 				:FlatSchemaMapping[S, V, C, O] =
@@ -439,14 +444,14 @@ object MappingSchema {
 		override def export[T](column :Column[T]) :Column[T] = column
 
 		protected[schema] def conveyBuffs[T](extractor :S => T, buffs :Seq[Buff[T]]) :Seq[Buff[T]] =
-			if (buffs.isEmpty) outerBuffs.flatMap(_.cascade(extractor))
-			else if (outerBuffs.isEmpty) buffs
-			else buffs ++: outerBuffs.flatMap(_.cascade(extractor))
+			if (buffs.isEmpty) packedBuffs.flatMap(_.cascade(extractor))
+			else if (packedBuffs.isEmpty) buffs
+			else buffs ++: packedBuffs.flatMap(_.cascade(extractor))
 
 		protected[schema] def conveyBuffs[T](extractor :S =?> T, buffs :Seq[Buff[T]]) :Seq[Buff[T]] =
-			if (buffs.isEmpty) schema.cascadeBuffs(outerBuffs, toString)(extractor)
-			else if (outerBuffs.isEmpty) buffs
-			else buffs ++: schema.cascadeBuffs(outerBuffs, toString)(extractor)
+			if (buffs.isEmpty) schema.cascadeBuffs(packedBuffs, toString)(extractor)
+			else if (packedBuffs.isEmpty) buffs
+			else buffs ++: schema.cascadeBuffs(packedBuffs, toString)(extractor)
 
 
 
@@ -477,7 +482,7 @@ object MappingSchema {
 
 		/** Appends the given component to this schema. This component will not inherit any buffs associated
 		  * with this instance and its outer mapping.
-		  * @param component a `SchemaMapping` with the same origin type `O` to add as the component.
+		  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
 		  * @param value an extractor returning the value of this component for the subject type `S` of an owning mapping.
 		  */
 		def comp[T, MV <: Chain, MC <: Chain](component: |-|[T, MV, MC], value :S =?> T)
@@ -1232,7 +1237,7 @@ object MappingSchema {
 
 
 
-	private[schema] class ExtensibleEmptySchema[S, O](protected override val outerBuffs :Seq[Buff[S]] = Nil)
+	private[schema] class ExtensibleEmptySchema[S, O](protected override val packedBuffs :Seq[Buff[S]] = Nil)
 		extends EmptySchema[S, O] with ExtensibleFlatMappingSchema[S, @~, @~, O]
 
 
@@ -1259,7 +1264,7 @@ object MappingSchema {
 	  * of the last component `T` into a larger chain `V L E`, where `L` is the type constructor of the link for
 	  * the particular chain type `B`.
 	  * @param init the schema for the preceding components in the chain.
-	  * @param component the last component in the chain, associated with this.
+	  * @param element the last component in the chain, associated with this.
 	  * @param extractor extracts the value of the last component from the subject of th owning mapping.
 	  * @param lastValue extracts the value of the last component from the chain which is the subject of this mapping.
 	  * @tparam S the subject type of the enclosing ('result') mapping (sometimes referred to as the 'owner' or 'parent').
@@ -1299,7 +1304,7 @@ object MappingSchema {
 
 		override val members :C ~ M = init.members ~ element
 
-		@inline protected final def component :Component[T] = element.refine.withOrigin[O]
+		@inline protected final def component :Component[T] = (element :RefinedMapping[T, element.Origin]).withOrigin[O]
 
 		override def last[N](implicit nonEmpty :C ~ M <:< (Chain ~ N)) :N = component.asInstanceOf[N]
 
@@ -1309,58 +1314,60 @@ object MappingSchema {
 
 
 
-		override def extract[X](comp :Component[X]) :MappingExtract[S, X, O] =
-			if (comp eq this) selfExtract.asInstanceOf[MappingExtract[S, X, O]]
-			else if (comp == component) componentExtract.asInstanceOf[MappingExtract[S, X, O]]
+		override def apply[X](comp :Component[X]) :Extract[X] =
+			if (comp eq this) selfExtract.asInstanceOf[Extract[X]]
+			else if (comp == component) componentExtract.asInstanceOf[Extract[X]]
+			else extracts(comp)
+
+		override def apply[X](column :Column[X]) :ColumnExtract[X] = //fiixme
+			if (column == component) componentExtract.asInstanceOf[ColumnExtract[X]]
+			else columnExtracts(column)
+
+		override def extract[X](comp :Component[X]) :PackedExtract[X] =
+			if (comp eq this) unpackSelf.asInstanceOf[PackedExtract[X]]
+			else if (comp == component) extractor.asInstanceOf[PackedExtract[X]]
 			else packedExtracts(comp)
 
-		override def extract[X](column :Column[X]) :ColumnMappingExtract[S, X, O] =
-			if (column == component) componentExtract.asInstanceOf[PackedColumnExtract[X]]
-			else packedColumnExtracts(column)
+		override def extract[X](col :Column[X]) :PackedColumnExtract[X] =
+			if (col eq component) extractor.asInstanceOf[PackedColumnExtract[X]]
+			else packedColumnExtracts(col)
 
 		override def lastExtract[X](implicit nonEmpty :C ~ M <:< (Chain ~ |-|[X, _ <: Chain, _ <: Chain]))
 				:MappingExtract[S, X, O] =
-			componentExtract.asInstanceOf[MappingExtract[S, X, O]]
+			extractor.asInstanceOf[MappingExtract[S, X, O]]
 
+		private[this] val unpackSelf :PackedExtract[V L E] = MappingExtract.opt(this)(unapply)
 		private[this] val selfExtract :Extract[V L E] = MappingExtract.ident(this)
 		private[this] val initExtract :Extract[V] = MappingExtract.req(init) { vs :(V L E) => vs.init }
-		private[this] val componentExtract :Extract[T] = MappingExtract.req(component)(lastValue)
-
-
+		private[this] val componentExtract :Extract[T] = MappingExtract.req(component.withOrigin[O])(lastValue)
 
 		override val extracts :NaturalMap[Component, Extract] =
 			(init.extracts.map(schema.composeExtractAssoc(initExtract)(_)) ++
-				component.extracts.map(schema.composeExtractAssoc(componentExtract)(_))
-			).updated(init, initExtract).updated(component, componentExtract)
-
+				component.withOrigin[O].extracts.map(schema.composeExtractAssoc(componentExtract)(_))
+			).updated(init, initExtract).updated(component.withOrigin[O], componentExtract)
 
 		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
-			NaturalMap.delay(schema.selectColumnExtracts(this)(extracts))
-
+			NaturalMap.delayed(schema.selectColumnExtracts(this)(extracts))
 
 		override val packedExtracts :NaturalMap[Component, PackedExtract] =
 			init.packedExtracts ++ component.extracts.map(schema.composeExtractAssoc(extractor)(_))
-				.updated[PackedExtract, V](init, MappingExtract.opt(init)(init.unapply))
-				.updated[PackedExtract, T](component, extractor)
+				.updated[PackedExtract, T](component, extractor).updated[PackedExtract, V L E](this, unpackSelf)
 
-		override val packedColumnExtracts = NaturalMap.delay(schema.selectColumnExtracts(toString)(packedExtracts))
-
+		override val packedColumnExtracts = NaturalMap.delayed(schema.selectColumnExtracts(toString)(packedExtracts))
 
 
-		override val components :Unique[Component[_]] = //Unique[Component[_]](init, last)
-			Unique.Lazy(componentsReversed.reverse)
 
 		override protected[schema] def componentsReversed :List[Component[_]] =
-			component :: init.subcomponentsReversed
+			component :: init.componentsReversed
 
 		override protected[schema] def subcomponentsReversed :List[Component[_]] =
 			component :: component.subcomponents.toList reverse_::: init :: init.subcomponentsReversed
 
-		override val subcomponents :Unique[Component[_]] = Unique.Lazy(subcomponentsReversed.reverse)
-
 		protected[schema] override def columnsReversed :List[Column[_]] =
 			component.columns.toList reverse_::: init.columnsReversed
 
+		override val components :Unique[Component[_]] = Unique.Lazy(componentsReversed.reverse)
+		override val subcomponents :Unique[Component[_]] = Unique.Lazy(subcomponentsReversed.reverse)
 		override val columns :Unique[Column[_]] = Unique.Lazy(columnsReversed.reverse)
 
 	}
@@ -1408,7 +1415,7 @@ object MappingSchema {
                           (prev :ExtensibleMappingSchema[S, V, C, O], last :M, extractor :MappingExtract[S, T, O])
 		extends NonEmptySchema[S, V, C, T, M, O](prev, last, extractor) with ExtensibleMappingSchema[S, V ~ T, C ~ M, O]
 	{
-		protected override val outerBuffs :Seq[Buff[S]] = init.outerBuffs
+		protected override val packedBuffs :Seq[Buff[S]] = init.packedBuffs
 	}
 
 
@@ -1427,6 +1434,7 @@ object MappingSchema {
 		override val queryForm = SQLWriteForm.ChainWriteForm(init.queryForm, last.queryForm)
 		override val updateForm = SQLWriteForm.ChainWriteForm(init.updateForm, last.updateForm)
 		override val insertForm = SQLWriteForm.ChainWriteForm(init.insertForm, last.insertForm)
+		override def writeForm(op :WriteOperationType) :SQLWriteForm[V ~ T] = op.form(this)
 
 		override def compose[X](extractor :X => S) :NonEmptyFlatSchema[X, V, C, T, M, O] =
 			new NonEmptyFlatSchema(init compose extractor, last, this.extractor compose extractor)
@@ -1442,7 +1450,7 @@ object MappingSchema {
 		extends NonEmptyFlatSchema[S, V, C, T, M, O](prev, next, get)
 		   with ExtensibleFlatMappingSchema[S, V ~ T, C ~ M, O]
 	{
-		protected override val outerBuffs :Seq[Buff[S]] = init.outerBuffs
+		protected override val packedBuffs :Seq[Buff[S]] = init.packedBuffs
 	}
 
 

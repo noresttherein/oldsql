@@ -31,9 +31,10 @@ trait Buff[T] {
 	def buffType :BuffType
 
 	/** Does this buff belong to the buff group defined by `group`, carrying information defined by the group?
-	  * this will be true if this buff was created by this group or if the group which created this buff
+	  * This will be true if this buff was created by this group or if the group which created this buff
 	  * has strictly narrower meaning than the passed argument, effectively implying the latter.
-	  * This method delegates the test to this buff type's [[net.noresttherein.oldsql.schema.Buff.BuffType#implies implies]].
+	  * This method delegates the test to the associated `BuffType`'s
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType#implies implies]].
 	  */
 	def is(group :BuffType) :Boolean = buffType.implies(group)
 
@@ -167,14 +168,11 @@ object Buff {
 	  * its columns individually. It implies `OptionalQuery` and `NoQueryByDefault`. */
 	case object ExplicitQuery extends ComboFlag(OptionalQuery, NoQueryByDefault)
 
-	/** A buff type marking that a given column/component must be included in every query against the last, using
+	/** A buff type marking that a given column/component must be included in every query against the table, using
 	  * the value provided by the buff. It implies `NoSelect` and `NoQuery` and is used to artificially limit the number
 	  * of mapped entities.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped]] */
 	case object ExtraQuery extends ComboValueBuffType(NoSelect, NoQuery)
-
-	/** Marks that a column/component ''must'' be included as part of the where clause of any update statement. */
-	case object ForcedQuery extends FlagBuffType
 
 
 
@@ -182,7 +180,7 @@ object Buff {
 	  * It is still included by default and needs to be excluded explicitly. */
 	case object OptionalInsert extends FlagBuffType
 
-	/** A buff marking that a given column/component is not inserted by default into the underlying last
+	/** A buff marking that a given column/component is not inserted by default into the underlying table
 	  * and needs to be included explicitly. It implies `OptionalInsert` and `NoInsertByDefault`. */
 	case object ExplicitInsert extends ComboFlag(OptionalInsert, NoInsertByDefault)
 
@@ -216,11 +214,20 @@ object Buff {
 	case object ExtraWrite extends ComboValueBuffType(ReadOnly, ExtraInsert, ExtraUpdate)
 
 
+	/** Signifies that a column/component can be excluded from all types of database operations.
+	  * It is a shortcut for marking it with `OptionalSelect`, `OptionalQuery`, `OptionalWrite`. */
+	case object Optional extends ComboValueBuffType(OptionalSelect, OptionalQuery, OptionalWrite)
+
+	/** Signifies that a column/component must be listed explicitly in order to be included in any database operation
+	  * (it is not included by default).
+	  * It is a shortcut for marking it with `Optional`, `ExplicitSelect`, `ExplicitQuery` and `ExlicitWrite`. */
+	case object Explicit extends ComboValueBuffType(Optional, ExplicitSelect, ExplicitQuery, ExplicitWrite)
+
 
 	/** Marks a column or component which is not part of the mapped scala class, but is still part of the mapped
 	  * entity from the relational point of view. All rows which are subject to mapping by the application have
-	  * the value returned by the buff, essentially partitioning the last and limiting the application to a subset
-	  * of its rows. It implies both `ExtraQuery` and `ExtraWrite`, meaning that all queries against the last will
+	  * the value returned by the buff, essentially partitioning the table and limiting the application to a subset
+	  * of its rows. It implies both `ExtraQuery` and `ExtraWrite`, meaning that all queries against the table will
 	  * include the annotated column in the filter and all inserts and updates will set its value based on this buff.
 	  */
 	case object Unmapped extends ComboValueBuffType(ExtraQuery, ExtraWrite)
@@ -230,24 +237,36 @@ object Buff {
 	/** Any value returned from the select (or assembled from such values) of a column/component annotated
 	  * with this buff type must be mapped with the function included in the buff. This buff is independent
 	  * from buffs specifying whether and when a component can be included in a select header. */
-	case object SelectAudit extends AuditBuffType
+	case object SelectAudit extends ComboBuffType(Audit) with AuditBuffType
 
-	case object QueryAudit extends AuditBuffType
+	case object QueryAudit extends ComboBuffType(Audit) with AuditBuffType
 
 	/** All values of columns/components annotated with this buff type must be mapped with the function
 	  * included in the buff before inserting the entity declaring it. This does not include update statements
 	  * and is independent of any buffs specifying if the column/component can be inserted at all. */
-	case object InsertAudit extends AuditBuffType
+	case object InsertAudit extends ComboBuffType(WriteAudit) with AuditBuffType
 
 	/** All values of columns/components annotated with this buff type must be mapped with the function
 	  * included in the buff before updating the entity declaring it. This does not include insert statements
 	  * and is independent of any buffs specifying if the column/component can be updated at all. */
 	case object UpdateAudit extends AuditBuffType
 
-	/** All values of columns/components annotated with this buff type must be mapped with the function
-	  * included in the buff before inserting or updating the entity declaring it.
-	  * This is independent of any buffs specifying if the column/component can be inserted at all. */
+	/** All values of columns/components annotated with this buff type must be passed through the function
+	  * provided by this buff before inserting or updating the entity declaring it. It is thus ideally suited
+	  * for implementing validation, both on single columns and constraints spanning several columns (when applied
+	  * to a component containing those columns). This is independent of any buffs specifying if the column/component
+	  * can be inserted at all.
+	  */
 	case object WriteAudit extends ComboBuffType(UpdateAudit, InsertAudit) with AuditBuffType
+
+	/** Any read or written value `S` of a column/component annotated with this buff is first passed
+	  * through the function `S => S` provided by the buff. This buff type thus makes a good extension point
+	  * for consistency validation, both of data already in the database and that being written. If you wish to limit
+	  * the check only to insert and update operations, use
+	  * the [[net.noresttherein.oldsql.schema.Buff.WriteAudit WriteAudit]] buff instead (or those specifically dedicated
+	  * to a single database operation type0.
+	  */
+	case object Audit extends ComboBuffType(SelectAudit, QueryAudit, WriteAudit) with AuditBuffType
 
 
 
@@ -259,6 +278,9 @@ object Buff {
 
 
 
+	/** Marks that a column/component ''must'' be included as part of the where clause of any update statement. */
+	case object UpdateMatch extends FlagBuffType
+
 	/** A buff type marking that a column contains an application generated timestamp set once, when the row is inserted.
 	  * It is an `ExtraInsert` buff, meaning it will be automatically included in every insert and the value present
 	  * in the inserted entity will be ignored.
@@ -269,9 +291,9 @@ object Buff {
 	}
 
 	/** A buff type marking that a column contains an application generated timestamp set when the row is inserted
-	  * and every time it is updated. It implies `CreateTimestamp`, `ExtraInsert` and `ExtraUpdate`, meaning it will
-	  * be automatically included in every write of the mapped entity to the database and the value present in the
-	  * entity will be ignored.
+	  * and every time it is updated. It implies `ReadOnly`, `CreateTimestamp`, `ExtraInsert` and `ExtraUpdate`, meaning
+	  * it will be automatically included in every write of the mapped entity to the database and the value present
+	  * in the entity will be ignored.
 	  * It should be of a type with a provided [[net.noresttherein.oldsql.schema.bits.Temporal Temporal]] type class.
 	  */
 	case object UpdateTimestamp extends ComboBuffType(ReadOnly, ExtraUpdate, CreateTimestamp) with GeneratedBuffType {
@@ -280,7 +302,7 @@ object Buff {
 
 	/** A buff type marking that a column serves as a timestamp-based optimistic lock.
 	  * It is the same as [[net.noresttherein.oldsql.schema.Buff.UpdateTimestamp UpdateTimestamp]], but also
-	  * implies [[net.noresttherein.oldsql.schema.Buff.ForcedQuery ForcedQuery]]. This means the values
+	  * implies [[net.noresttherein.oldsql.schema.Buff.UpdateMatch UpdateMatch]]. This means the values
 	  * carried by entities will be ignored during the update and instead a fresh timestamp will be used as the new
 	  * value ''and'' the old value must be included in the 'where' clause of the update statement to prevent
 	  * overwriting a concurrent update.
@@ -288,7 +310,7 @@ object Buff {
 	  * an implicit instance of the [[net.noresttherein.oldsql.schema.bits.Temporal Temporal]] type class is provided
 	  * for it.
 	  */
-	case object UpdateLock extends ComboBuffType(UpdateTimestamp, ForcedQuery) with GeneratedBuffType {
+	case object UpdateLock extends ComboBuffType(UpdateTimestamp, UpdateMatch) with GeneratedBuffType {
 		def apply[T :Temporal]() :GeneratedBuff[T] = apply(implicitly[Temporal[T]].now())
 	}
 
@@ -296,7 +318,7 @@ object Buff {
 	  * carried by the entity is automatically increased/modified during the update, but the old value is used
 	  * as part of the 'where' clause to prevent overwriting a concurrent update.
 	  */
-	case object VersionLock extends ComboBuffType(ExtraWrite, UpdateAudit, ForcedQuery) with ManagedBuffType {
+	case object VersionLock extends ComboBuffType(ExtraWrite, UpdateAudit, UpdateMatch) with ManagedBuffType {
 		def apply[T]()(implicit int :Integral[T]) :ManagedBuff[T] =
 			apply(int.fromInt(0), int.plus(_, int.fromInt(1)))
 
@@ -352,6 +374,14 @@ object Buff {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuffType]]
 	  */
 	trait BuffType { factory =>
+
+		/** Checks if this buff type ''implies'' another buff type. If it does, tests for presence of `other`
+		  * on a mapping will give positive results also if this buff is present. For this to work however,
+		  * the implied buff type must use the same `Buff` class as this instance, or a more generic one.
+		  * For example, a `FlagBuffType` implying a `ValueBuffType` will not be taken into account, as the latter
+		  * specifically checks only for `ValueBuff` subclasses. Implication in the other direction will work
+		  * however, as a `FlagBuffType` is satisfied with a `Buff` of any class.
+		  */
 		def implies(other :BuffType) :Boolean = other == this
 
 		object Enabled extends ColumnFilter.WithBuff(factory) {
@@ -420,20 +450,26 @@ object Buff {
 	/** A `Buff` type which doesn't have any `Buff` instances, but is instead implied by other buff types. */
 	class AbstractBuffType extends FlagBuffType
 
-	/** A `Buff` type which doesn't have any `Buff` instances and won't match any of them. */
-	object AbstractBuff extends AbstractBuffType {
+	/** A `Buff` type which doesn't have any `Buff` instances and won't match any of them.
+	  * It is used in place of a `BuffType` when no appropriate concrete implementation exists to render relevant code
+	  * inactive, automatically fulfilling a function normally performed by a `Option[BuffType]`.
+	  */
+	case object AbstractBuff extends AbstractBuffType {
 		override def test[T](buff :Buff[T]) :Option[Buff[T]] = None
 		override def test[T](buffs :Seq[Buff[T]]) :Option[Buff[T]] = None
 	}
 
 	/** A special `Buff` factory producing buffs which are ignored and not recognized by any other buff types. */
-	object NeutralBuff extends FlagBuffType
+	case object NeutralBuff extends FlagBuffType
 
 
 
 	/** A `Buff` type which implies other, more general buffs (has strictly more specific implications).
 	  * Attaching a `Buff` of this type to a component is roughly equivalent to attaching buffs of the types
 	  * listed in the constructor.
+	  * Note that this can seem a reversal of the order of class extension: the implied buffs are ''more''
+	  * specific than this buff. The difference from inheritance is that every buff instance of this type implies
+	  * all the listed buffs, not just one of them. A more proper way of viewing it is multi generalization/inheritance.
 	  */
 	class ComboBuffType(val implied :BuffType*) extends BuffType {
 		override def implies(other :BuffType) :Boolean =
@@ -508,7 +544,11 @@ object Buff {
 
 
 
-	/** A `FlagBuffType` which implies other flags (is equivalent to having them declared alongside it). */
+	/** A `FlagBuffType` which implies other flags (is equivalent to having them declared alongside it).
+	  * Note that this can seem a reversal of the order of class extension: the implied buffs are ''more''
+	  * specific than this buff. The difference from inheritance is that every buff instance of this type implies
+	  * all the listed buffs, not just one of them. A more proper way of viewing it is multi generalization/inheritance.
+	  */
 	class ComboFlag(implied :FlagBuffType*) extends ComboBuffType(implied:_*) with FlagBuffType {
 		override def implies(other :BuffType) :Boolean = super[ComboBuffType].implies(other)
 	}
@@ -584,7 +624,7 @@ object Buff {
 
 
 
-	/** A `Buff` type without any instances, not applied to any components. It is used in place a `ValueBuffType`
+	/** A `Buff` type without any instances, not applied to any components. It is used in place of a `ValueBuffType`
 	  * when no appropriate concrete implementation exists to render relevant code inactive, automatically fulfilling
 	  * a function normally performed by a `Option[ValueBuffType]`.
 	  */
@@ -754,12 +794,20 @@ object Buff {
 
 		protected def apply[T](map :T => T) :AuditBuff[T] = new AuditBuff(this, map)
 
-		object Audit {
-			@inline def apply[T](buff :Buff[T]) :Option[T=>T] = unapply(buff)
-			@inline def apply[T](buffs :Seq[Buff[T]]) :Seq[T=>T] = unapply(buffs)
-			@inline def apply[T](buffs :MappingOf[T]) :Seq[T=>T] = unapply(buffs)
+		def fold[T](mapping :MappingOf[T]) :T => T = fold(mapping.buffs)
 
-			def unapply[T](buff :Buff[T]) :Option[T=>T] = buff match {
+		def fold[T](buffs :Seq[Buff[T]]) :T => T = {
+			val audits = Audit(buffs)
+			if (audits.isEmpty) identity[T]
+			else audits.reduce(_ andThen _)
+		}
+
+		object Audit {
+			@inline def apply[T](buff :Buff[T]) :Option[T => T] = unapply(buff)
+			@inline def apply[T](buffs :Seq[Buff[T]]) :Seq[T => T] = unapply(buffs)
+			@inline def apply[T](mapping :MappingOf[T]) :Seq[T => T] = unapply(mapping)
+
+			def unapply[T](buff :Buff[T]) :Option[T => T] = buff match {
 				case sub :AuditBuff[T] if sub is self => Some(sub.substitute)
 				case _ => None
 			}
@@ -767,7 +815,7 @@ object Buff {
 			def unapply[T](buffs :Seq[Buff[T]]) :Seq[T => T] =
 				buffs collect { case sub :AuditBuff[T] if sub is self => sub.substitute }
 
-			def unapply[T](column :MappingOf[T]) :Seq[T => T] = unapply(column.buffs)
+			def unapply[T](component :MappingOf[T]) :Seq[T => T] = unapply(component.buffs)
 		}
 	}
 

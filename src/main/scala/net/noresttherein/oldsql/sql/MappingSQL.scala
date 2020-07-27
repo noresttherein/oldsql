@@ -515,7 +515,7 @@ object MappingSQL {
 		{
 			override val extract = table(mapping)
 			//fixme: sort out where the buff-related modifications take place to have consistent assembly semantics
-			override val readForm = extract.export.form
+			override val readForm = super.readForm
 
 			override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G)
 					:ProperColumn[G, T, E, M, V, _ >: G <: FromClause] =

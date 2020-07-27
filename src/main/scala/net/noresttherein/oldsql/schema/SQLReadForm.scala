@@ -38,7 +38,7 @@ trait SQLReadForm[+T] extends SQLForms {
 	  *                                this is different in intent from the `NullPointerException` case
 	  *                                as it is used primarily for multi-column forms, when the missing values are
 	  *                                a likely the result of an outer join or subclass columns in a
-	  *                                last per class hierarchy mapping.
+	  *                                table per class hierarchy mapping.
 	  * @throws NullPointerException if the read column is `null` and type `T` does not define a value corresponding to `null`.
 	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]
@@ -50,10 +50,13 @@ trait SQLReadForm[+T] extends SQLForms {
 
 	/** Attempts to read the column values from columns `&lt;position..position + this.readColumns` of the passed
 	  * `ResultSet` and create an instance of `T`. If the values are unavailable (required columns carry `null` values),
-	  * `None` is returned. It is a recommended practice to have the returned option reflect only the availability
+	  * `None` is returned. It is the recommended practice to have the returned option reflect only the availability
 	  * of the input values and not their validity. It is allowed for the form to return `Some(null)`
 	  * (as long as `T >: Null`), but this results in propagation of `null` values to any forms derived from it
-	  * and to the application. As such, it is strongly discouraged. While not strictly required, the form should
+	  * and to the application. As such, it is discouraged, with the exception of `ColumnForm`s, as the validity of
+	  * `null` values can be explicitly switched on for columns using the `Nullable` buff (and otherwise affected
+	  * by other buffs). The `ColumnMapping` trait explicitly checks for `null` values throwing a `NullPointerException`
+	  * if they are not permitted. While not strictly required, the form should
 	  * throw an exception if the values do not conform to expected constraints or the assembly process fails
 	  * for any other reason. Similarly, all thrown `SQLException`s are propagated.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.apply apply]]
@@ -63,8 +66,9 @@ trait SQLReadForm[+T] extends SQLForms {
 	/** The value a `null` column (or all `null` columns) should be mapped to. It is used in particular by `apply`
 	  * when the value is unavailable, for example as a result of an outer join. Extending classes are allowed
 	  * to throw an exception here (either a `NoSuchElementException` or a `NullPointerException`) if a concept
-	  * of null does not exist for `T` or `null`s are not acceptable values. Note however that default implementations
-	  * for scala built-in value types will return some form of `0` here.
+	  * of null does not exist for `T` or `null`s are not acceptable values. It is however completely acceptable
+	  * to provide any particular value of `T` as a part of the mapping process (for example, a form for `Option[T]`
+	  * will return `None`).
 	  */
 	def nullValue :T
 
@@ -462,7 +466,7 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 
 
 
-	/** Implements `nullValue` to throw `NoSuchElementException`. */
+	/** Implements `nullValue` to throw a `NoSuchElementException`. */
 	trait NotNullReadForm[T] extends SQLReadForm[T] {
 		override def nulls :NullValue[T] = NullValue.NotNull
 		override def nullValue :T = throw new NoSuchElementException("No null value allowed for " + this)
@@ -533,7 +537,7 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 
 
 
-	private[schema] class EvalReadForm[+T](value: =>Option[T], columns :Int = 0)
+	private[schema] class EvalReadForm[+T](value: => Option[T], columns :Int = 0)
 	                                      (implicit override val nulls :NullValue[T])
 		extends SQLReadForm[T]
 	{

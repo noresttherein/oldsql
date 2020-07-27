@@ -154,7 +154,7 @@ object NaturalMap {
 	def Lazy[K[_], V[_]](entries: => IterableOnce[Assoc[K, V, _]]) :NaturalMap[K, V] =
 		new LazyNaturalMap(NaturalMap(entries.iterator.toSeq :_*))
 
-	def delay[K[_], V[_]](map: => NaturalMap[K, V]) :NaturalMap[K, V] = new LazyNaturalMap(map)
+	def delayed[K[_], V[_]](map: => NaturalMap[K, V]) :NaturalMap[K, V] = new LazyNaturalMap(map)
 
 
 
@@ -216,7 +216,7 @@ object NaturalMap {
 						val init = initializer
 						if (init == null)
 							throw new NullPointerException(
-								"NaturalMap.Lazy: null initializer or null returned from the initializer.")
+								"NaturalMap.later: null initializer or null returned from the initializer.")
 						res = init()
 						backing = res
 						initializer = null

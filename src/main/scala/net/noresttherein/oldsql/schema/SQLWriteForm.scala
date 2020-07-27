@@ -177,7 +177,7 @@ trait SQLWriteForm[-T] extends SQLForms {
 	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = SQLWriteForm.Tuple2WriteForm(this, other)
 
 	/** Creates a write form which will first write any given value with this form, and then with the argument form,
-	  * starting at statement parameter position right after the position of last written parameter by this form.
+	  * starting at statement parameter position right after the position of the last written parameter by this form.
 	  * This is particularly useful in conjunction with composing both forms with functions retrieving different
 	  * properties of the same larger entity. The string literal representation will be that of a SQL tuple.
 	  */

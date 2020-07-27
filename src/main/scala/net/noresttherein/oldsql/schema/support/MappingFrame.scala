@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnM
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
 import net.noresttherein.oldsql.slang._
@@ -22,6 +22,9 @@ import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
+import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
+import net.noresttherein.oldsql.schema.ComponentValues.ColumnValues.GlobalColumnValues
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
 
 
 
@@ -29,7 +32,7 @@ import net.noresttherein.oldsql
 
 //todo: provide examples
 /** Convenience base trait for mappings with a fixed, hierarchical structure, which subjects are assembled
-  * from subcomponents of arbitrary depth. This includes last mappings and other instances where columns are known
+  * from subcomponents of arbitrary depth. This includes table mappings and other instances where columns are known
   * statically and should be created manually, rather than by some generic code. While it exposes mutator methods
   * to facilitate creation and declaration of components, it is expected that they'll be used solely in the constructors
   * of derived classes by those classes themselves and, once created, it will be seen as immutable from the outside.
@@ -42,7 +45,7 @@ import net.noresttherein.oldsql
   *
   * @tparam S the `Subject` type of the mapped entity.
   * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
-  *           but coming from different sources (especially different aliases for a last occurring more then once
+  *           but coming from different sources (especially different aliases for a table occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
   */
@@ -250,11 +253,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		}
 
 
-		override protected def adapt[X](component :backer.Component[X]) :Component[X] =
-			exportSubcomponent(component)
-
-		override protected def adapt[X](column :backer.Column[X]) :Column[X] =
-			exportColumn(column)
+		protected override def adapt[X](component :backer.Component[X]) :Component[X] = exportSubcomponent(component)
+		protected override def adapt[X](column :backer.Column[X]) :Column[X] = exportColumn(column)
 
 		override def toString :String = "^" + backer + "^"
 
@@ -290,13 +290,13 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  *      the mapped value.
 	  *   1. The value is not present at a given lifecycle phase of the mapped entity, for example a database
 	  *      generated primary key.
-	  *   1. It is part of a different last.
+	  *   1. It is part of a different table.
 	  *   1. The column(s) with the value for the component is not included in every database query (for example,
-	  *      for efficiency reasons or because it is a part of a joined last) and therefore neither it is present
+	  *      for efficiency reasons or because it is a part of a joined table) and therefore neither it is present
 	  *      when the entity is being updated. It is a case of value being missing on a given instance, rather than
 	  *      for the represented abstract (or real life) entity.
 	  *   1. It is a part of a denormalized relation and its existence depends on value(s) of other component(s).
-	  *      This is for example the case with mapping of a class with its subclasses to a single database last.
+	  *      This is for example the case with mapping of a class with its subclasses to a single database table.
 	  *
 	  *  Of the above, the first case should use a
 	  *  [[net.noresttherein.oldsql.schema.support.MappingFrame.MandatoryComponent MandatoryComponent]] instance,
@@ -481,7 +481,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.DirectColumn]]
 	  */
 	trait FrameColumn[T] extends FrameComponent[T] with ColumnMapping[T, O] {
-		private[MappingFrame] val index :Int = nextColumnIndex()
+		protected[MappingFrame] val index :Int = nextColumnIndex()
 
 		override def extract :frame.ColumnExtract[T] =
 			super.extract.asInstanceOf[ColumnMappingExtract[S, T, O]]
@@ -1051,8 +1051,13 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 		val replacement = new ColumnComponent[T](extractor, name, export.buffs)(column.form) {
 			//we'll replace the export column with this manually
+			override val index = current.export.asInstanceOf[FrameColumn[T]].index
 			override def init() :ColumnMappingExtract[S, T, O] = extractFor(this)
 		}
+		//creating the above column increased automatically this count, but we've overriden the index to that of
+		//the current column
+		initColumnCount -= 1
+		initColumnIndex(replacement.index) = replacement
 
 		lists foreach { list => //swap the replaced component with the renamed version
 			val uninitialized = list.uninitialized
@@ -1060,6 +1065,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 			if (i >= 0)
 				uninitialized(i) = replacement
 		}
+
 
 		//we now need to find all versions of the replaced component (as components of some subcomponent)
 		//and replace their mapping from export to replacement
@@ -1207,6 +1213,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 		initSubcomponents += column
 		initColumns += column
+		initColumnIndex += column
 		if (NoSelect.disabled(column)) initSelectable += column
 		if (NoQuery.disabled(column)) initQueryable += column
 		if (NoUpdate.disabled(column)) initUpdatable += column
@@ -1282,7 +1289,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 	/** Tests if the component lists of this instance have already been initialized and can not be changed any further.
 	  * This happens either when any of the column/component lists of this instance are accessed, or when a subclass
-	  * manually triggers the initialization by a call to [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]].
+	  * manually triggers the initialization by a call to
+	  * [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]].
 	  * Any attempt to create new components after this happens will result in `IllegalStateException` thrown
 	  * by the constructor.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]]
@@ -1310,8 +1318,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		if (!isInitialized) synchronized {
 			if (!isInitialized) {
 				initPreceding()
-//				delayedInits.foreach(_.include())
-//				delayedInits.clear()
 
 				initComponents.initialize()
 				initColumns.initialize()
@@ -1322,6 +1328,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 				initAutoInsert.initialize()
 				initAutoUpdate.initialize()
 				initSubcomponents.initialize()
+
+				columnIndex = initColumnIndex.toArray
+				initColumnIndex = null
+				columnCount = initColumnCount
 
 				fastExtracts = initExtracts
 				safeExtracts = fastExtracts
@@ -1475,15 +1485,65 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 
 
+	private[this] final var initColumnIndex = new ListBuffer[FrameColumn[_]]
 
+	/** Contains the column with `index = n` at `n`-th position. */
+	private[this] var columnIndex :Array[FrameColumn[_]] = _
 
-
-	private[this] var columnCount :Int = 0
+	/** Number of columns ''created'' (not necessarily currently contained) by this instance.
+	  * Increased and assigned to a column as soon as it is created.
+	  */
+	private[this] var initColumnCount = 0
+	private[this] var columnCount :Int = _
 
 	private def nextColumnIndex() :Int = synchronized {
 		if (isInitialized)
 			throw new IllegalStateException(s"Can't add another column to $this: the mapping has already been initialized.")
-		val res = columnCount; columnCount += 1; res
+		val res = initColumnCount; initColumnCount += 1; res
+	}
+
+
+
+	override def queryValues(subject :S) :ComponentValues[S, O] = writtenValues(QUERY, subject)
+	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UPDATE, subject)
+	override def insertValues(subject :S) :ComponentValues[S, O] = writtenValues(INSERT, subject)
+
+	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] = {
+		val res = new IndexedColumnValuesBuilder
+		writtenValues(op, subject, res) //StaticMapping delegates this to specific methods
+		res.result()
+	}
+
+
+
+	private class IndexedColumnValuesBuilder extends ComponentValuesBuilder[S, O] {
+		private[this] val values = new Array[Option[Any]](columnCount)
+		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Option[_]]
+
+		override def add[T](component :RefinedMapping[T, O], result :Option[T]) :this.type = export(component) match {
+			case col :MappingFrame[_, _]#FrameColumn[_] =>
+				values(col.index) = result; this
+			case _ =>
+				componentValues = componentValues.updated(component, result)
+				this
+		}
+
+		override def result() =
+			if (componentValues.isEmpty)
+				ComponentValues(ArraySeq.unsafeWrapArray(values)) {
+					case column :MappingFrame[_, _]#FrameColumn[_] => column.index
+					case _ => -1
+				}
+			else {
+				var i = 0;
+				while (i < columnCount) {
+					val value = values(i)
+					if (value != null)
+						componentValues = componentValues.updated(columnIndex(i), value)
+					i += 1
+				}
+				ComponentValues(componentValues)
+			}
 	}
 
 
@@ -1492,17 +1552,16 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S]
 	{
-		override val readColumns: Int = (0 /: columns)(_ + read(_).readColumns)
-
-//		private[this] val audits = SelectAudit.Audit(mapping)
-//		private[this] val optional = OptionalSelect.unapply(mapping)
-//		private[this] val extra = ExtraSelect.unapply(mapping)
+		private[this] val fastColumns = columns.toArray
+		override val readColumns: Int = (0 /: fastColumns)(_ + read(_).readColumns)
 
 		override def opt(position: Int)(res: ResultSet): Option[S] = {
 			val values = new Array[Option[Any]](columnCount)
 			java.util.Arrays.fill(values.asInstanceOf[Array[AnyRef]], None)
+
 			var i = position
-			columns foreach {
+			val end = position + fastColumns.length
+			while (i < end) fastColumns(i) match {
 				case c :MappingFrame[_, _]#FrameColumn[_] =>
 					i += 1; values(c.index) = read(c).opt(i - 1)(res)
 				case c =>
@@ -1513,8 +1572,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 				case column :MappingFrame[_, _]#FrameColumn[_] => column.index
 				case _ => -1
 			}
-//			mapping.map(pieces) map { res => (res /: audits) { (acc, f) => f(acc) } } orElse
-//				optional.map(_.value) orElse extra.map(_.value)
 			frame.optionally(pieces)
 		}
 
@@ -1522,7 +1579,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 		override def nulls :NullValue[S] = frame.nullValue
 
-		override def toString :String = columns.map(read).mkString(s"<$frame{", ",", "}")
+		override def toString :String = columns.map(read).mkString(s"$frame{", ",", "}>")
 	}
 
 
@@ -1533,7 +1590,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		if (columns.exists(NoSelect.enabled))
 			throw new IllegalArgumentException(
 				s"Can't create a select form for $frame using $components: NoSelect buff present among the selection."
-				)
+			)
 		val extra = columns ++ ExtraSelect.Enabled(frame)
 		new ReadForm(columns :++ extra)
 	}
@@ -1542,6 +1599,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	override val queryForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.queryForm)
 	override val insertForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.insertForm)
 	override val updateForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.updateForm)
+	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 }
 

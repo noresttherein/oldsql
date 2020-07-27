@@ -11,6 +11,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.RecordMapping.NonEmptyRecordMapping
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
+import net.noresttherein.oldsql.OperationType.WriteOperationType
 
 
 /** A mapping of `Record` instances - maps indexed on the type level with string literals.
@@ -145,6 +146,7 @@ object RecordMapping {
 		override val queryForm = SQLWriteForm.RecordWriteForm(init.queryForm, last.queryForm)
 		override val updateForm = SQLWriteForm.RecordWriteForm(init.updateForm, last.updateForm)
 		override val insertForm = SQLWriteForm.RecordWriteForm(init.insertForm, last.insertForm)
+		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |# (K, T)] = op.form(this)
 
 		override def compose[X](extractor :X => S) :FlatMappingSchema[X, V |# (K #> T), C ~ M, O] =
 			new NonEmptyFlatRecordSchema(init compose extractor, key, last, this.extractor compose extractor)

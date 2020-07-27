@@ -17,6 +17,8 @@ import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapte
 import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.DelegateMapping
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.OperationType.WriteOperationType
 
 
 
@@ -353,6 +355,7 @@ object IndexedMappingSchema {
 		override val queryForm = SQLWriteForm.LiteralIndexWriteForm(init.queryForm, component.queryForm)
 		override val updateForm = SQLWriteForm.LiteralIndexWriteForm(init.updateForm, component.updateForm)
 		override val insertForm = SQLWriteForm.LiteralIndexWriteForm(init.insertForm, component.insertForm)
+		override def writeForm(op :WriteOperationType) = op.form(this)
 
 		override def compose[X](extractor :X => S) :NonEmptyFlatIndexedSchema[X, V, C, K, T, M, O] =
 			new NonEmptyFlatIndexedSchema(init compose extractor, label, last, this.extractor compose extractor)
@@ -375,10 +378,9 @@ trait IndexedSchemaMapping[S, V <: LiteralIndex, C <: Chain, O]
 	override val schema :IndexedMappingSchema[S, V, C, O]
 
 
-	protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-	                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:IndexedSchemaMapping[S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 
@@ -414,10 +416,9 @@ object IndexedSchemaMapping {
 		override val schema :FlatIndexedMappingSchema[S, V, C, O]
 
 
-		protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMapping[S, V, C, O] =
-			new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+			new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 				with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 
@@ -445,11 +446,9 @@ object IndexedSchemaMapping {
 		extends IndexedSchemaMapping[S, V, C, O] with SchemaMappingAdapter[M, T, S, V, C, O]
 		   with AdapterFactoryMethods[({ type A[X] = IndexedSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
-		protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new CustomizedMapping[this.type, S, O](
-					this, include, no, explicit, exclude, optional, nonDefault)
+			new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
 				with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
@@ -495,11 +494,9 @@ object IndexedSchemaMapping {
 		   with FlatSchemaMappingAdapter[M, T, S, V, C, O]
 		   with AdapterFactoryMethods[({ type A[X] = FlatIndexedSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
-		protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new CustomizedMapping[this.type, S, O](
-					this, include, no, explicit, exclude, optional, nonDefault)
+			new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
 				with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
@@ -571,7 +568,8 @@ object IndexedSchemaMapping {
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 				:IndexedSchemaMapping[X, V, C, O] =
-			new MappedIndexedSchemaMapping[M, T, X, V, C, O](backer, map andThen there, back andThen unmap)(mapNulls(there))
+			new MappedIndexedSchemaMapping[M, T, X, V, C, O](backer, map andThen there, back andThen unmap)(
+			                                                 nullValue extract there)
 	}
 
 
@@ -590,7 +588,7 @@ object IndexedSchemaMapping {
 		{
 			val assemble = map andThen there
 			val disassemble = back andThen unmap
-			new MappedFlatIndexedSchemaMapping[M, T, X, V, C, O](backer, assemble, disassemble)(mapNulls(there))
+			new MappedFlatIndexedSchemaMapping[M, T, X, V, C, O](backer, assemble, disassemble)(nullValue extract there)
 		}
 	}
 
@@ -625,11 +623,9 @@ abstract class AbstractIndexedSchemaMapping[S, V <: LiteralIndex, C <: Chain, O]
 			({ type A[M <: RefinedMapping[S, O], X] = IndexedSchemaMappingAdapter[M, S, X, V, C, O] })#A,
 			IndexedMappingSchema[S, V, C, O], S, V, C, O]
 {
-
-	protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-	                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 	override def prefixed(prefix :String) :IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
@@ -660,11 +656,9 @@ abstract class AbstractFlatIndexedSchemaMapping[S, V <: LiteralIndex, C <: Chain
 			({ type A[M <: RefinedMapping[S, O], X] = FlatIndexedSchemaMappingAdapter[M, S, X, V, C, O] })#A,
 			FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
 {
-
-	protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-	                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 	override def prefixed(prefix :String) :FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =

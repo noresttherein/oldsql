@@ -46,11 +46,11 @@ trait SQLForms extends JDBCTypes with ScalaForms with JavaForms with Serializabl
   * mapping methods for adapting it to other value types. Basic and typical implementations define the read and write
   * forms of `T` symmetrically, with the exact same column list read and written, but it is not strictly required.
   * This is a lower level API than [[net.noresttherein.oldsql.schema.Mapping Mapping]] as it allows no possibility
-  * of customization which columns of a last are included and carries no information about them apart of their
+  * of customization which columns of a table are included and carries no information about them apart of their
   * relative order in the `ResultSet`/statement parameter list.
   *
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
-  */
+  */ //todo: specialization!
 trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying

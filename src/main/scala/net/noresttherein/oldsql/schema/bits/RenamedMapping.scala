@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, DirectProxy}
 import net.noresttherein.oldsql.schema.Mapping
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.support.DelegateMapping
@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 class RenamedMapping[M <: RefinedMapping[S, O], S, O](name :String, protected override val backer :M)
-	extends ShallowProxy[S, O] with DelegateMapping[M, S, O]
+	extends DirectProxy[S, O] with DelegateMapping[M, S, O]
 {
 	override val sqlName = Some(name)
 

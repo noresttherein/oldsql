@@ -109,3 +109,4 @@ object RowSource {
 	private[oldsql] val Dummy = RowSource(new ConstantMapping["Dummy", "Dummy"]("Dummy"))
 
 }
+

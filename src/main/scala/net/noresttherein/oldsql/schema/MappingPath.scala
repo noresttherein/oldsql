@@ -2,7 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping, MappingOf}
+import net.noresttherein.oldsql.schema.ComponentValues.ColumnValues
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, ConcatPath, SelfPath}
 import net.noresttherein.oldsql.slang.InferTypeParams
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
@@ -79,6 +80,8 @@ object MappingPath {
 
 		def carry(values :ComponentValues[S, O]) :ComponentValues[T, O]
 
+		def carry(values :ColumnValues[S, O]) :ColumnValues[T, O]
+
 		override def \[Z <: RefinedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[X, Z, S, U, P] =
 			next match {
 				case comp :ComponentPath[X , Y, S, T, O] => this \ comp
@@ -146,6 +149,8 @@ object MappingPath {
 				override def extractor = extract
 
 				override def carry(values :ComponentValues[S, O]) = values \ end
+
+				override def carry(values :ColumnValues[S, O]) = values \ end
 			}
 
 
@@ -172,6 +177,7 @@ object MappingPath {
 
 		override def carry(values :ComponentValues[S, O]) :ComponentValues[S, O] = values
 
+		override def carry(values :ColumnValues[S, O]) :ColumnValues[S, O] = values
 
 
 		override def \[Z <: RefinedMapping[U, P], U, P](next :MappingPath[X, Z, S, U, P]) :MappingPath[X, Z, S, U, P] =
@@ -250,6 +256,8 @@ object MappingPath {
 
 
 		override def carry(values :ComponentValues[R, O]) = second.carry(first.carry(values))
+
+		override def carry(values :ColumnValues[R, O]) = second.carry(first.carry(values))
 
 		override def \[Z <: RefinedMapping[U, P], U, P](next :MappingPath[Y, Z, T, U, P]) :MappingPath[W, Z, R, U, P] =
 			next match {

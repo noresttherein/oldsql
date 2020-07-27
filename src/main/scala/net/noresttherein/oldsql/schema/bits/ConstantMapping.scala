@@ -32,6 +32,9 @@ class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
 
 
 
+/** A `Mapping` implementation returning  the result of evaluating the given expression at each call to
+  * the `apply` and `optionally` methods. This value overrides any values preset for this mapping in the `Pieces`.
+  */
 class GeneratorMapping[S, O](generator: => S) extends EmptyMapping[S, O] {
 
 	override def assemble(values :Pieces) :Option[S] = Some(generator)
@@ -46,34 +49,5 @@ class GeneratorMapping[S, O](generator: => S) extends EmptyMapping[S, O] {
 	override val selectForm :SQLReadForm[S] = SQLReadForm.eval(generator)
 
 	override def toString :String = "Generator#" + System.identityHashCode(this)
-}
-
-
-
-
-
-
-class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O] {
-
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		if (components.isEmpty) SQLReadForm.nulls(form.nulls)
-		else if (components.size == 1 && components.head == this) form
-		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
-
-	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = insertForm(components)
-	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = insertForm(components)
-
-	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		if (components.isEmpty) SQLWriteForm.empty
-		else if (components.size == 1 && components.head == this) form
-		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
-
-
-
-	override def selectForm :SQLReadForm[S] = form
-	override def insertForm :SQLWriteForm[S] = form
-	override def queryForm :SQLWriteForm[S] = form
-	override def updateForm :SQLWriteForm[S] = form
-
 }
 

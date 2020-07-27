@@ -7,12 +7,12 @@ import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:
 import net.noresttherein.oldsql.schema.Buff.NoSelectByDefault
-import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.MappingSchema.SchemaFlattening
 import net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping
 import net.noresttherein.oldsql.slang
@@ -28,6 +28,8 @@ import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMat
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.MatchChain
 import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, SeqTuple}
+import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 
 
 //here be implicits
@@ -208,7 +210,7 @@ object SelectSQL {
 	type * = SelectSQL[_ <: FromClause, _, _]
 
 
-
+	//todo: this should likely be a ColumnMapping, no?
 	trait SelectColumn[-F <: FromClause, V, O] extends SelectSQL[F, V, O] with ColumnSQL[F, Rows[V]] {
 		override val header :ColumnSQL[From, V]
 
@@ -218,8 +220,7 @@ object SelectSQL {
 
 		override def map[X](f :V => X) :SelectColumn[F, X, O]
 
-		override def map[Fun, C <: Chain, X]
-		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+		override def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 				:SelectColumn[F, X, O] =
 			map(applyFun(f))
 
@@ -362,7 +363,7 @@ object SelectSQL {
 	private abstract class SelectComponentSQL[-F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E,
 	                                              H[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
 	                       (override val from :S, override val  header :ComponentSQL[S, T, E, H, V, I])
-		extends SelectSQL[F, V, O] with SelectAs[F, H[O]] with ShallowProxy[V, O]
+		extends SelectSQL[F, V, O] with SelectAs[F, H[O]] with DirectProxy[V, O]
 	{
 		override type From = S
 
@@ -377,8 +378,9 @@ object SelectSQL {
 		}
 
 
-		override def optionally(pieces :Pieces) = pieces.assemble(this)
+		override def apply[X](component :Component[X]) = extracts(component)
 
+		override def apply[X](column :Column[X]) = columnExtracts(column)
 
 		override val extracts = super.extracts
 		override val columnExtracts = super.columnExtracts
@@ -512,12 +514,10 @@ object SelectSQL {
 			}
 
 
-
 			override def conversion[T, U](e :ConversionSQL[S, T, U]) = {
 				val base = this(e.expr)
 				pieces => base(pieces).map(e.convert)
 			}
-
 
 
 			override def emptyChain = _ => Some(@~)
@@ -537,7 +537,6 @@ object SelectSQL {
 			}
 
 
-
 			override def expression[X](e :SQLExpression[S, X]) =
 				throw new IllegalArgumentException(
 					s"SQLExpression $e cannot be used in a SelectSQL header expression."
@@ -547,13 +546,13 @@ object SelectSQL {
 
 			private def nameFor(f :ColumnSQL[S, _]) :String = {
 				val name :String = f match {
-					case FromParam(param, extract, _) =>
+					case FromParam(param, extract, _) => //first as it would match the following pattern, too
 						if (extract.isIdentity && !names(param.name)) param.name
 						else param.name + "_" + columns.size
 
 					case ComponentSQL(_, MappingExtract(_, _, component)) =>
 						val name :String = component match {
-							case column :ColumnMapping[_, _] => column.name
+							case column :ColumnMapping[_, _] => column.name //this is the almost sure case
 							case label @: _ => label
 							case _ => component.sqlName getOrElse ""
 						}
@@ -644,9 +643,6 @@ object SelectSQL {
 
 
 
-
-
-
 		override def assemble(pieces: Pieces): Option[V] = assembler(pieces)
 
 
@@ -655,7 +651,7 @@ object SelectSQL {
 			aa(header) -> aa.columns.reverse
 		}
 		override val columns :Unique[Column[_]] = Unique(headerColumns :_*)
-		override def components = columns
+		override def components :Unique[Component[_]] = columns
 		override val subcomponents = columns
 
 		override val columnExtracts = NaturalMap.Lazy((new ExtractsCollector)[V](header) :Seq[Assoc[Column, ColumnExtract, _]])
@@ -691,12 +687,12 @@ object SelectSQL {
 	private abstract class ArbitrarySelectColumn[-F <: FromClause, S <: SubselectOf[F], V, O]
 	                                            (override val from :S, override val header :ColumnSQL[S, V])
 		extends SelectColumn[F, V, O]
-	{
+	{ //todo: this should probably be a ColumnAdapter
 		override type From = S
 
 		class HeaderColumn extends ColumnMapping[V, O] with SelectedColumn[V] {
 			override val name :String = header match {
-				case FromParam(param, _, _) => param.name
+				case FromParam(param, _, _) => param.name //first as it would match the following pattern, too
 
 				case ComponentSQL(_, MappingExtract(_, _, component)) =>
 					component match {
@@ -737,16 +733,21 @@ object SelectSQL {
 		override def subcomponents = columns
 
 
-		override def selectForm = column.form
-		override def queryForm = column.form
-		override def updateForm = column.form
-		override def insertForm = column.form
+		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[V] = column.form
+		override def writeForm(op :WriteOperationType) :SQLWriteForm[V] = column.form
+
+		override def writtenValues[T](op :WriteOperationType, subject :V, collector :ComponentValuesBuilder[T, O]) :Unit =
+			collector.add(column, subject)
+
+		override def writtenValues[T](op :WriteOperationType, subject :V) :ComponentValues[V, O] =
+			ColumnValues.preset(column, subject)
 
 		override def nullValue = column.nullValue
 
 		override def assemble(pieces :Pieces) :Option[V] = pieces.get(column)
-
+		//consider: this may be an unjustifiable optimisation if a value is preset for this mapping (unlikely, but possible)
 		override def optionally(pieces :Pieces) :Option[V] = pieces.get(column)
+
 	}
 
 

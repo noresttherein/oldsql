@@ -4,30 +4,76 @@ import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.{Mapping, SQLReadForm, SQLWriteForm, TypedMapping}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
+import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, InsertAudit, NoInsert, NoQuery, NoUpdate, OptionalSelect, QueryAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.OperationType.WriteOperationType
 
 
 /** A convenience base trait for simple mappings which initialize all column, component and extract lists
   * by filtering the result of the abstract method `columns` based on their applied buffs. The fields are initialized
   * lazily to avoid calls to `columns` before the class defining it is properly initialized. Additionally,
   * `optionally` implementation is optimized by similarly storing lazily precomputed required buff information.
-  * They all use [[net.noresttherein.oldsql.collection.Unique.delay]] or [[net.noresttherein.oldsql.morsels.Lazy Lazy]],
+  * They all use [[net.noresttherein.oldsql.collection.Unique.delayed]] or [[net.noresttherein.oldsql.morsels.Lazy Lazy]],
   * which are thread safe, invoke the initializer at most once, and don't incur any computational penalty once initialized.
   * @see [[net.noresttherein.oldsql.schema.support.StableMapping]]
   */
 trait LazyMapping[S, O] extends TypedMapping[S, O] {
 
 
+
+	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		op.writtenValues(this, subject, collector)
+
+	override def queryValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		if (isQueryable) {
+			val audited = queryAudit(subject)
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+				case Some(value) => comp.queryValues(value, collector)
+				case _ =>
+			}
+			components foreach { c :Component[_] => componentValues(c) }
+		}
+
+	override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		if (isUpdatable) {
+			val audited = updateAudit(subject)
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+				case Some(value) => comp.updateValues(value, collector)
+				case _ =>
+			}
+			components foreach { c :Component[_] => componentValues(c) }
+		}
+
+	override def insertValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		if (isInsertable) {
+			val audited = insertAudit(subject)
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+				case Some(value) => comp.insertValues(value, collector)
+				case _ =>
+			}
+			components foreach { c :Component[_] => componentValues(c) }
+		}
+
+	private val isQueryable = Lazy(NoQuery.disabled(this))
+	private val isUpdatable = Lazy(NoUpdate.disabled(this))
+	private val isInsertable = Lazy(NoInsert.disabled(this))
+	private val queryAudit = Lazy(QueryAudit.fold(this))
+	private val updateAudit = Lazy(UpdateAudit.fold(this))
+	private val insertAudit = Lazy(InsertAudit.fold(this))
+
+
+
 	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
 		case res if buffs.isEmpty => res
 		case res :Some[S] =>
-			if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
+			if (noSelectAudit) res else Some(selectAudit(res.get))
 		case _ =>
 			val res = default.get
 			if (res.isDefined) res else explicit.get
 	}
 
-	private val audits = Lazy(SelectAudit.Audit(this))
+	private val selectAudit = Lazy(SelectAudit.fold(this))
+	private val noSelectAudit = Lazy(SelectAudit.enabled(this))
 	private val default = Lazy(OptionalSelect.Value(this))
 	private val explicit = Lazy(ExtraSelect.Value(this))
 
@@ -36,20 +82,21 @@ trait LazyMapping[S, O] extends TypedMapping[S, O] {
 	override val columnExtracts :NaturalMap[Column, ColumnExtract] =
 		NaturalMap.Lazy(schema.selectColumnExtracts(this)(extracts))
 
-	override val subcomponents :Unique[Component[_]] = Unique.delay(components.flatMap { c => c +: c.components })
+	override val subcomponents :Unique[Component[_]] = Unique.delayed(components.flatMap { c => c +: c.components })
 
-	override val columns :Unique[Column[_]] = Unique.delay(components.flatMap(_.columns))
-	override val selectable :Unique[Column[_]] = Unique.delay(super.selectable)
-	override val queryable :Unique[Column[_]] = Unique.delay(super.queryable)
-	override val updatable :Unique[Column[_]] = Unique.delay(super.updatable)
-	override val autoUpdated :Unique[Column[_]] = Unique.delay(super.autoUpdated)
-	override val insertable :Unique[Column[_]] = Unique.delay(super.insertable)
-	override val autoInserted :Unique[Column[_]] = Unique.delay(super.autoInserted)
+	override val columns :Unique[Column[_]] = Unique.delayed(components.flatMap(_.columns))
+	override val selectable :Unique[Column[_]] = Unique.delayed(super.selectable)
+	override val queryable :Unique[Column[_]] = Unique.delayed(super.queryable)
+	override val updatable :Unique[Column[_]] = Unique.delayed(super.updatable)
+	override val autoUpdated :Unique[Column[_]] = Unique.delayed(super.autoUpdated)
+	override val insertable :Unique[Column[_]] = Unique.delayed(super.insertable)
+	override val autoInserted :Unique[Column[_]] = Unique.delayed(super.autoInserted)
 
 	override val selectForm: SQLReadForm[S] = SQLReadForm.Lazy(super.selectForm)
 	override val queryForm: SQLWriteForm[S] = SQLWriteForm.Lazy(super.queryForm)
 	override val updateForm: SQLWriteForm[S] = SQLWriteForm.Lazy(super.updateForm)
 	override val insertForm: SQLWriteForm[S] = SQLWriteForm.Lazy(super.insertForm)
+	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 
 }
@@ -65,18 +112,62 @@ trait LazyMapping[S, O] extends TypedMapping[S, O] {
   * @see [[net.noresttherein.oldsql.schema.support.LazyMapping]]
   */
 trait StableMapping[S, O] extends Mapping { this :TypedMapping[S, O] =>
+	//todo: this should extend TypedMapping but currently it is extended by some traits with confliciting (narrowed)
+	// declarations of methods implemented in TypedMapping
+
+	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		op.writtenValues(this, subject, collector)
+
+	override def queryValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		if (isQueryable) {
+			val audited = queryAudit(subject)
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+				case Some(value) => comp.queryValues(value, collector)
+				case _ =>
+			}
+			components foreach { c :Component[_] => componentValues(c) }
+		}
+
+	override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		if (isUpdatable) {
+			val audited = updateAudit(subject)
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+				case Some(value) => comp.updateValues(value, collector)
+				case _ =>
+			}
+			components foreach { c :Component[_] => componentValues(c) }
+		}
+
+	override def insertValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		if (isInsertable) {
+			val audited = insertAudit(subject)
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+				case Some(value) => comp.insertValues(value, collector)
+				case _ =>
+			}
+			components foreach { c :Component[_] => componentValues(c) }
+		}
+
+	private val isQueryable = NoQuery.disabled(this)
+	private val isUpdatable = NoUpdate.disabled(this)
+	private val isInsertable = NoInsert.disabled(this)
+	private val queryAudit = QueryAudit.fold(this)
+	private val updateAudit = UpdateAudit.fold(this)
+	private val insertAudit = InsertAudit.fold(this)
+
+
 
 	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
 		case res if noBuffs => res
 		case res :Some[S] =>
-			if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
+			if (noSelectAudit) res else Some(selectAudit(res.get))
 		case _ =>
-			val res = default
-			if (res.isDefined) res else explicit
+			if (default.isDefined) default else explicit
 	}
 
 	private val noBuffs = buffs.isEmpty
-	private val audits = SelectAudit.Audit(this)
+	private val noSelectAudit = SelectAudit.disabled(this)
+	private val selectAudit = SelectAudit.fold(this)
 	private val default = OptionalSelect.Value(this)
 	private val explicit = ExtraSelect.Value(this)
 
@@ -100,6 +191,7 @@ trait StableMapping[S, O] extends Mapping { this :TypedMapping[S, O] =>
 	abstract override val queryForm :SQLWriteForm[S] = super.queryForm
 	abstract override val updateForm :SQLWriteForm[S] = super.updateForm
 	abstract override val insertForm :SQLWriteForm[S] = super.insertForm
+	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 }
 

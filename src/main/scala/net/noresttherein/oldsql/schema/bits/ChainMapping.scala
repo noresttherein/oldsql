@@ -10,8 +10,8 @@ import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSc
 import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection
-import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
 
 
@@ -195,7 +195,7 @@ object ChainMapping {
 	  */
 	private[schema] class ChainPrefixSchema[S <: V ~ Any, V <: Chain, C <: Chain, O]
 	                                       (protected val backer :MappingSchema[V, V, C, O])
-		extends MappingSchema[S, V, C, O] with ShallowProxy[V, O]
+		extends MappingSchema[S, V, C, O] with DirectProxy[V, O]
 	{
 
 		override def optionally(pieces :Pieces) :Option[V] = backer.optionally(pieces)

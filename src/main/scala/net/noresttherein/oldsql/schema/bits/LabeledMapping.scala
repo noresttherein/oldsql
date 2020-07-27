@@ -2,12 +2,13 @@ package net.noresttherein.oldsql.schema.bits
 
 import scala.annotation.unchecked.uncheckedVariance
 
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, TypedMapping}
+import net.noresttherein.oldsql.collection.NaturalMap
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, TypedMapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterSeal, DelegateAdapter}
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapter.ColumnFormAdapter
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapter.{ColumnFormAdapter, ColumnFormProxy}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 
 
@@ -102,7 +103,7 @@ object LabeledMapping {
 
 
 	class MappingLabel[N <: Label, M <: RefinedMapping[S, O], S, O](val backer :M)(implicit singleton :ValueOf[N])
-		extends ShallowProxy[S, O] with DelegateAdapter[M, S, O] with (N @: M)
+		extends DirectProxy[S, O] with DelegateAdapter[M, S, O] with (N @: M)
 	{
 		def this(label :N, backer :M) = this(backer)(new ValueOf(label))
 
@@ -117,7 +118,7 @@ object LabeledMapping {
 
 	class ColumnLabel[N <: Label, S, O](column :ColumnMapping[S, O], columnName :String, columnBuffs :Seq[Buff[S]] = Nil)
 	                                   (implicit form :ColumnForm[S], labelValue :ValueOf[N])
-		extends ColumnFormAdapter[ColumnMapping[S, O], S, S, O](column, columnName, columnBuffs)
+		extends ColumnFormProxy[ColumnMapping[S, O], S, O](column, columnName, columnBuffs)
 		   with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
 	{
 		def this(column :ColumnMapping[S, O])(implicit label :ValueOf[N]) =

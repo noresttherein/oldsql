@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.ColumnReadForm.{FallbackColumnReadForm, FlatMappedColumnReadForm, MappedColumnReadForm}
 import net.noresttherein.oldsql.schema.ScalaReadForms.OptionReadForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm, FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, NullReadForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm, FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, NullReadForm, ProxyReadForm}
 
 
 
@@ -41,7 +41,7 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
 
 	override def opt(position :Int)(res :ResultSet) :Option[T] = {
 		val t = read(position)(res)
-		if (res.wasNull) None else Option(t)
+		if (res.wasNull) None else Some(t)
 	}
 
 	def opt(column :String)(res :ResultSet) :Option[T] = opt(res.findColumn(column))(res)
@@ -263,12 +263,24 @@ object ColumnReadForm {
 
 
 
-	private[schema] trait LazyColumnReadForm[T] extends LazyReadForm[T] with ColumnReadForm[T] {
-		protected override def form :ColumnReadForm[T] = super.form.asInstanceOf[ColumnReadForm[T]]
+	trait ProxyColumnReadForm[+T] extends ProxyReadForm[T] with ColumnReadForm[T] {
+		protected override def form :ColumnReadForm[T]
 
 		override def sqlType :JDBCSQLType = form.sqlType
 
 		protected override def read(position :Int)(res :ResultSet) :T = form.read(position)(res)
+
+		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] = form.map(fun)
+		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] = form.flatMap(fun)
+		override def toOpt :ColumnReadForm[Option[T]] = form.toOpt
+		override def orElse[S >: T](fallback :ColumnReadForm[S]) :ColumnReadForm[S] = form orElse fallback
+		override def <>[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = form <> write
+	}
+
+
+
+	private[schema] trait LazyColumnReadForm[T] extends LazyReadForm[T] with ProxyColumnReadForm[T] {
+		protected override def form :ColumnReadForm[T] = super.form.asInstanceOf[ColumnReadForm[T]]
 
 		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] =
 			if (isInitialized) form.map(fun)

@@ -1,7 +1,10 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ComponentValues, SQLForm, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 
 
 /** A `Mapping` with no columns or other components. It follows that its write and read forms are empty
@@ -10,7 +13,16 @@ import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm, Type
   */
 trait EmptyMapping[S, O] extends TypedMapping[S, O] {
 
-	override def assemble(pieces :Pieces) :Option[S] = pieces.preset(this)
+	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit = ()
+
+	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] = ComponentValues.empty
+
+	override def queryValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
+	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
+	override def insertValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
+
+	override def assemble(pieces :Pieces) :Option[S] = None
+	override def optionally(pieces :Pieces) :Option[S] = pieces.preset(this)
 
 
 	override def apply[T](component :Component[T]) :Extract[T] =
@@ -36,15 +48,18 @@ trait EmptyMapping[S, O] extends TypedMapping[S, O] {
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = SQLForm[Nothing]
-	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
-	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
-	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
+//	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
+//	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
+//	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
+
+	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
+		SQLWriteForm.empty
 	
 	override def selectForm :SQLReadForm[S] = SQLForm[Nothing]
-	override def queryForm :SQLWriteForm[S] = SQLWriteForm.empty
-	override def updateForm :SQLWriteForm[S] = SQLWriteForm.empty
-	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty
-
+//	override def queryForm :SQLWriteForm[S] = SQLWriteForm.empty
+//	override def updateForm :SQLWriteForm[S] = SQLWriteForm.empty
+//	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty
+	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = SQLWriteForm.empty
 
 }
 

@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, SelectAudit}
+import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.{Mapping, TypedMapping}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, MappingAdapter, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -10,6 +10,9 @@ import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, AdapterFact
 import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters
 import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 
 
 
@@ -28,10 +31,10 @@ trait StaticMapping[S, O] extends TypedMapping[S, O]
 	with StaticMappingAdapters[({ type A[M <: RefinedMapping[S, O], X] = MappingAdapter[M, X, O] })#A, S, O]
 {
 
-	override protected def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-	                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:Adapted[this.type] =
-		CustomizedMapping.customize[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+		CustomizedMapping[this.type, S, O](this, op, include, exclude)
+
 
 	override def prefixed(prefix :String) :Adapted[this.type] =
 		PrefixedMapping[this.type, S, O](prefix, this :this.type)
@@ -78,7 +81,7 @@ object StaticMapping {
 	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters#construct]]
 	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters#isDefined]]
-	  */
+	  *///extends Mapping, not TypedMapping as it narrows abstract declarations from Mapping which are implemented in TypedMapping
 	trait StaticMappingAdapters[+A[M <: RefinedMapping[S, O], X] <: RefinedMapping[X, O], S, O] extends Mapping {
 		this :MappingSeal =>
 
@@ -86,16 +89,59 @@ object StaticMapping {
 		override type Origin = O
 
 
+		override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			op.writtenValues(this, subject, collector)
+
+		override def queryValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			if (isQueryable) {
+				val audited = queryAudit(subject)
+				def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+					case Some(value) => comp.queryValues(value, collector)
+					case _ =>
+				}
+				components foreach { c :Component[_] => componentValues(c) }
+			}
+
+		override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			if (isUpdatable) {
+				val audited = updateAudit(subject)
+				def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+					case Some(value) => comp.updateValues(value, collector)
+					case _ =>
+				}
+				components foreach { c :Component[_] => componentValues(c) }
+			}
+
+		override def insertValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			if (isInsertable) {
+				val audited = insertAudit(subject)
+				def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+					case Some(value) => comp.insertValues(value, collector)
+					case _ =>
+				}
+				components foreach { c :Component[_] => componentValues(c) }
+			}
+
+		private val isQueryable = Lazy(NoQuery.disabled(this))
+		private val isUpdatable = Lazy(NoUpdate.disabled(this))
+		private val isInsertable = Lazy(NoInsert.disabled(this))
+		private val queryAudit = Lazy(QueryAudit.fold(this))
+		private val updateAudit = Lazy(UpdateAudit.fold(this))
+		private val insertAudit = Lazy(InsertAudit.fold(this))
+
+
+
 		override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
 			case res if buffs.isEmpty => res
 			case res :Some[S] =>
-				if (audits.isEmpty) res else Some((res.get /: audits) { (acc, f) => f(acc) })
+				if (isAuditable) Some(selectAudit(res.get)) else res
 			case _ =>
 				val res = default.get
 				if (res.isDefined) res else explicit
 		}
 
-		private val audits = Lazy(SelectAudit.Audit(this))
+		private val isAuditable = Lazy(SelectAudit.enabled(this))
+		private val selectAudit = Lazy(SelectAudit.fold(this))
 		private val default = Lazy(OptionalSelect.Value(this))
 		private val explicit = Lazy(ExtraSelect.Value(this))
 
@@ -104,16 +150,16 @@ object StaticMapping {
 		/** Performs the assembly of this mapping's subject from the components. This method is called in a double-dispatch
 		  * from `optionally`/`apply`, which should be used by external mappings, as they are responsible for
 		  * introducing default values and any manipulation of the final values. The standard implementation
-		  * invokes [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct(pieces)]] as long as
-		  * [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined(pieces)]] returns `true`. Additionally,
+		  * invokes [[net.noresttherein.oldsql.schema.support.StaticMapping#construct construct(pieces)]] as long as
+		  * [[net.noresttherein.oldsql.schema.support.StaticMapping#isDefined isDefined(pieces)]] returns `true`. Additionally,
 		  * all `NoSuchElementException` exceptions (thrown by default by components `apply` method when no value can
 		  * be assembled or is preset) are caught and result in returning `None`. All other exceptions,
 		  * including `NullPointerException` which may result from unavailable columns, are propagated. Subclasses should
 		  * override those methods instead of `map`.
 		  * @return `Some(construct(pieces))` if `isDefined(pieces)` returns `true` or `None` if it returns `false` or
 		  *        a `NoSuchElementException` is caught.
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct]]
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters#construct construct]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters#isDefined isDefined]]
 		  */
 		override def assemble(pieces: Pieces): Option[S] =
 			try {
@@ -126,14 +172,14 @@ object StaticMapping {
 		  * `optionally`/`apply`. It is left to implement for subclasses and, in order to make it the simplest possible,
 		  * is not responsible for recognizing whether a value can be assembled, but rather this functionality is
 		  * shared by `isDefined` method, which can force `map` to return `None` without calling `construct`,
-		  * and catching later any `NoSuchElementException`s thrown from  this method and resulting from a failed assembly
+		  * and catching later any `NoSuchElementException`s thrown from this method and resulting from a failed assembly
 		  * of a subcomponent. Another difference is that `pieces` is declared as an implicit parameter, which coupled
-		  * with an implicit conversion of `RefinedMapping[O, T]` to `T` in its presence, allows to use the components directly
-		  * as arguments to the constructor of the returned subject instance. For example:
+		  * with an implicit conversion of `RefinedMapping[O, T]` to `T` in its presence, allows to use the components
+		  * directly as arguments to the constructor of the returned subject instance. For example:
 		  * {{{
 		  *     case class Address(country :String, city :String, zip :String, street :String, no :String)
 		  *
-		  *     class AddressSchema[O] extends StaticMapping[O, Address] {
+		  *     class Addresses[O] extends MappingFrame[Address, O] {
 		  *         val country = column(_.country)
 		  *         val city = column(_.city)
 		  *         val zip = column(_.zip)
@@ -144,20 +190,20 @@ object StaticMapping {
 		  *             Address(country, city, zip, street, no)
 		  *     }
 		  * }}}
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined]]
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.assemble assemble]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters#isDefined isDefined]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters#assemble assemble]]
 		  */
 		protected def construct(implicit pieces :Pieces) :S
 
 		/** Verifies the presence of necessary subcomponents in the input pieces for the assembly to be successful.
 		  * This method is called from `map` in order to possibly prevent it from proceeding with the assembly
-		  * and  calling `construct`, but return `None` instead. The contract obliges it only detect the situations
+		  * and  calling `construct`, and return `None` instead. The contract obliges it only detect the situations
 		  * where `construct` would certainly fail with an exception, but not necessarily all of them. It is designed
-		  * primarily with the thought of outer joins where all columns of a last can carry `null` values.
+		  * primarily with the thought of outer joins where all columns of a table can carry `null` values.
 		  * For this reason, it simply always returns `true`, but entity tables override it with a check of availability
 		  * of the primary key. The subclasses are free to implement any condition here.
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct]]
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.assemble assemble]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters#onstruct construct]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters#assemble assemble]]
 		  */
 		protected def isDefined(implicit pieces :Pieces) :Boolean = true
 
@@ -172,19 +218,18 @@ object StaticMapping {
 
 
 		override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
+			customize(SELECT, include, exclude)
 
 		override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
+			customize(QUERY, include, exclude)
 
 		override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
+			customize(UPDATE, include, exclude)
 
 		override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(include, NoInsert, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
+			customize(INSERT, include, exclude)
 
-		protected def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                        exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+		protected def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:A[this.type, S]
 
 

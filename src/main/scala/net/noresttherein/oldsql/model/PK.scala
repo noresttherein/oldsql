@@ -4,17 +4,23 @@ package net.noresttherein.oldsql.model
 
 
 /** A convenient class to use as primary keys. It introduces a distinction between 'persistent' and 'transient'
-  * keys, which reflects the state of the identified entity. A persistent key is a key of an entity loaded from
-  * the repository (previously assigned) and wraps some kind of a unique value. A transient key is a key created
-  * by the application for fresh entities; if the keys for the entity are assigned by the databaase (or repository itself),
-  * it is essentially a dummy value using referential equality instead of the equality of the wrapped key: each new
-  * instance is unique. This allows to declare the primary key of an entity as a non-null, non-option type ''and''
+  * keys, which reflects the state of the identified entity. A persistent key, implemented as the
+  * [[net.noresttherein.oldsql.model.PK.PersistentPK PersistentPK]] subclass, is a key of an entity loaded from
+  * the repository (previously assigned) and wraps some kind of a unique value. A transient key
+  * ([[net.noresttherein.oldsql.model.PK.TransientPK TransientPK]] is a key created by the application
+  * for fresh entities. If keys are assigned explicitly by the application before storing the value,
+  * a transient key wrapping the value of the appropriate type in the form of
+  * [[net.noresttherein.oldsql.model.PK.AssignedPK AssignedPK]] can be used. Such a key will symmetrically equal
+  * also persistent instances of the same value, but still provide a useful distinction between persistent and transient
+  * entities, which can in many cases save a round-trip call to the database otherwise needed to verify
+  * if the entity being saved (in particular, in cascade saves) should be inserted or updated. If the keys
+  * are assigned automatically by the database (or the repository after passing it a transient instant),
+  * the default transient key implementation should be used as placeholders on new entities before storing.
+  * These keys, created by the default factory method of the corresponding companion object, use referential equality.
+  * This allows to declare the primary key of an entity as a non-null, non-option type ''and''
   * use the key equality to distinguish between entities abstracting over their persistent/transient state.
-  * If keys are assigned by the application before storing the value, a transient key wrapping the value of the appropriate
-  * type can be used. Such a key will equal also persistent instances of the same value, but still provide a handy
-  * distinction between persistent and transient entity, which can in many cases save a round-trip call to the database
-  * otherwise needed to verify if the saved entity (in particular, in cascade saves) should be inserted or updated.
-  * @tparam T the type of the identified entity.
+  * @tparam T the type of the identified entity. It is purely a marker type used to avoid mistakenly referring to
+  *           a wrong entity type by a given key value.
   * @see [[net.noresttherein.oldsql.model.PK.Key Key]]
   * @see [[net.noresttherein.oldsql.model.PK.TransientPK TransientPK]]
   * @see [[net.noresttherein.oldsql.model.PK.AssignedPK, AssignedPK]]
@@ -27,13 +33,14 @@ trait PK[T] extends Any {
 }
 
 
+
 /** A factory for primary keys. */
 object PK {
 
 	/** Creates a unique transient key marking a target entity `T` as transient. */
 	@inline def apply[T]() :TransientPK[T] = new TransientPK[T]
 
-	/** Creates a key assigned to an entity by an application (transient) backed by the given value. */
+	/** Creates a key assigned to an entity by an application (transient) wrapping the given value. */
 	@inline def apply[T, @specialized(Int, Long) K](key :K) :AssignedPK[T, K] = new AssignedPK[T, K](key)
 
 
@@ -101,6 +108,7 @@ object PK {
 
 		override def toString :String = "PK~" + hashCode.toHexString
 	}
+
 
 	object TransientPK {
 		/** Creates a unique transient key marking a target entity `T` as transient. */

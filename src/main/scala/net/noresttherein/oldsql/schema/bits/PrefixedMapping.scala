@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.support.DelegateMapping
 
 
 class PrefixedMapping[M <: RefinedMapping[S, O], S, O](val prefix :String, protected override val backer :M)
-	extends EagerDeepProxy[S, O](backer) with DelegateMapping[M, S, O] //Adapted[M]
+	extends EagerDeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
 	protected override def adapt[T](component :Component[T]) :Component[T] = component.prefixed(prefix)
 

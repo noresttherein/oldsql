@@ -14,8 +14,9 @@ import net.noresttherein.oldsql.model.types.OrderingSupport.MappedOrdering
   */
 object types {
 
+	final val ValueTypes = new Specializable.Group(Byte, Short, Int, Long, Char, Float, Double, Boolean)
 
-	abstract class <%<[S, T] extends (S=>T) with Serializable
+	abstract class <%<[S, T] extends (S => T) with Serializable
 
 	abstract class =%=[S, T] extends (S<%<T) {
 		def apply(left :S) :T = right(left)

@@ -4,16 +4,18 @@ import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.{schema, OperationType}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, ColumnAdapterFactoryMethods}
+import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
 import net.noresttherein.oldsql.sql.FromClause.{TableCount, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, FreeComponent}
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
 
 
 
@@ -47,12 +49,42 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O]
 
 
 
+	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
+		if (op.columns(this).nonEmpty)
+			ColumnValues.preset(this, (subject /: op.audit.Audit(this)) { (s, f) => f(s) })
+		else
+	        ColumnValues.preset(this, op.extra.Value(this))
+
+	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		if (op.columns(this).nonEmpty) { //this check is the fastest with columns caching the individual lists.
+			val audited = (subject /: op.audit.Audit(this)) { (s, f) => f(s) }
+			collector.add(this, audited)
+		} else
+			ColumnValues.preset(this, op.extra.Value(this))
+
+	override def queryValues(subject :S) :ComponentValues[S, O] = writtenValues(QUERY, subject)
+	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UPDATE, subject)
+	override def insertValues(subject :S) :ComponentValues[S, O] = writtenValues(INSERT, subject)
+
+
+
 	override def assemble(pieces: Pieces): Option[S] = None
 
+	/** This method is overriden from the default implementation and does not take into account any select-related
+	  * buffs, but instead directly asks the `pieces` for a preset value (as none could possibly be assembled, columns
+	  * being the bottom components). This is done both for efficiency, by moving the behaviour to the `selectForm`,
+	  * and because this method may be called also by `ComponentValues` instances presetting values for update operations,
+	  * not only when assembling the result of an SQL select from the row data. For this reason it should not be
+	  * overriden; any modification of the values such as validation should happen through `Buff` instances attached
+	  * to this instance or, if impossible to implement, by introducing a component class wrapping the column.
+	  * @return `pieces.preset(this)`
+	  * @throws `NullPointerException` if the preset value is explicitly stated as `null` (`pieces.preset(this)`
+	  *                                returned `Some(null)`), but this column does not have the `Nullable` buff.
+	  */
 	override def optionally(pieces :Pieces) :Option[S] =
 		if (isNullable)
 			pieces.preset(this)
-		else
+		else //consider: making the method final, perhaps only calling pieces.preset, so we can make some optimizations
 			pieces.preset(this) match {
 				case Some(null) =>
 					throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
@@ -60,8 +92,16 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O]
 				case res => res //don't check buffs - we do it in the form for speed
 			}
 
+	/** @inheritdoc
+	  * @return the `NullValue` instance provided by the associated form. */
 	override def nullValue :NullValue[S] = form.nulls
 
+	/** True if `null` is a valid value for this column. Unless the `Nullable` buff is attached,
+	  * `optionally` will deliberately throw a `NullPointerException` if a `null` value is preset in
+	  * the [[net.noresttherein.oldsql.schema.Mapping#Pieces Pieces]] argument (typically as the result of
+	  * this column's form returning `Some(null)`).
+	  * @return `Nullable.enabled(buffs)`.
+	  */
 	protected def isNullable :Boolean = Nullable.enabled(buffs)
 
 
@@ -130,7 +170,10 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O]
 	def form :ColumnForm[S]
 
 	/** `this.form` adapted to a `SQLReadForm` by incorporating behaviour modifications caused by applied buffs.
-	  * This includes default values from buffs like `OptionalSelect`, transformations from `AuditBuff`s and similar
+	  * This includes default values from buffs like `OptionalSelect`, transformations from `AuditBuff`s and similar.
+	  * Note that the `optionally`/`apply` and `assembly` methods of this mapping are ''not'' called by the returned
+	  * form. They are involved only as part of the assembly process for owning components, provided
+	  * by the created `ComponentValues` with the value returned by this form instead.
 	  */
 	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
 		case Some(ConstantBuff(x)) => SQLReadForm.const(x)
@@ -148,64 +191,27 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O]
 
 	}
 
-	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
-	  * and `ExtraQuery`. `OptionalQuery` buff is ignored at this step: when omitting this column from a query
-	  * its form should not be used at all.
-	  */
-	override def queryForm :SQLWriteForm[S] = ExtraQuery.test(buffs) match {
-		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
-		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
-		case _ =>
-			val audits = QueryAudit.Audit(buffs)
-			if (audits.isEmpty) form
-			else form.unmap(audits.reduce(_ andThen _))
-	}
-
-	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
-	  * and `ExtraUpdate`. `OptionalUpdate` buff is ignored at this step: when omitting this column from an update
-	  * its form should not be used at all.
-	  */
-	override def updateForm :SQLWriteForm[S] = ExtraUpdate.test(buffs) match {
-		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
-		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
-		case _ =>
-			val audits = UpdateAudit.Audit(buffs)
-			if (audits.isEmpty) form
-			else form.unmap(audits.reduce(_ andThen _))
-	}
-
-	/** `this.form` adapted to a `SQLWriteForm` by incorporating behaviour modifications caused by applied audit buffs
-	  * and `ExtraInsert`. `OptionalInsert` buff is ignored at this step: when omitting this column from an insert
-	  * its form should not be used at all.
-	  */
-	override def insertForm :SQLWriteForm[S] = ExtraInsert.test(buffs) match {
-		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
-		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
-		case _ =>
-			val audits = InsertAudit.Audit(buffs)
-			if (audits.isEmpty) form
-			else form.unmap(audits.reduce(_ andThen _))
-	}
-
-
-
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 		if (components.size == 1 && components.contains(this)) selectForm
 		else if (components.isEmpty) SQLReadForm.none
 		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
 
-	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		if (components.size == 1 && components.contains(this)) queryForm
-		else if (components.isEmpty) SQLWriteForm.none(form)
-		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
 
-	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		if (components.size == 1 && components.contains(this)) updateForm
-		else if (components.isEmpty) SQLWriteForm.none(form)
-		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
+	/** Adapts `this.form` by incorporating the behaviour of relevant buffs: the `ExtraXxx` and `XxxAudit`.
+	  * Note that `OptionalXxx` and even `NoXxx` buffs are ignored here and columns need to be explicitly
+	  * included/excluded in an operation and the burden of validating this information lies with the owning mapping.
+	  */
+	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.extra.test(buffs) match {
+		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
+		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
+		case _ =>
+			val audits = op.audit.Audit(buffs)
+			if (audits.isEmpty) form
+			else form.unmap(audits.reduce(_ andThen _))
+	}
 
-	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		if (components.size == 1 && components.contains(this)) insertForm
+	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (components.size == 1 && components.contains(this)) op.form(this)
 		else if (components.isEmpty) SQLWriteForm.none(form)
 		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
 
@@ -227,9 +233,7 @@ trait ColumnMapping[S, O] extends TypedMapping[S, O]
 
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :ColumnMapping[X, O] =
-		new StandardColumn[X, O](name, schema.mapBuffs(this)(there, back))(
-			schema.mapForm(form)(there, back)
-		)
+		new StandardColumn[X, O](name, schema.mapBuffs(this)(there, back))(form.as(there)(back))
 
 
 
@@ -324,7 +328,7 @@ object ColumnMapping {
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
 			new LiteralColumn[N, X, O](schema.mapBuffs(this)(there, back))(
-				implicitly[ValueOf[N]], schema.mapForm(form)(there, back)
+				implicitly[ValueOf[N]], form.as(there)(back)
 			)
 
 		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :LiteralColumn[N, X, O] =
@@ -357,13 +361,51 @@ object ColumnMapping {
 	trait StableColumn[S, O] extends ColumnMapping[S, O] {
 		final override val isNullable :Boolean = super.isNullable
 
+		private[this] val isQueryable = NoQuery.disabled(this)
+		private[this] val isUpdatable = NoUpdate.disabled(this)
+		private[this] val isInsertable = NoInsert.disabled(this)
+
+		private[this] val queryAudit = QueryAudit.fold(this)
+		private[this] val updateAudit = UpdateAudit.fold(this)
+		private[this] val insertAudit = InsertAudit.fold(this)
+
+		override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
+			op.writtenValues(this, subject)
+
+		override def queryValues(subject :S) :ComponentValues[S, O] =
+			if (isQueryable) ColumnValues.preset(this, queryAudit(subject))
+			else ColumnValues.empty
+
+		override def updateValues(subject :S) :ComponentValues[S, O] =
+			if (isUpdatable) ColumnValues.preset(this, updateAudit(subject))
+			else ColumnValues.empty
+
+		override def insertValues(subject :S) :ComponentValues[S, O] =
+			if (isInsertable) ColumnValues.preset(this, insertAudit(subject))
+			else ColumnValues.empty
+
+
+		override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			op.writtenValues(this, subject, collector)
+
+		override def queryValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			if (isQueryable) collector.add(this, queryAudit(subject))
+
+		override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			if (isUpdatable) collector.add(this, updateAudit(subject))
+
+		override def insertValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			if (isInsertable) collector.add(this, insertAudit(subject))
+
+
+
 		override def apply[T](component :Component[T]) :Extract[T] =
 			if (component == this)
 				selfExtract.asInstanceOf[Extract[T]]
 			else
 				throw new IllegalArgumentException(
 					s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
-					)
+				)
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] =
 			if (column == this)
@@ -371,7 +413,7 @@ object ColumnMapping {
 			else
 				throw new IllegalArgumentException(
 					s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
-					)
+				)
 
 
 		private[this] val selfExtract = ColumnExtract.ident(this)
@@ -380,7 +422,7 @@ object ColumnMapping {
 			NaturalMap.single[Component, ColumnExtract, S](this, selfExtract)
 
 		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
-			NaturalMap.single[Column, ColumnExtract, S](this, selfExtract)
+			extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
 
 
 		final override val columns :Unique[Column[S]] = Unique.single(this)
@@ -396,7 +438,10 @@ object ColumnMapping {
 		final override val queryForm :SQLWriteForm[S] = super.queryForm
 		final override val updateForm :SQLWriteForm[S] = super.updateForm
 		final override val insertForm :SQLWriteForm[S] = super.insertForm
+		final override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 	}
+
+
 }
 

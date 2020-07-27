@@ -12,6 +12,8 @@ import scala.collection.mutable.Builder
 
 import net.noresttherein.oldsql.schema.bits.CustomizedMapping.{exclude, include}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, DelegateAdapter}
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
 
 
 
@@ -32,6 +34,12 @@ class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] protected
 		this(source,
 		     include(source, includes, prohibited, explicit) ++ exclude(source, excludes, optional, nonDefault)
 		)
+
+	def this(source :M, op :OperationType, includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]]) =
+		this(source,
+		     include(source, includes, op.prohibited, op.explicit) ++
+			 exclude(source, excludes, op.optional, op.nonDefault)
+	     )
 
 
 
@@ -75,35 +83,43 @@ object CustomizedMapping {
 	type Overrides[O] = NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component]
 
 
+	def apply[M <: RefinedMapping[S, O], S, O]
+	         (source :M, op :OperationType,
+	          includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]] = Nil) :Adapted[M] =
+	{
+		val included = include(source, includes, op.prohibited, op.explicit)
+		val excluded = exclude(source, excludes, op.optional, op.nonDefault)
+		new CustomizedMapping[M, S, O](source, included ++ excluded) with DelegateAdapter[M, S, O]
+	}
+
 	def select[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
               (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		customize[M, S, O](source, include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
+		apply[M, S, O](source, SELECT, include, exclude)
 
 	def query[M <: RefinedMapping[S, O], S, O]
 	         (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
 	         (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		customize[M, S, O](source, include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
+		apply[M, S, O](source, QUERY, include, exclude)
 
 	def update[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
               (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		customize[M, S, O](source, include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
+		apply[M, S, O](source, UPDATE, include, exclude)
 
 	def insert[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
               (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		customize[M, S, O](source, include, NoInsert, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
+		apply[M, S, O](source, INSERT, include, exclude)
 
 
 
 	private[schema] def customize[M <: RefinedMapping[S, O], S, O]
-	                    (source :M, includes :Iterable[RefinedMapping[_, O]], prohibited :BuffType, explicit :BuffType,
-	                     excludes :Iterable[RefinedMapping[_, O]], optional :BuffType, nonDefault :FlagBuffType)
-		:Adapted[M] =
+	                    (source :M, op :OperationType,
+	                     includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]]) :Adapted[M] =
 	{
-		val included = include(source, includes, prohibited, explicit)
-		val excluded = exclude(source, excludes, optional, nonDefault)
+		val included = include(source, includes, op.prohibited, op.explicit)
+		val excluded = exclude(source, excludes, op.optional, op.nonDefault)
 		new CustomizedMapping[M, S, O](source, included ++ excluded) with DelegateAdapter[M, S, O]
 	}
 

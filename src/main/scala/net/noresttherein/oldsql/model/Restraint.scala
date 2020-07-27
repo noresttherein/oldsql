@@ -670,7 +670,7 @@ object Restraint {
 
 
 	/** Create `Restraint`s checking if a value is a member of a given set of values and matches such instances.
-	  * All created instances test against inlined value sets (rather than a result set from a select from another last),
+	  * All created instances test against inlined value sets (rather than a result set from a select from another table),
 	  * but the set can contain arbitrary expressions derivable from the root entity `T`.
 	  *
 	  * Example: `hero.name in ('Minsc', name)`.

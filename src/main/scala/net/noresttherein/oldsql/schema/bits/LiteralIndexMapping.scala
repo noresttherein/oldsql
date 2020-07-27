@@ -11,6 +11,7 @@ import net.noresttherein.oldsql.schema.SchemaMapping.{@||, |-|, ||, LabeledSchem
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LiteralIndexMapping.NonEmptyIndexMapping
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.OperationType.WriteOperationType
 
 
 /** A mapping for `LiteralIndex` maps indexed on type level with literal types.
@@ -141,6 +142,7 @@ object LiteralIndexMapping {
 		override val queryForm = SQLWriteForm.LiteralIndexWriteForm(init.queryForm, last.queryForm)
 		override val updateForm = SQLWriteForm.LiteralIndexWriteForm(init.updateForm, last.updateForm)
 		override val insertForm = SQLWriteForm.LiteralIndexWriteForm(init.insertForm, last.insertForm)
+		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |~ (K :~ T)] = op.form(this)
 
 
 		override def compose[X](extractor :X => S) :FlatMappingSchema[X, V |~ (K :~ T), C ~ M, O] =

@@ -121,7 +121,7 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 	  */
 	def flatten[FV <: Chain, FC <: Chain]
 	           (implicit flatterer :SchemaFlattening[V, C, FV, FC]) :FlatSchemaMapping[S, FV, FC, O] =
-		new ShallowProxy[S, O] with FlatSchemaMapping[S, FV, FC, O] {
+		new DirectProxy[S, O] with FlatSchemaMapping[S, FV, FC, O] {
 			override val schema = outer.schema.flatten
 			protected override val backer = outer
 		}
@@ -198,10 +198,9 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 
 
 
-	protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-	                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:SchemaMapping[S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
 
 
@@ -251,8 +250,7 @@ object SchemaMapping {
 
 
 	//implicit 'override' from |-| which will work for SchemaMapping subclasses as normal.
-	implicit def genericSchemaMappingProjection[M[Q] <: SchemaMapping[S, _, _, Q], S, O]
-			:ProjectionDef[M[O], M, S] =
+	implicit def genericSchemaMappingProjection[M[Q] <: SchemaMapping[S, _, _, Q], S, O] :ProjectionDef[M[O], M, S] =
 		OriginProjection.functor[M, S, O]
 
 
@@ -491,10 +489,9 @@ object SchemaMapping {
 
 
 
-		protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatSchemaMapping[S, V, C, O] =
-			new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+			new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 				with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
 
 
@@ -547,9 +544,7 @@ object SchemaMapping {
 			SchemaColumn(name, buffs :_*)(form)
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :SchemaColumn[X, O] =
-			SchemaColumn(name, oldsql.schema.mapBuffs(this)(there, back) :_*)(
-				oldsql.schema.mapForm(form)(there, back)
-			)
+			SchemaColumn(name, oldsql.schema.mapBuffs(this)(there, back) :_*)(form.as(there)(back))
 
 	}
 
@@ -654,7 +649,7 @@ object SchemaMapping {
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 				:LabeledSchemaColumn[N, X, O] =
 			LabeledSchemaColumn(label, name, oldsql.schema.mapBuffs(this)(there, back) :_*)(
-				oldsql.schema.mapForm(form)(there, back)
+				form.as(there)(back)
 			)
 
 		override def toString = "'" + label + "@||" + super[LabeledColumn].toString
@@ -737,10 +732,11 @@ object SchemaMapping {
 		extends ShallowDelegate[S, O] with DelegateMapping[M, S, O] with SchemaMapping[S, V, C, O]
 	{
 		override val schema :M = backer
-//		override val schema :M
-//		protected override val backer :M = schema
 
-		protected val schemaExtract = MappingExtract.req(schema)(schema.disassemble)
+		override def buffs :Seq[Buff[S]] = backer.outerBuffs
+
+
+		protected val schemaExtract = MappingExtract.opt(schema)(schema.unapply)
 
 		override def apply[T](component :Component[T]) :Extract[T] =
 			if (component eq schema)
@@ -788,11 +784,9 @@ object SchemaMapping {
 		extends SchemaMapping[S, V, C, O] with BaseAdapter[M, S, O]
 		   with AdapterFactoryMethods[({ type A[X] = SchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
-		protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:SchemaMappingAdapter[M, T, S, V, C, O] =
-			new CustomizedMapping[this.type, S, O](
-					this, include, no, explicit, exclude, optional, nonDefault)
+			new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 				with ComposedAdapter[M, S, S, O] with DelegateSchemaMapping[S, V, C, O]
 				with SchemaMappingAdapter[M, T, S, V, C, O]
 
@@ -837,11 +831,10 @@ object SchemaMapping {
 		extends FlatSchemaMapping[S, V, C, O] with SchemaMappingAdapter[M, T, S, V, C, O]
 		   with AdapterFactoryMethods[({ type A[X] = FlatSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
-		protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatSchemaMappingAdapter[M, T, S, V, C, O] =
 			new CustomizedMapping[this.type, S, O](
-					this, include, no, explicit, exclude, optional, nonDefault)
+					this, op, include, exclude)
 				with ComposedAdapter[M, S, S, O] with DelegateFlatSchemaMapping[S, V, C, O]
 				with FlatSchemaMappingAdapter[M, T, S, V, C, O]
 
@@ -981,7 +974,8 @@ object SchemaMapping {
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 				:SchemaMapping[X, V, C, O] =
-			new MappedSchemaMapping[M, T, X, V, C, O](backer, map andThen there, back andThen unmap)(mapNulls(there))
+			new MappedSchemaMapping[M, T, X, V, C, O](backer, map andThen there, back andThen unmap)(
+			                                          nullValue extract there)
 	}
 
 
@@ -996,7 +990,8 @@ object SchemaMapping {
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 				:FlatSchemaMapping[X, V, C, O] =
-			new MappedFlatSchemaMapping[M, T, X, V, C, O](backer, map andThen there, back andThen unmap)(mapNulls(there))
+			new MappedFlatSchemaMapping[M, T, X, V, C, O](backer, map andThen there, back andThen unmap)(
+			                                              nullValue extract there)
 	}
 
 
@@ -1061,11 +1056,9 @@ abstract class AbstractSchemaMapping[S, V <: Chain, C <: Chain, O]
 	   with StaticSchemaMapping[({ type A[M <: RefinedMapping[S, O], X] = SchemaMappingAdapter[M, S, X, V, C, O] })#A,
 		                        MappingSchema[S, V, C, O], S, V, C, O]
 {
-
-	protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-	                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:SchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
 
 	override def prefixed(prefix :String) :SchemaMappingAdapter[this.type, S, S, V, C, O] =
@@ -1098,11 +1091,9 @@ abstract class AbstractFlatSchemaMapping[S, V <: Chain, C <: Chain, O]
 			({ type A[M <: RefinedMapping[S, O], X] = FlatSchemaMappingAdapter[M, S, X, V, C, O] })#A,
 			FlatMappingSchema[S, V, C, O], S, V, C, O]
 {
-
-	protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-	                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
+		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
 
 

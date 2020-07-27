@@ -1,8 +1,8 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, SQLForm, TypedMapping}
-import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm, TypedMapping}
+import net.noresttherein.oldsql.{schema, OperationType}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
@@ -10,6 +10,8 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, AdapterSeal}
 import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
+import net.noresttherein.oldsql.collection.NaturalMap
 
 
 
@@ -36,7 +38,7 @@ sealed trait AdapterOf[+M <: Mapping] extends Mapping { this :MappingSeal =>
   * should generally be of the same `Origin` type `O` as this adapter. Unfortunately, this in most cases results
   * in a duplication of the origin type in the type signature as a `M &lt;: MappingAt[_]` type bound results in
   * issues with type unification of the type parameter at the use site (see the
-  * [[net.noresttherein.oldsql.schema.Mapping Mapping]] trait documentation for more information about this limitation).
+  * [[net.noresttherein.oldsql.schema.Mapping#Origin Origin]] type documentation for more information about this limitation).
   *
   * Client code should, if possible, use one of the type aliases defined in the companion object which propagate
   * some combination of the subject and origin types from the original mapping to the adapter.
@@ -65,13 +67,15 @@ trait MappingAdapter[+M <: Mapping, S, O]
 	/** The adapted mapping. It is considered a valid component of this mapping. */
 	val body :M { type Origin = O }
 
-	override def prefixed(prefix :String) :MappingAdapter[M, S, O] = ???
+	override def prefixed(prefix :String) :MappingAdapter[M, S, O] =
+		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
 
-	override def renamed(name :String) :MappingAdapter[M, S, O] = ???
-
+	override def renamed(name :String) :MappingAdapter[M, S, O] =
+		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
 
 	override def as[X](there: S =?> X, back: X =?> S)
-	                  (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] = ???
+	                  (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
+		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
 
 }
 
@@ -115,17 +119,29 @@ object MappingAdapter {
 		override type Origin = O
 
 
+		/** @inheritdoc
+		  * @return `customize(SELECT, include, exclude)`.
+		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods#customize customize]] */
 		override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-			customize(include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
+			customize(SELECT, include, exclude)
 
+		/** @inheritdoc
+		  * @return `customize(QUERY, include, exclude)`.
+		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods#customize customize]] */
 		override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-			customize(include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
+			customize(QUERY, include, exclude)
 
+		/** @inheritdoc
+		  * @return `customize(UPDATE, include, exclude)`.
+		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods#customize customize]] */
 		override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-			customize(include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
+			customize(UPDATE, include, exclude)
 
+		/** @inheritdoc
+		  * @return `customize(INSERT, include, exclude)`.
+		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods#customize customize]] */
 		override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-			customize(include, NoInsert, ExplicitInsert, exclude, OptionalInsert, NoInsertByDefault)
+			customize(INSERT, include, exclude)
 
 		/** Target method for `forSelect`, `forQuery`, `forUpdate` and `forInsert`. Responsible for creating an
 		  * adapter (typically a [[net.noresttherein.oldsql.schema.bits.CustomizedMapping CustomizedMapping]] subclass)
@@ -133,24 +149,19 @@ object MappingAdapter {
 		  * All components/columns which are not covered by either the `include` or the `exclude` list are left
 		  * unmodified, meaning they will be included in the operation only if they would be included by this mapping
 		  * by default.
+		  * @param op      designator of the database operation type for which the mapping is being modified.
+		  *                It is the source of buffs used in the process.
 		  * @param include a list of (additional) components of this mapping to include in the operation.
 		  *                Must not contain components having the `no` buff. All components on the list will
 		  *                have their `explicit` buff removed (if present) and, if the included component
 		  *                is not a column, all its subcomponents with the `explicit` buff will have that buff
 		  *                removed.
-		  * @param no a buff type prohibiting the use of a column from the given operation type, such as `NoSelect`.
-		  * @param explicit a buff type for columns which are permitted, but not included by default in the given
-		  *                 operation type, uch as `ExplicitSelect`.
 		  * @param exclude a list of components which should be excluded from the operation. Must contain
 		  *                components whose export versions have the `optional` buff. All components on this list
 		  *                will receive the `nonDefault` buff (if not already present) and so will
 		  *                all their subcomponents with the `optional` buff.
-		  * @param optional a buff type for columns which may be omitted from the operations, such as `OptionalSelect`.
-		  * @param nonDefault a buff type marking components which are not included by default (or never)
-		  *                   in the given operation, such as the `NoSelectByDefault` buff.
 		  */
-		protected def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                        exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType) :A[S]
+		protected def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S]
 
 
 
@@ -204,17 +215,16 @@ object MappingAdapter {
 		def withBuffs(buffs :Seq[Buff[S]]) :A[S] = copy(name, buffs)
 
 
-		protected override def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
-				:A[S] =
+		protected override def customize(op :OperationType,
+		                                 include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
 			if (include.size > 1)
 				throw new IllegalArgumentException("Mappings " + include + " are not components of column " + this)
 			else if (exclude.size > 1)
 			     throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this)
-			else if (exclude.headOption.contains(this) && optional.enabled(this))
-				 withBuffs(nonDefault[S] +: buffs)
-			else if (include.headOption.contains(this) && explicit.enabled(this))
-			     withBuffs(buffs.filter(explicit.disabled))
+			else if (exclude.headOption.contains(this) && op.optional.enabled(this))
+				 withBuffs(op.nonDefault[S] +: buffs)
+			else if (include.headOption.contains(this) && op.explicit.enabled(this))
+			     withBuffs(buffs.filter(op.explicit.disabled))
 			else
 				thisColumn
 
@@ -242,12 +252,10 @@ object MappingAdapter {
 	trait BaseAdapter[+M <: MappingAt[O], S, O] extends MappingAdapter[M, S, O] with AdapterSeal {
 		override val body :M
 
-
-		override protected def customize(include :Iterable[Component[_]], no :BuffType, explicit :BuffType,
-		                                 exclude :Iterable[Component[_]], optional :BuffType, nonDefault :FlagBuffType)
+		protected override def customize(op :OperationType,
+		                                 include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:MappingAdapter[M, S, O] =
-			new CustomizedMapping[this.type, S, O](this, include, no, explicit, exclude, optional, nonDefault)
-				with ComposedAdapter[M, S, S, O]
+			new CustomizedMapping[this.type, S, O](this, op, include, exclude) with ComposedAdapter[M, S, S, O]
 
 
 		override def prefixed(prefix :String) :MappingAdapter[M, S, O] = PrefixedMapping(prefix, this)
@@ -306,7 +314,8 @@ object MappingAdapter {
 	/** A `MappingAdapter` to a `ColumnMapping` which is likewise a `ColumnMapping` itself.
 	  * The default implementation will not delegate to the original column, but instead rely on the standard
 	  * behaviour as defined by the `ColumnMapping` trait and - possibly modified from the adapted column -
-	  * buffs and form of this adapter.
+	  * buffs and form of this adapter. The original column is included only for show - the primary reason
+	  * for this class is multiple inheritance scenario enforcing a type to be both a column and an adapter.
 	  */
 	trait ColumnAdapter[M <: ColumnMapping[T, O], T, S, O]
 		extends BaseAdapter[M, S, O] with ColumnMapping[S, O]
@@ -320,7 +329,9 @@ object MappingAdapter {
 			ColumnAdapter[M, T, S, O](body, name, buffs)(form)
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :ColumnAdapter[M, T, X, O] =
-			ColumnAdapter[M, T, X, O](body, name, schema.mapBuffs(this)(there, back))(schema.mapForm(form)(there, back))
+			ColumnAdapter[M, T, X, O](body, name, schema.mapBuffs(this)(there, back))(
+				form.as(there)(back)
+			)
 	}
 
 
@@ -350,14 +361,67 @@ object MappingAdapter {
 			extends ColumnAdapter[M, T, S, O] with StableColumn[S, O]
 
 
+		/** A strange beast, being both a `ColumnMapping` (normally a value-oriented class with little polymorphism) and
+		  * an `MappingAdapter`, containing some other column as a component (which columns normally can't).
+		  * While this breaks the column contract as documented (a column is its only component,
+		  * present on the columns lists, but not `components`/`subcomponents`), with careful hiding of this fact
+		  * it can remain compatible. This is done by including the adapted column `body` only in the `extracts`
+		  * (and `columnExtracts`) maps, which are used only for aliasing to the ''export'' versions of the components.
+		  * As the result, the adapted column is not exported, with only this instance being visible to containing
+		  * mappings, and all operations modifying a component (such as prefixing the column names) apply only
+		  * to this instance and return a new `ColumnFormProxy`, without modifying the `body`.
+		  * At the same time, just in case, the `optionally` method is overriden to check for values for the adapted
+		  * columns and passing it to aliasing `ComponentValues` will not result in an exception, as the extract
+		  * for it is provided.
+		  */
+		class ColumnFormProxy[M <: ColumnMapping[S, O], S, O](column :M, name :String, buffs :Seq[Buff[S]])
+		                                                     (implicit override val form :ColumnForm[S] = column.form)
+			extends ColumnFormAdapter[M, S, S, O](column, name, buffs)
+		{
+			def this(column :M) = this(column, column.name, column.buffs)(column.form)
+
+			override def optionally(pieces :Pieces) = super.optionally(pieces) match {
+				case some :Some[S] => some
+				case _ => body.optionally(pieces)
+			}
+
+			private[this] val originalExtract = ColumnExtract.ident(column)
+
+			override val extracts = { //get the self extractor from StableColumn and add one for the body column.
+				val superExtracts = NaturalMap.single[Component, ColumnExtract, S](this, apply(this))
+				superExtracts.updated[ColumnExtract, S](body :Component[S], originalExtract)
+			}
+			override val columnExtracts = extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
+
+			override def apply[T](component :Component[T]) :Extract[T] =
+				if (component eq column) originalExtract.asInstanceOf[ColumnExtract[T]]
+				else super.apply(component)
+
+			override def apply[T](column :Column[T]) :ColumnExtract[T] =
+				if (column eq this.column) originalExtract.asInstanceOf[ColumnExtract[T]]
+				else super.apply(column)
+
+			override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[M, S, S, O] =
+				new ColumnFormProxy(body, name, buffs)
+		}
+
+
+
+		/** This class takes the degeneration of the `ColumnFormProxy` adapter one step further and only pretends
+		  * to be an adapter - the `body` property points to this very instance. In all functionality this class
+		  * behaves the same as a `StandardColumn`.
+		  */
 		class PseudoColumnProxy[S, O](override val name :String, override val buffs :Seq[Buff[S]])
 		                             (implicit override val form :ColumnForm[S])
 			extends ColumnAdapter[ColumnMapping[S, O], S, S, O] with StableColumn[S, O]
 		{
 			override val body :ColumnMapping[S, O] = this
 
-			override def renamed(name :String) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =
-				new PseudoColumnProxy(name, buffs)(form)
+//			override def renamed(name :String) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =
+//				new PseudoColumnProxy(name, buffs)(form)
+
+			override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =
+				new PseudoColumnProxy[S, O](name, buffs)
 		}
 
 	}
