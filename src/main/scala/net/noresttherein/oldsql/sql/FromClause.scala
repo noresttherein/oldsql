@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
-import net.noresttherein.oldsql.schema.{ColumnMapping, RowSource, SQLForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnMapping, RowSource, SQLForm, BaseMapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
@@ -221,7 +221,7 @@ trait FromClause { thisClause =>
 	  * is joined using the same kind of join as in `nextJoin`, unless this clause is `Dual`, in which case the kind
 	  * of join of `firstJoin` is used instead.
 	  */
-	def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
+	def extendJoinedWith[F <: FromClause, T[O] <: BaseMapping[X, O], X]
 	                    (prefix :F, firstJoin :Join.*, nextJoin :this.type Join T)
 			:ExtendJoinedWith[F, firstJoin.LikeJoin, nextJoin.LikeJoin, T]
 
@@ -413,7 +413,7 @@ trait FromClause { thisClause =>
 	  * in a double dispatch. This allows the `Dual` class to override this behavior and use a `Subselect` to join
 	  * the following relation, when `asSubselectOf` is called for a non-subselect clause.
 	  */
-	def extendAsSubselectOf[F <: FromClause, T[A] <: TypedMapping[X, A], X]
+	def extendAsSubselectOf[F <: FromClause, T[A] <: BaseMapping[X, A], X]
 	                       (newOuter :F, next :this.type ProperJoin T)(implicit extension :Implicit ExtendedBy F)
 			:ExtendAsSubselectOf[F, next.LikeJoin, T] {
 				type Implicit = newOuter.Generalized
@@ -428,9 +428,9 @@ trait FromClause { thisClause =>
 	/** Creates an SQL ''select'' expression with this clause used for the ''from'' and ''where'' clauses
 	  * and the ''select'' clause consisting of all selectable columns of the mapping returned by the passed function.
 	  */
-	def selectAs[C[A] <: MappingAt[A], M[A] <: TypedMapping[S, A], S, O >: Generalized <: FromClause]
+	def selectAs[C[A] <: MappingAt[A], M[A] <: BaseMapping[S, A], S, O >: Generalized <: FromClause]
 	            (component :JoinedTables[Generalized] => C[O])
-	            (implicit typer :Conforms[C[O], M[O], TypedMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
+	            (implicit typer :Conforms[C[O], M[O], BaseMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
 			:Implicit SelectAs M[Any] =
 		{
 			type Mock = SQLRelation[Generalized, MappingOf[Any]#TypedProjection, Any, O]
@@ -447,7 +447,7 @@ trait FromClause { thisClause =>
 	/** Creates an SQL ''select'' expression with this clause used for the ''from'' and ''where'' clauses
 	  * and the ''select'' clause consisting of all selectable columns of the passed mapping.
 	  */
-	def selectAs[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[S, A], S, O >: Generalized <: FromClause]
+	def selectAs[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[S, A], S, O >: Generalized <: FromClause]
 	            (component :ComponentSQL[Generalized, T, E, M, S, O]) :Implicit SelectAs M[Any] =
 		if (isSubselect) {
 			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
@@ -549,7 +549,7 @@ trait FromClause { thisClause =>
 	/** Creates an `InnerJoin` of `this` and `right`. Polymorphic as a join with `Dual` results in `From`, extracted
 	  * to a method to eliminate casting in pattern matching.
 	  */
-	protected[sql] def selfInnerJoin[T[A] <: TypedMapping[X, A], X]
+	protected[sql] def selfInnerJoin[T[A] <: BaseMapping[X, A], X]
 	                                (right :LastRelation[T, X])(filter :SQLBoolean[Generalized With T])
 			:this.type InnerJoin T =
 		InnerJoin.newJoin[T, X](this, right)(filter)
@@ -723,7 +723,7 @@ object FromClause {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
-		@inline def join[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def join[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                (table :RowSource[R])
 		                (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S]) :F InnerJoin R =
 		InnerJoin(thisClause, table)
@@ -737,7 +737,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  */
-//		@inline def join[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def join[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                (table :R[A])
 //		                (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
 //		                 alias :OriginProjection[R[A], A, R[Any], Any]) :F InnerJoin R =
@@ -763,7 +763,7 @@ object FromClause {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
-		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                    (table :RowSource[R])
 		                    (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S]) :F OuterJoin R =
 			OuterJoin(thisClause, table)
@@ -777,7 +777,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  */
-//		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                    (table :R[A])
 //		                    (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
 //		                     alias :OriginProjection[R[A], A, R[Any], Any]) :F OuterJoin R =
@@ -803,7 +803,7 @@ object FromClause {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
-		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                    (table :RowSource[R])
 		                    (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S]) :F LeftJoin R =
 			LeftJoin(thisClause, table)
@@ -817,7 +817,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  */
-//		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                    (table :R[A])
 //		                    (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
 //		                     alias :OriginProjection[R[A], A, R[Any], Any]) :F LeftJoin R =
@@ -843,7 +843,7 @@ object FromClause {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
-		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :RowSource[R])
 		                     (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S]) :F RightJoin R =
 			RightJoin(thisClause, table)
@@ -857,7 +857,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  */
-//		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                     (table :R[A])
 //		                     (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
 //		                      alias :OriginProjection[R[A], A, R[Any], Any]) :F RightJoin R =
@@ -884,7 +884,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def naturalJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                       (table :RowSource[R])
 		                       (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
 		                        last :GetTableByNegativeIndex[thisClause.Generalized, -1]) :F InnerJoin R =
@@ -900,7 +900,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-//		@inline def naturalJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def naturalJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                       (table :R[A])
 //		                       (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
 //		                        alias :OriginProjection[R[A], A, R[Any], Any],
@@ -918,7 +918,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalOuterJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def naturalOuterJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                            (table :RowSource[R])
 		                            (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
 		                             last :GetTableByNegativeIndex[thisClause.Generalized, -1]) :F OuterJoin R =
@@ -934,7 +934,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-//		@inline def naturalOuterJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def naturalOuterJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                            (table :R[A])
 //		                            (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
 //		                             alias :OriginProjection[R[A], A, R[Any], Any],
@@ -952,7 +952,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalLeftJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def naturalLeftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                           (table :RowSource[R])
 		                           (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
 		                            last :GetTableByNegativeIndex[thisClause.Generalized, -1]) :F LeftJoin R =
@@ -968,7 +968,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-//		@inline def naturalLeftJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def naturalLeftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                           (table :R[A])
 //		                           (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
 //		                            alias :OriginProjection[R[A], A, R[Any], Any],
@@ -986,7 +986,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-		@inline def naturalRightJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def naturalRightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                            (table :RowSource[R])
 		                            (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
 		                             last :GetTableByNegativeIndex[thisClause.Generalized, -1]) :F RightJoin R =
@@ -1002,7 +1002,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
-//		@inline def naturalRightJoin[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def naturalRightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                            (table :R[A])
 //		                            (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
 //		                             alias :OriginProjection[R[A], A, R[Any], Any],
@@ -1011,7 +1011,7 @@ object FromClause {
 
 
 
-		private def naturalFilter[T[O] <: TypedMapping[_, O]]
+		private def naturalFilter[T[O] <: BaseMapping[_, O]]
 		                         (tables :JoinedTables[thisClause.Generalized With T])
 		                         (implicit prev :GetTableByNegativeIndex[thisClause.Generalized With T, -2])
 				:SQLBoolean[thisClause.Generalized With T] =
@@ -1052,7 +1052,7 @@ object FromClause {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
-		@inline def subselectFrom[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+		@inline def subselectFrom[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                         (table :RowSource[R])
 		                         (implicit cast :InferSubject[thisClause.type, Subselect, R, T, S]) :F Subselect R =
 			Subselect(thisClause, table)
@@ -1072,7 +1072,7 @@ object FromClause {
 		  * @param alias an implicit witness allowing the mapping type to be projected to another `Origin` member type.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
-//		@inline def subselectFrom[R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S, A]
+//		@inline def subselectFrom[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A]
 //		                         (table :R[A])
 //		                         (implicit cast :InferSubject[thisClause.type, Subselect, R, T, S],
 //		                          alias :OriginProjection[R[A], A, R[Any], Any]) :F Subselect R =

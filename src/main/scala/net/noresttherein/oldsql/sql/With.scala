@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
+import net.noresttherein.oldsql.schema.{RowSource, BaseMapping}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
@@ -123,7 +123,7 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 	                               +N[+K <: FromClause, M[O] <: MappingAt[O]] <: K Join M, T[O] <: MappingAt[O]] =
 		N[JoinedWith[F, J], T]
 
-	override def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
+	override def extendJoinedWith[F <: FromClause, T[O] <: BaseMapping[X, O], X]
 	                             (prefix :F, firstJoin :Join.*, nextJoin :this.type Join T)
 			:nextJoin.LikeJoin[JoinedWith[F, firstJoin.LikeJoin], T] =
 		nextJoin.withLeft(joinedWith(prefix, firstJoin))(nextJoin.condition :SQLBoolean[Generalized With T])
@@ -140,7 +140,7 @@ trait With[+L <: FromClause, R[O] <: MappingAt[O]] extends FromClause { thisClau
 	                                  M[A] <: MappingAt[A]] =
 		J[AsSubselectOf[O], M]
 
-	override def extendAsSubselectOf[O <: FromClause, T[A] <: TypedMapping[X, A], X]
+	override def extendAsSubselectOf[O <: FromClause, T[A] <: BaseMapping[X, A], X]
 	                                (newOuter :O, next :this.type ProperJoin T)(implicit extension :Implicit ExtendedBy O)
 			:ExtendAsSubselectOf[O, next.LikeJoin, T] {
 				type Implicit = newOuter.Generalized
@@ -255,15 +255,15 @@ object With {
 	/** Create a cross join between the left side, given as a (possibly empty) clause/list of relations,
 	  * and the the mapping on the right side representing a table, some other relation or a surrogate mapping.
 	  */
-	def apply[L[O] <: MappingAt[O], LG[O] <: TypedMapping[A, O], A,
-		      R[O] <: MappingAt[O], RG[O] <: TypedMapping[B, O], B]
+	def apply[L[O] <: MappingAt[O], LG[O] <: BaseMapping[A, O], A,
+		      R[O] <: MappingAt[O], RG[O] <: BaseMapping[B, O], B]
 	         (left :RowSource[L], right :RowSource[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LG, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RG, B])
 			:From[L] InnerJoin R =
 		InnerJoin(left, right)
 
-	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R])
 	         (implicit cast :InferSubject[left.type, InnerJoin, R, T, S]) :L InnerJoin R =
 		InnerJoin(left, right, filter)
@@ -296,7 +296,7 @@ object With {
 			protected[this] override val oldClause = old
 			protected[this] override val newClause = extending
 
-			override def relation[T[A] <: TypedMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
+			override def relation[T[A] <: BaseMapping[E, A], E, O >: F <: FromClause](e :SQLRelation[F, T, E, O])
 					:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingAt[A] } =
 				(if (e.shift < threshold) e //todo: we must ensure we are reusing the mapping instance
 				 else SQLRelation[G, T, E, G](e.source, e.shift + extension)).asInstanceOf[SQLRelation[G, T, E, G]]
@@ -321,7 +321,7 @@ object With {
 
 
 
-	trait TypedWith[+L <: FromClause, R[O] <: TypedMapping[S, O], S] extends With[L, R] {
+	trait TypedWith[+L <: FromClause, R[O] <: BaseMapping[S, O], S] extends With[L, R] {
 		override val last :SQLRelation[FromLast, R, S, FromLast]
 
 

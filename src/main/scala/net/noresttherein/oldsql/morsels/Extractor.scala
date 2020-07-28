@@ -6,15 +6,16 @@ import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtra
 
 /** A wrapper over an option-returning function `X=>Option[Y]`. It serves three main purposes:
   *   - as a base class for extractor objects declaring `unapply`;
-  *   - differentiation between 'requisite' extractors, i.e. functions `X=>Some[Y]`;
+  *   - differentiation between 'requisite' extractors, i.e. functions `X=>Some[Y]`, and true optional ones;
   *   - composition of extractors (by default via flattening) which is aware of requisite and identity extractors
-  *     and create a suitable (more effective) composition with them.
+  *     and create a suitable (more efficient) composition with them.
   * It is not a ''SAM'' type or a function itself, but subtypes
   * [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]] and
   * [[net.noresttherein.oldsql.morsels.Extractor.OptionalExtractor OptionalExtractor]] are,
   * meaning a compatible function expression in a position where they are expected types,
-  * such as [[net.noresttherein.oldsql.morsels.Extractor.Requisite.apply Requisite(...)]] and
-  * [[net.noresttherein.oldsql.morsels.Extractor.Optional.apply Optional(...)]], will be converted to one by the compiler.
+  * such as [[net.noresttherein.oldsql.morsels.Extractor.Requisite#apply Requisite(...)]] and
+  * [[net.noresttherein.oldsql.morsels.Extractor.Optional#apply Optional(...)]], will be converted to one by the compiler.
+  * The values are typically declared using the infix notation of the shortened type alias `=?>`.
   * @see [[net.noresttherein.oldsql.morsels.Extractor.=?> =?>]]
   * @see [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]]
   * @author Marcin Mościcki

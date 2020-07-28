@@ -22,10 +22,23 @@ package object schema {
 	  * It serves three functions:
 	  *   - provides a means of extracting the value of the component from the value of the parent;
 	  *   - retrieves the value of a component from `ComponentValues`;
-	  *   - provides the canonical, 'export' version of the component, that is the version with any modifications,
+	  *   - provides the operative, 'export' version of the component, that is the version with any modifications,
 	  *     declared in the parent mapping (or some other mapping on the path to the subcomponent),
-	  *     applied to the original version of the component. This includes buffs and column prefix declarations
-	  *     defined for all subcomponents of a mapping.
+	  *     applied to the original version of the component. This includes additional buffs and column prefix
+	  *     declarations defined for all subcomponents of a mapping.
+	  * As with its [[net.noresttherein.oldsql.morsels.Extractor Extractor]] super type, the primary extractor function
+	  * returns an `Option`, thus allowing situations where a value for a component does not exist in a given
+	  * subject value `S` (and forcing using code to take this into account). This is conceptually different from
+	  * a property as an `Option` (or similar), which should still be generally declared as a
+	  * [[net.noresttherein.oldsql.schema.MappingExtract$.req requisite]] (mandatory) property of type `Option[T]`.
+	  * The optional nature is reserved primarily for situations where a value is not present for technical reasons,
+	  * but might in theory exist in the logical model. The primary example of this is data which was not loaded
+	  * with the main subject, for example a BLOB property. It might still be declared as an `Option`
+	  * in the entity class, but (assuming it is declared as ''not null'' in the database) in this case it signifies
+	  * the value not being present only for this particular instance, rather than the modeled logical entity.
+	  * An extract returning `None` in this case (rather than `Some(None)`) can be taken to mean that the column
+	  * should not be included in the update for example.
+	  *
 	  * This is a type alias for a template class parameterized with the component mapping type, specified as
 	  * the most generic [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping[T, O] ]].
 	  * @see [[net.noresttherein.oldsql.schema.GenericMappingExtract]]

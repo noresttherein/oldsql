@@ -71,7 +71,6 @@ import slang._
   * @tparam S the subject type of this mapping.
   * @tparam V a `Chain` containing the types of all components in `C` in their exact order, forming a 'row schema'.
   * @tparam C a `Chain` containing the types of all components of this mapping in their exact order.
-  *           different fragments of a `ResultSet` when more than one copy is present.
   * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
   *           but coming from different sources (especially different aliases for a table occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
@@ -84,7 +83,7 @@ import slang._
   * @author Marcin Mościcki
   */
 trait SchemaMapping[S, V <: Chain, C <:Chain, O]
-	extends TypedMapping[S, O] with |-|[S, V, C]
+	extends BaseMapping[S, O] with |-|[S, V, C]
 	   with AdapterFactoryMethods[({ type T[X] = SchemaMapping[X, V, C, O] })#T, S, O]
 { outer =>
 
@@ -760,7 +759,7 @@ object SchemaMapping {
 
 	trait StaticSchemaMapping[+A[B <: RefinedMapping[S, O], T] <: SchemaMapping[T, V, C, O], +M <: MappingSchema[S, V, C, O],
 		                      S, V <: Chain, C <: Chain, O]
-		extends StaticMappingAdapters[A, S, O] with StableMapping[S, O]
+		extends StaticMappingTemplate[A, S, O] with StableMapping
 	{ this :MappingSchemaDelegate[M, S, V, C, O] =>
 
 		implicit override val schema :M = backer
@@ -898,7 +897,7 @@ object SchemaMapping {
 	private[schema] abstract class AbstractMappedSchema[S, V <: Chain, C <: Chain, O]
 	                               (protected override val backer :MappingSchema[S, V, C, O],
 	                                override val buffs :Seq[Buff[S]])
-		extends MappingSchemaDelegate[MappingSchema[S, V, C, O], S, V, C, O] with StableMapping[S, O]
+		extends MappingSchemaDelegate[MappingSchema[S, V, C, O], S, V, C, O] with StableMapping
 
 
 
@@ -945,7 +944,7 @@ object SchemaMapping {
 	private[schema] class CustomizedSchemaMapping[S, V <: Chain, C <: Chain, O]
 	                                             (original :SchemaMapping[S, _ <: Chain, _ <: Chain, O],
 	                                              protected override val backer :MappingSchema[S, V, C, O])
-		extends MappingSchemaDelegate[MappingSchema[S, V, C, O], S, V, C, O] with StableMapping[S, O]
+		extends MappingSchemaDelegate[MappingSchema[S, V, C, O], S, V, C, O] with StableMapping
 	{
 		override def assemble(pieces :Pieces) = original.assemble(pieces)
 	}

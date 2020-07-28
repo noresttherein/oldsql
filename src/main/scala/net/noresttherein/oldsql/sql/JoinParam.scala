@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericMappingExtract, Mapping, MappingExtract, RowSource, SQLForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericMappingExtract, Mapping, MappingExtract, RowSource, SQLForm, SQLWriteForm, BaseMapping}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.FormMapping
@@ -485,7 +485,7 @@ object JoinParam {
 
 
 
-		def unapply[F <: FromClause, X, T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
+		def unapply[F <: FromClause, X, T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
 		           (expr :ColumnComponentSQL[F, T, E, M, V, O])
 				:Option[(FromParam[E, O], ParamColumnExtract[E, V, O], Int)] =
 			if (expr.extract.export.isInstanceOf[ParamMapping[_, _, _]]) {
@@ -494,7 +494,7 @@ object JoinParam {
 			} else
 				  None
 
-		def unapply[F <: FromClause, X, T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, O >: F <: FromClause]
+		def unapply[F <: FromClause, X, T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
 		           (expr :ComponentSQL[_, T, E, M, V, O]) :Option[(FromParam[E, O], ParamExtract[E, V, O], Int)] =
 			if (expr.extract.export.isInstanceOf[ParamMapping[_, _, _]]) {
 				val param = expr.extract.export.asInstanceOf[ParamMapping[E, V, O]]

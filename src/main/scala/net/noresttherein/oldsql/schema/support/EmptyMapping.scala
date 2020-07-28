@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{ComponentValues, SQLForm, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ComponentValues, SQLForm, SQLReadForm, SQLWriteForm, BaseMapping}
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
   * implementations, reading and writing nothing. It can still produce a value from the `assemble` method
   * if one has been preset for it in the `ComponentValues`.
   */
-trait EmptyMapping[S, O] extends TypedMapping[S, O] {
+trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 
 	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit = ()
 

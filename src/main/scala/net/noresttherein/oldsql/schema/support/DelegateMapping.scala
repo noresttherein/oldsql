@@ -1,8 +1,9 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{Mapping, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.{ComponentValues, Mapping, BaseMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.OperationType
 
 
 
@@ -24,7 +25,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
   * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter]]
   * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.ComposedAdapter]]
   */
-trait DelegateMapping[+M <: Mapping, S, O] extends TypedMapping[S, O] {
+trait DelegateMapping[+M <: Mapping, S, O] extends BaseMapping[S, O] {
 	protected val backer :M
 
 	override def sqlName :Option[String] = backer.sqlName

@@ -44,9 +44,9 @@ object RowSource {
 
 
 
-	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: TypedMapping[_, O]]
+	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
 	                         (source :RowSource[R])
-	                         (implicit cast :JoinedRelationSubject[J, R, T, TypedMapping.AnyFrom]) :RowSource[T] =
+	                         (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyFrom]) :RowSource[T] =
 		cast(source)
 
 
@@ -54,7 +54,7 @@ object RowSource {
 
 
 
-	private class ProjectingSource[M[O] <: TypedMapping[S, O], S]
+	private class ProjectingSource[M[O] <: BaseMapping[S, O], S]
 	                              (protected val template :M[Any], override val sql :String)
 	                              (implicit protected val projection :FunctorProjection[M, S, Any])
 		extends RowSource[M]

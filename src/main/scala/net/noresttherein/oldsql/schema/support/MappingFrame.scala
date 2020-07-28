@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm, BaseMapping}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
@@ -76,7 +76,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.MandatoryComponent]]
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.OptionalComponent]]
 	  */
-	trait FrameComponent[T] extends TypedMapping[T, O] { self =>
+	trait FrameComponent[T] extends BaseMapping[T, O] { self =>
 
 		/** Returns the value of this component in an option if an implicit `ComponentValues` instance 
 		  * for the enclosing composite mapping is present. 

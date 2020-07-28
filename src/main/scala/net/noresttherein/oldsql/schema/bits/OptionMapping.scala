@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, BaseMapping}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
@@ -17,8 +17,8 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.slang._
 
 
-
-sealed trait OptionMapping[+M <: Mapping, S, O] extends TypedMapping[Option[S], O] {
+//todo: uncheckedVariance
+sealed trait OptionMapping[+M <: Mapping, S, O] extends BaseMapping[Option[S], O] {
 	val get :M
 }
 

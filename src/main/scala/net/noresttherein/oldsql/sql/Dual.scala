@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.collection.Chain.@~
-import net.noresttherein.oldsql.schema.TypedMapping
+import net.noresttherein.oldsql.schema.BaseMapping
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, JoinedTables}
 import net.noresttherein.oldsql.sql.MappingSQL.SQLRelation
@@ -48,7 +48,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	                               +N[+L <: FromClause, R[O] <: MappingAt[O]] <: L Join R, T[O] <: MappingAt[O]]
 		= J[F, T]
 
-	override def extendJoinedWith[F <: FromClause, T[O] <: TypedMapping[X, O], X]
+	override def extendJoinedWith[F <: FromClause, T[O] <: BaseMapping[X, O], X]
 	                             (prefix :F, firstJoin :Join.*, nextJoin :this.type Join T)
 			:ExtendJoinedWith[F, firstJoin.LikeJoin, nextJoin.LikeJoin, T] =
 		firstJoin.likeJoin[F, T, X](prefix, nextJoin.right)(nextJoin.condition :SQLBoolean[Generalized With T])
@@ -84,7 +84,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	                                  T[A] <: MappingAt[A]] =
 		F Subselect T
 
-	override def extendAsSubselectOf[F <: FromClause, T[A] <: TypedMapping[S, A], S]
+	override def extendAsSubselectOf[F <: FromClause, T[A] <: BaseMapping[S, A], S]
 	                                (newOuter :F, next :this.type ProperJoin T)(implicit extension :FromClause ExtendedBy F)
 			:newOuter.type Subselect T =
 		Subselect[newOuter.type, T, T, S](newOuter, next.right, next.condition) //todo: make sure to reuse the mapping
@@ -173,7 +173,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
   */
 object Dual extends Dual(True) {
 
-	protected[sql] override def selfInnerJoin[T[A] <: TypedMapping[X, A], X]
+	protected[sql] override def selfInnerJoin[T[A] <: BaseMapping[X, A], X]
 	                                         (right :LastRelation[T, X])(filter :SQLBoolean[FromClause With T])
 			:From[T] with (this.type InnerJoin T) =
 		From.newJoin[T, X](right)(filter)

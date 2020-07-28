@@ -325,13 +325,9 @@ object NaturalMap {
 		extends Assoc[K, V, T](key, value) with NaturalMapBase[K, V]
 	{
 		override def head :Assoc[K, V, T] = this
-
 		override def tail :NaturalMap[K, V] = NaturalMap.empty
 
-
 		override def size = 1
-
-
 
 		override def apply[X](key :K[X]) :V[X] =
 			if (key == _1) value.asInstanceOf[V[X]]

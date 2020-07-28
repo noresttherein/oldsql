@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, SQLWriteForm, BaseMapping}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:
@@ -46,12 +46,12 @@ import slang._
   * [[net.noresttherein.oldsql.sql.SelectSQL.SubselectSQL SubselectSQL]], instead of deriving directly
   * from this trait.
   *
-  * Apart from being an SQL expression, it is also a `TypedMapping[V, O]`, so it can be used as other mappings inside
+  * Apart from being an SQL expression, it is also a `BaseMapping[V, O]`, so it can be used as other mappings inside
   * a ''from'' clause.
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the mapped header type representing a single row.
   */
-sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]] with TypedMapping[V, O] {
+sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]] with BaseMapping[V, O] {
 
 	/** The from clause of this select. */
 	type From <: SubselectOf[F]
@@ -155,11 +155,11 @@ sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]]
 
 object SelectSQL {
 //todo: union, minus, product, symdiff
-	def apply[F <: OuterFrom, T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, I >: F <: FromClause, O]
+	def apply[F <: OuterFrom, T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, I >: F <: FromClause, O]
 	         (from :F, header :ComponentSQL[F, T, E, M, V, I]) :SelectMapping[F, M, V, O] =
 		new SelectComponent[F, T, E, M, V, I, O](from, header)
 
-	def apply[F <: OuterFrom, T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, I >: F <: FromClause, O]
+	def apply[F <: OuterFrom, T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, I >: F <: FromClause, O]
 	         (from :F, column :ColumnComponentSQL[F, T, E, M, V, I]) :SelectColumnMapping[F, M, V, O] =
 		new ArbitraryFreeSelectColumn[F, V, O](from, column) with SelectColumnMapping[F, M, V, O] {
 			override val mapping :M[O] = column.mapping.asInstanceOf[M[O]]
@@ -178,12 +178,12 @@ object SelectSQL {
 
 
 	def subselect[F <: FromClause, S <: SubselectOf[F],
-		          T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
+		          T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, I >: S <: FromClause, O]
 	             (from :S, header :ComponentSQL[S, T, E, M, V, I]) :SubselectMapping[F, S, M, V, O] =
 		new SubselectComponent[F, S, T, E, M, V, I, O](from, header)
 
 	def subselect[F <: FromClause, S <: SubselectOf[F],
-	              T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, I >: S <: FromClause, O]
+	              T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, I >: S <: FromClause, O]
 	             (from :S, column :ColumnComponentSQL[S, T, E, M, V, I]) :SubselectColumnMapping[F, S, M, V, O] =
 		new ArbitrarySubselectColumn[F, S, V, O](from, column) with SubselectColumnMapping[F, S, M, V, O] {
 			override val mapping :M[O] = column.mapping.asInstanceOf[M[O]]
@@ -339,11 +339,11 @@ object SelectSQL {
 
 	trait SubselectAs[-F <: FromClause, H <: Mapping] extends SelectAs[F, H] with SubselectSQL[F, H#Subject, H#Origin]
 
-	trait SelectMapping[F <: OuterFrom, H[A] <: TypedMapping[V, A], V, O] extends FreeSelectAs[H[O]] {
+	trait SelectMapping[F <: OuterFrom, H[A] <: BaseMapping[V, A], V, O] extends FreeSelectAs[H[O]] {
 		override type From = F
 	}
 
-	trait SubselectMapping[-F <: FromClause, S <: SubselectOf[F], H[A] <: TypedMapping[V, A], V, O]
+	trait SubselectMapping[-F <: FromClause, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V, O]
 		extends SubselectSQL[F, V, O] with SubselectAs[F, H[O]]
 	{
 		override type From = S
@@ -360,8 +360,8 @@ object SelectSQL {
 
 
 
-	private abstract class SelectComponentSQL[-F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E,
-	                                              H[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
+	private abstract class SelectComponentSQL[-F <: FromClause, S <: SubselectOf[F], T[A] <: BaseMapping[E, A], E,
+	                                              H[A] <: BaseMapping[V, A], V, I >: S <: FromClause, O]
 	                       (override val from :S, override val  header :ComponentSQL[S, T, E, H, V, I])
 		extends SelectSQL[F, V, O] with SelectAs[F, H[O]] with DirectProxy[V, O]
 	{
@@ -388,15 +388,15 @@ object SelectSQL {
 
 
 
-	private class SelectComponent[F <: OuterFrom, T[A] <: TypedMapping[E, A], E,
-		                          H[A] <: TypedMapping[V, A], V, I >: F <: FromClause, O]
+	private class SelectComponent[F <: OuterFrom, T[A] <: BaseMapping[E, A], E,
+		                          H[A] <: BaseMapping[V, A], V, I >: F <: FromClause, O]
 	                             (from :F, header :ComponentSQL[F, T, E, H, V, I])
 		extends SelectComponentSQL[FromClause, F, T, E, H, V, I, O](from, header) with SelectMapping[F, H, V, O]
 
 
 
-	private class SubselectComponent[-F <: FromClause, S <: SubselectOf[F], T[A] <: TypedMapping[E, A], E,
-	                                 H[A] <: TypedMapping[V, A], V, I >: S <: FromClause, O]
+	private class SubselectComponent[-F <: FromClause, S <: SubselectOf[F], T[A] <: BaseMapping[E, A], E,
+	                                 H[A] <: BaseMapping[V, A], V, I >: S <: FromClause, O]
 	                                (subselect :S, component :ComponentSQL[S, T, E, H, V, I])
 		extends SelectComponentSQL[F, S, T, E, H, V, I, O](subselect, component)
 		   with SubselectMapping[F, S, H, V, O]
@@ -486,7 +486,7 @@ object SelectSQL {
 			}
 
 
-			override def component[T[B] <: TypedMapping[E, B], E, M[B] <: TypedMapping[X, B], X, A >: S <: FromClause]
+			override def component[T[B] <: BaseMapping[E, B], E, M[B] <: BaseMapping[X, B], X, A >: S <: FromClause]
 			                      (e :ComponentSQL[S, T, E, M, X, A]) =
 			{
 				val table = e.table
@@ -587,7 +587,7 @@ object SelectSQL {
 
 
 
-			override def component[T[A] <: TypedMapping[E, A], E, M[A] <: TypedMapping[X, A], X, G >: S <: FromClause]
+			override def component[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[X, A], X, G >: S <: FromClause]
 			                      (e :ComponentSQL[S, T, E, M, X, G]) :Extractors[X] =
 			{
 				val table = e.table

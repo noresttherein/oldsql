@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.schema.IndexedSchemaMapping.{DelegateIndexedSche
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, BaseAdapter, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters
+import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate
 import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.DelegateMapping
@@ -199,7 +199,7 @@ trait IndexedMappingSchema[S, V <: LiteralIndex, C <: Chain, O] extends MappingS
 	  * before writing to the database, and the function specified here for assembling its subject from the
 	  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
 	  * the subject value for all input rows. This will result in slightly more efficient assembly than the other
-	  * overloaded `flatMap` method, as no chain with the values of all components will be assembled as an intermediate step.
+	  * overloaded `optMap` method, as no chain with the values of all components will be assembled as an intermediate step.
 	  * @param constructor a function which number of arguments and their types match the subject types of all
 	  *                    components as listed by the chain `V`.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]

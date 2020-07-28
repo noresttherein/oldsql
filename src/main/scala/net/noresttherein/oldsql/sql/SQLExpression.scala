@@ -200,14 +200,14 @@ object SQLExpression extends SQLMultiColumnTerms {
 		}
 
 /*
-	implicit def typingCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: TypedMapping[_, O], X]
+	implicit def typingCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O], X]
 	                       (e :SQLExpression[J[R], X])
-	                       (implicit cast :JoinedRelationSubject[J, R, T, TypedMapping.AnyAt]) :SQLExpression[J[T], X] =
+	                       (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt]) :SQLExpression[J[T], X] =
 		cast(e)
 
-	implicit def typingColumnCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: TypedMapping[_, O], X]
+	implicit def typingColumnCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O], X]
 	                             (e :ColumnSQL[J[R], X])
-	                             (implicit cast :JoinedRelationSubject[J, R, T, TypedMapping.AnyAt])
+	                             (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt])
 			:ColumnSQL[J[T], X] =
 		cast(e)
 */

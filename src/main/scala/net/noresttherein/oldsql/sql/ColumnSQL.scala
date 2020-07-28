@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, BaseMapping}
 import net.noresttherein.oldsql.sql.ArithmeticSQL.{ArithmeticMatcher, CaseArithmetic}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
@@ -185,7 +185,7 @@ object ColumnSQL {
 
 		override def composite[X](e :CompositeColumnSQL[F, X]) :Y[X] = column(e)
 
-		override def component[T[A] <: TypedMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
+		override def component[T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
 		                      (e :ColumnComponentSQL[F, T, E, M, V, O]) :Y[V] =
 			column(e)
 

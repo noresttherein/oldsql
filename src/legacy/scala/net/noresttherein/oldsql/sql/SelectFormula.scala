@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValues, TypedMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValues, BaseMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.AllColumns
@@ -26,12 +26,12 @@ import net.noresttherein.oldsql.sql.SelectFormula.{SelectAsRow, SelectAsRows}
   * `Source &lt;: AsSubselectOf[F]`, where `F` is the actual source type parameter given at this instance's creation -
   * we cannot declare it so because of contravariance.
   *
-  * Apart from being an SQL formula, it is also a `TypedMapping[O, V]`, so it can be used as other mappings inside
+  * Apart from being an SQL formula, it is also a `BaseMapping[O, V]`, so it can be used as other mappings inside
   * a ''from'' clause.
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the mapped header type representing a single row.
   */
-trait SelectFormula[-F <: FromClause, O, V] extends SQLFormula[F, Rows[V]] with TypedMapping[O, V] {
+trait SelectFormula[-F <: FromClause, O, V] extends SQLFormula[F, Rows[V]] with BaseMapping[O, V] {
 	type From <: FromClause
 
 	trait SelectedColumn[X] {

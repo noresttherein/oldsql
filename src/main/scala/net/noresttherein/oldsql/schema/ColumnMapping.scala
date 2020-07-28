@@ -32,7 +32,7 @@ import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOpera
   * which are adaptable by operations such as mapping and prefixing, transformation methods on columns
   * return a new instance, using the form (and, where suitable, the name and buffs) of the original as their basis.
   */
-trait ColumnMapping[S, O] extends TypedMapping[S, O]
+trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	with ColumnAdapterFactoryMethods[({ type A[X] = ColumnMapping[X, O] })#A, S, O]
 { column =>
 
@@ -349,7 +349,7 @@ object ColumnMapping {
 	  */
 	abstract class ColumnSupport[S, O](val name :String, override val buffs :Seq[Buff[S]] = Nil)
 	                                  (implicit val form :ColumnForm[S])
-		extends TypedMapping[S, O]
+		extends BaseMapping[S, O]
 	{ this :ColumnMapping[S, O] => }
 
 

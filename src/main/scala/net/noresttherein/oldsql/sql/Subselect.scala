@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.{RowSource, TypedMapping}
+import net.noresttherein.oldsql.schema.{RowSource, BaseMapping}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
@@ -35,7 +35,7 @@ trait Subselect[+F <: FromClause, T[O] <: MappingAt[O]] extends Join[F, T] { thi
 
 	override type This >: this.type <: F Subselect T
 
-	override def likeJoin[L <: FromClause, R[O] <: TypedMapping[X, O], X]
+	override def likeJoin[L <: FromClause, R[O] <: BaseMapping[X, O], X]
 	                     (left :L, right :RowSource[R])(filter :SQLBoolean[left.Generalized With R]) :L Subselect R =
 		Subselect[L, R, X](left, LastRelation[R, X](right))(filter)
 
@@ -97,21 +97,21 @@ object Subselect {
 	final val template :Subselect.* = Subselect(Dual, RowSource.Dummy)
 
 
-	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: TypedMapping[S, O], S]
+	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :RowSource[R], filter :SQLBoolean[L#Generalized With R] = True)
 	         (implicit cast :InferSubject[left.type, Subselect, R, T, S]) :L Subselect R =
 		cast(Subselect[left.type, T, S](left, LastRelation[T, S](cast(right)))(cast(filter)))
 
 
 
-	private[sql] def apply[L <: FromClause, R[O] <: TypedMapping[S, O], S]
+	private[sql] def apply[L <: FromClause, R[O] <: BaseMapping[S, O], S]
 	                      (prefix :L, next :LastRelation[R, S])
 	                      (filter :SQLBoolean[prefix.Generalized With R]) :L Subselect R =
 		newJoin[R, S](prefix, next)(filter)
 
 
 
-	private[sql] def newJoin[R[O] <: TypedMapping[S, O], S]
+	private[sql] def newJoin[R[O] <: BaseMapping[S, O], S]
 	                        (prefix :FromClause, next :LastRelation[R, S])
 	                        (filter :SQLBoolean[prefix.Generalized With R]) :prefix.type Subselect R =
 		new Subselect[prefix.type, R] with TypedJoin[prefix.type, R, S] {
@@ -128,7 +128,7 @@ object Subselect {
 			override def withCondition(filter :SQLBoolean[left.Generalized With R]) :This =
 				Subselect[left.type, R, S](left, last)(condition && filter)
 
-			override def withRight[T[O] <: TypedMapping[X, O], X]
+			override def withRight[T[O] <: BaseMapping[X, O], X]
 			                      (right :LastRelation[T, X])(filter :SQLBoolean[left.Generalized With T])
 					:left.type Subselect T =
 				Subselect[left.type, T, X](left, right)(filter)

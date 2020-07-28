@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.bits
 
 import scala.annotation.unchecked.uncheckedVariance
 
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, TypedMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, BaseMapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
@@ -26,7 +26,7 @@ trait AbstractLabeledMapping[N <: Label] extends Mapping { self :MappingSeal => 
 
 
 /** A base trait for custom `LabeledMapping` implementations. */
-trait LabeledMapping[N <: Label, S, O] extends TypedMapping[S, O] with AbstractLabeledMapping[N] {
+trait LabeledMapping[N <: Label, S, O] extends BaseMapping[S, O] with AbstractLabeledMapping[N] {
 	type LabeledProjection[A] = LabeledMapping[N, S, A]
 }
 

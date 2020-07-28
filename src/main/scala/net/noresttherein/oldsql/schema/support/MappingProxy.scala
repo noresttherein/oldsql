@@ -4,7 +4,7 @@ import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, ComponentValues, GenericMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, ComponentValues, GenericMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, BaseMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
 import scala.collection.mutable

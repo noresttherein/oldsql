@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm, TypedMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm, BaseMapping}
 import net.noresttherein.oldsql.{schema, OperationType}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping
@@ -33,7 +33,7 @@ sealed trait AdapterOf[+M <: Mapping] extends Mapping { this :MappingSeal =>
   * They have to however be recognized by the `apply` methods returning extracts and included in the `extracts` map.
   *
   * The type parameters of this trait and their bounds are the result of a need to cover various possible cases under
-  * a common adapter type extending `TypedMapping` which is required by some classes rather than `RefinedMapping`.
+  * a common adapter type extending `BaseMapping` which is required by some classes rather than `RefinedMapping`.
   * For this reason the constraints are more lax than they ideally should be - in particular the mapping type `M`
   * should generally be of the same `Origin` type `O` as this adapter. Unfortunately, this in most cases results
   * in a duplication of the origin type in the type signature as a `M &lt;: MappingAt[_]` type bound results in
@@ -60,7 +60,7 @@ sealed trait AdapterOf[+M <: Mapping] extends Mapping { this :MappingSeal =>
   * @author Marcin Mościcki
   */
 trait MappingAdapter[+M <: Mapping, S, O]
-	extends AdapterOf[M] with TypedMapping[S, O]
+	extends AdapterOf[M] with BaseMapping[S, O]
 	   with AdapterFactoryMethods[({ type A[X] = MappingAdapter[M, X, O] })#A, S, O]
 { this :AdapterSeal =>
 

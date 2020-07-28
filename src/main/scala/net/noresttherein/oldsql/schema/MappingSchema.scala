@@ -36,7 +36,7 @@ import net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter
   * but is more typically used as the basis of a `SchemaMapping` instance for some entity type `S`.
   * This can happen either by directly mapping the chain of values `V` with its
   * [[net.noresttherein.oldsql.schema.MappingSchema#map map]] method, or indirectly in an enclosing mapping's
-  * `map` method, where components in this schema can be individually accessed, without constructing
+  * `assemble` method, where components in this schema can be individually accessed, without constructing
   * an intermediate chain of values. There is an automatically available implicit conversion from non-empty
   * schemas (where `C` and `V` are not empty) which add methods for retrieving its components:
   * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaMethods#last last]],
@@ -49,14 +49,13 @@ import net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter
   *           of this mapping.
   * @tparam C a `Chain` listing the types of all components in this schema. All components must implement
   *           `SchemaMapping.|-|[_, _, _]`.
-  *           different fragments of a `ResultSet`, when more than one copy is present.
   * @tparam O a marker type denoting the origin of the mapping used to distinguish between different instances
   *           of the same class but representing different tables or different occurrences of a table in the
   *           ''from'' clause of an SQL select.
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping]]
   */
-trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
+trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] {
 
 	/** The subject type of this schema.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema#Subject]]
@@ -126,7 +125,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 	  * The components are listed as [[net.noresttherein.oldsql.schema.SchemaMapping#|-| |-|]] subtypes,
 	  * without any reference to their `Origin` type in their signature. This is so they not become inconsistent
 	  * with this instance's `Origin` as a result of an origin projection (casting on the last type parameter).
-	  * The appropriate `TypedMapping` subtype for every component is determined by an implicit `OriginProjection[M]`
+	  * The appropriate `BaseMapping` subtype for every component is determined by an implicit `OriginProjection[M]`
 	  * declared for the component mapping `M`; safe downcasting can be performed by calling `component.withOrigin[X]`.
 	  */
 	def members :C
@@ -327,7 +326,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends TypedMapping[V, O] {
 	  * assembly than the other overloaded `map` method, as no chain with the values of all components will be assembled
 	  * as an intermediate step.
 	  * @param constructor a function which number of arguments and their types match the subject types of all
-	  *                    components as listed by the chain `V`.
+	  *                    components listed by the chain `V`.
 	  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
 	  */
 	def map[F](constructor :F)(implicit apply :ChainApplication[V, F, S]) :SchemaMapping[S, V, C, O] =
