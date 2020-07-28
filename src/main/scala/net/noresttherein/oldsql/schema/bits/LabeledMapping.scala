@@ -2,14 +2,14 @@ package net.noresttherein.oldsql.schema.bits
 
 import scala.annotation.unchecked.uncheckedVariance
 
-import net.noresttherein.oldsql.collection.NaturalMap
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, TypedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterSeal, DelegateAdapter}
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapter.{ColumnFormAdapter, ColumnFormProxy}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapter.ColumnFormProxy
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
+
 
 
 /** Super type for `Mapping` implementations marked with a `String` literal type for the purpose of identification
@@ -38,19 +38,7 @@ trait LabeledMapping[N <: Label, S, O] extends TypedMapping[S, O] with AbstractL
 object LabeledMapping {
 
 	/** A type of string literals used to label mappings on the type level for ease of access. */
-	type Label = String with Singleton
-
-	/** A refinement of `LabeledMapping[N]` to `Subject` type `S` (conforming to `MappingOf[S]`). */
-	type LabeledMappingOf[N <: Label, S] = LabeledMapping[N, S, _]// { type Subject = S }
-
-	/** A refinement of `LabeledMapping[N]` to `Origin` type `O` (conforming to `MappingAt[O]`). */
-	type LabeledMappingAt[N <: Label, O] = LabeledMapping[N, _, O]// { type Origin = O }
-
-	/** A refinement of `LabeledMapping[N]` to `Subject` type `S` and `Origin` type `O`
-	  * (conforming to `RefinedMapping[S, O]`). */
-//	type RefinedLabeledMapping[N <: Label, S, O] = LabeledMapping[N] { type Subject = S; type Origin = O }
-
-
+	type Label = String with Singleton //todo: replace its usages with LabelPath.Label once we start using it
 
 	/** A base trait for labeled columns. */
 	trait LabeledColumn[N <: Label, S, O] extends ColumnMapping[S, O] with LabeledMapping[N, S, O]

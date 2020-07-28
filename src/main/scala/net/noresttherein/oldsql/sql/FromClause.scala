@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.schema.{ColumnMapping, RowSource, SQLForm, TypedMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label, LabeledMappingAt}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.RowSource.NamedSource
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
@@ -1606,17 +1606,17 @@ object FromClause {
 		  * of the `LabeledMapping` used for the relation. Implicit ByLabel.Get[F, L] returns the last relation
 		  * with label `L` in `F`. */
 		object ByLabel extends GetTableByPredicate {
-			implicit def satisfies[M[A] <: LabeledMappingAt[L, A], L <: Label] :Predicate[M, L] = report[M, L]
+			implicit def satisfies[M[A] <: LabeledMapping[L, _, A], L <: Label] :Predicate[M, L] = report[M, L]
 
 			/** Accessor for the right-most relation in `F` with mapping conforming to `LabeledMapping[N, _, _]`. */
 			@implicitNotFound("No relation with alias type ${N} in the from clause ${F}:\n" +
 			                  "no implicit value for ByLabel.Get[${F}, ${N}].")
 			sealed abstract class Get[-F <: FromClause, N <: Label] extends BaseGet[F, N] {
-				override type T[O] <: LabeledMappingAt[N, O]
+				override type T[O] <: LabeledMapping[N, _, O]
 			}
 
 			implicit def Get[F <: FromClause, A <: Label, N <: Numeral]
-			                (implicit found :Found[F, A, N] { type T[O] <: LabeledMappingAt[A, O] })
+			                (implicit found :Found[F, A, N] { type T[O] <: LabeledMapping[A, _, O] })
 					:Get[F, A] { type T[O] = found.T[O]; type J = found.J; type I = N } =
 				new Get[F, A] {
 					override type I = N
