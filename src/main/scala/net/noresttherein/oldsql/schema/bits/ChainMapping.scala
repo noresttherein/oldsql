@@ -1,16 +1,14 @@
 package net.noresttherein.oldsql.schema.bits
 
+import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping}
-import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSchema, NonEmptyFlatSchema, GetLabeledComponent, GetSchemaComponent, NonEmptySchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
+import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSchema, NonEmptyFlatSchema, NonEmptySchema}
+import net.noresttherein.oldsql.schema.SchemaMapping.{@||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
 
@@ -83,9 +81,6 @@ object ChainMapping {
 
 
 	trait BaseChainMapping[V <: Chain, C <: Chain, O] extends SchemaMapping[V, V, C, O] with MappingSchema[V, V, C, O] {
-		override type Unpacked = V
-		override type Components = C
-		override type Schema = MappingSchema[V, V, C, O]
 
 		override val schema :MappingSchema[V, V, C, O] = this
 
@@ -97,28 +92,6 @@ object ChainMapping {
 //		abstract override val extracts :NaturalMap[Component, Extract] = packedExtracts
 //
 //		abstract override val columnExtracts :NaturalMap[Column, ColumnExtract] = packedColumnExtracts
-
-
-		override def apply[N <: Label, T]
-		                  (label :N)(implicit get :GetLabeledComponent[N, V, C, T, @|-|[N, T, _, _]]) :Extract[T] =
-			get.extract(this, label)
-
-		override def /[N <: Label, T, M <: @|-|[N, T, _, _]]
-		              (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M, T])
-				:projection.WithOrigin[O] =
-			projection(get(this, label))
-
-
-		override def apply[I <: Numeral, T]
-		                  (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, |-|[T, _, _]])
-				:MappingExtract[V, T, O] =
-			get.extract(this, idx)
-
-		override def /[I <: Numeral, T, M <: |-|[T, _, _]]
-		              (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M, T])
-				:projection.WithOrigin[O] =
-			projection(get(this, idx))
-
 
 	}
 
@@ -155,11 +128,6 @@ object ChainMapping {
 
 
 
-
-
-
-	@inline private def prefix[C <: Chain] :(C ~ Any) => C = init.asInstanceOf[(C ~ Any) => C]
-	private[this] val init = (_:Chain ~ Any).init
 
 
 
@@ -213,31 +181,28 @@ object ChainMapping {
 
 		override def prev[I <: Chain, P <: Chain]
 		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :MappingSchema[S, I, P, O] =
-			backer.prev compose prefix[V]
+			backer.prev compose Chain.init[V] _
 
 
 
 		override def extract[X](component :Component[X]) :MappingExtract[S, X, O] =
-			backer.extract(component) compose prefix[V]
+			backer.extract(component) compose Chain.init[V] _
 
 		override def extract[X](column :Column[X]) :ColumnMappingExtract[S, X, O] =
-			backer.extract(column) compose prefix[V]
+			backer.extract(column) compose Chain.init[V] _
 
 
 
 		override val packedExtracts :NaturalMap[Component, PackedExtract] =
-			backer.packedExtracts.map(schema.composeExtractAssoc(this, prefix[V])(_))
+			backer.packedExtracts.map(oldsql.schema.composeExtractAssoc(this, Chain.init[V] _)(_))
 
 		override val packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] =
-			backer.packedColumnExtracts.map(schema.composeColumnExtractAssoc(this, prefix[V])(_))
+			backer.packedColumnExtracts.map(oldsql.schema.composeColumnExtractAssoc(this, Chain.init[V] _)(_))
 
 
-
-		override def compose[X](extractor :X => S) :MappingSchema[X, V, C, O] =
-			backer compose (extractor andThen prefix[V])
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
-			backer compose (extractor andThen prefix[V])
+			backer compose (extractor andThen Chain.init[V] _)
 
 
 
@@ -253,16 +218,12 @@ object ChainMapping {
 	                                           (protected override val backer :FlatMappingSchema[V, V, C, O])
 		extends ChainPrefixSchema[S, V, C, O](backer) with FlatMappingSchema[S, V, C, O]
 	{
-		override def compose[X](extractor :X => S) :FlatMappingSchema[X, V, C, O] =
-			backer compose (extractor andThen prefix[V])
-
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V, C, O] =
-			backer compose (extractor andThen prefix[V])
+			backer compose (extractor andThen Chain.init[V] _)
 
 		override def prev[I <: Chain, P <: Chain]
 		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :FlatMappingSchema[S, I, P, O] =
-			backer.prev.compose(prefix[V])
-
+			backer.prev compose Chain.init[V] _
 	}
 
 

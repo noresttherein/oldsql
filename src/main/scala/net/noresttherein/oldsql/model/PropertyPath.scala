@@ -22,7 +22,7 @@ import slang._
   * given input `X`, but also its reflection - it knows what methods are called in sequence.
   * This has two important bonuses: first, it has a printable name/toString listing the names
   * of called methods (so `property.name` will return "department.director.favoritePony" in our example),
-  * but all instances representing the same property chain will be equal, regardless of the implementation
+  * but all instances representing the same property path will be equal, regardless of the implementation
   * of the function used to create it (so `PropertyPath[Company](_.department.director.favoritePony)`,
   * `PropertyPath((_:Company).department andThen _.favoritePony)`,
   * `PropertyPath[Company]{ x => val brony = x.department.director; brony.favoritePony }` will all be equal).
@@ -38,7 +38,7 @@ import slang._
   * This decision was made as it was designed to facilitate the creation of property mappings where such coalescence
   * is performed, rather than be a generic reflection mechanism. If this might be an issue, check the `definedFor`
   * property which returns reflected static type of the argument of the function used to create this instance.
-  * Do not assume that it is safe to cast a property chain to a given argument type because it equals an instance
+  * Do not assume that it is safe to cast a property path to a given argument type because it equals an instance
   * which static type would guarantee a safe call on this type. Instead, use them as keys - given a 'safe' instance
   * computed beforehand based on a function which is known to properly represent the property in question, compare it
   * with the passed function/property path, and if they are equal, always use 'yours' rather then the given one.
@@ -83,7 +83,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
 	def compose[Z :TypeTag](prefix :Z => X) :PropertyPath[Z, Y] =
 		PropertyPath(prefix) andThen this
 
-	/** Is this instance a proper prefix of the given property chain, meaning when invoked on the same argument LX,
+	/** Is this instance a proper prefix of the given property path, meaning when invoked on the same argument LX,
 	  * property will make make the same calls as this instance, followed by at least one more chained property getter.
 	  * This implies that property.name.startsWith(this.name), but not the other way round.
 	  */
@@ -125,7 +125,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
   * `equals` implementation (slightly stronger than equality of names, but by design not differentiating between
   * overriden properties).
   *
-  * It is important to note, that passed function doesn't have to be a literal property chain; intermediate  results
+  * It is important to note, that passed function doesn't have to be a literal property path; intermediate  results
   * can be stored, it may (though shouldn't) produce side effects, or be composed dynamically of individual functions
   * (for example `f1.flatMap(f2) andThen f3`). It shouldn't however be conditional or contain any inspection of the returned
   * values, as they will be mocks. The only things validated are:
@@ -181,7 +181,7 @@ object PropertyPath {
 	}
 
 
-	/** Return a property chain which provides an update method (expected to clone the argument rather than mutate its state
+	/** Return a property path which provides an update method (expected to clone the argument rather than mutate its state
 	  * in addition to the getter. No check is performed that passed getter and setter are actually related in any way,
 	  * so use this in static context, when it is apparent.
 	  */
@@ -193,7 +193,7 @@ object PropertyPath {
 
 
 
-	/** Factory for property chains */
+	/** Factory for property paths */
 	trait PropertyTracer[X] extends Any {
 
 		/** Discover what properties are accessed by function `property` and create their reflection.
@@ -208,7 +208,7 @@ object PropertyPath {
 		@inline def maybe[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[ReflectedPropertyPath[X, Y]] =
 			PropertyPath.maybe(property)
 
-		/** Assuming the given function represents a simple property or a non-empty property chain of its argument,
+		/** Assuming the given function represents a simple property or a non-empty property path of its argument,
 		  * return its reflected representation.
 		  */
 		@inline def proper[Y](property :X => Y)(implicit tag :TypeTag[X]) :ProperPropertyPath[X, Y] =
@@ -251,7 +251,7 @@ object PropertyPath {
 	}
 
 
-	/** Convenience factory for property chains (reflected representations of chained zer-argument method calls),
+	/** Convenience factory for property paths (reflected representations of chained zer-argument method calls),
 	  * which takes a single type parameter of the argument type (class type declaring the properties we want to reflect).
 	  * Saves specifying both the argument and return types, as the latter can be easily inferred by the compiler.
 	  * @tparam X type of the class declaring the first property in the chain we want to inspect.
@@ -266,7 +266,7 @@ object PropertyPath {
 	def maybe[X :TypeTag, Y](property :X => Y) :Option[ReflectedPropertyPath[X, Y]] =
 		scala.util.Try { this.property(property) }.toOption
 
-	/** Assuming the given function represents a simple property or a non-empty property chain of its argument,
+	/** Assuming the given function represents a simple property or a non-empty property path of its argument,
 	  * return its reflected representation.
 	  */
 	def proper[X :TypeTag, Y](property :X => Y) :ProperPropertyPath[X, Y] =
@@ -302,7 +302,7 @@ object PropertyPath {
 
 	/** Assuming property constitutes of chained calls of zero-argument methods starting with type X,
 	  * create a reflected representation which can be compared, composed and even subtracted in type safer manner
-	  * with other property chain instances.
+	  * with other property path instances.
 	  */
 	def apply[X :TypeTag, Y](property :X => Y) :ReflectedPropertyPath[X, Y] =
 		property.asSubclassOf[ReflectedPropertyPath[X, Y]] getOrElse trace(property)
@@ -316,13 +316,13 @@ object PropertyPath {
 	def apply[X :TypeTag, Y](property :X => Y, name :String) :PropertyPath[X, Y] =
 		new HackedPropertyPath[X, Y](name, property, typeOf[X])
 
-	/** An empty property chain representing an identity function. */
+	/** An empty property path representing an identity function. */
 	def identity[X :TypeTag] :ReflectedPropertyPath[X, X] = new IdentityProperty[X](typeOf[X])
 
-	/** Reflect the property, creating a property chain and return its name. */
+	/** Reflect the property, creating a property path and return its name. */
 	def nameOf[X :TypeTag, Y](property :X => Y) :String = apply(property).name
 
-	/** Reflect the property, creating a property chain and return its name, swallowing any failure in None. */
+	/** Reflect the property, creating a property path and return its name, swallowing any failure in None. */
 	def nameOpt[X :TypeTag, Y](property :X => Y) :Option[String] = maybe(property).map(_.name)
 
 
@@ -417,6 +417,8 @@ object PropertyPath {
 		  * the given function.
 		  */
 		def andThen[Z](suffix: ReflectedPropertyPath[Y, Z]): ReflectedPropertyPath[X, Z]
+
+		def andThen[Z](suffix :ProperPropertyPath[Y, Z]) :ProperPropertyPath[X, Z]
 	}
 
 
@@ -435,6 +437,8 @@ object PropertyPath {
 		}
 
 		override def andThen[Z](suffix :ReflectedPropertyPath[X, Z]) :ReflectedPropertyPath[X, Z] = suffix
+
+		override def andThen[Z](suffix :ProperPropertyPath[X, Z]) :ProperPropertyPath[X, Z] = suffix
 
 		override def andThen[Z](suffix :X ==> Z) :X ==> Z = suffix
 
@@ -467,6 +471,9 @@ object PropertyPath {
 		extends ReflectedPropertyPath[X, Y](argType, fun)
 	{
 		override def andThen[Z](suffix :ReflectedPropertyPath[Y, Z]) :ProperPropertyPath[X, Z]
+
+		override def andThen[Z](suffix :ProperPropertyPath[Y, Z]) :ProperPropertyPath[X, Z] =
+			andThen(suffix :ReflectedPropertyPath[Y, Z])
 	}
 
 

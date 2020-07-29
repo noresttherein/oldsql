@@ -244,6 +244,7 @@ object SchemaMapping {
 	  */
 	def apply[S](buffs :Buff[S]*) :ExtensibleFlatMappingSchema[S, @~, @~, _] = EmptySchema(buffs)
 
+	def apply[S](prefix :String, buffs :Buff[S]*) :ExtensibleFlatMappingSchema[S, @~, @~, _] = EmptySchema(buffs)
 
 
 
@@ -254,113 +255,16 @@ object SchemaMapping {
 
 
 
-	trait |-|[S, V <: Chain, C <: Chain] extends Mapping { self :MappingSeal => //self :SchemaMapping[S, V, C, _] =>
+	trait |-|[S, V <: Chain, C <: Chain] extends MappingSchemaSupport { self :MappingSeal =>
 
 		override type Subject = S
-
-		/** The subject type of the schema this mapping is based on. In default implementation, it is a chain
-		  * of subject types of components in the `Components` chain. There are some specialized indexed implementation
-		  * where each entry in the chain is a key-value pair, where values are the components' subject types and keys
-		  * are some arbitrary literal types used as field names. Regardless of the details, on the ''n''-th position
-		  * there is always a value containing the of the value of the ''n''-th component in the schema.
-		  * Excluding components for the purpose of a particular database operation will likewise exclude the
-		  * associated entries in the value chain, which will always stay consistent with the component chain.
-		  */
-		type Unpacked = V
-
-
-		/** The chain listing components in this schema. In default implementation, these are all direct, non-synthetic
-		  * components. Customizing this mapping by including and excluding certain components for the purpose of
-		  * a particular SQL statement will produce `SchemaMapping` instances with schemas being subsequences
-		  * of this schema. It follows that this list doesn't necessarily reflect a set of column particular
-		  * to any single database operation and modification targeted at one type of access (such as update)
-		  * may be invalid for another (such as select).
-		  */
-		type Components = C
-
-		/** The full type of the schema this mapping is based on.
-		  * This alias provides a convenient type declaration which in practical applications are much too verbose
-		  * to write by hand. Note that this is the upper bound of the schema type, with `SchemaMapping` subclasses
-		  * using subtypes of this type with additional features, such as `FlatMappingSchema` for `FlatSchemaMapping`.
-		  */
-		type Schema = MappingSchema[S, V, C, Origin]
-
-
+		override type Packed = S
+		override type Unpacked = V
+		override type Components = C
+		override type Schema = MappingSchema[S, V, C, Origin]
 
 		/** The container of components of this mapping, itself being a mapping for the chain of values of said components. */
-		val schema :MappingSchema[S, V, C, Origin]
-
-
-
-		/** Returns the `MappingExtract` for the component labeled with the given string literal in the schema.
-		  * If more than one component with the same label exist, the last occurrence is selected.
-		  * @param label a `String` literal, or the value returned by `valueOf[N]` in generic code.
-		  * @param get an implicit witness to the existence of a subtype of `@|-|[N, T, _, _]` on the component list `C`
-		  *            of this schema.
-		  * @return a `MappingExtract` for the found component, wrapping the getter function from the `Subject` type.
-		  * @tparam N the string singleton type of the label key.
-		  * @tparam T the subject type of the returned component.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema./]]
-		  */
-		def apply[N <: Label, T](label :N)(implicit get :GetLabeledComponent[N, V, C, T, @|-|[N, T, _, _]])
-				:MappingExtract[S, T, Origin] =
-			get.extract(schema, label)
-
-		/** Returns the component labeled with the given string literal in the schema. If more than one component with
-		  * the same label exist, the last occurrence in the component chain `C` is selected. The return type
-		  * is a projection from the base `|-|` (or its related subclass) of unknown `Origin` to a full
-		  * `SchemaMapping` with the same `Origin` type as this instance.
-	      * @param label a `String` literal, or the value returned by `valueOf[N]` in generic code.
-		  * @param get an implicit witness to the existence of a subtype of `@|-|[N, T, _, _]` on the component list `C`
-		  *            of this schema.
-		  * @param projection an implicit specifying the appropriate `LabeledSchemaMapping[N, T, _, _, _]` subclass
-		  *                   for the accessed type `M`.
-		  * @return a `LabeledSchemaMapping[N, T, _, _, Origin]` or its subclass.
-		  * @tparam N the string singleton type of the label key.
-		  * @tparam T the subject type of the returned component.
-		  * @tparam M the full type of the returned component, as present on the component list `C`.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
-		  */
-		def /[N <: Label, T, M <: @|-|[N, T, _, _]]
-		     (label :N)(implicit get :GetLabeledComponent[N, V, C, T, M], projection :OriginProjection[M, T])
-				:projection.WithOrigin[Origin] =
-			projection(get(schema, label))
-
-
-
-		/** Returns the `MappingExtract` for the component at the given position in the schema.
-		  * @param idx a zero-based `Int` literal, or the value returned by `valueOf[I]` in generic code.
-		  * @param get an implicit witness to the existence of a component `|-|[T, _, _]` at the `idx` position
-		  *            on the component list `C`.
-		  * @return a `MappingExtract` for the found component, wrapping the getter function from the `Subject` type.
-		  * @tparam I the `Int` literal type of the label key.
-		  * @tparam T the subject type of the returned component.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema./]]
-		  */
-		def apply[I <: Numeral, T](idx :I)(implicit get :GetSchemaComponent[I, V, C, T, |-|[T, _, _]])
-				:MappingExtract[S, T, Origin] =
-			get.extract(schema, idx)
-
-		/** Returns the component at the given position in the schema. The return type is a projection
-		  * from the base `|-|` (or its related subclass) of unknown `Origin` to a full `MappingSchema`
-		  * with the same `Origin` type as this instance.
-		  * @param idx a zero-based `Int` literal, or the value returned by `valueOf[I]` in generic code.
-		  * @param get an implicit witness to the existence of a component `|-|[T, _, _]` at the `idx` position
-		  *            on the component list `C`.
-		  * @param projection an implicit specifying the proper `SchemaMapping` subclass for the accessed mapping `M`.
-		  * @return a component at the `idx` position on the component list `C`
-		  *         of a subtype of `SchemaMapping[T, _, _, O]`.
-		  * @tparam M the full type of the returned component, as present on the component list `C`.
-		  * @tparam I the `Int` literal type of the label key.
-		  * @tparam T the subject type of the returned component.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
-		  */
-		def /[I <: Numeral, T, M <: |-|[T, _, _]]
-		     (idx :I)(implicit get :GetSchemaComponent[I, V, C, T, M], projection :OriginProjection[M, T])
-				:projection.WithOrigin[Origin] =
-			projection(get(schema, idx))
-
-
+		override val schema :MappingSchema[S, V, C, Origin]
 
 		/** Attaches a label type to this mapping, being the singleton type of the given string literal.
 		  * A labeled component can be retrieved from the schema using its
@@ -678,10 +582,10 @@ object SchemaMapping {
 
 
 
-	/** Extension class adding methods to string literals for retrieving from a schema the component with this label,
+	/** Extension class adding methods to a string literal for retrieving from a schema the component with this label,
 	  * its extractor and value. This class is not implicit, as it would need explicit import, and needs implicitly
 	  * available `MappingSchema[C, _, S, O]` and `ComponentValues`; instead, an implicit conversion is available within
-	  * the `AbstractSchemaMapping` class for the use of subclasses.
+	  * the `AbstractSchemaMapping` class for the use by subclasses.
 	  * @see [[net.noresttherein.oldsql.schema.AbstractSchemaMapping]]
 	  */
 	class SchemaComponentLabel[N <: Label, S, V <: Chain, C <: Chain, O](private val label :N) extends AnyVal {

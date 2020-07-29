@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.collection
 import net.noresttherein
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, UpperBound}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, UpperBound}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~, Item}
 import net.noresttherein.oldsql.morsels.generic.{Const, GenericFun, Self}
@@ -80,7 +80,7 @@ sealed trait ChainFactoryBase {
 
 
 	/** Factory method for non-empty chains of type `Type`. */
-	def link[I <: Type, L <: Item](init :I, last :L) :I Link L
+	protected def link[I <: Type, L <: Item](init :I, last :L) :I Link L
 
 	private[this] final val noBound = new UpperBound[Type, Item]
 
@@ -147,7 +147,7 @@ object Chain extends ChainFactory {
 	override type NonSingleton = Any
 	override type Link[+I <: Chain, +L] = I ~ L
 
-	override def link[I <: Chain, L <: Any](init :I, last :L) :I ~ L = new link(init, last)
+	protected override def link[I <: Chain, L <: Any](init :I, last :L) :I ~ L = new link(init, last)
 
 
 
@@ -164,8 +164,8 @@ object Chain extends ChainFactory {
 	  * @tparam L the type of the last element in the chain.
 	  */
 	trait ~[+I <: Chain, +L] extends Chain with BoundLink[I, L, Any] {
-		val init :I
-		val last :L
+		def init :I
+		def last :L
 
 		def get :(I, L) = init -> last
 
@@ -653,7 +653,7 @@ object Chain extends ChainFactory {
 		override def apply(f :F, x :X) :Y = application(f, x)
 	}
 
-	private def ChainApplication[X <: Chain, F, Y](apply :(F, X) => Y) :ChainApplication[X, F, Y] =
+	private[collection] def ChainApplication[X <: Chain, F, Y](apply :(F, X) => Y) :ChainApplication[X, F, Y] =
 		new ChainApplication(apply)
 
 
@@ -1138,7 +1138,7 @@ object Chain extends ChainFactory {
   * forming a specialized but limited ''shapeless'' `HMap` variant.
   * @see [[net.noresttherein.oldsql.collection.LiteralIndex]]
   */
-sealed abstract class ChainIndexFactory extends ChainFactory {
+sealed abstract class IndexedChainFactory extends ChainFactory {
 	type Type >: @~ <: Chain
 	type Link[+I <: Type, +L <: Item] <: (I ~ L) with Type
 
@@ -1151,13 +1151,16 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
 	type Entry[+K <: Key, +V <: Value]
 
 
-
+	protected def get[K <: Key, V <: Value](index :Type Link Entry[K, V]) :V
+	
 	protected def get[K <: Key, V <: Value](index :Type Link Entry[K, V], key :K) :V
 
 	protected def set[I <: Type, K <: Key, V <: Value](i :I Link Entry[K, V], key :K, v :V) :I Link Entry[K, V]
 
 	protected def append[I <: Type, K <: Key, V <: Value](index :I, key :K, value :V) :I Link Entry[K, V]
 
+	
+	
 	@implicitNotFound("Type ${K} is not a key in index ${I} (or is not mapped to type ${V}).")
 	sealed abstract class IndexGet[-I <: Type, K <: Key, +V <: Value] extends ((I, K) => V)
 
@@ -1176,10 +1179,8 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
 	}
 
 
-
-
-
-
+	
+	
 	@implicitNotFound("Can't put ${V} under ${K} in index ${I}: either the type is abstract or the result " +
 	                  "does not conform to ${O}.")
 	sealed abstract class IndexPut[-I <: Type, K <: Key, -V <: Value, +O <: Type] extends ((I, K, V) => O)
@@ -1191,8 +1192,7 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
 	@implicitNotFound("Can't add ${V} under ${K} in index ${I}: either the key already exists, the type is abstract, " +
 	                  "or the result does not conform to ${O}.")
 	sealed abstract class IndexAdd[-I <: Type, K <: Key, -V <: Value, +O <: Type] extends IndexPut[I, K, V, O]
-
-
+	
 
 	sealed abstract class AddWhenMissing {
 		private[this] val add = new IndexAdd[Type, Key, Value, Type Link Item] {
@@ -1204,7 +1204,7 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
 		                     (implicit unique :UniqueKey[I, K]) :IndexAdd[I, K, V, I Link Entry[K, V]] =
 			add.asInstanceOf[IndexAdd[I, K, V, I Link Entry[K, V]]]
 	}
-
+	
 	object IndexPut extends AddWhenMissing {
 		private[this] val last = new IndexSet[Type Link Item, Key, Value, Type Link Item] {
 
@@ -1226,9 +1226,7 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
 
 
 
-
-
-
+	
 	@implicitNotFound("Key type ${K} is present in index ${I} or the index is abstract.")
 	final class UniqueKey[-I <: Type, K <: Key] private ()
 
@@ -1250,7 +1248,7 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
 
 	@implicitNotFound("Type (${K}, ${V}) is not an upper bound of elements in chain ${C}")
 	/** A specialized `UpperBound` implementation existing to force ''scalac'' to infer singleton types when needed. */
-	final class UpperIndexBound[C <: Type, +K, +V] private[ChainIndexFactory]() extends UpperBound[C, (K, V)]
+	final class UpperIndexBound[C <: Type, +K, +V] private[IndexedChainFactory]() extends UpperBound[C, (K, V)]
 
 	implicit final val EmptyIndexBound = new UpperIndexBound[@~, Nothing, Nothing]
 
@@ -1258,6 +1256,503 @@ sealed abstract class ChainIndexFactory extends ChainFactory {
 	                                    (implicit tail :UpperIndexBound[T, K, V], k :HK <:< K, v :HV <:< V)
 			:UpperIndexBound[T Link Entry[HK, HV], K, V] =
 		tail.asInstanceOf[UpperIndexBound[T Link Entry[HK, HV], K, V]]
+
+	
+	
+	
+	sealed abstract class ToValueChain[-I <: Type, +O <: Chain] {
+		def apply(index :I) :O
+	}
+	
+	implicit final val EmptyValueChain :ToValueChain[@~, @~] = new ToValueChain[@~, @~] {
+		override def apply(index: @~) = index
+	}
+	
+	@inline implicit final def ToValueChain[I <: Type, K <: Key, V <: Value, O <: Chain]
+	                                       (implicit init :ToValueChain[I, O]) :ToValueChain[I Link Entry[K, V], O ~ V] =
+		new ToValueChain[I Link Entry[K, V], O ~ V] {
+			override def apply(index :Link[I, Entry[K, V]]) = init(index.init) ~ get(index)
+		}
+
+
+
+
+
+	//the following multitude of ChainApplication implicits apply on the values of the index, ignoring the keys
+	implicit def applyValueChain[C <: Type, V <: Chain, Y](implicit vals :ToValueChain[C, V]) 
+			:ChainApplication[C, V => Y, Y] =
+		ChainApplication { (f :V => Y, xs :C) => f(vals(xs)) }
+
+
+
+	implicit def applyValuesFunction1[A <: Value, Y] :ChainApplication[@~ Link Entry[Key, A], A => Y, Y] =
+		ChainApplication { (f :A => Y, xs: @~ Link Entry[Key, A]) => f(get(xs)) }
+
+	implicit def applyValuesFunction2[A <: Value, B <: Value, Y] 
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B], (A, B) => Y, Y] =
+		ChainApplication { (f :(A, B) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B]) => f(get(xs.init), get(xs)) }
+
+	implicit def applyValuesFunction3[A <: Value, B <: Value, C <: Value, Y] 
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C], (A, B, C) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C]) => 
+				val xs1 = xs.init; f(get(xs1.init), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction4[A <: Value, B <: Value, C <: Value, D <: Value, Y] 
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D], (A, B, C, D) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; 
+				f(get(xs2.init), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction5[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, Y] 
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E], (A, B, C, D, E) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init
+				f(get(xs3.init), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction6[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F], (A, B, C, D, E, F) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init
+				f(get(xs4.init), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction7[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G], (A, B, C, D, E, F, G) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				f(get(xs5.init), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction8[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H], (A, B, C, D, E, F, G, H) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init
+				f(get(xs6.init), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction9[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I], (A, B, C, D, E, F, G, H, I) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init
+				f(get(xs7.init), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction10[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J],
+				(A, B, C, D, E, F, G, H, I, J) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init
+				f(get(xs8.init), get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction11[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K],
+				(A, B, C, D, E, F, G, H, I, J, K) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init
+				f(get(xs9.init), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction12[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L],
+				(A, B, C, D, E, F, G, H, I, J, K, L) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				f(get(xs10.init), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction13[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init
+				f(get(xs11.init), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction14[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init
+				f(get(xs12.init), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction15[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init
+				f(get(xs13.init), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction16[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				f(get(xs14.init), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction17[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init
+				f(get(xs15.init), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction18[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init
+				f(get(xs16.init), get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction19[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, S <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init
+				f(get(xs17.init), get(xs17),
+				  get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction20[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, S <: Value, T <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				f(get(xs18.init), get(xs18), get(xs17),
+				  get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction21[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, S <: Value, T <: Value, U <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T] Link Entry[Key, U],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T] Link Entry[Key, U]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				val xs19 = xs18.init
+				f(get(xs19.init), get(xs19), get(xs18), get(xs17),
+				  get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+	implicit def applyValuesFunction22[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, S <: Value, T <: Value, U <: Value, V <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T] Link Entry[Key, U] Link Entry[Key, V],
+				(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Y, Y] =
+		ChainApplication {
+			(f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T] Link Entry[Key, U] Link Entry[Key, V]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				val xs19 = xs18.init; val xs20 = xs19.init
+				f(get(xs20.init), get(xs20), get(xs19), get(xs18), get(xs17),
+				  get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+				  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs))
+		}
+
+
+
+
+
+
+	implicit def applyValuesTuple1[A <: Value, Y] :ChainApplication[@~ Link Entry[Key, A], Tuple1[A] => Y, Y] =
+		ChainApplication { (f :Tuple1[A] => Y, xs: @~ Link Entry[Key, A]) => f(Tuple1(get(xs))) }
+
+	implicit def applyValuesTuple2[A <: Value, B <: Value, Y] :ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B], ((A, B)) => Y, Y] =
+		ChainApplication { (f :((A, B)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B]) => f((get(xs.init), get(xs))) }
+
+	implicit def applyValuesTuple3[A <: Value, B <: Value, C <: Value, Y] 
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C], ((A, B, C)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C]) => val xs1 = xs.init; f((get(xs1.init), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple4[A <: Value, B <: Value, C <: Value, D <: Value, Y] 
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D], ((A, B, C, D)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; f((get(xs2.init), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple5[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, Y] 
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E], ((A, B, C, D, E)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init
+				f((get(xs3.init), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple6[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F], ((A, B, C, D, E, F)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init
+				f((get(xs4.init), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple7[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G], ((A, B, C, D, E, F, G)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				f((get(xs5.init), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple8[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H], ((A, B, C, D, E, F, G, H)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init
+				f((get(xs6.init), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple9[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I], ((A, B, C, D, E, F, G, H, I)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init
+				f((get(xs7.init), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple10[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J],
+				((A, B, C, D, E, F, G, H, I, J)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init
+				f((get(xs8.init), get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple11[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K],
+				((A, B, C, D, E, F, G, H, I, J, K)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init
+				f((get(xs9.init), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple12[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L],
+				((A, B, C, D, E, F, G, H, I, J, K, L)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				f((get(xs10.init), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple13[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init
+				f((get(xs11.init), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple14[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init
+				f((get(xs12.init), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple15[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init
+				f((get(xs13.init), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple16[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				f((get(xs14.init), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple17[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init
+				f((get(xs15.init), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple18[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init
+				f((get(xs16.init), get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple19[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, S <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init
+				f((get(xs17.init), get(xs17),
+					  get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple20[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, S <: Value, T <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				f((get(xs18.init), get(xs18), get(xs17),
+					  get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple21[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, S <: Value, T <: Value, U <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T] Link Entry[Key, U],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T] Link Entry[Key, U]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				val xs19 = xs18.init
+				f((get(xs19.init), get(xs19), get(xs18), get(xs17),
+					  get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
+	implicit def applyValuesTuple22[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, F <: Value, G <: Value, H <: Value, I <: Value, J <: Value, K <: Value, L <: Value, M <: Value, N <: Value, O <: Value, P <: Value, Q <: Value, R <: Value, S <: Value, T <: Value, U <: Value, V <: Value, Y]
+			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T] Link Entry[Key, U] Link Entry[Key, V],
+				((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)) => Y, Y] =
+		ChainApplication {
+			(f :((A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)) => Y,
+			 xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E] Link Entry[Key, F] Link Entry[Key, G] Link Entry[Key, H] Link Entry[Key, I] Link Entry[Key, J] Link Entry[Key, K] Link Entry[Key, L] Link Entry[Key, M] Link Entry[Key, N] Link Entry[Key, O] Link Entry[Key, P] Link Entry[Key, Q] Link Entry[Key, R] Link Entry[Key, S] Link Entry[Key, T] Link Entry[Key, U] Link Entry[Key, V]) =>
+				val xs1 = xs.init; val xs2 = xs1.init; val xs3 = xs2.init; val xs4 = xs3.init; val xs5 = xs4.init
+				val xs6 = xs5.init; val xs7 = xs6.init; val xs8 = xs7.init; val xs9 = xs8.init; val xs10 = xs9.init
+				val xs11 = xs10.init; val xs12 = xs11.init; val xs13 = xs12.init; val xs14 = xs13.init
+				val xs15 = xs14.init; val xs16 = xs15.init; val xs17 = xs16.init; val xs18 = xs17.init
+				val xs19 = xs18.init; val xs20 = xs19.init
+				f((get(xs20.init), get(xs20), get(xs19), get(xs18), get(xs17),
+					  get(xs16), get(xs15), get(xs14), get(xs13), get(xs12), get(xs11), get(xs10), get(xs9),
+					  get(xs8), get(xs7), get(xs6), get(xs5), get(xs4), get(xs3), get(xs2), get(xs1), get(xs)))
+		}
+
 
 }
 
@@ -1282,7 +1777,7 @@ sealed trait LiteralIndex extends Chain with ChainBound[Singleton :~ Any]
 
 
 
-object LiteralIndex extends ChainIndexFactory {
+object LiteralIndex extends IndexedChainFactory {
 
 	/** The upper bound type of the first member of each tuple in the index. */
 	override type Key = Singleton
@@ -1296,8 +1791,10 @@ object LiteralIndex extends ChainIndexFactory {
 	override type NonSingleton = Key :~ Value
 
 	/** Factory method for non-empty chains of type `Type`.  */
-	override def link[I <: Type, L <: Item](init :I, last :L) = new |~[I, L](init, last)
+	protected override def link[I <: Type, L <: Item](init :I, last :L) = new |~[I, L](init, last)
 
+	protected override def get[K <: Key, V <: Value](index :LiteralIndex |~ (K :~ V)) :V = index.last.value
+	
 	protected override def get[K <: Key, V <: Value](index: LiteralIndex |~ (K :~ V), key :K) :V = index.last.value
 
 	protected override def set[I <: LiteralIndex, K <: Key, V <: Value](i :I |~ (K :~ V), key :K, v :V) :I |~ (K :~ V) =
@@ -1378,6 +1875,9 @@ object LiteralIndex extends ChainIndexFactory {
 	  */
 	class |~[+I <: Type, +L <: Item] private[collection] (val init :I, val last :L) extends (I ~ L) with LiteralIndex {
 
+		@inline def values[O <: Chain](implicit chain :ToValueChain[I |~ L, O]) :O = 
+			this.asInstanceOf[O] //last is erased to last.value, so it will work in the bytecode! 
+		
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[|~[_, _]]
 
 		override def equals(that :Any) :Boolean = that match {
@@ -1509,7 +2009,6 @@ object LiteralIndex extends ChainIndexFactory {
 			def apply(index :I |~ (L :~ V)) = (valueOf[L], index.last.value)::bounds(index.init)
 		}
 
-
 }
 
 
@@ -1518,12 +2017,14 @@ object LiteralIndex extends ChainIndexFactory {
 
 
 
-sealed trait ChainMapFactory extends ChainIndexFactory {
+sealed trait ChainMapFactory extends IndexedChainFactory {
 	override type Type >: @~ <: ChainMap
 	override type Entry[+K <: Key, +V <: Value] = (K, V)
 	override type Link[+I <: Type, +L <: Item] <: (I &~ L) with Type
 
 
+	protected override def get[K <: Key, V <: Value](index :Type Link (K, V)) :V = index.last._2
+	
 	protected override def get[K <: Key, V <: Value](index :Type Link (K, V), key :K) :V = {
 		val entry = index.last
 		if (entry._1 == key)
@@ -1561,7 +2062,7 @@ object ChainMap extends ChainMapFactory {
 	override type NonSingleton = (Any, Any)
 	override type Entry[+K <: Key, +V <: Value] = (K, V)
 
-	override def link[T <: ChainMap, H <: (Key, Value)](tail :T, head :H) :T &~ H = new &~(tail, head)
+	protected override def link[T <: ChainMap, H <: (Key, Value)](tail :T, head :H) :T &~ H = new &~(tail, head)
 
 
 	/*** A non-empty `ChainMap`, consisting of another (possibly empty) `ChainMap` `init`, followed by
@@ -1571,6 +2072,8 @@ object ChainMap extends ChainMapFactory {
 	  */
 	class &~[+I <: ChainMap, +L <: (Key, Any)](val init :I, val last :L) extends ~[I, L] with ChainMap {
 
+		@inline final def values[O <: Chain](implicit chain :ToValueChain[I &~ L, O]) :O = chain(this)
+		
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[&~[_, _]]
 
 		override def equals(that :Any) :Boolean = that match {
@@ -1695,7 +2198,7 @@ object Record extends ChainMapFactory {
 	override type Value = Any
 	override type NonSingleton = (String, Any)
 
-	override def link[T <: Record, H <: (Key, Any)](tail :T, head :H) :T |# H = new |#(tail, head)
+	protected override def link[T <: Record, H <: (Key, Any)](tail :T, head :H) :T |# H = new |#(tail, head)
 
 
 
@@ -1706,7 +2209,7 @@ object Record extends ChainMapFactory {
 	  * Importing this class also imports implicit conversions which add a `#>` method to any `String`,
 	  */
 	final class |#[+I <: Record, +E <: (Key, Any)](record :I, next :E) extends &~[I, E](record, next) with Record {
-
+		
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[|#[_, _]]
 
 		override def equals(that :Any) :Boolean = that match {

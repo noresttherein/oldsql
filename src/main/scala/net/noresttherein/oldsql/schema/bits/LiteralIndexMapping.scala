@@ -121,12 +121,8 @@ object LiteralIndexMapping {
 	{
 		override protected def link(init :V, last :T) :V |~ (K :~ T) = init |~ key :~ last
 
-		override def compose[X](extractor :X => S) :MappingSchema[X, V |~ (K :~ T), C ~ M, O] =
-			new NonEmptyIndexSchema(init.compose(extractor), key, last, this.extractor compose extractor)
-
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V |~ (K :~ T), C ~ M, O] =
 			new NonEmptyIndexSchema(init compose extractor, key, last, this.extractor compose extractor)
-
 	}
 
 
@@ -144,9 +140,6 @@ object LiteralIndexMapping {
 		override val insertForm = SQLWriteForm.LiteralIndexWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |~ (K :~ T)] = op.form(this)
 
-
-		override def compose[X](extractor :X => S) :FlatMappingSchema[X, V |~ (K :~ T), C ~ M, O] =
-			new NonEmptyFlatIndexSchema(init compose extractor, key, last, this.extractor compose extractor)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V |~ (K :~ T), C ~ M, O] =
 			new NonEmptyFlatIndexSchema(init compose extractor, key, last, this.extractor compose extractor)
