@@ -1,15 +1,12 @@
-import scala.annotation.unchecked.uncheckedVariance
-
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.schema.{AbstractSchemaMapping, Mapping, MappingSchema, SchemaMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
 import net.noresttherein.oldsql.schema.bits.{LabeledMapping, OptionMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.FlatMappingSchema
 import net.noresttherein.oldsql.schema.SchemaMapping.{||, FlatSchemaMapping, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
@@ -17,42 +14,6 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
   * @author Marcin Mościcki
   */
 object playground extends App {
-
-/*
-	abstract class Project[M <: Mapping] {
-		type WithOrigin[O] <: RefinedMapping[M#Subject, O]
-	}
-	def Project[M <: Mapping](implicit proj :Project[M]) :Project[M] { type WithOrigin[O] = proj.WithOrigin[O] } = proj
-	implicit def defaultProject[M[A] <: RefinedMapping[S, A], S, O](implicit types :Conforms[M[O], M[O], RefinedMapping[S, O]])
-			:Project[M[O]] { type WithOrigin[X] = M[X] } =
-		new Project[M[O]] { type WithOrigin[X] = M[X] }
-
-	implicit def OriginCast[M <: X, X <: Mapping](m :M)(implicit cast :Project[X]) :OriginCast[X] = new OriginCast(m)
-
-	class OriginCast[M <: Mapping](private val self :M) extends AnyVal {
-		def cast[O](implicit proj :Project[M]) :proj.WithOrigin[O] = ???
-	}
-
-	val proj = Project[Humans["h"]]
-	implicitly[proj.WithOrigin["-"] =:= Humans["-"]]
-
-	def test[M <: Humans[O], O](m :M) = m.cast["human"]
-
-	val human = test[Humans["O"], "O"]
-	human :Nothing
-*/
-/*
-	type ProjectionOf[M <: Mapping] = Mapping.Projection[M, M]
-	implicit def MappingProjection[X <: U, U <: Mapping]
-	                              (m :X)(implicit proj :Mapping.Projection[X, U])
-		= new MappingProjection[U](m)
-	class MappingProjection[M <: Mapping](private val sef :M) extends AnyVal {
-		def cast[O](implicit proj :Mapping.Projection[M, M]) :proj.WithOrigin[O] = ???
-	}
-	implicitly[Mapping.Projection[Humans[""], Humans[""]]]
-	implicitly[Mapping.Projection[Humans[""], Humans[""]]]
-	val opt = OptionMapping(new Humans["human"]).cast["hummus"]
-*/
 
 	type Schema[O] = {
 //		type I[S] = SchemaColumn[S, O]
@@ -97,12 +58,10 @@ object playground extends App {
 
 	println("projectHumans")
 	val projectHumans = OriginProjection[Humans["human"]]
-	implicitly[projectHumans.WithOrigin["hummus"] <:< RefinedMapping[Human, "hummus"]]
-//	implicitly[OriginProjection[Humans["human"]] { type WithOrigin[O] <: RefinedMapping[Human, O] }]
 	implicitly[projectHumans.WithOrigin["hummus"] =:= Humans["hummus"]]
 
 //	val opt = OptionMapping(new Humans["human"])
-//	val projectOpt = OriginProjection[OptionMapping[Humans["human"], Human, "human"]]
+//	val projectOpt = OriginProjection[OptionMapping[Humans["human"], Human, "human"]](OptionMapping.optionMappingProjection)
 //	implicitly[projectOpt.WithOrigin["hummus"] =:= OptionMapping[Humans["hummus"], Human, "hummus"]]
 //	projectOpt["dupa"](opt) :Nothing
 //	cast :Nothing
@@ -121,6 +80,15 @@ object playground extends App {
 
 	new Sub
 
+//	new Humans[Any].forSelect[@~ ~ "backup"]:Int
+//	guns[Any].forSelect[@~ ~ 0 ~ 2 ~ 1] :Int
+//	val path = SelfPath(new Humans[Any])
+//	val Backup = (new Humans[Any]) \ (_.gun)
+//	import net.noresttherein.oldsql.collection.Record._
+
+//	trait Tagged[+T]
+
+//	class TaggedAny(val inner :Tagged[T]) extends Tagged
 	val record =   "key1" #> 1 |# "key2" #> 2 |# "key3" #> 3 : @~ |# ("key1", Int) |# ("key2", Int) |# ("key3", Int)
 
 	println(record)

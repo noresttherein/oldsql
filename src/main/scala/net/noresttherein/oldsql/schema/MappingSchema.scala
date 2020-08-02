@@ -5,22 +5,26 @@ import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, ChainContains, ChainGet, ItemExists}
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
-import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.MappingSchema.{GetLabeledComponent, GetSchemaComponent}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, OptMappedFlatSchema, OptMappedSchema, SchemaColumn}
-import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral, PositiveInc}
+import net.noresttherein.oldsql.{schema, OperationType}
+import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.MappingSchema.{GetLabeledComponent, GetSchemaComponent, MappingSchemaSupport}
+import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, |||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, OptMappedFlatSchema, OptMappedSchema, SchemaColumn}
+import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping, LabeledMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.{DelegateMapping, LazyMapping}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter
+import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.schema.IndexedMappingSchema.{ExtensibleFlatIndexedSchema, ExtensibleIndexedSchema, FlatIndexedMappingSchema}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ShallowProxy}
 
 
 

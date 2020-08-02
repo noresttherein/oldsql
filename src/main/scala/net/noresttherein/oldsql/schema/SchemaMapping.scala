@@ -1,25 +1,31 @@
 package net.noresttherein.oldsql.schema
 
+import scala.annotation.implicitNotFound
+
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.Chain.@~
-import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
-import net.noresttherein.oldsql.morsels.abacus.Numeral
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainContains, ChainGet, ItemExists}
+import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn, MappingLabel}
 import net.noresttherein.oldsql.schema.support.{DelegateMapping, StableMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnSupport, StableColumn}
-import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, ExtensibleFlatMappingSchema, FlatMappingSchema, GetLabeledComponent, GetSchemaComponent, SchemaFlattening}
-import net.noresttherein.oldsql.schema.SchemaMapping.{|-|, DelegateSchemaMapping, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaMapping, MappedFlatSchemaMapping, MappedSchemaMapping, MappingSchemaDelegate, SchemaComponentLabel, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
+import net.noresttherein.oldsql.schema.MappingSchema.{CustomizedFlatSchema, CustomizedSchema, EmptySchema, ExtensibleFlatMappingSchema, ExtensibleMappingSchema, FlatMappingSchema, GetLabeledComponent, MappingSchemaSupport, SchemaFlattening}
+import net.noresttherein.oldsql.schema.SchemaMapping.{|-|, CustomizeSchema, DelegateSchemaMapping, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaMapping, MappedFlatSchemaMapping, MappedSchemaMapping, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, CustomizedMapping, LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
-import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, BaseAdapter, ColumnAdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
-import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
-import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingAdapters
+import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
-import net.noresttherein.oldsql.slang
+import net.noresttherein.oldsql.{slang, OperationType}
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
+import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.schema.IndexedMappingSchema.{ExtensibleFlatIndexedSchema, ExtensibleIndexedSchema, FlatIndexedMappingSchema}
+import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 //implicits:
 import slang._
