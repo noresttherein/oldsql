@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import scala.reflect.ClassTag
 
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{ColumnForm, Mapping, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom}
@@ -11,11 +12,12 @@ import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, In
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLExpression.SQLTypePromotion.Lift
 import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, False, NULL, SQLLiteral, SQLParameter, SQLParameterColumn, TermMatcher, True}
-import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, TupleMatcher}
+import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, MappingMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchCompositeColumn}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelect, FreeSelectSQL, SelectMatcher, SubselectSQL}
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.{ChainHead, EmptyChain}
 
 
 
@@ -198,6 +200,10 @@ object SQLExpression extends SQLMultiColumnTerms {
 		new BoundParameterExpressions[T, SQLParameterColumn[T]] {
 			override implicit def apply(value :T) = SQLParameterColumn(value)
 		}
+
+	implicit class SQLExpressionChaining[F <: FromClause, T](private val self :SQLExpression[F, T]) extends AnyVal {
+		@inline def ~[H](head :SQLExpression[F, H]) :ChainTuple[F, @~ ~ T ~ H] = EmptyChain ~ self ~ head
+	}
 
 /*
 	implicit def typingCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O], X]

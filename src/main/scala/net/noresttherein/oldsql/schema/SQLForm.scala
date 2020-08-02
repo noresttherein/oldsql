@@ -472,6 +472,15 @@ object SQLForm extends SQLFormLevel1Implicits {
 
 
 
+	/** A Convenience base `SQLReadForm[T]` class which implements `nullValue` based on an implicit `NullValue[T]`
+	  * (overriding also `nulls` in the process). */
+	abstract class AbstractForm[T](implicit override val nulls :NullValue[T])
+		extends SQLForm[T]
+	{
+		override def nullValue :T = nulls.value
+	}
+
+
 	/** A convenience base `SQLForm` class relying on implicit `NullValue[T]` as well as `ClassTag[T]`
 	  * for its `toString` implementation.
 	  */
@@ -491,7 +500,6 @@ object SQLForm extends SQLFormLevel1Implicits {
 
 		override def toString :String = slang.innerClassName(clazz.runtimeClass)
 	}
-
 
 
 	/** A base class for forms which do not read or write any columns. Read methods always return `nullValue`,

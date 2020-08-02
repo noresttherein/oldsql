@@ -168,29 +168,29 @@ object MappingProxy {
 			if (component.isInstanceOf[ColumnMapping[_, _]])
 				apply(component.asInstanceOf[Column[T]])
 			else if (component eq backer)
-				MappingExtract.ident(adaptEgg).asInstanceOf[Extract[T]]
+				MappingExtract.ident(adaptBacker).asInstanceOf[Extract[T]]
 			else
 				MappingExtract[S, T, O](export(component))(backer.apply(dealias(component)))
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] =
 			if (column eq backer)
-				ColumnExtract.ident(adaptEgg.asInstanceOf[Column[S]]).asInstanceOf[ColumnExtract[T]]
+				ColumnExtract.ident(adaptBacker.asInstanceOf[Column[S]]).asInstanceOf[ColumnExtract[T]]
 			else
 				ColumnExtract[S, T, O](export(column))(backer.apply(dealias(column)))
-		
+
 
 
 		override def export[T](component :Component[T]) :Component[T] =
 			if (component.isInstanceOf[ColumnMapping[_, _]])
 				export(component.asInstanceOf[Column[T]])
 			else if (component eq backer)
-				adaptEgg.asInstanceOf[Component[T]]
+				adaptBacker.asInstanceOf[Component[T]]
 			else
 				adapt(backer.export(dealias(component)))
-		
+
 		override def export[T](column :Column[T]) :Column[T] =
 			if (column eq backer)
-				adaptEgg.asInstanceOf[Column[T]]
+				adaptBacker.asInstanceOf[Column[T]]
 			else
 				adapt(backer.export(dealias(column)))
 
@@ -204,7 +204,7 @@ object MappingProxy {
 					Assoc[Component, Extract, X](export, extract)::Nil
 			}
 			backer.extracts.flatMap(mapEntry(_))
-				.updated[Extract, S](backer.asInstanceOf[Component[S]], MappingExtract.ident(adaptEgg))
+				.updated[Extract, S](backer.asInstanceOf[Component[S]], MappingExtract.ident(adaptBacker))
 		}
 
 		override def columnExtracts :NaturalMap[Column, ColumnExtract] = {
@@ -220,7 +220,7 @@ object MappingProxy {
 
 
 		private[this] def alias[T](component :backer.Component[T]) :Component[T] = component match {
-			case _ if component eq backer => adaptEgg.asInstanceOf[Component[T]]
+			case _ if component eq backer => adaptBacker.asInstanceOf[Component[T]]
 			case column :ColumnMapping[_, _] =>
 				adapt(backer.export(column.asInstanceOf[backer.Column[T]]))
 			case _ =>
@@ -240,7 +240,7 @@ object MappingProxy {
 
 		protected def adapt[T](column :backer.Column[T]) :Column[T] //= adapt(component)
 
-		protected def adaptEgg :Component[S] = this
+		protected def adaptBacker :Component[S] = this
 
 
 
@@ -291,14 +291,14 @@ object MappingProxy {
 	{
 		//a private constructor with mutable maps ensures that extract entries can be created as method side effects,
 		//without the maps becoming instance fields - they are used only in initialization of the 'extracts' properties
-		def this(egg :MappingOf[S]) = this(egg, mutable.Map(), mutable.Map())
+		def this(backer :MappingOf[S]) = this(backer, mutable.Map(), mutable.Map())
 
 
 		preInit()
 
-		private[this] val adaptedEgg = adaptEgg
-		exports.put(backer, MappingExtract.ident(adaptedEgg))
-		originals.put(adaptedEgg, backer)
+		private[this] val adaptedBacker = adaptBacker
+		exports.put(backer, MappingExtract.ident(adaptedBacker))
+		originals.put(adaptedBacker, backer)
 
 		for (Assoc(comp, base) <- backer.extracts) {
 			val export = adaptExport(base.export)
@@ -338,7 +338,7 @@ object MappingProxy {
 
 
 		private[this] def adaptExport[T](component :backer.Component[T]) = component match {
-			case _ if component eq backer => adaptedEgg.asInstanceOf[Component[T]]
+			case _ if component eq backer => adaptedBacker.asInstanceOf[Component[T]]
 			case column :ColumnMapping[_, _] => adapt(column.asInstanceOf[backer.Column[T]])
 			case _ => adapt(component)
 		}

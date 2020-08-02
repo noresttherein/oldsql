@@ -222,7 +222,7 @@ object ChainMapping {
 			backer compose (extractor andThen Chain.init[V] _)
 
 		override def prev[I <: Chain, P <: Chain]
-		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :FlatMappingSchema[S, I, P, O] =
+		                   (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :FlatMappingSchema[S, I, P, O] =
 			backer.prev compose Chain.init[V] _
 	}
 

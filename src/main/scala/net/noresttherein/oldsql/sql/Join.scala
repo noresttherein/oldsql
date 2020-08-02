@@ -744,7 +744,7 @@ object RightJoin {
 /** A `FromClause` constituting of exactly one last or SQL relation.
   * This is just a bit of sugar for Join[Dual, T], so that we can write the type From[T] instead, especially
   * in larger clauses like `From[Children] Join Daemons`.
-  */ //todo: maybe this should simply be a type alias?
+  */ //consider: maybe this should simply be a type alias? pro: no special case; con: compiler output
 sealed trait From[T[O] <: MappingAt[O]] extends InnerJoin[Dual, T] {
 	override val left :Dual = Dual
 

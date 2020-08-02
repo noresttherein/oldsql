@@ -52,9 +52,9 @@ object OptionMapping {
 		extends MappedMapping[S, Option[S], O] with OptionMapping[M, S, O]// with ShallowDelegate[Option[S], O]
 	{ box =>
 		override val get :M = backer
-		private[this] val eggExtract = apply(get)
+		private[this] val backerExtract = apply(get)
 
-		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(eggExtract))
+		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(backerExtract))
 
 		protected override def nulls :NullValue[Option[Nothing]] = NullValue.None
 

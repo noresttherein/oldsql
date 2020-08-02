@@ -143,10 +143,8 @@ object ColumnReadForm {
 	  * @param reader a function taking an SQL `ResultSet`, a column index, and reads the column as a value of `T`.
 	  */
 	def apply[T :NullValue](columnType :JDBCSQLType)(reader :(ResultSet, Int) => T) :ColumnReadForm[T] =
-		new ColumnReadForm[T] {
+		new AbstractColumnReadForm[T] {
 			protected override def read(position :Int)(res :ResultSet) = reader(res, position)
-			override val nulls = NullValue[T]
-			override def nullValue = nulls.value
 			override val sqlType = columnType
 		}
 
@@ -260,6 +258,16 @@ object ColumnReadForm {
 
 
 
+
+
+
+	/** A Convenience base `ColumnReadForm[T]` class which implements `nullValue` based on an implicit `NullValue[T]`
+	  * (overriding also `nulls` in the process). */
+	abstract class AbstractColumnReadForm[+T](implicit override val nulls :NullValue[T])
+		extends ColumnReadForm[T]
+	{
+		override def nullValue :T = nulls.value
+	}
 
 
 

@@ -505,13 +505,15 @@ trait Mapping { this :MappingSeal =>
 	  * It is used during the assembly process to alias all components to their operative versions, in order to make sure
 	  * that even if a subcomponent implementation asks for a value of one of its components which have been modified
 	  * by some enclosing component, the mapping passed to its `Pieces` is substituted with the export version
-	  * as defined by this (the root) mapping. This is both to alias all versions to a single instance for the purpose
+	  * as defined by this mapping (the root). This is both to alias all versions to a single instance for the purpose
 	  * of presetting a value, as well as using the possibly modified assembly process to produce the subject value.
 	  * Unlike the [[net.noresttherein.oldsql.schema.Mapping#subcomponents subcomponents]] list, this collection
 	  * must contain not only all export components, but also all their original versions as defined by their
 	  * parent mappings. It must also contain entries for all mapping instances which can be potentially used in the
 	  * assembly process, even if they are not exposed - failing to include such a hidden component will most likely
-	  * result in an exception being thrown from the `assemble` method. In some circumstances it may be acceptable
+	  * result in an exception being thrown from the `assemble` method. This again stands in contrast to the
+	  * `subcomponents` list in that the latter may potentially omit 'synthetic' components - implementation artifacts
+	  * used to assemble intermediate values and/or proxies. In some circumstances it may be acceptable
 	  * for a component to be absent from this list - this is the case with private components managed by another
 	  * mapping and guaranteed to not be used for the assembly (for example, only serving as a group of columns
 	  * used directly by its parent), or a table mapping implementation which is known to use all its components as-is
@@ -610,7 +612,7 @@ trait Mapping { this :MappingSeal =>
 	  * are the ''export'' (operative) versions from the point of view of this mapping.
 	  */
 	def columns :Unique[Column[_]]
-
+//todo: 'default' lists
 	/** All columns which can be listed in the select clause of an SQL statement (don't have the `NoSelect` buff).
 	  * All columns on the list are the ''export'' (operative) versions from the point of view of this mapping.
 	  */

@@ -66,7 +66,6 @@ object LabelPath {
 //			case label :SingleLabel[_] => Some(label.label.asInstanceOf[P with String with pa])
 			case _ => None
 		}
-
 	}
 
 
@@ -103,6 +102,8 @@ object LabelPath {
 
 		/** Creates a new path consisting of this label followed by the given label. */
 		@inline override def /[N <: Label](next :N)  :L / N = new /(label, next)
+
+		override def toString :String = "/" + label
 	}
 
 
@@ -116,6 +117,14 @@ object LabelPath {
 		def thisPath :P / L = this
 
 		@inline final override def /[N <: Label](next :N) : P / L / N = new /(this, next)
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case path: /[_, _] => path.label == label && path.prefix == prefix
+			case _ => false
+		}
+
+		override def toString :String = prefix.toString + "/" + label
 	}
 
 

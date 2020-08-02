@@ -127,81 +127,78 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 
 
 
-/*
-	private def customized[E <: Chain] //fixme: include must be a chain or result may contain not included optional componnts!
-	                      (include :Iterable[Component[_]], ban :BuffType, explicit :BuffType,
-	                       optional :BuffType, nonDefault :FlagBuffType)
-	                      (implicit result :CustomizeSchema[S, V, C, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
-		new CustomizedSchemaMapping(this, result(schema, include, ban, explicit, optional, nonDefault))
-
-
 	def forSelect[E <: Chain](include :Iterable[Component[_]], exclude :E)
-	                         (implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
+	                         (implicit result :CustomizeSchema[SELECT, this.type, S, O, E]) :result.Result =
 		forSelect[E](include)
 
-	def forSelect[E <: Chain](include :Iterable[Component[_]])(implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
-		customized[E](include, NoSelect, ExplicitSelect, OptionalSelect, NoSelectByDefault)
+	def forSelect[E <: Chain](include :Iterable[Component[_]])
+	                         (implicit result :CustomizeSchema[SELECT, this.type, S, O, E]) :result.Result =
+		customize[SELECT, E](include)
 
-	def forSelect[E <: Chain](implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
+	def forSelect(implicit result :CustomizeSchema[SELECT, this.type, S, O, @~]) :result.Result =
+		forSelect[@~](Nil)
+
+	def forSelectExclude[E <: Chain](implicit result :CustomizeSchema[SELECT, this.type, S, O, E]) :result.Result =
 		forSelect[E](Nil)
 
 
-
 	def forQuery[E <: Chain](include :Iterable[Component[_]], exclude :E)
-	                        (implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
+	                        (implicit result :CustomizeSchema[QUERY, this.type, S, O, E]) :result.Result =
 		forQuery[E](include)
 
-	def forQuery[E <: Chain](include :Iterable[Component[_]])(implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
-		customized[E](include, NoQuery, ExplicitQuery, OptionalQuery, NoQueryByDefault)
+	def forQuery[E <: Chain](include :Iterable[Component[_]])
+	                        (implicit result :CustomizeSchema[QUERY, this.type, S, O, E]) :result.Result =
+		customize[QUERY, E](include)
 
-	def forQuery[E <: Chain](implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
+	def forQuery(implicit result :CustomizeSchema[QUERY, this.type, S, O, @~]) :result.Result =
+		forQuery[@~](Nil)
+
+	def forQueryExclude[E <: Chain](implicit result :CustomizeSchema[QUERY, this.type, S, O, E]) :result.Result =
 		forQuery[E](Nil)
 
 
-
 	def forUpdate[E <: Chain](include :Iterable[Component[_]], exclude :E)
-	                         (implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
+	                         (implicit result :CustomizeSchema[UPDATE, this.type, S, O, E]) :result.Result =
 		forUpdate[E](include)
 
-	def forUpdate[E <: Chain](include :Iterable[Component[_]])(implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
-		customized[E](include, NoUpdate, ExplicitUpdate, OptionalUpdate, NoUpdateByDefault)
+	def forUpdate[E <: Chain](include :Iterable[Component[_]])
+	                         (implicit result :CustomizeSchema[UPDATE, this.type, S, O, E]) :result.Result =
+		customize[UPDATE, E](include)
 
-	def forUpdate[E <: Chain](implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
+	def forUpdate(implicit result :CustomizeSchema[UPDATE, this.type, S, O, @~]) :result.Result =
+		customize[UPDATE, @~](Nil)
+
+	def forUpdateExclude[E <: Chain](implicit result :CustomizeSchema[UPDATE, this.type, S, O, E]) :result.Result =
 		forUpdate[E](Nil)
 
 
 
 	def forInsert[E <: Chain](include :Iterable[Component[_]], exclude :E)
-	                         (implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
+	                         (implicit result :CustomizeSchema[INSERT, this.type, S, O, E]) :result.Result =
 		forInsert[E](include)
 
-	def forInsert[E <: Chain](include :Iterable[Component[_]])(implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
-		customized[E](include, NoInsert, ExplicitInsert, OptionalInsert, NoInsertByDefault)
+	def forInsert[E <: Chain](include :Iterable[Component[_]])
+	                         (implicit result :CustomizeSchema[INSERT, this.type, S, O, E]) :result.Result =
+		customize[INSERT, E](include)
 
-	def forInsert[E <: Chain](implicit result :CustomizeSchema[C, V, S, O, E])
-			:SchemaMapping[result.Components, result.Values, S, O] =
+	def forInsert(implicit result :CustomizeSchema[INSERT, this.type, S, O, @~]) :result.Result =
+		customize[INSERT, @~](Nil)
+
+	def forInsertExclude[E <: Chain](implicit result :CustomizeSchema[INSERT, this.type, S, O, E]) :result.Result =
 		forInsert[E](Nil)
-*/
 
+
+	//fixme: include must be a chain or result may contain not included optional components!
+	private def customize[A <: OperationType, E <: Chain](include :Iterable[Component[_]])
+	                                                     (implicit op :A, result :CustomizeSchema[A, this.type, S, O, E])
+			:result.Result =
+		result(this, op, include)
 
 
 	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:SchemaMapping[S, V, C, O] =
 		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
-
 
 
 	override def prefixed(prefix :String) :SchemaMapping[S, V, C, O] =
@@ -214,10 +211,8 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 		new RenamedMapping[this.type, S, O](name, this) with DelegateSchemaMapping[S, V, C, O]
 
 
-
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :SchemaMapping[X, V, C, O] =
 		new MappedSchemaMapping(this, there, back)
-
 
 
 	override def toString = sqlName getOrElse schema.members.toSeq.mkString("|-|[", ",", "]")
@@ -230,21 +225,71 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 
 object SchemaMapping {
 
-	/** Starts the process of building a `MappingSchema` and then a `SchemaMapping` by chained calls to component
-	  * factory methods. This is the same as `MappingSchema[S, O]` and exists to somewhat alleviate the confusion
-	  * between the two.
+	/** An empty `MappingSchema` which can be expanded by appending new columns and components.
+	  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
+	  * creating a [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
+	  * {{{
+	  *     case class Address(street :String, city :String, zip :String)
+	  *     def addresses[O] = MappingSchema[Address, O].col("street", _.street).col("city", _.city).col("zip", _.zip)
+	  *                                                 .map(Address.apply)
+	  * }}}
+	  * This is equivalent to `SchemaMapping[S, O]` except it doesn't take the origin type parameter for more
+	  * convenient building of schema components, that is instances of
+	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]], which have an unspecified `Origin`.
+	  * @tparam S the subject type of a `SchemaMapping` over this schema. All components in the schema have
+	  *           extractors which retrieve their value from this type.
+	  * @return an [[net.noresttherein.oldsql.schema.MappingSchema.ExtensibleFlatMappingSchema ExtensibleFlatMappingSchema]].
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
 	  */
 	def apply[S] :ExtensibleFlatMappingSchema[S, @~, @~, _] = EmptySchema()
 
-	/** Starts the process of building a `MappingSchema` and then a `SchemaMapping` by chained calls to component
-	  * factory methods. This is the same as `MappingSchema[O](buffs)` and exists to somewhat alleviate the confusion
-	  * between the two.
-	  * @param buffs a list of buffs for the built `SchemaMapping`, inherited by all columns and supporting components
-	  *              of the created schema.
+	/** An empty `MappingSchema` which can be expanded by appending new columns and components.
+	  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
+	  * creating a [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
+	  * {{{
+	  *     case class Address(street :String, city :String, zip :String)
+	  *     def addresses[O] = MappingSchema[Address, O].col("street", _.street).col("city", _.city).col("zip", _.zip)
+	  *                                                 .map(Address.apply)
+	  * }}}
+	  * This is equivalent to `SchemaMapping[S, O](buffs)` except it doesn't take the origin type parameter for more
+	  * convenient building of schema components, that is instances of
+	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]], which have an unspecified `Origin`.
+	  * @tparam S the subject type of a `SchemaMapping` over this schema. All components in the schema have
+	  *           extractors which retrieve their value from this type.
+	  * @param buffs a list of `Buff`s for the created `SchemaMapping`. They will not show as the buffs
+	  *              of the returned schema, but will be nevertheless inherited by all all columns appended to it
+	  *              and those components for which factory functions will be given.
+	  * @return an [[net.noresttherein.oldsql.schema.MappingSchema.ExtensibleFlatMappingSchema ExtensibleFlatMappingSchema]].
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
 	  */
 	def apply[S](buffs :Buff[S]*) :ExtensibleFlatMappingSchema[S, @~, @~, _] = EmptySchema(buffs)
 
-	def apply[S](prefix :String, buffs :Buff[S]*) :ExtensibleFlatMappingSchema[S, @~, @~, _] = EmptySchema(buffs)
+	/** An empty `MappingSchema` which can be expanded by appending new columns and components.
+	  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
+	  * creating a [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
+	  * {{{
+	  *     case class Address(street :String, city :String, zip :String)
+	  *     def addresses[O] = MappingSchema[Address, O].col("street", _.street).col("city", _.city).col("zip", _.zip)
+	  *                                                 .map(Address.apply)
+	  * }}}
+	  * This is equivalent to `SchemaMapping[S, O](prefix, buffs)` except it doesn't take the origin type parameter
+	  * for more convenient building of schema components, that is instances of
+	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]], which have an unspecified `Origin`.
+	  * @tparam S the subject type of a `SchemaMapping` over this schema. All components in the schema have
+	  *           extractors which retrieve their value from this type.
+	  * @param columnPrefix a `String` prepended to all column names. It will be also passed as an argument
+	  *                     to all factory functions used to create new components for the schema.
+	  * @param buffs a list of `Buff`s for the created `SchemaMapping`. They will not show as the buffs
+	  *              of the returned schema, but will be nevertheless inherited by all all columns appended to it
+	  *              and those components for which factory functions will be given.
+	  * @return an [[net.noresttherein.oldsql.schema.MappingSchema.ExtensibleFlatMappingSchema ExtensibleFlatMappingSchema]].
+	  * @see [[net.noresttherein.oldsql.schema.MappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
+	  */
+	def apply[S](columnPrefix :String, buffs :Buff[S]*) :ExtensibleFlatMappingSchema[S, @~, @~, _] =
+		EmptySchema(columnPrefix, buffs)
 
 
 
@@ -327,6 +372,8 @@ object SchemaMapping {
 
 	trait @|-|[L <: Label, S, V <: Chain, C <: Chain] extends |-|[S, V, C] with AbstractLabeledMapping[L] {
 		self :MappingSeal =>
+
+		def label :L
 //		self :LabeledSchemaMapping[L, S, V, C, _] =>
 	}
 
@@ -361,6 +408,12 @@ object SchemaMapping {
 				:ExactProjection[@||[L, S]] { type WithOrigin[O] = LabeledSchemaColumn[L, S, O] } =
 			OriginProjection.projectAs[L @|| S, ({ type M[O] = LabeledSchemaColumn[L, S, O] })#M]
 	}
+//consider: an adapter labeling type to get rid of all the labeled special component types
+//	trait @:[L <: Label, M <: MappingSchemaSupport]
+//		extends SchemaMapping[M#Subject, M#Unpacked, M#Components, M#Origin] with LabeledMapping[L, M#Subject, M#Origin]
+//		   with MappingAdapter[M, M#Subject, M#Origin] { this :AdapterSeal => }
+
+
 
 
 
@@ -376,13 +429,11 @@ object SchemaMapping {
 		extends SchemaMapping[S, V, C, O] with |||[S, V, C]
 		   with AdapterFactoryMethods[({ type T[X] = FlatSchemaMapping[X, V, C, O] })#T, S, O]
 	{
-
 		override val schema :FlatMappingSchema[S, V, C, O]
 
 		override def flatten[FV <: Chain, FC <: Chain]
 		                    (implicit flatterer :SchemaFlattening[V, C, FV, FC]) :FlatSchemaMapping[S, FV, FC, O] =
 			this.asInstanceOf[FlatSchemaMapping[S, FV, FC, O]]
-
 
 
 		override def apply[N <: Label :ValueOf] :LabeledFlatSchemaMapping[N, S, V, C, O] = labeled(valueOf[N])
@@ -391,12 +442,10 @@ object SchemaMapping {
 			LabeledSchemaMapping(label, this)
 
 
-
 		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatSchemaMapping[S, V, C, O] =
 			new CustomizedMapping[this.type, S, O](this, op, include, exclude)
 				with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
-
 
 
 		override def prefixed(prefix :String) :FlatSchemaMapping[S, V, C, O] =
@@ -409,10 +458,8 @@ object SchemaMapping {
 			new RenamedMapping[this.type, S, O](name, this) with DelegateFlatSchemaMapping[S, V, C, O]
 
 
-
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :FlatSchemaMapping[X, V, C, O] =
 			new MappedFlatSchemaMapping(this, there, back)
-
 
 
 		override def toString = sqlName getOrElse schema.members.toSeq.mkString("|||[", ",", "]")
@@ -425,6 +472,28 @@ object SchemaMapping {
 		implicit def genericFlatSchemaMappingProjection[M[Q] <: FlatSchemaMapping[S, _, _, Q], S, O]
 				:ProjectionDef[M[O], M, S] =
 			OriginProjection.functor[M, S, O]
+
+
+		implicit def implicitCustomizeFlatSchema[A <: OperationType, S, V <: Chain, C <: Chain,
+		                                         E <: Chain, FV <: Chain, FC <: Chain, O]
+		             (implicit filter :FilterSchema[FlatMappingSchema[S, V, C, O], E, _, FlatMappingSchema[S, FV, FC, O]],
+		                       allExist :ComponentsExist[C, E])
+				:CustomizeSchema[A, FlatSchemaMapping[S, V, C, O], S, O, E]
+					{ type Values = FV; type Components = FC; type Result = FlatOperationSchema[A, S, FV, FC, O] } =
+			new CustomizeSchema[A, FlatSchemaMapping[S, V, C, O], S, O, E] {
+				override type Values = FV
+				override type Components = FC
+				override type Result = FlatOperationSchema[A, S, FV, FC, O]
+
+				override def apply(mapping :FlatSchemaMapping[S, V, C, O], op :A, includes :Iterable[RefinedMapping[_, O]]) = {
+					val schema = mapping.schema
+					val filtered = filter(schema)
+					val customized =
+						if (filtered eq schema) filtered
+						else new CustomizedFlatSchema(schema, filtered, op, includes)
+					new CustomizedFlatSchemaMapping[A, S, FV, FC, O](mapping, customized)
+				}
+			}
 	}
 
 
@@ -489,12 +558,12 @@ object SchemaMapping {
 
 
 		private class LabeledSchemaComponent[N <: Label, S, V <: Chain, C <: Chain, M <: SchemaMapping[S, V, C, O], O]
-		                                    (label :N, comp :M)
+		                                    (override val label :N, comp :M)
 			extends MappingLabel[N, M, S, O](label, comp) with LabeledSchemaMapping[N, S, V, C, O]
 			   with SchemaMappingProxy[M, S, V, C, O]
 		{
 			override def labeled[L <: Label](label :L) :LabeledSchemaMapping[L, S, V, C, O] =
-				new LabeledSchemaComponent[L, S, V, C, M, O](label, backer)
+				new LabeledSchemaComponent[L, S, V, C, M, O](label, body)
 
 			override def toString :String =
 				sqlName getOrElse schema.members.toSeq.mkString("'" + label + "@|-|[", ",", "]")
@@ -503,12 +572,12 @@ object SchemaMapping {
 
 
 		private class LabeledFlatSchemaComponent[N <: Label, S, V <: Chain, C <: Chain, M <: FlatSchemaMapping[S, V, C, O], O]
-		                                        (label :N, egg :M)
-			extends LabeledSchemaComponent[N, S, V, C, M, O](label, egg) with LabeledFlatSchemaMapping[N, S, V, C, O]
+		                                        (label :N, backer :M)
+			extends LabeledSchemaComponent[N, S, V, C, M, O](label, backer) with LabeledFlatSchemaMapping[N, S, V, C, O]
 			   with FlatSchemaMappingProxy[M, S, V, C, O]
 		{
 			override def labeled[L <: Label](label :L) :LabeledFlatSchemaMapping[L, S, V, C, O] =
-				new LabeledFlatSchemaComponent[L, S, V, C, M, O](label, egg)
+				new LabeledFlatSchemaComponent[L, S, V, C, M, O](label, body)
 
 			override def toString :String =
 				sqlName getOrElse schema.members.toSeq.mkString("'" + label + "@|||[", ",", "]")
@@ -542,7 +611,7 @@ object SchemaMapping {
 		   with LabeledColumn[N, S, O]
 		   with ColumnAdapterFactoryMethods[({ type A[X] = LabeledSchemaColumn[N, X, O] })#A, S, O]
 	{
-		protected def label :N
+//		def label :N
 
 		protected override def thisColumn :LabeledSchemaColumn[N, S, O] = this
 
@@ -576,6 +645,44 @@ object SchemaMapping {
 			OriginProjection.functor[M, S, O]
 
 	}
+
+
+
+
+
+
+
+	/** A `Mapping` implementation dedicated to a single database operation type `A`.
+	  * It lists the components which should be included in the operation on the type level as the components chain `C`,
+	  * and their values as the chain `V`.  Dedicated instances are obtained from a `SchemaMapping` via the customizing
+	  * methods which include and exclude components: `forSelect`, `forQuery`, `forUpdate`, `forInsert`.
+	  * The purpose of this separation is to prevent an instance dedicated to one operation type to be adapted
+	  * to a second operation type, as mandatory components for the second operation type can be omitted
+	  * by the first customization.
+      * @tparam S the subject type of this mapping.
+	  * @tparam V a `Chain` containing the types of all components in `C` in their exact order, forming a 'row schema'.
+	  * @tparam C a `Chain` containing the types of all components of this mapping in their exact order.
+	  * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
+	  *           but coming from different sources (especially different aliases for a table occurring more then once
+	  *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
+	  *           included in a query can be used in the creation of SQL expressions used by that query.
+	  *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
+	  */
+	trait OperationSchema[-A <: OperationType, S, V <: Chain, C <: Chain, O]
+		extends BaseMapping[S, O] with MappingSchemaSupport
+	{
+		override type Packed = S
+		override type Unpacked = V
+		override type Components = C
+	}
+
+	/** A `Mapping` implementation dedicated to a single database operation type `A`.
+	  * It lists the columns which should be included in the operation on the type level as the components chain `C`,
+	  * with no non-column components.
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping]]
+	  */
+	trait FlatOperationSchema[-A <: OperationType, S, V <: Chain, C <: Chain, O] extends OperationSchema[A, S, V, C, O]
 
 
 
@@ -629,7 +736,7 @@ object SchemaMapping {
 
 
 	/** Implements most missing `SchemaMapping` methods by delegating to the `schema` property.
-	  * Must be mixed in ''after'' initialization of the `schema` property.
+	  * Must be mixed in ''after'' the initialization of the `schema` property.
 	  */
 	trait MappingSchemaDelegate[+M <: MappingSchema[S, V, C, O], S, V <: Chain, C <: Chain, O]
 		extends ShallowDelegate[S, O] with DelegateMapping[M, S, O] with SchemaMapping[S, V, C, O]
@@ -777,9 +884,6 @@ object SchemaMapping {
 
 
 
-
-
-
 	private trait DelegateSchemaMapping[S, V <: Chain, C <: Chain, O]
 		extends DelegateMapping[SchemaMapping[S, V, C, O], S, O] with SchemaMapping[S, V, C, O]
 	{
@@ -792,6 +896,201 @@ object SchemaMapping {
 		override val schema = backer.schema
 	}
 
+
+
+
+
+
+
+	@implicitNotFound("Can't exclude components ${E} from schema:\n${X}.\n " +
+	                  "Exclude type parameter must be a concrete Chain subtype with only literal Int and String " +
+	                  "element types denoting the indices/labels of top level components to exclude.\n" +
+		              "Missing implicit CustomizeSchema[${X}, ${A}, ${S}, ${O}, ${E}]: enable -Xlog-implicits " +
+	                  "for a more detailed reason.")
+	abstract class CustomizeSchema[A <: OperationType, -X <: SchemaMapping[_, _ <: Chain, _ <: Chain, _], S, O, E <: Chain] {
+		type Values <: Chain
+		type Components <: Chain
+		type Result <: OperationSchema[A, S, Values, Components, O]
+		def apply(schema :X, op :A, include :Iterable[RefinedMapping[_, O]]) :Result
+	}
+
+
+
+	sealed abstract class LowPrioritySchemaCustomizationImplicits {
+
+		implicit def includeInSchema[S, V <: Chain, C <: Chain, T, M <: |-|[T, _ <: Chain, _ <: Chain],
+		                             E <: Chain, I <: Numeral, J <: Numeral, FV <: Chain, FC <: Chain, O]
+		                            (implicit prefix :FilterSchema[MappingSchema[S, V, C, O], E, I,
+			                                                       ExtensibleMappingSchema[S, FV, FC, O]])
+				:FilterSchema[MappingSchema[S, V ~ T, C ~ M, O], E, J, ExtensibleMappingSchema[S, FV ~ T, FC ~ M, O]] =
+			schema => prefix(schema.prev).append(schema.last, schema.lastExtract)
+
+		implicit def includeInFlatSchema[S, V <: Chain, C <: Chain, T, M <: ||[T],
+			                             E <: Chain, I <: Numeral, J <: Numeral, FV <: Chain, FC <: Chain, O]
+		                                (implicit prefix :FilterSchema[FlatMappingSchema[S, V, C, O], E, I,
+			                                                           ExtensibleFlatMappingSchema[S, FV, FC, O]])
+				:FilterSchema[FlatMappingSchema[S, V ~ T, C ~ M, O], E, J, ExtensibleFlatMappingSchema[S, FV ~ T, FC ~ M, O]] =
+			schema => prefix(schema.prev).col(schema.last, schema.lastExtract)
+
+
+		implicit def includeInIndexedSchema[S, V <: LiteralIndex, C <: Chain, N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain],
+		                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: LiteralIndex, FC <: Chain, O]
+		                            (implicit prefix :FilterSchema[IndexedMappingSchema[S, V, C, O], E, I,
+			                                                       ExtensibleIndexedSchema[S, FV, FC, O]])
+				:FilterSchema[IndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J,
+				              ExtensibleIndexedSchema[S, FV |~ (N :~ T), FC ~ M, O]] =
+			schema => prefix(schema.prev).append(schema.last, schema.lastExtract)
+
+		implicit def includeInFlatIndexedSchema[S, V <: LiteralIndex, C <: Chain, N <: Label, T, M <: @||[N, T],
+			                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: LiteralIndex, FC <: Chain, O]
+		                                       (implicit prefix :FilterSchema[FlatIndexedMappingSchema[S, V, C, O], E, I,
+			                                                                  ExtensibleFlatIndexedSchema[S, FV, FC, O]])
+				:FilterSchema[FlatIndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J,
+				              ExtensibleFlatIndexedSchema[S, FV |~ (N :~ T), FC ~ M, O]] =
+			schema => prefix(schema.prev).col(schema.last, schema.lastExtract)
+
+	}
+
+
+
+	object CustomizeSchema extends LowPrioritySchemaCustomizationImplicits {
+
+		@implicitNotFound("Component ${M} at index ${N} is not on the exclude list ${E}.\n+" +
+		                  "Missing implicit ExcludeComponent[${M}, ${N}, ${E}.")
+		class ExcludeComponent[M, N <: Numeral, E <: Chain] private[CustomizeSchema] ()
+
+		private[this] val instance = new ExcludeComponent[Mapping, 0, Chain]
+
+		implicit def excludeByIndex[M <: Mapping, N <: Numeral, E <: Chain]
+		                           (implicit included :ChainContains[E, N]) :ExcludeComponent[M, N, E] =
+			instance.asInstanceOf[ExcludeComponent[M, N, E]]
+
+		implicit def excludeByLabel[M <: LabeledMapping[L, _, _], N <: Numeral, L <: Label, E <: Chain]
+		                           (implicit inferLabel :Conforms[M, M, @|-|[L, _, _, _]], included :ChainContains[E, L])
+					:ExcludeComponent[M, N, E] =
+			instance.asInstanceOf[ExcludeComponent[M, N, E]]
+
+
+
+
+		@implicitNotFound("Failed to exclude components ${E} from the component chain ${C}.\n" +
+			              "This is typically caused by a non-existing component index or label string on the exclude list. " +
+			              "No implicit for FilterSchema[${S}, ${V}, ${C}, ${E}, ${N}, ${FV}, ${FC}, ${O}].")
+		abstract class FilterSchema[-X, E <: Chain, N <: Numeral, +R] {
+			def apply(schema :X) :R
+		}
+
+
+		private[this] val filterEmpty
+				:FilterSchema[MappingSchema[Any, @~, @~, Any], @~, 0, ExtensibleFlatMappingSchema[Any, @~, @~, Any]] =
+			_ => EmptySchema()
+
+		private[this] val filterEmptyIndexed
+				:FilterSchema[IndexedMappingSchema[Any, @~, @~, Any], @~, 0, ExtensibleFlatIndexedSchema[Any, @~, @~, Any]] =
+			_ => IndexedMappingSchema.apply
+
+		implicit def filterEmptySchema[S, O, E <: Chain]
+				:FilterSchema[MappingSchema[S, @~, @~, O], E, 0, ExtensibleFlatMappingSchema[S, @~, @~, O]] =
+			filterEmpty.asInstanceOf[FilterSchema[MappingSchema[S, @~, @~, O], E, 0, ExtensibleFlatMappingSchema[S, @~, @~, O]]]
+
+		implicit def filterEmptyIndexedSchema[S, O, E <: Chain]
+				:FilterSchema[IndexedMappingSchema[S, @~, @~, O], E, 0, ExtensibleFlatIndexedSchema[S, @~, @~, O]] =
+			filterEmptyIndexed.asInstanceOf[FilterSchema[IndexedMappingSchema[S, @~, @~, O], E, 0, ExtensibleFlatIndexedSchema[S, @~, @~, O]]]
+
+
+		implicit def unfilteredSchema[X <: MappingSchema[_, _ <: Chain, _ <: Chain, _]]
+				:FilterSchema[X, @~, _, X] =
+			schema => schema
+
+
+		implicit def excludeFromSchema[S, V <: Chain, C <: Chain, T, M <: |-|[T, _ <: Chain, _ <: Chain],
+			                           E <: Chain, I <: Numeral, J <: Numeral, FV <: Chain, FC <: Chain, O]
+		                              (implicit prefix :FilterSchema[MappingSchema[S, V, C, O], E, I,
+			                                                         ExtensibleMappingSchema[S, FV, FC, O]],
+		                               inc :Inc[I, J], exclude :ExcludeComponent[M, I, E])
+				:FilterSchema[MappingSchema[S, V ~ T, C ~ M, O], E, J, ExtensibleMappingSchema[S, FV, FC, O]] =
+			schema => prefix(schema.prev)
+
+		implicit def excludeFromFlatSchema[S, V <: Chain, C <: Chain, T, M <: ||[T],
+			                               E <: Chain, I <: Numeral, J <: Numeral, FV <: Chain, FC <: Chain, O]
+		                                  (implicit prefix :FilterSchema[FlatMappingSchema[S, V, C, O], E, I,
+			                                                             ExtensibleFlatMappingSchema[S, FV, FC, O]],
+		                                   inc :Inc[I, J], exclude :ExcludeComponent[M, I, E])
+				:FilterSchema[FlatMappingSchema[S, V ~ T, C ~ M, O], E, J, ExtensibleFlatMappingSchema[S, FV, FC, O]] =
+			schema => prefix(schema.prev)
+
+		implicit def excludeFromIndexedSchema[S, V <: LiteralIndex, C <: Chain, N <: Label, T, M <: @|-|[N, T, _, _],
+			                                  E <: Chain, I <: Numeral, J <: Numeral, FV <: LiteralIndex, FC <: Chain, O]
+		                                     (implicit prefix :FilterSchema[IndexedMappingSchema[S, V, C, O], E, I,
+			                                                                ExtensibleIndexedSchema[S, FV, FC, O]],
+		                                      inc :Inc[I, J], exclude :ExcludeComponent[M, I, E])
+				:FilterSchema[IndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J, ExtensibleIndexedSchema[S, FV, FC, O]] =
+			schema => prefix(schema.prev)
+
+		implicit def excludeFromFlatIndexedSchema[S, V <: LiteralIndex, C <: Chain, N <: Label, T, M <: @||[N, T],
+			                                      E <: Chain, I <: Numeral, J <: Numeral, FV <: LiteralIndex, FC <: Chain, O]
+		                                         (implicit prefix :FilterSchema[FlatIndexedMappingSchema[S, V, C, O], E, I,
+			                                                                    ExtensibleFlatIndexedSchema[S, FV, FC, O]],
+		                                          inc :Inc[I, J], exclude :ExcludeComponent[M, I, E])
+				:FilterSchema[FlatIndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J, ExtensibleFlatIndexedSchema[S, FV, FC, O]] =
+			schema => prefix(schema.prev)
+
+
+
+
+		@implicitNotFound("Not all items in chain ${E} identify components in chain ${C}. " +
+			              "Valid members are String literals (component labels) and Int literals (component indices).")
+		class ComponentsExist[C <: Chain, E <: Chain] private[CustomizeSchema] ()
+
+		private[this] val exists = new ComponentsExist[Chain, Chain]
+
+		implicit def noExclusions[C <: Chain] :ComponentsExist[C, @~] = exists.asInstanceOf[ComponentsExist[C, @~]]
+
+		implicit def excludedIndex[C <: Chain, N <: Numeral, E <: Chain]
+		                          (implicit previousExist :ComponentsExist[C, E], lastExists :ChainGet[C, N, _])
+				:ComponentsExist[C, E ~ N] =
+			exists.asInstanceOf[ComponentsExist[C, E ~ N]]
+
+		implicit def excludeLabel[C <: Chain, L <: Label, E <: Chain]
+		                         (implicit previousExist :ComponentsExist[C, E],
+		                          lastExists :ItemExists[C, ({ type T[X] = X <:< @|-|[L, _, _, _] })#T, _])
+				:ComponentsExist[C, E ~ L] =
+			exists.asInstanceOf[ComponentsExist[C, E ~ L]]
+
+
+
+		private[schema] def excluded[S, FV <: Chain, FC <: Chain, V <: Chain, C <: Chain, O]
+		                            (filtered :MappingSchema[S, FV, FC, O], schema :MappingSchema[S, V, C, O]) =
+		{
+			val components = schema.members.toSeq.asInstanceOf[Seq[SchemaMapping[_, _, _, O]]]
+			val remaining = filtered.members.toSeq.asInstanceOf[Seq[SchemaMapping[_, _, _, O]]].toSet
+			components.filterNot(remaining)
+		}
+
+	}
+
+
+
+	implicit def implicitCustomizeSchemaMapping[A <: OperationType, S, V <: Chain, C <: Chain,
+	                                            E <: Chain, FV <: Chain, FC <: Chain, O]
+	             (implicit filter :FilterSchema[MappingSchema[S, V, C, O], E, _, MappingSchema[S, FV, FC, O]],
+	                       allExist :ComponentsExist[C, E])
+			:CustomizeSchema[A, SchemaMapping[S, V, C, O], S, O, E]
+				{ type Values = FV; type Components = FC; type Result = OperationSchema[A, S, FV, FC, O] } =
+		new CustomizeSchema[A, SchemaMapping[S, V, C, O], S, O, E] {
+			override type Values = FV
+			override type Components = FC
+			override type Result = OperationSchema[A, S, FV, FC, O]
+
+			override def apply(mapping :SchemaMapping[S, V, C, O], op :A, includes :Iterable[RefinedMapping[_, O]]) = {
+				val schema = mapping.schema
+				val filtered = filter(schema)
+				val customized =
+					if (filtered eq schema) filtered
+					else new CustomizedSchema(schema, filtered, op, includes)
+				new CustomizedSchemaMapping[A, S, FV, FC, O](mapping, customized)
+			}
+		}
 
 
 
@@ -845,20 +1144,21 @@ object SchemaMapping {
 
 
 
-	private[schema] class CustomizedSchemaMapping[S, V <: Chain, C <: Chain, O]
+	private[schema] class CustomizedSchemaMapping[A <: OperationType, S, V <: Chain, C <: Chain, O]
 	                                             (original :SchemaMapping[S, _ <: Chain, _ <: Chain, O],
 	                                              protected override val backer :MappingSchema[S, V, C, O])
-		extends MappingSchemaDelegate[MappingSchema[S, V, C, O], S, V, C, O] with StableMapping
+		extends MappingSchemaDelegate[MappingSchema[S, V, C, O], S, V, C, O]
+		   with OperationSchema[A, S, V, C, O] with StableMapping
 	{
 		override def assemble(pieces :Pieces) = original.assemble(pieces)
 	}
 
 
-	private[schema] class CustomizedFlatSchemaMapping[S, V <: Chain, C <: Chain, O]
+	private[schema] class CustomizedFlatSchemaMapping[A <: OperationType, S, V <: Chain, C <: Chain, O]
 	                                                 (original :FlatSchemaMapping[S, _ <: Chain, _ <: Chain, O],
 	                                                  protected override val backer :FlatMappingSchema[S, V, C, O])
 		extends CustomizedSchemaMapping(original, backer) with FlatSchemaMapping[S, V, C, O]
-		   with MappingSchemaDelegate[FlatMappingSchema[S, V, C, O], S, V, C, O]
+		   with MappingSchemaDelegate[FlatMappingSchema[S, V, C, O], S, V, C, O] with FlatOperationSchema[A, S, V, C, O]
 
 
 

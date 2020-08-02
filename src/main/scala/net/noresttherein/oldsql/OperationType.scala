@@ -67,8 +67,11 @@ sealed trait OperationType {
 	  */
 	def customize[S, O](mapping :RefinedMapping[S, O],
 	                    include :Iterable[RefinedMapping[_, O]],
-	                    exclude :Iterable[RefinedMapping[_, O]] = Unique.empty) :RefinedMapping[S, O]
+	                    exclude :Iterable[RefinedMapping[_, O]] = Nil) :RefinedMapping[S, O]
 }
+
+
+
 
 
 
@@ -92,8 +95,7 @@ object OperationType {
 	}
 
 
-
-	case object SELECT extends ReadOperationType {
+	sealed abstract class SELECT extends ReadOperationType {
 		override val prohibited = NoSelect
 		override val extra = ExtraSelect
 		override val nonDefault = NoSelectByDefault
@@ -114,8 +116,10 @@ object OperationType {
 			mapping.selectForm(components)
 	}
 
+	implicit case object SELECT extends SELECT
 
-	case object QUERY extends WriteOperationType {
+
+	sealed abstract class QUERY extends WriteOperationType {
 		override val prohibited = NoQuery
 		override val extra = ExtraQuery
 		override val nonDefault = NoQueryByDefault
@@ -143,8 +147,10 @@ object OperationType {
 			mapping.queryForm(components)
 	}
 
+	implicit case object QUERY extends QUERY
 
-	case object UPDATE extends WriteOperationType {
+
+	sealed abstract class UPDATE extends WriteOperationType {
 		override val prohibited = NoUpdate
 		override val extra = ExtraUpdate
 		override val nonDefault = NoUpdateByDefault
@@ -172,8 +178,10 @@ object OperationType {
 			mapping.updateForm(components)
 	}
 
+	implicit case object UPDATE extends UPDATE
 
-	case object INSERT extends WriteOperationType {
+
+	sealed abstract class INSERT extends WriteOperationType {
 		override val prohibited = NoInsert
 		override val extra = ExtraInsert
 		override val nonDefault = NoInsertByDefault
@@ -200,6 +208,8 @@ object OperationType {
 		override def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S] =
 			mapping.insertForm(components)
 	}
+
+	implicit case object INSERT extends INSERT
 
 }
 

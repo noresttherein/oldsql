@@ -372,22 +372,30 @@ object NaturalMap {
 			entries.getOrElse(key, default).asInstanceOf[U[X]]
 
 
-		override def removed(key :K[_]) :NaturalMap[K, V] = new NaturalizedMap[K, V](entries.removed(key))
+		override def removed(key :K[_]) :NaturalMap[K, V] = {
+			val res = entries.removed(key)
+			if (res eq entries) this else new NaturalizedMap[K, V](res)
+		}
 
-		override def updated[U[T] >: V[T], X](key :K[X], value :U[X]) :NaturalMap[K, U] =
-			new NaturalizedMap[K, U](entries.updated[U[_]](key, value))
+		override def updated[U[T] >: V[T], X](key :K[X], value :U[X]) :NaturalMap[K, U] = {
+			val res = entries.updated[U[_]](key, value)
+			if (res eq entries) this else new NaturalizedMap[K, U](res)
+		}
 
 		override def ++[U[T] >: V[T]](entries :IterableOnce[NaturalMap.Assoc[K, U, _]]) :NaturalMap[K, U] =
 			entries match {
 				case _ if entries.iterator.isEmpty => this
 				case map :NaturalizedMap[K @unchecked, U @unchecked] =>
-					new NaturalizedMap[K, U](this.entries ++ map.entries)
+					val res = this.entries ++ map.entries
+					if (res eq this.entries) this
+					else if (res eq map.entries) map
+					else new NaturalizedMap[K, U](res)
 				case _ =>
-					new NaturalizedMap[K, U](
-						((this.entries :Map[K[_], U[_]]) /: entries) {
-							(acc, entry) => acc.updated(entry._1, entry._2)
-						}
-					)
+					val res = ((this.entries :Map[K[_], U[_]]) /: entries) {
+						(acc, entry) => acc.updated(entry._1, entry._2)
+					}
+					if (res eq this.entries) this
+					else new NaturalizedMap[K, U](res)
 			}
 
 		override def iterator :Iterator[NaturalMap.Assoc[K, V, _]] = entries.iterator.map {

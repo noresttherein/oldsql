@@ -293,13 +293,11 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 	  *             `columns` columns to create a value of `T`.
 	  */
 	def apply[T :NullValue](columns :Int)(read :(ResultSet, Int) => T) :SQLReadForm[T] =
-		new SQLReadForm[T] {
+		new AbstractReadForm[T] {
 			override def apply(position :Int)(res :ResultSet) = read(res, position)
 			override def opt(position :Int)(res :ResultSet) = Option(read(res, position))
 
 			override val readColumns = columns
-			override val nulls = NullValue[T]
-			override def nullValue = nulls.value
 
 			override def toString = "CustomReadForm@" + System.identityHashCode(this)
 		}
@@ -311,12 +309,10 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 	  *             `columns` columns to create a value of `T`.
 	  */
 	def opt[T :NullValue](columns :Int)(read :(ResultSet, Int) => Option[T]) :SQLReadForm[T] =
-		new SQLReadForm[T] {
+		new AbstractReadForm[T] {
 			override def opt(position :Int)(res :ResultSet) = read(res, position)
 
 			override val readColumns = columns
-			override val nulls = NullValue[T]
-			override def nullValue = nulls.value
 			override def toString = "CustomReadForm@" + System.identityHashCode(this)
 		}
 
@@ -472,7 +468,13 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 		override def nullValue :T = throw new NoSuchElementException("No null value allowed for " + this)
 	}
 
-
+	/** A Convenience base `SQLReadForm[T]` class which implements `nullValue` based on an implicit `NullValue[T]`
+	  * (overriding also `nulls` in the process). */
+	abstract class AbstractReadForm[+T](implicit override val nulls :NullValue[T])
+		extends SQLReadForm[T]
+	{
+		override def nullValue :T = nulls.value
+	}
 
 
 
@@ -483,12 +485,11 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 		override def opt(position :Int)(res :ResultSet) :Option[T] = None
 	}
 
-	private[schema] class NullReadForm[+T](columns :Int = 0)(implicit override val nulls :NullValue[T])
-		extends EmptyReadForm[T]
+
+	private[schema] class NullReadForm[+T :NullValue](columns :Int = 0)
+		extends AbstractReadForm[T] with EmptyReadForm[T]
 	{
 		override def readColumns :Int = columns
-
-		override def nullValue :T = nulls.value
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
@@ -507,9 +508,8 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 
 
 
-	private[schema] class ConstReadForm[+T](value :Option[T], columns :Int = 0)
-	                                       (implicit override val nulls :NullValue[T])
-		extends SQLReadForm[T]
+	private[schema] class ConstReadForm[+T :NullValue](value :Option[T], columns :Int = 0)
+		extends AbstractReadForm[T]
 	{
 		private[this] val result = value getOrElse nullValue
 
@@ -520,8 +520,6 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 		override def apply(position :Int)(res :ResultSet) :T = result
 
 		override def opt(position: Int)(res: ResultSet): Option[T] = value
-
-		override def nullValue: T = nulls.value
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
@@ -537,15 +535,12 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 
 
 
-	private[schema] class EvalReadForm[+T](value: => Option[T], columns :Int = 0)
-	                                      (implicit override val nulls :NullValue[T])
-		extends SQLReadForm[T]
+	private[schema] class EvalReadForm[+T :NullValue](value: => Option[T], columns :Int = 0)
+		extends AbstractReadForm[T]
 	{
 		override def readColumns :Int = columns
 
 		override def opt(position: Int)(res: ResultSet): Option[T] = value
-
-		override def nullValue: T = nulls.value
 
 		override def toString :String = "?=>"
 	}
@@ -558,13 +553,11 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 	class FlatMappedSQLReadForm[S, +T](protected[this] final val map :S => Option[T])
 	                                  (implicit protected[this] val source :SQLReadForm[S],
 	                                   final override val nulls :NullValue[T])
-		extends SQLReadForm[T]
+		extends AbstractReadForm[T]
 	{
 		override def readColumns :Int = source.readColumns
 
 		override def opt(position :Int)(res :ResultSet) :Option[T] = source.opt(position)(res).flatMap(map)
-
-		override def nullValue :T = nulls.value
 
 		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] = source.flatMap(map.apply(_).map(fun))
 
@@ -580,13 +573,11 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 	class MappedSQLReadForm[S, +T](protected[this] final val map :S => T)
 	                                              (implicit protected[this] val source :SQLReadForm[S],
 	                                               implicit final override val nulls :NullValue[T])
-		extends SQLReadForm[T]
+		extends AbstractReadForm[T]
 	{
 		override def readColumns :Int = source.readColumns
 
 		override def opt(position :Int)(res :ResultSet) :Option[T] = source.opt(position)(res).map(map)
-
-		override def nullValue :T = nulls.value
 
 		override def map[X :NullValue](fun :T => X) :SQLReadForm[X] = source.map(map andThen fun)
 

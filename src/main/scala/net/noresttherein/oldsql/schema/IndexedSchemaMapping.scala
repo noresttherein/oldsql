@@ -5,11 +5,11 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~, UniqueKey}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
+import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, CustomizedFlatSchema, CustomizedSchema, EmptySchema, FlatMappingSchema, FlatMappingSchemaProxy, MappingSchemaProxy}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.IndexedMappingSchema.{ExtensibleFlatIndexedSchema, FlatIndexedMappingSchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OptMappedSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
-import net.noresttherein.oldsql.schema.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchema, MappedIndexedSchemaMapping, OptMappedIndexSchema}
+import net.noresttherein.oldsql.schema.IndexedMappingSchema.{CustomizedFlatIndexedSchema, CustomizedIndexedSchema, ExtensibleFlatIndexedSchema, FlatIndexedMappingSchema}
+import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, CustomizedFlatSchemaMapping, CustomizedSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, OptMappedSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
+import net.noresttherein.oldsql.schema.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedOperationSchema, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchema, MappedIndexedSchemaMapping, OptMappedIndexSchema}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -17,15 +17,31 @@ import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.DelegateMapping
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
 
 
 
 
 /** A [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] variant where all components are indexed
   * with `String` literals for access.
+  * @tparam S the ''packed'' type of this schema, that is one of values assembled from the values of the components
+  *           from this schema, and the subject type of the mapping based on this schema.
+  * @tparam V a `LiteralIndex` with values of all components appearing on the components list `C`, indexed with
+  *           the string literal types they are labeled with. Declared here as simply `Chain` in order to allow
+  *           overriding of some `MappingSchema` methods, which would not be possible with a narrowed upper bound.
+  *           It is the subject type of this mapping.
+  * @tparam C a `Chain` containing the types of all components of this schema. Each component must be a subtype of
+  *           [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], labeled with a unique string literal type
+  *           for access.
+  * @tparam O the `Origin` type of this mapping, that is a marker type used to distinguish between several
+  *           instances of the same mapping class, such as different occurrences of the same table in an SQL select.
   * @author Marcin Mościcki
   */
-trait IndexedMappingSchema[S, V <: LiteralIndex, C <: Chain, O] extends MappingSchema[S, V, C, O] {
+trait IndexedMappingSchema[S, V <: Chain, C <: Chain, O] extends MappingSchema[S, V, C, O] {
+
+	override def prev[I <: Chain, P <: Chain](implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any))
+			:IndexedMappingSchema[S, I, P, O]
+
 	override def compose[X](extractor :X =?> S) :IndexedMappingSchema[X, V, C, O]
 }
 
@@ -81,12 +97,18 @@ object IndexedMappingSchema {
 
 
 
+
+
+
 	/** A [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] variant where all components are columns
 	  * indexed with `String` literals for access.
 	  */
-	trait FlatIndexedMappingSchema[S, V <: LiteralIndex, C <: Chain, O]
+	trait FlatIndexedMappingSchema[S, V <: Chain, C <: Chain, O]
 		extends FlatMappingSchema[S, V, C, O] with IndexedMappingSchema[S, V, C, O]
 	{
+		override def prev[I <: Chain, P <: Chain](implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any))
+				:FlatIndexedMappingSchema[S, I, P, O]
+
 		override def compose[X](extractor :X =?> S) :FlatIndexedMappingSchema[X, V, C, O]
 	}
 
@@ -118,10 +140,18 @@ object IndexedMappingSchema {
 
 
 
-		protected def append[K <: Label, T, MV <: Chain, MC <: Chain, M <: @|-|[K, T, MV, MC]]
-		                    (label :K, component: M, value :MappingExtract[S, T, O])
+		protected[schema] def append[K <: Label, T, M <: @|-|[K, T, _ <: Chain, _ <: Chain]]
+		                            (component: M, value :MappingExtract[S, T, O])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ M, O] =
-			new NonEmptyIndexedSchema[S, V, C, K, T, M, O](this, label, component, value, prefix)
+			new NonEmptyIndexedSchema[S, V, C, K, T, M, O](this, component, value, prefix)
+
+
+		protected def append[K <: Label, T, MV <: Chain, MC <: Chain, M <: @|-|[K, T, MV, MC]]
+		                    (component :M, value :S =?> T)
+				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ M, O] =
+			new NonEmptyIndexedSchema[S, V, C, K, T, M, O](
+				this, component, MappingExtract(component.withOrigin[O])(value), prefix
+			)
 
 		/** Appends the given component to this schema.
 		  * @param label a string literal used to indexed the components and their values.
@@ -132,10 +162,7 @@ object IndexedMappingSchema {
 		def comp[K <: Label, T, MV <: Chain, MC <: Chain](label :K, component: |-|[T, MV, MC], value :S =?> T)
 		                                                 (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
-		{
-			val labeled = component labeled[K] label
-			append[K, T, MV, MC, @|-|[K, T, MV, MC]](label, labeled, MappingExtract(labeled.withOrigin[O])(value))
-		}
+			comp(component labeled[K] label, value)
 
 		/** Appends the given component to this schema.
 		  * @param component a labeled `SchemaMapping` of any origin type to add as the component.
@@ -143,9 +170,9 @@ object IndexedMappingSchema {
 		  * @param value an extract returning the value of this component for the subject type `S` of an owning mapping.
 		  */
 		def comp[K <: Label, T, MV <: Chain, MC <: Chain](component: @|-|[K, T, MV, MC], value :S =?> T)
-		                                                 (implicit label :ValueOf[K], unique :UniqueKey[V, K])
+		                                                 (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
-			append[K, T, MV, MC, @|-|[K, T, MV, MC]](label.value, component, MappingExtract(component.withOrigin[O])(value))
+			append(component, MappingExtract(component.withOrigin[O])(value))
 
 
 
@@ -226,7 +253,7 @@ object IndexedMappingSchema {
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
 		{
 			val labeled = component labeled[K] label
-			append[K, T, MV, MC, @|-|[K, T, MV, MC]](label, labeled, MappingExtract.req(labeled.withOrigin[O])(value))
+			append(labeled, MappingExtract.req(labeled.withOrigin[O])(value))
 		}
 
 		/** Appends the given component to this schema.
@@ -235,11 +262,9 @@ object IndexedMappingSchema {
 		  * @param value a function returning the value of this component for the subject type `S` of an owning mapping.
 		  */
 		def comp[K <: Label, T, MV <: Chain, MC <: Chain](value :S => T, component: @|-|[K, T, MV, MC])
-		                                                 (implicit label :ValueOf[K], unique :UniqueKey[V, K])
+		                                                 (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
-			append[K, T, MV, MC, @|-|[K, T, MV, MC]](
-				label.value, component, MappingExtract.req(component.withOrigin[O])(value)
-			)
+			append(component, MappingExtract.req(component.withOrigin[O])(value))
 
 
 
@@ -336,7 +361,7 @@ object IndexedMappingSchema {
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
 		{
 			val labeled = component labeled[K] label
-			append[K, T, MV, MC, @|-|[K, T, MV, MC]](label, labeled, MappingExtract.opt(labeled.withOrigin[O])(value))
+			append(labeled, MappingExtract.opt(labeled.withOrigin[O])(value))
 		}
 
 		/** Appends the given component to this schema.
@@ -347,11 +372,9 @@ object IndexedMappingSchema {
 		  *              of the component's columns.
 		  */
 		def optcomp[K <: Label, T, MV <: Chain, MC <: Chain](value :S => Option[T], component: @|-|[K, T, MV, MC])
-		                                                    (implicit label :ValueOf[K], unique :UniqueKey[V, K])
+		                                                    (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
-			append[K, T, MV, MC, @|-|[K, T, MV, MC]](
-				label.value, component, MappingExtract.opt(component.withOrigin[O])(value)
-			)
+			append(component, MappingExtract.opt(component.withOrigin[O])(value))
 
 
 
@@ -380,7 +403,7 @@ object IndexedMappingSchema {
 				:ExtensibleIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
 		{
 			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs :_*)
-			append[N, T, @~, @~, @||[N, T]](label, column, ColumnExtract.req(column)(value))
+			append(column, ColumnExtract.req(column)(value))
 		}
 
 		/** Appends a new column labeled with its name to this schema.
@@ -408,7 +431,7 @@ object IndexedMappingSchema {
 				:ExtensibleIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
 		{
 			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs:_*)
-			append[N, T, @~, @~, @||[N, T]](label, column, ColumnExtract.opt(column)(value))
+			append(column, ColumnExtract.opt(column)(value))
 		}
 
 
@@ -420,8 +443,8 @@ object IndexedMappingSchema {
 		  * is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce a value
 		  * during assembly, this function will not be called and the created mapping will likewise fail to produce
 		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping#Pieces Pieces]].
-		  * @param constructor a function accepting a chain with the values of all components as they appear in the
-		  *                    components chain `C`.
+		  * @param constructor a function accepting a `LiteralIndex` with the values of all components as they appear
+		  *                    in the components chain `C`, indexed by component labels for direct access.
 		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
 		  */
 		def map(constructor :V => S) :IndexedSchemaMapping[S, V, C, O] =
@@ -449,9 +472,11 @@ object IndexedMappingSchema {
 		  * provided with component and column definitions when building this schema for disassembly of its subject
 		  * before writing to the database, and the function specified here for assembling its subject from the
 		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may
-		  * not produce the subject value for all input rows.
-		  * @param constructor a function accepting a chain with the values of all components as they appear in the
-		  *                    components chain `C`.
+		  * not produce the subject value for all input rows. This will also happen if any of the components
+		  * in this schema is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce
+		  * a value during assembly, as the intermediate index chain with unpacked values will be impossible to assemble.
+		  * @param constructor a function accepting a `LiteralIndex` with the values of all components as they appear
+		  *                    in the components chain `C`, indexed by component labels for direct access.
 		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
 		  */
 		def optMap(constructor :V => Option[S]) :IndexedSchemaMapping[S, V, C, O] =
@@ -461,7 +486,9 @@ object IndexedMappingSchema {
 		  * provided with component and column definitions when building this schema for disassembly of its subject
 		  * before writing to the database, and the function specified here for assembling its subject from the
 		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
-		  * the subject value for all input rows.
+		  * the subject value for all input rows. This will also happen if any of the components
+		  * in this schema is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce
+		  * a value during assembly, as the intermediate index chain with unpacked values will be impossible to assemble.
 		  * @param constructor a function which number of arguments and their types match the subject types of all
 		  *                    components as listed by the chain `V`. The keys in the index are ignored.
 		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
@@ -483,6 +510,17 @@ object IndexedMappingSchema {
 		extends ExtensibleIndexedSchema[S, V, C, O] with FlatIndexedMappingSchema[S, V, C, O]
 	{ outer =>
 
+		protected[schema] def col[K <: Label, T, M <: @||[K, T]](column :M, extract :MappingExtract[S, T, O])
+				:ExtensibleFlatIndexedSchema[S, V |~ (K :~ T), C ~ M, O] =
+			new NonEmptyFlatIndexedSchema[S, V, C, K, T, M, O](this, column, extract, prefix)
+
+		protected def append[N <: Label, T, M <: @||[N, T]](column :M, value :S =?> T)//(implicit unique :UniqueKey[V, N])
+				:ExtensibleFlatIndexedSchema[S, V |~ (N :~ T), C ~ M, O] =
+			new NonEmptyFlatIndexedSchema[S, V, C, N, T, M, O](
+				this, column, MappingExtract(column.withOrigin[O])(value), prefix
+			)
+
+
 		override def col[N <: Label, T :ColumnForm](name :N, value :S => T, buffs :Buff[T]*)
 		                                           (implicit unique :UniqueKey[V, N])
 				:ExtensibleFlatIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
@@ -494,9 +532,7 @@ object IndexedMappingSchema {
 				:ExtensibleFlatIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
 		{
 			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs:_*)
-			new NonEmptyFlatIndexedSchema(
-				this, label, column, MappingExtract(column)(Extractor.req(value)), prefix
-			)
+			new NonEmptyFlatIndexedSchema(this, column, MappingExtract(column)(Extractor.req(value)), prefix)
 		}
 
 
@@ -512,9 +548,7 @@ object IndexedMappingSchema {
 				:ExtensibleFlatIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
 		{
 			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs:_*)
-			new NonEmptyFlatIndexedSchema(
-				this, label, column, MappingExtract(column)(Extractor(value)), prefix
-			)
+			new NonEmptyFlatIndexedSchema(this, column, MappingExtract(column)(Extractor(value)), prefix)
 		}
 
 
@@ -550,10 +584,14 @@ object IndexedMappingSchema {
 
 
 
-	private[schema] class EmptyIndexedSchema[S, O]
-	                      (protected override val prefix :String = "", protected override val packedBuffs :Seq[Buff[S]] = Nil)
+
+	private[schema] class EmptyIndexedSchema[S, O](protected override val prefix :String = "",
+	                                               protected override val packedBuffs :Seq[Buff[S]] = Nil)
 		extends EmptySchema[S, O] with ExtensibleFlatIndexedSchema[S, @~, @~, O]
 	{
+		override def prev[I <: Chain, P <: Chain](implicit vals: @~ <:< (I ~ Any), comps: @~ <:< (P ~ Any)) =
+			throw new UnsupportedOperationException("EmptyIndexedSchema.prefix")
+
 		override def compose[X](extractor :X =?> S) :EmptyIndexedSchema[X, O] =
 			new EmptyIndexedSchema(prefix)
 	}
@@ -563,18 +601,21 @@ object IndexedMappingSchema {
 	private class NonEmptyIndexedSchema[S, V <: LiteralIndex, C <: Chain,
 	                                    K <: Label, T, M <: @|-|[K, T, _ <: Chain, _ <: Chain], O]
 	                                   (override val init :IndexedMappingSchema[S, V, C, O],
-	                                    protected val label :K, component :M, selector :MappingExtract[S, T, O],
-	                                    protected override val prefix :String)
+	                                    component :M, selector :MappingExtract[S, T, O], override val prefix :String)
 		extends BaseNonEmptySchema[LiteralIndex, Label :~ Any, |~, S, V, C, T, K :~ T, M, O](
 		                           init, component, selector, _.last.value)
 		   with ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ M, O]
 	{
 		protected override val packedBuffs = init.outerBuffs
+		protected val label :K = component.label
 
 		protected override def link(init :V, last :T) :V |~ (K :~ T) = init |~ label :~ last
 
+		override def prev[I <: Chain, P <: Chain](implicit vals :V |~ (K :~ T) <:< (I ~ Any), comps :C ~ M <:< (P ~ Any)) =
+			init.asInstanceOf[IndexedMappingSchema[S, I, P, O]]
+
 		override def compose[X](extractor :X =?> S) :NonEmptyIndexedSchema[X, V, C, K, T, M, O] =
-			new NonEmptyIndexedSchema(init compose extractor, label, component, this.extractor compose extractor, prefix)
+			new NonEmptyIndexedSchema(init compose extractor, component, this.extractor compose extractor, prefix)
 	}
 
 
@@ -582,22 +623,86 @@ object IndexedMappingSchema {
 	private class NonEmptyFlatIndexedSchema[S, V <: LiteralIndex, C <: Chain,
 	                                        K <: Label, T, M <: @||[K, T], O]
 	                                       (override val init :FlatIndexedMappingSchema[S, V, C, O],
-	                                        key :K, comp :M, extractor :MappingExtract[S, T, O], prefix :String)
-		extends NonEmptyIndexedSchema[S, V, C, K, T, M, O](init, key, comp, extractor, prefix)
+	                                        comp :M, extractor :MappingExtract[S, T, O], columnPrefix :String)
+		extends NonEmptyIndexedSchema[S, V, C, K, T, M, O](init, comp, extractor, columnPrefix)
 		   with BaseNonEmptyFlatSchema[LiteralIndex, Label :~ Any, |~, S, V, C, T, K :~ T, M, O]
 		   with ExtensibleFlatIndexedSchema[S, V |~ (K :~ T), C ~ M, O]
 	{
+		override def prev[I <: Chain, P <: Chain](implicit vals :V |~ (K :~ T) <:< (I ~ Any), comps :C ~ M <:< (P ~ Any))
+				:FlatIndexedMappingSchema[S, I, P, O] =
+			init.asInstanceOf[FlatIndexedMappingSchema[S, I, P, O]]
+
 		//these shortcut implementations work because column mappings moved their buff handling to their forms.
 		override val selectForm =
-			SQLReadForm.LiteralIndexReadForm(init.selectForm, new ValueOf(key), component.selectForm)
+			SQLReadForm.LiteralIndexReadForm(init.selectForm, new ValueOf(label), component.selectForm)
 		override val queryForm = SQLWriteForm.LiteralIndexWriteForm(init.queryForm, component.queryForm)
 		override val updateForm = SQLWriteForm.LiteralIndexWriteForm(init.updateForm, component.updateForm)
 		override val insertForm = SQLWriteForm.LiteralIndexWriteForm(init.insertForm, component.insertForm)
 		override def writeForm(op :WriteOperationType) = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyFlatIndexedSchema[X, V, C, K, T, M, O] =
-			new NonEmptyFlatIndexedSchema(init compose extractor, label, last, this.extractor compose extractor, prefix)
+			new NonEmptyFlatIndexedSchema(init compose extractor, last, this.extractor compose extractor, prefix)
 	}
+
+
+
+
+
+
+	private[schema] trait IndexedMappingSchemaProxy[S, V <: LiteralIndex, C <: Chain, O]
+		extends IndexedMappingSchema[S, V, C, O] with MappingSchemaProxy[S, V, C, O]
+		   with DelegateMapping[IndexedMappingSchema[S, V, C, O], V, O]
+	{
+		override def prev[I <: Chain, P <: Chain](implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any))
+				:IndexedMappingSchema[S, I, P, O] =
+			backer.prev
+	}
+
+
+
+	private[schema] trait FlatIndexedMappingSchemaProxy[S, V <: LiteralIndex, C <: Chain, O]
+		extends FlatIndexedMappingSchema[S, V, C, O] with IndexedMappingSchemaProxy[S, V, C, O]
+		   with FlatMappingSchemaProxy[S, V, C, O] with DelegateMapping[FlatIndexedMappingSchema[S, V, C, O], V, O]
+	{
+		override def prev[I <: Chain, P <: Chain]
+		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :FlatIndexedMappingSchema[S, I, P, O] =
+			backer.prev
+	}
+
+
+
+	private[schema] class CustomizedIndexedSchema[S, V <: LiteralIndex, C <: Chain, O]
+	                     (original :IndexedMappingSchema[S, _ <: LiteralIndex, _ <: Chain, O],
+	                      filtered :IndexedMappingSchema[S, V, C, O],
+	                      op :OperationType, include :Iterable[RefinedMapping[_, O]])
+		extends CustomizedSchema[S, V, C, O](original, filtered, op, include)
+			with IndexedMappingSchema[S, V, C, O]
+	{
+		override def prev[I <: Chain, P <: Chain](implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any))
+				:IndexedMappingSchema[S, I, P, O] =
+			filtered.prev
+
+		override def compose[X](extractor :X =?> S) :IndexedMappingSchema[X, V, C, O] =
+			new CustomizedIndexedSchema(original compose extractor, filtered compose extractor, op, include)
+	}
+
+
+
+	private[schema] class CustomizedFlatIndexedSchema[S, V <: LiteralIndex, C <: Chain, O]
+	                      (original :FlatIndexedMappingSchema[S, _ <: LiteralIndex, _ <: Chain, O],
+	                       filtered :FlatIndexedMappingSchema[S, V, C, O],
+	                       op :OperationType, include :Iterable[RefinedMapping[_, O]])
+		extends CustomizedSchema[S, V, C, O](original, filtered, op, include)
+			with FlatIndexedMappingSchema[S, V, C, O]
+	{
+		override def prev[I <: Chain, P <: Chain]
+		                 (implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :FlatIndexedMappingSchema[S, I, P, O] =
+			filtered.prev
+
+		override def compose[X](extractor :X =?> S) :FlatIndexedMappingSchema[X, V, C, O] =
+			new CustomizedFlatIndexedSchema(original compose extractor, filtered compose extractor, op, include)
+	}
+
 
 
 }
@@ -626,7 +731,8 @@ object IndexedMappingSchema {
   *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
   */
 trait IndexedSchemaMapping[S, V <: LiteralIndex, C <: Chain, O]
-	extends SchemaMapping[S, V, C, O] with AdapterFactoryMethods[({ type A[X] = IndexedSchemaMapping[X, V, C, O] })#A, S, O]
+	extends SchemaMapping[S, V, C, O]
+	   with AdapterFactoryMethods[({ type A[X] = IndexedSchemaMapping[X, V, C, O] })#A, S, O]
 {
 	override val schema :IndexedMappingSchema[S, V, C, O]
 
@@ -774,6 +880,34 @@ object IndexedSchemaMapping {
 	}
 
 
+	object FlatIndexedSchemaMapping {
+
+		implicit def implicitCustomizeFlatIndexedSchema[A <: OperationType, S, V <: LiteralIndex, C <: Chain,
+		                                                E <: Chain, FV <: LiteralIndex, FC <: Chain, O]
+		             (implicit filter :FilterSchema[FlatIndexedMappingSchema[S, V, C, O], E, _,
+                                                    FlatIndexedMappingSchema[S, FV, FC, O]],
+		                       allExist :ComponentsExist[C, E])
+				:CustomizeSchema[A, FlatIndexedSchemaMapping[S, V, C, O], S, O, E]
+					{ type Values = FV; type Components = FC; type Result = FlatIndexedOperationSchema[A, S, FV, FC, O] } =
+			new CustomizeSchema[A, FlatIndexedSchemaMapping[S, V, C, O], S, O, E] {
+				override type Values = FV
+				override type Components = FC
+				override type Result = FlatIndexedOperationSchema[A, S, FV, FC, O]
+
+				override def apply(mapping :FlatIndexedSchemaMapping[S, V, C, O],
+				                   op :A, includes :Iterable[RefinedMapping[_, O]]) =
+				{
+					val schema = mapping.schema
+					val filtered = filter(schema)
+					val customized =
+						if (filtered eq schema) filtered
+						else new CustomizedFlatIndexedSchema[S, FV, FC, O](schema, filtered, op, includes)
+					new CustomizedFlatIndexedSchemaMapping[A, S, FV, FC, O](mapping, customized)
+				}
+			}
+	}
+
+
 
 
 
@@ -873,9 +1007,6 @@ object IndexedSchemaMapping {
 
 
 
-
-
-
 	private trait DelegateIndexedSchemaMapping[S, V <: LiteralIndex, C <: Chain, O]
 		extends DelegateMapping[IndexedSchemaMapping[S, V, C, O], S, O] with IndexedSchemaMapping[S, V, C, O]
 	{
@@ -887,6 +1018,53 @@ object IndexedSchemaMapping {
 	{
 		override val schema = backer.schema
 	}
+
+
+
+
+
+
+	/** A `Mapping` implementation dedicated to a single database operation type `A`.
+	  * It lists the components which should be included in the operation on the type level as the components chain `C`,
+	  * with all components uniquely labeled on the type level for the purpose of indexing,
+	  * in order to possibly match them with parameter/column names of an SQL statement.
+	  * @see [[net.noresttherein.oldsql.schema.IndexedSchemaMapping]]
+	  */
+	trait IndexedOperationSchema[-A <: OperationType, S, V <: LiteralIndex, C <: Chain, O]
+		extends OperationSchema[A, S, V, C, O]
+
+	/** A `Mapping` implementation dedicated to a single database operation type `A`.
+	  * It lists the columns which should be included in the operation on the type level as the components chain `C`,
+	  * with no non-column components. All columns are uniquely labeled for the purpose of indexing,
+	  * in order to possibly match them with parameter/column names of an SQL statement.
+	  * @see [[net.noresttherein.oldsql.schema.IndexedSchemaMapping.FlatIndexedSchemaMapping]]
+	  */
+	trait FlatIndexedOperationSchema[-A <: OperationType, S, V <: LiteralIndex, C <: Chain, O]
+		extends IndexedOperationSchema[A, S, V, C, O] with FlatOperationSchema[A, S, V, C, O]
+
+
+
+	implicit def implicitCustomizeIndexedSchema[A <: OperationType, S, V <: LiteralIndex, C <: Chain,
+	                                            E <: Chain, FV <: LiteralIndex, FC <: Chain, O]
+	             (implicit filter :FilterSchema[IndexedMappingSchema[S, V, C, O], E, _, IndexedMappingSchema[S, FV, FC, O]],
+	                       allExist :ComponentsExist[C, E])
+			:CustomizeSchema[A, IndexedSchemaMapping[S, V, C, O], S, O, E]
+				{ type Values = FV; type Components = FC; type Result = IndexedOperationSchema[A, S, FV, FC, O] } =
+		new CustomizeSchema[A, IndexedSchemaMapping[S, V, C, O], S, O, E] {
+			override type Values = FV
+			override type Components = FC
+			override type Result = IndexedOperationSchema[A, S, FV, FC, O]
+
+			override def apply(mapping :IndexedSchemaMapping[S, V, C, O], op :A, includes :Iterable[RefinedMapping[_, O]]) = {
+				val schema = mapping.schema
+				val filtered = filter(schema)
+				val customized =
+					if (filtered eq schema) filtered
+					else new CustomizedIndexedSchema(schema, filtered, op, includes)
+				new CustomizedIndexedSchemaMapping[A, S, FV, FC, O](mapping, customized)
+			}
+		}
+
 
 
 
@@ -946,6 +1124,26 @@ object IndexedSchemaMapping {
 	                       constructor :V => Option[S], buffs :Seq[Buff[S]] = Nil)
 		extends OptMappedSchema[S, V, C, O](backer, constructor, buffs) with IndexedSchemaMapping[S, V, C, O]
 		   with MappingSchemaDelegate[IndexedMappingSchema[S, V, C, O], S, V, C, O]
+
+
+
+
+
+
+	class CustomizedIndexedSchemaMapping[A <: OperationType, S, V <: LiteralIndex, C <: Chain, O]
+	                                    (original :IndexedSchemaMapping[S, _ <: Chain, _ <: Chain, O],
+	                                     protected override val backer :IndexedMappingSchema[S, V, C, O])
+		extends CustomizedSchemaMapping[A, S, V, C, O](original, backer) with IndexedSchemaMapping[S, V, C, O]
+		   with MappingSchemaDelegate[IndexedMappingSchema[S, V, C, O], S, V, C, O]
+		   with IndexedOperationSchema[A, S, V, C, O]
+
+
+	class CustomizedFlatIndexedSchemaMapping[A <: OperationType, S, V <: LiteralIndex, C <: Chain, O]
+	                                        (original :FlatIndexedSchemaMapping[S, _ <: Chain, _ <: Chain, O],
+	                                         protected override val backer :FlatIndexedMappingSchema[S, V, C, O])
+		extends CustomizedSchemaMapping[A, S, V, C, O](original, backer) with FlatIndexedSchemaMapping[S, V, C, O]
+		   with MappingSchemaDelegate[FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
+		   with FlatIndexedOperationSchema[A, S, V, C, O]
 
 }
 

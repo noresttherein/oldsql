@@ -90,7 +90,8 @@ object LabeledMapping {
 
 
 
-	class MappingLabel[N <: Label, M <: RefinedMapping[S, O], S, O](val backer :M)(implicit singleton :ValueOf[N])
+	class MappingLabel[N <: Label, M <: RefinedMapping[S, O], S, O](protected val backer :M)
+	                                                               (implicit singleton :ValueOf[N])
 		extends DirectProxy[S, O] with DelegateAdapter[M, S, O] with (N @: M)
 	{
 		def this(label :N, backer :M) = this(backer)(new ValueOf(label))

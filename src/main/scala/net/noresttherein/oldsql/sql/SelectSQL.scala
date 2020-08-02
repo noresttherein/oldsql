@@ -1,16 +1,16 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, SQLWriteForm, BaseMapping}
+import net.noresttherein.oldsql.schema.{BaseMapping, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnReadForm, ColumnWriteForm, ComponentValues, Mapping, MappingExtract, SchemaMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.Buff.NoSelectByDefault
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.MappingSchema.SchemaFlattening
@@ -27,9 +27,11 @@ import net.noresttherein.oldsql.sql.ConditionSQL.ExistsSQL
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.MatchChain
-import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, SeqTuple}
+import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, IndexedChainTuple, SeqTuple}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
+import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedSQLExpression, MatchIndexedChain}
 
 
 //here be implicits
@@ -470,6 +472,7 @@ object SelectSQL {
 
 		private class AssemblerAssembler extends ExpressionMatcher[S, Assembler]
 			with CaseExpression[S, Assembler] with CaseColumn[S, Assembler] with MatchChain[S, Assembler]
+			with MatchIndexedChain[S, Assembler]
 		{
 			var columns :List[HeaderColumn[_]] = Nil
 			private[this] var names :Set[String] = Set("") //used column names, disallowing ""
@@ -528,6 +531,14 @@ object SelectSQL {
 				pieces => for (t <- tl(pieces); h <- hd(pieces)) yield t ~ h
 			}
 
+			override def indexedChainHead[I <: LiteralIndex, K <: Label :ValueOf, L]
+			                             (init :IndexedChainTuple[S, I], last :IndexedSQLExpression[S, L]) =
+			{
+				val tl = apply(init)
+				val hd = apply(last)
+				pieces => for (t <- tl(pieces); h <- hd(pieces)) yield t |~ :~[K](h)
+			}
+
 			override def seq[X](e :SeqTuple[S, X]) = {
 				val assemblers = e.inOrder.map(apply).reverse
 				val acc = Option(List.empty[X])
@@ -575,6 +586,7 @@ object SelectSQL {
 
 		private class ExtractsCollector extends ExpressionMatcher[S, Extractors]
 			with CaseExpression[S, Extractors] with CaseColumn[S, Extractors] with MatchChain[S, Extractors]
+			with MatchIndexedChain[S, Extractors]
 		{
 			private[this] var columnStack = outer.headerColumns.toList
 
@@ -592,7 +604,7 @@ object SelectSQL {
 			{
 				val table = e.table
 				val component = e.mapping
-				val componentColumns = component.selectable.view.map(table.export(_)).filter(NoSelectByDefault.disabled)
+				val componentColumns = component.selectable.toSeq.map(table.export(_)).filter(NoSelectByDefault.disabled)
 				val count = componentColumns.size
 				val (selectColumns, tail) = columnStack.splitAt(count)
 				columnStack = tail
@@ -629,13 +641,19 @@ object SelectSQL {
 			}
 
 			override def chainHead[T <: Chain, H](tail :ChainTuple[S, T], head :SQLExpression[S, H]) = {
-				val tailExs = apply(tail).map(schema.composeColumnExtractAssoc(outer, (_ :(T ~ H)).init)(_))
-				val headExs = apply(head).map(schema.composeColumnExtractAssoc(outer, (_:(T ~ H)).last)(_))
+				val tailExs = apply(tail).map(schema.composeColumnExtractAssoc(outer, Chain.init[T] _)(_))
+				val headExs = apply(head).map(schema.composeColumnExtractAssoc(outer, Chain.last[H] _)(_))
+				headExs ++: tailExs
+			}
+
+			override def indexedChainHead[I <: LiteralIndex, K <: Label :ValueOf, L]
+			                             (init :IndexedChainTuple[S, I], last :IndexedSQLExpression[S, L]) = {
+				val tailExs = apply(init).map(schema.composeColumnExtractAssoc(outer, Chain.init[I] _)(_))
+				val headExs = apply(last).map(schema.composeColumnExtractAssoc(outer, (_:(I |~ (K :~ L))).last.value)(_))
 				headExs ++: tailExs
 			}
 
 			override def emptyChain = Nil
-
 
 
 			override def expression[X](e :SQLExpression[S, X]) = unhandled(e)
