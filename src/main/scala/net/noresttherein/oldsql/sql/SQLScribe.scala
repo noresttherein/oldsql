@@ -77,10 +77,10 @@ object SQLScribe {
 	  * [[net.noresttherein.oldsql.sql.SQLScribe.RecursiveScribe#extended extended]] method for the subselect's
 	  * ''from'' clause. The subselect clause is then transplanted onto the result clause `G` in a way similar
 	  * to [[net.noresttherein.oldsql.sql.FromClause.asSubselectOf FromClause.asSubselectOf]], rewriting all
-	  * join conditions and subselect header before creating a new `SubselectSQL`.
+	  * join conditions and the subselect header before creating a new `SubselectSQL`.
 	  * In order to be able to rewrite subselect expressions, it requires the output clause instance `G` to use
 	  * as their `Outer`/`Implicit` portion. This can be achieved either by using this scribe in a `With`
-	  * constructor and passing `this` (with uninitialized join condition), or it can be a template clause with a shill
+	  * constructor and passing `this` (with uninitialized join condition), or it can be a template clause with an empty
 	  * join condition, as the join conditions from the outer portion of subselect clauses are not used in the
 	  * generation of the SQL for the subselect.
 	  */
@@ -119,10 +119,22 @@ object SQLScribe {
 					val newExtension = sub.newExtension.stretch[join.LastMapping]
 					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
 					val unfiltered = join.withLeft[sub.clause.type](sub.clause)(True)
-
+					//todo: condition as a function
 					val scribe = extended(join.generalized, unfiltered.generalized)(oldExtension, newExtension)
 					val res = join.withLeft[sub.clause.type](sub.clause)(scribe(join.condition))
 					RecursiveScribeSubselectExtension(res)(newExtension)
+
+				case j :Subselect[_, _] =>
+					val join = j.asInstanceOf[oldClause.Generalized Subselect MappingAt]
+					val unfiltered = join.withLeft[newClause.type](newClause)(True)
+					val scribe = extended(join.generalized, unfiltered.generalized)
+					val res = join.withLeft[newClause.type](newClause)(scribe(join.condition))
+					RecursiveScribeSubselectExtension[oldClause.Generalized, newClause.Generalized](res)
+
+				case bogus =>
+					throw new IllegalArgumentException(
+						s"Unsupported clause in a subselect: $bogus.\nTransplanting a subselect of $oldClause\n onto $newClause."
+					)
 			}
 
 
@@ -223,6 +235,8 @@ object SQLScribe {
 			val comp = newRelation \ this.replacement.mapping.asInstanceOf[T[H]]
 			new ReplaceRelation[T, E, N, V, S, H](subselect, replacement)(shift, comp)
 		}
+
+		override def toString = s"ReplaceRelation($relation with $replacement)($oldClause => $newClause)"
 	}
 
 
@@ -235,8 +249,6 @@ object SQLScribe {
 	                  (param :SQLRelation[G, M, X, O], extractor :X =?> P)
 		extends RecursiveScribe[F, G]
 	{
-		private[this] val Idx = param.shift
-
 		protected[this] override def extended[S <: FromClause, N <: FromClause]
 		                                     (subselect :S, replacement :N)
 		                                     (implicit oldExt :oldClause.Generalized ExtendedBy S,
@@ -244,7 +256,6 @@ object SQLScribe {
 			new ReplaceParam[S, N, N, M, X, P](subselect, replacement)(
 				SQLRelation[N, M, X, N](param.source, param.shift + newExt.length), extractor
 			)
-
 
 
 		override def component[T[A] <: BaseMapping[E, A], E, C[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
@@ -274,6 +285,8 @@ object SQLScribe {
 				param.asInstanceOf[SQLExpression[G, E]]
 			else
 				SQLRelation[G, T, E, G](e.source, e.shift)
+
+		override def toString = s"ReplaceParam($param)($oldClause => $newClause)"
 	}
 
 
@@ -379,6 +392,8 @@ object SQLScribe {
 					}
 			}
 
+
+		override def toString = s"RemoveParams($params)($oldClause => $newClause)"
 	}
 
 
@@ -444,6 +459,7 @@ object SQLScribe {
 					(table \ e.mapping.withOrigin[G]).upcast
 			}
 
+		override def toString = s"RemoveParam(#$idx=$param)($oldClause => $newClause)"
 	}
 
 
@@ -513,6 +529,8 @@ object SQLScribe {
 		override def subselect[V, O](e :SubselectSQL[F, V, O]) = e
 
 		override def subselect[V, O](e :SubselectColumn[F, V, O]) = e
+
+		override def toString = s"GroundFreeComponents($from)"
 	}
 
 
