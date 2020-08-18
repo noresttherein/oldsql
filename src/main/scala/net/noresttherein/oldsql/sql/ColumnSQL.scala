@@ -1,14 +1,13 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.ArithmeticSQL.{ArithmeticMatcher, CaseArithmetic}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
 import net.noresttherein.oldsql.sql.ConcatSQL.{CaseConcat, ConcatMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseColumnConversion, ColumnConversionMatcher, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterFrom}
 import net.noresttherein.oldsql.sql.LogicalSQL.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.CaseFreeColumn
@@ -79,7 +78,7 @@ trait ColumnSQL[-F <: FromClause, V] extends SQLExpression[F, V] {
 	override def basedOn[E <: FromClause](implicit subtype :E <:< F) :ColumnSQL[E, V] =
 		this.asInstanceOf[ColumnSQL[E, V]]
 
-	override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ColumnSQL[S, V]
+	override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :ColumnSQL[S, V]
 
 
 
@@ -99,6 +98,7 @@ trait ColumnSQL[-F <: FromClause, V] extends SQLExpression[F, V] {
 		applyTo(matcher :ColumnMatcher[F, Y])
 
 	def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[V]
+
 }
 
 
@@ -139,9 +139,8 @@ object ColumnSQL {
 	trait CompositeColumnSQL[-F <: FromClause, X] extends CompositeSQL[F, X] with ColumnSQL[F, X] {
 		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, X]
 
-		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ColumnSQL[S, X] =
+		override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :ColumnSQL[S, X] =
 			rephrase(SQLScribe.stretcher(base))
-
 	}
 
 

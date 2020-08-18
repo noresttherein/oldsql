@@ -3,9 +3,12 @@ package net.noresttherein.oldsql.sql
 import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.{ColumnForm, Mapping, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.morsels.abacus.Numeral
+import net.noresttherein.oldsql.schema.{BaseMapping, ColumnForm, Mapping, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom}
+import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterFrom, TableCount}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
@@ -13,7 +16,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, SQLTypePro
 import net.noresttherein.oldsql.sql.SQLExpression.SQLTypePromotion.Lift
 import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, False, NULL, SQLLiteral, SQLParameter, SQLParameterColumn, TermMatcher, True}
 import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
-import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, MappingMatcher}
+import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, FreeComponent, MappingMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchCompositeColumn}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelect, FreeSelectSQL, SelectMatcher, SubselectSQL}
@@ -90,7 +93,7 @@ trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is
 		)
 
 	/** Creates a subselect expression selecting this expression from the given `from` clause. */
-	def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Implicit, V, O] = //subtype S needed in SQLRelation
+	def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Implicit, V, O] = //subtype S needed in RelationSQL
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
 		)
@@ -102,7 +105,7 @@ trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is
 
 	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
 	  * the clause `F` this expression is based on. */
-	def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V]
+	def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V]
 
 
 
@@ -176,6 +179,13 @@ object SQLExpression extends SQLMultiColumnTerms {
 
 	implicit def implicitColumnLiteral[T :ColumnForm](value :T) :ColumnTerm[T] = ColumnLiteral(value)
 
+//	implicit def mappingSQLExpression[C <: Mapping, M <: BaseMapping[S, F], S, F <: FromClause]
+//	                                 (mapping :C)
+//	                                 (implicit conforms :Conforms[C, M, BaseMapping[S, F]],
+//	                                  projection :OriginProjection[C, S], shift :TableCount[F, _ <: Numeral])
+//			:FreeComponent[F, projection.WithOrigin, S] =
+//		FreeComponent(mapping.withOrigin[F], shift.tables)
+
 
 
 	implicit class boundParameterSQL[T, P <: SQLParameter[T]]
@@ -183,9 +193,6 @@ object SQLExpression extends SQLMultiColumnTerms {
 	{
 		def ? :P = factory(value)
 	}
-
-//	implicit def boundParameterExpressions[T, P](term :T) :boundParameterExpressions[T] =
-//		new boundParameterExpressions(term)
 
 	sealed abstract class BoundParameterExpressions[T, E <: SQLParameter[T]] {
 		implicit def apply(value :T) :E
@@ -204,19 +211,6 @@ object SQLExpression extends SQLMultiColumnTerms {
 	implicit class SQLExpressionChaining[F <: FromClause, T](private val self :SQLExpression[F, T]) extends AnyVal {
 		@inline def ~[H](head :SQLExpression[F, H]) :ChainTuple[F, @~ ~ T ~ H] = EmptyChain ~ self ~ head
 	}
-
-/*
-	implicit def typingCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O], X]
-	                       (e :SQLExpression[J[R], X])
-	                       (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt]) :SQLExpression[J[T], X] =
-		cast(e)
-
-	implicit def typingColumnCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O], X]
-	                             (e :ColumnSQL[J[R], X])
-	                             (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt])
-			:ColumnSQL[J[T], X] =
-		cast(e)
-*/
 
 
 
@@ -248,7 +242,7 @@ object SQLExpression extends SQLMultiColumnTerms {
 		def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, V]
 
 
-		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V] =
+		override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V] =
 			rephrase(SQLScribe.stretcher(base))
 
 

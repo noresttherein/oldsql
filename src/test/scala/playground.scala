@@ -44,6 +44,7 @@ object playground extends App {
 //	val h = unifyCons(hummus)
 //	h :Nothing
 
+
 	class Humans[O] extends AbstractSchemaMapping(humans[O]) {
 		val gun = schema / 0
 		val backup = schema / 1

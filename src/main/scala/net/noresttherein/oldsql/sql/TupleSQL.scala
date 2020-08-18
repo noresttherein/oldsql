@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.{Chain, LiteralIndex}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.{CaseChain, ChainHead, ChainMatcher, EmptyChain}
@@ -125,7 +125,7 @@ object TupleSQL {
 		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T]
 
 
-		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
+		override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T] =
 			rephrase(SQLScribe.stretcher(base))
 
 		def ~[S <: F, H](head :SQLExpression[S, H]) :ChainHead[S, T, H] = new ChainHead(this, head)
@@ -171,7 +171,7 @@ object TupleSQL {
 			override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ChainTuple[S, T ~ H] =
 				init.rephrase(mapper) ~ mapper(last)
 
-			override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T ~ H] =
+			override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :ChainTuple[S, T ~ H] =
 				init.stretch(base) ~ last.stretch(base)
 		}
 
@@ -194,7 +194,7 @@ object TupleSQL {
 
 			override def rephrase[S <: FromClause](mapper :SQLScribe[FromClause, S]) :this.type = this
 
-			override def stretch[U <: FromClause, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) = this
+			override def stretch[U <: FromClause, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :this.type = this
 		}
 	}
 
@@ -243,7 +243,7 @@ object TupleSQL {
 		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :IndexedChainTuple[S, T]
 
 
-		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :IndexedChainTuple[S, T] =
+		override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :IndexedChainTuple[S, T] =
 			rephrase(SQLScribe.stretcher(base))
 
 
@@ -275,7 +275,7 @@ object TupleSQL {
 		sealed trait IndexedSQLExpression[-F <: FromClause, T] extends SQLExpression[F, T] {
 			def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :IndexedSQLExpression[S, T]
 
-			def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :IndexedSQLExpression[S, T]
+			def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :IndexedSQLExpression[S, T]
 		}
 
 		class IndexedColumn[-F <: FromClause, N <: Label, V](column :ColumnSQL[F, V], override val alias :N)
@@ -284,7 +284,7 @@ object TupleSQL {
 			override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :IndexedColumn[S, N, V] =
 				new IndexedColumn(mapper(column), alias)
 
-			override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :IndexedColumn[S, N, V] =
+			override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :IndexedColumn[S, N, V] =
 				new IndexedColumn(column.stretch(base), alias)
 		}
 
@@ -307,7 +307,7 @@ object TupleSQL {
 			override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :IndexedChainTuple[S, T |~ (K :~ H)] =
 				init.rephrase(mapper) |~ :~[K](last.rephrase(mapper))
 
-			override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :IndexedChainTuple[S, T |~ (K :~ H)] =
+			override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :IndexedChainTuple[S, T |~ (K :~ H)] =
 				init.stretch(base) |~ :~[K](last.stretch(base))
 		}
 

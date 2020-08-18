@@ -8,14 +8,14 @@ import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 
 
 
-//todo: Relation?
 /**
   * @author Marcin Mościcki
   */
-trait RowSource[M[O] <: MappingAt[O]] {
-	type Row[O] = M[O] //consider: RowSource could be covariant if not for this member type. Maybe not needed?
+trait Relation[+M[O] <: MappingAt[O]] {
+	def row[O] :M[O] = apply[O]
 
 	def apply[O] :M[O]
+
 	def sql :String
 
 	override def toString :String = sql
@@ -26,17 +26,17 @@ trait RowSource[M[O] <: MappingAt[O]] {
 
 
 
-object RowSource {
-	type * = RowSource[M] forSome { type M[O] <: MappingAt[O] }
+object Relation {
+	type * = Relation[M] forSome { type M[O] <: MappingAt[O] }
 
 
 	def apply[M <: Mapping, S](name :String, template :M)
-	                          (implicit projection :OriginProjection[M, S]) :RowSource[projection.WithOrigin] =
+	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
 		new ProjectingSource[projection.WithOrigin, S](projection[Any](template), name)(projection.isomorphism)
 
 
 	def apply[M <: Mapping, S](template :M)
-	                          (implicit projection :OriginProjection[M, S]) :RowSource[projection.WithOrigin] =
+	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
 		new ProjectingSource[projection.WithOrigin, S](projection[Any](template))(projection.isomorphism)
 
 
@@ -45,8 +45,8 @@ object RowSource {
 
 
 	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
-	                         (source :RowSource[R])
-	                         (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyFrom]) :RowSource[T] =
+	                         (source :Relation[R])
+	                         (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt]) :Relation[T] =
 		cast(source)
 
 
@@ -54,15 +54,15 @@ object RowSource {
 
 
 
-	private class ProjectingSource[M[O] <: BaseMapping[S, O], S]
-	                              (protected val template :M[Any], override val sql :String)
-	                              (implicit protected val projection :FunctorProjection[M, S, Any])
-		extends RowSource[M]
+	private class ProjectingSource[+M[O] <: BaseMapping[S, O], S]
+	                              (protected[this] val template :M[Any], override val sql :String)
+	                              (implicit protected[this] val projection :FunctorProjection[M, S, Any])
+		extends Relation[M]
 	{
 		def this(template :M[Any])(implicit projection :FunctorProjection[M, S, Any]) =
 			this(template, template.sqlName getOrElse {
 				throw new IllegalArgumentException(
-					s"Can't create a RowSource with template mapping $template as it has an empty sqlName."
+					s"Can't create a Relation with template mapping $template as it has an empty sqlName."
 				)
 			})
 
@@ -71,7 +71,7 @@ object RowSource {
 
 
 
-	trait NamedSource[N <: String with Singleton, M[O] <: MappingAt[O]] extends RowSource[M] {
+	trait NamedRelation[N <: String with Singleton, +M[O] <: MappingAt[O]] extends Relation[M] {
 		def name :N
 		override def sql :String = name
 	}
@@ -81,7 +81,7 @@ object RowSource {
 
 
 
-	trait Table[M[O] <: MappingAt[O]] extends RowSource[M] {
+	trait Table[+M[O] <: MappingAt[O]] extends Relation[M] {
 		def name :String
 		override def sql :String = name
 	}
@@ -99,14 +99,13 @@ object RowSource {
 
 
 
-		trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with NamedSource[N, M]
-
+		trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with NamedRelation[N, M]
 
 	}
 
 
 
-	private[oldsql] val Dummy = RowSource(new ConstantMapping["Dummy", "Dummy"]("Dummy"))
+	private[oldsql] val Dummy = Relation(new ConstantMapping["Dummy", "Dummy"]("Dummy"))
 
 }
 

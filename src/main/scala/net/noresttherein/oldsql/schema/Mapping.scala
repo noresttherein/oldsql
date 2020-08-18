@@ -1028,10 +1028,10 @@ object Mapping {
 
 
 
-	implicit def mappingSQLFormula[C <: Mapping, M <: BaseMapping[S, F], S, F <: FromClause]
-                                  (mapping :C)
-                                  (implicit conforms :Conforms[C, M, BaseMapping[S, F]],
-                                   projection :OriginProjection[C, S], shift :TableCount[F, _ <: Numeral])
+	implicit def mappingSQLExpression[C <: Mapping, M <: BaseMapping[S, F], S, F <: FromClause]
+                                     (mapping :C) //can't use TableShift as we might be converting a component of a table
+                                     (implicit conforms :Conforms[C, M, BaseMapping[S, F]],
+                                      projection :OriginProjection[C, S], shift :TableCount[F, _ <: Numeral])
 			:FreeComponent[F, projection.WithOrigin, S] =
 		FreeComponent(mapping.withOrigin[F], shift.tables)
 
@@ -1890,7 +1890,7 @@ object BaseMapping {
 
 	type Of[S] = BaseMapping[S, _]
 
-	type AnyFrom[O] = M[O] forSome { type M[A] <: BaseMapping[_, A] }
+	type AnyAt[O] = M[O] forSome { type M[A] <: BaseMapping[_, A] }
 
 	type AnyOf[S] = M[S] forSome { type M[X] <: BaseMapping[X, _] }
 

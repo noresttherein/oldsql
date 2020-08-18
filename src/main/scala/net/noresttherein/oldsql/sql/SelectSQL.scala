@@ -19,9 +19,9 @@ import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterFrom, SubselectOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterFrom, SubselectOf}
 import net.noresttherein.oldsql.sql.JoinParam.FromParam
-import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, SQLRelation}
+import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SelectSQL.SelectAs
 import net.noresttherein.oldsql.sql.ConditionSQL.ExistsSQL
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMatcher}
@@ -69,7 +69,7 @@ sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]]
 
 	val from :From
 
-	def tables :Seq[SQLRelation.AnyIn[from.Generalized]] = from.subselectTableStack
+	def tables :Seq[RelationSQL.AnyIn[from.Generalized]] = from.subselectTableStack
 
 	def filter :SQLBoolean[from.Generalized] = from.filter
 
@@ -106,7 +106,7 @@ sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]]
 
 
 
-	override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SelectSQL[S, V, O]
+	override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :SelectSQL[S, V, O]
 
 
 
@@ -156,7 +156,9 @@ sealed trait SelectSQL[-F <: FromClause, V, O] extends SQLExpression[F, Rows[V]]
 
 
 object SelectSQL {
+//todo: parameterized selects
 //todo: union, minus, product, symdiff
+
 	def apply[F <: OuterFrom, T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, I >: F <: FromClause, O]
 	         (from :F, header :ComponentSQL[F, T, E, M, V, I]) :SelectMapping[F, M, V, O] =
 		new SelectComponent[F, T, E, M, V, I, O](from, header)
@@ -226,7 +228,7 @@ object SelectSQL {
 				:SelectColumn[F, X, O] =
 			map(applyFun(f))
 
-		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SelectColumn[S, V, O]
+		override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :SelectColumn[S, V, O]
 	}
 
 
@@ -237,7 +239,7 @@ object SelectSQL {
 	/** Base trait for SQL select expressions whose header depends solely on the explicit FROM clause of the select,
 	  * i.e. it is not dependent on any outside rows. Such an expression is a valid select statement in opposition to
 	  * subselect expressions.
-	  */
+	  */ //todo: conversion to Relation - would be nice if there were sources for subselects; theoretically possible
 	trait FreeSelectSQL[V, O] extends SelectSQL[FromClause, V, O] {
 		override type From <: OuterFrom
 
@@ -249,8 +251,7 @@ object SelectSQL {
 				:FreeSelectSQL[X, O] =
 			map(applyFun(f))
 
-		override def stretch[U <: FromClause, S <: FromClause]
-		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectSQL[V, O] =
+		override def stretch[U <: FromClause, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :FreeSelectSQL[V, O] =
 			this
 
 		override def applyTo[Y[_]](matcher: ExpressionMatcher[FromClause, Y]): Y[Rows[V]] = matcher.freeSelect(this)
@@ -268,7 +269,7 @@ object SelectSQL {
 				:FreeSelectColumn[X, O] =
 			map(applyFun(f))
 
-		override def stretch[U <: FromClause, S <: FromClause]
+		override def stretch[U <: FromClause, S <: FromSome]
 		                    (base :S)(implicit ev :U ExtendedBy S) :FreeSelectColumn[V, O] =
 			this
 
@@ -293,8 +294,7 @@ object SelectSQL {
 				:SubselectSQL[F, X, O] =
 			map(applyFun(f))
 
-		override def stretch[U <: F, G <: FromClause](base :G)(implicit extension :U ExtendedBy G)
-			:SubselectSQL[G, V, O]
+		override def stretch[U <: F, G <: FromSome](base :G)(implicit extension :U ExtendedBy G) :SubselectSQL[G, V, O]
 
 		override def applyTo[Y[_]](matcher: ExpressionMatcher[F, Y]): Y[Rows[V]] = matcher.subselect(this)
 	}
@@ -304,13 +304,12 @@ object SelectSQL {
 		override def map[X](f :V => X) :SubselectColumn[F, X, O] =
 			new ArbitrarySubselectColumn[F, From, X, O](from, header.map(f))
 
-		override def map[Fun, C <: Chain, X]
-		                     (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+		override def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 				:SubselectColumn[F, X, O] =
 			map(applyFun(f))
 
-		override def stretch[U <: F, G <: FromClause](base :G)(implicit extension :U ExtendedBy G)
-				:SubselectColumn[G, V, O]
+		override def stretch[U <: F, G <: FromSome]
+		                    (base :G)(implicit extension :U ExtendedBy G) :SubselectColumn[G, V, O]
 
 		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Rows[V]] = matcher.subselect(this)
 	}
@@ -404,15 +403,15 @@ object SelectSQL {
 		   with SubselectMapping[F, S, H, V, O]
 	{
 
-		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G) :SubselectSQL[G, V, O] = {
+		override def stretch[U <: F, G <: FromSome](base :G)(implicit ev :U ExtendedBy G) :SubselectSQL[G, V, O] = {
 			type Ext = SubselectOf[G] //pretend this is the actual type S after rebasing to the extension clause G
 			val upcast = from :FromClause //scalac bug workaround
 			val stretched = upcast.asSubselectOf(base)(ev.asInstanceOf[upcast.Implicit ExtendedBy G]).asInstanceOf[Ext]
 			val subselectTables = stretched.size - base.size
 			val table = header.from
 			val replacement =
-				if (table.shift < subselectTables) table.asInstanceOf[SQLRelation[Ext, T, E, Ext]]
-				else stretched.tableStack(table.shift + ev.length).asInstanceOf[SQLRelation[Ext, T, E, Ext]]
+				if (table.shift < subselectTables) table.asInstanceOf[RelationSQL[Ext, T, E, Ext]]
+				else stretched.tableStack(table.shift + ev.length).asInstanceOf[RelationSQL[Ext, T, E, Ext]]
 			val component = replacement \ header.mapping.withOrigin[Ext]
 			new SubselectComponent[G, Ext, T, E, H, V, Ext, O](stretched, component)
 		}
@@ -492,7 +491,7 @@ object SelectSQL {
 			override def component[T[B] <: BaseMapping[E, B], E, M[B] <: BaseMapping[X, B], X, A >: S <: FromClause]
 			                      (e :ComponentSQL[S, T, E, M, X, A]) =
 			{
-				val table = e.table
+				val table = e.entity
 
 				def headerColumn[C](column :table.Column[C]) :Assoc[table.Component, HeaderColumn, C] = {
 					val expr = e.from \ column
@@ -602,7 +601,7 @@ object SelectSQL {
 			override def component[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[X, A], X, G >: S <: FromClause]
 			                      (e :ComponentSQL[S, T, E, M, X, G]) :Extractors[X] =
 			{
-				val table = e.table
+				val table = e.entity
 				val component = e.mapping
 				val componentColumns = component.selectable.toSeq.map(table.export(_)).filter(NoSelectByDefault.disabled)
 				val count = componentColumns.size
@@ -687,11 +686,11 @@ object SelectSQL {
 	private class ArbitrarySubselect[-F <: FromClause, S <: SubselectOf[F], V, O](subclause :S, header :SQLExpression[S, V])
 		extends ArbitrarySelect[F, S, V, O](subclause, header) with SubselectSQL[F, V, O]
 	{
-		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G) :SubselectSQL[G, V, O] = {
+		override def stretch[U <: F, G <: FromSome](base :G)(implicit ev :U ExtendedBy G) :SubselectSQL[G, V, O] = {
 			type Ext = FromClause { type Implicit = G }
 			val upcast = from :FromClause //scalac bug workaround
 			val stretched = upcast.asSubselectOf(base)(ev.asInstanceOf[upcast.Implicit ExtendedBy G]).asInstanceOf[Ext]
-			val substitute = With.shiftBack[S, Ext](from, stretched, ev.length, upcast.subselectSize)
+			val substitute = AndFrom.shiftBack[S, Ext](from, stretched, ev.length, upcast.subselectSize)
 			new ArbitrarySubselect[G, Ext, V, O](stretched, substitute(header))
 		}
 
@@ -779,11 +778,11 @@ object SelectSQL {
 	                                      (clause :S, override val header :ColumnSQL[S, V])
 		extends ArbitrarySelectColumn[F, S, V, O](clause, header) with SubselectColumn[F, V, O]
 	{
-		override def stretch[U <: F, G <: FromClause](base :G)(implicit ev :U ExtendedBy G) :SubselectColumn[G, V, O] = {
+		override def stretch[U <: F, G <: FromSome](base :G)(implicit ev :U ExtendedBy G) :SubselectColumn[G, V, O] = {
 			type Ext = FromClause { type Implicit = G }
 			val upcast :FromClause = from
 			val stretched = upcast.asSubselectOf(base)(ev.asInstanceOf[upcast.Implicit ExtendedBy G]).asInstanceOf[Ext]
-			val substitute = With.shiftBack[S, Ext](from, stretched, ev.length, upcast.subselectSize)
+			val substitute = AndFrom.shiftBack[S, Ext](from, stretched, ev.length, upcast.subselectSize)
 			new ArbitrarySubselectColumn[G, Ext, V, O](stretched, substitute(header))
 		}
 	}
