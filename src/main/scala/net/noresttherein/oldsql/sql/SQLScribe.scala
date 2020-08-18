@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectCol
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMatcher}
 import net.noresttherein.oldsql.sql.SQLScribe.{ColumnResult, ExpressionResult}
-import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, NULL, SQLLiteral, SQLParameter, SQLParameterColumn, True}
+import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnTerm, CompositeNULL, NULL, SQLParameter, SQLParameterColumn, True}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.CaseColumnTerm
 
 
@@ -139,6 +139,13 @@ object SQLScribe {
 					val condition = newClause.filter.asInstanceOf[SQLBoolean[FromClause]] && scribe(join.condition)
 					val res = From[MappingOf[Any]#TypedProjection, Any](join.right, condition).asInstanceOf[newClause.Nested]
 					RecursiveScribeSubselectExtension(res)(extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized])
+
+				case d :DecoratedFrom[_] =>
+					val wrap = d.asInstanceOf[DecoratedFrom[FromClause]]
+					val sub = subselectClause(wrap.clause)
+					val res = wrap.copy(sub.clause.asInstanceOf[wrap.clause.FromLast]).asInstanceOf[newClause.Nested]
+					val newExtension = sub.newExtension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized]
+					RecursiveScribeSubselectExtension(res)(newExtension)
 
 				//cases with From/Dual are covered by the freeSelect rather than subselect and this method is not called.
 				case bogus =>

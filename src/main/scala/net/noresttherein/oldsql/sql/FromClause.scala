@@ -18,6 +18,7 @@ import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, FreeColumn, Joined
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.JoinParam.{?:, FromParam, LabeledFromParam, ParamRelation, WithParam}
 import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.DecoratedFrom.{Alias, DecoratorUpcasting, FromSomeDecorator, GenericDecorator}
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
@@ -50,8 +51,9 @@ import net.noresttherein.oldsql.sql.SQLScribe.RemoveParams
   * using the infix notation: `Dual Join Rangers Join Familiars Join Monsters`. Note that the whole `Join`
   * class hierarchy is left-associative for more natural left to right reading and writing. Specialized classes for
   * all join kinds exist, as well as special variants for ''from'' clauses of subselects of some outer clause as well
-  * as unbound query parameters. Other implementations, not derived from `AndFrom` are also possible.
-  * As subtypes are also universally covariant regarding their `FromClause` type parameters,
+  * as unbound query parameters. Other implementations, not derived from `AndFrom` are also possible, in particular
+  * decorators extending [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] which introduce no new relations,
+  * but can add other features. As subtypes are also universally covariant regarding their `FromClause` type parameters,
   * any prefix can be always substituted with the abstract `FromClause` supertype, balancing static type checking
   * with a degree of freedom and flexibility promoting code reuse. A `FromClause` subtype from the above category
   * is said to be ''complete'' if its definition starts with the [[net.noresttherein.oldsql.sql.Dual Dual]]
@@ -109,13 +111,14 @@ trait FromClause { thisClause =>
 	type LastTable[F <: FromClause] <: JoinedRelation[F, LastMapping]
 
 	/** The supertype of this instance containing only the last relation mapping joined with `FromClause` using
-	  * the most abstract 'join' kind `AndFrom`.
+	  * the most abstract 'join' kind `AndFrom`. If this clause is not a `AndFrom` subclass but a decorator,
+	  * the ''generalized'' supertype of the decorator is used as the wrapper over `FromClause AndFrom LastMapping`.
 	  * It is the type this instance's `last` joined relation is based on. `Dual` defines this type as the most generic
 	  * `FromClause` to indicate that any expression based on an empty clause can be used as part of expressions
 	  * for any other clause.
 	  */
-	type FromLast >: this.type <: FromClause
-//	type FromLast <: FromClause
+//	type FromLast >: this.type <: FromClause
+	type FromLast <: FromClause
 
 	/** The last relation in this clause when treated as a list, if any.
 	  * @throws NoSuchElementException if this clause is empty.
@@ -143,7 +146,7 @@ trait FromClause { thisClause =>
 
 	/** The super type of this instance used as the basis for its ''where'' clause filter expression (and others).
 	  * It abstracts over the join kinds used and focuses only on the relations available to SQL expressions
-	  * based on this clause. It is formed by replacing all join kinds present in the complete signature
+	  * based on this clause. It is formed by replacing all join kinds (and decorators) present in the complete signature
 	  * of this type with their most generic versions which still provide distinctions necessary for all external types
 	  * working with `FromClause` instances to provide their full functionality. This process works recursively,
 	  * with every `FromClause` subtype accepting another `F &lt;: FromClause` type parameter which corresponds
@@ -197,8 +200,8 @@ trait FromClause { thisClause =>
 	  * However, if for any concrete clause `F &lt;: ConcreteFrom` and `from :F`, `from.This &lt;: from.Self`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Self]]
 	  */
-	type This >: this.type <: FromLast
-//	type This <: FromClause
+//	type This >: this.type <: FromLast
+	type This <: FromClause// <: FromLast //>: this.type <: FromLast
 
 
 
@@ -420,7 +423,7 @@ trait FromClause { thisClause =>
 	  * of the generated SQL) and this clause as the ''implicit'' prefix,
 	  * joined with the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join. All relations included
 	  * in this clause are available to any `SQLExpression` parameterized with the type of the returned clause.
-	  * The method works differently for empty clauses: as an empty clause cannot appear on the left side
+	  * The method workds differently for empty clauses: as an empty clause cannot appear on the left side
 	  * of `Subselect`, it simply returns `From(subselect)`. All non subselect clauses conform
 	  * to [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[Dual]], so the returned clause
 	  * is a valid subselect clause of `Generalized` (and `Self`) either way.
@@ -755,9 +758,9 @@ object FromClause {
 	  */
 	trait FromSome extends FromClause { thisClause =>
 		override type LastTable[F <: FromClause] = JoinedRelation[F, LastMapping]
-		override type FromLast >: this.type <: FromSome
-//		override type FromLast <: FromSome
-//		override type This <: FromSome
+//		override type FromLast >: this.type <: FromSome
+		override type FromLast <: FromSome
+		override type This <: FromSome
 
 		override def lastAsIn[E <: FromSome](implicit extension :FromLast PrefixOf E) :LastTable[E] =
 			last.extend[E]
@@ -1596,6 +1599,10 @@ object FromClause {
 		implicit def joined[L <: FromClause, R[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
 		                   (implicit count :FromClauseSize[L, M], plus :Inc[M, N]) :FromClauseSize[L AndFrom R, N] =
 			new FromClauseSize[L AndFrom R, N](plus.n)
+		
+		implicit def decorated[F <: FromClause, N <: Numeral](implicit count :FromClauseSize[F, N])
+				:FromClauseSize[DecoratedFrom[F], N] =
+			new FromClauseSize(count.tables)
 	}
 
 
@@ -1615,6 +1622,11 @@ object FromClause {
 		                   (implicit split :Conforms[F, F, L AndFrom R], count :TableCount[L, M], inc :Inc[M, N])
 				:TableCount[F, N] =
 			new TableCount[F, N](inc.n)
+		
+		implicit def decorated[D <: DecoratedFrom[F], F <: FromClause, N <: Numeral]
+		                      (implicit deconstruct :Conforms[D, D, DecoratedFrom[F]], count :TableCount[F, N])
+				:TableCount[D, N] =
+			new TableCount(count.tables)
 	}
 
 
@@ -1635,6 +1647,11 @@ object FromClause {
 		                          (implicit split :Conforms[F, F, L AndFrom R], prev :TableShift[L, T, M], inc :Inc[M, N])
 				:TableShift[F, T, N] =
 			new TableShift[F, T, N](inc.n)
+		
+		implicit def decorated[D <: DecoratedFrom[F], F <: FromClause, T[O] <: MappingAt[O], N <: Numeral]
+		                      (implicit deconstruct :Conforms[D, D, DecoratedFrom[F]], prev :TableShift[F, T, N])
+				:TableShift[D, T, N] =
+			new TableShift(prev.tables)
 	}
 
 
@@ -1719,6 +1736,20 @@ object FromClause {
 						get.table(from.left)
 				}
 
+			implicit def decoratedNegative[F <: D[C], D[+B <: FromSome] <: FromSomeDecorator[B], C <: FromSome, 
+			                               N <: Numeral]
+			                              (implicit upcast :DecoratorUpcasting[F, D, C], get :ByNegativeIndex[C, N])
+					:ByNegativeIndex[F, N] { type T[O] = get.T[O]; type G = D[get.G] } =
+				new ByNegativeIndex[F, N] {
+					override type T[O] = get.T[O]
+					override type G = D[get.G]
+
+					override val stretch = get.stretch.wrap[D]
+
+					override def table(from :F) =
+						get.table(from.clause)
+				}
+
 
 
 			@implicitNotFound("Can't get relation at the (non-negative) index ${N} in ${F}. Either ${N} < 0, " +
@@ -1756,6 +1787,90 @@ object FromClause {
 
 					override def table(from :L J R) =
 						get.table(from.left)
+				}
+
+			implicit def decoratedPositive[F <: D[C], D[+B <: FromSome] <: FromSomeDecorator[B], C <: FromSome, 
+			                               N <: Numeral, I <: Numeral]
+			                              (implicit upcast :DecoratorUpcasting[F, D, C], get :ByPositiveIndex[C, N, I])
+					:ByPositiveIndex[F, N, I] { type T[O] = get.T[O]; type G = D[get.G] } =
+				new ByPositiveIndex[F, N, I] {
+					override type T[O] = get.T[O]
+					override type G = D[get.G]
+
+					override val stretch = get.stretch.wrap[D]
+
+					override def table(from :F) =
+						get.table(from.clause)
+				}
+
+		}
+
+
+
+
+
+
+		/** Implicit witness accessing the last relation in the ''from'' clause `F` with alias `A`.
+		  * It is defined as the last relation of the clause `L`, such that
+		  * `L` [[net.noresttherein.oldsql.sql.DecoratedFrom.Alias Alias]] `A` appears as a part of type `F` and
+		  * is the right-most such occurrence.
+		  */
+		@implicitNotFound("No relation with alias ${A} appears in the clause ${F}.")
+		sealed abstract class ByAlias[-F <: FromClause, A <: Label] {
+			type T[O] <: MappingAt[O]
+			type G >: F <: FromClause
+
+			def stretch :FromClause AndFrom T PrefixOf G
+
+			@inline def apply(from :F) :JoinedRelation[G, T] = table(from).extend(stretch)
+
+			def table(from :F) :JoinedRelation[FromClause AndFrom T, T]
+		}
+
+		
+		
+		object ByAlias {
+
+			sealed abstract class Get[-F <: FromSome, A <: Label] extends ByAlias[F, A] {
+				override type G >: F <: FromSome
+			}
+
+			implicit def last[M[O] <: MappingAt[O], A <: Label] :Get[FromClause AndFrom M Alias A, A]
+					{ type T[O] = M[O]; type G = FromClause AndFrom M Alias A } =
+				new Get[FromClause AndFrom M Alias A, A] {
+					override type T[O] = M[O]
+					override type G = FromClause AndFrom M Alias A
+
+					override val stretch = PrefixOf[FromClause AndFrom M, FromClause AndFrom M Alias A]
+
+					override def table(from :FromClause AndFrom M Alias A) =
+						from.clause.last
+				}
+
+			implicit def previous[J[+F <: FromSome, T[O] <: MappingAt[O]] <: F AndFrom T,
+			                      L <: FromSome, R[O] <: MappingAt[O], A <: Label]
+			                     (implicit get :Get[L, A]) :Get[L J R, A] { type T[O] = get.T[O]; type G = get.G J R } =
+				new Get[L J R, A] {
+					override type T[O] = get.T[O]
+					override type G = get.G J R
+
+					override val stretch = get.stretch.stretch[G]
+
+					override def table(from :L J R) =
+						get.table(from.left)
+				}
+
+			implicit def decorated[F <: D[C], D[+B <: FromSome] <: FromSomeDecorator[B], C <: FromSome, A <: Label]
+			                      (implicit deconstruct :DecoratorUpcasting[F, D, C], get :Get[C, A])
+					:Get[F, A] { type T[O] = get.T[O]; type G = D[get.G] } =
+				new Get[F, A] {
+					override type T[O] = get.T[O]
+					override type G = D[get.G]
+
+					override val stretch = get.stretch.stretch[G]
+
+					override def table(from :F) =
+						get.table(from.clause)
 				}
 
 		}
@@ -1841,6 +1956,20 @@ object FromClause {
 
 					override def table(from :L J R) =
 						get.table(from.left)
+				}
+
+			implicit def decorated[F <: D[C], D[+B <: FromSome] <: FromSomeDecorator[B], C <: FromSome, K, X <: Numeral]
+			                      (implicit upcast :DecoratorUpcasting[F, D, C], get :Found[C, K, X])
+					:Found[F, K, X] { type T[O] = get.T[O]; type G = D[get.G] } =
+				new Found[F, K, X] {
+					override type T[O] = get.T[O]
+					override type G = D[get.G]
+
+					override val stretch = get.stretch.wrap[D]
+					override def shift = get.shift
+
+					override def table(from :F) =
+						get.table(from.clause)
 				}
 
 
@@ -2075,6 +2204,17 @@ object FromClause {
 				}
 			}
 
+		implicit def nonParamDecorator[D <: GenericDecorator[F], F <: FromSome,
+		                               P <: _ ~ _, U <: FromSome with ParameterlessFrom]
+		                              (implicit deconstruct :Conforms[D, D, GenericDecorator[F]],
+		                                        prev :ApplyJoinParams[F, P, U] { type lastWasParam = false })
+				:ApplyJoinParams[D, P, D#WithClause[U]] { type lastWasParam = false } =
+			new ApplyJoinParams[D, P, D#WithClause[U]] {
+				override type lastWasParam = false
+
+				override def apply(from :D, params :P) :D#WithClause[U] =
+					from.withClause(prev(from.clause, params))
+			}
 
 
 		implicit def applyParam[L <: FromClause, R[A] <: FromParam[X, A], X, I <: Chain, U <: ParameterlessFrom]
@@ -2091,6 +2231,14 @@ object FromClause {
 				}
 			}
 
+		implicit def paramDecorator[F <: FromSome, P <: _ ~ _, U <: ParameterlessFrom]
+		                           (implicit prev :ApplyJoinParams[F, P, U] { type lastWasParam = true })
+				:ApplyJoinParams[DecoratedFrom[F], P, U] { type lastWasParam = true } =
+			new ApplyJoinParams[DecoratedFrom[F], P, U] {
+				override type lastWasParam = true
+
+				override def apply(from :DecoratedFrom[F], params :P) = prev(from.clause, params)
+			}
 
 	}
 
@@ -2142,6 +2290,9 @@ object FromClause {
 		@inline def shrinkFront[U >: F <: FromClause, C <: FromClause, T <: E]
 		                       (implicit prefix :U ExtendedBy C, suffix :C ExtendedBy T) :C ExtendedBy T =
 			new ExtendedBy(length - prefix.length)
+
+		@inline def unwrapFront[C <: FromSome](implicit front :F <:< DecoratedFrom[C]) :C ExtendedBy E =
+			new ExtendedBy(length)
 	}
 
 
@@ -2157,6 +2308,8 @@ object FromClause {
 		                   (implicit ev :F ExtendedBy L) :F ExtendedBy (L AndFrom R) =
 			new ExtendedBy(ev.length + 1)
 
+		implicit def wrap[F <: FromClause, E <: FromClause](implicit ev :F ExtendedBy E) :F ExtendedBy DecoratedFrom[E] =
+			new ExtendedBy[F, DecoratedFrom[E]](ev.length)
 	}
 
 
@@ -2184,6 +2337,8 @@ object FromClause {
 
 		@inline def shrinkFront[C <: FromClause](implicit prefix :F PrefixOf C, suffix :C PrefixOf E) :C PrefixOf E =
 			new PrefixOf(this.suffix - prefix.suffix)
+
+		@inline def wrap[D[B <: E] <: DecoratedFrom[B]] :F PrefixOf D[E] = new PrefixOf[F, D[E]](suffix)
 	}
 
 
@@ -2198,6 +2353,10 @@ object FromClause {
 		implicit def extend[F <: FromClause, L <: FromClause, J <: L AndFrom R, R[O] <: MappingAt[O]]
 		                   (implicit infer :Conforms[J, J, L AndFrom R], ev :F PrefixOf L) :F PrefixOf J =
 			new PrefixOf[F, J](ev.suffix + 1)
+
+		implicit def wrap[F <: FromClause, E <: FromClause, D <: DecoratedFrom[E]]
+		                 (implicit types :Conforms[D, D, DecoratedFrom[E]], prefix :F PrefixOf E) :F PrefixOf D =
+			new PrefixOf[F, D](prefix.suffix)
 	}
 
 }
