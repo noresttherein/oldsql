@@ -423,7 +423,7 @@ trait FromClause { thisClause =>
 	  * of the generated SQL) and this clause as the ''implicit'' prefix,
 	  * joined with the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join. All relations included
 	  * in this clause are available to any `SQLExpression` parameterized with the type of the returned clause.
-	  * The method workds differently for empty clauses: as an empty clause cannot appear on the left side
+	  * The method works differently for empty clauses: as an empty clause cannot appear on the left side
 	  * of `Subselect`, it simply returns `From(subselect)`. All non subselect clauses conform
 	  * to [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[Dual]], so the returned clause
 	  * is a valid subselect clause of `Generalized` (and `Self`) either way.

@@ -1,17 +1,20 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.collection.Chain.~
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, JoinedEntities}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.sql.AndFrom.BaseAndFrom
+import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, FromSome, JoinedEntities}
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
-import net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents
+import net.noresttherein.oldsql.sql.SQLScribe.{ReplaceRelation, SubstituteComponents}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
 
 
 
@@ -73,14 +76,14 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome { thisCla
 
 
 
-	/** This type with the `FromClause` of the left side substituted for `F`. */
-	type WithLeft[+F <: FromSome] <: GeneralizedLeft[F] {
-		type WithLeft[+S <: FromSome] <: thisClause.WithLeft[S]
-	}
-
 	/** The `Generalized` type with the `FromClause` of the left side substituted for `F`. */
 	type GeneralizedLeft[+F <: FromSome] <: (F AndFrom R) {
 		type GeneralizedLeft[+S <: FromSome] <: thisClause.GeneralizedLeft[S]
+	}
+
+	/** This type with the `FromClause` of the left side substituted for `F`. */
+	type WithLeft[+F <: FromSome] <: GeneralizedLeft[F] {
+		type WithLeft[+S <: FromSome] <: thisClause.WithLeft[S]
 	}
 
 
@@ -299,4 +302,208 @@ object AndFrom {
 	}
 
 }
+
+
+
+
+
+
+/** A `FromClause` constituting of exactly one table or SQL relation.
+  * This is a specialized subclass of `AndFrom[Dual, T]`, so that we can write the type From[T] instead, especially
+  * in larger clauses like `From[Children] Join Daemons`. For all intents and purposes it is treated
+  * as `Dual InnerJoin T` (which would be illegal due to the restriction of the left side of joins to non empty clauses).
+  * All non empty ''from'' clauses start with this instance unless the first 'relation' is an unbound join parameter
+  * represented by a `JoinParam`.
+  */
+sealed trait From[T[O] <: MappingAt[O]] extends AndFrom[Dual, T] {
+	override val left :Dual = Dual
+
+	def table :Relation[T] = last.relation
+
+	override def filter :SQLBoolean[FromClause AndFrom T] =
+		if (left.filter eq True) condition else left.filter && condition
+
+	override type GeneralizedLeft[+L <: FromClause] = L AndFrom T
+	override type WithLeft[+L <: FromClause] = L AndFrom T
+	override type Generalized = FromClause AndFrom T
+	override type Self = From[T]
+	override type This >: this.type <: From[T]
+
+	override type AppendedTo[+P <: FromClause] = P AndFrom T
+
+	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] = P J T
+
+
+	override type Implicit = FromClause
+	override type Outer = Dual
+	override type Explicit = FromClause AndFrom T
+	override type Inner = FromClause AndFrom T
+
+	override def outer :Dual = left
+	override def subselectSize = 1
+
+	override type SubselectRow = @~ ~ last.Subject
+
+	override def subselectRow[E <: FromSome]
+	                         (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, @~ ~ last.Subject] =
+		EmptyChain ~ last.stretch(target)(extension)
+
+
+	override type AsSubselectOf[+F <: FromSome] = F Subselect T
+
+
+	override type Params = @~
+
+
+	/** Specify an alias for this relation. This is not necessary and may be overriden in case of conflicts,
+	  * but can be used as the default value and/or help with debugging.
+	  * @param alias the alias for the relation as in 'from users as u'.
+	  * @return a new `From` instance, with a new relation (not equal to this.last).
+	  */
+	def as[A <: Label](alias :A) :From[(T As A)#T]
+
+
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[From.*]
+
+	override def joinName :String = "from"
+
+	override def toString :String =
+		if (filter == True()) "from " + last.relation
+		else "from " + last.relation + " where " + filter
+
+}
+
+
+
+
+
+
+/** A `FromClause` factory for both single table queries, and starting points for arbitrary join lists.
+  * Example (see the `AndFrom` class documentation for explanation of the filters):
+  * {{{
+  *     val users = From(Users) whereLast (_.name === "Jack")
+  *     val guests = From(Hotels) join GuestsBook on (_.id === _.hotelId) join People on (_.guestId === _.id)
+  * }}}
+  */
+object From {
+
+	/** A template `From` instance using a dummy mapping for use as a polymorphic factory of `From`/`InnerJoin` clauses. */
+	final val template :From.* = From(Relation.Dummy)
+
+	/** Creates a ''from'' clause consisting of a single relation (table, view, select, or even a surrogate temporary
+	  * mapping) with `Mapping` `R`. It can be later filtered using
+	  * the [[net.noresttherein.oldsql.sql.FromClause#where where]] or
+	  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast]] method, providing the condition for the ''where''
+	  * clause associated with the created clause. The clause can be also subsequently joined with other relations
+	  * using join methods defined in [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension FromSomeExtension]]:
+	  * `join`, `outerJoin`, `leftJoin`, `rightJoin` and `subselect`.
+	  * @param relation the relation for the ''from'' clause, parameterized with a `BaseMapping` with subject type `S`,
+	  *                 represented here by types `R =:= T`, split in order to separate the inference of the mapping
+	  *                 type and its subject type and remove the need to specify the type parameter for the method
+	  *                 explicitly.
+	  * @param cast an implicit witness providing the type inference of the subject type of the relation's mapping
+	  *             as well as casting functions between associated classes parameterized with `T` and `R`.
+	  * @return an unfiltered `From[R]`.
+	  */
+	def apply[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (relation :Relation[R])(implicit cast :JoinedRelationSubject[From, R, T, MappingOf[S]#TypedProjection])
+			:From[R] =
+		cast(From(LastRelation[T, S](cast(relation)), True))
+
+
+	/** Creates a ''from'' clause consisting of a single relation (table, view, select, or even a surrogate temporary
+	  * mapping) with `Mapping` `R`. This is a lower level factory method accepting an optional, additional filter
+	  * for the ''where'' clause, but providing no type inference support and thus generally requiring the type
+	  * parameters to be specified explicitly. The clause can be also subsequently joined with other relations
+	  * using join methods defined in [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension FromSomeExtension]]:
+	  * `join`, `outerJoin`, `leftJoin`, `rightJoin` and `subselect`.
+	  * @param relation the relation for the ''from'' clause, parameterized with a `BaseMapping` with subject type `S`.
+	  * @param filter an optional boolean condition for the associated ''where'' clause.
+	  * @return a `From[R]`.
+	  */
+	def apply[T[O] <: BaseMapping[S, O], S]
+	         (relation :Relation[T], filter: SQLBoolean[FromClause AndFrom T] = True) :From[T] =
+		From(LastRelation[T, S](relation), filter)
+
+
+	private[sql] def apply[T[O] <: BaseMapping[S, O], S]
+	                      (relation :LastRelation[T, S], filter :SQLBoolean[FromClause AndFrom T]) :From[T] =
+		narrow(Dual, relation, filter)
+
+	private[sql] def narrow[T[O] <: BaseMapping[S, O], S]
+	                       (dual :Dual, relation :LastRelation[T, S], filter :SQLBoolean[FromClause AndFrom T])
+			:From[T] with (dual.type AndFrom T) =
+		new From[T] with BaseAndFrom[dual.type, T, S] {
+			override val left :dual.type = dual
+			override val last = relation
+			override val condition = filter
+			override def size = 1
+
+			override def narrow :AndFrom[dual.type, T] = this
+			override type This = From[T] with (dual.type AndFrom T)
+
+
+			override def withCondition(filter :SQLBoolean[FromClause AndFrom T]) =
+				From.narrow(left, last, filter)
+
+			override def withLeft[F <: FromClause](newLeft :F)(filter :SQLBoolean[newLeft.Generalized AndFrom T])
+					:F AndFrom T =
+				newLeft.extend(last, filter)
+
+
+			override def appendedTo[P <: FromClause](prefix :P) :P AndFrom T = prefix.extend(last, filter)
+
+			override def joinedWith[F <: FromSome](prefix :F, firstJoin :TrueJoin.*) :firstJoin.LikeJoin[F, T] =
+				firstJoin.likeJoin[F, T, S](prefix, right)(condition)
+
+			override def joinedAsSubselect[F <: FromSome](prefix :F) :Subselect[F, T] =
+				Subselect[F, T, S](prefix, last)(condition)
+
+
+			override def subselectTableStack[E <: FromSome]
+			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+				last.stretch[Generalized, E](target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
+
+
+			override def asSubselectOf[F <: FromSome](newOuter :F)(implicit extension :Implicit ExtendedBy F)
+					:newOuter.type Subselect T =
+				Subselect[newOuter.type, T, S](newOuter, last)(condition)
+
+
+			override def as[A <: Label](alias :A) :From[(T As A)#T] = {
+				val source = FromClause.AliasedRelation[T, A](last.relation, alias)
+				val aliased = RelationSQL.last[(T As A)#T, (T As A)#T, S](source)
+				type Res = FromClause AndFrom (T As A)#T //todo: condition from a function
+				val unfiltered = From[(T As A)#T, S](aliased, True)
+				val replacement = aliased \ (unfiltered.last.mapping.body :T[FromClause AndFrom (T As A)#T])
+				val substitute = new ReplaceRelation[T, S, (T As A)#T, S, Generalized, Res](
+					generalized, unfiltered)(last, replacement
+                )
+				From[(T As A)#T, S](aliased, substitute(condition))
+			}
+
+		}
+
+
+
+	/** Matches all `From` instances, extracting their relation in the process. */
+	def unapply[M[O] <: MappingAt[O]](from :FromClause AndFrom M) :Option[Relation[M]] = from match {
+		case _ :From.* => Some(from.right)
+		case _ => None
+	}
+
+	/** Matches all `From` instances, extracting their relation in the process. */
+	def unapply(from :FromClause) :Option[Relation.*] = from match {
+		case f :From.* => Some(f.table)
+		case _ => None
+	}
+
+	/** Type alias for `From` with the erased type parameter, covering all instances of `From`.
+	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
+	  * be matched directly with the wildcard '_'.
+	  */
+	type * = From[M] forSome { type M[O] <: MappingAt[O] }
+
+}
+
 
