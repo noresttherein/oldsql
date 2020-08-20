@@ -151,11 +151,11 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome { thisCl
 
 
 
-	override type Generalized >: Self <: (left.Generalized Extended R) { type Generalized <: thisClause.Generalized }
+//	override type Generalized >: Self <: (left.Generalized Extended R) { type Generalized <: thisClause.Generalized }
 
-	override type Self <: (left.Self Extended R) {
-		type Self = thisClause.Self; type Generalized = thisClause.Generalized
-	}
+//	override type Self <: (left.Self Extended R) {
+//		type Self = thisClause.Self; type Generalized = thisClause.Generalized
+//	}
 
 	override type This >: this.type <: L Extended R
 

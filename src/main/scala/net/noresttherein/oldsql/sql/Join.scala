@@ -34,6 +34,11 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]] extends AndFrom[L, R] { 
 	/** The generalized version of this join kind: it is `TrueJoin` for all real joins and `Subselect` for `Subselect`. */
 	type GeneralizedJoin[+F <: FromSome, T[O] <: MappingAt[O]] <: (F Join T) {
 		type GeneralizedJoin[+S <: FromSome, M[O] <: MappingAt[O]] = thisClause.GeneralizedJoin[S, M]
+
+		type ExplicitDef[+G <: FromSome, +E >: G <: FromSome, M[O] <: MappingAt[O]] = thisClause.ExplicitDef[G, E, M]
+
+		type ImplicitDef[+G <: FromClause { type Generalized <: G }, +I <: FromClause { type Generalized <: I }] =
+			thisClause.ImplicitDef[G, I]
 	}
 
 	/** This join type, fully parameterized with arbitrary prefix clause and relation mapping. Used by copy constructors
@@ -42,7 +47,14 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]] extends AndFrom[L, R] { 
 	  */
 	type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] <: (F GeneralizedJoin T) {
 		type LikeJoin[+S <: FromSome, M[O] <: MappingAt[O]] = thisClause.LikeJoin[S, M]
-		type GeneralizedJoin[+S <: FromSome, M[O] <: MappingAt[O]] = thisClause.GeneralizedJoin[S, M]
+
+		type InnerDef[G <: FromSome, S <: G, +E >: G <: FromSome, +I >: S <: E, M[O] <: MappingAt[O]] =
+			thisClause.InnerDef[G, S, E, I, M]
+
+		type OuterDef[G <: FromClause { type Generalized <: G }, S <: G { type Generalized = G; type Self = S },
+		              I <: FromClause { type Generalized <: I }, O <: I { type Generalized = I; type Self = O }] =
+			thisClause.OuterDef[G, S, I, O]
+
 	}
 
 	/** Creates a join of the same kind as this one between the `left` prefix clause and `right` relation given
@@ -116,6 +128,46 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]] extends AndFrom[L, R] { 
 
 	override type JoinedWith[+P <: FromSome, +J[+K <: FromSome, T[O] <: MappingAt[O]] <: K Join T] =
 		left.JoinedWith[P, J] LikeJoin R
+
+
+	/** Definition of the `Explicit` type of this join, used to enforce that `GeneralizedJoin` preserves
+	  * the `Explicit` type when parameterized with `left.Generalized`, to satisfy the constraints
+	  * on this type's `Generalized` type. It is always parameterized with `left.Generalized`, `left.Explicit` and `R`,
+	  * with `TrueJoin` defining it as `E TrueJoin T` and `Subselect` as `FromClause AndFrom T`.
+	  */
+	type ExplicitDef[+G <: FromSome, +E >: G <: FromSome, T[O] <: MappingAt[O]]
+		>: G GeneralizedJoin T <: (FromClause AndFrom T) //{ type Explicit <: ExplicitDef[G, E, T] }
+
+	/** Definition of the `Inner` type of this join, used to enforce that `LikeJoin` preserves
+	  * the `Explcit` and `Inner` types when parameterized with `left.Self`, to satisfy the constraints
+	  * on this type's `Self` type. It is always parameterized with `left.Generalized`, `left.Explicit`, `left.Self`,
+	  * `left.Inner` and `R`, with `TrueJoin` defining it as `I LikeJoin T` and `Subselect` as `FromSome Subselect T`.
+	  */
+	type InnerDef[G <: FromSome, S <: G, +E >: G <: FromSome, +I >: S <: E, T[O] <: MappingAt[O]]
+		>: S LikeJoin T <: ExplicitDef[G, E, T] //{ type Inner = InnerDef[G, S, E, I, T] }
+
+	/** Definition of the `Implicit` type of this join, used to enforce that `GeneralizedJoin` preserves
+	  * the `Implicit` type when parameterized with `left.Generalized`, to satisfy the constraints
+	  * on this type's `Generalized` type. It is always parameterized with `left.Generalized` and `left.Implicit`,
+	  * with `TrueJoin` defining it as `I` and `Subselect` as `G`.
+	  */
+	type ImplicitDef[+G <: FromClause { type Generalized <: G }, +I <: FromClause { type Generalized <: I }] <:
+		FromClause { type Generalized <: ImplicitDef[G, I] }
+
+	/** Definition of the `Outer` type of this join, used to enforce that `LikeJoin` preserves
+	  * the `Implicit` and `Outer` types when parameterized with `left.Self`, to satisfy the constraints
+	  * on this type's `Self` type. It is always parameterized with `left.Generalized`, `left.Implicit`,
+	  * `left.Self` and `left.Outer`, with `TrueJoin` defining it as `O` and `Subselect` as `S`.
+	  */
+	type OuterDef[G <: FromClause { type Generalized <: G }, S <: G { type Generalized = G; type Self = S },
+	              I <: FromClause { type Generalized <: I }, O <: I { type Generalized = I; type Self = O }] <:
+		ImplicitDef[G, I] { type Generalized = ImplicitDef[G, I]; type Self = OuterDef[G, S, I, O] }
+
+	override type Explicit = ExplicitDef[left.Generalized, left.Explicit, R]
+	override type Inner = InnerDef[left.Generalized, left.Self, left.Explicit, left.Inner, R]
+	override type Implicit = ImplicitDef[left.Generalized, left.Implicit]
+	override type Outer = OuterDef[left.Generalized, left.Self, left.Implicit, left.Outer]
+
 
 
 	override type Params = left.Params
@@ -261,7 +313,7 @@ object Join {
 	object JoinedRelationSubject {
 		import BaseMapping.AnyAt
 		private[this] val instance =
-			new JoinedRelationSubject[({ type F[M[O] <: MappingAt[O]] = FromClause AndFrom M })#F, //JoinWith[FromSome, Join]#F,
+			new JoinedRelationSubject[AndFrom.WithLeft[FromClause]#F,
 	                                  BaseMapping.AnyAt, BaseMapping.AnyAt, BaseMapping.AnyAt]
 			{
 				override def apply(rows :Relation[BaseMapping.AnyAt]) = rows
@@ -402,9 +454,17 @@ sealed trait TrueJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] {
 
 	override def subselectSize :Int = left.subselectSize + 1
 
+	override type ExplicitDef[+G <: FromSome, +E >: G <: FromSome, T[A] <: MappingAt[A]] = E TrueJoin T
 	override type Explicit = left.Explicit TrueJoin R
+
+	override type InnerDef[G <: FromSome, S <: G, +E >: G <: FromSome, +I >: S <: E, T[A] <: MappingAt[A]] = I LikeJoin T
 	override type Inner = left.Inner LikeJoin R
+
+	override type ImplicitDef[+G <: FromClause { type Generalized <: G }, +I <: FromClause { type Generalized <: I }] = I
 	override type Implicit = left.Implicit
+
+	override type OuterDef[G <: FromClause { type Generalized <: G }, S <: G { type Generalized = G; type Self = S },
+	                       I <: FromClause { type Generalized <: I }, O <: I { type Generalized = I; type Self = O }] = O
 	override type Outer = left.Outer
 
 	override def outer :Outer = left.outer
@@ -1173,9 +1233,18 @@ sealed trait Subselect[+F <: FromSome, T[O] <: MappingAt[O]] extends Join[F, T] 
 
 	override def subselectSize = 1
 
+	override type ExplicitDef[+G <: FromSome, +E >: G <: FromSome, R[O] <: MappingAt[O]] = FromClause AndFrom R
 	override type Explicit = FromClause AndFrom T
+
+	override type InnerDef[G <: FromSome, S <: G, +E >: G <: FromSome, +I >: S <: E, R[O] <: MappingAt[O]] =
+		FromSome Subselect R
 	override type Inner = FromSome Subselect T
+
+	override type ImplicitDef[+G <: FromClause { type Generalized <: G }, +I <: FromClause { type Generalized <: I }] = G
 	override type Implicit = left.Generalized
+
+	override type OuterDef[G <: FromClause { type Generalized <: G }, S <: G { type Generalized = G; type Self = S },
+	                       I <: FromClause { type Generalized <: I }, O <: I { type Generalized = I; type Self = O }] = S
 	override type Outer = left.Self
 
 	override def outer :Outer = left.self

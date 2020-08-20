@@ -157,7 +157,11 @@ trait FromClause { thisClause =>
 	  * with all join kinds replaced with the root type `AndFrom` and initial `Dual`
 	  * with `FromClause`. Clauses with the same `Generalized` type are considered equivalent for most purposes.
 	  */
-	type Generalized >: Self <: FromLast { type Generalized <: thisClause.Generalized } //todo: extra refinement
+	type Generalized >: Self <: FromLast {
+		type Generalized <: thisClause.Generalized //these can't be =:= because Dual.Generalized =:= FromClause
+		type Explicit <: thisClause.Explicit
+		type Implicit <: thisClause.Implicit
+	}
 
 	/** This clause upcast to its generalized supertype in which all join kinds are replaced with their least upper
 	  * bounds which still retain the information about their function.
@@ -181,7 +185,14 @@ trait FromClause { thisClause =>
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Generalized]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#This]]
 	  */
-	type Self <: FromLast { type Self = thisClause.Self; type Generalized = thisClause.Generalized }
+	type Self <: FromLast {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+	}
 
 	/** This clause as its [[net.noresttherein.oldsql.sql.FromClause#Self Self]] type. */
 	final def self :Self = this.asInstanceOf[Self]
@@ -516,7 +527,7 @@ trait FromClause { thisClause =>
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#AsSubselectOf]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectOf]]
 	  */
-	type Implicit <: FromClause
+	type Implicit <: FromClause { type Generalized <: thisClause.Implicit }
 
 	/** A prefix ''from'' clause of this clause consisting of all joins and relations preceding the last (rightmost)
 	  * `Subselect` join. If there are no `Subselect` joins in the complete type definition of this clause,
@@ -537,7 +548,10 @@ trait FromClause { thisClause =>
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#AsSubselectOf]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectOf]]
 	  */
-	type Outer <: Implicit
+	type Outer <: Implicit {
+		type Generalized = thisClause.Implicit
+		type Self = thisClause.Outer
+	}
 
 	/** Return the outer clause of this instance if it (or, recursively, any clause in the left side of the join)
 	  * was created by calling `outer.subselect()`. When viewed as a list of relations, `outer` constitutes
@@ -665,17 +679,13 @@ trait FromClause { thisClause =>
 	  */
 	def selectAs[C[A] <: MappingAt[A], M[A] <: BaseMapping[S, A], S, O >: Generalized <: FromClause]
 	            (component :JoinedEntities[Generalized] => C[O])
-	            (implicit typer :Conforms[C[O], M[O], BaseMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
+	            (implicit cast :Conforms[C[O], M[O], BaseMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
 			:Implicit SelectAs M[Any] =
 		{
 			type Mock = RelationSQL[Generalized, MappingOf[Any]#TypedProjection, Any, O]
 			val table = tableStack(shift.tables).asInstanceOf[Mock]
 			val comp = table \ component(generalized.entities)
-			if (isSubselect) {
-				type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
-				comp.subselectFrom(this.asInstanceOf[AsSubselect])
-			} else
-				comp.selectFrom(this.asInstanceOf[Generalized with OuterFrom])
+			selectAs(comp)
 		}
 
 
@@ -688,7 +698,7 @@ trait FromClause { thisClause =>
 			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
 			component.subselectFrom(this.asInstanceOf[AsSubselect])
 		} else
-			component.selectFrom(this.asInstanceOf[Generalized with OuterFrom])
+			component.asInstanceOf[ComponentSQL[FromClause, T, E, M, S, FromClause]].selectFrom(this.asInstanceOf[OuterFrom])
 
 
 	/** Creates an SQL ''select'' expression with this clause used for the ''from'' and ''where'' clauses
@@ -716,7 +726,7 @@ trait FromClause { thisClause =>
 			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
 			header.subselectFrom(this.asInstanceOf[AsSubselect])
 		} else
-			header.selectFrom(this.asInstanceOf[Generalized with OuterFrom])
+			header.asInstanceOf[SQLExpression[FromClause, V]].selectFrom(this.asInstanceOf[OuterFrom])
 
 
 	/** Creates an SQL ''select'' expression selecting a single column, as defined by the passed `header` `ColumnSQL`,
@@ -727,7 +737,7 @@ trait FromClause { thisClause =>
 			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
 			header.subselectFrom(this.asInstanceOf[AsSubselect])
 		} else
-			header.selectFrom(this.asInstanceOf[Generalized with OuterFrom])
+			header.asInstanceOf[ColumnSQL[FromClause, V]].selectFrom(this.asInstanceOf[OuterFrom])
 
 
 
@@ -911,6 +921,7 @@ object FromClause {
 	  */
 	type SubselectFrom = FromSome {
 		type Implicit <: FromSome //this holds only if there is a Subselect or JoinParam involved (Nothing)
+//		type Outer <: FromSome
 		type Self <: AsSubselectOf[Outer] //for JoinParam this translates to Self <: Nothing
 	}
 

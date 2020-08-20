@@ -90,10 +90,19 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome { thisCla
 	/** A join of the same kind as this clause, but with the left clause substituted for `left`. */
 	def withLeft[F <: FromSome](left :F)(filter :SQLBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[F]
 
-	override type Generalized >: Self <: (left.Generalized AndFrom R) { type Generalized <: thisClause.Generalized }
+	override type Generalized >: Self <: (left.Generalized AndFrom R) {
+		type Generalized <: thisClause.Generalized
+		type Explicit <: thisClause.Explicit
+		type Implicit <: thisClause.Implicit
+	}
 
 	override type Self <: (left.Self AndFrom R) {
-		type Self = thisClause.Self; type Generalized = thisClause.Generalized
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
 	}
 
 	override type This >: this.type <: L AndFrom R
@@ -114,13 +123,6 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome { thisCla
 
 	override def where(filter :SQLBoolean[Generalized]) :This =
 		if (filter == True) this else withCondition(condition && filter)
-
-	/** A function accepting the last relation of this clause, as a expression over a join between this clause
-	  * and a following mapping `T`, and the expression for the mapping `T`, being the last relation in the join,
-	  * and returning the join condition for the two relations as a `SQLBoolean` for the join clause. */
-//	override type JoinFilter[T[O] <: MappingAt[O]] =
-//		(JoinedRelation[FromClause AndFrom R AndFrom T, R], JoinedRelation[FromClause AndFrom T, T])
-//			=> SQLBoolean[FromClause AndFrom R AndFrom T]
 
 	/** Apply a filter condition to the last relation in this clause. The condition is combined using `&&` with
 	  * `this.condition` and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
