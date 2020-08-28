@@ -114,7 +114,7 @@ object SQLScribe {
 				case j :TrueJoin[_, _] =>
 					val join = j.asInstanceOf[FromSome TrueJoin MappingAt]
 					val sub = subselectClause(join.left)
-					val newExtension = sub.newExtension.stretch[join.LastMapping]
+					val newExtension = sub.newExtension.extend[join.LastMapping]
 					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
 					val unfiltered = join.withLeft[sub.clause.type](sub.clause)(True) //todo: condition from a function
 
@@ -126,7 +126,7 @@ object SQLScribe {
 					val join = j.asInstanceOf[(oldClause.Generalized with FromSome) Subselect MappingAt]
 					val base = newClause.asInstanceOf[FromSome]
 					val unfiltered = join.withLeft[base.type](base)(True)
-					implicit val extension = unfiltered.subselectSpan.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
+					implicit val extension = unfiltered.explicitSpan.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
 					val scribe = extended(join.generalized, unfiltered.generalized) //todo: condition from a function
 					val res = join.withLeft[base.type](base)(scribe(join.condition)).asInstanceOf[newClause.Nested]
 					RecursiveScribeSubselectExtension(res)(extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized])
@@ -134,7 +134,7 @@ object SQLScribe {
 				case j :Subselect[_, _] => //newClause :Dual => subselect becomes a free select
 					val join = j.asInstanceOf[(oldClause.Generalized with FromSome) Subselect MappingOf[Any]#TypedProjection]
 					val unfiltered = From[MappingOf[Any]#TypedProjection, Any](join.right)
-					implicit val extension = unfiltered.subselectSpan.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
+					implicit val extension = unfiltered.explicitSpan.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
 					val scribe = extended(join.generalized, unfiltered.generalized)
 					val condition = newClause.filter.asInstanceOf[SQLBoolean[FromClause]] && scribe(join.condition)
 					val res = From[MappingOf[Any]#TypedProjection, Any](join.right, condition).asInstanceOf[newClause.Nested]
@@ -490,10 +490,10 @@ object SQLScribe {
 	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.stretch stretch]]
 	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
 	  */
-	def stretcher[F <: FromClause, E <: FromSome](clause :E)(implicit extension :F ExtendedBy E) :SQLScribe[F, E] =
+	def stretcher[F <: FromClause, E <: FromClause](clause :E)(implicit extension :F ExtendedBy E) :SQLScribe[F, E] =
 		new Stretcher[F, E](clause)
 
-	private class Stretcher[+F <: FromClause, R <: FromSome](clause :R)(implicit extension :F ExtendedBy R)
+	private class Stretcher[+F <: FromClause, R <: FromClause](clause :R)(implicit extension :F ExtendedBy R)
 		extends CaseExpression[F, ExpressionResult[R]#T] with CaseColumn[F, ColumnResult[R]#T]
 		   with AbstractSQLScribe[F, R] //overrides the catch-all from the preceding traits
 	{

@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, ColumnForm, Mapping, SQLFor
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterFrom, TableCount}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterClause, TableCount}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
@@ -86,14 +86,30 @@ trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is
 
 
 
-	/** Creates a `SelectSQL` with this expression as the ''select'' clause and the given `from` clause. */
-	def selectFrom[S <: F with OuterFrom, O](from :S) :FreeSelectSQL[V, O] =
+	/** Creates a `SelectSQL` with this expression as the ''select'' clause and the given `from` clause.
+	  * This method is supported only by a few expression types, namely [[net.noresttherein.oldsql.sql.TupleSQL TupleSQL]]
+	  * and [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] subclasses. It is considered
+	  * low level API exposed only to support potential extension by custom expression types and should not be used
+	  * by the client code directly; prefer using [[net.noresttherein.oldsql.sql.FromClause#select select]]
+	  * and its relatives instead.
+	  * @throws UnsupportedOperationException if this expression cannot be used as the complete ''select'' clause,
+	  *                                       which is the default for all classes which do not override this method.
+	  */
+	def selectFrom[S <: F with OuterClause, O](from :S) :FreeSelectSQL[V, O] =
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
 		)
 
-	/** Creates a subselect expression selecting this expression from the given `from` clause. */
-	def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Implicit, V, O] = //subtype S needed in RelationSQL
+	/** Creates a subselect expression selecting this expression from the given `from` clause.
+	  * This method is supported only by a few expression types, namely [[net.noresttherein.oldsql.sql.TupleSQL TupleSQL]]
+	  * and [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] subclasses. It is considered
+	  * low level API exposed only to support potential extension by custom expression types and should not be used
+	  * by the client code directly; prefer using [[net.noresttherein.oldsql.sql.FromClause#select select]]
+	  * and its relatives instead.
+	  * @throws UnsupportedOperationException if this expression cannot be used as the complete ''select'' clause,
+	  *                                       which is the default for all classes which do not override this method.
+	  */
+	def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Implicit, V, O] = //subtype S currently unused, should be removed with O
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
 		)
@@ -105,7 +121,7 @@ trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is
 
 	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
 	  * the clause `F` this expression is based on. */
-	def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V]
+	def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V]
 
 
 
@@ -242,7 +258,7 @@ object SQLExpression extends SQLMultiColumnTerms {
 		def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, V]
 
 
-		override def stretch[U <: F, S <: FromSome](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V] =
+		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V] =
 			rephrase(SQLScribe.stretcher(base))
 
 

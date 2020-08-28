@@ -55,9 +55,11 @@ object LabeledMapping {
 
 	/** Adapter mapping attaching a `String` literal type `N` as a label to the mapping type `M`.
 	  * Note that this mapping's `Origin` and `Subject` types are equal to the types defined in the adapted mapping,
-	  * but are not declared in the type signature directly. For this reason instances of this type won't be
-	  * adapted automatically to `MappingOf`.
-	  */
+	  * but are not declared in the type signature directly as parameters. For this reason instances of this type
+	  * won't be adapted automatically to `MappingOf`.
+	  * See [[net.noresttherein.oldsql.schema.bits.LabeledMapping.LabeledProjection#WithOrigin LabeledProjection]]
+	  * for the appropriate type constructor.
+	  */ //todo: this unchecked variance looks very fishy, check if it doesn't break something
 	sealed trait @:[N <: Label, +M <: Mapping]
 		extends LabeledMapping[N, M#Subject @uncheckedVariance, M#Origin @uncheckedVariance]
 		   with MappingAdapter[M, M#Subject @uncheckedVariance, M#Origin @uncheckedVariance]
@@ -65,7 +67,7 @@ object LabeledMapping {
 
 		def label :N
 
-		override def toString = "'" + label + "@:" + body
+		override def toString :String = "'" + label + "@:" + body
 	}
 
 
@@ -115,7 +117,7 @@ object LabeledMapping {
 
 		override val label :N = labelValue.value
 
-		override def toString = "'" + label + "@:" + name + "[" + form + "]"
+		override def toString :String = "'" + label + "@:" + name + "[" + form + "]"
 	}
 
 

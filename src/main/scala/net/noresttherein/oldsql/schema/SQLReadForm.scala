@@ -737,7 +737,7 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 				formCount += 1
 			}
 			if (resultCount != formCount) None
-			else Some(result.result)
+			else Some(result.result())
 		}
 
 
@@ -748,7 +748,7 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 				form.opt(i)(res) foreach { result += _  }
 				i += form.readColumns
 			}
-			result.result
+			result.result()
 		}
 
 		override def nullValue: Seq[T] = forms.map(_.nullValue)

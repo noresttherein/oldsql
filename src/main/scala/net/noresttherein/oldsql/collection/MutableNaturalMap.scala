@@ -18,7 +18,7 @@ private[oldsql] trait MutableNaturalMap[K[_], V[_]]
 
 	override def knownSize :Int = super.knownSize
 
-	@inline final def +=[X](entry :(K[X], V[X])) :this.type = this += (entry._1, entry._2)
+	@inline final def +=[X](entry :(K[X], V[X])) :this.type = { put(entry._1, entry._2); this }
 
 
 	def +=[X](key :K[X], value :V[X]) :this.type = { put(key, value); this }

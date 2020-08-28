@@ -69,7 +69,7 @@ object Unique extends IterableFactory[Unique] {
 		case _ :Unique[_] => elems.asInstanceOf[Unique[T]]
 		case seq :UniqueSeqAdapter[_] => seq.toUnique.asInstanceOf[Unique[T]]
 		case set :UniqueSetAdapter[_] => set.toUnique.asInstanceOf[Unique[T]]
-		case _ => (newBuilder[T] ++= elems).result
+		case _ => (newBuilder[T] ++= elems).result()
 	}
 
 	override def newBuilder[T] :Builder[T, Unique[T]] = new UniqueBuilder[T]()
@@ -150,7 +150,7 @@ object Unique extends IterableFactory[Unique] {
 			items = IndexedSeq.newBuilder
 		}
 
-		override def result() :Unique[T] = new IndexedUnique(items.result, index.withDefaultValue(-1))
+		override def result() :Unique[T] = new IndexedUnique(items.result(), index.withDefaultValue(-1))
 	}
 
 

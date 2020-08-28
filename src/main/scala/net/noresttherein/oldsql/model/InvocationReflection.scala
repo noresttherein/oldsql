@@ -63,7 +63,7 @@ private[model] object InvocationReflection {
 				}
 				if (next == null)
 					if (mock == res)
-						(result += trace).result
+						(result += trace).result()
 					else
 						throw new PropertyReflectionException(
 							s"Value returned by the function ($res) is not the value returned by the last method call.")

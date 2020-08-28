@@ -27,6 +27,8 @@ package object abacus {
 		              "at least one of the values is positive, or we ran out of integers - sorry!.")
 	class NegativeInc[M <: Numeral :ValueOf, N <: Numeral :ValueOf] extends Inc[M, N]
 
+	type Dec[M <: Numeral, N <: Numeral] = Inc[N, M]
+
 	type Positive[N <: Numeral] = PositiveInc[N, _]
 	
 	type Negative[N <: Numeral] = NegativeInc[N, _]
@@ -79,6 +81,14 @@ package object abacus {
 		implicit val _20 = new PositiveInc[19, 20]
 		implicit val _21 = new PositiveInc[20, 21]
 		implicit val _22 = new PositiveInc[21, 22]
+		implicit val _23 = new PositiveInc[22, 23]
+		implicit val _24 = new PositiveInc[23, 24]
+		implicit val _25 = new PositiveInc[24, 25]
+		implicit val _26 = new PositiveInc[25, 26]
+		implicit val _27 = new PositiveInc[26, 27]
+		implicit val _28 = new PositiveInc[27, 28]
+		implicit val _29 = new PositiveInc[28, 29]
+		implicit val _30 = new PositiveInc[29, 30]
 	}
 
 
@@ -89,47 +99,30 @@ package object abacus {
 	/** Attests that `A + B == C`. */
 	@implicitNotFound("Can't add ${A} and ${B}. Either the result does not equal ${C} or, more likely, we ran out of numbers." +
 	                  "You can introduce your own implicit Sum[A, B, C] as a fix if the match adds up.")
-	sealed abstract class Sum[A <: Numeral, B <: Numeral, C <: Numeral] extends ((A, B) => C)
+	sealed abstract class Sum[A <: Numeral, B <: Numeral, C <: Numeral] extends ((A, B) => C) {
+		def minusFirst(sum :C, first :A) :B
+		def minusSecond(sum :C, second :B) :A
+	}
 
 	object Sum {
 		private[this] val sum = new Sum[Numeral, Numeral, Numeral] {
 			override def apply(a :Numeral, b :Numeral) = (a + b).asInstanceOf[Numeral]
+			override def minusFirst(sum :Numeral, first :Numeral) = (sum - first).asInstanceOf[Numeral]
+			override def minusSecond(sum :Numeral, second :Numeral) = (sum - second).asInstanceOf[Numeral]
 		}
 
 		private[abacus] def apply[A <: Numeral, B <: Numeral, C <: Numeral]() :Sum[A, B, C] = sum.asInstanceOf[Sum[A, B, C]]
 
-//		implicit val ZeroSum :Sum[0, 0, 0] = Sum[0, 0, 0]
-		implicit def plusZero[A <: Numeral] :Sum[A, 0, A] = Sum()
-//		implicit def zeroPlus[A <: Numeral] :Sum[0, A, A] = Sum[0, A, A]()
+		implicit def plusZero[A <: Numeral] :Sum[A, 0, A] = Sum[A, 0, A]()
 
-		implicit def induction[A <: Numeral, N <: Numeral, M <: Numeral, S <: Numeral, T <: Numeral]
-		                      (implicit sum :Sum[A, N, S], incOperand :Inc[N, M], incSum :Inc[S, T]) :Sum[A, M, T] =
+		implicit def positive[A <: Numeral, M <: Numeral, N <: Numeral, S <: Numeral, T <: Numeral]
+		                     (implicit decN :PositiveInc[M, N], sum :Sum[A, M, S], incS :Inc[S, T]) :Sum[A, N, T] =
 			Sum()
 
-		implicit val _1 :Sum[0, 1, 1] = Sum[0, 1, 1]()
-		implicit val _2 :Sum[1, 1, 2] = Sum[1, 1, 2]()
-		implicit val _3 :Sum[2, 1, 3] = Sum[2, 1, 3]()
-		implicit val _4 :Sum[3, 1, 4] = Sum[3, 1, 4]()
-		implicit val _5 :Sum[4, 1, 5] = Sum[4, 1, 5]()
-		implicit val _6 :Sum[5, 1, 6] = Sum[5, 1, 6]()
-		implicit val _7 :Sum[6, 1, 7] = Sum[6, 1, 7]()
-		implicit val _8 :Sum[7, 1, 8] = Sum[7, 1, 8]()
-		implicit val _9 :Sum[8, 1, 9] = Sum[8, 1, 9]()
-		implicit val _10 :Sum[9, 1, 10] = Sum[9, 1, 10]()
-		implicit val _11 :Sum[10, 1, 11] = Sum[10, 1, 11]()
-		implicit val _12 :Sum[11, 2, 12] = Sum[11, 2, 12]()
-		implicit val _13 :Sum[12, 1, 13] = Sum[12, 1, 13]()
-		implicit val _14 :Sum[13, 1, 14] = Sum[13, 1, 14]()
-		implicit val _15 :Sum[14, 1, 15] = Sum[14, 1 ,15]()
-		implicit val _16 :Sum[15, 1, 16] = Sum[15, 1, 16]()
-		implicit val _17 :Sum[16, 1, 17] = Sum[16, 1, 17]()
-		implicit val _18 :Sum[17, 1, 18] = Sum[17, 1, 18]()
-		implicit val _19 :Sum[18, 1, 19] = Sum[18, 1, 19]()
-		implicit val _20 :Sum[19, 1, 20] = Sum[19, 1, 20]()
-		implicit val _21 :Sum[20, 1, 21] = Sum[20, 1, 21]()
-		implicit val _22 :Sum[21, 1, 22] = Sum[21, 1, 22]()
+		implicit def negative[A <: Numeral, M <: Numeral, N <: Numeral, S <: Numeral, T <: Numeral]
+		                     (implicit incM :NegativeInc[M, N], sum :Sum[A, N, T], decT :Inc[S, T]) :Sum[A, M, S] =
+			Sum()
 
-//		implicit def plus[A, B, C]
 	}
 
 

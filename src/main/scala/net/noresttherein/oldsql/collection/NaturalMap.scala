@@ -65,7 +65,7 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 		val res = NaturalMap.newBuilder[A, B]
 		val iter = iterator
 		while (iter.hasNext)
-			res += f(iter.next)
+			res += f(iter.next())
 		res.result()
 	}
 
@@ -137,7 +137,7 @@ object NaturalMap {
 
 
 
-	def apply[K[_], V[_]](entries :Assoc[K, V, _]*) :NaturalMap[K, V] = (newBuilder[K, V] ++= entries).result
+	def apply[K[_], V[_]](entries :Assoc[K, V, _]*) :NaturalMap[K, V] = (newBuilder[K, V] ++= entries).result()
 
 	def single[K[_], V[_], X](key :K[X], value :V[X]) :NaturalMap[K, V] = new Singleton(key, value)
 

@@ -59,7 +59,7 @@ import scala.annotation.implicitNotFound
   * @see [[net.noresttherein.oldsql.slang.InferTypeParams.Conforms Conforms]]
   * @author Marcin Mościcki
   */
-@implicitNotFound("Cannot infer type arguments: type ${X} is not a subtype of ${T} with ${U}.\n" +
+@implicitNotFound("Cannot infer type arguments: can't prove ${X} =:= ${T} and ${X} <: ${U}.\n" +
                   "This may be caused by the second type parameter occurring outside of the " +
                   "InferTypeParams[${X}, ${T}, ${U}] in the method signature.")
 sealed abstract class InferTypeParams[X, T, +U] extends (X => T) {
@@ -77,6 +77,7 @@ sealed abstract class InferTypeParams[X, T, +U] extends (X => T) {
 	  */
 	def ub :T <:< U
 
+	@inline final override def apply(x :X) :T = x.asInstanceOf[T]
 }
 
 
@@ -106,7 +107,7 @@ object InferTypeParams {
 		override def ub = implicitly[Any <:< Any]
 		override def conjunction = implicitly[Any <:< Any]
 
-		override def apply(x :Any) = x
+//		override def apply(x :Any) = x
 
 		override def andThen[A](g :Any => A) = g
 		override def compose[A](g :A => Any) = g

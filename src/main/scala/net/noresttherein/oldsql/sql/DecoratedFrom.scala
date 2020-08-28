@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, FromSome, PrefixOf, UngroupedFrom}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -88,25 +88,22 @@ object DecoratedFrom {
 
 		def withClause[C <: FromSome](from :C) :WithClause[C]
 
-//		override def where(filter :SQLBoolean[Generalized]) :This =
-//			copy(clause.where(filter.asInstanceOf[SQLBoolean[clause.Generalized]])) //todo: eliminate the cast
 
 
-
-		override def filter[E <: FromSome](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
+		override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
 			clause.filter(target)(extension.unwrapFront)
 
-		override def row[E <: FromSome](target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, Row] =
+		override def row[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, Row] =
 			clause.row(target)(extension.unwrapFront)
 
-		override def tableStack[E <: FromSome](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def tableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
 			clause.tableStack(target)(extension.unwrapFront)
 
 
-		override type AppendedTo[+P <: FromClause] = WithClause[clause.AppendedTo[P]]
+		override type AppendedTo[+P <: UngroupedFrom] = WithClause[clause.AppendedTo[P]]
 
-		override def appendedTo[P <: FromClause](prefix :P) :WithClause[clause.AppendedTo[P]] =
+		override def appendedTo[P <: UngroupedFrom](prefix :P) :WithClause[clause.AppendedTo[P]] =
 			withClause(clause.appendedTo(prefix))
 
 		override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] =
@@ -123,15 +120,15 @@ object DecoratedFrom {
 		override type Explicit = GeneralizedClause[clause.Explicit]
 		override type Inner = WithClause[clause.Inner]
 
-		override def subselectFilter[E <: FromSome]
+		override def subselectFilter[E <: FromClause]
 		                            (target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
 			clause.subselectFilter(target)(extension.unwrapFront)
 
-		override def subselectRow[E <: FromSome](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def subselectRow[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:ChainTuple[E, clause.SubselectRow] =
 			clause.subselectRow(target)(extension.unwrapFront)
 
-		override def subselectTableStack[E <: FromSome](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def subselectTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
 			clause.subselectTableStack(target)(extension.unwrapFront)
 
@@ -173,7 +170,7 @@ object DecoratedFrom {
 
 		override def toString :String = clause match {
 			case join :AndFrom.* if join.condition != True => //inject the 'as' alias before the condition to reduce confusion.
-				join.left.toString + " " + join.joinName + " " + join.right + " as " + alias + " on " + join.condition
+				join.left.toString + " " + join.name + " " + join.right + " as " + alias + " on " + join.condition
 			case _ => clause.toString + " as " + alias
 		}
 	}
@@ -202,21 +199,24 @@ object DecoratedFrom {
 		type WithLabel[A <: Label] = { type F[+C <: FromSome] = C Alias A }
 		type WithClause[C <: FromSome] = { type F[A <: Label] = C Alias A }
 
-		implicit def aliasUpcasting[F <: FromSome, A <: Label] :DecoratorUpcasting[F Alias A, WithLabel[A]#F, F] =
-			upcasting.asInstanceOf[DecoratorUpcasting[F Alias A, WithLabel[A]#F, F]]
+
+		implicit def aliasDecomposition[F <: FromSome, A <: Label]
+				:DecoratorComposition[F Alias A, F, WithLabel[A]#F, FromSome] =
+			decomposition.asInstanceOf[DecoratorComposition[F Alias A, F, WithLabel[A]#F, FromSome]]
+
 	}
 
 
 
-	/** Implicit witness providing a type constructor for the decorator type `T`. It is used in type inference
-	  * to disassemble the type `T` into the decorator constructor `D` and the decorated clause `F`.
-	  * Tpe parameters in the form of `[D[+C &lt;: FromSome] &lt;: FromSomeDecorator, F &lt;: FromSome]`
-	  * can be properly inferred from the type `T` if it is a type formed from applying the single argument
-	  * type constructor directly to the decorated type (for example, for `T =:= GenericDecorator[C]`, the types
-	  * would be properly instantiated as `D[X] =:= GenericDecorator[X]` and `F =:= C`) or if `T` is formed
+	/** Implicit witness providing a type constructor for the decorator type `F`. It is used in type inference
+	  * to disassemble the type `F` into the decorator constructor `D` and the decorated clause `C`.
+	  * Type parameters in the form of `[D[+C &lt;: FromSome] &lt;: FromSomeDecorator, C &lt;: FromSome]`
+	  * can be properly inferred from the type `F` if it is a type formed from applying the single argument
+	  * type constructor directly to the decorated type (for example, for `F =:= GenericDecorator[C]`, the types
+	  * would be properly instantiated as `D[X] =:= GenericDecorator[X]` and `C =:= C`) or if `F` is formed
 	  * from applying a multi argument type constructor, with the decorated clause being the last type parameter
-	  * (so, for `trait Deco[T, +F &lt;: FromSome] extends GenericDecorator`, `Deco[T, C]` will be correctly unified as
-	  * `D[X] =:= Deco[T, X], F =:= C`). However, if the `F` type argument is not the last one, or the type definition
+	  * (so, for `trait Deco[F, +C &lt;: FromSome] extends GenericDecorator[C]`, `Deco[F, C]` will be correctly unified as
+	  * `D[X] =:= Deco[F, X], C =:= C`). However, if the `C` type argument is not the last one, or the type definition
 	  * is more complex, automatic partial unification will fail - as it would for
 	  * [[net.noresttherein.oldsql.sql.DecoratedFrom.Alias Alias]], which takes the clause as its first argument.
 	  * This order can be important for readability reasons, so to proof various implicit factory methods
@@ -225,14 +225,36 @@ object DecoratedFrom {
 	  * this type class. Any decorator implementations for which default resolution would fail can provide an implicit
 	  * of this type with the proper deconstruction in its companion object.
 	  */
-	@implicitNotFound("I do not know how to separate the FROM clause ${T} into a DecoratedFrom type constructor ${D} " +
-	                  "and the decorated clause ${F}.")
-	class DecoratorUpcasting[-T <: D[F], +D[+C <: FromSome] <: FromSomeDecorator[C], +F <: FromSome]
-
-	implicit def DecoratorUpcasting[D[+C <: FromSome] <: FromSomeDecorator[C], F <: FromSome]
-			:DecoratorUpcasting[D[F], D, F] =
-		upcasting.asInstanceOf[DecoratorUpcasting[D[F], D, F]]
+	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
+	                  "and the decorated clause ${C}.\nMissing implicit DecoratorUpcasting[${F}, ${D}, ${C}, ${U}].")
+	sealed abstract class DecoratorUpcasting[-F <: D[C], +C <: U, +D[+B <: U] <: DecoratedFrom[B], U <: FromClause]
 
 
-	private[this] val upcasting = new DecoratorUpcasting[FromSomeDecorator[FromSome], FromSomeDecorator, FromSome]
+	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
+	                  "and the decorated clause ${C}.\nMissing implicit DecoratorComposition[${F}, ${C}, ${D}, ${U}].")
+	final class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause]
+		extends DecoratorUpcasting[F, C, D, U] with ClauseComposition[F, C, U]
+	{
+		override type E[+A <: U] = D[A]
+		override type S[+A >: C <: U] = D[A]
+
+		@inline override def prefix[A >: C <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
+		@inline override def extension[A <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
+
+		@inline override def apply(decorator :F) :C = decorator.clause
+
+		override def upcast[A >: C <: U] :DecoratorComposition[D[A], A, D, U] =
+			this.asInstanceOf[DecoratorComposition[D[A], A, D, U]]
+
+		override def cast[A <: U] :DecoratorComposition[D[A], A, D, U] =
+			this.asInstanceOf[DecoratorComposition[D[A], A, D, U]]
+	}
+
+
+	implicit def DecoratorDecomposition[D[+C <: FromSome] <: FromSomeDecorator[C], F <: FromSome]
+			:DecoratorComposition[D[F], F, D, FromSome] =
+		decomposition.asInstanceOf[DecoratorComposition[D[F], F, D, FromSome]]
+
+	private[this] val decomposition =
+		new DecoratorComposition[FromSomeDecorator[FromSome], FromSome, FromSomeDecorator, FromSome]
 }

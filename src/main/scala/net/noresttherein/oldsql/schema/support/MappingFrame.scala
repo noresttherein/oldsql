@@ -1076,7 +1076,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 			else lift
 		}
 		//just to be sure in case equals is wonky and to trigger (empty) initialization
-		initExtracts = initExtracts + (column, replacement.extract)
+		initExtracts = initExtracts.updated(column, replacement.extract)
 		replacement
 	}
 
@@ -1429,7 +1429,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		def isInitialized :Boolean = initialized != null
 
 		def initialize() :Unit = {
-			cached = uninitialized.result.toUnique
+			cached = uninitialized.result().toUnique
 			initialized = cached
 			uninitialized = null
 		}

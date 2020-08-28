@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ConversionSQL.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion.{CasePromotion, PromotionMatcher}
-import net.noresttherein.oldsql.sql.FromClause.OuterFrom
+import net.noresttherein.oldsql.sql.FromClause.OuterClause
 import net.noresttherein.oldsql.sql.SelectSQL.{FreeSelectSQL, SubselectSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.SQLTypePromotion.Lift
 
@@ -29,7 +29,7 @@ trait ConversionSQL[-F <: FromClause, S, T] extends CompositeSQL[F, T] {
 	override def freeValue :Option[T] = expr.freeValue.map(convert)
 
 
-	override def selectFrom[G <: F with OuterFrom, O](from :G) :FreeSelectSQL[T, O] =
+	override def selectFrom[G <: F with OuterClause, O](from :G) :FreeSelectSQL[T, O] =
 		SelectSQL(from, this)
 
 	override def subselectFrom[G <: F, O](from :G) :SubselectSQL[from.Implicit, T, O] =

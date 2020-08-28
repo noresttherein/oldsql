@@ -512,7 +512,7 @@ object ComposedOf {
 
 
 		private[ComposedOf] class Collection[C, E](implicit val factory :Factory[E, C])
-			extends Custom[C, E](iter => (factory.newBuilder ++= iter).result) with ConstructFrom[C, E]
+			extends Custom[C, E](iter => (factory.newBuilder ++= iter).result()) with ConstructFrom[C, E]
 		{   //cbf is often a reusable, single instance
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[Collection[_, _]]
 

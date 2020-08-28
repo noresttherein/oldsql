@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.FunctorProjection
+import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Join
-import net.noresttherein.oldsql.sql.Join.JoinedRelationSubject
 
 
 
