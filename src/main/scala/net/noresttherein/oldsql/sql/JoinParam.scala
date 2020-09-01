@@ -12,13 +12,12 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.FromClause.{DiscreteFrom, ExtendedBy, FreeFromSome, FromSome, GroupedFrom, GroupingSeal, NonEmptyFrom, OuterFrom, OuterFromSome, OuterGroupedFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, NonEmptyFrom, OuterFrom, OuterFromSome, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
-import net.noresttherein.oldsql.sql.GroupParam.ByParam
-import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLScribe.{RemoveParam, ReplaceParam}
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, NamedParamRelation, ParamAt, ParamRelation}
@@ -37,7 +36,7 @@ import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, NamedParamRelat
   * for clauses with a [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] join to the left.
   */
 sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends Extended[F, P] with NonSubselect[F, P] {
-	thisClause :GroupingSeal =>
+	thisClause =>
 
 	override type Generalized >: Self <: (left.Generalized UnboundParam P) {
 		type FromLast <: thisClause.FromLast
@@ -354,7 +353,7 @@ object UnboundParam {
 
 	protected[sql] trait AbstractParam[+F <: FromClause, P[O] <: FromParam[X, O], X]
 		extends AbstractExtended[F, P, X] with UnboundParam[F, P]
-	{ thisClause :GroupingSeal =>
+	{ thisClause =>
 		
 	}
 	

@@ -7,126 +7,14 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Mapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{DiscreteFrom, ExtendedBy, FreeFromSome, FromSome, GroupedFrom, JoinedEntities, NonEmptyFrom, OuterFrom, OuterFromSome, PrefixOf}
-import net.noresttherein.oldsql.sql.Group.{FlatMapGroup, MapGroup}
-import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, PrefixOf}
+import net.noresttherein.oldsql.sql.AggregateSQL.{FlatMapGroup, MapGroup}
+import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
-
-
-
-
-/** A projections of rows from a single ''group by'' group to a column or columns evaluating to an `SQLExpression[F, V]`.
-  * A group expression can be used as an argument for SQL aggregate functions.
-  * It is a monad lifting that expression type, as evaluated for a single row, to multiple rows.
-  * @tparam F an ungrouped ''from'' clause, that is the left side (i.e. the first type argument)
-  *           of the `GroupBy`/`GroupByAll` clause owning this group.
-  * @tparam V the value type of the lifted SQL expression
-  * @see [[net.noresttherein.oldsql.sql.GroupByAll]]
-  */
-trait Group[-F <: FromClause, V] {
-	protected val expr :SQLExpression[F, V]
-
-	def map[I, O, G <: Group[_, _]](f :I => O)(implicit doMap :MapGroup[this.type, I, O, G]) :G = doMap(this, f)
-
-	def flatMap[I, G <: Group[_, _]](f :I => G)(implicit doMap :FlatMapGroup[this.type, I, G]) :G = doMap(this, f)
-
-
-
-	def canEqual(that :Any) :Boolean = that.isInstanceOf[Group[_, _]]
-
-	override def equals(that :Any) :Boolean = that match {
-		case group :Group[_, _] => (group eq this) || group.canEqual(this) && group.expr == expr
-		case _ => false
-	}
-
-	override def hashCode :Int = expr.hashCode
-
-	override def toString :String = "Group(" + expr + ")"
-}
-
-
-
-object Group {
-
-	private class BaseGroup[-F <: FromClause, V](protected override val expr :SQLExpression[F, V]) extends Group[F, V]
-
-
-
-	//consider: parameterize with M[O] <: MappingAt to avoid long origin types; can't be contravariant in that case
-	trait MappingGroup[-F <: FromClause, M <: Mapping] extends Group[F, M#Subject] {
-		protected override val expr :MappingSQL[F, M] //fixme: this must be a ComponetSQL, ugh
-
-		def mapping :M = expr.mapping
-
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[MappingGroup[_, _]]
-
-		override def toString :String = "MappingGroup(" + expr.mapping + ")"
-	}
-
-	private class BaseMappingGroup[-F <: FromClause, M <: Mapping](protected override val expr :MappingSQL[F, M])
-		extends MappingGroup[F, M]
-
-
-
-	object MappingGroup {
-
-		implicit def mapMappingToMapping[F <: FromClause, X[A] <: MappingAt[A], Y[A] <: MappingAt[A], O]
-				:MapGroup[MappingGroup[F, X[O]], X[O], Y[O], MappingGroup[F, Y[O]]] =
-			(group :MappingGroup[F, X[O]], f :X[O] => Y[O]) => ??? //new BaseMappingGroup(f(group.mapping))
-
-		implicit def mapMappingToExpression[F <: FromClause, X <: Mapping, Y]
-				:MapGroup[MappingGroup[F, X], X, SQLExpression[F, Y], Group[F, Y]] =
-			(group :MappingGroup[F, X], f :X => SQLExpression[F, Y]) => ???
-
-
-		implicit def flatMapMappingToMapping[F <: FromClause, X[A] <: MappingAt[A], Y[A] <: MappingAt[A], O]
-				:FlatMapGroup[MappingGroup[F, X[O]], X[O], MappingGroup[F, Y[O]]] =
-			(group :MappingGroup[F, X[O]], f :X[O] => MappingGroup[F, Y[O]]) => f(group.mapping)
-
-		implicit def flatMapMappingToExpression[F <: FromClause, X <: Mapping, Y]
-				:FlatMapGroup[MappingGroup[F, X], X, Group[F, Y]] =
-			(group :MappingGroup[F, X], f :X => Group[F, Y]) => f(group.mapping)
-	}
-
-
-//	trait GroupColumn[-F <: FromClause, V] extends Group[F, V] {
-//	}
-
-
-	@implicitNotFound("Cannot map GroupBy group ${G}\nwith function ${I} => ${O}.\n" +
-	                  "The argument must be an SQLExpression with the same type parameters as the mapped group and " +
-	                  "the result type must be an SQLExpression of any type based on the same from clause. " +
-	                  "Alternatively, if the mapped group is a MappingGroup[F, M], the argument may be the mapping M " +
-	                  "and the result type may be any of its components.\n" +
-		              "Missing implicit MapGroup[${G}, ${I}, ${O}, ${G}].")
-	abstract class MapGroup[-G <: Group[_, _], I, O, +R <: Group[_, _]] {
-		def apply(group :G, f :I => O) :R
-	}
-
-	implicit def defaultMapGroup[F <: FromClause, X, Y]
-			:MapGroup[Group[F, X], SQLExpression[F, X], SQLExpression[F, Y], Group[F, Y]] =
-		(group :Group[F, X], f :SQLExpression[F, X] => SQLExpression[F, Y]) => new BaseGroup(f(group.expr))
-
-
-
-	@implicitNotFound("Cannot flat map GroupBy group ${G}\nwith function ${I} => ${O}.\n" +
-	                  "The argument must be an SQLExpression with the same type parameters as the mapped group and " +
-	                  "the result type must be a Group of any type based on the same from clause. " +
-	                  "Alternatively, if the mapped group is a MappingGroup[F, M], the argument may be the mapping M " +
-	                  "and the result type may be a MappingGroup for any of its components.\n" +
-	                  "Missing implicit FlatMapGroup[${G}, ${I}, ${O}].")
-	abstract class FlatMapGroup[-G <: Group[_, _], I, O <: Group[_, _]] {
-		def apply(group :G, f :I => O) :O
-	}
-
-	implicit def defaultFlatMapGroup[F <: FromClause, X, Y]
-			:FlatMapGroup[Group[F, X], SQLExpression[F, X], Group[F, Y]] =
-		(group :Group[F, X], f :SQLExpression[F, X] => Group[F, Y]) => f(group.expr)
-
-}
 
 
 

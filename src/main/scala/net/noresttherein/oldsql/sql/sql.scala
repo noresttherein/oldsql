@@ -1,7 +1,5 @@
 package net.noresttherein.oldsql
 
-import net.noresttherein.oldsql.schema.Mapping.MappingOf
-import net.noresttherein.oldsql.sql.FromClause.DiscreteFrom
 
 
 

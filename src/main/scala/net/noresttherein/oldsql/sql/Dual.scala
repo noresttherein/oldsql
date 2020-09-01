@@ -5,7 +5,8 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause.{DiscreteFrom, ExtendedBy, FreeFromSome, FromSome, JoinedEntities, OuterFrom, OuterFromSome, PrefixOf}
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, JoinedEntities, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -27,7 +28,6 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override type LastTable[-F <: FromClause] = Nothing
 	override type FromLast = FromClause
 	override type FromNext[E[+L <: FromClause] <: FromClause] = Nothing
-	override type This = Dual
 
 	override def last :Nothing = throw new NoSuchElementException("Dual.last")
 
@@ -35,7 +35,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 	override type Generalized = FromClause
 	override type Self = Dual
-
+	override type This = Dual
 
 	override def where(filter :SQLBoolean[FromClause]) :Dual =
 		if (filter == this.fullFilter || filter == True) this
@@ -110,7 +110,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 	override def joinedWith[F <: FromSome](prefix :F, firstJoin :TrueJoin.*) :F = prefix
 
-	override type JoinedWithSubselect[+P <: FromClause] = Nothing
+	override type JoinedWithSubselect[+P <: FromSome] = Nothing
 
 	override def joinedWithSubselect[F <: DiscreteFrom](prefix :F) :Nothing =
 		throw new UnsupportedOperationException(s"Dual.joinedWithSubselect($prefix)")
@@ -167,12 +167,6 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override def asSubselectOf[F <: FromClause](outer :F)(implicit extension :FromClause ExtendedBy F) :Nothing =
 		throw new UnsupportedOperationException("Can't represent Dual as a subselect of " + outer)
 
-//	override type BaseSubselectOf[+F <: FromSome, T[O] <: MappingAt[O]] = F Subselect T
-//
-//	protected override def baseSubselectOf[F <: FromSome, T[O] <: BaseMapping[S, O], S]
-//	                            (outer :F, next :LastRelation[T, S], condition :SQLBoolean[FromClause AndFrom T])
-//			:outer.type Subselect T =
-//		Subselect[outer.type, T, S](outer, next)(fullFilter && condition)
 
 
 	override type FromSubselect[+F <: FromSome] = F { type Implicit = FromClause }

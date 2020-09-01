@@ -6,7 +6,8 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, FromSome, GroupingSeal, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -39,7 +40,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
-trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisClause :GroupingSeal =>
+trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisClause =>
 
 	override type LastMapping[O] = R[O]
 	override type LastTable[F <: FromClause] = JoinedRelation[F, R]
@@ -57,7 +58,7 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 
 	/** The right side of the join - representation of a table/relation alias containing represented by joined mapping.
 	  * It identifies the SQL relation (table, view or ''select'') which is being added to the clause and its index,
-	  * to distinguish between possible multiple occurences of the same relation. It is a `SQLExpression` for the
+	  * to distinguish between possible multiple occurrences of the same relation. It is a `SQLExpression` for the
 	  * subject of the relation's mapping, so it can be used directly as part of larger expressions.
 	  * Note that, true to its name, it is treated always as the last entry on the list and the expression
 	  * `join.left.last` is an instance representing only the last relation in the prefix clause `join.last` of `join`
@@ -223,7 +224,7 @@ object Using {
   * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
   * @author Marcin Mościcki
   */
-trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thisClause :GroupingSeal =>
+trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thisClause =>
 	override type FromLast >: Generalized <: FromClause Extended R
 
 	//WithLeft/GeneralizedLeft
@@ -314,8 +315,7 @@ object Extended {
 
 
 
-	trait AbstractExtended[+L <: FromClause, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] {
-		thisClause :GroupingSeal =>
+	trait AbstractExtended[+L <: FromClause, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] { thisClause =>
 
 		override val last :RelationSQL[FromLast, R, S, FromLast]
 
@@ -342,7 +342,7 @@ object Extended {
 	  * for `Extended` subtypes, and there are other clauses, in particular
 	  * [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]], which are neither.
 	  */
-	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] { thisClause :GroupingSeal =>
+	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] { thisClause =>
 
 		override type Implicit = left.Implicit
 		override type Outer = left.Outer

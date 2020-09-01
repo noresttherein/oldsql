@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, FreeFrom, SubselectOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, SubselectOf}
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SelectSQL.SelectAs
@@ -31,6 +31,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, IndexedChainTuple, Seq
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedSQLExpression, MatchIndexedChain}
 
 

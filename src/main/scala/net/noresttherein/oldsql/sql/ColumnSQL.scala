@@ -7,15 +7,14 @@ import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
 import net.noresttherein.oldsql.sql.ConcatSQL.{CaseConcat, ConcatMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseColumnConversion, ColumnConversionMatcher, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FromSome, OuterFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom}
 import net.noresttherein.oldsql.sql.LogicalSQL.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.CaseFreeColumn
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, FreeColumn, MappingColumnMatcher}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelectColumn, FreeSelectColumn, SelectColumnMatcher, SubselectColumn}
 import net.noresttherein.oldsql.sql.ConditionSQL.{CaseCondition, ConditionMatcher, In, LikeSQL}
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, SQLTypePromotion}
-import net.noresttherein.oldsql.sql.SQLExpression.SQLTypePromotion.Lift
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, Lift, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.{False, True}
 import net.noresttherein.oldsql.sql.TupleSQL.SeqTuple

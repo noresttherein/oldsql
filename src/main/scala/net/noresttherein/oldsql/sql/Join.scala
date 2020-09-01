@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.FromClause.{As, DiscreteFrom, ExtendedBy, FromSome, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, PrefixOf}
 import net.noresttherein.oldsql.sql.Join.AbstractJoin
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
@@ -15,6 +15,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 
 

@@ -3,24 +3,20 @@ package net.noresttherein.oldsql.sql
 import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnForm, Mapping, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection
+import net.noresttherein.oldsql.schema.{ColumnForm, Mapping, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FromSome, OuterFrom, TableCount}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
-import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, SQLTypePromotion}
-import net.noresttherein.oldsql.sql.SQLExpression.SQLTypePromotion.Lift
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, Lift, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, False, NULL, SQLLiteral, SQLParameter, SQLParameterColumn, TermMatcher, True}
 import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
-import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, FreeComponent, MappingMatcher}
+import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, MappingMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchCompositeColumn}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelect, FreeSelectSQL, SelectMatcher, SubselectSQL}
-import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.{ChainHead, EmptyChain}
+import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
 
 
 
@@ -35,7 +31,7 @@ import slang._
   * @tparam F a ''from'' clause - list of relations/tables which provide columns used in this expression.
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
   */
-trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is Bound || Unbound (flag if it contains any abstract/unbound parts)
+trait SQLExpression[-F <: FromClause, V] {
 	import SQLExpression.boundParameterSQL
 
 	def readForm :SQLReadForm[V]
@@ -254,13 +250,10 @@ object SQLExpression extends SQLMultiColumnTerms {
 			(super.reverseCollect(fun, acc) /: inOrder)((collected, member) => member.reverseCollect(fun, collected))
 
 
-
 		def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :SQLExpression[S, V]
-
 
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V] =
 			rephrase(SQLScribe.stretcher(base))
-
 
 
 		def sameAs(other :CompositeSQL[Nothing, _]) :Boolean = canEqual(other)
@@ -373,85 +366,86 @@ object SQLExpression extends SQLMultiColumnTerms {
 
 		private[this] val direct = new SQLTypePromotion[Any, Any, Any](Lift.self, Lift.self)
 
+	}
 
 
-		/** An implicit witness vouching that type `X` is a subtype of `Y` or can be promoted to type `Y`.
-		  * It is used to conflate more strict scala types with the same, more loose SQL representations.
-		  */ //todo: move this up to SQLExpression
-		abstract class Lift[X, Y] {
-			def apply(value :X) :Y
-			def inverse(value :Y) :Option[X] //todo: we need it for SetComponent, but it may fail or lose precision
 
-			def lower(value :Y) :X = inverse(value) match {
-				case Some(x) => x
-				case _ => throw new IllegalArgumentException(
-					s"Cannot convert $value :${value.unqualifiedClassName} back with $this."
-				)
-			}
 
-			def apply[F <: FromClause](expr :SQLExpression[F, X]) :SQLExpression[F, Y] = expr.to(this)
-			def apply[F <: FromClause](expr :ColumnSQL[F, X]) :ColumnSQL[F, Y] = expr.to(this)
+	/** An implicit witness vouching that type `X` is a subtype of `Y` or can be promoted to type `Y`.
+	  * It is used to conflate more strict scala types with the same, more loose SQL representations.
+	  */ //todo: move this up to SQLExpression
+	abstract class Lift[X, Y] {
+		def apply(value :X) :Y
+		def inverse(value :Y) :Option[X] //todo: we need it for SetComponent, but it may fail or lose precision
+
+		def lower(value :Y) :X = inverse(value) match {
+			case Some(x) => x
+			case _ => throw new IllegalArgumentException(
+				s"Cannot convert $value :${value.unqualifiedClassName} back with $this."
+			)
 		}
 
+		def apply[F <: FromClause](expr :SQLExpression[F, X]) :SQLExpression[F, Y] = expr.to(this)
+		def apply[F <: FromClause](expr :ColumnSQL[F, X]) :ColumnSQL[F, Y] = expr.to(this)
+	}
 
 
-		object Lift { //todo: java type promotion
-			implicit def self[T] :Lift[T, T] = ident.asInstanceOf[Lift[T, T]]
-			implicit def option[T] :Lift[T, Option[T]] = opt.asInstanceOf[Lift[T, Option[T]]]
-//			implicit def some[T] :Lift[Some[T], Option[T]] = new Supertype[Some[T], Option[T]]
-			implicit def singleRow[T] :Lift[Rows[T], T] = selectRow.asInstanceOf[Lift[Rows[T], T]]
-			implicit def rowSeq[T] :Lift[Rows[T], Seq[T]] = selectRows.asInstanceOf[Lift[Rows[T], Seq[T]]]
 
-			class ComposedLift[X, Y, Z](prev :Lift[X, Y], next :Lift[Y, Z]) extends Lift[X, Z] {
+	object Lift { //todo: java type promotion
+		implicit def self[T] :Lift[T, T] = ident.asInstanceOf[Lift[T, T]]
+		implicit def option[T] :Lift[T, Option[T]] = opt.asInstanceOf[Lift[T, Option[T]]]
+		//implicit def some[T] :Lift[Some[T], Option[T]] = new Supertype[Some[T], Option[T]]
+		implicit def singleRow[T] :Lift[Rows[T], T] = selectRow.asInstanceOf[Lift[Rows[T], T]]
+		implicit def rowSeq[T] :Lift[Rows[T], Seq[T]] = selectRows.asInstanceOf[Lift[Rows[T], Seq[T]]]
 
-				override def apply(value: X): Z = next(prev(value))
+		class ComposedLift[X, Y, Z](prev :Lift[X, Y], next :Lift[Y, Z]) extends Lift[X, Z] {
 
-				override def inverse(value: Z): Option[X] = next.inverse(value).flatMap(prev.inverse)
+			override def apply(value: X): Z = next(prev(value))
 
-				override def apply[S <: FromClause](expr: SQLExpression[S, X]): SQLExpression[S, Z] =
-					next(prev(expr))
+			override def inverse(value: Z): Option[X] = next.inverse(value).flatMap(prev.inverse)
 
-				override def apply[F <: FromClause](expr :ColumnSQL[F, X]) :ColumnSQL[F, Z] =
-					next(prev(expr))
+			override def apply[S <: FromClause](expr: SQLExpression[S, X]): SQLExpression[S, Z] =
+				next(prev(expr))
+
+			override def apply[F <: FromClause](expr :ColumnSQL[F, X]) :ColumnSQL[F, Z] =
+				next(prev(expr))
+		}
+
+		private[this] val ident = new Lift[Any, Any] {
+			override def apply(value: Any): Any = value
+			override def inverse(value: Any): Option[Any] = Some(value)
+			override def apply[S <: FromClause](expr: SQLExpression[S, Any]): SQLExpression[S, Any] = expr
+			override def apply[S <: FromClause](expr: ColumnSQL[S, Any]) :ColumnSQL[S, Any] = expr
+			override def toString = "_"
+		}
+
+		private[this] val opt = new Lift[Any, Option[Any]] {
+
+			override def apply(value: Any): Option[Any] = Option(value)
+
+			override def inverse(value: Option[Any]): Option[Any] = value
+
+			override def apply[S <: FromClause](expr: SQLExpression[S, Any]): SQLExpression[S, Option[Any]] = expr.opt
+			override def apply[F <: FromClause](expr :ColumnSQL[F, Any]) :ColumnSQL[F, Option[Any]] = expr.opt
+
+			override def toString = "Option[_]"
+		}
+
+		private[this] val selectRow = new Lift[Rows[Any], Any] {
+			override def apply(value: Rows[Any]): Any = value.head
+			override def inverse(value: Any): Option[Rows[Any]] = Some(Rows(value))
+
+			override def toString = "Rows.one"
+		}
+
+		private[this] val selectRows = new Lift[Rows[Any], Seq[Any]] {
+			override def apply(value: Rows[Any]): Seq[Any] = value.seq
+			override def inverse(value: Seq[Any]): Option[Rows[Any]] = value match {
+				case Seq(row) => Some(Rows(row))
+				case _ => None
 			}
 
-			private[this] val ident = new Lift[Any, Any] {
-				override def apply(value: Any): Any = value
-				override def inverse(value: Any): Option[Any] = Some(value)
-				override def apply[S <: FromClause](expr: SQLExpression[S, Any]): SQLExpression[S, Any] = expr
-				override def apply[S <: FromClause](expr: ColumnSQL[S, Any]) :ColumnSQL[S, Any] = expr
-				override def toString = "_"
-			}
-
-			private[this] val opt = new Lift[Any, Option[Any]] {
-
-				override def apply(value: Any): Option[Any] = Option(value)
-
-				override def inverse(value: Option[Any]): Option[Any] = value
-
-				override def apply[S <: FromClause](expr: SQLExpression[S, Any]): SQLExpression[S, Option[Any]] = expr.opt
-				override def apply[F <: FromClause](expr :ColumnSQL[F, Any]) :ColumnSQL[F, Option[Any]] = expr.opt
-
-				override def toString = "Option[_]"
-			}
-
-			private[this] val selectRow = new Lift[Rows[Any], Any] {
-				override def apply(value: Rows[Any]): Any = value.head
-				override def inverse(value: Any): Option[Rows[Any]] = Some(Rows(value))
-
-				override def toString = "Rows.one"
-			}
-
-			private[this] val selectRows = new Lift[Rows[Any], Seq[Any]] {
-				override def apply(value: Rows[Any]): Seq[Any] = value.seq
-				override def inverse(value: Seq[Any]): Option[Rows[Any]] = value match {
-					case Seq(row) => Some(Rows(row))
-					case _ => None
-				}
-
-				override def toString = "Rows.seq"
-			}
-
+			override def toString = "Rows.seq"
 		}
 
 	}

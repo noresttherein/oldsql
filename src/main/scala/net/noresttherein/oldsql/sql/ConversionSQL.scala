@@ -3,14 +3,18 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher}
-import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, Lift}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ConversionSQL.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion.{CasePromotion, PromotionMatcher}
-import net.noresttherein.oldsql.sql.FromClause.{FreeFrom, OuterFrom}
+import net.noresttherein.oldsql.sql.FromClause.FreeFrom
 import net.noresttherein.oldsql.sql.SelectSQL.{FreeSelectSQL, SubselectSQL}
-import net.noresttherein.oldsql.sql.SQLExpression.SQLTypePromotion.Lift
+
+//here be implicits
+import net.noresttherein.oldsql.slang._
+
+
+
 
 
 

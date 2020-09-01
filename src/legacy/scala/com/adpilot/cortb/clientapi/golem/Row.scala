@@ -8,7 +8,7 @@ import scala.collection.mutable.ListBuffer
   *  Allows statically typed access to the database - when a row is defined to be of this RowDef's type,
   *  columns defined under it can be used to access the row data in a type safe manner.
   *  We say that a column belongs to RowDef x, or is under x, if it is either defined by x's class,
-  *  or is under a {@link #Group group} defined by x's class.
+  *  or is under a {@link #AggregateSQL group} defined by x's class.
   */
 trait RowDef {
 
@@ -38,7 +38,7 @@ trait RowDef {
 
 	/** Evidence that column of type C belongs to this instance - either directly or through a chain of nested Groups.
 	  * Represents a 'path' starting from this RowDef, where each element is a group nested inside the previous one.
-	  * Exists if and only if C =:= this.Column or a group G<:Group exists such that G#ColumnPath[T, C] exists.
+	  * Exists if and only if C =:= this.Column or a group G<:AggregateSQL exists such that G#ColumnPath[T, C] exists.
 	  */
 	class ColumnPath[T, C<:ColumnDef[T]] private[RowDef] (expand :C=>Column[T]) {
 		/**  Converts a column under this path into a fully qualified version as seen from this RowDef. */

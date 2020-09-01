@@ -8,8 +8,9 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{As, ClauseComposition, DiscreteFrom, ExtendedBy, FromSome, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{As, ClauseComposition, ExtendedBy, PrefixOf}
 import net.noresttherein.oldsql.sql.Join.JoinWith
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
@@ -117,7 +118,7 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome with Exte
 	  * the filter function should take as its arguments the last two relations, i.e, the last relation defined
 	  * by the left side of this join, if any, and the right side of this join.
 	  * This method is only possible to call if the left side of this join can be statically determined
-	  * to be a [[net.noresttherein.oldsql.sql.FromClause.FromSome FromSome]] subtype, i.e. a non-empty from clause.
+	  * to be a [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]] subtype, i.e. a non-empty from clause.
 	  * Its signature then takes the form of
 	  * {{{
 	  *     def on(condition :(JoinedRelation[GeneralizedLeft[left.FromLast], left.LastMapping],

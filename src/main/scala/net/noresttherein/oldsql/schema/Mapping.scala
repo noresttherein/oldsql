@@ -998,7 +998,7 @@ object Mapping {
 	  * idiosyncrasies and bugs which either prevent the use of the latter or make it quite cumbersome
 	  * in certain scenarios. See the [[net.noresttherein.oldsql.schema.Mapping Mapping]] class documentation
 	  * for more information about the subject.
-	  */
+	  *///todo: replace it with a package protected method in Mapping, implemented in BaseMapping
 	sealed trait MappingSeal extends Mapping
 
 

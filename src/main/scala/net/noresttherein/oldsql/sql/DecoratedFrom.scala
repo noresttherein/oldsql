@@ -2,9 +2,10 @@ package net.noresttherein.oldsql.sql
 
 import scala.annotation.implicitNotFound
 
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, DiscreteFrom, ExtendedBy, FromSome, GroupingSeal, PrefixOf}
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -22,7 +23,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * the more fleshed out [[net.noresttherein.oldsql.sql.DecoratedFrom.GenericDecorator GenericDecorator]].
   * @author Marcin Mościcki
   */ //this could benefit from being derived from Any
-trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause :GroupingSeal =>
+trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 	val clause :F
 
 	override type LastMapping[O] = clause.LastMapping[O]
