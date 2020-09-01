@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
 import net.noresttherein.oldsql.sql.ConcatSQL.{CaseConcat, ConcatMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseColumnConversion, ColumnConversionMatcher, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterClause}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FromSome, OuterFrom}
 import net.noresttherein.oldsql.sql.LogicalSQL.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.CaseFreeColumn
@@ -82,11 +82,11 @@ trait ColumnSQL[-F <: FromClause, V] extends SQLExpression[F, V] {
 
 
 
-	override def selectFrom[S <: F with OuterClause, O](from :S) :FreeSelectColumn[V, O] =
+	override def selectFrom[S <: F with FreeFrom, O](from :S) :FreeSelectColumn[V, O] =
 		SelectSQL(from, this)
 
-	override def subselectFrom[S <: F, O](from :S) :SubselectColumn[from.Implicit, V, O] =
-		SelectSQL.subselect[from.Implicit, from.type, V, O](from, this)
+	override def subselectFrom[S <: F, O](from :S) :SubselectColumn[from.Base, V, O] =
+		SelectSQL.subselect[from.Base, from.type, V, O](from, this)
 
 
 

@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, ColumnForm, Mapping, SQLFor
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterClause, TableCount}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FromSome, OuterFrom, TableCount}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
@@ -32,7 +32,7 @@ import slang._
 
 
 /** A representation of an SQL expression as an AST.
-  * @tparam F row source - list of tables which provide columns used in this expression
+  * @tparam F a ''from'' clause - list of relations/tables which provide columns used in this expression.
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
   */
 trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is Bound || Unbound (flag if it contains any abstract/unbound parts)
@@ -95,7 +95,7 @@ trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is
 	  * @throws UnsupportedOperationException if this expression cannot be used as the complete ''select'' clause,
 	  *                                       which is the default for all classes which do not override this method.
 	  */
-	def selectFrom[S <: F with OuterClause, O](from :S) :FreeSelectSQL[V, O] =
+	def selectFrom[S <: F with FreeFrom, O](from :S) :FreeSelectSQL[V, O] =
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
 		)
@@ -109,9 +109,9 @@ trait SQLExpression[-F <: FromClause, V] { //todo: add a type parameter which is
 	  * @throws UnsupportedOperationException if this expression cannot be used as the complete ''select'' clause,
 	  *                                       which is the default for all classes which do not override this method.
 	  */
-	def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Implicit, V, O] = //subtype S currently unused, should be removed with O
+	def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Base, V, O] = //subtype S currently unused, should be removed with O
 		throw new UnsupportedOperationException(
-			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
+			s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
 		)
 
 	/** Upcasts this expression to the base ''from'' clause `E &lt;: F`, using only implicit evidence about the subtype

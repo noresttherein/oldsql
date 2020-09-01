@@ -14,14 +14,15 @@ import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.FromClause.GetTable.{ByIndex, ByLabel, ByParamName, BySubject, ByTypeConstructor}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, JoinedEntities, NonEmptyClause, OuterClause, OuterFromSome, PrefixOf, SubselectFrom, SubselectOf, TableShift}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FreeFromSome, FromSome, GroupingSeal, JoinedEntities, NonEmptyFrom, OuterFrom, OuterFromSome, PrefixOf, SubselectFrom, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, FreeColumn, JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.JoinParam.{?:, FromParam, LabeledFromParam, ParamAt, ParamRelation, WithParam}
+import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, LabeledFromParam, ParamAt, ParamRelation}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.DecoratedFrom.{Alias, DecoratorComposition, GenericDecorator}
 import net.noresttherein.oldsql.sql.Extended.{ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupByAll.ByAll
+import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SelectSQL.{SelectAs, SelectColumn}
 import net.noresttherein.oldsql.sql.SQLScribe.RemoveParams
@@ -34,91 +35,123 @@ import net.noresttherein.oldsql.sql.SQLScribe.RemoveParams
 /** In its basic use, a `FromClause` is a representation of the ''FROM'' and ''WHERE'' clauses in an SQL ''SELECT''
   * statement, declaring the relations taking part in a query. More generally, it is the domain over which SQL
   * expressions (instances of the [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] class hierarchy)
-  * are defined, providing all non-constant values available to them. It consists of a list of `Mapping`s,
-  * together with an optional filter working on those mappings, especially any required join conditions.
-  * While the individual elements of a clause are referred to often as tables for simplicity,
-  * they can not only be arbitrary relations such as other ''selects'', but also synthetic artifacts
+  * are defined, providing all non-constant values available to them. It consists of a list of
+  * [[net.noresttherein.oldsql.schema.Relation relations]] with associated
+  * [[net.noresttherein.oldsql.schema.Mapping Mappings]], together with an optional filter working on those relations,
+  * especially any required join conditions. While the individual elements of a clause are referred to often as tables
+  * for simplicity, they can not only be arbitrary relations such as other ''selects'', but also synthetic artifacts
   * such as query parameters. It is even possible to use arbitrary mapping components, to be replaced at a later time
   * with references to concrete tables, parameters or constants. As such, it doesn't necessarily represent
   * a valid fragment of a select from the application's schema. In that case it's best thought as a signature containing
-  * declarations of terms (mappings and parameters) over which SQL formulas can be defined;
+  * declarations of terms (mappings and parameters) over which SQL expressions can be defined;
   * hence `SQLExpression` is parameterized with a `FromClause`.
-  *
+  * {{{}}}
   * The mappings taking part in the query are encoded in the static type of the standard implementation, which
-  * builds both the instance and its type by recursively applying the [[net.noresttherein.oldsql.sql.AndFrom AndFrom]]
-  * type and its subtypes to a shorter clause, extending it by another relation. In that aspect it is quite similar
-  * to general purpose heterogeneous lists such as the ''shapeless'' `HList` and
-  * [[net.noresttherein.oldsql.collection.Chain Chain]], replacing its wide functionality with specific application
-  * to this task. Just as a `HList` - and all other two-argument type constructors - it can be and is better written
-  * using the infix notation: `Dual Join Rangers Join Familiars Join Monsters`. Note that the whole `Join`
-  * class hierarchy is left-associative for more natural left to right reading and writing. Specialized classes for
-  * all join kinds exist, as well as special variants for ''from'' clauses of subselects of some outer clause as well
-  * as unbound query parameters. Other implementations, not derived from `AndFrom` are also possible, in particular
-  * decorators extending [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] which introduce no new relations,
-  * but can add other features. As subtypes are also universally covariant regarding their `FromClause` type parameters,
-  * any prefix can be always substituted with the abstract `FromClause` supertype, balancing static type checking
-  * with a degree of freedom and flexibility promoting code reuse. A `FromClause` subtype from the above category
-  * is said to be ''complete'' if its definition starts with the [[net.noresttherein.oldsql.sql.Dual Dual]]
-  * or [[net.noresttherein.oldsql.sql.From From]] type, that is the number of all mappings participating
-  * in the join/clause is known (although their types may be abstract). Note that the mapping types may
-  * still be abstract and the joins may be some generic base type like `AndFrom`. The opposite is an ''incomplete''
-  * clause, the definition of which starts with the base `FromClause` type or an abstract type `F &lt;: FromClause`:
-  * `FromClause Join Deaths Join Instruments`, which specifies any sequence of relations ending with the `Deaths`
-  * and `Instruments`.
-  *
+  * builds both the instance and its type by recursively applying various
+  * [[net.noresttherein.oldsql.sql.Using Using]] subtypes to a shorter clause, extending it by another relation.
+  * In that aspect it is quite similar to general purpose polymorphic tuples or heterogeneous lists such as
+  * the ''shapeless'' `HList` and [[net.noresttherein.oldsql.collection.Chain Chain]], replacing its wider functionality
+  * with specific application to this task. Just as a `HList` - and all other two-argument type constructors -
+  * it can be and is better written using the infix notation: `Dual Join Rangers Join Familiars Join Monsters`.
+  * Note that the whole `Join` class hierarchy is left-associative for a more natural left to right reading and writing.
+  * Specialized classes for all join kinds exist, as well as special variants for ''from'' clauses of subselects
+  * of some outer clause and unbound query parameters. A ''group by'' clause is also represented under this type,
+  * with all subtypes having to extend either [[net.noresttherein.oldsql.sql.FromClause.DiscreteFrom DiscreteFrom]] or
+  * [[net.noresttherein.oldsql.sql.FromClause.GroupedFrom GroupedFrom]], the latter tree containing in particular
+  * the [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] type. Other implementations, not derived from `Using`
+  * are also possible, in particular decorators extending [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]]
+  * which introduce no new relations, but can add other features. As subtypes are also universally covariant
+  * regarding their `FromClause` type parameters, any prefix can be always substituted with the abstract `FromClause`
+  * supertype, balancing static type checking with a degree of freedom and flexibility promoting code reuse.
+  * {{{}}}
+  * This type is thus more general than simply an implementation of the actual ''from'' clause of a select:
+  * not only does it include the ''where'' clause and the potential ''group by'' clause is incorporated into
+  * the class hierarchy, but it also allows represent subselects, by combining the ''from'' clause of the subselect
+  * with the relations brought to scope by enclosing selects. This is done by
+  * the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join, which linearizes the `FromClause`
+  * of the outer select and the ''from'' clause of the subselect by joining them together. Hence, from the point of view
+  * of an SQL select expression created from such a clause, only the relations to the right of the last
+  * `Subselect` join are a part of the ''from'' clause. Similarly, a presence of
+  * the [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] clause 'hides' all preceding relations down to
+  * the most recent `Subselect` or the start of clause, which are under grouping and thus unavailable as individual
+  * rows.
+  * {{{}}}
+  * A `FromClause` subtype from the above category is said to be ''complete'' if its definition starts with
+  * the [[net.noresttherein.oldsql.sql.Dual Dual]] or [[net.noresttherein.oldsql.sql.From From]] type,
+  * that is the number of all mappings participating in the join/clause is known (although their types may be abstract).
+  * Note that the mapping types may still be abstract and the joins may be some generic base type like
+  * [[net.noresttherein.oldsql.sql.AndFrom AndFrom]]. The opposite is an ''incomplete'' clause, the definition of which
+  * starts with the base `FromClause`, one of its generic subclasses which do not expose their prefix clause type,
+  * or an abstract type `F &lt;: FromClause`: `FromClause Join Deaths Join Instruments`, which specifies any sequence
+  * of relations ending with the `Deaths` and `Instruments`. A ''complete'' clause is called ''concrete'' if
+  * all join types in its signature are concrete classes (concrete here meaning any public trait having a dedicated
+  * factory in its companion object). Additionally, each `FromClause` subtype defines a `Generalized` member type
+  * as its supertype which still allows external functions to correctly discern its role in the whole clause.
+  * A ''complete'' clause is then called ''generalized'' if its `Generalized` type is known, that is its static type
+  * is a subtype of its `Generalized` type.
+  * {{{}}}
   * This trait is a bare bones common upper type, serving at the same time as a wildcard in type definitions meaning
   * 'an arbitrary number of other preceding relations not relevant in the circumstances at hand'. Most functionality
-  * is defined in the `AndFrom` subclass representing actual non-empty clauses. Some additional generic methods however
-  * are made available through implicit conversions in order to benefit from the static self type:
+  * is defined in the `Extended` and `AndFrom` subclasses, representing actual non-empty clauses. Some additional
+  * generic methods however are made available through implicit conversions in order to benefit from the static self type:
   *   - from any `F &lt;: FromClause`
   *     to [[net.noresttherein.oldsql.sql.FromClause.FromClauseExtension FromClauseExtension]], which declares
   *     some accessors, in particular
   *     `relations` to [[net.noresttherein.oldsql.sql.FromClause.JoinedRelations JoinedRelations]] and
   *     `entities` to [[net.noresttherein.oldsql.sql.FromClause.JoinedEntities JoinedEntities]].
-  *   - from non-empty clauses `F &lt;: FromSome`
+  *   - from non-empty discrete clauses `F &lt;: FromSome` (those without a ''group by'' clause)
   *     to [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension FromSomeExtension]], which define factory methods
   *     for other join types;
-  *   - from clauses without a `Subselect` join `F &lt;: OuterClause`
+  *   - from clauses without a `Subselect` join `F &lt;: OuterFromSome`
   *     to [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension OuterFromExtension]] for adding unbound
   *     query parameters in the form of the [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] synthetic 'joins'.
-  *
+  * {{{}}}
   * Aside from the above extensions, associated implicits and other helper classes, the companion object
   * defines some base types serving as common upper bounds and several useful type aliases which enforce
-  * certain features on `FromClause` instances, such as [[net.noresttherein.oldsql.sql.FromClause.OuterClause OuterClause]],
+  * certain features on `FromClause` instances, such as [[net.noresttherein.oldsql.sql.FromClause.OuterFrom OuterFrom]],
   * [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]] and others.
   *
-  * @see [[net.noresttherein.oldsql.sql.FromClause.FromSome]] the base trait for all non-empty clauses.
-  * @see [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] the 'link' type extending a preceding clause
-  *     by another relation and the base trait for all join kinds.
+  * @see [[net.noresttherein.oldsql.sql.FromClause.FromSome]] the base trait for all non-empty clauses
+  *      (without a ''group by'' clause).
+  * @see [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] the 'link' type extending a preceding discrete clause
+  *      by another relation and the base trait for all join kinds.
   * @see [[net.noresttherein.oldsql.sql.Dual Dual]] the standard empty clause used for ''select'' statements
   *     without a ''from'' clause (or 'select ... from Dual' in Oracle) as well as the terminator of non-empty
   *     relation lists.
   * @see [[net.noresttherein.oldsql.sql.From From]] The factory for clauses with a single relation which
   *     is the most common starting point for building larger clauses.
   * @see [[net.noresttherein.oldsql.sql.Join Join]] The supertype for all join kinds as well as subselect clauses.
+  * @see [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] a ''group by'' clause under the interface
+  *      of a ''from'' clause
+  *
   * @author Marcin Mościcki
   */ //consider: renaming to FromWhere
-trait FromClause { thisClause =>
+trait FromClause { thisClause :GroupingSeal =>
 
 	/** Type of the last `Mapping` in this join (the rightmost one) if not empty. `Dual` defines it as `Nothing`. */
 	type LastMapping[O] <: MappingAt[O]
 
 	/** Type alias for the last relation in this list as seen from some `FromClause` type `F` containing this instance
-	  * in its 'tail'. In other words, this projects the type of the last element of this clause to an extending clause.
-	  * `JoinedRelation[F, LastMapping]` provides access to the `Mapping` for the relation together
-	  * with all its components and is an instance of `SQLExpression[F, LastMapping[_]#Subject]`, meaning it can be used
-	  * as part of larger SQL expressions. Note that `Dual`, containing no relations, defines this type as `Nothing`.
+	  * in it1s 'tail'. In other words, this projects the type of the last element of this clause to one based
+	  * on an extending clause. `JoinedRelation[F, LastMapping]` provides access to the `Mapping` for the relation
+	  * together with all its components and is an instance of `SQLExpression[F, LastMapping[_]#Subject]`, meaning
+	  * it can be used as part of larger SQL expressions. Notably, `Dual`, containing no relations,
+	  * defines this type as `Nothing`.
 	  */
 	type LastTable[F <: FromClause] <: JoinedRelation[F, LastMapping]
 
 	/** The supertype of this instance containing only the last relation mapping joined with `FromClause` using
-	  * the most abstract 'join' kind `AndFrom`. If this clause is not a `AndFrom` subclass but a decorator,
+	  * the most abstract extension ('join') kind which can still take the place of this type as a parameter in
+	  * larger clauses. For non-empty, ''discrete'' clauses it is
+	  * `FromClause `[[net.noresttherein.oldsql.sql.AndFrom AndFrom]]
+	  * [[net.noresttherein.oldsql.sql.FromClause#LastMapping LastMapping]] - the upper bound on all discrete clauses
+	  * containing `LastMapping`. If this clause is not a `AndFrom` subclass but a decorator,
 	  * the ''generalized'' supertype of the decorator is used as the wrapper over `FromClause AndFrom LastMapping`.
 	  * It is the type this instance's [[net.noresttherein.oldsql.sql.FromClause#last last]] joined relation is based on.
 	  * `Dual` defines this type as the most generic `FromClause` to indicate that any expression based on
 	  * an empty clause can be used as part of expressions for any other clause.
 	  */
-//	type FromLast >: this.type <: FromClause
+	//type FromLast >: this.type <: FromClause
 	type FromLast <: FromClause
 
 	/** Given a type constructor for a ''from'' clause accepting a `FromSome` type, apply this type to it
@@ -143,43 +176,38 @@ trait FromClause { thisClause =>
 
 
 
-	/** Similar to `Implicit`, this type is always defined as `Dual`, with all join kinds defining it as `left.Init`.
-	  * This way, if the compiler can prove that `F#Init =:= Dual`, then the static type `F` is a complete clause -
-	  * with all relations and joins known. It is of little use by itself in the client code.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.CompleteFrom]]
-	  */
-	type Init <: FromClause
-
-
-
 	/** The super type of this instance used as the basis for its ''where'' clause filter expression (and others).
-	  * It abstracts over the join kinds used and focuses only on the relations available to SQL expressions
-	  * based on this clause. It is formed by replacing all join kinds (and decorators) present in the complete signature
-	  * of this type with their most generic versions which still provide distinctions necessary for all external types
-	  * working with `FromClause` instances to provide their full functionality. This process works recursively,
-	  * with every `FromClause` subtype accepting another `F &lt;: FromClause` type parameter which corresponds
-	  * to some member `val f :F` substituting `f.Generalized` for `F`.
-	  * The filter for the associated ''where'' clause and all joined relations accessed through
-	  * [[net.noresttherein.oldsql.sql.FromClause.JoinedEntities JoinedEntities]]
+	  * It is the [[net.noresttherein.oldsql.sql.FromClause#Self Self]] type with all join kinds replaced with their
+	  * generalized forms. It abstracts over the exact joins used and focuses only on the relations available to
+	  * SQL expressions based on this clause. Every concrete subclass of `FromClause` declares its most abstract
+	  * superclasses which still provides distinction necessary to fulfill its intended role in the SQL select.
+	  * Its `Generalized` type is then formed recursively, with every `FromClause` subtype which accepts another
+	  * `F &lt;: FromClause` type parameter corresponding to some member `val f :F` substituting `f.Generalized` for `F`.
+	  * The generalized form of `Dual` is simply `FromClause`, so the `Generalized` type of any clause will match also
+	  * clauses which prepend relations to it at the front. The filter for the associated ''where'' clause and
+	  * all joined relations accessed through [[net.noresttherein.oldsql.sql.FromClause.JoinedEntities JoinedEntities]]
 	  * conform to `SQLExpression[Generalized, _]`.
-	  * with all join kinds replaced with the root type `AndFrom` and initial `Dual`
-	  * with `FromClause`. Clauses with the same `Generalized` type are considered equivalent for most purposes.
+	  * Clauses with the same `Generalized` type are considered interchangeable in most cases.
 	  */
 	type Generalized >: Self <: FromLast {
+		type FromLast <: thisClause.FromLast
 		type Generalized <: thisClause.Generalized //these can't be =:= because Dual.Generalized =:= FromClause
 		type Explicit <: thisClause.Explicit
 		type Implicit <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = FromClause
+		type Base <: thisClause.Base
+		type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 	}
 
 	/** This clause upcast to its generalized supertype in which all join kinds are replaced with their least upper
 	  * bounds which still retain the information about their function.
+	  * @return `this.self`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Generalized]]
 	  */
 	def generalized :Generalized = self
 
 	/** A recursive reconstruction of this clause's concrete type. It is defined by replacing every type parameter
-	  * `F &lt;: FromClause` and corresponding to a member `val f :F` with `f.Self`. Concrete clause `C` without
-	  * type parameters (only `Dual`) define it simply as `type Self = C`, terminating the recursion. The result is
+	  * `F &lt;: FromClause`, corresponding to a member `val f :F`, with `f.Self`. A concrete clause `C` without
+	  * type parameters (only `Dual`) defines it simply as `type Self = C`, terminating the recursion. The result is
 	  * the lowest upper bound of a clause `F` without abstract `FromClause` ''subclasses'' in its definition.
 	  * If `F` is an abstract type, all abstract type parameters in its signature remain abstract types in `f.Self`.
 	  * This procedure circumvents possible covariance in the type parameter `F`, which would prevent defining an alias
@@ -189,25 +217,39 @@ trait FromClause { thisClause =>
 	  * and abstract subclasses of `FromClause` in its signature. Any additions into the class hierarchy must
 	  * provide a definition of `Self` to which every instance of the class can be safely cast, as
 	  * the [[net.noresttherein.oldsql.sql.FromClause#self self]] method is final and implemented as
-	  * `this.asInstanceOf[Self]`. Note that it is possible for a concrete class `S`
-	  * to extend another concrete `FromClause` subclass `B`, in which case `b.Self =:= s.Self`,
-	  * for some `val b :B[]; val s :S[]`, where `B[]` and `S[]` are concrete types resulting from applying `B` and `S`
-	  * to their type parameters.
+	  * `this.asInstanceOf[Self]`. Note that it is possible for a concrete class `S` to extend another
+	  * concrete `FromClause` subclass `B`, in which case `b.Self =:= s.Self`, for some `val b :B[]; val s :S[]`,
+	  * where `B[]` and `S[]` are concrete types resulting from applying `B` and `S` to their type parameters.
+	  * All `Self` types are subtypes of the `Generalized` type for the given instance by definition.
+	  * Most member types defined here are preserved, so in most use cases `f.self` can be substituted for `f`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Generalized]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#This]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ConcreteFrom]]
 	  */
 	type Self <: FromLast {
+		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
 		type Outer = thisClause.Outer
-		type Init = thisClause.Init //to preserve OuterFrom conformance
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: FromSome] <: thisClause.JoinedWithSubselect[P]
+//		type AsSubselectOf[+F <: FromSome] <: thisClause.AsSubselectOf[F]    //not for Join, not worth it making it work
+//		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T] //not for Dual
+//		type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]     //not for Dual
 	}
 
-	/** This clause as its [[net.noresttherein.oldsql.sql.FromClause#Self Self]] type. */
+	/** This clause as its [[net.noresttherein.oldsql.sql.FromClause#Self Self]] type.
+	  * @return `this.asInstanceOf[Self]`.
+	  */
 	final def self :Self = this.asInstanceOf[Self]
 
 	/** The supertype of this clause used by some copy constructors/factory methods declared here and in the subclasses.
@@ -224,8 +266,8 @@ trait FromClause { thisClause =>
 	  * However, if for any concrete clause `F &lt;: ConcreteFrom` and `from :F`, `from.This &lt;: from.Self`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Self]]
 	  */
-//	type This >: this.type <: FromLast
-	type This <: FromClause// <: FromLast //>: this.type <: FromLast
+	//type This >: this.type <: FromLast //doesn't hold for decorators
+	type This <: FromClause //todo: refine this with everything
 
 
 
@@ -263,30 +305,36 @@ trait FromClause { thisClause =>
 	  * The clauses used as type parameters of both arguments are supertypes of `next.Generalized`,
 	  * so any boolean expression based on them will automatically conform to `SQLBoolean[next.Generalized]` due
 	  * to `SQLExpressions`'s contravariance.
-	  * Dual however defines this type as `Nothing`, and not having a lower bound means that for clauses not conforming
-	  * to `FromSome` it is also equivalent to `Nothing`, meaning no argument can be provided and the `next.on` method
-	  * cannot be called.
+	  * `Dual` however defines this type as `Nothing`, and not having a lower bound means that for clauses
+	  * not conforming to `FromSome` it is also equivalent to `Nothing`, meaning no argument can be provided
+	  * and the `next.on` method cannot be called.
 	  */
 	type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] <:
-		(JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => SQLBoolean[G]
+		           (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => SQLBoolean[G]
 
 	/** The implementation method to which [[net.noresttherein.oldsql.sql.AndFrom#on on]] delegates. */
-	def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
+	protected def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
 	              (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) :next.This
 
+	private[sql] final def bridgeFilterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
+	                       (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N])
+			:next.This =
+		filterNext[F, N](next)(filter)
 
 
-	/** The ''WHERE'' part of this clause representing the filter condition as SQL AST.
+	/** The ''where'' part of this clause representing the filter condition as SQL AST.
 	  * It is the conjunction of join conditions for all joins in this clause.
-	  */ //todo: merge this with subselectFilter as it doesn't have any real use
-	def filter :SQLBoolean[Generalized]
+	  * Note that this expression includes also the ''where'' clauses of any outer clauses, not just the conditions
+	  * present in the ''explicit'' portion of this clause.
+	  */ //todo: merge this with filter as it doesn't have any real use
+	def fullFilter :SQLBoolean[Generalized]
 
 	/** The combined join conditions of all joins in this clause as an expression based on an extending clause.
-	  * Used by zero-argument `filter` to request the individual join conditions as expressions based on the clause
+	  * Used by zero-argument `fullFilter` to request the individual join conditions as expressions based on the clause
 	  * it was called for, without the need for adapting every member condition for every intermediate join.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
-	def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E]
+	def fullFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E]
 
 
 
@@ -296,67 +344,98 @@ trait FromClause { thisClause =>
 	/** Does this clause contain any relations? */
 	@inline final def nonEmpty :Boolean = !isEmpty
 
-	/** Number of relations contained in this join (counting all their occurrences separately). */
-	def size :Int
-
-	/** The number of relations in this clause, that is `this.size`, as a witness to the fact that 'FromClause'
-	  * is the prefix clause of its `Generalized` type, with all its relations.
+	/** Number of relations available in this join, in both the implicit and explicit part
+	  * (counting all their occurrences separately). Note that this doesn't always equal the number of mappings
+	  * listed in the type, as the relations between any `Subselect`-`GroupByAll` pair are not counted.
+	  * This makes `fullSize` consistent with the length of [[net.noresttherein.oldsql.sql.FromClause#fullRow fullRow]]
+	  * and [[net.noresttherein.oldsql.sql.FromClause#fullTableStack fullTableStack]].
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#innerSize]]
 	  */
-	@inline final def generalizedSpan :FromClause ExtendedBy Generalized = new ExtendedBy(size)
+	def fullSize :Int
 
-	/** The number of relations in this clause, that is `this.size`, as a witness to the fact that 'Dual'
-	  * is the prefix clause of its `Self` type, with all its relations.
+	/** The number of all available relations in this clause, implicitly or explicitly, that is `this.fullSize`,
+	  * as a witness to the fact that 'FromClause' is the prefix clause of its `Generalized` type, with all its relations.
 	  */
-	@inline final def span :Dual ExtendedBy Self = new ExtendedBy(size)
+	@inline final def generalizedSpan :FromClause ExtendedBy Generalized = new ExtendedBy(fullSize)
 
-
-	/** The number of relations in this clause, that is `this.size`, as a witness to the fact that 'FromClause'
-	  * is the prefix clause of its `Generalized` type, with all its relations.
+	/** The number of all available relations in this clause, implicitly or explicitly, that is `this.fullSize`,
+	  * as a witness to the fact that 'Dual' is the prefix clause of its `Self` type, with all its relations.
 	  */
-	@inline final def generalizedSuffix :FromClause PrefixOf Generalized = new PrefixOf(size)
+	@inline final def fullSpan :Dual ExtendedBy Self = new ExtendedBy(fullSize)
 
-	/** The number of relations in this clause, that is `this.size`, as a witness to the fact that 'Dual'
-	  * is the prefix clause of its `Self` type, with all its relations.
+
+	/** The number of all relations available in this clause, implicitly or explicitly, that is `this.fullSize`,
+	  * as a witness to the fact that 'FromClause' is the prefix clause of its `Generalized` type, with all its relations.
 	  */
-	@inline final def fullSuffix :Dual PrefixOf Self = new PrefixOf(size)
+	@inline final def generalizedSuffix :FromClause PrefixOf Generalized = new PrefixOf(fullSize)
+
+	/** The number of all available relations in this clause, implicitly or explicitly, that is `this.fullSize`,
+	  * as a witness to the fact that 'Dual' is the prefix clause of its `Self` type, with all its relations.
+	  */
+	@inline final def fullSuffix :Dual PrefixOf Self = new PrefixOf(fullSize)
 
 
 
-	/** Subject types of all mappings in this clause, concatenated into a heterogeneous list.
-	  * The chain contains the mapped types in the same order as their mappings appear in this type's definition
-	  * and is, like `AndFrom` (but unlike `::`), left associative.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#row]]
+	/** A [[net.noresttherein.oldsql.collection.Chain Chain]] listing all parameters of this clause joined with
+	  * the [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension.param param]] method.
+	  * In particular, a `FromClause` subtype with no `JoinParam` joins in its full type has this type equal to `@~`.
+	  * This is can be used to statically enforce that a clause is parameterless by refining on this type:
+	  * `from :FromClause { type Params = @~ }`, or `from :ParameterlessFrom` as a less bug-prone alternative.
+	  */
+	type Params <: Chain
+
+	/** Does this clause contain any [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] 'joins'
+	  * (or its subtypes)?
+	  * @return `false` ''iff'' `this.Params =:= @~`.
+	  */
+	def isParameterized :Boolean
+
+	/** Subject types of the mappings of all relations in this clause, concatenated into a heterogeneous list.
+	  * The [[net.noresttherein.oldsql.collection.Chain chain]] contains the mapped types in the same order
+	  * as their mappings appear in this type's definition and is, like [[net.noresttherein.oldsql.sql.Using Using]]
+	  * (and all [[net.noresttherein.oldsql.sql.Join Join]] kinds), but unlike `::`, left associative.
+	  * Clauses with a [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] component are treated specially:
+	  * any mappings preceding the `GroupByAll` extension class since the last
+	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] or the start of the clause are omitted from the chain
+	  * as being under the ''group by'' clause.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#fullRow]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
 	  */
-	type Row <: Chain
+	type FullRow <: Chain
 
-	/** Create an SQL tuple expression containing `JoinedRelation` expressions for all joined elements in their order
-	  * of appearance. It will contain entries for all mappings in this clause, including parameter mappings
-	  * and mappings listed in this clause's `Implicit` prefix (if this clause is a subselect clause).
+	/** Create an SQL tuple expression containing `JoinedRelation` expressions for all relations available
+	  * in this clause in their order of appearance. All mappings occurring between a
+	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]]
+	  * (or [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]) until the next
+	  * [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]], if present, are considered unavailable. The omitted
+	  * segment constitutes the ''from'' clause of a single select expression with a ''group by'' clause, meaning
+	  * the values of individual rows cannot be accessed.
 	  */
-	def row :ChainTuple[Generalized, Row]
+	def fullRow :ChainTuple[Generalized, FullRow]
 
 	/** Create an SQL tuple expression, based on some extending clause `E`, containing `JoinedRelation` expressions
 	  * for all joined elements in their order of appearance. It will contain entries for all mappings in this clause,
 	  * including parameter mappings and mappings listed in this clause's `Implicit` prefix (if this clause
-	  * is a subselect clause. This overloaded variant is used by the zero-argument `row` to obtain the chain prefix
-	  * containing the relation formulas based on the final clause type from a prefix clause of a join,
+	  * is a subselect clause). This overloaded variant is used by the zero-argument `fullRow` to obtain
+	  * the chain prefix containing the relation formulas based on the final clause type from a prefix clause of a join,
 	  * without the need to adapt each relation once for every intermediate join.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
-	def row[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, Row]
+	def fullRow[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, FullRow]
 
 	/** All relations in this clause as abstract, untyped mappings, in the reverse order of their appearance.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#row]]
+	  * Any relations in the scope of a [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] clause are excluded.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#fullRow]]
 	  */
-	def tableStack :LazyList[RelationSQL.AnyIn[Generalized]]
+	def fullTableStack :LazyList[RelationSQL.AnyIn[Generalized]]
 
 	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance.
-	  * The `JoinedFormula`s are based on some extending clause `E`, so that the stack for a prefix clause
-	  * can be used as-is, with no need to map over it, by extending clause's zero argument `tableStack`.
+	  * The `JoinedRelation`s are based on some extending clause `E`, so that the stack for a prefix clause
+	  * can be used as-is, with no need to map over it, by extending clause's zero argument `fullTableStack`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
-	def tableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]]
+	def fullTableStack[E <: FromClause]
+	                  (target :E)(implicit extension :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]]
 
 
 
@@ -366,9 +445,11 @@ trait FromClause { thisClause =>
 	  * in `P` and the first relation in `this`, unless this clause starts with a `JoinParam` join.
 	  * It is a narrower variant of [[net.noresttherein.oldsql.sql.FromClause#AppendedTo AppendedTo]],
 	  * with the join type `J`'s left side being restricted to non-empty clauses.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#joinedWith]]
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#JoinedWithSubselect]]
 	  */
 	type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] <:
-		NonEmptyClause with Generalized
+		NonEmptyFrom with Generalized //a volatile type so it can be overriden by volatile types with bounds required for implementation
 
 	/** A join of relations from the clause `F` with relations of this clause. This is the type resulting
 	  * from substituting `Dual` in this type's signature with `F`, that is appending all mappings from this clause
@@ -387,6 +468,19 @@ trait FromClause { thisClause =>
 	  */
 	def joinedWith[F <: FromSome](prefix :F, firstJoin :TrueJoin.*) :JoinedWith[F, firstJoin.LikeJoin]
 
+	/** A specialized variant of the [[net.noresttherein.oldsql.sql.FromClause#JoinedWith JoinedWith]], it is the type
+	  * of a [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'join' between the relations from the clause `P`
+	  * and those from this clause. It is the result of substituting the initial
+	  * [[net.noresttherein.oldsql.sql.From From]]`[T]` clause in this type's definition with `P Subselect T`.
+	  * The join kinds of both clauses are preserved.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#joinedWithSubselect]]
+	  */
+	type JoinedWithSubselect[+P <: FromSome] <: JoinedWith[P, Subselect] {
+		type InnerRow = thisClause.InnerRow
+		type Explicit <: thisClause.Explicit //Join loses equality
+//		type Inner <: thisClause.Inner //Doesn't work in Join, too complex
+	}
+
 	/** Represents this ''from'' clause as a subselect of the clause `prefix` by joining them with the
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] artificial join. The resulting clause
 	  * is the result of appending the first relation from `this` to the `prefix` clause using the `Subselect` join,
@@ -399,32 +493,57 @@ trait FromClause { thisClause =>
 	  * @throws UnsupportedOperationException if this clause is empty or the first join in this clause is a `JoinParam`.
 	  * @see [[[net.noresttherein.oldsql.sql.FromClause#asSubselectOf]]
 	  */
-	def joinedAsSubselect[F <: FromSome](prefix :F) :JoinedWith[F, Subselect]
+	def joinedWithSubselect[F <: FromSome](prefix :F) :JoinedWithSubselect[F]
 
 
 
-	/** A property specifying if this ''from'' clause is a subselect clause, that is it has a `Subselect` join
-	  * somewhere in its complete (dynamic) type.
-	  */
+	/** A property specifying if this ''from'' clause is has a `Subselect` join somewhere in its dynamic type. */
 	def isSubselect :Boolean
 
-	def asSubselect :Option[SubselectFrom { type Implicit = thisClause.Implicit with FromSome }] =
-		if (isSubselect) Some(this.asInstanceOf[SubselectFrom { type Implicit = thisClause.Implicit with FromSome }])
+	/** A property specifying if this ''from'' clause is a legal subselect ''from'' clause, that is it has a `Subselect`
+	  * join somewhere in its complete (dynamic) type and no unbound parameters in the most nested subselect clause.
+	  */
+	def isValidSubselect :Boolean
+
+	/** Checks if `this.type` conforms to [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]]
+	  * (meaning it is a valid ''from'' clause for a subselect of its `Implicit` clause) and, if so, casts `this`
+	  * and returns in an `Option`.
+	  */
+	def asSubselect :Option[Outer#Nested] =
+		if (isValidSubselect) Some(this.asInstanceOf[Outer#Nested])
 		else None
 
 
 
-	/** Super type of all `FromClause` subtypes representing a subselect directly nested under this clause's select.
-	  * As a member type, it is able to define `Implicit` type of this refinement as `this.Generalized`,
-	  * `S &lt;: f.Nested` being thus a more specific way of establishing the relationship than `S &lt;: SubselectOf[F]`.
-	  * This type matches only 'true' subselect clauses, that is types `S &lt;: Generalized Subselect T0 J1 T1 ... JN TN`,
-	  * where `J1...JN` are `TrueJoin` subtypes. This means that non-subselect, 'outer' clauses do not conform
-	  * to this type despite free select expressions being valid subselects of any select expression.
-	  * This stands in contrast to [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]],
-	  * which includes outer clauses.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
+	/** Super type of all `FromClause` subtypes representing a valid ''from'' clause of a subselect directly nested
+	  * under this clause's select. This type matches only 'true' subselect clauses, that is types
+	  * `S &lt;: Generalized Subselect T0 J1 T1 ... JN TN`, where `J1...JN` are `TrueJoin` subtypes or
+	  * `GroupByAll`/`ByAll` (with no `UnboundParam` 'joins'). This means that non subselect, 'outer' clauses
+	  * do not conform to this type despite free select expressions being valid subselects of any select expression.
+	  * As a member type, it is able to define the [[net.noresttherein.oldsql.sql.FromClause#Implicit Implicit]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause#Base Base]] types of this refinement as `this.Generalized`, allowing
+	  * it to work for abstract clauses: `f :f.outer.Nested`
+	  * for any `f :`[[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]]. Similarly,
+	  * `s :f.Nested` for any clause `s = f subselect t ...` (where '...' denote any sequence of join / group by
+	  * methods other than [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param]] and `subselect`
+	  * (or any other method creating a [[net.noresttherein.oldsql.sql.Subselect Subselect]] join).
+	  * This type differs from [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]] in several aspects:
+	  *   - it always works on the full, concrete types - if either clause `S` or `F` has an abstract clause as
+	  *     a prefix, `S` won't conform to `F#Nested` even if the whole explicit portion is fully instantiated;
+	  *   - the types must match exactly in their entirety, meaning that `F` is an exact prefix of `S` (in their
+	  *     generalized forms) and thus `S` contains all relations from `F`, where `S &lt;: SubselectOf[F]` only
+	  *     checks if `S#Base >: F`, which allows `S#Base` to only match a suffix of `F`.
+	  *   - it matches only true subselect clauses, that is those where `F` is immediately followed by `Subselect`
+	  *     in `S`, where the `S &lt;: SubselectOf[F]` for any `F` if
+	  *     `S &lt;: `[[[net.noresttherein.oldsql.sql.FromClause.FreeFrom FreeFrom]].
+	  * This makes `f.Nested` a strict subtype of `SubselectOf[f.Self]`.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#Base]]
 	  */
-	type Nested = SubselectFrom { type Implicit = thisClause.Generalized }
+	type Nested = FromSome {
+		type Implicit = thisClause.Generalized
+		type Base = thisClause.Generalized
+		type DefineBase[+I <: FromClause] = I
+	}
 
 
 	/** The incomplete suffix clause containing all relations since the last `Subselect` join or `Dual`, with all
@@ -433,12 +552,12 @@ trait FromClause { thisClause =>
 	  * abstracting over join kinds. It can be formed by substituting in the complete `Generalized` type of this clause
 	  * the `Implicit` prefix, containing relations present 'implicitly' in the scope, with `FromClause`. All `AndFrom`
 	  * subclasses define it as `left.Explicit AndFrom R`, with the exception of `Subselect` join, which defines it
-	  * as `left.Generalized` instead, while `Dual` defines it as `FromClause` - consistently with `Generalized`.
+	  * as `FromClause AndFrom R` instead, while `Dual` defines it as `FromClause` - consistently with `Generalized`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Inner]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Generalized]]
 	  */
-	type Explicit >: Generalized <: FromLast
+	type Explicit >: Generalized <: FromLast //{ type Explicit <: thisClause.Explicit }
 
 	/** The suffix clause containing all relations from the explicit portion of this subselect clause.
 	  * It represents the actual ''from'' clause of an associated SQL subselect. For subselect clauses, it results from
@@ -456,12 +575,10 @@ trait FromClause { thisClause =>
 	  * It is the generalized form of the outer clause if this clause represents a subselect clause, created by
 	  * `Implicit.subselect()`. All `TrueJoin` subclasses and `From` have this type equal to the `Implicit` type
 	  * of their left side, but `Subselect` defines `Implicit` as the generalized type of its left side. Additionally,
-	  * all 'proper' joins conform to `AsSubselectOf[L#Implicit]` and `L Subselect R` conforms to `AsSubselectOf[L]`.
-	  * As a special case, `JoinParam` defines it as `Nothing`, in order to eliminate the possibility of using it
-	  * as a part of an 'inner' subselect clause, which would hide its existence from the select based on the outer
-	  * clause. Therefore, `Implicit` is equal to the `Generalized` type of the left side of the last `Subselect`,
+	  * all 'true' joins conform to `AsSubselectOf[L#Implicit]` and `L Subselect R` conforms to `AsSubselectOf[L]`.
+	  * Therefore, `Implicit` is equal to the `Generalized` type of the left side of the last `Subselect`,
 	  * or `FromClause` for non subselect clauses. This means that for any generalized type `S &lt;: FromClause`
-	  * with fully instantiated parameters (the clause is complete and the `Generalized` type is well defined) value
+	  * with fully instantiated parameters (the clause is ''complete'' and the `Generalized` type is well defined) value
 	  * `(s :S) subselect t1 join t2 ... join t3` conforms to `SubselectOf[S]` and `s.Nested`.
 	  * This way one can statically express a dependency relationship between ''from'' clauses without resorting
 	  * to implicit evidence.
@@ -479,13 +596,12 @@ trait FromClause { thisClause =>
 	  * it is equal to `Dual`. It represents the clause of the outer select for this subselect clause, assuming
 	  * this clause is a subselect clause created by `outer.subselect()` (and possibly expanded further).
 	  * All `TrueJoin` subclasses and `From` have this type equal to the `Outer` type of their left side, but `Subselect`
-	  * defines `Outer` as the `Self` type of its left side. As a special case, `JoinParam` defines it as `Nothing`
-	  * to prevent any clause containing it on the right side of a `Subselect` from actually conforming to
-	  * `SubselectOf[left.Outer]` This means that for any type `S &lt;: FromClause` with fully instantiated parameters
-	  * (the clause is complete, that is the concrete types of all joins in it are known) value
-	  * `(s :S) subselect t1 join t2 ... join t3` conforms to `s.Nested` and `FromClause { type Outer = s.Self }`.
-	  * This way one can statically express a dependency relationship between ''from'' clauses without resorting
-	  * to implicit evidence.
+	  * defines `Outer` as the `Self` type of its left side. This means that, for any type `S &lt;: FromClause`
+	  * with fully instantiated parameters (the clause is ''concrete'', that is the concrete types of all joins in it
+	  * are known), value `(s :S) subselect t1 join t2 ... join t3` conforms to `s.Nested`
+	  * and `FromClause { type Outer = s.Self }` if none of the joins following the subselect element are
+	  * an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]. This way one can statically express a dependency
+	  * relationship between ''from'' clauses without resorting to implicit evidence.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#outer]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Inner]]
@@ -501,126 +617,189 @@ trait FromClause { thisClause =>
 	/** Return the outer clause of this instance if it (or, recursively, any clause in the left side of the join)
 	  * was created by calling `outer.subselect()`. When viewed as a list of relations, `outer` constitutes
 	  * the result of dropping all relations joined in this instance up until and including a relation joined
-	  * by a `.subselectFrom()` call, going from right to left. If there's no `Subselect` in the dynamic type definition
+	  * by the `.subselect()` call, going from right to left. If there's no `Subselect` in the dynamic type definition
 	  * of this clause, meaning this is not a subselect clause (the actual ''from'' clause of resulting selects
 	  * will include all members of this clause), `Dual` instance used as the relation list terminator is returned.
-	  * @return `outer` of the left side or just the left side if this instance is a `Subselect`.
-	  * @throws UnsupportedOperationException if there is a `JoinParam` 'join' to the right of the last `Subselect`
-	  *                                       (or `Dual`, if this is not a subselect clause).
+	  * @return `outer` of the left side or `left.Self` if this instance is a `Subselect`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Outer]]
 	  */
 	def outer :Outer
 
+	/** The `FromClause` type used as the type parameter of [[net.noresttherein.oldsql.sql.SelectSQL select]] SQL
+	  * expressions created from this instance. It is equal to `Implicit`, unless
+	  * an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] is present in the explicit portion of
+	  * this clause, in which case it equals `Nothing` (hence invalidating the expression).
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
+	  */ //not defined as DefineBase[Implicit] here because of a clash with SubselectOf refinement caused by a scala bug
+	type Base <: DefineBase[Implicit]
 
-
-	/** The ''WHERE'' clause of this subselect clause representing the explicit filter condition as an SQL AST.
-	  * It is the conjunction of join conditions for all joins in this clause since the last `Subselect` join.
-	  * For non subselect clauses, it is equal to [[net.noresttherein.oldsql.sql.FromClause#filter filter]]
+	/** A helper type used to define the type `Base`. Always parameterized with `Implicit`, all `Extended` subclasses
+	  * define it as equals to the argument `I`, except of `UnboundParam`, which defines it as `Nothing`.
+	  * This is better than defining `Base` directly, as it allows to propagate behavior of the explicit portion
+	  * (which determines whether `Base` will equal `Implicit` or `Nothing`) when rebasing it onto another
+	  * clause (and hence changing the actual `Implicit` type).
 	  */
-	def subselectFilter :SQLBoolean[Generalized]
+	type DefineBase[+I <: FromClause] <: I
 
-	/** The combined join conditions of all joins since the last `Subselect` join as a expression based on an extending
-	  * clause. Used by zero-argument `filter` to request the individual join conditions as formulas based on the clause
-	  * it was called for.
+	/** The implicit prefix of this clause, that is the clause ending before the last
+	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] join, or [[net.noresttherein.oldsql.sql.Dual Dual]]
+	  * for non subselect clauses.
+	  * @return `this.outer`
+	  * @throws UnsupportedOperationException if there is an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]
+	  *                                       join after the last `Subselect` in this clause.
+	  */
+	def base :Base
+
+
+	/** The ''where'' clause of this subselect clause representing the explicit filter condition as an SQL AST.
+	  * It is the conjunction of join conditions for all joins in this clause since the last `Subselect` or `GroupByAll`
+	  * join. For non subselect clauses, it is equal to [[net.noresttherein.oldsql.sql.FromClause#fullFilter fullFilter]].
+	  */
+	def filter :SQLBoolean[Generalized]
+
+	/** The combined join conditions of all joins since the last `Subselect` or `GroupByAll` join as a expression based
+	  * on an extending clause. Used by zero-argument `fullFilter` to request the individual join conditions
+	  * as expressions based on the clause it was called for.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
-	def subselectFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E]
+	def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E]
 
 
 
 	/** Number of relations contained in the explicit portion of this subselect join. This is equal to
-	  * the number of mappings to the right of the rightmost `Subselect` join or `Dual`, that is `size - outer.size`.
-	  */
-	def subselectSize :Int = size - outer.size
+	  * the number of mappings to the right of the rightmost `Subselect` join or `Dual`,
+	  * that is `fullSize - outer.fullSize`.
+	  *///consider: renaming it to size
+	def innerSize :Int = fullSize - outer.fullSize
 
-	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.subselectSize`,
+	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.innerSize`,
 	  * as a witness to the fact that its 'Implicit' type is the generalization of the prefix clause
 	  * consisting of all relations preceding the last `Subselect` join. For non-subselect clauses,
 	  * it represents the full `Generalized` type, with all its relations.
 	  */
-	@inline final def explicitSpan :Implicit ExtendedBy Generalized = new ExtendedBy(subselectSize)
+	@inline final def explicitSpan :Implicit ExtendedBy Generalized = new ExtendedBy(innerSize)
 
-	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.subselectSize`,
+	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.innerSize`,
 	  * as a witness to the fact that its 'Outer' type is the generalization of the prefix clause
 	  * consisting of all relations preceding the last `Subselect` join. For non-subselect clauses,
 	  * it represents the full type `Self`, with all its relations.
 	  */
-	@inline final def innerSpan :Outer ExtendedBy Self = new ExtendedBy(subselectSize)
+	@inline final def innerSpan :Outer ExtendedBy Self = new ExtendedBy(innerSize)
 
-	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.subselectSize`,
+	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.innerSize`,
 	  * as a witness to the fact that its 'Implicit' base clause, constituting of all relations listed by
 	  * enclosing selects, is a prefix of the `Generalized` type of this clause. For non-subselect clauses,
 	  * it represents the full `Generalized` type size (that is, all relations in the clause).
 	  */
-	@inline final def explicitSuffix :Implicit PrefixOf Generalized = new PrefixOf(subselectSize)
+	@inline final def explicitSuffix :Implicit PrefixOf Generalized = new PrefixOf(innerSize)
 
-	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.subselectSize`,
+	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.innerSize`,
 	  * as a witness to the fact that its 'Outer' portion is a prefix clause of its `Self` type (that is,
 	  * its complete type with all join kinds known). For non-subselect clauses, it is the number of all relations.
 	  */
-	@inline final def innerSuffix :Outer PrefixOf Self = new PrefixOf(subselectSize)
+	@inline final def innerSuffix :Outer PrefixOf Self = new PrefixOf(innerSize)
 
 
 
 	/** Subject types of all mappings in this clause following the `Implicit` prefix, concatenated into
 	  * a [[net.noresttherein.oldsql.collection.Chain Chain]]. This amounts to the list of entities from
-	  * all the relations from the ''from'' clause of the most deeply nested subselect. If this clause doesn't represent
-	  * a subselect, but a top-level query, it is the same as `Row`. The chain contains the mapped types
-	  * in the same order as their mappings appear in this type's definition and is, like `AndFrom` (but unlike `::`),
-	  * left associative.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#subselectRow]]
+	  * all the relations from the ''from'' clause of the most deeply nested subselect or, if this is a ''group by''
+	  * clause, all mappings to the right of the last `GroupByAll` appended by it or `ByAll`. This way the chain
+	  * contains all mappings which are available to the ''select'' clause created from this instance.
+	  * If this clause doesn't represent a subselect, but a top-level query, it is the same as `FullRow`.
+	  * The chain contains the mapped types in the same order as their mappings appear in this type's definition and is,
+	  * like `AndFrom` (but unlike `::`), left associative.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#innerRow]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#Row]]
-	  */
-	type SubselectRow <: Chain
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#FullRow]]
+	  */ //consider: renaming to Row and drop the 'inner' prefix from the following methods
+	type InnerRow <: Chain
 
 	/** Create an SQL tuple expression containing `JoinedRelation` expressions for all joined relations
 	  * in the most deeply nested subselect, in their order of appearance. This includes all relations in this clause
-	  * following the most recent `Subselect` 'join', marking the first relation following the `Implicit` clause prefix.
+	  * following the most recent `Subselect` or `GroupByAll` 'join', marking the first not grouped relation following
+	  * the `Implicit` clause prefix. It represents the complete data set available to the ''select'' clause with
+	  * the exception of potential grouped relations available only to aggregate functions.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#Explicit]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
 	  */
-	def subselectRow :ChainTuple[Generalized, SubselectRow]
+	def innerRow :ChainTuple[Generalized, InnerRow]
 
-	/** Create an SQL tuple expression containing `JoinedRelation` formulas for all joined elements of the most deeply
-	  * nested subselect clause, in their order of appearance. The formulas are based on some extending clause `E`,
-	  * so they can be used by the zero-argument `subselectRow` as the chain prefix of its result.
+	/** Create an SQL tuple expression containing `JoinedRelation` expressions for all joined elements
+	  * of the most deeply nested subselect clause, in their order of appearance. This includes all relations
+	  * in this clause following the most recent `Subselect` or `GroupByAll` 'join', marking the first not grouped
+	  * relation following the `Implicit` clause prefix. It represents the complete data set available to the ''select''
+	  * clause with the exception of potential grouped relations available only to aggregate functions. The expressions
+	  * are based on some extending clause `E`, so they can be used by the zero-argument `innerRow` as the chain prefix
+	  * of its result.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
-	def subselectRow[E <: FromClause]
-	                (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow]
+	def innerRow[E <: FromClause]
+	            (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, InnerRow]
 
 	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance, ending
-	  * with the first relation following the `Implicit` prefix (the one joined with the last `Subselect` 'join').
+	  * with the first not grouped relation following the `Implicit` prefix. This is the one joined with the last
+	  * `Subselect` 'join', unless it is followed (possibly indirectly) by a `GroupByAll` clause (before any other
+	  * `Subselect`), in which case the last relation is the one for the component following `GroupByAll`.
 	  * If this is not a subselect clause (no `Subselect` 'joins' are present in this clause
-	  * and `Implicit =:= FromClause`), all relations are included.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#subselectRow]]
+	  * and `Implicit =:= FromClause`), all not grouped relations are included.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#innerRow]]
 	  */
-	def subselectTableStack :LazyList[RelationSQL.AnyIn[Generalized]]
+	def innerTableStack :LazyList[RelationSQL.AnyIn[Generalized]]
 
-	/** All relations in this clause in the reverse order, ending with the last (right-most) appearance of a `Subselect`
-	  * 'join' or `Dual`. The elements are returned as `JoinedRelation`s for generic, untyped mappings,
-	  * based on some extending clause `E`. Used by the zero-argument `subselectTableStack`
+	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance, ending
+	  * with the first not grouped relation following the `Implicit` prefix. This is the one joined with the last
+	  * `Subselect` 'join', unless it is followed (possibly indirectly) by a `GroupByAll` clause (before any other
+	  * `Subselect`), in which case the last relation is the one for the component following `GroupByAll`.
+	  * If this is not a subselect clause (no `Subselect` 'joins' are present in this clause
+	  * and `Implicit =:= FromClause`), all not grouped relations are included. The returned relation SQL expressions
+	  * are based on some extending clause `E`. Used by the zero-argument `innerTableStack`
 	  * to request the tail of the stack with expressions of the correct type from the prefix clause.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
-	def subselectTableStack[E <: FromClause]
-	                       (target :E)(implicit extension :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]]
+	def innerTableStack[E <: FromClause]
+	                   (target :E)(implicit extension :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]]
+
+
+	/** A [[net.noresttherein.oldsql.collection.Chain Chain]] with `Subject` types of mappings for all relations
+	  * available to this clause implicitly, i.e., by virtue of being a part of a ''from'' clause of one of
+	  * enclosing ''selects''. It is equal to `outer.`[[net.noresttherein.oldsql.sql.FromClause#FullRow FullRow]].
+	  */ //this type is needed to implement FullRow in GroupByAll so that Self preserves it, as it does not outer.type
+	type OuterRow <: Chain
+
+	/** Create an SQL tuple expression containing all `JoinedRelation` expressions from the outer, ''implicit''
+	  * section of this clause, that is all elements until the rightmost `Subselect` join, in their order of appearance.
+	  * If this is not a subselect clause, the chain will be empty.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#Explicit]]
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
+	  */
+	def outerRow :ChainTuple[Generalized, OuterRow]
+
+	/** Create an SQL tuple expression containing `JoinedRelation` expressions for all elements joined until
+	  * the rightmost `Subselect` join, in their order of appearance. If this is not a subselect clause,
+	  * the chain will be empty. The expressions are based on some extending clause `E`, so they can be used
+	  * by the zero-argument `outerRow` as the chain prefix of its result.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
+	  */
+	def outerRow[E <: FromClause](target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, OuterRow]
 
 
 
 	/** A type constructor appending all relations joined since the last (rightmost) `Subselect` 'join' (or `Dual`)
 	  * to the given clause `F`. This is the result of replacing everything to the left of the last `Subselect`
-	  * in this type's signature with `F`. For any concrete subselect clause `J &lt;: FromSome`,
-	  * `J =:= J#AsSubselectOf[J#Outer]` and `J#AsSubselectOf[J#Implicit] &lt;:&lt; J#Generalized`.
-	  * For outer clauses, it replaces the first `From[T]` 'join' with `F Subselect T`, but `Dual`, despite already
-	  * being a subselect clause of any clause, defines it as `Nothing` as an exception, because joining the result
-	  * with additional relations would otherwise ''not'' become a subselect clause of `F`.
+	  * in this type's signature with `F`. For any concrete subselect clause `J &lt;: FromSome` without
+	  * any parameters in the explicit/inner section, `J =:= J#AsSubselectOf[J#Outer]`
+	  * and `J#AsSubselectOf[J#Implicit] &lt;:&lt; J#Generalized`. For outer clauses, it replaces
+	  * the first `From[T]` 'join' with `F Subselect T`, but `Dual`, despite already being a subselect clause
+	  * of any clause, defines it as `Nothing` as an exception, because joining the result with additional relations
+	  * would otherwise ''not'' become a subselect clause of `F`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
-	  */
-	type AsSubselectOf[+F <: FromSome] <: FromLast {
+	  */ //consider: parameterizing it instead (or also) with a singleton type, so we can have Implicit = F#Generalized, etc.
+	type AsSubselectOf[+F <: FromSome] <: FromLast { //todo: refine it more in NonEmptyFrom
 		type Explicit = thisClause.Explicit
-//		type Implicit <: F#Generalized
-//		type Outer <: F#Self
+//		type Inner <: thisClause.Inner //Doesn't hold for From[T] and makes asSubselectOf result volatile
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
 		type AsSubselectOf[+E <: FromSome] = thisClause.AsSubselectOf[E]
 	}
 
@@ -631,9 +810,16 @@ trait FromClause { thisClause =>
 	  * all relations since the last occurrence of a `Subselect` join, forming the explicit ''from'' clause of
 	  * a modified subselect, with the new outer clause `F`, preserving all join conditions. If this clause is not a
 	  * subselect clause, this method will use `Subselect` 'join' to join the `newOuter` with the first relation of this
-	  * clause. All join conditions are preserved.
-	  * @return a ''from'' clause conforming to `newOuter.Nested` and `SubselectOf[F]`.
-	  * @throws `UnsupportedOperationException` if this clause is empty or there is a `JoinParam` 'join'
+	  * clause. All join conditions are preserved. As the argument clause is an extension of the outer clause of
+	  * this instance, this has the effect of inserting the relations appended to the outer clause between it and
+	  * the inner clause. For outer clauses, this should produce the same result as
+	  * [[net.noresttherein.oldsql.sql.FromClause#joinedWithSubselect joinedWithSubselect]], though the exact types
+	  * may be different when called for abstract types.
+	  * @return a ''from'' clause which, assuming this instance doesn't contain any `UnboundParam` parameters
+	  *         in its outer section, conforms to `newOuter.Nested` and, if this type is instantiated at least to
+	  *         the last `Subselect` (or `Dual`/`From`) and its generalized form is known,
+	  *         to [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]]`[F]`.
+	  * @throws `UnsupportedOperationException` if this clause is empty or there is an `UnboundParam` 'join'
 	  *                                         in its explicit portion.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */ //todo: it should accept any NonEmptyClause
@@ -642,13 +828,17 @@ trait FromClause { thisClause =>
 
 
 
-	/** Type resulting from replacing the `Outer`/`Implicit` part of `F` with `Self` type of this clause. */
-	type FromSubselect[+F <: FromClause] <: SubselectOf[Generalized]
-
 	/** A ''from'' clause for a subselect of this clause with the single relation `T`, conforming to `SubselectOf[Self]`. */
-	type SubselectTable[T[O] <: MappingAt[O]] <: (Self AndFrom T) {
+	type FromRelation[T[O] <: MappingAt[O]] <: (Self AndFrom T) {
+		type Params = thisClause.Params
+		type FullRow <: thisClause.FullRow ~ T[FromClause AndFrom T]#Subject
+		type Explicit = FromClause AndFrom T
 		type Implicit = thisClause.Generalized
 		type Outer = thisClause.Self
+		type Base = thisClause.Generalized
+		type DefineBase[+I <: FromClause] = I
+		type InnerRow <: @~ ~ T[FromClause AndFrom T]#Subject
+		type OuterRow = thisClause.FullRow
 	}
 
 	/** Creates a ''from'' clause for a subselect of a select with this clause. It will have the given relation
@@ -657,9 +847,9 @@ trait FromClause { thisClause =>
 	  * joined with the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join. All relations included
 	  * in this clause are available to any `SQLExpression` parameterized with the type of the returned clause.
 	  * The method works differently for empty clauses: as an empty clause cannot appear on the left side
-	  * of `Subselect`, it simply returns `From(subselect)`. All non subselect clauses conform
-	  * to [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[Dual]], so the returned clause
-	  * is a valid subselect clause of `Generalized` (and `Self`) either way.
+	  * of `Subselect`, it simply returns `From(subselect)`. All non subselect clauses conform to
+	  * [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[FromClause] ]] so the returned clause
+	  * is a valid subselect clause of `Generalized` (and `Self`) either way, as long as its `Generalized` type is known.
 	  *
 	  * This method is the implementation target of the
 	  * [[net.noresttherein.oldsql.sql.FromClause.JoinedEntities#from from]] method of
@@ -670,20 +860,30 @@ trait FromClause { thisClause =>
 	  * @param first the sole relation of the ''from'' clause of the new subselect clause.
 	  * @param infer implicit witness guiding the compiler to properly infer the subject type of mapping `M` (and `T`).
 	  * @return `Self Subselect T`, or `From[T]` if this clause is empty.
-	  *        The clause will conform to `SubselectOf[Generalized]`.
+	  *        The clause will conform to `this.Nested` and, as long as it is complete and its generalized form is known,
+	  *        to `SubselectOf[Generalized]`.
 	  */
 	def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	        (first :Relation[M]) //todo: make this use JoinedRelationSubject to cast back the result
 //	        (implicit cast :InferSubject[this.type, Subselect, M, T, S])
 	        (implicit infer :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
-			:SubselectTable[T]
+			:FromRelation[T]
+
+	/** Type resulting from replacing the `Outer`/`Implicit` part of `F` with `Self` type of this clause.*/
+	type FromSubselect[+F <: FromSome] <: FromSome { //consider: parameterizing with a singleton type
+		type Explicit <: F#Explicit
+		type Implicit = thisClause.Generalized
+		//type Outer = thisClause.Self //too much refining by casting in Dual
+		type InnerRow <: F#InnerRow
+	}
 
 	/** Creates a ''from'' clause for a subselect of a select with this clause. It uses the given clause `subselect`
 	  * as its ''explicit'' suffix (i.e. the relations from the actual ''from'' clause of the associated subselect),
 	  * and this clause as the ''implicit'' prefix, joined with the [[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * pseudo join. The method works differently for empty clauses: as an empty clause cannot appear on the left side
 	  * of `Subselect`, it simply returns the `subselect` argument unchanged. All non-subselect clauses conform
-	  * to [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[Dual] ]], so the returned clause
+	  * to [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[FromClause] ]] (either statically,
+	  * or by the abstract [[net.noresttherein.oldsql.sql.FromClause.OuterFrom OuterFrom]], so the returned clause
 	  * is a valid subselect clause of `Generalized` (and `Self`) either way.
 	  *
 	  * This method is the implementation target of the
@@ -691,125 +891,187 @@ trait FromClause { thisClause =>
 	  * [[net.noresttherein.oldsql.sql.FromClause.JoinedEntities JoinedEntities]] and
 	  * [[net.noresttherein.oldsql.sql.FromClause.JoinedRelations JoinedRelations]]; client code may prefer to use
 	  * the [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension#subselect subselect]] extension method instead,
-	  * which accepts any non-empty clause, not only `OuterClause` subtypes.
-	  * @param subselect the actual, explicit ''from'' clause of a target subselect.
-	  * @return a ''from'' clause conforming to `SubselectOf[Generalized]`, adapted from the `subselect` argument
-	  *         by prepending this clause to it.
+	  * which accepts any non-empty clause, not only
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeFromSome FreeFromSome]] subtypes.
+	  * @param subselect the actual, explicit ''from'' clause of a target subselect - without any `Subselect`
+	  *                  or `UnboundParam` joins of its own.
+	  * @return a ''from'' clause adapted from the `subselect` argument by prepending this clause to it.
+	  *         It will conform to `this.Nested` and, as long as this clause is ''generalized'',
+	  *         to `SubselectOf[Generalized]`.
 	  */ //todo: make this accept any non-empty outer clause once subselect accepts it as its left side
-	def from[F <: OuterFromSome](subselect :F) :FromSubselect[F]
+	def from[F <: FreeFromSome](subselect :F) :FromSubselect[F] { type DefineBase[+I <: FromClause] = I }
 
-	/** Creates a ''from'' clause for a subselect of a select with this clause. It uses the ''subselect portion''
-	  * (''explicit/inner'') of the given clause `subselect` as its ''explicit'' suffix (i.e. all the explicit relations
-	  * from the ''from'' clause of the associated subselect, be they statically known or not), and this clause
-	  * as the ''implicit'' prefix, joined with the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join.
-	  * It can only be applied to clauses of which implicit, outer portion is extended by this clause, that is
-	  * it already contains all the relations the relations available implicitly to the `subselect` clause
-	  * in the exact order, and presumably was created by extending the very `subselect.outer` instance.
+	/** Creates a ''from'' clause for a subselect of a select with this clause. It uses the ''explicit''/''inner''
+	  * portion of the given `subselect` clause as its ''explicit'' suffix (i.e. all the explicit relations
+	  * from the ''from'' clause of the associated subselect, be they statically known or not), substituting
+	  * its ''implicit'' prefix with this clause, joined with the [[net.noresttherein.oldsql.sql.Subselect Subselect]]
+	  * pseudo join. It can only be applied to clauses of with an implicit, outer portion extended by this clause,
+	  * that is if the latter contains all the relations available implicitly to the `subselect` clause as its prefix
+	  * in the exact order and, presumably, was created by extending the very `subselect.outer` instance.
 	  * Compare this with the [[net.noresttherein.oldsql.sql.FromClause#from from]] method, which joins
-	  * a whole independent clause as the ''explicit/inner'' portion of
+	  * a whole independent clause as the ''explicit/inner'' portion of a the resulting subselect clause.
 	  *
 	  * The method works differently for empty clauses: as an empty clause cannot appear on the left side
 	  * of `Subselect`, it simply returns the `subselect` argument unchanged. All non-subselect clauses conform
 	  * to [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[Dual] ]], so the returned clause
-	  * is a valid subselect clause of `Generalized` (and `Self`) either way.
+	  * is a valid subselect clause of `Generalized` (and `Self`) either way, as long as `this.Terminator =:= Dual`
+	  * (this clause is complete).
 	  *
 	  * This method is the implementation target of the
 	  * [[net.noresttherein.oldsql.sql.FromClause.JoinedEntities#fromSubselect fromSubselect]] method of
 	  * [[net.noresttherein.oldsql.sql.FromClause.JoinedEntities JoinedEntities]] and
-	  * [[net.noresttherein.oldsql.sql.FromClause.JoinedRelations JoinedRelations]]; client code may prefer to use
-	  * the [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension#subselect subselect]] extension method instead,
-	  * which accepts any non-empty clause, not only `OuterClause` subtypes.
+	  * [[net.noresttherein.oldsql.sql.FromClause.JoinedRelations JoinedRelations]].
 	  * @param subselect the actual, explicit ''from'' clause of a target subselect.
-	  * @return a ''from'' clause conforming to and `SubselectOf[Generalized]`,
-	  *         adapted from the `subselect` argument by replacing its `Outer` part with this clause.
+	  * @return a ''from'' clause adapted from the `subselect` argument by replacing its `Outer` part with this clause,
+	  *         conforming to `outer.Nested` and `SubselectOf[Generalized]` (if this clause's `Generalized` type
+	  *         is well defined).
 	  */
 	def fromSubselect[F <: FromSome](subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
-			:FromSubselect[F]
+			:FromSubselect[F] { type DefineBase[+I <: FromClause] = subselect.DefineBase[I] }
 
 
 
-	/** A [[net.noresttherein.oldsql.collection.Chain Chain]] listing all parameters of this clause joined with
-	  * the [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension.param param]] method.
-	  * In particular, a `FromClause` subtype with no `JoinParam` joins in its full type has this type equal to `@~`.
-	  * This is can be used to statically enforce that a clause is unparameterized by refining on this type:
-	  * `from :FromClause { type Params = @~ }`, or `from :ParameterlessFrom` as a less bug-prone alternative.
-	  */
-	type Params <: Chain
-
-
-
-	/** Creates an SQL ''select'' expression with this clause used for the ''from'' and ''where'' clauses
+	/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses
 	  * and the ''select'' clause consisting of all selectable columns of the mapping returned by the passed function.
+	  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+	  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+	  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+	  * the `Outer` clause).
+	  * @param component a function returning any component (including columns and the whole relation mappings)
+	  *         of any of the relations available in this clause.
+	  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
+	  *         'outer' type (the ''from'' clause serving as the basis for the expression).
+	  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 	  */
 	def selectAs[C[A] <: MappingAt[A], M[A] <: BaseMapping[S, A], S, O >: Generalized <: FromClause]
 	            (component :JoinedEntities[Generalized] => C[O])
 	            (implicit cast :Conforms[C[O], M[O], BaseMapping[S, O]], shift :TableShift[O, M, _ <: Numeral])
-			:Implicit SelectAs M[Any] =
+			:Base SelectAs M[Any] =
 		{
 			type Mock = RelationSQL[Generalized, MappingOf[Any]#TypedProjection, Any, O]
-			val table = tableStack(shift.tables).asInstanceOf[Mock]
+			val table = fullTableStack(shift.tables).asInstanceOf[Mock]
 			val comp = table \ component(generalized.entities)
 			selectAs(comp)
 		}
 
 
-	/** Creates an SQL ''select'' expression with this clause used for the ''from'' and ''where'' clauses
+	/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses
 	  * and the ''select'' clause consisting of all selectable columns of the passed mapping.
+	  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+	  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+	  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+	  * the `Outer` clause).
+	  * @param component any component (including columns and whole relation mappings) of any of the relations
+	  *        available in this clause.
+	  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
+	  *         'outer' type (the ''from'' clause serving as the basis for the expression).
+	  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 	  */
 	def selectAs[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[S, A], S, O >: Generalized <: FromClause]
-	            (component :ComponentSQL[Generalized, T, E, M, S, O]) :Implicit SelectAs M[Any] =
-		if (isSubselect) {
-			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
-			component.subselectFrom(this.asInstanceOf[AsSubselect])
+	            (component :ComponentSQL[Generalized, T, E, M, S, O]) :Base SelectAs M[Any] =
+		if (isParameterized)
+			throw new UnsupportedOperationException(
+				s"Cannot use a parameterized clause as a basis for select $component: $this."
+			)
+		else if (isSubselect) {
+			component.subselectFrom[Self, Any](self)
 		} else
-			component.asInstanceOf[ComponentSQL[FromClause, T, E, M, S, FromClause]].selectFrom(this.asInstanceOf[OuterClause])
+			component.asInstanceOf[ComponentSQL[FromClause, T, E, M, S, FromClause]].selectFrom(this.asInstanceOf[FreeFrom])
 
 
-	/** Creates an SQL ''select'' expression with this clause used for the ''from'' and ''where'' clauses
+	/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses
 	  * and the expression returned by the passed function as its ''select'' clause.
+	  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+	  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+	  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+	  * the `Outer` clause).
+	  * @param header a function returning any kind of SQL expression (including, in particular, tuples, which will be
+	  *               inlined in the ''select'' clause), constructable from the expressions for the joined relations
+	  *               of this clause.
+	  * @return a `SelectSQL` based on this instance's `Implicit` type (that is, embeddable only as an expression
+	  *         in instances of this `this.Implicit`), using the given arbitrary expression as the ''select'' clause.
+	  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 	  */
 	@inline def select[V](header :JoinedEntities[Generalized] => SQLExpression[Generalized, V])
-			:SelectSQL[Implicit, V, _] =
+			:SelectSQL[Base, V, _] =
 		select(header(generalized.entities))
 
 
 	/** Creates an SQL ''select'' expression selecting a single column, as defined by the result of the passed function,
 	  * and this instance as the source of its ''from'' and ''where'' clauses.
+	  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+	  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+	  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+	  * the `Outer` clause).
+	  * @param header a function returning an expression for a single column, constructable from the expressions
+	  *               for the joined relations of this clause.
+	  * @return a single column select, based on this instance's `Implicit` type (that is, embeddable only as an expression
+	  *         in instances of this `this.Implicit`), which is a valid `ColumnExpression` (that is, an atomic SQL value).
+	  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 	  */
 	@inline def selectColumn[V](header :JoinedEntities[Generalized] => ColumnSQL[Generalized, V])
-			:SelectColumn[Implicit, V, _] =
+			:SelectColumn[Base, V, _] =
 		select(header(generalized.entities))
 
 
 	/** Creates an SQL ''select'' expression selecting an arbitrary `SQLExpression`. The ''from'' and ''where'' clauses
 	  * are defined by this instance, while the ''select'' clause consists of all column sub-expressions constituting
 	  * the `header` subexpressions.
+	  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+	  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+	  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+	  * the `Outer` clause).
+	  * @param header an arbitrary type of SQL expression (including, in particular, tuples, which will be
+	  *               inlined in the ''select'' clause), constructable from the expressions for the joined relations
+	  *               of this clause.
+	  * @return a `SelectSQL` based on this instance's `Implicit` type (that is, embeddable only as an expression
+	  *         in instances of this `this.Implicit`), using the given arbitrary expression as the ''select'' clause.
+	  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 	  */
-	def select[V](header :SQLExpression[Generalized, V]) :SelectSQL[Implicit, V, _] =
-		if (thisClause.isSubselect) {
-			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
-			header.subselectFrom(this.asInstanceOf[AsSubselect])
+	def select[V](header :SQLExpression[Generalized, V]) :SelectSQL[Base, V, _] =
+		if (isParameterized)
+			throw new UnsupportedOperationException(
+				s"Cannot use a parameterized clause as a basis for select $header: $this."
+			)
+		else if (isSubselect) {
+			header.subselectFrom(self)
 		} else
-			header.asInstanceOf[SQLExpression[FromClause, V]].selectFrom(this.asInstanceOf[OuterClause])
+			header.asInstanceOf[SQLExpression[FromClause, V]].selectFrom(this.asInstanceOf[FreeFrom])
 
 
 	/** Creates an SQL ''select'' expression selecting a single column, as defined by the passed `header` `ColumnSQL`,
 	  * and this instance as the source of its ''from'' and ''where'' clauses.
+	  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+	  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+	  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+	  * the `Outer` clause).
+	  * @param header a single column SQL expression, constructable from the expressions for the joined relations
+	  *               of this clause.
+	  * @return a single column select, based on this instance's `Implicit` type (that is, embeddable only as an expression
+	  *         in instances of this `this.Implicit`), which is a valid `ColumnExpression` (that is, an atomic SQL value).
+	  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 	  */
-	def select[V](header :ColumnSQL[Generalized, V]) :SelectColumn[Implicit, V, _] =
-		if (thisClause.isSubselect) {
-			type AsSubselect = Generalized with SubselectFrom { type Implicit = thisClause.Implicit }
-			header.subselectFrom(this.asInstanceOf[AsSubselect])
+	def select[V](header :ColumnSQL[Generalized, V]) :SelectColumn[Base, V, _] =
+		if (isParameterized)
+			throw new UnsupportedOperationException(
+				s"Cannot use a parameterized clause as a basis for select $header: $this."
+			)
+		else if (thisClause.isSubselect) {
+			header.subselectFrom(self)
 		} else
-			header.asInstanceOf[ColumnSQL[FromClause, V]].selectFrom(this.asInstanceOf[OuterClause])
+			header.asInstanceOf[ColumnSQL[FromClause, V]].selectFrom(this.asInstanceOf[FreeFrom])
 
 
 
 	/** Creates an SQL ''select'' expression selecting all columns from all relations of the explicit (subselect)
-	  * portion of this clause as a `Chain` of relation subjects. This is equivalent to `select(this.row)`.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#SubselectRow SubselectRow]]
+	  * portion of this clause as a `Chain` of relation subjects. This is equivalent to `select(this.fullRow)`.
+	  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+	  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+	  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+	  * the `Outer` clause).
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#InnerRow InnerRow]]
 	  */
-	def select_* :SelectSQL[Implicit, SubselectRow, _] = select(subselectRow)
+	def select_* :SelectSQL[Base, InnerRow, _] = select(innerRow)
 
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[FromClause]
@@ -827,20 +1089,22 @@ trait FromClause { thisClause =>
   */
 object FromClause {
 
-	sealed trait GroupingSeal
+	/** A 'sealing' trait which forces all concrete `FromClause` implementations to extend either
+	  * [[net.noresttherein.oldsql.sql.FromClause.DiscreteFrom DiscreteFrom]] (for ungrouped clauses) or
+	  * [[net.noresttherein.oldsql.sql.FromClause.GroupedFrom GroupedFrom]] for clauses with a ''group by'' clause
+	  * by having the root `FromClause` declare it as its self type. It is better than sealing the `FromClause` as it
+	  * still allows 'interface' traits which do not extend any of the above, deferring their mixing in to subclasses.
+	  */
+	sealed trait GroupingSeal extends FromClause
 
-	/** Marker trait for all true ''from'' clauses, without a ''group by'' clause.
-	  * @see [[net.noresttherein.oldsql.sql.GroupedFrom]]
-	  */ //consider: renaming to PureFrom, DiscreteFrom?
-	trait UngroupedFrom extends FromClause { thisClause =>
-//		override type FromLast <: UngroupedFrom
-		override type This <: UngroupedFrom
 
-		/** This type is introduced as a work around for a scalac bug where type projection `F#Generalized`
-		  * isn't correctly recognized as a supertype of `f :F` for `F &lt;: UngroupedFrom` due to the type's
-		  * `Generalized` declaration appearing in the `FromClause` supertype.
-		  */ //todo: find some other type which might actually be useful.
-		type GeneralizedAlias = Generalized
+	/** Marker trait for all true ''from'' clauses, without a ''group by'' clause. Most implementations extend
+	  * its non-empty subtype, [[net.noresttherein.oldsql.sql.FromClause.FromSome FromSome]].
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.GroupedFrom]]
+	  */ //FromClause is redundant but makes the signature more clear.
+	trait DiscreteFrom extends FromClause with GroupingSeal { thisClause =>
+//		override type FromLast <: DiscreteFrom //can't have this because Dual.FromLast = FromClause to be a fixed point.
+		override type This <: DiscreteFrom
 
 
 		/** A join between this clause and the relation for mapping `T`. For non empty clauses, this is simply `J[Self, T]`,
@@ -860,7 +1124,7 @@ object FromClause {
 
 		/** Used to add any relation to any clause, creates the clause of a type depending on this clause:
 		  * empty clauses return `From[T]`, while non empty clauses create `this.type InnerJoin T`.
-		  */
+		  */ //this method serves also as a seal ensuring that every discrete clause extends either EmptyFrom or FromSome
 		protected[sql] def extend[T[O] <: BaseMapping[S, O], S]
 		                   (right :LastRelation[T, S], filter :SQLBoolean[Generalized AndFrom T]) :this.type AndFrom T
 
@@ -901,7 +1165,7 @@ object FromClause {
 		  * of replacing the empty clause `Dual` in this clause's type with `P` and replacing `From[X]` with `P AndFrom X`.
 		  * @see [[net.noresttherein.oldsql.sql.FromClause#JoinedWith]]
 		  */
-		type AppendedTo[+P <: UngroupedFrom] <: UngroupedFrom with Generalized
+		type AppendedTo[+P <: DiscreteFrom] <: DiscreteFrom with Generalized
 
 		/** Joins the clause given as the parameter with this clause. The type of the resulting clause is the result
 		  * of replacing the empty clause `Dual` in this clause's type with `P` and upcasting the join between `Dual`
@@ -915,38 +1179,115 @@ object FromClause {
 		  * prefix - suffix order rather than the inversion as in this method.
 		  * @see [[net.noresttherein.oldsql.sql.FromClause#joinedWith]]
 		  */
-		def appendedTo[P <: UngroupedFrom](prefix :P) :AppendedTo[P]
+		def appendedTo[P <: DiscreteFrom](prefix :P) :AppendedTo[P]
 
 	}
 
 
 
-	trait NonEmptyClause extends FromClause { thisClause =>
+//	trait EmptyFrom extends DiscreteFrom { thisClause =>
+//
+//		override type Params = @~
+//		override type FullRow = @~
+//
+//		protected[sql] override def extend[T[O] <: BaseMapping[S, O], S]
+//		                                  (right :LastRelation[T, S], filter :SQLBoolean[Generalized AndFrom T])
+//				:this.type EmptyJoin T =
+//			EmptyJoin.narrow(this, right)(filter)
+//
+//
+//		override type InnerParams = @~
+//		override type InnerRow = @~
+//
+//		/** Helper type providing the definition of `EmptyJoin.AsSubselectOf[F]`. */
+//		type BaseSubselectOf[+F <: FromSome, T[O] <: MappingAt[O]] <: FromClause AndFrom T {
+//			type Explicit = thisClause.Explicit AndFrom T
+////			type AsSubselectOf[+O] = thisClause.BaseSubselectOf[O, T]
+//		}
+//
+//		@inline private[sql] final def bridgeAsSubselectOf[F <: FromSome, T[O] <: BaseMapping[S, O], S]
+//		                               (newOuter :F, next :LastRelation[T, S], filter :SQLBoolean[Generalized AndFrom T])
+//				:BaseSubselectOf[F, T] {
+//					type Implicit = newOuter.Generalized
+//					type Outer = newOuter.Self
+//					type Explicit = thisClause.Explicit AndFrom T
+////					type AsSubselectOf[+O] = thisClause.BaseSubselectOf[O, T] {
+////						type Explicit = thisClause.Explicit AndFrom T
+////						type AsSubselectOf[O] = thisClause.BaseSubselectOf[O, T]
+////					}
+//				} =
+//			baseSubselectOf[F, T, S](newOuter, next, filter)
+//
+//		protected def baseSubselectOf[F <: FromSome, T[O] <: BaseMapping[S, O], S]
+//		                             (newOuter :F, next :LastRelation[T, S], filter :SQLBoolean[Generalized AndFrom T])
+//				:BaseSubselectOf[F, T] {
+//					type Implicit = newOuter.Generalized
+//					type Outer = newOuter.Self
+//					type Explicit = thisClause.Explicit AndFrom T
+////					type AsSubselectOf[+O] = thisClause.BaseSubselectOf[O, T]
+//				}
+//	}
+
+
+
+	/** A marker trait for all non empty clauses, i.e. those which contain at least one relation.
+	  * [[net.noresttherein.oldsql.sql.FromClause.FromSome FromSome]] is its more prominent subtype, used for
+	  * ''from'' clauses without a ''group by'' clause (conforming to
+	  * [[net.noresttherein.oldsql.sql.FromClause.DiscreteFrom DiscreteFrom]].
+	  * All [[net.noresttherein.oldsql.sql.FromClause.GroupedFrom grouped]] clauses are automatically subtypes
+	  * of this type, too.
+	  */
+	trait NonEmptyFrom extends FromClause { thisClause :GroupingSeal =>
 		override type LastTable[F <: FromClause] = JoinedRelation[F, LastMapping]
-		override type FromLast <: NonEmptyClause
-		override type This <: NonEmptyClause
+		override type FromLast <: NonEmptyFrom
+		override type This <: NonEmptyFrom
+
+		type Self <: FromLast {
+			type FromLast = thisClause.FromLast
+			type Generalized = thisClause.Generalized
+			type Self = thisClause.Self
+			type Params = thisClause.Params
+			type FullRow = thisClause.FullRow
+			type Explicit = thisClause.Explicit
+			type Inner = thisClause.Inner
+			type Implicit = thisClause.Implicit
+			type Outer = thisClause.Outer
+			type Base = thisClause.Base
+			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+			type InnerRow = thisClause.InnerRow
+			type OuterRow = thisClause.OuterRow
+			type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] = thisClause.JoinedWith[P, J]
+			type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
+			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+			type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]
+		}
 
 		override def lastAsIn[E <: FromClause](implicit extension :FromLast PrefixOf E) :JoinedRelation[E, LastMapping] =
 			last.extend[E]
 
 		override def isEmpty = false
 
-		override def filter :SQLBoolean[Generalized] = filter(generalized)
-		override def row :ChainTuple[Generalized, Row] = row(generalized)
-		override def tableStack :LazyList[RelationSQL.AnyIn[Generalized]] = tableStack(generalized)
+		override def fullFilter :SQLBoolean[Generalized] = fullFilter(generalized)
+		override def fullRow :ChainTuple[Generalized, FullRow] = fullRow(generalized)
+		override def fullTableStack :LazyList[RelationSQL.AnyIn[Generalized]] = fullTableStack(generalized)
 
-		override def subselectFilter :SQLBoolean[Generalized] = subselectFilter(generalized)
-		override def subselectRow :ChainTuple[Generalized, SubselectRow] = subselectRow(generalized)
-		override def subselectTableStack :LazyList[RelationSQL.AnyIn[Generalized]] = subselectTableStack(generalized)
+		override def filter :SQLBoolean[Generalized] = filter(generalized)
+		override def innerRow :ChainTuple[Generalized, InnerRow] = innerRow(generalized)
+		override def innerTableStack :LazyList[RelationSQL.AnyIn[Generalized]] = innerTableStack(generalized)
+		override def outerRow :ChainTuple[Generalized, OuterRow] = outerRow(generalized)(explicitSpan)
 
 	}
 
 
 
-	/** Common upper bound for all ''from'' clauses containing at least one relation. Extended by every
-	  * `FromClause` implementation other than `Dual`.
+	/** Common upper bound for all ''from'' clauses containing at least one relation, but no ''group by'' clause.
+	  * Extended by every [[net.noresttherein.oldsql.sql.FromClause.DiscreteFrom DiscreteFrom]] implementations
+	  * other than [[net.noresttherein.oldsql.sql.Dual Dual]]. Most types do not do this directly however, but
+	  * through the [[net.noresttherein.oldsql.sql.Extended Extended]], which is the base trait for recursively built
+	  * clauses by adding a [[net.noresttherein.oldsql.sql.MappingSQL.JoinedRelation JoinedRelation]] to a prefix
+	  * `FromClause`.
 	  */
-	trait FromSome extends NonEmptyClause with UngroupedFrom { thisClause =>
+	trait FromSome extends NonEmptyFrom with DiscreteFrom { thisClause =>
 		override type LastTable[F <: FromClause] = JoinedRelation[F, LastMapping]
 //		override type FromLast >: this.type <: FromSome
 		override type FromLast <: FromSome
@@ -954,10 +1295,11 @@ object FromClause {
 		override type This <: FromSome
 
 		override type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
-			(JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => SQLBoolean[G]
+			                    (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => SQLBoolean[G]
 
-		override def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
-		             (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) :next.This =
+		protected override def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
+		                       (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N])
+				:next.This =
 		{
 			val condition = filter(last.extend(next.generalizedExtension[FromLast]), next.last)
 			val grounded = SQLScribe.groundFreeComponents[next.Generalized, Boolean](next.generalized, condition)
@@ -985,24 +1327,26 @@ object FromClause {
 
 
 
-		override type FromSubselect[+F <: FromClause] = F#AsSubselectOf[Self] {
-			type Implicit = thisClause.Generalized
-			type Outer = thisClause.Self
-//			type Self <: AsSubselectOf[Outer]
-		}
-
-		override type SubselectTable[T[O] <: MappingAt[O]] = Self Subselect T
-
-		override def from[F <: OuterFromSome](subselect :F)
-				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized; type Outer = thisClause.Self } =
-			subselect.asSubselectOf(self)
+		override type FromRelation[T[O] <: MappingAt[O]] = Self Subselect T
 
 		override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                 (first :Relation[M])
 //		                 (implicit cast :InferSubject[this.type, Subselect, M, T, S])
 		                 (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
-				:SubselectTable[T] =
+				:FromRelation[T] =
 			Subselect[Self, T, S](self, LastRelation(cast(first)))(True)
+
+
+		override type FromSubselect[+F <: FromSome] = F#AsSubselectOf[Self] {
+//			type Self <: AsSubselectOf[Outer]
+			type Implicit = thisClause.Generalized
+			type Outer = thisClause.Self
+			type InnerRow <: F#InnerRow
+		}
+
+		override def from[F <: FreeFromSome](subselect :F)
+				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized; type Outer = thisClause.Self } =
+			subselect.asSubselectOf(self)
 
 		override def fromSubselect[F <: FromSome]
 		                          (subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
@@ -1013,21 +1357,70 @@ object FromClause {
 
 
 
-	/** A type to which all complete ''from'' clauses conform. If `F &lt;: CompleteFrom`, then the number of joined
-	  * relations in the clause is known. Note that the mappings can still be abstract types and the join kinds may be
-	  * some supertypes of actual joins used. It relies on the `Init` member type of `FromClause` introduced
-	  * specifically for this purpose: all `AndFrom` subclasses define it simply as `left.Init`, with `Dual` defining
-	  * it as `Dual`. Being able to prove that `Init =:= Dual` means that one can 'see all the way back' from the last join.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom]]
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.ConcreteFrom]]
+
+
+
+	/** A base type for all clauses which contain a ''group by'' clause.
+	  * @see [[net.noresttherein.oldsql.sql.GroupByAll]]
+	  * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
+	  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
 	  */
-	type CompleteFrom = FromClause {
-		type Init = Dual
+	trait GroupedFrom extends NonEmptyFrom with GroupingSeal { //GroupByClause?
+		override type FromLast <: GroupedFrom
+		override type FromNext[E[+L <: FromSome] <: FromClause] = Nothing
+		override type This <: GroupedFrom
+
+
+		override type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
+			Nothing
+
+		protected override def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
+		                       (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) =
+			throw new UnsupportedOperationException(s"GroupedFrom.filterNext (on $this)")
+
+
+		/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.FromClause#where where]], introduced
+		  * in order to clarify that applied filter condition will become the ''having'' clause of the generated select,
+		  * rather than the ''where'' clause. The condition is combined using `&&` with `this.condition`
+		  * and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
+		  * @param condition a function which accepts a
+		  *                  [[net.noresttherein.oldsql.sql.FromClause.JoinedEntities JoinedEntities]] instance
+		  *                  functioning as a facade to this clause, providing easy access to all its relations,
+		  *                  and which returns an SQL expression for the new join/filter condition.
+		  * @return a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
+		  *         instance's filter and the `SQLBoolean` returned by the function.
+		  */
+		def having(condition :JoinedEntities[Generalized] => SQLBoolean[Generalized]) :This = where(condition)
+
+		/** The ''from'' clause under grouping of this ''group by'' clause.
+		  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is `left.Generalized`;
+		  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
+		  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.GeneralizedUngrouped`.
+		  */
+		type GeneralizedUngrouped <: FromClause
+
+		/** The ''from'' clause under grouping of this ''group by'' clause.
+		  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is `left.Self`;
+		  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
+		  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.Ungrouped`.
+		  */
+		type Ungrouped <: GeneralizedUngrouped
+
+		/** The ''from'' clause under grouping of this ''group by'' clause.
+		  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is its left side;
+		  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
+		  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.from`.
+		  */
+		val from :Ungrouped
+
+		override val outer :Outer
 	}
 
-	/** A `FromClause` refinement which is the upper bound of all ''from'' clauses with a statically known
-	  * `Generalized` type. If `F &lt;: GeneralizedFrom`, then
-	  *   a) `F &lt;: CompleteFrom` - the number of joined relations is statically known, and
+
+
+	/** A `FromClause` refinement which is the upper bound of all ''from'' clauses with a statically known `Generalized`
+	  * type. Such clauses are referred to as ''generalized'' for shirt. If `F &lt;: GeneralizedFrom`, then
+	  *   a) `F` is ''complete'' - the number of joined relations is statically known, and
 	  *   b) `F &lt;: F#Generalized` - all 'join' kinds are narrowed down at least to their `Generalized` form
 	  *     (although this can't be expressed in the type system).
 	  * Clauses conforming to this type generally offer full functionality, in particular regarding access to
@@ -1035,17 +1428,16 @@ object FromClause {
 	  * rather than through refinement. In particular, a `from :GeneralizedFrom` is an abstract type for which
 	  * no functions depending on the statically known structure (i.e., based on implicit evidence), in particular
 	  * access to mappings, will be available
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.CompleteFrom]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ConcreteFrom]]
 	  */
 	type GeneralizedFrom = FromClause {
-		type Init = Dual //just to conform to CompleteFrom, as this condition follows the one on Generalized
-		type Generalized >: this.type //<: FromLast
+		type FromLast >: this.type <: FromClause
+		type Generalized >: this.type <: FromLast
 	}
 
 	/** A `FromClause` refinement which is the upper bound of all ''from'' clauses with a statically known
-	  * `Self` type. If `F &lt;: ConcreteFrom`, then
-	  *   a) `F &lt;: CompleteFrom` - the number of joined relations is statically known,
+	  * `Self` type; such clauses are referred to as ''concrete''. If `F &lt;: ConcreteFrom`, then
+	  *   a) `F` is ''complete'' - the number of joined relations is statically known,
 	  *   b) `F &lt;: GeneralizedFrom` and `F &lt;: F#Generalized` (although the latter cannot be expressed
 	  *      in the type system),
 	  *   c) `F &lt;: F#Self` - there are no abstract join kinds in the type signature (though this cannot be expressed
@@ -1053,81 +1445,261 @@ object FromClause {
 	  *   d) result types of all methods returning other clauses are likewise `ConcreteFrom` instances, although
 	  *      again this cannot be expressed directly.
 	  * In essence, conforming to the this type signifies that a type is concrete with respect to the join aspect,
-	  * although the mapping parameters may still be abstract types. Conforming ''naturally'' to this type implies
+	  * although the mapping type parameters may still be abstract types. Conforming ''naturally'' to this type implies
 	  * that all functions, in particular those depending on implicit evidence, are available and their result types
 	  * are statically known. This does not hold if a clause conforms only through refinement, in particular by
 	  * being declared as `ConcreteFrom`, as this type alias carries no information in itself.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom]]
 	  */
 	type ConcreteFrom = FromClause {
-		type Init = Dual //just to conform to CompleteFrom, as this condition follows the one on Generalized
-		type Generalized >: this.type //<: FromLast
+		type FromLast >: this.type <: FromClause
+		type Generalized >: this.type <: FromLast
 		type Self >: this.type <: Generalized
 	}
 
 
 
-	/** A complete `FromClause`, which doesn't contain any parameters and does not represent a subselect
-	  * of another clause. `S &lt;: OuterClause` if and only if it is a complete clause (with no abstract joins
-	  * or `FromClause` occurring in its definition) and doesn't contain any `JoinParam` or `Subselect`.
-	  * All types conforming to `OuterForm` also conform to
-	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]]. Only such clauses can be used
-	  * to create independent, most outer select statements, hence the name.
-	  */ //consider: renaming to StaticFrom; also, types with UngroupedFrom upper bound
-	type OuterClause = FromClause { //todo: refinement on additional member types: Explicit, Inner, Outer, Self
-		type Init = Dual //just to conform to CompleteFrom, as this condition follows the one on Generalized
+	/** A `FromClause` of a top level, independent ''select'' - one which doesn't contain
+	  * any [[net.noresttherein.oldsql.sql.Subselect Subselect]] joins (is not a ''from'' clause of a subselect
+	  * of some other select). In order to conform naturally (rather than by refinement) to `OuterForm`, the clause
+	  * must be ''complete'', that is its static type must start with either
+	  * [[net.noresttherein.oldsql.sql.Dual Dual]] or [[net.noresttherein.oldsql.sql.From From]] - rather than an
+	  * abstract type hiding an unknown prefix - and its `Generalized` supertype must be known, meaning all join kinds
+	  * should be narrowed down at least to
+	  * [[net.noresttherein.oldsql.sql.TrueJoin TrueJoin]]/[[net.noresttherein.oldsql.sql.JoinParam JoinParam]]
+	  * (or [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]).
+	  * Despite the requirement for completeness, this type does not conform in itself to
+	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]], maintaining a minimalistic
+	  * definition to preserve the property of being an outer clause by as many transformation functions as possible.
+	  * An outer clause is the only place where unbound join parameters are allowed, but is not in itself a valid
+	  * base for a [[net.noresttherein.oldsql.sql.SelectSQL SelectSQL]] in that case. For that, see its subtype
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeFrom FreeFrom]]. For convenience, this type has sibling
+	  * definitions with lower, often occurring, type bounds:
+	  * [[net.noresttherein.oldsql.sql.FromClause.OuterDiscreteFrom OuterDiscreteFrom]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.OuterFromSome OuterFromSome]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause.OuterGroupedFrom OuterGroupedFrom]]; they all conform to this type.
+	  */ //we opt for minimalistic definition so that more abstract method results conform to it, rather than have more info
+	type OuterFrom = FromClause {
+		//type FromLast >: this.type <: FromClause //these properties would hold for static types, but are not preserved
+		//type Generalized >: this.type <: FromLast// on generalization
 		type Implicit = FromClause  //everything down to Dual is explicit
-//		type FromLast >: this.type <: FromClause //these properties would hold for static types, but are not preserved on generalization
-//		type Generalized >: this.type <: FromLast
 	}
 
-	type OuterFrom = UngroupedFrom {
-		type Init = Dual
+	/** A `FromClause` of a top level, independent ''select'' without a ''group by'' clause - one which doesn't contain
+	  * any [[net.noresttherein.oldsql.sql.Subselect Subselect]] or [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]
+	  * joins (is not a ''from'' clause of a subselect of some other select). In order to conform naturally
+	  * (rather than by refinement) to `OuterDiscreteForm`, the clause must be ''complete'', that is its static type
+	  * must start with either [[net.noresttherein.oldsql.sql.Dual Dual]] or [[net.noresttherein.oldsql.sql.From From]]
+	  * - rather than an abstract type hiding an unknown prefix - and its `Generalized` supertype must be known,
+	  * meaning all join kinds should be narrowed down at least to
+	  * [[net.noresttherein.oldsql.sql.TrueJoin TrueJoin]]/[[net.noresttherein.oldsql.sql.JoinParam JoinParam]].
+	  * Despite the requirement for completeness, this type does not conform in itself to
+	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]], maintaining a minimalistic
+	  * definition to preserve the property of being an outer clause by as many transformation functions as possible.
+	  * This is an 'ungrouped' subtype of the more generic [[net.noresttherein.oldsql.sql.FromClause.OuterFrom OuterFrom]].
+	  * See [[net.noresttherein.oldsql.sql.FromClause.OuterFromSome OuterFromSome]] for a variant with a
+	  * [[net.noresttherein.oldsql.sql.FromClause.FromSome FromSome]] upper bound. An `OuterDiscreteFrom` can still
+	  * contain (unbound) parameters; [[net.noresttherein.oldsql.sql.FromClause.FreeDiscreteFrom FreeDiscreteFrom]]
+	  * is the specialization of this type without any `JoinParam` 'joins'.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.DiscreteFrom DiscreteFrom]]
+	  */
+	type OuterDiscreteFrom = DiscreteFrom {
 		type Implicit = FromClause
-//		type FromLast >: this.type <: FromClause //UngroupedFrom
-//		type Generalized >: this.type <: FromLast //todo: verify why this causes troubles with JoinParam
+		type Closure = Dual
 	}
 
+	/** A refinement of the [[net.noresttherein.oldsql.sql.FromClause.FromSome FromSome]] type, representing a top level,
+	  * independent and non-empty ''from'' clause of a ''select'' without a ''group by'' clause - one which doesn't contain
+	  * any [[net.noresttherein.oldsql.sql.Subselect Subselect]] or [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]
+	  * joins (is not a ''from'' clause of a subselect of some other select). In order to conform naturally
+	  * (rather than by refinement) to `OuterFromSome`, the clause must be ''complete'', that is its static type
+	  * must start with either [[net.noresttherein.oldsql.sql.Dual Dual]] or [[net.noresttherein.oldsql.sql.From From]]
+	  * - rather than an abstract type hiding an unknown prefix - and its `Generalized` supertype must be known,
+	  * meaning all join kinds should be narrowed down at least to
+	  * [[net.noresttherein.oldsql.sql.TrueJoin TrueJoin]]/[[net.noresttherein.oldsql.sql.JoinParam JoinParam]].
+	  * Despite the requirement for completeness, this type does not conform in itself to
+	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]], maintaining a minimalistic
+	  * definition to preserve the property of being an outer clause by as many transformation functions as possible.
+	  * This is an 'ungrouped' subtype of the more generic [[net.noresttherein.oldsql.sql.FromClause.OuterFrom OuterFrom]].
+	  *  An `OuterDiscreteFrom` can still contain (unbound) parameters;
+	  *  [[net.noresttherein.oldsql.sql.FromClause.FreeDiscreteFrom FreeDiscreteFrom]] is the specialization of this type
+	  *  without any `JoinParam` 'joins'.
+	  */
 	type OuterFromSome = FromSome {
-		type Init = Dual
 		type Implicit = FromClause
-//		type FromLast >: this.type <: FromClause
-//		type Generalized >: this.type <: FromLast
+	}
+
+	/** A `FromClause` of a top level, independent ''select'' with a ''group by'' clause - one which doesn't contain
+	  * any [[net.noresttherein.oldsql.sql.Subselect Subselect]] joins (is not a ''from'' clause of a subselect
+	  * of some other select). In order to conform naturally (rather than by refinement) to `OuterDiscreteForm`,
+	  * the clause must be ''complete'', that is its static type must start with either
+	  * [[net.noresttherein.oldsql.sql.Dual Dual]] or [[net.noresttherein.oldsql.sql.From From]] - rather than
+	  * an abstract type hiding an unknown prefix - and its `Generalized` supertype must be known,
+	  * meaning all join kinds should be narrowed down at least to the level of
+	  * [[net.noresttherein.oldsql.sql.TrueJoin TrueJoin]]/[[net.noresttherein.oldsql.sql.JoinParam JoinParam]].
+	  * Despite the requirement for completeness, this type does not conform in itself to
+	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]], maintaining a minimalistic
+	  * definition to preserve the property of being an outer clause by as many transformation functions as possible.
+	  * This is a 'grouped' subtype of the more generic [[net.noresttherein.oldsql.sql.FromClause.OuterFrom OuterFrom]].
+	  * See [[net.noresttherein.oldsql.sql.FromClause.OuterDiscreteFrom OuterDiscreteFrom]] for a non grouped variant
+	  * with a [[net.noresttherein.oldsql.sql.FromClause.DiscreteFrom DiscreteFrom]] upper bound. An `OuterGroupedFrom`
+	  * can still contain (unbound) [[net.noresttherein.oldsql.sql.GroupParam GroupParam]] parameters;
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeGroupedFrom FreeGroupedFrom]] is the specialization of this type
+	  * without any `GroupParam` 'joins'.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.DiscreteFrom DiscreteFrom]]
+	  */
+	type OuterGroupedFrom = GroupedFrom {
+		type Implicit = FromClause
+	}
+
+	/** A `FromClause` without any [[net.noresttherein.oldsql.sql.Subselect Subselect]] or
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]]
+	  * synthetic joins. Representing a single ''from'' clause (and not one of a nested subselect), only such clauses
+	  * can be used as a basis of (top level) SQL ''selects''. In order to conform naturally (rather than by refinement),
+	  * a type must be ''complete'', and the [[net.noresttherein.oldsql.sql.FromClause#Generalized generalized]] form
+	  * of every component clause must be known; such types will automatically also conform to
+	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]], but there is no actual subtype
+	  * relationship between the two in the type system. A `FreeFrom` will however always by a subtype of
+	  * [[net.noresttherein.oldsql.sql.FromClause.OuterFrom OuterFrom]], which groups all outer clauses, including
+	  * those with unbound parameters, and [[net.noresttherein.oldsql.sql.FromClause.ParameterlessFrom ParameterlessFrom]].
+	  * For convenience, this type has two sibling types with narrowed upper bounds:
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeDiscreteFrom FreeDiscreteFrom]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeFromSome FreeFromSome]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeGroupedFrom FreeGroupedFrom]].
+	  */
+	type FreeFrom = FromClause {
+		type Implicit = FromClause
+		type Base = FromClause
+		type DefineBase[+I <: FromClause] = I //No unbound parameters; crucial for use in SelectSQL
+		type Params = @~ //implied from the other two, but nice to be ParameterlessFrom
+	}
+
+	/** A `FromClause` without any [[net.noresttherein.oldsql.sql.Subselect Subselect]],
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]],
+	  * or [[net.noresttherein.oldsql.sql.GroupByAll, GroupByAll]]/[[net.noresttherein.oldsql.sql.GroupByAll.ByAll By All]]
+	  * joins. Representing a single ''from'' clause (and not one of a nested subselect), without a ''group by'' clause,
+	  * it can be used as a basis of (top level) SQL ''selects''. In order to conform naturally (rather than by refinement),
+	  * a type must be ''complete'', and the [[net.noresttherein.oldsql.sql.FromClause#Generalized generalized]] form
+	  * of every component clause must be known; such types will automatically also conform to
+	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]], but there is no actual subtype
+	  * relationship between the two in the type system. A `FreeDiscreteFrom` will however always by a subtype of
+	  * its more generic variants, [[net.noresttherein.oldsql.sql.FromClause.FreeFrom FreeFrom]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause.OuterDiscreteFrom OuterDiscreteFrom]] (which groups all outer clauses,
+	  * including those with unbound parameters), as well as
+	  * [[net.noresttherein.oldsql.sql.FromClause.ParameterlessFrom ParameterlessFrom]].
+	  */
+	type FreeDiscreteFrom = DiscreteFrom {
+		type Implicit = FromClause
+		type Base = FromClause
+		type DefineBase[+I <: FromClause] = I
+		type Params = @~
+	}
+
+	/** A non empty `FromClause` without any [[net.noresttherein.oldsql.sql.Subselect Subselect]],
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]],
+	  * or [[net.noresttherein.oldsql.sql.GroupByAll, GroupByAll]]/[[net.noresttherein.oldsql.sql.GroupByAll.ByAll By All]]
+	  * joins. Representing a single ''from'' clause (and not one of a nested subselect), without a ''group by'' clause,
+	  * it can be used as a basis of (top level) SQL ''selects''. In order to conform naturally (rather than by refinement),
+	  * a type must be ''complete'', and the [[net.noresttherein.oldsql.sql.FromClause#Generalized generalized]] form
+	  * of every component clause must be known; such types will automatically also conform to
+	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]], but there is no subtype
+	  * relationship between the two in the type system. A `FreeFromSome` will however always by a subtype of
+	  * its more generic variants, [[net.noresttherein.oldsql.sql.FromClause.FreeFrom FreeFrom]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeDiscreteFrom FreeDiscreteFrom]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause.OuterFromSome OuterFromSome]] (which groups all outer clauses,
+	  * including those with unbound parameters), as well as
+	  * [[net.noresttherein.oldsql.sql.FromClause.ParameterlessFrom ParameterlessFrom]].
+	  */
+	type FreeFromSome = FromSome {
+		type Implicit = FromClause
+		type Base = FromClause
+		type DefineBase[+I <: FromClause] = I
+		type Params = @~
+	}
+
+	/** A `FromClause` with a ''group by'' clause but without any [[net.noresttherein.oldsql.sql.Subselect Subselect]]
+	  * or [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]]
+	  * synthetic joins. Representing a single ''from'' clause (and not one of a nested subselect), only such clauses
+	  * can be used as a basis of (top level) SQL ''selects''. In order to conform naturally (rather than by refinement),
+	  * a type must be ''complete'', and the [[net.noresttherein.oldsql.sql.FromClause#Generalized generalized]] form
+	  * of every component clause must be known; such types will automatically also conform to
+	  * [[net.noresttherein.oldsql.sql.FromClause.GeneralizedFrom GeneralizedFrom]], but there is no actual subtype
+	  * relationship between the two in the type system. A `FreeGroupedFrom` will however always by a subtype of
+	  * [[net.noresttherein.oldsql.sql.FromClause.OuterGroupedFrom OuterGroupedFrom]], which groups all outer clauses,
+	  * including those with unbound parameters,
+	  * and [[net.noresttherein.oldsql.sql.FromClause.ParameterlessFrom ParameterlessFrom]].
+	  * For convenience, this type has two sibling types with narrowed upper bounds:
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeDiscreteFrom FreeDiscreteFrom]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeFromSome FreeFromSome]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause.FreeGroupedFrom FreeGroupedFrom]].
+	  */
+	type FreeGroupedFrom = GroupedFrom {
+		type Implicit = FromClause
+		type Base = FromClause
+		type DefineBase[+I <: FromClause] = I
+		type Params = @~
 	}
 
 
 
-	/** An upper bound for `FromClause` subtypes representing ''from'' clauses of subselects of a select
+	/** A ''from'' clause is a ''subclause'' of another clause `F` if its ''implicit'' portion is a supertype of `F`,
+	  * meaning it is a potential candidate for creating a subselect expression nested under that clause. Whether or not
+	  * it will be actually possible will depend on whether there are any
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]]
+	  * 'joins' in its explicit portion. It is a supertype of all valid subselect clauses defined as
+	  * [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[F] ]], introduced as a result type
+	  * for functions creating subselects which can't statically guarantee the lack of unbound parameters.
+	  */
+	type SubclauseOf[-F <: FromClause] = FromClause {
+		type Implicit >: F <: FromClause //F may still have a longer prefix hidden under FromClause at start of Base
+	}
+
+	/** An upper bound for `FromClause` subtypes representing valid ''from'' clauses of subselects of a select
 	  * with the ''from'' clause `F`. `S &lt;: AsSubselectOf[F]` if and only if `S` either:
 	  *   - has the form of `F Subselect M1 J2 M2 ... JN MN` for some mappings `M1...MN`
-	  *     and non-subselect join types `J2...JN`, and both types are complete clauses.
-	  *   - is a complete, non subselect clause: `S &lt;: OuterClause` with no `JoinParam` joins.
+	  *     and join types `J2...JN`, with no `Subselect` or `JoinParam` joins among them.
+	  *   - is a complete, non subselect clause: `S &lt;: `[[net.noresttherein.oldsql.sql.FromClause.FreeFrom FreeFrom]]
+	  *     with no `JoinParam` joins.
 	  * Clauses conforming to `AsSubselectOf[F]` can use all the mappings/entities
-	  * which are a part of `F`, but they are not a part of any select formulas created from that source. This allows
+	  * which are a part of `F`, but they are not a part of any select expressions created from that clause. This allows
 	  * the use of nested select queries which depend on values from the ''from'' clause of the outer select.
-	  * Somewhat counterintuitively, this type is contravariant rather than covariant. There are two reasons behind it:
-	  * one, preventing any type from being a subselect clause of a clause with an abstract prefix, ensuring that
-	  * full mapping lists are compared, and two, treating all join kinds as equivalent for this purpose.
-	  * Note that subselects may be nested to an arbitrary depth and only directly nested subselects of `F`
-	  * conform to this type.
+	  *
+	  * `S &lt;: SubselectOf[F]` does not imply that any clause `s :S` is a proper subselect of any clause  `f :F`,
+	  * in the sense that `s` contains all of the relations from `f`. Instead, it witnesses that `F` satisfies
+	  * all the implicit dependencies of `S`: a [[net.noresttherein.oldsql.sql.SelectSQL SelectSQL]] created from `s`
+	  * is an `SQLExpression[F, _]`. If `F &lt;: GeneralizedFrom`, then such a subselect expression can be used
+	  * as a part of both ''select'' and ''where'' clauses of a select from `F`. On the other hand,
+	  * an `SQLExpression[F, T]` is convertible to `SQLExpression[S, T]` by a call
+	  * [[net.noresttherein.oldsql.sql.SQLExpression#stretch stretch]]`(s)(s.explicitSpan)`.
+	  *
+	  * Perhaps counterintuitively, this type is contravariant rather than covariant. There are two reasons behind it:
+	  * one, preventing any type from becoming a subselect clause of a clause with a more abstract prefix (with fewer
+	  * relations specified), ensuring that the full implicit mapping list of the subselect clause is accounted for and,
+	  * two, treating all join kinds as equivalent for this purpose. Note that subselects may be nested to an arbitrary
+	  * depth and only directly nested subselects of `F` conform to this type.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.SubclauseOf]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Nested]]
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
 	type SubselectOf[-F <: FromClause] = FromClause {
-		type Implicit >: F <: FromClause
+		type Base >: F <: FromClause //F may still have an abstract prefix
 	}
 
-	/** An upper bound for all ''from'' clauses of subselect expressions, that is `FromClause` subtypes with a
+	/** An upper bound for all ''from'' clauses of subselect clauses, that is `FromClause` subtypes with a
 	  * `Subselect` join in the type definition: `S &lt;: F Subselect T1 ... TN . ` for some type `F &lt;: FromClause`
 	  * and mapping type constructors `T1 ... TN`. For a type to conform to `SubselectFrom`, the join kinds in
-	  * the explicit part of the clause (after the last subselect) must be statically known to be `TrueJoin` subtypes.
+	  * the explicit part of the clause (after the last subselect) must be statically known to be `TrueJoin` subtypes
+	  * or ''group by'' elements.
 	  * Note that ''outer'' clauses (without any `Subselect` joins) are considered subselect clauses of any other
-	  * clause, but do not conform to this type.
+	  * clause in terms of [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]], but do not conform
+	  * to this type.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectOf]]
 	  */
-	type SubselectFrom = FromSome { //todo: include subselects from grouped clauses
-		type Implicit <: FromSome //this holds only if there is a Subselect or JoinParam involved (Nothing)
-		type Self <: AsSubselectOf[Outer] //for JoinParam this translates to Self <: Nothing
+	type SubselectFrom = FromSome { //do we need the FromSome bound?
+		type Implicit <: FromSome //this holds only if there is a Subselect involved (meaning clear way to the Subselect)
+		type Base = Implicit //this excludes clauses with an UnboundParam in the explicit portion
+		type DefineBase[+I <: FromClause] = I //only to preserve the validity on rebasing and to conform to Nested
 	}
 
 
@@ -1159,7 +1731,7 @@ object FromClause {
 	  * accepting the `Origin` type for use in `AndFrom` subclasses and other types accepting such a type constructor:
 	  * `Dual Join (Humans As "humans")#T` (where `Humans[O] &lt;: MappingAt[O]`).
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
-	  */ //consider: As could be the Relation itself; instead of T one would use Relation.Row
+	  */ //consider: As could be the Relation itself; instead of T one would use Relation.FullRow
 	type As[M[O] <: MappingAt[O], A <: Label] = { type T[O] = A @: M[O] }
 
 
@@ -1200,7 +1772,7 @@ object FromClause {
 
 	/** Extension methods performing most generic join between any ungrouped (i.e., pure) `FromClause`,
 	  * and other relations. */
-	implicit class UngroupedFromExtension[F <: UngroupedFrom](val clause :F) extends AnyVal {
+	implicit class UngroupedFromExtension[F <: DiscreteFrom](val clause :F) extends AnyVal {
 
 		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side. The real type of the result depends on the type of this clause:
@@ -1228,7 +1800,7 @@ object FromClause {
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def andFrom[R <: UngroupedFrom](other :R) :other.AppendedTo[F] = other.appendedTo(clause)
+		@inline def andFrom[R <: DiscreteFrom](other :R) :other.AppendedTo[F] = other.appendedTo(clause)
 	}
 
 
@@ -1428,7 +2000,7 @@ object FromClause {
 			val joins = common map { name =>
 
 				val first = firstColumns(name).asInstanceOf[ColumnMapping[Any, prev.G]]
-				val second = secondColumns(name).asInstanceOf[ColumnMapping[Any, UngroupedFrom AndFrom T]]
+				val second = secondColumns(name).asInstanceOf[ColumnMapping[Any, DiscreteFrom AndFrom T]]
 				if (first.form != second.form)
 					throw new IllegalArgumentException(s"Can't perform a natural join of $firstTable and $secondTable: " +
 							s"columns $first and $second have different types (forms): ${first.form} and ${second.form}.")
@@ -1475,7 +2047,7 @@ object FromClause {
 		  * @throws UnsupportedOperationException if `other` is empty or its first join is a `JoinParam`.
 		  */
 		@inline def subselect[R <: FromSome](other :R) :other.JoinedWith[F, Subselect] =
-			other.joinedAsSubselect(clause)
+			other.joinedWithSubselect(clause)
 
 
 
@@ -1496,7 +2068,7 @@ object FromClause {
 
 
 
-	/** Extension methods for `OuterClause` objects (''from'' clauses without any `Subselect`s which can serve
+	/** Extension methods for `OuterFrom` objects (''from'' clauses without any `Subselect`s which can serve
 	  * as the basis for independent selects). It provides methods for introducing unbound parameters
 	  * to the clause in the form of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins',
 	  * which can be substituted with
@@ -1510,7 +2082,7 @@ object FromClause {
 		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
 		  * as a parameter of SQL statements created using the returned instance.
 		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-		  * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  */
 		@inline def param[X :SQLForm] :F WithParam X = JoinParam(clause, ParamRelation[X]())
 
@@ -1522,7 +2094,7 @@ object FromClause {
 		  * as a parameter of SQL statements created using the returned instance.
 		  * @param name the suggested name for the parameter in the generated SQL, as specified by JDBC.
 		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-		  * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  */
 		@inline def param[X :SQLForm](name :String) :F WithParam X = JoinParam(clause, ParamRelation[X](name))
 
@@ -1535,7 +2107,7 @@ object FromClause {
 		  * @tparam N a string literal used as the label for the mapping and suggested parameter name.
 		  * @tparam X parameter type.
 		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-		  * @see [[net.noresttherein.oldsql.sql.JoinParam.FromParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  */
 		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F JoinParam (N ?: X)#T =
 			JoinParam(clause, form ?: (name.value :N))
@@ -1650,7 +2222,7 @@ object FromClause {
 		                (table :Relation[M])
 		                (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 //		                (implicit cast :InferSubject[clause.type, Subselect, M, T, S]) :F#Extend[Subselect, M] =
-				:clause.SubselectTable[T] =
+				:clause.FromRelation[T] =
 			{ val res = clause.from(table); res }  //decouple type inference from the result type
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using on clause.
@@ -1674,8 +2246,7 @@ object FromClause {
 		  * @throws UnsupportedOperationException if the first join in `other` is a `JoinParam`.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
-		@inline def from[R <: FromSome with OuterClause](other :R) :clause.FromSubselect[R] =
-			clause.from(other)
+		@inline def from[R <: FreeFromSome](other :R) :clause.FromSubselect[R] = clause.from(other)
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using on clause.
 		  * The ''explicit'' list of relations in the clause is initialized with the explicit portion
@@ -1724,7 +2295,6 @@ object FromClause {
 	                     (val clause :F)
         extends AnyVal
 	{
-
 		/** A facade to this `FromClause` providing access to all relations it consists of. The relations are
 		  * returned as `Mapping` instances of one of the types listed in this clause, using their `Origin`
 		  * type to encode their position on the list.
@@ -1808,7 +2378,7 @@ object FromClause {
 		                (table :Relation[M])
 		                (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 //		                (implicit cast :InferSubject[clause.type, Subselect, M, T, S]) :F#Extend[Subselect, M] =
-				:clause.SubselectTable[T] =
+				:clause.FromRelation[T] =
 			{ val res = clause.from(table); res } //decouple type inference from the result type
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using on clause.
@@ -1832,8 +2402,7 @@ object FromClause {
 		  * @throws UnsupportedOperationException if the first join in `other` is a `JoinParam`.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
-		@inline def from[R <: FromSome with OuterClause](other :R) :clause.FromSubselect[R] =
-			clause.from(other)
+		@inline def from[R <: FreeFromSome](other :R) :clause.FromSubselect[R] = clause.from(other)
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using on clause.
 		  * The ''explicit'' list of relations in the clause is initialized with the explicit portion
@@ -1909,7 +2478,7 @@ object FromClause {
 
 
 
-	type LastTableBound[U <: NonEmptyClause, T[O] <: MappingAt[O]] = U {
+	type LastTableBound[U <: NonEmptyFrom, T[O] <: MappingAt[O]] = U {
 		type FromLast = U
 		type LastMapping[O] = T[O]
 	}
@@ -1922,23 +2491,23 @@ object FromClause {
 	  */
 	@implicitNotFound("I cannot determine the last relation of ${F}. This typically means the type is too abstract " +
 	                  "and doesn't define types LastMapping and FromLast or that F =:= Dual.")
-	final class LastTableOf[-F <: NonEmptyClause] private[FromClause] () { evidence =>
+	final class LastTableOf[-F <: NonEmptyFrom] private[FromClause]() { evidence =>
 
 		/** The [[net.noresttherein.oldsql.sql.FromClause#LastMapping LastMapping]] type of the clause `F`. */
 		type LastMapping[O] <: MappingAt[O]
 
 		/** The [[net.noresttherein.oldsql.sql.FromClause#FromLast FromLast]] type of the clause `F`. */
-		type FromLast >: F <: NonEmptyClause
+		type FromLast >: F <: NonEmptyFrom
 
 		@inline def apply(from :F) :JoinedRelation[FromLast, LastMapping] =
 			from.last.asInstanceOf[JoinedRelation[FromLast, LastMapping]]
 	}
 
-	implicit def lastTableOf[U <: NonEmptyClause, M[O] <: MappingAt[O]]
+	implicit def lastTableOf[U <: NonEmptyFrom, M[O] <: MappingAt[O]]
 			:LastTableOf[LastTableBound[U, M]] { type FromLast = U; type LastMapping[O] = M[O] } =
 		lastTableBound.asInstanceOf[LastTableOf[LastTableBound[U, M]] { type FromLast = U; type LastMapping[O] = M[O] }]
 
-	private[this] val lastTableBound = new LastTableOf[NonEmptyClause]
+	private[this] val lastTableBound = new LastTableOf[NonEmptyFrom]
 
 
 
@@ -2023,7 +2592,7 @@ object FromClause {
 	/** Implicit witness to the fact that the `Int` literal `N` is the number of ''known'' relations present
 	  * in the clause `F`. It is the number of relations available to any `SQLExpression` based on the type `F`.
 	  * This counts all relations joined since the leftmost clause, which may be abstract - a `FromClause`, `FromSome`,
-	  * `UngroupedFrom`, `GroupedFrom`, ignoring any relations which are grouped by a `GroupByAll` 'join'.
+	  * `DiscreteFrom`, `GroupedFrom`, ignoring any relations which are grouped by a `GroupByAll` 'join'.
 	  * This calculation happens completely on the type level and, for it to work, it requires that the join kinds
 	  * are known at least to the level allowing distinguish between `GroupByAll` and others and,
 	  * if a `GroupByAll` clause is present somewhere in the type, that all joins preceding it since the most recent
@@ -2032,7 +2601,7 @@ object FromClause {
 	  */
 	@implicitNotFound("Failed to count the tables in ${F}. Is ${N} the number of mappings listed in its definition?\n" +
 	                  "Note that witness TableCount[F, N] is invariant in type F, but requires that it starts " +
-	                  "with one of FromClause, FromSome, UngroupedFrom, GroupedFrom or Dual (including From[_]).")
+	                  "with one of FromClause, FromSome, DiscreteFrom, GroupedFrom or Dual (including From[_]).")
 	class TableCount[F <: FromClause, N <: Numeral] private[FromClause] (private val n :Int) extends AnyVal {
 		@inline def tables :N = n.asInstanceOf[N] //val tables :N crashes scalac
 	}
@@ -2041,7 +2610,7 @@ object FromClause {
 	object TableCount {
 		implicit final val FromClauseHasZero :TableCount[FromClause, 0] = new TableCount[FromClause, 0](0)
 		implicit final val FromSomeHasZero :TableCount[FromSome, 0] = new TableCount[FromSome, 0](0)
-		implicit final val UngroupedFromHasZero :TableCount[UngroupedFrom, 0] = new TableCount[UngroupedFrom, 0](0)
+		implicit final val UngroupedFromHasZero :TableCount[DiscreteFrom, 0] = new TableCount[DiscreteFrom, 0](0)
 		implicit final val GroupedFromHasZero :TableCount[GroupedFrom, 0] = new TableCount[GroupedFrom, 0](0)
 		implicit final val DualHasZero :TableCount[Dual, 0] = new TableCount[Dual, 0](0)
 
@@ -2071,14 +2640,14 @@ object FromClause {
 
 	/** Implicit witness to the fact that the `Int` literal `N` is the number of relations in the ''from'' clause
 	  * of the most nested subselect of `F`. This is the number of relations to the right since the most recent
-	  * `Subselect` or `Dual`/`From` if `F &lt;: UngroupedFrom`, and the number of relations to the right of
+	  * `Subselect` or `Dual`/`From` if `F &lt;: DiscreteFrom`, and the number of relations to the right of
 	  * the most recent `GroupByAll` clause if `F &lt;: GroupedFrom`. This calculation happens solely
 	  * on the type level and requires that the `Generalized` form of the pertinent clause fragment is known
 	  * in order to properly recognize the cut off point.
 	  */
 	@implicitNotFound("Failed to count joined relations since last Subselect in ${F}.\n" +
 	                  "Most likely the type contains joins with unknown Generalized form or it starts with" +
-	                  "an undefined prefix other than FromClause, FromSome, UngroupedFrom, GroupedFrom, Dual, From. " +
+	                  "an undefined prefix other than FromClause, FromSome, DiscreteFrom, GroupedFrom, Dual, From. " +
 	                  "Missing implicit SubselectTableCount[${F}, ${N}]")
 	class SubselectTableCount[F <: FromClause, N <: Numeral] private (private val n :Int) extends AnyVal {
 		@inline def tables :N = n.asInstanceOf[N]
@@ -2133,8 +2702,8 @@ object FromClause {
 
 	object TableShift {
 
-		implicit def firstUngrouped[T[A] <: MappingAt[A]] :TableShift[UngroupedFrom AndFrom T, T, 0] =
-			new TableShift[UngroupedFrom AndFrom T, T, 0](0)
+		implicit def firstUngrouped[T[A] <: MappingAt[A]] :TableShift[DiscreteFrom AndFrom T, T, 0] =
+			new TableShift[DiscreteFrom AndFrom T, T, 0](0)
 
 		implicit def firstFrom[T[A] <: MappingAt[A]] :TableShift[From[T], T, 0] =
 			new TableShift[From[T], T, 0](0)
@@ -2356,7 +2925,7 @@ object FromClause {
 
 
 
-			implicit def last[F <: NonEmptyClause, M[O] <: MappingAt[O], X]
+			implicit def last[F <: NonEmptyFrom, M[O] <: MappingAt[O], X]
 			                 (implicit last :LastTableOf[F] { type LastMapping[O] = M[O] }, pred :Predicate[F, M, X])
 					:Return[F, X] { type T[O] = M[O]; type G = last.FromLast; type I = -1 } =
 				new EvidenceTemplate[F, X, last.FromLast, last.FromLast, M, -1](PrefixOf.itself) with Return[F, X] {
@@ -2627,7 +3196,7 @@ object FromClause {
 					:ByAlias[F, A] { type T[O] = found.T[O]; type G = found.G; type I = found.I } =
 				new Delegate[F, A, found.G, found.T, found.I](found) with ByAlias[F, A]
 
-			implicit def satisfies[R[O] <: MappingAt[O], A <: Label] :Predicate[UngroupedFrom AndFrom R Alias A, R, A] =
+			implicit def satisfies[R[O] <: MappingAt[O], A <: Label] :Predicate[DiscreteFrom AndFrom R Alias A, R, A] =
 				report
 		}
 
@@ -2769,7 +3338,7 @@ object FromClause {
 					val generalized = from.generalized
 					val ps = params.asInstanceOf[generalized.Params]
 					val substitute = new RemoveParams(generalized, unfiltered.generalized)(ps)
-					unfiltered where dual.filter && substitute(from.condition)
+					unfiltered where dual.fullFilter && substitute(from.condition)
 				}
 			}
 
@@ -2886,7 +3455,7 @@ object FromClause {
 	  * over this implicit value. It has its use however when there is a requirement for maintaining the type `O`
 	  * exactly as it appears as a prefix in `F`: `F#Outer` can introduce abstract types and is not a lossless process
 	  */
-	@implicitNotFound("Cannot determine the outer clause for ${F}: missing implicit OuterClause[${F}, ${O}].")
+	@implicitNotFound("Cannot determine the outer clause for ${F}: missing implicit OuterFrom[${F}, ${O}].")
 	class OuterPartOf[O <: FromClause, F <: FromClause] private()
 
 	object OuterPartOf {
@@ -2928,7 +3497,7 @@ object FromClause {
 	  *   - `E &lt;: DecoratedFrom[F]`,
 	  *   - `E &lt;: S Extended _` for some `S` such that `F ExtendedBy S`,
 	  *   - `E &lt;: S GroupByAll _` for some `S &lt;: F#Nested`,
-	  *   - `F =:= Dual` and `E &lt;: S GroupByAll _` for some `S &lt;: OuterClause`.
+	  *   - `F =:= Dual` and `E &lt;: S GroupByAll _` for some `S &lt;: OuterFrom`.
 	  *
 	  * It means that `E &lt;: F AndFrom T1 ... AndFrom Tn`,
 	  * or `E &lt;: F AndFrom T1 ... AndFrom Tn Subselect Tn+1 TrueJoin ... TrueJoin Tm GroupByAll Tm+1 By ... By Tk`,
@@ -3015,7 +3584,7 @@ object FromClause {
 	  *   - `E =:= D[F]` for some `D[C] &lt;: DecoratorFrom[C]`,
 	  *   - `E &lt;: G Extended _` for some `G &lt;: FromClause` such that `F PrefixOf G`,
 	  *   - `E &lt;: S GroupByAll _` for some `S &lt;: E#Nested`,
-	  *   - `F =:= Dual` and `E &lt;: O GroupByAll _` for some `O &lt;: OuterClause`,
+	  *   - `F =:= Dual` and `E &lt;: O GroupByAll _` for some `O &lt;: OuterFrom`,
 	  *
 	  * It means that `E =:= F E1 T1 ... En Tn`,
 	  * or `E =:= F E1 O1 ... En On Subselect T0 J1 T1 ... Jm Om GroupByAll G1 By ... By Gk`,

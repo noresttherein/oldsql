@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.collection
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, NaturalMapBase}
+import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, BaseNaturalMap}
 import net.noresttherein.oldsql.morsels.generic.=#>
 
 import scala.collection.mutable

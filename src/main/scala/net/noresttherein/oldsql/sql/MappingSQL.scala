@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.SQLReadForm.ProxyReadForm
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, OuterClause, PrefixOf, TableShift, UngroupedFrom}
+import net.noresttherein.oldsql.sql.FromClause.{DiscreteFrom, ExtendedBy, FreeFrom, OuterFrom, PrefixOf, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.{CaseColumnComponent, ColumnComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL.{CaseComponent, ComponentMatcher, ProperComponent}
 import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.FreeColumnMatcher
@@ -296,11 +296,11 @@ object MappingSQL {
 
 
 
-		override def selectFrom[S <: F with OuterClause, A](from :S) :SelectMapping[S, M, V, A] =
+		override def selectFrom[S <: F with FreeFrom, A](from :S) :SelectMapping[S, M, V, A] =
 			SelectSQL(from, this)
 
-		override def subselectFrom[S <: F, A](from :S) :SubselectAs[from.Implicit, M[A]] =
-			SelectSQL.subselect[from.Implicit, from.type, T, E, M, V, O, A](from, this)
+		override def subselectFrom[S <: F, A](from :S) :SubselectAs[from.Base, M[A]] =
+			SelectSQL.subselect[from.Base, from.type, T, E, M, V, O, A](from, this)
 
 
 
@@ -457,11 +457,11 @@ object MappingSQL {
 		override def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S)
 				:ColumnComponentSQL[S, T, E, M, V, _ >: S <: FromClause]
 
-		override def selectFrom[S <: F with OuterClause, A](from :S) :SelectColumnMapping[S, M, V, A] =
+		override def selectFrom[S <: F with FreeFrom, A](from :S) :SelectColumnMapping[S, M, V, A] =
 			SelectSQL(from, this)
 
-		override def subselectFrom[S <: F, A](from :S) :SubselectColumnMapping[from.Implicit, from.type, M, V, A] =
-			SelectSQL.subselect[from.Implicit, from.type, T, E, M, V, O, A](from, this) //todo: from.type is ugly!
+		override def subselectFrom[S <: F, A](from :S) :SubselectColumnMapping[from.Base, from.type, M, V, A] =
+			SelectSQL.subselect[from.Base, from.type, T, E, M, V, O, A](from, this) //todo: from.type is ugly!
 
 		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[V] = matcher.component(this)
 
@@ -642,11 +642,11 @@ object MappingSQL {
 
 
 
-		override def selectFrom[S <: O with OuterClause, A](from :S) :SelectMapping[S, T, E, A] =
+		override def selectFrom[S <: O with FreeFrom, A](from :S) :SelectMapping[S, T, E, A] =
 			SelectSQL(from, asRelationSQL)
 
-		override def subselectFrom[S <: O, A](from :S) :SubselectAs[from.Implicit, T[A]] =
-			SelectSQL.subselect[from.Implicit, from.type, T, E, T, E, O, A](from, asRelationSQL)
+		override def subselectFrom[S <: O, A](from :S) :SubselectAs[from.Base, T[A]] =
+			SelectSQL.subselect[from.Base, from.type, T, E, T, E, O, A](from, asRelationSQL)
 
 
 
@@ -745,12 +745,6 @@ object MappingSQL {
 
 		def LastRelation[T[A] <: BaseMapping[S, A], S](from :Relation[T]) :LastRelation[T, S] =
 			new RelationSQL[FromClause AndFrom T, T, S, FromClause AndFrom T](from, 0)
-
-		private[sql] def LastRelation[T[A] <: BaseMapping[S, A], S](from :Relation[T], mapping :T[_])
-				:LastRelation[T, S] =
-			new RelationSQL[FromClause AndFrom T, T, S, FromClause AndFrom T](
-				from, mapping.withOrigin[FromClause AndFrom T], 0
-			)
 
 
 

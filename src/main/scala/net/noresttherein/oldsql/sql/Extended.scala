@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, FromSome, NonEmptyClause, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, FromSome, GroupingSeal, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -39,9 +39,8 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
-trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyClause { thisClause =>
+trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisClause :GroupingSeal =>
 
-	override type Init = left.Init
 	override type LastMapping[O] = R[O]
 	override type LastTable[F <: FromClause] = JoinedRelation[F, R]
 	override type FromLast >: Generalized <: FromClause Using R
@@ -80,29 +79,44 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyClause { thi
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
 	  * condition, as it doesn't include any join conditions defined on the left side of this join.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
 	  */
 	def condition :SQLBoolean[Generalized]
 
 
 
 	override type Generalized >: Self <: (left.Generalized Using R) {
+		type FromLast <: thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
 		type Implicit <: thisClause.Implicit
+		type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 	}
 
 	override type Self <: (left.Self Using R) {
+		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
 		type Outer = thisClause.Outer
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S Join T] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
+		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+		type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]
 	}
 
 	override type This >: this.type <: L Using R
 
+	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
+	  * using member types of `FromClause`, as they become proper path types instead of projections.
+	  */
 	protected def narrow :left.type Using R
 
 
@@ -130,12 +144,14 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyClause { thi
 		where(SQLScribe.groundFreeComponents(generalized, condition(last)))
 
 
-	override def size :Int = left.size + 1
+	override def fullSize :Int = left.fullSize + 1
 
-	override def isSubselect = left.isSubselect
+	override def isParameterized :Boolean = left.isParameterized
 
-	override def subselectSize :Int = left.subselectSize + 1
+	override def isSubselect :Boolean = left.isSubselect
+	override def isValidSubselect :Boolean = left.isValidSubselect
 
+	override type Base = DefineBase[Implicit]
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Using.*]
@@ -184,9 +200,6 @@ object Using {
 	  */
 	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: FromClause] = L Using R }
 
-
-	trait UsingLeftBound[+L <: U, U <: FromClause, R[O] <: MappingAt[O]] extends FromClause { this :Using[L, R] => }
-
 }
 
 
@@ -210,24 +223,36 @@ object Using {
   * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
   * @author Marcin Mościcki
   */
-trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thisClause =>
+trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thisClause :GroupingSeal =>
 	override type FromLast >: Generalized <: FromClause Extended R
 
 	//WithLeft/GeneralizedLeft
 
 	override type Generalized >: Self <: (left.Generalized Extended R) {
+		type FromLast <: thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
 		type Implicit <: thisClause.Implicit
+		type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 	}
 
 	override type Self <: (left.Self Extended R) {
+		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
 		type Outer = thisClause.Outer
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S Join T] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
+		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+		type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]
 	}
 
 	override type This >: this.type <: L Extended R
@@ -238,23 +263,25 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thi
 	protected def narrow :left.type Extended R
 
 
+	override def fullFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
+		left.fullFilter(target)(extension.extendFront[left.Generalized, R]) && condition.stretch(target)
+
+	override type FullRow = left.FullRow ~ last.Subject
+
+	override def fullRow[E <: FromClause]
+	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, FullRow] =
+		left.fullRow(target)(extension.extendFront[left.Generalized, R]) ~ last.stretch(target)
+
 
 
 	private[this] val lzyFilter = Lazy { filter(generalized) }
 
-	override def filter :SQLBoolean[Generalized] = lzyFilter
+	override def filter :SQLBoolean[Generalized] = lzyFilter.get
 
 	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
 		left.filter(target)(extension.extendFront[left.Generalized, R]) && condition.stretch(target)
 
-	override type Row = left.Row ~ last.Subject
 
-	override def row[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, Row] =
-		left.row(target)(extension.extendFront[left.Generalized, R]) ~ last.stretch(target)
-
-
-	override def subselectFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
-		left.subselectFilter(target)(extension.extendFront[left.Generalized, R]) && condition.stretch(target)
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Extended.*]
 
@@ -287,21 +314,26 @@ object Extended {
 
 
 
-	trait BaseExtended[+L <: FromClause, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] {
+	trait AbstractExtended[+L <: FromClause, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] {
+		thisClause :GroupingSeal =>
+
 		override val last :RelationSQL[FromLast, R, S, FromLast]
 
-		override def tableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def fullTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			last.stretch(target) #:: left.tableStack(target)(extension.extendFront[left.Generalized, R])
+			last.stretch(target) #:: left.fullTableStack(target)(extension.extendFront[left.Generalized, R])
 
 
-		override def subselectTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def innerTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			last.stretch(target) #:: left.subselectTableStack(target)(extension.extendFront[left.Generalized, R])
+			last.stretch(target) #:: left.innerTableStack(target)(extension.extendFront[left.Generalized, R])
 	}
 
 
-	//todo: determine the best combination of type parameters
+
+
+
+
 	/** A marker trait for [[net.noresttherein.oldsql.sql.Extended Extended]] implementations other than
 	  * the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join. While not mandatory, it is recommended
 	  * that all such clauses extend this type, as several implicit parameters responsible for traversing
@@ -310,15 +342,25 @@ object Extended {
 	  * for `Extended` subtypes, and there are other clauses, in particular
 	  * [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]], which are neither.
 	  */
-	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] {
+	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] { thisClause :GroupingSeal =>
 
-		type SubselectRow = left.SubselectRow ~ last.Subject
+		override type Implicit = left.Implicit
+		override type Outer = left.Outer
 
-		override def subselectRow[E <: FromClause]
-		                         (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, SubselectRow] =
-			left.subselectRow(target)(extension.extendFront[left.Generalized, R]) ~ last.stretch(target)
+//		override def outer :Outer = left.outer //can't be implemented here because it is an abstract val in GroupedFrom
+
+		override type InnerRow = left.InnerRow ~ last.Subject
+
+		override def innerRow[E <: FromClause]
+		                     (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, InnerRow] =
+			left.innerRow(target)(extension.extendFront[left.Generalized, R]) ~ last.stretch(target)
+
+		override type OuterRow = left.OuterRow
+
+		override def outerRow[E <: FromClause]
+		                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, OuterRow] =
+			left.outerRow(target)
 	}
-
 
 
 

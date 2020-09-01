@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, FromSome, PrefixOf, UngroupedFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, DiscreteFrom, ExtendedBy, FromSome, GroupingSeal, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -13,40 +13,48 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 
 /** Base trait for all `FromClause` implementations which serve as wrappers to other clauses. Decorators introduce
   * no new relations or ''where'' clause fragments and in most cases simply delegate to the corresponding method
-  * of the wrapped clause `F`. This is a bare bones root type designed for flexibility and convenience
+  * of the wrapped clause `F`. Currently no implementations are used by the library and it exists largely
+  * to future proof the design and allow an extension point for custom classes. One such usage could be, for example,
+  * providing custom annotations which, in conjunction with a custom `SQLWriter`, could be used to modify the generated
+  * SQL statements. For this reason this type is recognized and handled by all built-in types processing
+  * `FromClause` or `SQLExpression` types. This is a bare bones root type designed for flexibility and convenience
   * due to no upper bound on the wrapped clause type. Most practical implementations will likely prefer to extend
   * the more fleshed out [[net.noresttherein.oldsql.sql.DecoratedFrom.GenericDecorator GenericDecorator]].
   * @author Marcin Mościcki
-  */
-trait DecoratedFrom[+F <: FromClause] extends FromClause { //this could benefit from being derived from Any
+  */ //this could benefit from being derived from Any
+trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause :GroupingSeal =>
 	val clause :F
 
 	override type LastMapping[O] = clause.LastMapping[O]
 
 	override def isEmpty :Boolean = clause.isEmpty
-	override def size :Int = clause.size
-
-	override type Init = clause.Init
+	override def fullSize :Int = clause.fullSize
 
 	/** Wraps a (possibly modified) copy of the underlying clause in a new decorator instance. */
 	def copy[C <: clause.FromLast](body :C) :DecoratedFrom[C]
 
-	override type Row = clause.Row
+
+	override type Params = clause.Params
+
+	override def isParameterized :Boolean = clause.isParameterized
+
+	override type FullRow = clause.FullRow
 
 
 
 	override type Implicit = clause.Implicit
 	override type Outer = clause.Outer
+	override type Base = DefineBase[Implicit]
 
 	override def outer :Outer = clause.outer
 
-	override def isSubselect = clause.isSubselect
-	override def subselectSize :Int = clause.subselectSize
+	override def isSubselect :Boolean = clause.isSubselect
+	override def isValidSubselect :Boolean = clause.isValidSubselect
+	override def innerSize :Int = clause.innerSize
 
-	override type SubselectRow = clause.SubselectRow
 
-
-	override type Params = clause.Params
+	override type InnerRow = clause.InnerRow
+	override type OuterRow = clause.OuterRow
 
 }
 
@@ -67,22 +75,19 @@ object DecoratedFrom {
 	trait GenericDecorator[+F <: FromSome] extends FromSome with DecoratedFrom[F] { thisClause =>
 
 		override type FromLast = GeneralizedClause[clause.FromLast]
+		override type Generalized = GeneralizedClause[clause.Generalized]
+		override type Self = WithClause[clause.Self]
+		override type This <: WithClause[clause.This]
 
 		override def last :JoinedRelation[FromLast, LastMapping] = clause.last.extend[FromLast]
-
 
 		type GeneralizedClause[+G <: FromSome] <: GenericDecorator[G] {
 			type GeneralizedClause[+S <: FromSome] = thisClause.GeneralizedClause[S]
 		}
 
 		type WithClause[+G <: FromSome] <: GeneralizedClause[G] {
-			type GeneralizedClause[+S <: FromSome] = thisClause.GeneralizedClause[S]
 			type WithClause[+S <: FromSome] = thisClause.WithClause[S]
 		}
-
-		override type Generalized = GeneralizedClause[clause.Generalized]
-		override type Self = WithClause[clause.Self]
-		override type This <: WithClause[clause.This]
 
 		override def copy[C <: clause.FromLast](from :C) :WithClause[C] = withClause(from)
 
@@ -90,20 +95,21 @@ object DecoratedFrom {
 
 
 
-		override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
-			clause.filter(target)(extension.unwrapFront)
+		override def fullFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
+			clause.fullFilter(target)(extension.unwrapFront)
 
-		override def row[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, Row] =
-			clause.row(target)(extension.unwrapFront)
+		override def fullRow[E <: FromClause]
+		                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, FullRow] =
+			clause.fullRow(target)(extension.unwrapFront)
 
-		override def tableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def fullTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			clause.tableStack(target)(extension.unwrapFront)
+			clause.fullTableStack(target)(extension.unwrapFront)
 
 
-		override type AppendedTo[+P <: UngroupedFrom] = WithClause[clause.AppendedTo[P]]
+		override type AppendedTo[+P <: DiscreteFrom] = WithClause[clause.AppendedTo[P]]
 
-		override def appendedTo[P <: UngroupedFrom](prefix :P) :WithClause[clause.AppendedTo[P]] =
+		override def appendedTo[P <: DiscreteFrom](prefix :P) :WithClause[clause.AppendedTo[P]] =
 			withClause(clause.appendedTo(prefix))
 
 		override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] =
@@ -112,26 +118,35 @@ object DecoratedFrom {
 		override def joinedWith[P <: FromSome](prefix :P, firstJoin :TrueJoin.*) :JoinedWith[P, firstJoin.LikeJoin] =
 			withClause(clause.joinedWith(prefix, firstJoin))
 
-		override def joinedAsSubselect[P <: FromSome](prefix :P) :JoinedWith[P, Subselect] =
-			withClause(clause.joinedAsSubselect(prefix))
+		override type JoinedWithSubselect[+P <: FromSome] = WithClause[clause.JoinedWithSubselect[P]]
+
+		override def joinedWithSubselect[P <: FromSome](prefix :P) :JoinedWithSubselect[P] =
+			withClause(clause.joinedWithSubselect(prefix))
 
 
 
 		override type Explicit = GeneralizedClause[clause.Explicit]
 		override type Inner = WithClause[clause.Inner]
+		override type Base = clause.DefineBase[clause.Implicit] //a supertype of clause.Base (in theory, equal in practice)
+		override type DefineBase[+I <: FromClause] = clause.DefineBase[I]
 
-		override def subselectFilter[E <: FromClause]
-		                            (target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
-			clause.subselectFilter(target)(extension.unwrapFront)
+		override def base :Base = clause.base
 
-		override def subselectRow[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
-				:ChainTuple[E, clause.SubselectRow] =
-			clause.subselectRow(target)(extension.unwrapFront)
+		override def filter[E <: FromClause]
+		                   (target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
+			clause.filter(target)(extension.unwrapFront)
 
-		override def subselectTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def innerRow[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+				:ChainTuple[E, clause.InnerRow] =
+			clause.innerRow(target)(extension.unwrapFront)
+
+		override def innerTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			clause.subselectTableStack(target)(extension.unwrapFront)
+			clause.innerTableStack(target)(extension.unwrapFront)
 
+		override def outerRow[E <: FromClause](target :E)(implicit extension :Implicit ExtendedBy E)
+				:ChainTuple[E, clause.OuterRow] =
+			clause.outerRow(target)
 
 		override type AsSubselectOf[+P <: FromSome] = WithClause[clause.AsSubselectOf[P]]
 
@@ -157,6 +172,7 @@ object DecoratedFrom {
 
 		override def where(filter :SQLBoolean[Generalized]) :This =
 			withClause(clause where filter.asInstanceOf[SQLBoolean[clause.Generalized]]) //todo: eliminate the cast
+
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[Alias[_, _]]
 

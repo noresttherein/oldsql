@@ -5,8 +5,8 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, JoinedEntities, OuterClause, PrefixOf, UngroupedFrom}
-import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.FromClause.{DiscreteFrom, ExtendedBy, FreeFromSome, FromSome, JoinedEntities, OuterFrom, OuterFromSome, PrefixOf}
+import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -21,9 +21,8 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * As the result, it is a supertype of any ''from'' clause prepending any number of relations to this clause.
   * The drawback is that the `T => T#Generalized` type transformation is not a fixed point operation.
   */
-sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends UngroupedFrom {
+sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends DiscreteFrom { thisClause =>
 
-	override type Init = Dual
 	override type LastMapping[O] = Nothing
 	override type LastTable[-F <: FromClause] = Nothing
 	override type FromLast = FromClause
@@ -39,13 +38,13 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 
 	override def where(filter :SQLBoolean[FromClause]) :Dual =
-		if (filter == this.filter || filter == True) this
-		else new Dual(this.filter && filter)
+		if (filter == this.fullFilter || filter == True) this
+		else new Dual(this.fullFilter && filter)
 
 	override def where(condition :JoinedEntities[FromClause] => SQLBoolean[FromClause]) :Dual = {
 		val bool = condition(new JoinedEntities(this))
 		if (bool == True) this
-		else new Dual(filter && bool)
+		else new Dual(fullFilter && bool)
 	}
 
 
@@ -57,24 +56,30 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 		throw new UnsupportedOperationException(s"Dual.filterNext($next)")
 
 
-	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :SQLBoolean[E] =
-		if (target.isInstanceOf[UngroupedFrom]) filter.asInstanceOf[SQLBoolean[E]]
-		else filter.stretch(target)
+	override def fullFilter :SQLBoolean[FromClause] = filter
+
+	override def fullFilter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :SQLBoolean[E] =
+		filter
+
 
 	override def isEmpty :Boolean = true
-	override def size = 0
+	override def fullSize = 0
 
-	override type Row = @~
+	override type Params = @~
 
-	override def row :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+	override def isParameterized :Boolean = false
 
-	override def row[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :ChainTuple[E, @~] =
+	override type FullRow = @~
+
+	override def fullRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+
+	override def fullRow[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :ChainTuple[E, @~] =
 		ChainTuple.EmptyChain
 
-	override def tableStack :LazyList[RelationSQL.AnyIn[FromClause]] = LazyList.empty
+	override def fullTableStack :LazyList[RelationSQL.AnyIn[FromClause]] = LazyList.empty
 
-	override def tableStack[E <: FromClause]
-	                       (target :E)(implicit extension :FromClause ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+	override def fullTableStack[E <: FromClause]
+	                           (target :E)(implicit extension :FromClause ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
 		LazyList.empty
 
 
@@ -85,14 +90,15 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	                   (next :Relation[T], filter :SQLBoolean[FromClause AndFrom T], join :Join.*) :From[T] =
 		From[T, S](next, filter)
 
-	protected[sql] def extend[T[O] <: BaseMapping[S, O], S]
-	                         (right :LastRelation[T, S], filter :SQLBoolean[FromClause AndFrom T]) :this.type AndFrom T =
+	protected[sql] override def extend[T[O] <: BaseMapping[S, O], S]
+	                                  (right :LastRelation[T, S], filter :SQLBoolean[FromClause AndFrom T])
+			:this.type AndFrom T =
 		From.narrow(this, right, filter)
 
 
-	override type AppendedTo[+P <: UngroupedFrom] = P
+	override type AppendedTo[+P <: DiscreteFrom] = P
 
-	override def appendedTo[P <: UngroupedFrom](prefix :P) :P = prefix
+	override def appendedTo[P <: DiscreteFrom](prefix :P) :P = prefix
 
 
 	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R, F <: FromClause] = F
@@ -104,46 +110,56 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 	override def joinedWith[F <: FromSome](prefix :F, firstJoin :TrueJoin.*) :F = prefix
 
-	override def joinedAsSubselect[F <: UngroupedFrom](prefix :F) :Nothing =
-		throw new UnsupportedOperationException(s"Dual.joinedAsSubselect($prefix)")
+	override type JoinedWithSubselect[+P <: FromClause] = Nothing
+
+	override def joinedWithSubselect[F <: DiscreteFrom](prefix :F) :Nothing =
+		throw new UnsupportedOperationException(s"Dual.joinedWithSubselect($prefix)")
 
 
 
 	override def isSubselect = false
+	override def isValidSubselect = false
 
 	override type Explicit = FromClause
-	override type Inner = UngroupedFrom
+	override type Inner = DiscreteFrom
 	override type Implicit = FromClause
 	override type Outer = Dual
+	override type Base = FromClause
+	override type DefineBase[+I <: FromClause] = I
 
 	override def outer :Dual = this
+	override def base :FromClause = this
 
-	override def subselectSize = 0
-
-
-
-	override def subselectFilter :SQLBoolean[FromClause] = filter
-
-	override def subselectFilter[E <: FromClause]
-	                            (target :E)(implicit extension :FromClause ExtendedBy E) :SQLBoolean[E] =
-		if (target.isInstanceOf[UngroupedFrom]) filter.asInstanceOf[SQLBoolean[E]]
-		else filter.stretch(target)
+	override def innerSize = 0
 
 
-	override type SubselectRow = @~
 
-	override def subselectRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :SQLBoolean[E] =
+		filter
 
-	override def subselectRow[E <: FromClause]
-	                         (target :E)(implicit extension :FromClause ExtendedBy E) :ChainTuple[E, @~] =
+
+	override type InnerRow = @~
+
+	override def innerRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+
+	override def innerRow[E <: FromClause]
+	                     (target :E)(implicit extension :FromClause ExtendedBy E) :ChainTuple[E, @~] =
 		ChainTuple.EmptyChain
 
-	override def subselectTableStack :LazyList[RelationSQL.AnyIn[FromClause]] = LazyList.empty
+	override def innerTableStack :LazyList[RelationSQL.AnyIn[FromClause]] = LazyList.empty
 
-	override def subselectTableStack[E <: FromClause]
+	override def innerTableStack[E <: FromClause]
 	             (target :E)(implicit extension :FromClause ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
 		LazyList.empty
 
+
+	override type OuterRow = @~
+
+	override def outerRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+
+	override def outerRow[E <: FromClause]
+	                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[FromClause, @~] =
+		ChainTuple.EmptyChain
 
 
 	override type AsSubselectOf[+F <: FromClause] = Nothing
@@ -151,13 +167,19 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override def asSubselectOf[F <: FromClause](outer :F)(implicit extension :FromClause ExtendedBy F) :Nothing =
 		throw new UnsupportedOperationException("Can't represent Dual as a subselect of " + outer)
 
+//	override type BaseSubselectOf[+F <: FromSome, T[O] <: MappingAt[O]] = F Subselect T
+//
+//	protected override def baseSubselectOf[F <: FromSome, T[O] <: BaseMapping[S, O], S]
+//	                            (outer :F, next :LastRelation[T, S], condition :SQLBoolean[FromClause AndFrom T])
+//			:outer.type Subselect T =
+//		Subselect[outer.type, T, S](outer, next)(fullFilter && condition)
 
 
-	override type FromSubselect[+F <: FromClause] = F { type Implicit = FromClause }
+	override type FromSubselect[+F <: FromSome] = F { type Implicit = FromClause }
 
-	override type SubselectTable[T[O] <: MappingAt[O]] = From[T]
+	override type FromRelation[T[O] <: MappingAt[O]] = From[T]
 
-	override def from[F <: OuterClause](suffix :F) :F = suffix.asInstanceOf[F { type Implicit = FromClause }]
+	override def from[F <: FreeFromSome](suffix :F) :F = suffix
 
 	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	                 (next :Relation[M])
@@ -168,24 +190,20 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 	override def fromSubselect[F <: FromSome]
 	                          (subselect :F)(implicit extension :subselect.Implicit ExtendedBy FromClause)
-			:F { type Implicit = FromClause } =
-		subselect.asInstanceOf[F { type Implicit = FromClause }]
-
-
-
-	override type Params = @~
+			:F { type Implicit = FromClause; type DefineBase[+I <: FromClause] = subselect.DefineBase[I] } =
+		subselect.asInstanceOf[F { type Implicit = FromClause; type DefineBase[+I <: FromClause] = subselect.DefineBase[I] }]
 
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]
 
 	override def equals(that :Any) :Boolean = that match {
-		case dual :Dual => (dual eq this) || dual.filter == filter
+		case dual :Dual => (dual eq this) || dual.fullFilter == fullFilter
 		case _ => false
 	}
 
 
-	override def toString :String = if (filter == True) "Dual" else "Dual where " + filter
+	override def toString :String = if (fullFilter == True) "Dual" else "Dual where " + fullFilter
 
 }
 

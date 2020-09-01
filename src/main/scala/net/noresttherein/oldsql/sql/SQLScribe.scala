@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome}
-import net.noresttherein.oldsql.sql.JoinParam.FromParam
+import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, CaseMapping, ColumnComponentSQL, ComponentSQL, FreeColumn, FreeComponent, RelationSQL}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectColumn, FreeSelectColumn, FreeSelectSQL, SubselectColumn, SubselectSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
@@ -77,7 +77,7 @@ object SQLScribe {
 	  * to [[net.noresttherein.oldsql.sql.FromClause.asSubselectOf FromClause.asSubselectOf]], rewriting all
 	  * join conditions and the subselect header before creating a new `SubselectSQL`.
 	  * In order to be able to rewrite subselect expressions, it requires the output clause instance `G` to use
-	  * as their `Outer`/`Implicit` portion. This can be achieved either by using this scribe in a `AndFrom`
+	  * as their `Outer`/`Implicit` portion. This can be achieved either by using this scribe in a `Using`
 	  * constructor and passing `this` (with uninitialized join condition), or it can be a template clause with an empty
 	  * join condition, as the join conditions from the outer portion of subselect clauses are not used in the
 	  * generation of the SQL for the subselect.
@@ -136,7 +136,7 @@ object SQLScribe {
 					val unfiltered = From[MappingOf[Any]#TypedProjection, Any](join.right)
 					implicit val extension = unfiltered.explicitSpan.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
 					val scribe = extended(join.generalized, unfiltered.generalized)
-					val condition = newClause.filter.asInstanceOf[SQLBoolean[FromClause]] && scribe(join.condition)
+					val condition = newClause.fullFilter.asInstanceOf[SQLBoolean[FromClause]] && scribe(join.condition)
 					val res = From[MappingOf[Any]#TypedProjection, Any](join.right, condition).asInstanceOf[newClause.Nested]
 					RecursiveScribeSubselectExtension(res)(extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized])
 
@@ -261,6 +261,10 @@ object SQLScribe {
 
 
 
+	/** Replaces an unbound parameter, together with all its 'components', with one given as the relation `param`
+	  * (with the same shift/position). The value of the new parameter must be derivable from the old one.
+	  * This scribe is used when aliasing a JoinParam with the `as` method.
+	  */
 	private[sql]
 	class ReplaceParam[+F <: FromClause, -G <: FromClause, O >: G <: FromClause, M[A] <: FromParam[X, A], X, P]
 	                  (protected[this] override val oldClause :F, protected[this] override val newClause :G)
@@ -338,7 +342,7 @@ object SQLScribe {
 					}
 					rec(oldClause).reverse.toIndexedSeq
 				}*/
-		        (List.empty[Int] /: oldClause.tableStack) {
+		        (List.empty[Int] /: oldClause.fullTableStack) {
 					case (acc, FromParam(_, _, _)) =>
 				        if (acc.isEmpty) 1::Nil else acc.head + 1 :: acc
 					case (acc, _) =>
@@ -419,6 +423,9 @@ object SQLScribe {
 
 
 
+	/** Removes a single unbound parameter with the relation shift given as `idx` (counting from the ''right'')
+	  * and all its components with bound parameter(s) of/derived from the given value.
+	  */
 	private[sql] class RemoveParam[+F <: FromClause, -G <: FromClause, X](
 	                               protected[this] override val oldClause :F, protected[this] override val newClause :G,
 	                               param :X, idx :Int)
@@ -534,14 +541,14 @@ object SQLScribe {
 		override def freeComponent[J >: F <: FromClause, M[A] <: BaseMapping[X, A], X]
 		                          (e :FreeComponent[J, M, X]) :SQLExpression[F, X] =
 		{
-			val table = from.tableStack(e.shift).asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, J]]
+			val table = from.fullTableStack(e.shift).asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, J]]
 			(table \ e.mapping).upcast
 		}
 
 		override def freeComponent[J >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
 		                          (e :FreeColumn[J, M, V]) :ColumnSQL[F, V] =
 		{
-			val table = from.tableStack(e.shift).asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, J]]
+			val table = from.fullTableStack(e.shift).asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, J]]
 			(table \ e.mapping).upcast
 		}
 

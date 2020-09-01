@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.{Chain, LiteralIndex}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FromSome, OuterClause}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FromSome, OuterFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.{CaseChain, ChainHead, ChainMatcher, EmptyChain}
@@ -29,11 +29,11 @@ trait TupleSQL[-F <: FromClause, T] extends CompositeSQL[F, T] {
 	override def sameAs(other :CompositeSQL[Nothing, _]) :Boolean = other.isInstanceOf[TupleSQL[_, _]]
 
 
-	override def selectFrom[S <: F with OuterClause, O](from :S) :FreeSelectSQL[T, O] =
+	override def selectFrom[S <: F with FreeFrom, O](from :S) :FreeSelectSQL[T, O] =
 		SelectSQL(from, this)
 
-	override def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Implicit, T, O] =
-		SelectSQL.subselect[from.Implicit, from.type, T, O](from, this)
+	override def subselectFrom[S <: F, O](from :S) :SubselectSQL[from.Base, T, O] =
+		SelectSQL.subselect[from.Base, from.type, T, O](from, this)
 }
 //todo: conversion to MappingSQL
 

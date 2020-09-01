@@ -67,7 +67,7 @@ sealed trait Chain extends ChainBound[Any]
 /** An implementation artifact required to enforce required precedence of implicit values.
   * @see [[net.noresttherein.oldsql.collection.ChainFactory]]
    */
-sealed trait ChainFactoryBase {
+sealed trait BaseChainFactory {
 
 	/** Type of the companion class. */
 	type Type >: @~ <: Chain
@@ -101,7 +101,7 @@ sealed trait ChainFactoryBase {
 /** Base trait for `Chain` subclasses companion objects. In this minimal form, it contains only `UpperBound` implicits
   * and type declarations for both the companion class and its type parameter bounds.
   */
-trait ChainFactory extends ChainFactoryBase {
+trait ChainFactory extends BaseChainFactory {
 	private[this] final val noBound = new UpperBound[Type, NonSingleton]
 
 	/** Fallback `UpperBound` implicit value used when the chain `C` is abstract, that is ends with `Chain`/`Type`

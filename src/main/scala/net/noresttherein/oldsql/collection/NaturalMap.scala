@@ -1,5 +1,5 @@
 package net.noresttherein.oldsql.collection
-import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, NaturalMapBase}
+import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, BaseNaturalMap}
 import net.noresttherein.oldsql.morsels.generic.{=#>, GenericFun}
 
 import scala.collection.mutable.Builder
@@ -32,7 +32,7 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 
 
 
-	def withDefault[U[T] >: V[T]](whenNoKey :K =#> U) :NaturalMap[K, U] = new NaturalMapBase[K, U] {
+	def withDefault[U[T] >: V[T]](whenNoKey :K =#> U) :NaturalMap[K, U] = new BaseNaturalMap[K, U] {
 		override def get[X](key :K[X]) = outer.get(key)
 
 		override def contains(key :K[_]) = outer.contains(key)
@@ -161,7 +161,7 @@ object NaturalMap {
 
 
 
-	trait NaturalMapBase[K[_], +V[_]] extends NaturalMap[K, V] { outer =>
+	trait BaseNaturalMap[K[_], +V[_]] extends NaturalMap[K, V] { outer =>
 
 		override def get[X](key :K[X]) :Option[V[X]]
 
@@ -201,7 +201,7 @@ object NaturalMap {
 
 
 
-	private class LazyNaturalMap[K[_], +V[_]](construct: => NaturalMap[K, V]) extends NaturalMapBase[K, V] {
+	private class LazyNaturalMap[K[_], +V[_]](construct: => NaturalMap[K, V]) extends BaseNaturalMap[K, V] {
 		@volatile private[this] var initializer = () => construct
 		@volatile private[this] var backing :NaturalMap[K, V] = _
 		private[this] var cache :NaturalMap[K, V] = _
@@ -322,7 +322,7 @@ object NaturalMap {
 
 
 	private class Singleton[K[_], +V[_], T](key :K[T], value :V[T])
-		extends Assoc[K, V, T](key, value) with NaturalMapBase[K, V]
+		extends Assoc[K, V, T](key, value) with BaseNaturalMap[K, V]
 	{
 		override def head :Assoc[K, V, T] = this
 		override def tail :NaturalMap[K, V] = NaturalMap.empty
