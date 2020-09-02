@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
 
 
 
-trait JoinTemplate[+L <: U, U >: FromSome <: FromClause, R[O] <: MappingAt[O]]
+
 /** Common upper type for `AndFrom` subclasses which accept arbitrary `Mapping` subtypes as joined relations.
   * It is the root of a tree with two branches: [[net.noresttherein.oldsql.sql.Join Join]] subtypes
   * which represent various actual join kinds (inner, outer, etc) and [[net.noresttherein.oldsql.sql.Subselect Subselect]]
@@ -595,11 +595,11 @@ object InnerJoin {
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S]
 	                      (prefix :L, next :LastRelation[R, S])
-	                      (filter :SQLBoolean[prefix.Generalized Join R]) :L InnerJoin R =
+	                      (cond :SQLBoolean[prefix.Generalized Join R]) :L InnerJoin R =
 		new InnerJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
-			override val condition = fullFilter
+			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
 
@@ -742,11 +742,11 @@ object OuterJoin {
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S]
 	                      (prefix :L, next :LastRelation[R, S])
-	                      (filter :SQLBoolean[prefix.Generalized Join R]) :L OuterJoin R =
+	                      (cond :SQLBoolean[prefix.Generalized Join R]) :L OuterJoin R =
 		new OuterJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
-			override val condition = fullFilter
+			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
 
@@ -883,11 +883,11 @@ object LeftJoin {
 
 	private[sql] def apply[L <: FromSome, R[A] <: BaseMapping[S, A], S]
 	                      (prefix :L, next :LastRelation[R, S])
-	                      (filter :SQLBoolean[prefix.Generalized Join R]) :L LeftJoin R =
+	                      (cond :SQLBoolean[prefix.Generalized Join R]) :L LeftJoin R =
 		new LeftJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
-			override val condition = fullFilter
+			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
 
@@ -1024,11 +1024,11 @@ object RightJoin {
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S]
 	                      (prefix :L, next :LastRelation[R, S])
-	                      (filter :SQLBoolean[prefix.Generalized Join R]) :L RightJoin R =
+	                      (cond :SQLBoolean[prefix.Generalized Join R]) :L RightJoin R =
 		new RightJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
-			override val condition = fullFilter
+			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
 
@@ -1250,11 +1250,11 @@ object Subselect {
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S]
 	                      (prefix :L, next :LastRelation[R, S])
-	                      (filter :SQLBoolean[prefix.Generalized Subselect R]) :L Subselect R =
+	                      (cond :SQLBoolean[prefix.Generalized Subselect R]) :L Subselect R =
 		new Subselect[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
-			override val condition = fullFilter
+			override val condition = cond
 			override val fullSize = left.fullSize + 1
 
 			override type This = left.type Subselect R

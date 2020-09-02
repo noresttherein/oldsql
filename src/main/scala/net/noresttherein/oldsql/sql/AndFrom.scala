@@ -188,7 +188,7 @@ object AndFrom {
 	  */
 	def apply[L <: DiscreteFrom, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :Relation[R], filter :SQLBoolean[L#Generalized AndFrom R] = True)
-	         (implicit cast :JoinedRelationSubject[WithLeft[L]#F, R, T, MappingOf[S]#TypedProjection]) :L AndFrom R =
+	         (implicit cast :InferSubject[L, AndFrom, R, T, S]) :L AndFrom R =
 		cast(left.extend[T, S](LastRelation[T, S](cast(right)), cast.cast[WithLeft[L#Generalized]#F, Boolean](filter)))
 
 
@@ -235,7 +235,7 @@ object AndFrom {
 
 			override def relation[T[A] <: BaseMapping[E, A], E, O >: F <: FromClause](e :RelationSQL[F, T, E, O])
 					:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingAt[A] } =
-//				(if (e.shift < innerSize) e //todo: we must ensure we are reusing the mapping instance
+//				(if (e.shift < innerSize) e
 //				 else RelationSQL[G, T, E, G](e.relation, e.shift + extension)).asInstanceOf[RelationSQL[G, T, E, G]]
 				(if (e.shift < subselectSize) e.asInstanceOf[RelationSQL[G, T, E, G]]
 				 else relations(e.shift + extension).asInstanceOf[RelationSQL[G, T, E, G]]).asInstanceOf[RelationSQL[G, T, E, G]]
@@ -656,13 +656,13 @@ object From {
 				newLeft.extend(last, filter)
 
 
-			override def appendedTo[P <: DiscreteFrom](prefix :P) :P AndFrom T = prefix.extend(last, fullFilter)
+			override def appendedTo[P <: DiscreteFrom](prefix :P) :P AndFrom T = prefix.extend(last, filter)
 
 			override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :firstJoin.LikeJoin[F, T] =
-				firstJoin.likeJoin[F, T, S](prefix, right)(fullFilter)
+				firstJoin.likeJoin[F, T, S](prefix, right)(filter)
 
 			override def joinedWithSubselect[F <: FromSome](prefix :F) :F Subselect T =
-				Subselect[F, T, S](prefix, last)(fullFilter)
+				Subselect[F, T, S](prefix, last)(filter)
 
 
 			override def innerTableStack[E <: FromClause]
@@ -672,7 +672,7 @@ object From {
 
 			override def asSubselectOf[F <: FromSome](newOuter :F)(implicit extension :Implicit ExtendedBy F)
 					:newOuter.type Subselect T =
-				Subselect[newOuter.type, T, S](newOuter, last)(fullFilter)
+				Subselect[newOuter.type, T, S](newOuter, last)(filter)
 
 
 			override def as[A <: Label](alias :A) :From[(T As A)#T] = {

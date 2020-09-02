@@ -365,9 +365,6 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thi
 	protected def narrow :left.type Extended R
 
 
-	override def fullFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
-		left.fullFilter(target)(extension.extendFront[left.Generalized, R]) && condition.stretch(target)
-
 	override type FullRow = left.FullRow ~ last.Subject
 
 	override def fullRow[E <: FromClause]

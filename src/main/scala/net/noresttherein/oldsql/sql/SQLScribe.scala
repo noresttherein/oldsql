@@ -137,7 +137,7 @@ object SQLScribe {
 					val unfiltered = From[MappingOf[Any]#TypedProjection, Any](join.right)
 					implicit val extension = unfiltered.explicitSpan.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
 					val scribe = extended(join.generalized, unfiltered.generalized)
-					val condition = newClause.fullFilter.asInstanceOf[SQLBoolean[FromClause]] && scribe(join.condition)
+					val condition = newClause.filter.asInstanceOf[SQLBoolean[FromClause]] && scribe(join.condition)
 					val res = From[MappingOf[Any]#TypedProjection, Any](join.right, condition).asInstanceOf[newClause.Nested]
 					RecursiveScribeSubselectExtension(res)(extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized])
 

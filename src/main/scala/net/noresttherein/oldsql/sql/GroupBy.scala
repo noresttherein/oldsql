@@ -33,11 +33,6 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 
 	def withLeft[L <: FromSome](left :L)(condition :SQLBoolean[left.Generalized GroupByAll M]) :L GroupByAll M
 
-	override def fullFilter :SQLBoolean[Generalized] = condition
-
-	override def fullFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
-		condition.stretch(target)
-
 
 	override def fullSize :Int = outer.fullSize + 1
 
@@ -174,12 +169,12 @@ object GroupByAll {
 
 	private[sql] def apply[F <: FromSome, T[O] <: BaseMapping[S, O], S]
 	                      (clause :F, group :RelationSQL[FromSome GroupByAll T, T, S, FromSome GroupByAll T])
-	                      (filter :SQLBoolean[clause.Generalized GroupByAll T])
+	                      (cond :SQLBoolean[clause.Generalized GroupByAll T])
 			:F GroupByAll T =
 		new GroupByAll[clause.type, T] {
 			override val left = clause
 			override val last = group
-			override val condition = fullFilter
+			override val condition = cond
 			override val from = left.self
 			override val outer = left.outer
 			override val fullSize = outer.fullSize + 1
@@ -434,12 +429,12 @@ object GroupByAll {
 
 		private[sql] def apply[F <: GroupByClause, T[O] <: BaseMapping[S, O], S]
 		                      (clause :F, group :RelationSQL[GroupByClause AndByAll T, T, S, GroupByClause AndByAll T])
-		                      (filter :SQLBoolean[clause.Generalized ByAll T])
+		                      (cond :SQLBoolean[clause.Generalized ByAll T])
 				:F ByAll T =
 			new ByAll[clause.type, T] with AbstractExtended[clause.type, T, S] {
 				override val left = clause
 				override val last = group
-				override val condition = fullFilter
+				override val condition = cond
 				override val from = left.from
 				override val outer = left.outer
 				override val fullSize = left.fullSize + 1

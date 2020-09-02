@@ -885,11 +885,11 @@ object JoinParam {
 
 	private[sql] def apply[L <: FromSome, M[O] <: FromParam[X, O], X]
 	                      (clause :L, param :LastRelation[M, X])
-	                      (filter :SQLBoolean[clause.Generalized JoinParam M]) :L JoinParam M =
+	                      (cond :SQLBoolean[clause.Generalized JoinParam M]) :L JoinParam M =
 		new JoinParam[clause.type, M] with AbstractExtended[clause.type, M, X] {
 			override val left = clause
 			override val last = param
-			override val condition = fullFilter
+			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
 
@@ -1144,11 +1144,11 @@ object GroupParam {
 
 	private[sql] def apply[L <: GroupByClause, M[O] <: FromParam[X, O], X]
 	                      (clause :L, param :RelationSQL[GroupByClause AndByAll M, M, X, GroupByClause AndByAll M])
-	                      (filter :SQLBoolean[clause.Generalized GroupParam M]) :L GroupParam M =
+	                      (cond :SQLBoolean[clause.Generalized GroupParam M]) :L GroupParam M =
 		new GroupParam[clause.type, M] with AbstractExtended[clause.type, M, X] {
 			override val left = clause
 			override val last = param
-			override val condition = fullFilter
+			override val condition = cond
 			override val from :Discrete = left.from
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1

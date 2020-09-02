@@ -37,14 +37,14 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override type Self = Dual
 	override type This = Dual
 
-	override def where(filter :SQLBoolean[FromClause]) :Dual =
-		if (filter == this.fullFilter || filter == True) this
-		else new Dual(this.fullFilter && filter)
+	override def where(condition :SQLBoolean[FromClause]) :Dual =
+		if (filter == condition || condition == True) this
+		else new Dual(condition && filter)
 
 	override def where(condition :JoinedEntities[FromClause] => SQLBoolean[FromClause]) :Dual = {
 		val bool = condition(new JoinedEntities(this))
 		if (bool == True) this
-		else new Dual(fullFilter && bool)
+		else new Dual(filter && bool)
 	}
 
 
@@ -55,11 +55,6 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	              (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) :Nothing =
 		throw new UnsupportedOperationException(s"Dual.filterNext($next)")
 
-
-	override def fullFilter :SQLBoolean[FromClause] = filter
-
-	override def fullFilter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :SQLBoolean[E] =
-		filter
 
 
 	override def isEmpty :Boolean = true
@@ -192,12 +187,12 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]
 
 	override def equals(that :Any) :Boolean = that match {
-		case dual :Dual => (dual eq this) || dual.fullFilter == fullFilter
+		case dual :Dual => (dual eq this) || dual.filter == filter
 		case _ => false
 	}
 
 
-	override def toString :String = if (fullFilter == True) "Dual" else "Dual where " + fullFilter
+	override def toString :String = if (filter == True) "Dual" else "Dual where " + filter
 
 }
 

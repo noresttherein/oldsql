@@ -321,21 +321,6 @@ trait FromClause { thisClause =>
 		filterNext[F, N](next)(filter)
 
 
-	/** The ''where'' part of this clause representing the filter condition as SQL AST.
-	  * It is the conjunction of join conditions for all joins in this clause.
-	  * Note that this expression includes also the ''where'' clauses of any outer clauses, not just the conditions
-	  * present in the ''explicit'' portion of this clause.
-	  */ //todo: merge this with filter as it doesn't have any real use
-	def fullFilter :SQLBoolean[Generalized]
-
-	/** The combined join conditions of all joins in this clause as an expression based on an extending clause.
-	  * Used by zero-argument `fullFilter` to request the individual join conditions as expressions based on the clause
-	  * it was called for, without the need for adapting every member condition for every intermediate join.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
-	  */
-	def fullFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E]
-
-
 
 	/** Does this clause contain no relations, being a base for a select without a ''from'' clause? */
 	def isEmpty :Boolean
@@ -1173,7 +1158,6 @@ object FromClause {
 
 		override def isEmpty = false
 
-		override def fullFilter :SQLBoolean[Generalized] = fullFilter(generalized)
 		override def fullRow :ChainTuple[Generalized, FullRow] = fullRow(generalized)
 		override def fullTableStack :LazyList[RelationSQL.AnyIn[Generalized]] = fullTableStack(generalized)
 
@@ -1955,6 +1939,7 @@ object FromClause {
 		type FromLast = U
 		type LastMapping[O] = T[O]
 	}
+
 	/** Implicit evidence providing the `LastMapping` and `FromLast` types of the mapping `F`. An implicit value
 	  * of this class exists for every type `F` which defines the eponymous types. While in many contexts
 	  * this information could be obtained by simply refining the type of the accepted ''from'' clause,
@@ -2187,7 +2172,7 @@ object FromClause {
 
 //		implicit def firstParam[P[A] <: ParamAt[A]] :TableShift[FromSome JoinParam P, P, 0] =
 //			new TableShift[FromSome JoinParam P, P, 0](0)
-		//todo: get a common supertype with ByAll
+
 		implicit def firstGroupParam[P[A] <: ParamAt[A]] :TableShift[GroupByClause GroupParam P, P, 0] =
 			new TableShift[GroupByClause GroupParam P, P, 0](0)
 
@@ -2815,7 +2800,7 @@ object FromClause {
 					val generalized = from.generalized
 					val ps = params.asInstanceOf[generalized.Params]
 					val substitute = new RemoveParams(generalized, unfiltered.generalized)(ps)
-					unfiltered where dual.fullFilter && substitute(from.condition)
+					unfiltered where dual.filter && substitute(from.condition)
 				}
 			}
 

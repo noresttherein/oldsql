@@ -96,9 +96,6 @@ object DecoratedFrom {
 
 
 
-		override def fullFilter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
-			clause.fullFilter(target)(extension.unwrapFront)
-
 		override def fullRow[E <: FromClause]
 		                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, FullRow] =
 			clause.fullRow(target)(extension.unwrapFront)
