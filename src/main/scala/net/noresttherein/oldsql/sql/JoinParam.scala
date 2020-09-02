@@ -842,7 +842,7 @@ object JoinParam {
 	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
-	  * @return `F JoinParam (N `[[net.noresttherein.oldsql.sql.JoinParam.?: ?:]]` X)#T`.
+	  * @return `F JoinParam (N `[[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]]` X)#T`.
 	  */
 	def apply[F <: OuterFromSome, N <: Label, X](from :F, param :NamedParamRelation[N, X]) :F JoinParam (N ?: X)#T =
 		JoinParam[F, (N ?: X)#T, X](from, LastRelation(param))(True)
@@ -859,7 +859,7 @@ object JoinParam {
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
-	  * @return `F JoinParam (N `[[net.noresttherein.oldsql.sql.JoinParam.?: ?:]]` X)#T`.
+	  * @return `F JoinParam (N `[[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]]` X)#T`.
 	  */
 	def apply[F <: OuterFromSome, N <: Label, X]
 	         (from :F, param :NamedParamRelation[N, X],
@@ -1100,7 +1100,7 @@ object GroupParam {
 	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
-	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.JoinParam.?: ?:]]` X)#T`.
+	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]]` X)#T`.
 	  */
 	def apply[F <: GroupedFrom with OuterFrom, N <: Label, X]
 	         (from :F, param :NamedParamRelation[N, X]) :F GroupParam (N ?: X)#T =
@@ -1118,7 +1118,7 @@ object GroupParam {
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
-	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.JoinParam.?: ?:]]` X)#T`.
+	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]]` X)#T`.
 	  */
 	def apply[F <: GroupedFrom with OuterFrom, N <: Label, X]
 	         (from :F, param :NamedParamRelation[N, X],
@@ -1149,7 +1149,7 @@ object GroupParam {
 			override val left = clause
 			override val last = param
 			override val condition = fullFilter
-			override val from :Ungrouped = left.from
+			override val from :Discrete = left.from
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
 

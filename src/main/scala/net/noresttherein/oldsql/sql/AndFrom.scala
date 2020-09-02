@@ -179,7 +179,7 @@ object AndFrom {
 	  * or an [[net.noresttherein.oldsql.sql.InnerJoin L InnerJoin R]] otherwise. This method's use is somewhat limited
 	  * as the result type of `L AndFrom R` is too abstract (its `Generalized` form is undefined) for many purposes.
 	  * Prefer using the factory methods of `FromClause` and, in particular, its extension methods from
-	  * [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension FromSomeExtension]], such as `join`, `leftJoin`, etc.
+	  * [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension FromSomeExtension]], such as `join`, `leftJoin`, etc.
 	  * @param left a ''from'' clause containing the list of relations preceding `right`.
 	  * @param right the last relation of the created ''from'' clause.
 	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
@@ -702,7 +702,7 @@ object From {
 	  * the [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast]] method, providing the condition for the ''where''
 	  * clause associated with the created clause. The clause can be also subsequently joined with other relations
-	  * using join methods defined in [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension FromSomeExtension]]:
+	  * using join methods defined in [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension FromSomeExtension]]:
 	  * `join`, `outerJoin`, `leftJoin`, `rightJoin` and `subselect`.
 	  * @param relation the relation for the ''from'' clause, parameterized with a `BaseMapping` with subject type `S`,
 	  *                 represented here by types `R =:= T`, split in order to separate the inference of the mapping
@@ -722,7 +722,7 @@ object From {
 	  * mapping) with `Mapping` `R`. This is a lower level factory method accepting an optional, additional filter
 	  * for the ''where'' clause, but providing no type inference support and thus generally requiring the type
 	  * parameters to be specified explicitly. The clause can be also subsequently joined with other relations
-	  * using join methods defined in [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension FromSomeExtension]]:
+	  * using join methods defined in [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension FromSomeExtension]]:
 	  * `join`, `outerJoin`, `leftJoin`, `rightJoin` and `subselect`.
 	  * @param relation the relation for the ''from'' clause, parameterized with a `BaseMapping` with subject type `S`.
 	  * @param filter an optional boolean condition for the associated ''where'' clause.

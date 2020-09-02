@@ -1,16 +1,13 @@
 package net.noresttherein.oldsql.sql
 
-import scala.annotation.implicitNotFound
-
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.{BaseMapping, Mapping, Relation}
+import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, PrefixOf}
-import net.noresttherein.oldsql.sql.AggregateSQL.{FlatMapGroup, MapGroup}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -57,7 +54,6 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupedFrom with 
 	override def joinedWith[P <: FromSome](prefix :P, firstJoin :TrueJoin.*)
 			:left.JoinedWith[P, firstJoin.LikeJoin] GroupByAll M =
 		withLeft(left.joinedWith(prefix, firstJoin))(condition)
-//		throw new UnsupportedOperationException(s"GroupBy.joinedWith: $this joinedWith[${firstJoin.name} $prefix.")
 
 	override type JoinedWithSubselect[+P <: FromSome] = left.JoinedWithSubselect[P] GroupByAll M
 
@@ -66,8 +62,8 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupedFrom with 
 
 
 
-	override type GeneralizedUngrouped = left.Generalized
-	override type Ungrouped = left.Self
+	override type GeneralizedDiscrete = left.Generalized
+	override type Discrete = left.Self
 
 	override type Explicit = left.Explicit GroupByAll M
 	override type Inner = left.Inner GroupByAll M
@@ -154,7 +150,7 @@ object GroupByAll {
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `left` [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension#join join]] `right`
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
 	  * @param from a ''from'' clause containing the list of relations preceding `right`.
 	  * @param group the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
@@ -312,8 +308,8 @@ object GroupByAll {
 		def extension[P <: GroupedFrom] :P PrefixOf WithLeft[P]
 
 
-		override type GeneralizedUngrouped = left.GeneralizedUngrouped
-		override type Ungrouped = left.Ungrouped
+		override type GeneralizedDiscrete = left.GeneralizedDiscrete
+		override type Discrete = left.Discrete
 //		override type Explicit = GeneralizedLeft[left.Generalized]
 //		override type Inner = WithLeft[left.Inner]
 
@@ -416,7 +412,7 @@ object GroupByAll {
 		  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 		  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 		  * it is generally recommended to use
-		  * `left` [[net.noresttherein.oldsql.sql.FromClause.FromSomeExtension#join join]] `right`
+		  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`
 		  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
 		  * @param from a ''from'' clause containing the list of relations preceding `right`.
 		  * @param group the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
@@ -431,10 +427,8 @@ object GroupByAll {
 		def apply[F <: GroupedFrom, G[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		         (from :F, group :Relation[G], filter :SQLBoolean[F#Generalized ByAll G] = True)
 		         (implicit cast :JoinedRelationSubject[WithLeft[F]#F, G, T, MappingOf[S]#TypedProjection]) :F ByAll G =
-		{
-//			val last = RelationSQL[GroupedFrom AndByAll T, T, S, GroupedFrom AndByAll T](cast(group), 0)
 			ByAll[F, T, S](from, RelationSQL(cast(group), 0))(cast.downtype(filter))
-		}
+
 
 
 		private[sql] def apply[F <: GroupedFrom, T[O] <: BaseMapping[S, O], S]

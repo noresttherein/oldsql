@@ -44,25 +44,30 @@ trait GroupedFrom extends NonEmptyFrom { thisClause =>
 	/** The ''from'' clause under grouping of this ''group by'' clause.
 	  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is `left.Generalized`;
 	  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
-	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.GeneralizedUngrouped`.
+	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.GeneralizedDiscrete`.
 	  */
-	type GeneralizedUngrouped <: DiscreteFrom
+	type GeneralizedDiscrete <: DiscreteFrom
 
 	/** The ''from'' clause under grouping of this ''group by'' clause.
 	  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is `left.Self`;
 	  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
-	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.Ungrouped`.
+	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.Discrete`.
 	  */
-	type Ungrouped <: GeneralizedUngrouped
+	type Discrete <: GeneralizedDiscrete
 
-//		type Grouped = GroupedFrom { type Ungrouped = thisClause.Ungrouped }
+//		type Grouped = GroupedFrom { type Discrete = thisClause.Discrete }
 
 	/** The ''from'' clause under grouping of this ''group by'' clause.
 	  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is its left side;
 	  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.from`.
 	  */
-	val from :Ungrouped
+	val from :Discrete
+
+	
+	type GeneralizedGrouped = from.Explicit
+
+	type Grouped = from.Inner
 
 	override val outer :Outer
 
