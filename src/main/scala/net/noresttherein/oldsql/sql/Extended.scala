@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, NonEmptyFrom, PrefixOf}
@@ -35,7 +35,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   *           the `Origin` type as the unspecified parameter.
   * @see [[net.noresttherein.oldsql.sql.Extended]]
   * @see [[net.noresttherein.oldsql.sql.AndFrom]]
-  * @see [[net.noresttherein.oldsql.sql.Join]]
+  * @see [[net.noresttherein.oldsql.sql.JoinLike]]
   * @see [[net.noresttherein.oldsql.sql.GroupByAll]]
   * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
@@ -107,7 +107,7 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S Join T] = thisClause.JoinedWith[P, J]
+		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S JoinLike T] = thisClause.JoinedWith[P, J]
 		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
 		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
 		type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]
@@ -201,6 +201,107 @@ object Using {
 	  */
 	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: FromClause] = L Using R }
 
+
+
+
+
+
+	/** An implicit witness serving as type inference helper for the `Mapping` type of a joined
+	  * [[net.noresttherein.oldsql.schema.Relation Relation]]. It separates the inference of the mapping type itself
+	  * from its `Subject` type, thus allowing for both to function properly in methods with the type parameters
+	  * in the form of `[R &lt;: BaseMapping[S, _], S]` (and similar). It is used in particular when constructing new
+	  * `Join` instances to remove explicit type parameters from the call. Apart from this purely independent role,
+	  * it provides identity casting methods, similar to those of `=:=`, for various relevant types
+	  * (`SQLExpression`, `Relation`, `F`) between those parameterized with `R` and `T` to eliminate the need
+	  * for casting inside methods using this support.
+	  * @tparam F a type constructor for a `AndFrom` 'join' extending some ''from'' clause with the provided mapping type.
+	  * @tparam R a type constructor for a `Mapping` accepting its `Origin` type; it is the 'input' type used by the
+	  *           arguments of the method accepting this instance, declared only with the `MappingAt[O]` upper bound.
+	  * @tparam T the type `R`, but with the upper bound of `U`. It generally should not be used in the method signature
+	  *           (in particular, it cannot appear before this argument), but can be used in the method's body.
+	  *           As the type argument `U` is generally a concrete type, the type `R` is typically a type parameter
+	  *           with an explicit upper bound consistent with `U`, such as `R[O] &lt;: BaseMapping[S, O]`.
+	  * @tparam U an upper bound for the mapping type `R` (and `T`) required for the implementation.
+	  *           It is a concrete type with only its type parameters being abstract, typically given as
+	  *           `BaseMapping[S, O]`, where `S` is a free type parameter of the method. It allows the inference
+	  *           of its (and, by extension, `R`'s) type parameters (`S`).
+	  */
+	@implicitNotFound("Failed to infer the Subject type of mapping ${R}: cannot prove that " +
+		              "${R}[O] <: ${T}[O] with ${U}. This may be caused by the inferred type ${T} or its subject type S " +
+	                  "occurring before the implicit parameter JoinedRelationSubject[${F}, ${R}, ${T}, ${U}] " +
+	                  "(alias InferSubject[?, ?, ${R}, ${T}, ?]) or in the method's result type.")
+	sealed abstract class JoinedRelationSubject[F[M[O] <: MappingAt[O]] <: FromClause,
+	                                            R[O] <: MappingAt[O], T[O] <: U[O], +U[O] <: BaseMapping[_, O]]
+		extends (F[T] => F[R])
+	{
+		def apply(rows :Relation[R]) :Relation[T]
+
+		def apply(join :F[T]) :F[R]
+
+		def cast[E[M[O] <: MappingAt[O]] <: FromClause, X](e :SQLExpression[E[R], X]) :SQLExpression[E[T], X]
+
+		def cast[E[M[O] <: MappingAt[O]] <: FromClause, X](e :ColumnSQL[E[R], X]) :ColumnSQL[E[T], X]
+
+		def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Using B, X]
+                 (e :ColumnSQL[L J R, X]) :ColumnSQL[L J T, X]
+
+		def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Using B, X]
+		         (e :SQLExpression[L J R, X]) :SQLExpression[L J T, X]
+
+		def self :JoinedRelationSubject[F, T, T, U]
+	}
+
+
+
+	object JoinedRelationSubject {
+		import BaseMapping.AnyAt
+
+		private[this] val instance =
+			new JoinedRelationSubject[Using.WithLeft[FromClause]#F, AnyAt, AnyAt, AnyAt] {
+				override def apply(rows :Relation[AnyAt]) = rows
+
+				override def apply(join :FromClause Using AnyAt) = join
+
+				override def cast[F[M[O] <: MappingAt[O]] <: FromClause, X](e :ColumnSQL[F[AnyAt], X]) = e
+				override def cast[F[M[O] <: MappingAt[O]] <: FromClause, X](e :SQLExpression[F[AnyAt], X]) = e
+
+				override def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Using B, X]
+				                  (e :ColumnSQL[J[L, AnyAt], X]) = e
+
+				override def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Using B, X]
+				                  (e :SQLExpression[J[L, AnyAt], X]) = e
+
+				override def self = this
+			}
+
+		implicit def identity[J[M[O] <: MappingAt[O]] <: _ Using M, R[O] <: BaseMapping[_, O]]
+				:JoinedRelationSubject[J, R, R, R] =
+			instance.asInstanceOf[JoinedRelationSubject[J, R, R, R]]
+
+
+		/** A simplified form of the implicit witness
+		  * [[net.noresttherein.oldsql.sql.Using.JoinedRelationSubject JoinedRelationSubject]], it guides the compiler
+		  * into proper inference of both the type of a mapping, and its `Subject` type as defined by `BaseMapping`.
+		  * It is used when constructing a new `Extended` subtype to avoid the need for explicit specification
+		  * of the joined mapping type and its subject.
+		  * It accepts five type parameters: first three are input parameters - the left side of the join `L`, the join
+		  * type `J`, given as a two-argument type constructor, and the (origin-accepting) type constructor
+		  * for the mapping `R` on the right side of the join. These should be specified as the types of parameters
+		  * passed to the constructor function. The last two type parameters are the output: the type `T[O] =:= R[O]`
+		  * (in reality, but not provable at the spot), but with the `BaseMapping` trait as its upper bound,
+		  * and the type parameter `S` given by `R` to `BaseMapping` for the subject type. The object itself
+		  * contains methods for converting various types related to the use case between those parameterized with `T`,
+		  * and those parameterized with `R`. As the result, the parameters with more generic types, but which can be
+		  * inferred automatically by the compiler, can be converted to the more specific variants,
+		  * used in the construction on the join, and then converted back to a type expressed in terms of the input
+		  * parameters.
+		  */
+		type InferSubject[L <: FromClause, J[+F <: L, M[O] <: MappingAt[O]] <: F Using M,
+		                  R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S] =
+			JoinedRelationSubject[({ type F[M[O] <: MappingAt[O]] = L J M })#F, R, T, MappingOf[S]#TypedProjection]
+
+	}
+
 }
 
 
@@ -250,7 +351,7 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thi
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S Join T] = thisClause.JoinedWith[P, J]
+		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S JoinLike T] = thisClause.JoinedWith[P, J]
 		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
 		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
 		type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]
@@ -347,7 +448,7 @@ object Extended {
 		override type Implicit = left.Implicit
 		override type Outer = left.Outer
 
-//		override def outer :Outer = left.outer //can't be implemented here because it is an abstract val in GroupedFrom
+//		override def outer :Outer = left.outer //can't be implemented here because it is an abstract val in GroupByClause
 
 		override type InnerRow = left.InnerRow ~ last.Subject
 

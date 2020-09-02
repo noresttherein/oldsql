@@ -27,15 +27,15 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   * @see [[net.noresttherein.oldsql.sql.FromClause.AsSubselectOf AsSubselectOf]]
   */
 class SubselectJoin[F <: FromClause, S <: Mapping] private
-		(val source :F, table :TableFormula[F Join S, S], cond :BooleanFormula[F Join S])
-	extends Join[F, S](source, table, cond) //with AsSubselectOf[F]
+		(val source :F, table :TableFormula[F JoinLike S, S], cond :BooleanFormula[F JoinLike S])
+	extends JoinLike[F, S](source, table, cond) //with AsSubselectOf[F]
 { subsource =>
 
 	val outer = source :Outer
 	type Outer = F
 
 
-	def this(source :F, table :S) = this(source, new TableFormula[FromClause Join S, S](table, source.size), True())
+	def this(source :F, table :S) = this(source, new TableFormula[FromClause JoinLike S, S](table, source.size), True())
 
 
 	override def filteredBy: BooleanFormula[this.type] = condition
@@ -53,13 +53,13 @@ class SubselectJoin[F <: FromClause, S <: Mapping] private
 	//	override def copyJoin[L <: FromClause, M <: Mapping](left: L, right: M): L SubselectJoin M =
 	//		new SubselectJoin[L, M](left, right)
 	//
-	//	override protected def copyJoin(replacement: TableFormula[F Join S, S], condition: BooleanFormula[F Join S]=True()): F SubselectJoin S =
+	//	override protected def copyJoin(replacement: TableFormula[F JoinLike S, S], condition: BooleanFormula[F JoinLike S]=True()): F SubselectJoin S =
 	//		new SubselectJoin[F, S](source, replacement, condition)
 
-	override def copyJoin[L <: FromClause, R <: Mapping](left: L, right: R): L Join R =
+	override def copyJoin[L <: FromClause, R <: Mapping](left: L, right: R): L JoinLike R =
 		new SubselectJoin[L, R](left, right)
 
-	override protected def copyJoin(replacement: TableFormula[F Join S, S], condition: BooleanFormula[F Join S]=True()): F Join S =
+	override protected def copyJoin(replacement: TableFormula[F JoinLike S, S], condition: BooleanFormula[F JoinLike S]=True()): F JoinLike S =
 		new SubselectJoin[F, S](source, replacement, condition)
 
 

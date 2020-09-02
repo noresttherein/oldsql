@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.FunctorProjection
-import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.Join
+import net.noresttherein.oldsql.sql.Using
+import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
 
 
 
@@ -44,7 +44,7 @@ object Relation {
 
 
 
-	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Join M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
+	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Using M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
 	                         (source :Relation[R])
 	                         (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt]) :Relation[T] =
 		cast(source)

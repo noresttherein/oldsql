@@ -3,14 +3,14 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFromSome, JoinedEntities, NonEmptyFrom, ParameterlessFrom}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
 
 
 
@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 
 /** Marker trait for all true ''from'' clauses, without a ''group by'' clause. Most implementations extend
   * its non-empty subtype, [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]].
-  * @see [[net.noresttherein.oldsql.sql.GroupedFrom]]
+  * @see [[net.noresttherein.oldsql.sql.GroupByClause]]
   */ //FromClause is redundant but makes the signature more clear.
 trait DiscreteFrom extends FromClause { thisClause =>
 //	override type FromLast <: DiscreteFrom //can't have this because Dual.FromLast = FromClause to be a fixed point.
@@ -34,11 +34,11 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	/** Joins this clause with another relation `next` for mapping `T`.
 	  * @param next the relation to add to the clause.
 	  * @param filter the additional filter condition for the ''where'' clause of the created clause; defaults to `True`.
-	  * @param join a template `Join` instance used as a factory for the returned clause; defaults to `InnerJoin`.
+	  * @param join a template `JoinLike` instance used as a factory for the returned clause; defaults to `InnerJoin`.
 	  * @return `From(next)` if this clause is empty and `join.likeJoin(self, next)` for non empty clauses.
 	  */
 	def extend[T[O] <: BaseMapping[S, O], S]
-	          (next :Relation[T], filter :SQLBoolean[Generalized AndFrom T] = True, join :Join.* = InnerJoin.template)
+	          (next :Relation[T], filter :SQLBoolean[Generalized AndFrom T] = True, join :JoinLike.* = InnerJoin.template)
 			:Extend[join.LikeJoin, T]
 
 	/** Used to add any relation to any clause, creates the clause of a type depending on this clause:
@@ -53,7 +53,7 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	  * Non-empty clauses define it as `F#JoinedWith[Self, J]]`, while `Dual` defines it as `F` - the indirection
 	  * enforced by the join type `J` (and `Join` subclasses) having `FromSome` as the upper bound of their left side.
 	  */
-	type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R, F <: FromClause] <: FromClause
+	type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R, F <: FromClause] <: FromClause
 
 	/** Joins the clause given as the parameter with this clause. If any of the clauses is empty, the other is
 	  * returned. Otherwise the created clause contains this clause as its prefix, followed by all relations
@@ -64,7 +64,7 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	  * of indirection is enforced by the upper bound of `FromSome` on the left type parameters in `Join` classes,
 	  * while this method can be called also if this clause is empty. Additionally, the join kind to use between
 	  * the last relation in this clause and the first relation in `suffix` can be specified as `Subselect`,
-	  * while `joinedWith` allows only `TrueJoin` subclasses.
+	  * while `joinedWith` allows only `Join` subclasses.
 	  *
 	  * It is a low level method and client code should prefer the eponymously named extension methods
 	  * for individual join kinds defined in
@@ -74,10 +74,10 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	  * @param join a template instance to use as the factory for the join between the last relation in this clause
 	  *             and the first relation in `suffix`.
 	  */
-	def joinWith[F <: FromSome](suffix :F, join :Join.* = InnerJoin.template) :JoinWith[join.LikeJoin, F]
+	def joinWith[F <: FromSome](suffix :F, join :JoinLike.* = InnerJoin.template) :JoinWith[join.LikeJoin, F]
 
 
-	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] <:
+	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] <:
 		FromSome with Generalized
 
 	/** Joins the given parameter clause with this clause. The type of the resulting clause is the result
@@ -144,7 +144,7 @@ object DiscreteFrom {
 		override type Extend[+J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = Self J T
 
 		override def extend[T[O] <: BaseMapping[S, O], S]
-		             (next :Relation[T], filter :SQLBoolean[Generalized AndFrom T], join :Join.*) :join.LikeJoin[Self, T] =
+		             (next :Relation[T], filter :SQLBoolean[Generalized AndFrom T], join :JoinLike.*) :join.LikeJoin[Self, T] =
 			join.likeJoin[Self, T, S](self, next)(filter)
 
 		protected[sql] def extend[T[O] <: BaseMapping[S, O], S]
@@ -154,10 +154,10 @@ object DiscreteFrom {
 
 
 
-		override type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R, F <: FromClause] =
+		override type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R, F <: FromClause] =
 			F#JoinedWith[Self, J]
 
-		override def joinWith[F <: FromSome](suffix :F, join :Join.*) :suffix.JoinedWith[Self, join.LikeJoin] =
+		override def joinWith[F <: FromSome](suffix :F, join :JoinLike.*) :suffix.JoinedWith[Self, join.LikeJoin] =
 			join.likeJoin(self, suffix)
 
 
@@ -412,9 +412,9 @@ object DiscreteFrom {
 
 
 		private def naturalFilter[T[O] <: BaseMapping[_, O]]
-		                         (tables :JoinedEntities[clause.Generalized TrueJoin T])
-		                         (implicit prev :ByIndex[clause.Generalized TrueJoin T, -2])
-				:SQLBoolean[clause.Generalized TrueJoin T] =
+		                         (tables :JoinedEntities[clause.Generalized Join T])
+		                         (implicit prev :ByIndex[clause.Generalized Join T, -2])
+				:SQLBoolean[clause.Generalized Join T] =
 		{
 			val firstTable = tables.prev
 			val secondTable = tables.last
@@ -433,7 +433,7 @@ object DiscreteFrom {
 
 				FreeColumn(first, 1) === FreeColumn(second, 0)
 			}
-			(True[clause.Generalized TrueJoin T]() /: joins)(_ && _)
+			(True[clause.Generalized Join T]() /: joins)(_ && _)
 		}
 
 

@@ -15,9 +15,9 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   * to be 'planted' in a particular last at a later point.
   *
   * Note that, as with all generic types taking exactly two arguments, it can be written in the infix notation:
-  * `val usersGuns :From[Users] Join UserGuns Join Guns`. This class is covariant regarding its left side,
-  * so a sequence of joined mappings `X0 J1 X1 J2 X2 .. JN XN &lt;: X0 Join X1 Join X2 ... Join XN`
-  * if for all `JN &lt;: Join`.
+  * `val usersGuns :From[Users] JoinLike UserGuns JoinLike Guns`. This class is covariant regarding its left side,
+  * so a sequence of joined mappings `X0 J1 X1 J2 X2 .. JN XN &lt;: X0 JoinLike X1 JoinLike X2 ... JoinLike XN`
+  * if for all `JN &lt;: JoinLike`.
   *
   * @param left a FromClause constituting a pre-existing join list of tables - may be empty (Dual).
   * @param table the right side of the join - representation of a last alias containing the joined mapping.
@@ -27,13 +27,13 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   * @tparam R the right side of this join.
   */
 abstract class Join[+L <: FromClause, R <: Mapping] protected(
-		val left :L, protected[this] val table :TableFormula[L Join R, R],
-		protected[this] val joinCondition :BooleanFormula[L Join R])
+	                                                             val left :L, protected[this] val table :TableFormula[L JoinLike R, R],
+	                                                             protected[this] val joinCondition :BooleanFormula[L JoinLike R])
 	extends FromClause
 { source =>
 
-	private[sql] def this(left :L, right :R, cond :BooleanFormula[L Join R] = True()) =
-		this(left, new TableFormula[FromClause Join R, R](right, left.size), cond)
+	private[sql] def this(left :L, right :R, cond :BooleanFormula[L JoinLike R] = True()) =
+		this(left, new TableFormula[FromClause JoinLike R, R](right, left.size), cond)
 
 	type Row = left.Row ~ R#Subject
 	type LastMapping = R
@@ -80,7 +80,7 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 
 	override def joinAny(source: FromClause): FromClause = source match {
 		case _:Dual => this
-		case j:Join[_, _] =>
+		case j:JoinLike[_, _] =>
 			val join = j.copyJoin(joinAny(j.left))
 			val replanter = new SQLScribe.Replanter[j.type, join.type](j, join) {
 				override def map[A <: Mapping](table: TableFormula[j.type, A]): TableFormula[join.type, A] =
@@ -98,11 +98,11 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 	/** Perform a join between `S` and `R`, preserving this join's nature and class (inner, outer), but discarding 
 	  * any filter associated with this instance. 
 	  */
-	def copyJoin[S <: FromClause](source :S) :S Join R = copyJoin(source, right)
+	def copyJoin[S <: FromClause](source :S) :S JoinLike R = copyJoin(source, right)
 
-	def copyJoin[S <: FromClause, M <: Mapping](left :S, right :M) :S Join M
+	def copyJoin[S <: FromClause, M <: Mapping](left :S, right :M) :S JoinLike M
 
-	protected def copyJoin(replacement :TableFormula[L Join R, R], condition :BooleanFormula[L Join R] = True()) :L Join R
+	protected def copyJoin(replacement :TableFormula[L JoinLike R, R], condition :BooleanFormula[L JoinLike R] = True()) :L JoinLike R
 
 
 	/** Apply a join condition to the last two tables in this chain. This works exactly like 'where', but
@@ -113,7 +113,7 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 	  * @param condition a function creating a representation of an SQL expression from the passed aliases 
 	  *                  for the joined tables.
 	  */
-	def on(condition :(L#LastTable[this.type], TableFormula[this.type, R]) => BooleanFormula[this.type]) :L Join R =
+	def on(condition :(L#LastTable[this.type], TableFormula[this.type, R]) => BooleanFormula[this.type]) :L JoinLike R =
 		filterBy(condition(left.last.asPartOf(this).asInstanceOf[L#LastTable[this.type]], lastTable))
 
 
@@ -143,15 +143,15 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 		plant{ case t :TableFormula[this.type, _] if t.mapping == prefix.start => prefix }
 
 
-	def plantLast[T <: Mapping](path :ComponentPath[T, R]) :L Join T = path match {
+	def plantLast[T <: Mapping](path :ComponentPath[T, R]) :L JoinLike T = path match {
 		case SelfPath(m) if m == right =>
-			this.asInstanceOf[L Join T]
+			this.asInstanceOf[L JoinLike T]
 		case _ =>
 			val planted = copyJoin(left, path.start)
 			planted where SQLScribe(joinCondition, this, planted) {
 				case last if last.table == Join.this.last =>
 					PathFormula(planted.last, path ++ last.path.cast[R, Mapping])
-				case prev => prev.asInstanceOf[SQLFormula[L Join T, _]]
+				case prev => prev.asInstanceOf[SQLFormula[L JoinLike T, _]]
 			}
 	}
 
@@ -183,7 +183,7 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 	def substitute(value :R#Subject) :L =
 		left where SQLScribe.apply(joinCondition, this, left) {
 			case e if e.table == lastTable =>
-				e.asInstanceOf[PathFormula[L Join R, R, Mapping]].queryParameter(value)
+				e.asInstanceOf[PathFormula[L JoinLike R, R, Mapping]].queryParameter(value)
 			case p if p.table != lastTable =>
 				p.asInstanceOf[PathFormula[L, Mapping, Mapping]]
 			//			case p =>
@@ -215,11 +215,11 @@ abstract class Join[+L <: FromClause, R <: Mapping] protected(
 
 
 
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Join[_, _]]
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[JoinLike[_, _]]
 
 	override def equals(that :Any) :Boolean = that match {
 		case ref :AnyRef => ref eq this
-		case join :Join[_, _] if canEqual(join) && join.canEqual(this) => 
+		case join :JoinLike[_, _] if canEqual(join) && join.canEqual(this) =>
 			right == join.right && left == join.left && (condition isomorphic join.condition)
 		case _ => false
 	}
@@ -248,10 +248,10 @@ object Join {
 		new InnerJoin(left, right)
 
 
-	def unapply[L <: FromClause, R <: Mapping](join: L Join R): Some[(L, R)] = Some(join.left, join.right)
+	def unapply[L <: FromClause, R <: Mapping](join: L JoinLike R): Some[(L, R)] = Some(join.left, join.right)
 
 	def unapply(source: FromClause): Option[(FromClause, Mapping)] =
-		source.ifSubclass[FromClause Join (_ <: Mapping)] { j => (j.left, j.right) }
+		source.ifSubclass[FromClause JoinLike (_ <: Mapping)] { j => (j.left, j.right) }
 
 }
 
@@ -261,8 +261,8 @@ object Join {
 
 
 abstract class ProperJoin[+L <: FromClause, R <: Mapping] protected
-		(source :L, t :TableFormula[L Join R, R], filter :BooleanFormula[L Join R])
-	extends Join[L, R](source, t, filter) //with AsSubselectOf[L#Outer]
+		(source :L, t :TableFormula[L JoinLike R, R], filter :BooleanFormula[L JoinLike R])
+	extends JoinLike[L, R](source, t, filter) //with AsSubselectOf[L#Outer]
 { join =>
 	type Outer = left.Outer
 
@@ -290,7 +290,7 @@ abstract class ProperJoin[+L <: FromClause, R <: Mapping] protected
 	override def copyJoin[S <: FromClause, M <: Mapping](left: S, right: M): S ProperJoin M
 
 
-	protected def copyJoin(replacement :TableFormula[L Join R, R], condition :BooleanFormula[L Join R] = True()) :Self[L]
+	protected def copyJoin(replacement :TableFormula[L JoinLike R, R], condition :BooleanFormula[L JoinLike R] = True()) :Self[L]
 
 
 
@@ -300,7 +300,7 @@ abstract class ProperJoin[+L <: FromClause, R <: Mapping] protected
 	  * @return a new join isomorphic with this instance, but with a new last last (not equal to this.last).
 	  */
 	def as(alias :String) :Self[L] = {
-		val join = copyJoin(new TableFormula[FromClause, R](right, left.size, Some(alias))) //new Join[L, R](left, , True())
+		val join = copyJoin(new TableFormula[FromClause, R](right, left.size, Some(alias))) //new JoinLike[L, R](left, , True())
 		val filter = SQLScribe(joinCondition, self, join.self) {
 			case PathFormula(t, path) if t == lastTable => PathFormula(join.last, path.cast[R, Mapping])
 			case e => e
@@ -325,12 +325,12 @@ abstract class ProperJoin[+L <: FromClause, R <: Mapping] protected
 
 
 class InnerJoin[+L <: FromClause, R <: Mapping] protected
-		(source :L, t :TableFormula[L Join R, R], filter :BooleanFormula[L Join R])
+		(source :L, t :TableFormula[L JoinLike R, R], filter :BooleanFormula[L JoinLike R])
 	extends ProperJoin[L, R](source, t, filter)
 {
 
-	private[sql] def this(left :L, right :R, condition :BooleanFormula[L Join R] = True()) =
-		this(left, new TableFormula[FromClause Join R, R](right, left.size), condition)
+	private[sql] def this(left :L, right :R, condition :BooleanFormula[L JoinLike R] = True()) =
+		this(left, new TableFormula[FromClause JoinLike R, R](right, left.size), condition)
 
 
 	type Self[+F <: FromClause] = F InnerJoin R
@@ -342,7 +342,7 @@ class InnerJoin[+L <: FromClause, R <: Mapping] protected
 	override def copyJoin[S <: FromClause, M <: Mapping](left: S, right: M): S InnerJoin M =
 		new InnerJoin(left, right)
 
-	override protected def copyJoin(replacement: TableFormula[L Join R, R], condition: BooleanFormula[L Join R]=True()): L InnerJoin R =
+	override protected def copyJoin(replacement: TableFormula[L JoinLike R, R], condition: BooleanFormula[L JoinLike R]=True()): L InnerJoin R =
 		new InnerJoin[L, R](left, replacement, condition)
 
 
@@ -354,7 +354,7 @@ class InnerJoin[+L <: FromClause, R <: Mapping] protected
 
 
 object InnerJoin {
-	def apply[L <: Mapping, R <: Mapping](left :L, right :R) :From[L] Join R =
+	def apply[L <: Mapping, R <: Mapping](left :L, right :R) :From[L] JoinLike R =
 		new InnerJoin(From(left), right)
 
 	def unapply(source: FromClause): Option[(FromClause, Mapping)] =
@@ -368,12 +368,12 @@ object InnerJoin {
 
 
 class LeftJoin[+L <: FromClause, R <: Mapping] protected
-		(source :L, table :TableFormula[L Join R, R], filter :BooleanFormula[L Join R])
+		(source :L, table :TableFormula[L JoinLike R, R], filter :BooleanFormula[L JoinLike R])
 	extends ProperJoin[L, R](source, table, filter)
 {
 
-	private[sql] def this(left :L, right :R, condition :BooleanFormula[L Join R]=True) =
-		this(left, new TableFormula[FromClause Join R, R](right, left.size), condition)
+	private[sql] def this(left :L, right :R, condition :BooleanFormula[L JoinLike R]=True) =
+		this(left, new TableFormula[FromClause JoinLike R, R](right, left.size), condition)
 
 
 	type Self[+F <: FromClause] = F LeftJoin R
@@ -384,8 +384,8 @@ class LeftJoin[+L <: FromClause, R <: Mapping] protected
 	override def copyJoin[S <: FromClause, M <: Mapping](source: S, next :M): S LeftJoin M =
 		new LeftJoin(source, next)
 
-	override protected def copyJoin(replacement: TableFormula[L Join R, R],
-	                                condition :BooleanFormula[L Join R] = True()): L LeftJoin R =
+	override protected def copyJoin(replacement: TableFormula[L JoinLike R, R],
+	                                condition :BooleanFormula[L JoinLike R] = True()): L LeftJoin R =
 		new LeftJoin[L, R](left, replacement, condition)
 
 
@@ -400,7 +400,7 @@ object LeftJoin {
 	def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L LeftJoin R =
 		new LeftJoin(left, right)
 
-	def unapply[L <: FromClause, R <: Mapping](join :L Join R) :Option[(L, R)] =
+	def unapply[L <: FromClause, R <: Mapping](join :L JoinLike R) :Option[(L, R)] =
 		join.ifSubclass[L LeftJoin R] { j => (j.left, j.right) }
 
 	def unapply(source :FromClause) :Option[(FromClause, Mapping)] =
@@ -414,12 +414,12 @@ object LeftJoin {
 
 
 class RightJoin[+L <: FromClause, R <: Mapping] protected
-		(source :L, table :TableFormula[L Join R, R], filter :BooleanFormula[L Join R])
+		(source :L, table :TableFormula[L JoinLike R, R], filter :BooleanFormula[L JoinLike R])
 	extends ProperJoin[L, R](source, table, filter)
 {
 
-	private[sql] def this(left :L, right :R, condition :BooleanFormula[L Join R]=True) =
-		this(left, new TableFormula[FromClause Join R, R](right, left.size), condition)
+	private[sql] def this(left :L, right :R, condition :BooleanFormula[L JoinLike R]=True) =
+		this(left, new TableFormula[FromClause JoinLike R, R](right, left.size), condition)
 
 	type Self[+F <: FromClause] = F RightJoin R
 
@@ -429,8 +429,8 @@ class RightJoin[+L <: FromClause, R <: Mapping] protected
 	override def copyJoin[S <: FromClause, M<:Mapping](source: S, next :M): S RightJoin M = new RightJoin(source, next)
 
 
-	override protected def copyJoin(replacement: TableFormula[L Join R, R],
-	                                condition :BooleanFormula[L Join R] = True()): L RightJoin R =
+	override protected def copyJoin(replacement: TableFormula[L JoinLike R, R],
+	                                condition :BooleanFormula[L JoinLike R] = True()): L RightJoin R =
 		new RightJoin[L, R](left, replacement, condition)
 
 
@@ -446,7 +446,7 @@ object RightJoin {
 	def apply[L <: FromClause, R <: Mapping](left :L, right :R) :L RightJoin R =
 		new RightJoin(left, right)
 
-	def unapply[L <: FromClause, R <: Mapping](join :L Join R) :Option[(L, R)] =
+	def unapply[L <: FromClause, R <: Mapping](join :L JoinLike R) :Option[(L, R)] =
 		join.ifSubclass[L RightJoin R] { j => (j.left, j.right) }
 
 	def unapply(source :FromClause) :Option[(FromClause, Mapping)] =
@@ -460,14 +460,14 @@ object RightJoin {
 
 
 /** A FromClause constituting of exactly one last or last-like object.
-  * This is just a bit of sugar for Join[Dual, T], so that we can write the type From[T] instead
-  * (and in particular, rather niftly, From[Children] Join Daemons).
+  * This is just a bit of sugar for JoinLike[Dual, T], so that we can write the type From[T] instead
+  * (and in particular, rather niftly, From[Children] JoinLike Daemons).
   */
-class From[T <: Mapping] protected (table :TableFormula[Dual Join T, T], filter :BooleanFormula[Dual Join T])
+class From[T <: Mapping] protected (table :TableFormula[Dual JoinLike T, T], filter :BooleanFormula[Dual JoinLike T])
 	extends InnerJoin[Dual, T](Dual, table, filter)
 {
-	private[sql] def this(mapping :T, filter :BooleanFormula[FromClause Join T]=True) =
-		this(new TableFormula[FromClause Join T, T](mapping, 0), filter)
+	private[sql] def this(mapping :T, filter :BooleanFormula[FromClause JoinLike T]=True) =
+		this(new TableFormula[FromClause JoinLike T, T](mapping, 0), filter)
 
 
 	override def self :From[T] = this
@@ -480,8 +480,8 @@ class From[T <: Mapping] protected (table :TableFormula[Dual Join T, T], filter 
 		source.ifSubclassOf[Dual]{ _ => From(right).asInstanceOf[InnerJoin[S, M]] } getOrElse new InnerJoin(source, right)
 
 
-	override protected def copyJoin(replacement: TableFormula[Dual Join T, T],
-	                                condition :BooleanFormula[Dual Join T] = True()): From[T] =
+	override protected def copyJoin(replacement: TableFormula[Dual JoinLike T, T],
+	                                condition :BooleanFormula[Dual JoinLike T] = True()): From[T] =
 		new From[T](replacement, condition)
 
 
@@ -511,7 +511,7 @@ class From[T <: Mapping] protected (table :TableFormula[Dual Join T, T], filter 
 
 
 /** A `FromClause` factory for both single last queries, and starting points for arbitrary join lists.
-  * Example (see the `Join` class documentation for explanation of the filters):
+  * Example (see the `JoinLike` class documentation for explanation of the filters):
   * {{{
   *     val users = From(Users) where (_(_.name)==="Jack")
   *     val guests = From(Hotels) join GuestsBook on (_(_.id)===_(_.hotelId)) join People on (_(_.guestId)===_(_.id))
@@ -526,7 +526,7 @@ object From {
 
 	
 	
-	def unapply[M<:Mapping](source :Dual Join M) :Option[M] =
+	def unapply[M<:Mapping](source :Dual JoinLike M) :Option[M] =
 		source.ifSubclass[From[M]] { _.mapping }
 
 	def unapply(source :FromClause) :Option[Mapping] =

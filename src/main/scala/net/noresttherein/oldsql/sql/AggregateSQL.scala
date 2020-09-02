@@ -26,7 +26,7 @@ trait AggregateSQL[-F <: FromClause, V] {
 
 	def flatMap[I, G <: AggregateSQL[_, _]](f :I => G)(implicit doMap :FlatMapGroup[this.type, I, G]) :G = doMap(this, f)
 
-//	def stretch[E <: GroupedFrom]()
+//	def stretch[E <: GroupByClause]()
 
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[AggregateSQL[_, _]]

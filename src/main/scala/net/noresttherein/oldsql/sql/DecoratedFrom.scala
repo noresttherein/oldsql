@@ -113,10 +113,10 @@ object DecoratedFrom {
 		override def appendedTo[P <: DiscreteFrom](prefix :P) :WithClause[clause.AppendedTo[P]] =
 			withClause(clause.appendedTo(prefix))
 
-		override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] =
+		override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] =
 			WithClause[clause.JoinedWith[P, J]]
 
-		override def joinedWith[P <: FromSome](prefix :P, firstJoin :TrueJoin.*) :JoinedWith[P, firstJoin.LikeJoin] =
+		override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
 			withClause(clause.joinedWith(prefix, firstJoin))
 
 		override type JoinedWithSubselect[+P <: FromSome] = WithClause[clause.JoinedWithSubselect[P]]

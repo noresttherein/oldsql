@@ -6,16 +6,16 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.FromClause.{As, ClauseComposition, ExtendedBy, PrefixOf}
-import net.noresttherein.oldsql.sql.Join.JoinWith
+import net.noresttherein.oldsql.sql.JoinLike.JoinWith
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLScribe.{ReplaceRelation, SubstituteComponents}
 import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
 
 
 
@@ -34,7 +34,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   *
   * The given mapping doesn't have to represent a table at this point - it might be for example a table component
   * to be 'planted' in a particular table at a later point. This is the root of the class hierarchy of non-empty
-  * ''from'' clauses: this includes both [[net.noresttherein.oldsql.sql.TrueJoin true joins]]
+  * ''from'' clauses: this includes both [[net.noresttherein.oldsql.sql.Join true joins]]
   * (inner, outer, left outer, right outer), synthetic combined ''from'' clauses of a
   * [[net.noresttherein.oldsql.sql.Subselect subselect]] and its outer select, as well as non-SQL sources of values
   * used in SQL select statements, such as statement [[net.noresttherein.oldsql.sql.JoinParam parameters]].
@@ -77,7 +77,7 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome with Exte
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S Join T] = thisClause.JoinedWith[P, J]
+		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S JoinLike T] = thisClause.JoinedWith[P, J]
 		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
 	}
 
@@ -126,15 +126,15 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome with Exte
 	  * }}}
 	  * For example, for the type `From[L] InnerJoin R` it takes the form of
 	  * {{{
-	  *     def on(condition :(JoinedRelation[FromClause AndFrom L TrueJoin R, L],
+	  *     def on(condition :(JoinedRelation[FromClause AndFrom L Join R, L],
 	  *                        JoinedRelation[FromClause AndFrom R, R])
-	  *                       => SQLBoolean[FromClause AndFrom L TrueJoin R]) :This
+	  *                       => SQLBoolean[FromClause AndFrom L Join R]) :This
 	  * }}}
 	  * If the left type is too abstract, the type of `condition` argument will likewise be abstract, preventing
 	  * the caller from providing a value; in turn, `Dual` defines it simply as `Nothing`.
 	  * @param condition a function accepting the expressions for the last two relations in this clause and creating
 	  *                  an SQL expression for the join condition.
-	  * @return a `Join` instance of the same kind as this one, with the same left and right sides,
+	  * @return a `AndFrom` instance of the same kind as this one, with the same left and right sides,
 	  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
 	  *         returned by the passed filter function.
 	  */
@@ -158,7 +158,7 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome with Exte
 object AndFrom {
 
 	/** Create an (inner) cross join between the given two relations `left` and `right`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.Join#on on]] or
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method.
 	  * @param left the first relation of the ''from'' clause.
 	  * @param right the second relation of the ''from'' clause.
@@ -173,7 +173,7 @@ object AndFrom {
 
 
 	/** Create a ''from'' clause extending the `left` clause with the relation `right` for mapping `R`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.Join#on on]] or
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method.
 	  * This method will create a [[net.noresttherein.oldsql.sql.From From[R]]] instance if `left` is empty (`Dual`),
 	  * or an [[net.noresttherein.oldsql.sql.InnerJoin L InnerJoin R]] otherwise. This method's use is somewhat limited
@@ -189,7 +189,7 @@ object AndFrom {
 	def apply[L <: DiscreteFrom, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :Relation[R], filter :SQLBoolean[L#Generalized AndFrom R] = True)
 	         (implicit cast :JoinedRelationSubject[WithLeft[L]#F, R, T, MappingOf[S]#TypedProjection]) :L AndFrom R =
-		cast(left.extend[T, S](LastRelation[T, S](cast(right)), cast.downtype[WithLeft[L#Generalized]#F, Boolean](filter)))
+		cast(left.extend[T, S](LastRelation[T, S](cast(right)), cast.cast[WithLeft[L#Generalized]#F, Boolean](filter)))
 
 
 
@@ -270,107 +270,6 @@ object AndFrom {
 	  */
 	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: FromClause] = L AndFrom R }
 
-
-
-
-
-
-	/** An implicit witness serving as type inference helper for the `Mapping` type of a joined
-	  * [[net.noresttherein.oldsql.schema.Relation Relation]]. It separates the inference of the mapping type itself
-	  * from its `Subject` type, thus allowing for both to function properly in methods with the type parameters
-	  * in the form of `[R &lt;: BaseMapping[S, _], S]` (and similar). It is used in particular when constructing new
-	  * `Join` instances to remove explicit type parameters from the call. Apart from this purely independent role,
-	  * it provides identity casting methods, similar to those of `=:=`, for various relevant types
-	  * (`SQLExpression`, `Relation`, `F`) between those parameterized with `R` and `T` to eliminate the need
-	  * for casting inside methods using this support.
-	  * @tparam F a type constructor for a `AndFrom` 'join' extending some ''from'' clause with the provided mapping type.
-	  * @tparam R a type constructor for a `Mapping` accepting its `Origin` type; it is the 'input' type used by the
-	  *           arguments of the method accepting this instance, declared only with the `MappingAt[O]` upper bound.
-	  * @tparam T the type `R`, but with the upper bound of `U`. It generally should not be used in the method signature
-	  *           (in particular, it cannot appear before this argument), but can be used in the method's body.
-	  *           As the type argument `U` is generally a concrete type, the type `R` is typically a type parameter
-	  *           with an explicit upper bound consistent with `U`, such as `R[O] &lt;: BaseMapping[S, O]`.
-	  * @tparam U an upper bound for the mapping type `R` (and `T`) required for the implementation.
-	  *           It is a concrete type with only its type parameters being abstract, typically given as
-	  *           `BaseMapping[S, O]`, where `S` is a free type parameter of the method. It allows the inference
-	  *           of its (and, by extension, `R`'s) type parameters (`S`).
-	  */ //todo: move this to Using/Extended
-	@implicitNotFound("Failed to infer the Subject type of mapping ${R}: cannot prove that " +
-		              "${R}[O] <: ${T}[O] with ${U}. This may be caused by the inferred type ${T} or its subject type S " +
-	                  "occurring before the implicit parameter JoinedRelationSubject[${F}, ${R}, ${T}, ${U}] " +
-	                  "(alias InferSubject[?, ?, ${R}, ${T}, ?]) or in the method's result type.")
-	sealed abstract class JoinedRelationSubject[F[M[O] <: MappingAt[O]] <: FromClause,
-	                                            R[O] <: MappingAt[O], T[O] <: U[O], +U[O] <: BaseMapping[_, O]]
-		extends (F[T] => F[R])
-	{
-		def apply(rows :Relation[R]) :Relation[T]
-
-		def apply(join :F[T]) :F[R]
-
-		def downtype[E[M[O] <: MappingAt[O]] <: FromClause, X](e :SQLExpression[E[R], X]) :SQLExpression[E[T], X]
-
-		def downtype[E[M[O] <: MappingAt[O]] <: FromClause, X](e :ColumnSQL[E[R], X]) :ColumnSQL[E[T], X]
-
-		def apply[L <: FromSome, J[A <: FromSome, B[O] <: MappingAt[O]] <: A Join B, X]
-                 (e :ColumnSQL[L J R, X]) :ColumnSQL[L J T, X]
-
-		def apply[L <: FromSome, J[A <: FromSome, B[O] <: MappingAt[O]] <: A Join B, X]
-		         (e :SQLExpression[L J R, X]) :SQLExpression[L J T, X]
-
-		def self :JoinedRelationSubject[F, T, T, U]
-	}
-
-
-
-	object JoinedRelationSubject {
-		import BaseMapping.AnyAt
-
-		private[this] val instance =
-			new JoinedRelationSubject[Using.WithLeft[FromClause]#F, AnyAt, AnyAt, AnyAt] {
-				override def apply(rows :Relation[AnyAt]) = rows
-
-				override def apply(join :FromClause Using AnyAt) = join
-
-				override def downtype[F[M[O] <: MappingAt[O]] <: FromClause, X](e :ColumnSQL[F[AnyAt], X]) = e
-				override def downtype[F[M[O] <: MappingAt[O]] <: FromClause, X](e :SQLExpression[F[AnyAt], X]) = e
-
-				override def apply[L <: FromSome, J[A <: FromSome, B[O] <: MappingAt[O]] <: A Join B, X]
-				                  (e :ColumnSQL[J[L, AnyAt], X]) = e
-
-				override def apply[L <: FromSome, J[A <: FromSome, B[O] <: MappingAt[O]] <: A Join B, X]
-				                  (e :SQLExpression[J[L, AnyAt], X]) = e
-
-				override def self = this
-			}
-
-		implicit def identity[J[M[O] <: MappingAt[O]] <: _ Using M, R[O] <: BaseMapping[_, O]]
-				:JoinedRelationSubject[J, R, R, R] =
-			instance.asInstanceOf[JoinedRelationSubject[J, R, R, R]]
-
-
-		/** A simplified form of the implicit witness
-		  * [[net.noresttherein.oldsql.sql.AndFrom.JoinedRelationSubject JoinedRelationSubject]], it guides the compiler
-		  * into proper inference of both the type of a mapping, and its `Subject` type as defined by `BaseMapping`.
-		  * It is used when constructing a new `Join` subtype to avoid the need for explicit specification
-		  * of the joined mapping type and its subject.
-		  * It accepts five type parameters: first three are input parameters - the left side of the join `L`, the join
-		  * type `J`, given as a two-argument type constructor, and the (origin-accepting) type constructor
-		  * for the mapping `R` on the right side of the join. These should be specified as the types of parameters
-		  * passed to the constructor function. The last two type parameters are the output: the type `T[O] =:= R[O]`
-		  * (in reality, but not provable at the spot), but with the `BaseMapping` trait as its upper bound,
-		  * and the type parameter `S` given by `R` to `BaseMapping` for the subject type. The object itself
-		  * contains methods for converting various types related to the use case between those parameterized with `T`,
-		  * and those parameterized with `R`. As the result, the parameters with more generic types, but which can be
-		  * inferred automatically by the compiler, can be converted to the more specific variants,
-		  * used in the construction on the join, and then converted back to a type expressed in terms of the input
-		  * parameters.
-		  */
-		type InferSubject[L <: FromSome, J[+F <: FromSome, M[O] <: MappingAt[O]] <: F Join M,
-		                  R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S] =
-			JoinedRelationSubject[JoinWith[J]#Left[L]#Right, R, T, MappingOf[S]#TypedProjection]
-
-	}
-
 }
 
 
@@ -427,7 +326,7 @@ object AndFrom {
 //
 //	override type AppendedTo[+P <: DiscreteFrom] = left.AppendedTo[P] AndFrom T
 //
-//	override type JoinedWith[+P <: FromSome, +J[+F <: FromSome, M[O] <: MappingAt[O]] <: F Join M] =
+//	override type JoinedWith[+P <: FromSome, +J[+F <: FromSome, M[O] <: MappingAt[O]] <: F JoinLike M] =
 //		left.JoinedWith[P, J] J T
 //
 //
@@ -487,7 +386,7 @@ object AndFrom {
 //	def apply[L <: EmptyFrom, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 //	         (left :L, right :Relation[R], filter :SQLBoolean[L#Generalized AndFrom R] = True)
 //	         (implicit cast :JoinedRelationSubject[WithLeft[L]#F, R, T, MappingOf[S]#TypedProjection]) :L EmptyJoin R =
-//		cast(narrow[L, T, S](left, LastRelation(cast(right)))(cast.downtype(filter)))
+//		cast(narrow[L, T, S](left, LastRelation(cast(right)))(cast.cast(filter)))
 //
 //	private[sql] def apply[L <: EmptyFrom, T[O] <: BaseMapping[S, O], S]
 //	                      (left :L, relation :LastRelation[T, S])(filter :SQLBoolean[left.Generalized AndFrom T])
@@ -521,7 +420,7 @@ object AndFrom {
 //			override def appendedTo[P <: DiscreteFrom](prefix :P) :AppendedTo[P] =
 //				withLeft(left.appendedTo(prefix))(condition :SQLBoolean[Generalized])
 //
-//			override def joinedWith[F <: FromSome](prefix :F, firstJoin :TrueJoin.*) = ??? //todo:
+//			override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) = ??? //todo:
 ////				firstJoin.likeJoin[F, T, S](prefix, right)(condition)
 //
 //			override def joinedWithSubselect[F <: FromSome](prefix :F) = ??? //todo:
@@ -645,7 +544,7 @@ sealed trait From[T[O] <: MappingAt[O]] extends AndFrom[Dual, T] with NonSubsele
 
 //	overriden for clarity
 	override type AppendedTo[+P <: DiscreteFrom] = P AndFrom T
-	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] = P J T
+	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] = P J T
 	override type JoinedWithSubselect[+P <: FromSome] = P Subselect T
 
 	override type Explicit = FromClause AndFrom T
@@ -759,7 +658,7 @@ object From {
 
 			override def appendedTo[P <: DiscreteFrom](prefix :P) :P AndFrom T = prefix.extend(last, fullFilter)
 
-			override def joinedWith[F <: FromSome](prefix :F, firstJoin :TrueJoin.*) :firstJoin.LikeJoin[F, T] =
+			override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :firstJoin.LikeJoin[F, T] =
 				firstJoin.likeJoin[F, T, S](prefix, right)(fullFilter)
 
 			override def joinedWithSubselect[F <: FromSome](prefix :F) :F Subselect T =

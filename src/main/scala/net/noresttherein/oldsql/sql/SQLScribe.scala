@@ -112,8 +112,8 @@ object SQLScribe {
 		private def subselectClause(subselect :FromClause)
 				:RecursiveScribeSubselectExtension[oldClause.Generalized, newClause.Generalized] =
 			subselect match {
-				case j :TrueJoin[_, _] =>
-					val join = j.asInstanceOf[FromSome TrueJoin MappingAt]
+				case j :Join[_, _] =>
+					val join = j.asInstanceOf[FromSome Join MappingAt]
 					val sub = subselectClause(join.left)
 					val newExtension = sub.newExtension.extend[join.LastMapping]
 					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]

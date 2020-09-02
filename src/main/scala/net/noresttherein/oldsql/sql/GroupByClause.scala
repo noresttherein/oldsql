@@ -14,10 +14,10 @@ import net.noresttherein.oldsql.sql.FromClause.{JoinedEntities, NonEmptyFrom}
   * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.GroupParam]]
   */
-trait GroupedFrom extends NonEmptyFrom { thisClause =>
-	override type FromLast <: GroupedFrom
+trait GroupByClause extends NonEmptyFrom { thisClause =>
+	override type FromLast <: GroupByClause
 	override type FromNext[E[+L <: FromSome] <: FromClause] = Nothing
-	override type This <: GroupedFrom
+	override type This <: GroupByClause
 
 
 	override type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
@@ -25,7 +25,7 @@ trait GroupedFrom extends NonEmptyFrom { thisClause =>
 
 	protected override def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
 	                       (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) =
-		throw new UnsupportedOperationException(s"GroupedFrom.filterNext (on $this)")
+		throw new UnsupportedOperationException(s"GroupByClause.filterNext (on $this)")
 
 
 	/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.FromClause#where where]], introduced
@@ -55,7 +55,7 @@ trait GroupedFrom extends NonEmptyFrom { thisClause =>
 	  */
 	type Discrete <: GeneralizedDiscrete
 
-//		type Grouped = GroupedFrom { type Discrete = thisClause.Discrete }
+//		type Grouped = GroupByClause { type Discrete = thisClause.Discrete }
 
 	/** The ''from'' clause under grouping of this ''group by'' clause.
 	  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is its left side;
@@ -64,7 +64,7 @@ trait GroupedFrom extends NonEmptyFrom { thisClause =>
 	  */
 	val from :Discrete
 
-	
+
 	type GeneralizedGrouped = from.Explicit
 
 	type Grouped = from.Inner
@@ -83,6 +83,6 @@ trait GroupedFrom extends NonEmptyFrom { thisClause =>
 
 
 
-object GroupedFrom {
+object GroupByClause {
 
 }

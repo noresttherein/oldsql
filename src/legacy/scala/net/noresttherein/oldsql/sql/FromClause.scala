@@ -30,7 +30,7 @@ import net.noresttherein.oldsql.sql.SQLTuple.ChainFormula
   * from this instance by `asTables` method. This is so the static type of tables/extended joins returned
   * could be based on the static type of this instance, without parameterizing all subclasses with their expected
   * static type. This means that for example if we call s join table, and static types of s and table are `S` and `T`,
-  * the result will correctly be `S Join T` rather than `FromClause Join T` (or `this.type Join T`), without the need
+  * the result will correctly be `S JoinLike T` rather than `FromClause JoinLike T` (or `this.type JoinLike T`), without the need
   * for re-declaring all operations in individual subclasses. Of course, dynamic types are preserved. An additional
   * benefit worth noting is that we can easily work on partially or fully abstracted types by getting `RowTables`
   * for a supertype of the given source, essentially choosing in the place of usage what level of type checking
@@ -43,12 +43,12 @@ trait FromClause {
 
 	/** Result types of all mappings in this source concatenated into a heterogeneous list.
 	  * The chain contains the mapped types in the same order as their mappings appear in this type's definition
-	  * and is, like `Join` (but unlike `::`), left associative.
+	  * and is, like `JoinLike` (but unlike `::`), left associative.
 	  */
 	type Row <: Chain
 
 	/** Type of the outer source if this source represents a subselect source created by `Outer.from()`.
-	  * All 'real' `Join` subclasses have this type equal to the `Outer` of their left side, but `SubselectJoin`
+	  * All 'real' `JoinLike` subclasses have this type equal to the `Outer` of their left side, but `SubselectJoin`
 	  * defines `Outer` as the type of its left side. Additionally, all 'real' joins implement `AsSubselectOf[L#Outer]`
 	  * and `SubselectJoin` implements `AsSubselectOf[L]`. This means that for any concrete class `S &lt;: FromClause`
 	  * with fully instantiated parameters (i.e. all tables in `S` and types of joins in it are known)
@@ -99,7 +99,7 @@ trait FromClause {
 
 	/** All tables or other members in this source occurring after the outer source prefix as defined by `outer`.
 	  * These are tables that will occur in the 'FROM' clause of select statements created for this source.
-	  * If this instance type is in the form of `From[T1] Join T2 ... SubselectJoin S1 Join S2 ... Join SN`
+	  * If this instance type is in the form of `From[T1] JoinLike T2 ... SubselectJoin S1 JoinLike S2 ... JoinLike SN`
 	  * (and the listed subselect is the rightmost occurrence in this type) it will return `S1 ... SN`.
 	  * If there's no `SubselectJoin` in this type's definition, all members will be returned just as in `allTables`.
 	  */
@@ -148,9 +148,9 @@ trait FromClause {
 
 
 	/** A cross join between this source and the given source.
-	  * If this source is in the form of `From[L1] Join L2 ... Join LN` and the source `S` is in the form of
-	  * `From[R1] Join R2 ... Join RM`, the result type `J` of the join will be
-	  * `From[L1] Join L2 ... Join LN Join R1 Join R2 ... Join RM` and the filter of the join will be
+	  * If this source is in the form of `From[L1] JoinLike L2 ... JoinLike LN` and the source `S` is in the form of
+	  * `From[R1] JoinLike R2 ... JoinLike RM`, the result type `J` of the join will be
+	  * `From[L1] JoinLike L2 ... JoinLike LN JoinLike R1 JoinLike R2 ... JoinLike RM` and the filter of the join will be
 	  * equivalent to `this.filter && source.filter`. The nature (classes) of the joins is preserved -
 	  * if any of the joins in the argument are outer joins, they will remain such in the result.
 	  *
@@ -214,10 +214,10 @@ trait FromClause {
 
 
 object FromClause {
-	import Join._
+	import JoinLike._
 
 	/** A `FromClause` representing a subselect source of `S`.
-	  * `S &lt;: AsSubselectOf[R]` if and only if `S =:= R SubselectJoin M1 Join M2 ... Join MN` for some mappings
+	  * `S &lt;: AsSubselectOf[R]` if and only if `S =:= R SubselectJoin M1 JoinLike M2 ... JoinLike MN` for some mappings
 	  * `M1...MN`. Sources conforming to `AsSubselectOf[S]` can use all the mappings/tables which are a part of `S`,
 	  * but they are not a part of any select formulas created from that source. This allows the use of nested
 	  * select queries which depend on values from the 'FROM' clause of the outer select. Note that subselects
@@ -334,15 +334,15 @@ object FromClause {
 	  * @tparam X formal parameter type
 	  */
 	class WithParam[+S<:FromClause, X] protected(
-               val source :S,
-               table :TableFormula[S Join ParamMapping[X], ParamMapping[X]],
-               filter :BooleanFormula[S Join ParamMapping[X]])
-		extends Join[S, ParamMapping[X]](source, table, filter)
+		                                            val source :S,
+		                                            table :TableFormula[S JoinLike ParamMapping[X], ParamMapping[X]],
+		                                            filter :BooleanFormula[S JoinLike ParamMapping[X]])
+		extends JoinLike[S, ParamMapping[X]](source, table, filter)
 	{
 		def this(source :S, param :ParamMapping[X]) =
 			this(source, new TableFormula[FromClause, ParamMapping[X]](param, source.size), True())
 
-		def this(source :S, name :String, filter :BooleanFormula[S Join ParamMapping[X]]) =
+		def this(source :S, name :String, filter :BooleanFormula[S JoinLike ParamMapping[X]]) =
 			this(source, new TableFormula[FromClause, ParamMapping[X]](new ParamMapping[X](name), source.size), filter)
 
 		def this(source :S, name :String="?") = this(source, name, True())
@@ -364,13 +364,13 @@ object FromClause {
 			throw new UnsupportedOperationException(s"WithParam($this).transplant($target, _)")
 
 
-		override protected def copyJoin(replacement: TableFormula[S Join ParamMapping[X], ParamMapping[X]],
-		                                condition :BooleanFormula[S Join ParamMapping[X]] = True()): S WithParam X =
+		override protected def copyJoin(replacement: TableFormula[S JoinLike ParamMapping[X], ParamMapping[X]],
+		                                condition :BooleanFormula[S JoinLike ParamMapping[X]] = True()): S WithParam X =
 			new WithParam[S, X](source, replacement, condition)
 
 
-		override def copyJoin[L <: FromClause, M <: Mapping](left: L, right: M): L Join M = right match {
-			case p :ParamMapping[_] => new WithParam(left, p.asInstanceOf[ParamMapping[Any]]).asInstanceOf[L Join M]
+		override def copyJoin[L <: FromClause, M <: Mapping](left: L, right: M): L JoinLike M = right match {
+			case p :ParamMapping[_] => new WithParam(left, p.asInstanceOf[ParamMapping[Any]]).asInstanceOf[L JoinLike M]
 			case _ => Join(left, right)
 		}
 
@@ -461,9 +461,9 @@ object FromClause {
 	  * static type. Contains both accessors returning tables (and other members of this source, such as parameters),
 	  * and methods for joining this source with other tables/sources. By moving these methods into a separate interface
 	  * we can use the static type of 'this' source in the result type, which would be otherwise unknown inside a
-	  * FromClause subclass (largely because Join classes are covariant). It also has an added benefit of being able
+	  * FromClause subclass (largely because JoinLike classes are covariant). It also has an added benefit of being able
 	  * to specify any supertype of the argument source as the static type parameter, in particular any 'abstract' types,
-	  * such as FromClause or FromClause Join T, picking the exact level of type safety we want.
+	  * such as FromClause or FromClause JoinLike T, picking the exact level of type safety we want.
 	  * @tparam R expected static type of the given source
 	  */
 	implicit def tablesForSource[R <: FromClause](source :R) :RowTables[R] =
@@ -473,12 +473,12 @@ object FromClause {
 
 	/** Accessor methods providing aliases for all tables/mappings present in the row source S, which can be used
 	  * to create filter conditions. Below operations are separated into this interface instead of being declared
-	  * directly in FromClause/Join for three reasons. First, Join and subclasses are covariant regarding the type
+	  * directly in FromClause/JoinLike for three reasons. First, JoinLike and subclasses are covariant regarding the type
 	  * of their left side to ensure uniformity in subtype relation between different source types
-	  * (i.e. L LeftJoin R <:< L Join R and L LeftJoin M Join R <:< L Join M Join R), which prevents from declaring
+	  * (i.e. L LeftJoin R <:< L JoinLike R and L LeftJoin M JoinLike R <:< L JoinLike M JoinLike R), which prevents from declaring
 	  * methods  accepting L and types covariant to L. Second, it allows static return types of methods here to depend
 	  * on static type of the implicit argument (i.e. the source on which the method being called), ensuring that
-	  * filtering/joining methods called for example on L LeftJoin R will return L Join R / extension of L Join R.
+	  * filtering/joining methods called for example on L LeftJoin R will return L JoinLike R / extension of L JoinLike R.
 	  * Third, it allows to pick the desired level of type checking convenient for the given task;
 	  * RowTables[source.type] will ensure that all associated classes (like SQLFormula, etc.) came from
 	  * exactly the given instance, while RowTables[FromClause] removes any type checking regarding the source type
@@ -617,7 +617,7 @@ object FromClause {
 			table(source)
 
 		/** First (leftmost) mapping in the source when treated as a list.
-		  * This method will work only for fully instantiated subtypes of FromClause (i.e. From[X] Join Y Join Z...).
+		  * This method will work only for fully instantiated subtypes of FromClause (i.e. From[X] JoinLike Y JoinLike Z...).
 		  * If you are working with abstract types or don't need the table to be parameterized with a concrete mapping type,
 		  * use head instead.
 		  */
@@ -629,8 +629,8 @@ object FromClause {
 		/** SQLFormula exposing all tables in this source as a HList of TableFormula instances. */
 		def row :SQLFormula[S, S#Row] = source.row.asInstanceOf[SQLFormula[S, S#Row]]
 
-		/** Join these tables with another mapping for some database source of rows.
-		  * This results in a cross-join by itself, use additional filtering methods provided by Join class to provide a joining condition.
+		/** JoinLike these tables with another mapping for some database source of rows.
+		  * This results in a cross-join by itself, use additional filtering methods provided by JoinLike class to provide a joining condition.
 		  */
 		def join[M<:Mapping](mapping :M) :S InnerJoin M = mapping match {
 			case Dual => From(mapping).asInstanceOf[S InnerJoin M]
@@ -641,7 +641,7 @@ object FromClause {
 		def joinInstance(mapping :Mapping) :S InnerJoin mapping.type = join[mapping.type](mapping)
 
 		/** Perform a left outer join between these tables and the given mapping.
-		  * This results in a cross-join by itself, use additional filtering methods provided by Join class to provide a joining condition.
+		  * This results in a cross-join by itself, use additional filtering methods provided by JoinLike class to provide a joining condition.
 		  */
 		def leftJoin[M<:Mapping](mapping :M) :S LeftJoin M = new LeftJoin(source, mapping)
 
@@ -650,7 +650,7 @@ object FromClause {
 		final def leftJoinInstance(mapping :Mapping) :S LeftJoin mapping.type = leftJoin[mapping.type](mapping)
 
 		/** Perform a right outer join between these tables and the given mapping.
-		  * This results in a cross-join by itself, use additional filtering methods provided by Join class to provide a joining condition.
+		  * This results in a cross-join by itself, use additional filtering methods provided by JoinLike class to provide a joining condition.
 		  */
 		def rightJoin[M<:Mapping](mapping :M) :S RightJoin M = new RightJoin(source, mapping)
 
@@ -699,7 +699,7 @@ object FromClause {
 		  * part of any resulting subselect's sql FROM clause. All subsequent tables joined with the result will feature as
 		  * explicit joins in the subselect as usual. The outer of the returned source
 		  * (and any sources obtained by subsequent joins) will be set to this source, and the corresponding Outer type to S
-		  * (static type of the concrete subclass of Join).
+		  * (static type of the concrete subclass of JoinLike).
 		  * Additionally, all resulting sources will implement AsSubselectOf[S].
 		  * @param mapping first table in the from clause of a subselect being built.
 		  */
@@ -709,9 +709,9 @@ object FromClause {
 
 
 		/** A cross join between this source and the given source.
-		  * If this source is in the form of <code>From[L1] Join L2 ... Join LN</code> and source R is in the form of
-		  * <code>From[R1] Join R2 ... Join RM</code> the result type J of the join will be
-		  * <code>From[L1] Join L2 ... Join LN Join R1 Join R2 ... Join RM</code> and the filter of the join will be
+		  * If this source is in the form of <code>From[L1] JoinLike L2 ... JoinLike LN</code> and source R is in the form of
+		  * <code>From[R1] JoinLike R2 ... JoinLike RM</code> the result type J of the join will be
+		  * <code>From[L1] JoinLike L2 ... JoinLike LN JoinLike R1 JoinLike R2 ... JoinLike RM</code> and the filter of the join will be
 		  * equivalent to this.filter && source.filter. The nature(classes) of the joins is preserved -
 		  * if any of the joins in the argument are outer joins, they will remain such in the result.
 		  * Of course, you can narrow the result as usual.
@@ -962,7 +962,7 @@ object FromClause {
 	  * To actually produce any useful result from this instance, an implicit
 	  * evidence is needed that mapping M indeed uniquely represents a single source among the joined tables.
 	  * Be warned, that for this to work correctly, the source type must be fully statically known; for example
-	  * mapping M would be accepted at the compile time as a valid alias for FromClause Join M, when in reality
+	  * mapping M would be accepted at the compile time as a valid alias for FromClause JoinLike M, when in reality
 	  * the dynamic type of the left side of the join might contain the given mapping. If that where the case,
 	  * the resulting expression would be still correct and refer to the single unique M instance in the join that
 	  * could had been identified.
@@ -1170,7 +1170,7 @@ object FromClause {
 
 
 	/** Implicit evidence that mapping M is joined exactly once in S. Be warned that this will work correctly only
-	  * if S is fully instantiated; for example there is always evidence for (M JoinedIn (FromClause Join M)), while
+	  * if S is fully instantiated; for example there is always evidence for (M JoinedIn (FromClause JoinLike M)), while
 	  * in fact the dynamic type of left side of the join above can contain a mapping of type M.
 	  * Note that it will be usually written in the infix form for clarity: M JoinedIn S.
 	  */
@@ -1184,7 +1184,7 @@ object FromClause {
 	}
 
 	/** Implicit evidence that mapping M is joined exactly once in S. Be warned that this will work correctly only
-	  * if S is fully instantiated; for example there is always evidence for (M IncludedIn (FromClause Join M)), while
+	  * if S is fully instantiated; for example there is always evidence for (M IncludedIn (FromClause JoinLike M)), while
 	  * in fact the dynamic type of left side of the join above can contain a mapping of type M.
 	  */
 	object JoinedIn {
@@ -1199,12 +1199,12 @@ object FromClause {
 		def proof[M<:Mapping, S<:FromClause](implicit member :M JoinedIn S) :M JoinedIn S = member
 
 		/** Mapping present on the right side of join */
-		implicit def right[M<:Mapping, L<:FromClause] :M JoinedIn Join[L, M] =
-			new JoinedIn[M, Join[L, M]](_.last)
+		implicit def right[M<:Mapping, L<:FromClause] :M JoinedIn JoinLike[L, M] =
+			new JoinedIn[M, JoinLike[L, M]](_.last)
 
 		/** Mapping present on the left side of join */
-		implicit def left[M<:Mapping, L<:FromClause, R<:Mapping](implicit member :JoinedIn[M, L]) :M JoinedIn Join[L, R] =
-			new JoinedIn[M, Join[L, R]](s => member(s.left))
+		implicit def left[M<:Mapping, L<:FromClause, R<:Mapping](implicit member :JoinedIn[M, L]) :M JoinedIn JoinLike[L, R] =
+			new JoinedIn[M, JoinLike[L, R]](s => member(s.left))
 
 	}
 
@@ -1233,7 +1233,7 @@ object FromClause {
 
 
 	/** Proof that source S is an extension of source R / source R is a prefix source of S.
-	  * It means that S<: R Join T1 ... Join TN forSome T1 ... TN.
+	  * It means that S<: R JoinLike T1 ... JoinLike TN forSome T1 ... TN.
 	  */
 	class ExtendedBy[R<:FromClause, -S<:FromClause] private() {
 		def apply[T <: Component[O, E], O, E](table :TableFormula[R, T, O, E]) :TableFormula[S, T, O, E] =
@@ -1248,8 +1248,8 @@ object FromClause {
 
 	object ExtendedBy {
 		implicit def itself[R<:FromClause] :ExtendedBy[R, R] = new ExtendedBy[R, R]
-		implicit def join[S<:FromClause, L<:FromClause, R<:Mapping](implicit ev :S ExtendedBy L) :ExtendedBy[S, L Join R] =
-			new ExtendedBy[S, L Join R]
+		implicit def join[S<:FromClause, L<:FromClause, R<:Mapping](implicit ev :S ExtendedBy L) :ExtendedBy[S, L JoinLike R] =
+			new ExtendedBy[S, L JoinLike R]
 	}
 
 
@@ -1261,26 +1261,26 @@ object FromClause {
 	}
 
 	object LastTableOf {
-		implicit def lastTableInJoin[M<:Mapping] : M LastTableOf (FromClause Join M) =
-			instance.asInstanceOf[M LastTableOf (FromClause Join M)]
+		implicit def lastTableInJoin[M<:Mapping] : M LastTableOf (FromClause JoinLike M) =
+			instance.asInstanceOf[M LastTableOf (FromClause JoinLike M)]
 
-		private val instance = new LastTableOf[Mapping, FromClause Join Mapping] {
-			final def apply(source: FromClause Join Mapping): TableFormula[FromClause Join Mapping, Mapping] =
-				source.last.asInstanceOf[TableFormula[FromClause Join Mapping, Mapping]]
+		private val instance = new LastTableOf[Mapping, FromClause JoinLike Mapping] {
+			final def apply(source: FromClause JoinLike Mapping): TableFormula[FromClause JoinLike Mapping, Mapping] =
+				source.last.asInstanceOf[TableFormula[FromClause JoinLike Mapping, Mapping]]
 		}
 	}
 
-	/** Proof that M is the second last mapping in S, i.e. that S <:< FromClause Join M Join _. */
+	/** Proof that M is the second last mapping in S, i.e. that S <:< FromClause JoinLike M JoinLike _. */
 	abstract class SecondLastTableOf[M<:Mapping, -S<:FromClause] private() {
 		def apply(source :S) :TableFormula[S, M]
 	}
 
 	object SecondLastTableOf {
-		implicit def secondLastTableInJoin[M<:Mapping, R<:Mapping] : M SecondLastTableOf (FromClause Join M Join R) =
-			instance.asInstanceOf[M SecondLastTableOf (FromClause Join M Join R)]
+		implicit def secondLastTableInJoin[M<:Mapping, R<:Mapping] : M SecondLastTableOf (FromClause JoinLike M JoinLike R) =
+			instance.asInstanceOf[M SecondLastTableOf (FromClause JoinLike M JoinLike R)]
 
-		private[this] val instance = new SecondLastTableOf[Mapping, FromClause Join Mapping Join Mapping] {
-			final def apply(source: FromClause Join Mapping Join Mapping) =
+		private[this] val instance = new SecondLastTableOf[Mapping, FromClause JoinLike Mapping JoinLike Mapping] {
+			final def apply(source: FromClause JoinLike Mapping JoinLike Mapping) =
 				source.left.last
 		}
 
@@ -1292,15 +1292,15 @@ object FromClause {
 	}
 
 	object FirstTableOf {
-		implicit def singleTable[M<:Mapping] :M FirstTableOf (Dual Join M) = single.asInstanceOf[M FirstTableOf (Dual Join M)]
+		implicit def singleTable[M<:Mapping] :M FirstTableOf (Dual JoinLike M) = single.asInstanceOf[M FirstTableOf (Dual JoinLike M)]
 
-		implicit def anyJoin[M<:Mapping, L<:FromClause, R<:Mapping](implicit ev :M FirstTableOf L) :M FirstTableOf (L Join R) =
-			new FirstTableOf[M, L Join R] {
-				override def apply(source: Join[L, R]): TableFormula[Join[L, R], M] = ev(source.left)//.asPartOf(source)
+		implicit def anyJoin[M<:Mapping, L<:FromClause, R<:Mapping](implicit ev :M FirstTableOf L) :M FirstTableOf (L JoinLike R) =
+			new FirstTableOf[M, L JoinLike R] {
+				override def apply(source: JoinLike[L, R]): TableFormula[JoinLike[L, R], M] = ev(source.left)//.asPartOf(source)
 			}
 
-		private[this] val single = new FirstTableOf[Mapping, Dual Join Mapping] {
-			final def apply(source: Join[Dual, Mapping]): TableFormula[Join[Dual, Mapping], Mapping] = source.last
+		private[this] val single = new FirstTableOf[Mapping, Dual JoinLike Mapping] {
+			final def apply(source: JoinLike[Dual, Mapping]): TableFormula[JoinLike[Dual, Mapping], Mapping] = source.last
 		}
 	}
 
@@ -1327,8 +1327,8 @@ object FromClause {
 				throw new NoSuchElementException(s"merging table $table for a Dual row from $right into $merge")
 		}
 
-		implicit def joinCrossJoin[F<:FromClause, L<:FromClause, R<:Mapping, M<:FromClause](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L Join R, M Join R] =
-			new JoinCrossJoin[F, Join, L, R, M](merger)
+		implicit def joinCrossJoin[F<:FromClause, L<:FromClause, R<:Mapping, M<:FromClause](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L JoinLike R, M JoinLike R] =
+			new JoinCrossJoin[F, JoinLike, L, R, M](merger)
 
 		//		implicit def rightCrossJoin[F<:FromClause, L<:FromClause, R<:Mapping, M<:FromClause](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L RightJoin R, M RightJoin R] =
 		//			new JoinCrossJoin[F, RightJoin, L, R, M](merger)
@@ -1339,7 +1339,7 @@ object FromClause {
 		//		implicit def innerCrossJoin[F<:FromClause, L<:FromClause, R<:Mapping, M<:FromClause](implicit merger :RowSourceCrossJoin[F, L, M]) :RowSourceCrossJoin[F, L InnerJoin R, M InnerJoin R] =
 		//			new JoinCrossJoin[F, InnerJoin, L, R, M](merger)
 
-		class JoinCrossJoin[F<:FromClause, J[A<:FromClause, B<:Mapping]<:Join[A, B], L<:FromClause, R<:Mapping, M<:FromClause] private[RowSourceCrossJoin]
+		class JoinCrossJoin[F<:FromClause, J[A<:FromClause, B<:Mapping]<:JoinLike[A, B], L<:FromClause, R<:Mapping, M<:FromClause] private[RowSourceCrossJoin]
 		(merger :RowSourceCrossJoin[F, L, M])
 			extends RowSourceCrossJoin[F, L J R, M J R]
 		{ self =>

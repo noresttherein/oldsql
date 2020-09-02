@@ -8,8 +8,8 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 
 
 /** An empty source, serving both as a source for expressions not needing any input tables
-  * (like 'SELECT _ FROM DUAL' in Oracle) and terminator element for Join lists
-  * (by default any chain of Join[_, _] classes is eventually terminated by a Dual instance).
+  * (like 'SELECT _ FROM DUAL' in Oracle) and terminator element for JoinLike lists
+  * (by default any chain of JoinLike[_, _] classes is eventually terminated by a Dual instance).
   */
 class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 
@@ -89,8 +89,8 @@ class Dual(val filteredBy :BooleanFormula[Dual]) extends FromClause {
 }
 
 /** An empty row source, serving both as a source for expressions not needing any input tables
-  * (like 'SELECT _ FROM DUAL' in Oracle) and terminator element for Join lists
-  * (by default any chain of Join[_, _] classes is eventually terminated by a Dual instance).
+  * (like 'SELECT _ FROM DUAL' in Oracle) and terminator element for JoinLike lists
+  * (by default any chain of JoinLike[_, _] classes is eventually terminated by a Dual instance).
   */
 case object Dual extends Dual {
 	def unapply(source :FromClause) :Boolean = source.isInstanceOf[Dual]

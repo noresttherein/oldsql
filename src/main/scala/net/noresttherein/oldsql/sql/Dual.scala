@@ -87,7 +87,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override type Extend[J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = From[T]
 
 	override def extend[T[O] <: BaseMapping[S, O], S]
-	                   (next :Relation[T], filter :SQLBoolean[FromClause AndFrom T], join :Join.*) :From[T] =
+	                   (next :Relation[T], filter :SQLBoolean[FromClause AndFrom T], join :JoinLike.*) :From[T] =
 		From[T, S](next, filter)
 
 	protected[sql] override def extend[T[O] <: BaseMapping[S, O], S]
@@ -101,14 +101,14 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override def appendedTo[P <: DiscreteFrom](prefix :P) :P = prefix
 
 
-	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R, F <: FromClause] = F
+	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R, F <: FromClause] = F
 
-	override def joinWith[F <: FromClause](suffix :F, join :Join.*) :F = suffix
+	override def joinWith[F <: FromClause](suffix :F, join :JoinLike.*) :F = suffix
 
 
-	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L Join R] = P
+	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] = P
 
-	override def joinedWith[F <: FromSome](prefix :F, firstJoin :TrueJoin.*) :F = prefix
+	override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :F = prefix
 
 	override type JoinedWithSubselect[+P <: FromSome] = Nothing
 
