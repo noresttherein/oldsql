@@ -1469,31 +1469,6 @@ object FromClause {
 
 
 
-	//consider: move it to Relation
-	/** A wrapper type adapting the labeled mapping type `L @: M` to a form with a single-argument type constructor
-	  * accepting the `Origin` type for use in `AndFrom` subclasses and other types accepting such a type constructor:
-	  * `Dual Join (Humans As "humans")#T` (where `Humans[O] &lt;: MappingAt[O]`).
-	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
-	  */ //consider: As could be the Relation itself; instead of T one would use Relation.Row
-	type As[M[O] <: MappingAt[O], A <: Label] = { type T[O] = A @: M[O] }
-
-
-	class AliasedRelation[T[O] <: MappingAt[O], A <: Label](source :Relation[T], val alias :A)
-		extends NamedRelation[A, (T As A)#T]
-	{
-		override def name :A = alias
-
-		override def apply[O] :A @: T[O] =
-			(alias @: source[O].asInstanceOf[RefinedMapping[Any, Any]]).asInstanceOf[A @: T[O]]
-	}
-
-	def AliasedRelation[T[O] <: MappingAt[O], A <: Label](source :Relation[T], alias :A) :NamedRelation[A, (T As A)#T] =
-		new AliasedRelation(source, alias)
-
-
-
-
-
 
 	/** Extension methods for `FromClause` classes which benefit from having a static, invariant self type. */
 	implicit class FromClauseExtension[F <: FromClause](val clause :F) extends AnyVal {

@@ -8,7 +8,8 @@ import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, PrefixOf}
+import net.noresttherein.oldsql.schema.Relation.As
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, PrefixOf}
 import net.noresttherein.oldsql.sql.JoinLike.AbstractJoin
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
@@ -16,7 +17,7 @@ import net.noresttherein.oldsql.sql.SQLScribe.ReplaceRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, ExtendedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
 
@@ -343,7 +344,7 @@ object JoinLike {
 			withLeft(left.joinedWithSubselect(prefix))(condition :SQLBoolean[left.Generalized GeneralizedJoin R])
 
 		override def as[A <: Label](alias :A) :L LikeJoin (R As A)#T = {
-			val source = FromClause.AliasedRelation[R, A](last.relation, alias)
+			val source = last.relation as[A] alias
 			val aliased = RelationSQL.last[(R As A)#T, (R As A)#T, S](source)
 			type Res = left.Generalized AndFrom (R As A)#T //todo: condition from a function
 			val unfiltered = likeJoin[left.Generalized, (R As A)#T, S](left.generalized, source)(True)

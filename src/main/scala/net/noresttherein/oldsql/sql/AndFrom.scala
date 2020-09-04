@@ -6,9 +6,10 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Relation.As
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{As, ClauseComposition, ClauseDecomposition, ExtendedBy, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, PrefixOf}
 import net.noresttherein.oldsql.sql.JoinLike.JoinWith
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
@@ -677,7 +678,7 @@ object From {
 
 
 			override def as[A <: Label](alias :A) :From[(T As A)#T] = {
-				val source = FromClause.AliasedRelation[T, A](last.relation, alias)
+				val source = last.relation as[A] alias
 				val aliased = RelationSQL.last[(T As A)#T, (T As A)#T, S](source)
 				type Res = FromClause AndFrom (T As A)#T //todo: condition from a function
 				val unfiltered = From[(T As A)#T, S](aliased, True)
