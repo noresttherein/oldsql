@@ -122,7 +122,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override type Base = FromClause
 	override type DefineBase[+I <: FromClause] = I
 
-	override def outer :Dual = this
+	override val outer :Dual = this
 	override def base :FromClause = this
 
 	override def innerSize = 0

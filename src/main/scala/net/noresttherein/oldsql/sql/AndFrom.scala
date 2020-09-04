@@ -554,7 +554,7 @@ sealed trait From[T[O] <: MappingAt[O]] extends AndFrom[Dual, T] with NonSubsele
 	override type Base = FromClause
 	override type DefineBase[+I <: FromClause] = I
 
-	override def outer :Dual = left
+//	override def outer :Dual = left
 	override def base :Dual = left
 
 
@@ -643,6 +643,7 @@ object From {
 			override val left :dual.type = dual
 			override val last = relation
 			override val condition = cond
+			override val outer = left.outer
 
 			override def narrow :dual.type AndFrom T = this
 			override type This = From[T] with (left.type AndFrom T)

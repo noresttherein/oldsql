@@ -108,7 +108,7 @@ object SQLScribe {
 			val scribe = extended(e.from, newSubselect)(oldExtension, replacement.newExtension)
 			scribe(e.header).subselectFrom(newSubselect).asInstanceOf[SQLExpression[G, Rows[V]]]
 		}
-
+		//todo: rewrite it with some sort of generic dispatch, because it's fugly
 		private def subselectClause(subselect :FromClause)
 				:RecursiveScribeSubselectExtension[oldClause.Generalized, newClause.Generalized] =
 			subselect match {
@@ -127,24 +127,29 @@ object SQLScribe {
 					val join = j.asInstanceOf[(oldClause.Generalized with FromSome) Subselect MappingAt]
 					val base = newClause.asInstanceOf[FromSome]
 					val unfiltered = join.withLeft[base.type](base)(True)
-					implicit val extension = unfiltered.explicitSpan.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
+					implicit val extension = unfiltered.explicitSpan
+						.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
 					val scribe = extended(join.generalized, unfiltered.generalized) //todo: condition from a function
-					val res = join.withLeft[base.type](base)(scribe(join.condition)).asInstanceOf[newClause.Nested]
+					val res = join.withLeft[base.type](base)(scribe(join.condition))
+						.asInstanceOf[FromSome { type Implicit = newClause.Generalized }]
 					RecursiveScribeSubselectExtension(res)(extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized])
 
 				case j :Subselect[_, _] => //newClause :Dual => subselect becomes a free select
 					val join = j.asInstanceOf[(oldClause.Generalized with FromSome) Subselect MappingOf[Any]#TypedProjection]
 					val unfiltered = From[MappingOf[Any]#TypedProjection, Any](join.right)
-					implicit val extension = unfiltered.explicitSpan.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
+					implicit val extension = unfiltered.explicitSpan
+						.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
 					val scribe = extended(join.generalized, unfiltered.generalized)
 					val condition = newClause.filter.asInstanceOf[SQLBoolean[FromClause]] && scribe(join.condition)
-					val res = From[MappingOf[Any]#TypedProjection, Any](join.right, condition).asInstanceOf[newClause.Nested]
+					val res = From[MappingOf[Any]#TypedProjection, Any](join.right, condition)
+						.asInstanceOf[FromSome { type Implicit = newClause.Generalized }]
 					RecursiveScribeSubselectExtension(res)(extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized])
 
 				case d :DecoratedFrom[_] =>
 					val wrap = d.asInstanceOf[DecoratedFrom[FromClause]]
 					val sub = subselectClause(wrap.clause)
-					val res = wrap.withClause(sub.clause.asInstanceOf[wrap.clause.FromLast]).asInstanceOf[newClause.Nested]
+					val res = wrap.withClause(sub.clause.asInstanceOf[wrap.clause.FromLast])
+						.asInstanceOf[FromSome { type Implicit = newClause.Generalized }]
 					val newExtension = sub.newExtension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized]
 					RecursiveScribeSubselectExtension(res)(newExtension)
 

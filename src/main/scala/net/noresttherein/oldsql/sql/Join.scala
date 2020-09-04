@@ -401,7 +401,7 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]] extends JoinLike[L, R] w
 	                          I <: FromClause { type Generalized <: I }, O <: I { type Generalized = I; type Self = O }] = O
 	override type Outer = left.Outer //overriden for clarity
 
-	override def outer :Outer = left.outer
+//	override def outer :Outer = left.outer
 
 	override type DefineInnerRow[C <: Chain, S] = C ~ S
 	override type InnerRow = left.InnerRow ~ last.Subject //overriden for clarity
@@ -1167,9 +1167,8 @@ sealed trait Subselect[+F <: FromSome, T[O] <: MappingAt[O]] extends JoinLike[F,
 
 
 
-	override def isSubselect = true
+	override def isSubselect = true //if it will accept Dual as the left side the standard definition in FromClause must be changed.
 	override def isValidSubselect = true
-	override def innerSize = 1
 
 	override type DefineExplicit[+G <: FromSome, +E >: G <: FromSome, R[O] <: MappingAt[O]] = FromClause AndFrom R
 	override type Explicit = FromClause AndFrom T //overriden for clarity
@@ -1184,8 +1183,6 @@ sealed trait Subselect[+F <: FromSome, T[O] <: MappingAt[O]] extends JoinLike[F,
 	override type DefineOuter[G <: FromClause { type Generalized <: G }, S <: G { type Generalized = G; type Self = S },
 	                          I <: FromClause { type Generalized <: I }, O <: I { type Generalized = I; type Self = O }] = S
 	override type Outer = left.Self //overriden for clarity
-
-	override def outer :Outer = left.self
 
 
 
@@ -1275,6 +1272,7 @@ object Subselect {
 			override val left = prefix
 			override val last = next
 			override val condition = cond
+			override val outer = left.self
 			override val fullSize = left.fullSize + 1
 
 			override type This = left.type Subselect R

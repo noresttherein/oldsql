@@ -482,20 +482,12 @@ trait FromClause { thisClause =>
 
 
 	/** A property specifying if this ''from'' clause is has a `Subselect` join somewhere in its dynamic type. */
-	def isSubselect :Boolean
+	def isSubselect :Boolean = outer.nonEmpty
 
 	/** A property specifying if this ''from'' clause is a legal subselect ''from'' clause, that is it has a `Subselect`
 	  * join somewhere in its complete (dynamic) type and no unbound parameters in the most nested subselect clause.
 	  */
 	def isValidSubselect :Boolean
-
-	/** Checks if `this.type` conforms to [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]]
-	  * (meaning it is a valid ''from'' clause for a subselect of its `Implicit` clause) and, if so, casts `this`
-	  * and returns in an `Option`.
-	  */
-	def asSubselect :Option[Outer#Nested] =
-		if (isValidSubselect) Some(this.asInstanceOf[Outer#Nested])
-		else None
 
 
 
@@ -523,7 +515,7 @@ trait FromClause { thisClause =>
 	  * This makes `f.Nested` a strict subtype of `SubselectOf[f.Self]`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Base]]
 	  */
-	type Nested = FromSome {
+	type Nested = NonEmptyFrom {
 		type Implicit = thisClause.Generalized
 		type Base = thisClause.Generalized
 		type DefineBase[+I <: FromClause] = I
@@ -607,7 +599,7 @@ trait FromClause { thisClause =>
 	  * @return `outer` of the left side or `left.Self` if this instance is a `Subselect`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Outer]]
 	  */
-	def outer :Outer
+	val outer :Outer
 
 	/** The `FromClause` type used as the type parameter of [[net.noresttherein.oldsql.sql.SelectSQL select]] SQL
 	  * expressions created from this instance. It is equal to `Implicit`, unless
@@ -1257,7 +1249,6 @@ object FromClause {
 	  */
 	type OuterDiscreteFrom = DiscreteFrom {
 		type Implicit = FromClause
-		type Closure = Dual
 	}
 
 	/** A refinement of the [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]] type, representing a top level,
@@ -1448,8 +1439,8 @@ object FromClause {
 	  * to this type.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectOf]]
 	  */
-	type SubselectFrom = FromSome { //do we need the FromSome bound?
-		type Implicit <: FromSome //this holds only if there is a Subselect involved (meaning clear way to the Subselect)
+	type SubselectFrom = FromClause { //do we need the FromSome bound?
+		type Implicit <: NonEmptyFrom //this holds only if there is a Subselect involved (meaning clear way to the Subselect)
 		type Base = Implicit //this excludes clauses with an UnboundParam in the explicit portion
 		type DefineBase[+I <: FromClause] = I //only to preserve the validity on rebasing and to conform to Nested
 	}
@@ -1478,12 +1469,12 @@ object FromClause {
 
 
 
-	//todo: move it to Relation
+	//consider: move it to Relation
 	/** A wrapper type adapting the labeled mapping type `L @: M` to a form with a single-argument type constructor
 	  * accepting the `Origin` type for use in `AndFrom` subclasses and other types accepting such a type constructor:
 	  * `Dual Join (Humans As "humans")#T` (where `Humans[O] &lt;: MappingAt[O]`).
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
-	  */ //consider: As could be the Relation itself; instead of T one would use Relation.FullRow
+	  */ //consider: As could be the Relation itself; instead of T one would use Relation.Row
 	type As[M[O] <: MappingAt[O], A <: Label] = { type T[O] = A @: M[O] }
 
 
@@ -1518,6 +1509,49 @@ object FromClause {
 		  * by this clause and a supertype of this clause as the base for the expression.
 		  */
 		@inline def relations :JoinedRelations[F] = new JoinedRelations[F](clause)
+
+
+		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]]
+		  * (meaning it is a valid ''from'' clause for a subselect of its `Implicit` clause) and, if so, casts `this`
+		  * to `outer.`[[net.noresttherein.oldsql.sql.FromClause#Nested Nested]] and passes it to the given function.
+		  * @return result of executing the given function in `Some` if this clause is a subselect clause, or `None` otherwise.
+		  */
+		@inline def ifSubselect[T](map :F with clause.outer.Nested => T) :Option[T] =
+			if (clause.isValidSubselect)
+				Some(map(clause.asInstanceOf[F with clause.outer.Nested]))
+			else None
+
+		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.FromClause.OuterFrom OuterFrom]]
+		  * (meaning it is a top-level clause with an empty ''implicit'' portion) and, if so,
+		  * casts `this` to `F with OuterFrom` and passes it to the given function.
+		  * @return result of executing the given function in `Some` if this clause is an ''outer'' clause, or `None` otherwise.
+		  */
+		@inline def ifOuter[T](map :F { type Implicit = FromClause } => T) :Option[T] =
+			if (!clause.isSubselect)
+				Some(map(clause.asInstanceOf[F { type Implicit = FromClause }]))
+			else None
+
+		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.FromClause.FreeFrom FreeFrom]]
+		  * (meaning it is a valid ''from'' clause for a ''free'' select - its ''implicit'' portion is empty and
+		  * it contains no [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters) and, if so,
+		  * casts `this` to `F with FreeFrom` and passes it to the given function.
+		  * @return result of executing the given function in `Some` if this clause is a ''free'' clause, or `None` otherwise.
+		  */
+		@inline def ifFree[T](map :F with FreeFrom => T) :Option[T] =
+			if (!clause.isSubselect && !clause.isParameterized)
+				Some(map(clause.asInstanceOf[F with FreeFrom]))
+			else None
+
+		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.FromClause.ParameterlessFrom ParameterlessFrom]]
+		  * (meaning it has no [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in its definition) and,
+		  * if so, casts `this` to `F with ParameterlessFrom` and passes it to the given function.
+		  * @return result of executing the given function in `Some` if this clause is a paramterless clause, or `None` otherwise.
+		  */
+		@inline def ifParameterless[T](map :F { type Params = @~ } => T) :Option[T] =
+			if (clause.isSubselect && clause.isParameterized)
+				Some(map(clause.asInstanceOf[F { type Params = @~ }]))
+			else None
+
 	}
 
 
@@ -2387,7 +2421,7 @@ object FromClause {
 				type O <: FromClause
 
 				def prefix :S PrefixOf O
-				def outerPart :O OuterPartOf G
+				def outerPart :O OuterClauseOf G
 			}
 
 
@@ -2446,7 +2480,7 @@ object FromClause {
 					with GroupedTunnel[L Subselect R, X]
 				{
 					override type O = get.G
-					override def outerPart :get.G OuterPartOf G = OuterPartOf.subselect[get.G, R]
+					override def outerPart :get.G OuterClauseOf G = OuterClauseOf.subselect[get.G, R]
 					override def prefix = get.stretch
 					override def table(from :L Subselect R) = get.table(from.left)
 				}
@@ -2463,7 +2497,7 @@ object FromClause {
 				{
 					override type O = get.O
 					override val prefix = get.prefix
-					override val outerPart = OuterPartOf.extended(extend.upcast[get.G], get.outerPart)
+					override val outerPart = OuterClauseOf.extended(extend.upcast[get.G], get.outerPart)
 					override def table(from :F) = get.table(from.left)
 				}
 
@@ -2479,7 +2513,7 @@ object FromClause {
 				{
 					override type O = get.O
 					override val prefix = get.prefix
-					override val outerPart = OuterPartOf.wrapped(decorate.upcast[get.G], get.outerPart)
+					override val outerPart = OuterClauseOf.wrapped(decorate.upcast[get.G], get.outerPart)
 					override def table(from :F) = get.table(from.clause)
 				}
 
@@ -2927,32 +2961,32 @@ object FromClause {
 	  * exactly as it appears as a prefix in `F`: `F#Outer` can introduce abstract types and is not a lossless process
 	  */
 	@implicitNotFound("Cannot determine the outer clause for ${F}: missing implicit OuterFrom[${F}, ${O}].")
-	class OuterPartOf[O <: FromClause, F <: FromClause] private()
+	class OuterClauseOf[O <: FromClause, F <: FromClause] private()
 
 
-	object OuterPartOf {
-		implicit val dual = new OuterPartOf[Dual, Dual]
+	object OuterClauseOf {
+		implicit val dual = new OuterClauseOf[Dual, Dual]
 
-		implicit def from[T[O] <: MappingAt[O]] :OuterPartOf[Dual, From[T]] =
-			dual.asInstanceOf[OuterPartOf[Dual, From[T]]]
+		implicit def from[T[O] <: MappingAt[O]] :OuterClauseOf[Dual, From[T]] =
+			dual.asInstanceOf[OuterClauseOf[Dual, From[T]]]
 
-		implicit def subselect[L <: FromSome, R[A] <: MappingAt[A]] :OuterPartOf[L, L Subselect R] =
-			dual.asInstanceOf[OuterPartOf[L, L Subselect R]]
+		implicit def subselect[L <: FromSome, R[A] <: MappingAt[A]] :OuterClauseOf[L, L Subselect R] =
+			dual.asInstanceOf[OuterClauseOf[L, L Subselect R]]
 
 		implicit def extended[O <: FromClause, F <: L J R, L <: U, R[A] <: MappingAt[A],
 		                      J[+C <: U, T[A] <: R[A]] <: NonSubselect[C, T], U <: FromClause]
-		                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U], outer :OuterPartOf[O, L])
-				:OuterPartOf[O, F] =
-			outer.asInstanceOf[OuterPartOf[O, F]]
+		                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U], outer :OuterClauseOf[O, L])
+				:OuterClauseOf[O, F] =
+			outer.asInstanceOf[OuterClauseOf[O, F]]
 
 		implicit def wrapped[O <: FromClause, F <: D[C], D[+B <: U] <: DecoratedFrom[B], C <: U, U <: FromClause]
-		                    (implicit decompose :DecoratorDecomposition[F, C, D, U], outer :OuterPartOf[O, C])
-				:OuterPartOf[O, F] =
-			outer.asInstanceOf[OuterPartOf[O, F]]
+		                    (implicit decompose :DecoratorDecomposition[F, C, D, U], outer :OuterClauseOf[O, C])
+				:OuterClauseOf[O, F] =
+			outer.asInstanceOf[OuterClauseOf[O, F]]
 
 		implicit def grouped[O <: FromClause, L <: FromSome, R[A] <: MappingAt[A]]
-		                    (implicit outer :OuterPartOf[O, L]) :OuterPartOf[O, L GroupByAll R] =
-			outer.asInstanceOf[OuterPartOf[O, L GroupByAll R]]
+		                    (implicit outer :OuterClauseOf[O, L]) :OuterClauseOf[O, L GroupByAll R] =
+			outer.asInstanceOf[OuterClauseOf[O, L GroupByAll R]]
 
 	}
 
@@ -3040,8 +3074,8 @@ object FromClause {
 		implicit def wrap[F <: FromClause, E <: FromClause](implicit ev :F ExtendedBy E) :F ExtendedBy DecoratedFrom[E] =
 			new ExtendedBy[F, DecoratedFrom[E]](ev.length)
 
-		implicit def group[F <: FromClause, E <: F#Nested, R[A] <: MappingAt[A]]
-		                  (implicit ev :F ExtendedBy E) :F ExtendedBy (E GroupByAll R) =
+		implicit def group[F <: FromClause, O <: FromClause, E <: FromSome, R[A] <: MappingAt[A]]
+		                  (implicit outer :O OuterClauseOf E, ev :F ExtendedBy O) :F ExtendedBy (E GroupByAll R) =
 			new ExtendedBy(ev.length + 1)
 	}
 
@@ -3106,7 +3140,7 @@ object FromClause {
 			new PrefixOf[F, E](prefix.diff + decompose.extension.diff)
 
 		implicit def group[F <: FromClause, O <: FromClause, E <: FromSome, R[A] <: MappingAt[A]]
-		                  (implicit outer :O OuterPartOf E, ev :F PrefixOf O) :F PrefixOf (E GroupByAll R) =
+		                  (implicit outer :O OuterClauseOf E, ev :F PrefixOf O) :F PrefixOf (E GroupByAll R) =
 			new PrefixOf(ev.diff + 1)
 	}
 

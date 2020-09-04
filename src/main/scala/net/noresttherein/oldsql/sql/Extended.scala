@@ -148,8 +148,6 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 	override def fullSize :Int = left.fullSize + 1
 
 	override def isParameterized :Boolean = left.isParameterized
-
-	override def isSubselect :Boolean = left.isSubselect
 	override def isValidSubselect :Boolean = left.isValidSubselect
 
 	override type Base = DefineBase[Implicit]

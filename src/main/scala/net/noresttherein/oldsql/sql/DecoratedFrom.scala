@@ -49,11 +49,7 @@ trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 	override type Outer = clause.Outer
 	override type Base = DefineBase[Implicit]
 
-	override def outer :Outer = clause.outer
-
-	override def isSubselect :Boolean = clause.isSubselect
 	override def isValidSubselect :Boolean = clause.isValidSubselect
-	override def innerSize :Int = clause.innerSize
 
 
 	override type InnerRow = clause.InnerRow
@@ -193,6 +189,8 @@ object DecoratedFrom {
 		override def where(filter :SQLBoolean[Generalized]) :This =
 			withClause(clause where filter.asInstanceOf[SQLBoolean[clause.Generalized]]) //todo: eliminate the cast
 
+
+		override val outer :Outer = clause.outer
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[Alias[_, _]]
 

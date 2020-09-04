@@ -507,7 +507,7 @@ object SQLExpression extends SQLMultiColumnTerms {
 			                                   s"unexpected subclass of ${implicitly[ClassTag[E]].runtimeClass.getName}")
 
 
-		override def toString = this.unqualifiedClassName
+		override def toString :String = this.unqualifiedClassName
 	}
 
 

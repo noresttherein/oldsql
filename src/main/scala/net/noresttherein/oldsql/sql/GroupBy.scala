@@ -76,8 +76,6 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
 		condition.stretch(target)
 
-	override def innerSize = 1
-
 	override type InnerRow = @~ ~ last.Subject
 
 	override def innerRow[E <: FromClause]
