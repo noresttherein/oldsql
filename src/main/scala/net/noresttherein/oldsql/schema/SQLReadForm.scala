@@ -2,16 +2,19 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{ResultSet, SQLException}
 
-import net.noresttherein.oldsql.collection.{Chain, ChainMap, LiteralIndex, Record}
+import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractChainIndexReadForm, BaseChainReadForm, FallbackReadForm, FlatMappedSQLReadForm, MappedSQLReadForm}
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
+
+import net.noresttherein.oldsql.collection.LabeledChain.>~
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 
 //implicits
 import net.noresttherein.oldsql.slang._
@@ -268,7 +271,7 @@ sealed trait SQLReadFormLevel1Implicits extends SQLReadFormLevel2Implicits {
 	  */
 	implicit def ChainMapReadForm[I <: ChainMap :SQLReadForm, K <: Singleton :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I &~ (K, V)] =
-		new AbstractChainIndexReadForm[&~, Tuple2, I, K, V] {
+		new AbstractChainIndexReadForm[&~, Tuple2, Singleton, I, K, V] {
 			protected[this] override def cons(init :I, value :V) = init &~ (key -> value)
 			protected override def symbol = "&~"
 		}
@@ -437,14 +440,25 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 	/** An implicit value for the empty chain `@~`, which reads zero columns and simply returns `@~`. */
 	implicit val EmptyChainReadForm :SQLReadForm[@~] = SQLForm.EmptyChainForm
 
-	/** Provides an implicit form for the heterogeneous map indexed by literal types (`LiteralIndex`) `I |~ L`
+	/** Provides an implicit form for the heterogeneous map indexed by types (`IndexedChain`) `I |~ L`
 	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
 	  */
-	implicit def LiteralIndexReadForm[I <: LiteralIndex :SQLReadForm, K <: Singleton :ValueOf, V :SQLReadForm]
+	implicit def IndexedChainReadFrom[I <: IndexedChain :SQLReadForm, K <: IndexedChain.Key :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I |~ (K :~ V)] =
-		new AbstractChainIndexReadForm[|~, :~, I, K, V] {
+		new AbstractChainIndexReadForm[|~, :~, IndexedChain.Key, I, K, V] {
 			protected[this] override def cons(init :I, value :V) = init |~ key :~ value
 			protected override def symbol = "|~"
+		}
+
+
+	/** Provides an implicit form for the heterogeneous map indexed by string literal types (`LabeledChain`) `I >~ L`
+	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
+	  */
+	implicit def LabeledChainReadFrom[I <: LabeledChain :SQLReadForm, K <: Label :ValueOf, V :SQLReadForm]
+			:SQLReadForm[I >~ (K :~ V)] =
+		new AbstractChainIndexReadForm[>~, :~, Label, I, K, V] {
+			protected[this] override def cons(init :I, value :V) = init >~ key :~ value
+			protected override def symbol = ">~"
 		}
 
 	/** Provides an implicit form for the heterogeneous map indexed by string literals (`Record`) `I |# L`
@@ -452,7 +466,7 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 	  */
 	implicit def RecordReadForm[I <: Record :SQLReadForm, K <: String with Singleton :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I |# (K, V)] =
-		new AbstractChainIndexReadForm[|#, Tuple2, I, K, V] {
+		new AbstractChainIndexReadForm[|#, Tuple2, Label, I, K, V] {
 			protected[this] override def cons(init :I, value :V) = init |# (key -> value)
 			protected override def symbol = "|#"
 		}
@@ -817,7 +831,7 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 
 
 	private[schema] trait ChainIndexReadForm[C[+A <: I, +B <: E[K, V]] <: A ~ B,
-	                                         E[+A <: Singleton, +B], I <: Chain, K <: Singleton, V]
+	                                         E[+A <: U, +B], U, I <: Chain, K <: U, V]
 		extends SQLReadForm[I C E[K, V]]
 	{
 		protected val init :SQLReadForm[I]
@@ -842,7 +856,7 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
-			case index :ChainIndexReadForm[_, _, _, _, _] if index canEqual this =>
+			case index :ChainIndexReadForm[_, _, _, _, _, _] if index canEqual this =>
 				index.key == key && index.value == value && index.init == init
 			case _ => false
 		}
@@ -858,13 +872,13 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 	
 	
 	private[schema] abstract class AbstractChainIndexReadForm
-	                               [C[+A <: I, +B <: E[K, V]] <: A ~ B, E[+A <: Singleton, +B],
-	                                I <: Chain, K <: Singleton, V]
+	                               [C[+A <: I, +B <: E[K, V]] <: A ~ B, E[+A <: U, +B], U,
+	                                I <: Chain, K <: U, V]
 	                               (implicit protected override val init :SQLReadForm[I], 
 	                                         protected override val value :SQLReadForm[V], keyValue :ValueOf[K])
-		extends ChainIndexReadForm[C, E, I, K, V]
+		extends ChainIndexReadForm[C, E, U, I, K, V]
 	{
-		final override def key = keyValue.value
+		final override def key :K = keyValue.value
 	}
 
 

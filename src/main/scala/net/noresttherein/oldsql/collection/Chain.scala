@@ -1,36 +1,15 @@
 package net.noresttherein.oldsql.collection
 
-import net.noresttherein
-import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, UpperBound}
 import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~, Item}
+import net.noresttherein.oldsql.collection.IndexedChain.{:~, method_:~, |~}
 import net.noresttherein.oldsql.morsels.generic.{Const, GenericFun, Self}
 import net.noresttherein.oldsql.morsels.LUB
 import scala.annotation.{implicitNotFound, tailrec}
 
-import net.noresttherein.oldsql.collection.ChainBound.BoundLink
-import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, NegativeInc, Numeral, Positive}
-
-
-
-trait ChainBound[+U] extends Serializable {
-	def isEmpty :Boolean
-
-	def length :Int
-}
-
-
-
-object ChainBound {
-
-	trait BoundLink[+I <: ChainBound[U], +L <: U, +U] {
-		def init :I
-		def last :U
-	}
-
-}
+import net.noresttherein.oldsql.collection.LabeledChain.>~
+import net.noresttherein.oldsql.collection.Record.|#
+import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Positive}
 
 
 
@@ -53,11 +32,14 @@ object ChainBound {
   * bounds, making possible enforcing a desired invariant without resorting to implicit witnesses.
   * @see [[net.noresttherein.oldsql.collection.Chain.@~]]
   * @see [[net.noresttherein.oldsql.collection.Chain.~]]
-  * @see [[net.noresttherein.oldsql.collection.LiteralIndex]]
+  * @see [[net.noresttherein.oldsql.collection.IndexedChain]]
   * @see [[net.noresttherein.oldsql.collection.Record]]
   * @author Marcin Mościcki
   */
-sealed trait Chain extends ChainBound[Any]
+sealed trait Chain {
+	def isEmpty :Boolean
+	def length :Int
+}
 
 
 
@@ -163,7 +145,7 @@ object Chain extends ChainFactory {
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	trait ~[+I <: Chain, +L] extends Chain with BoundLink[I, L, Any] {
+	trait ~[+I <: Chain, +L] extends Chain {
 		def init :I
 		def last :L
 
@@ -171,7 +153,7 @@ object Chain extends ChainFactory {
 
 		override def isEmpty = false
 
-		override def length = init.length + 1
+		override def length :Int = init.length + 1
 
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[~[_, _]]
@@ -192,12 +174,13 @@ object Chain extends ChainFactory {
 				case _ => sb append e
 			}
 			def rec(chain :Chain, prefix :StringBuilder) :StringBuilder = chain match {
-				case t ~< h => rec(h, rec(t, prefix) append "~<") append ">"
-				case t ~ h => entry(rec(t, prefix) append "~", h)
+				case t ~ h => entry(rec(t, prefix) append linkString, h)
 				case _ => prefix append chain
 			}
 			rec(this, new StringBuilder).toString
 		}
+
+		protected def linkString :String = "~"
 	}
 
 
@@ -214,39 +197,8 @@ object Chain extends ChainFactory {
 	}
 
 
-	/** A special chain link allowing encoding tree-like structures as a chain. It appends to the initial chain `I`
-	  * a new chain `L` of branches as a single value. Having a separate class allows to distinguish between
-	  * a 'natural' `Chain` element and an explicit branch.
-	  */
-	trait ~<[+I <: Chain, +L <: Chain] extends (I ~ L) {
-		@inline final def branches :L = last
-
-		override def canEqual(that :Any) = that.isInstanceOf[~<[_, _]]
-	}
-
-
-
-	object ~< {
-		@inline def apply[I <: Chain, L <: Chain](init :I, branches :L) :I ~< L = new branch(init, branches)
-
-		@inline def unapply[I <: Chain, L <: Chain](chain :I ~< L) :I ~< L = chain
-
-		def unapply[I <: Chain, L <: Chain](chain :I ~ L) :Option[(I, L)] = chain match {
-			case branch: ~<[I, L] => Some(branch.init -> branch.last)
-			case _ => None
-		}
-
-		def unapply(chain :Chain) :Option[(Chain, Chain)] = chain match {
-			case branch: ~<[_, _] => Some(branch.init -> branch.branches)
-			case _ => None
-		}
-	}
-
-
 
 	private class link[+I <: Chain, +L](val init :I, val last :L) extends (I ~ L)
-
-	private class branch[+I <: Chain, +L <: Chain](val init :I, val last :L) extends (I ~< L)
 
 
 
@@ -256,15 +208,20 @@ object Chain extends ChainFactory {
 	/** The type of all empty chains, with a single member being its companion object
 	  * [[net.noresttherein.oldsql.collection.Chain.@~$]].
 	  */
-	sealed class @~ private[Chain] extends ChainBound[Nothing] with Record with LiteralIndex {
+	sealed class @~ private[Chain] extends Record with LabeledChain {
 		override def isEmpty = true
 		override def length = 0
 	}
 
 
-
 	/** An empty `Chain`, which is also an instance of every `Chain` variants defined here. */
 	case object @~ extends @~ {
+		def ~[N](next :N): @~ ~ N = new link(this, next)
+		def |~[N <: IndexedChain.Item](next :N) = new |~(this, next)
+		def >~[N <: LabeledChain.Item](next :N) = new >~(this, next)
+		def &~[N <: ChainMap.Item](next :N) = new &~(this, next)
+		def |#[N <: Record.Item](next :N) = new |#(this, next)
+
 		def unapply(chain :Chain) :Boolean = chain.isInstanceOf[@~]
 	}
 
@@ -274,9 +231,6 @@ object Chain extends ChainFactory {
 
 		/** Adds a new element at the end of this chain. */
 		@inline def ~[N](next :N) :C ~ N = new link(self, next)
-
-		/** Adds a new chain as top-level branches at the end of this chain. */
-		@inline def ~<[B <: Chain](branches :B) :C ~< B = new branch(self, branches)
 
 		/** Returns the element at the given index. The index must be an `Int` literal; if it is non-negative,
 		  * it must be less then the chain's length and counting goes from left to right, starting with zero.
@@ -1130,20 +1084,20 @@ object Chain extends ChainFactory {
 
 
 
-/** Base class for the companion object of the `LiteralIndex` implementation of `Chain` as well as companion objects
+/** Base class for the companion object of the `IndexedChain` implementation of `Chain` as well as companion objects
   * of its subclasses. Contains implicit witnesses which form the basis of implementation of most operations shared
-  * by all classes in the `LiteralIndex` type hierarchy and which need access to the factory method for the particular
-  * implementation, preventing their declaration in a static context. A `LiteralIndex` is a `Chain` consisting
+  * by all classes in the `IndexedChain` type hierarchy and which need access to the factory method for the particular
+  * implementation, preventing their declaration in a static context. A `IndexedChain` is a `Chain` consisting
   * of pairs, which first element is always a singleton type (with the intention of it being a literal type),
   * forming a specialized but limited ''shapeless'' `HMap` variant.
-  * @see [[net.noresttherein.oldsql.collection.LiteralIndex]]
+  * @see [[net.noresttherein.oldsql.collection.IndexedChain]]
   */
 sealed abstract class IndexedChainFactory extends ChainFactory {
 	type Type >: @~ <: Chain
 	type Link[+I <: Type, +L <: Item] <: (I ~ L) with Type
 
 	/** The upper bound type of the first member of each tuple in the index. */
-	type Key <: Singleton
+	type Key
 
 	/** The upper bound for the second member of each tuple in the index */
 	type Value
@@ -1152,15 +1106,15 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 
 
 	protected def get[K <: Key, V <: Value](index :Type Link Entry[K, V]) :V
-	
+
 	protected def get[K <: Key, V <: Value](index :Type Link Entry[K, V], key :K) :V
 
 	protected def set[I <: Type, K <: Key, V <: Value](i :I Link Entry[K, V], key :K, v :V) :I Link Entry[K, V]
 
 	protected def append[I <: Type, K <: Key, V <: Value](index :I, key :K, value :V) :I Link Entry[K, V]
 
-	
-	
+
+
 	@implicitNotFound("Type ${K} is not a key in index ${I} (or is not mapped to type ${V}).")
 	sealed abstract class IndexGet[-I <: Type, K <: Key, +V <: Value] extends ((I, K) => V)
 
@@ -1179,8 +1133,8 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 	}
 
 
-	
-	
+
+
 	@implicitNotFound("Can't put ${V} under ${K} in index ${I}: either the type is abstract or the result " +
 	                  "does not conform to ${O}.")
 	sealed abstract class IndexPut[-I <: Type, K <: Key, -V <: Value, +O <: Type] extends ((I, K, V) => O)
@@ -1192,7 +1146,7 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 	@implicitNotFound("Can't add ${V} under ${K} in index ${I}: either the key already exists, the type is abstract, " +
 	                  "or the result does not conform to ${O}.")
 	sealed abstract class IndexAdd[-I <: Type, K <: Key, -V <: Value, +O <: Type] extends IndexPut[I, K, V, O]
-	
+
 
 	sealed abstract class AddWhenMissing {
 		private[this] val add = new IndexAdd[Type, Key, Value, Type Link Item] {
@@ -1204,7 +1158,7 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 		                     (implicit unique :UniqueKey[I, K]) :IndexAdd[I, K, V, I Link Entry[K, V]] =
 			add.asInstanceOf[IndexAdd[I, K, V, I Link Entry[K, V]]]
 	}
-	
+
 	object IndexPut extends AddWhenMissing {
 		private[this] val last = new IndexSet[Type Link Item, Key, Value, Type Link Item] {
 
@@ -1226,7 +1180,7 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 
 
 
-	
+
 	@implicitNotFound("Key type ${K} is present in index ${I} or the index is abstract.")
 	final class UniqueKey[-I <: Type, K <: Key] private ()
 
@@ -1257,17 +1211,17 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 			:UpperIndexBound[T Link Entry[HK, HV], K, V] =
 		tail.asInstanceOf[UpperIndexBound[T Link Entry[HK, HV], K, V]]
 
-	
-	
-	
+
+
+
 	sealed abstract class ToValueChain[-I <: Type, +O <: Chain] {
 		def apply(index :I) :O
 	}
-	
+
 	implicit final val EmptyValueChain :ToValueChain[@~, @~] = new ToValueChain[@~, @~] {
 		override def apply(index: @~) = index
 	}
-	
+
 	@inline implicit final def ToValueChain[I <: Type, K <: Key, V <: Value, O <: Chain]
 	                                       (implicit init :ToValueChain[I, O]) :ToValueChain[I Link Entry[K, V], O ~ V] =
 		new ToValueChain[I Link Entry[K, V], O ~ V] {
@@ -1279,7 +1233,7 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 
 
 	//the following multitude of ChainApplication implicits apply on the values of the index, ignoring the keys
-	implicit def applyValueChain[C <: Type, V <: Chain, Y](implicit vals :ToValueChain[C, V]) 
+	implicit def applyValueChain[C <: Type, V <: Chain, Y](implicit vals :ToValueChain[C, V])
 			:ChainApplication[C, V => Y, Y] =
 		ChainApplication { (f :V => Y, xs :C) => f(vals(xs)) }
 
@@ -1288,26 +1242,26 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 	implicit def applyValuesFunction1[A <: Value, Y] :ChainApplication[@~ Link Entry[Key, A], A => Y, Y] =
 		ChainApplication { (f :A => Y, xs: @~ Link Entry[Key, A]) => f(get(xs)) }
 
-	implicit def applyValuesFunction2[A <: Value, B <: Value, Y] 
+	implicit def applyValuesFunction2[A <: Value, B <: Value, Y]
 			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B], (A, B) => Y, Y] =
 		ChainApplication { (f :(A, B) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B]) => f(get(xs.init), get(xs)) }
 
-	implicit def applyValuesFunction3[A <: Value, B <: Value, C <: Value, Y] 
+	implicit def applyValuesFunction3[A <: Value, B <: Value, C <: Value, Y]
 			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C], (A, B, C) => Y, Y] =
 		ChainApplication {
-			(f :(A, B, C) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C]) => 
+			(f :(A, B, C) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C]) =>
 				val xs1 = xs.init; f(get(xs1.init), get(xs1), get(xs))
 		}
 
-	implicit def applyValuesFunction4[A <: Value, B <: Value, C <: Value, D <: Value, Y] 
+	implicit def applyValuesFunction4[A <: Value, B <: Value, C <: Value, D <: Value, Y]
 			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D], (A, B, C, D) => Y, Y] =
 		ChainApplication {
 			(f :(A, B, C, D) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D]) =>
-				val xs1 = xs.init; val xs2 = xs1.init; 
+				val xs1 = xs.init; val xs2 = xs1.init;
 				f(get(xs2.init), get(xs2), get(xs1), get(xs))
 		}
 
-	implicit def applyValuesFunction5[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, Y] 
+	implicit def applyValuesFunction5[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, Y]
 			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E], (A, B, C, D, E) => Y, Y] =
 		ChainApplication {
 			(f :(A, B, C, D, E) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E]) =>
@@ -1529,20 +1483,20 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 	implicit def applyValuesTuple2[A <: Value, B <: Value, Y] :ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B], ((A, B)) => Y, Y] =
 		ChainApplication { (f :((A, B)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B]) => f((get(xs.init), get(xs))) }
 
-	implicit def applyValuesTuple3[A <: Value, B <: Value, C <: Value, Y] 
+	implicit def applyValuesTuple3[A <: Value, B <: Value, C <: Value, Y]
 			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C], ((A, B, C)) => Y, Y] =
 		ChainApplication {
 			(f :((A, B, C)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C]) => val xs1 = xs.init; f((get(xs1.init), get(xs1), get(xs)))
 		}
 
-	implicit def applyValuesTuple4[A <: Value, B <: Value, C <: Value, D <: Value, Y] 
+	implicit def applyValuesTuple4[A <: Value, B <: Value, C <: Value, D <: Value, Y]
 			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D], ((A, B, C, D)) => Y, Y] =
 		ChainApplication {
 			(f :((A, B, C, D)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D]) =>
 				val xs1 = xs.init; val xs2 = xs1.init; f((get(xs2.init), get(xs2), get(xs1), get(xs)))
 		}
 
-	implicit def applyValuesTuple5[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, Y] 
+	implicit def applyValuesTuple5[A <: Value, B <: Value, C <: Value, D <: Value, E <: Value, Y]
 			:ChainApplication[@~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E], ((A, B, C, D, E)) => Y, Y] =
 		ChainApplication {
 			(f :((A, B, C, D, E)) => Y, xs: @~ Link Entry[Key, A] Link Entry[Key, B] Link Entry[Key, C] Link Entry[Key, D] Link Entry[Key, E]) =>
@@ -1761,51 +1715,52 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 
 
 
-/** A variant of `Chain` where all elements are pairs `(L, Any)`, with `L` being a singleton type
-  * (intended to be a literal type). It exists to decrease the reliance on implicit witnesses for all operations
+/** A variant of `Chain` where all elements are pairs `(K, Any)`, with `K` is an arbitrary type used as a key,
+  * erased at runtime. It exists to decrease the reliance on implicit witnesses for all operations
   * and putting a static upper bound on such chains, simplifying generic operations, especially when the chain
   * is abstract. The keys are not stored in the chain, only the values. This means that in order to extract
   * the keys, their type must be known to leverage the implicit `ValueOf[K]`.
   * Note that, like `Chain`, but unlike `List`, it is left-associative, thus being built
   * 'from left to right', with the easy access to the last element rather than the first.
-  * An empty `LiteralIndex` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$]].
-  * @see [[net.noresttherein.oldsql.collection.LiteralIndex.|~]]
-  *///consider: rename to LabeledChain to emphasise the relation to chain?
-sealed trait LiteralIndex extends Chain with ChainBound[Singleton :~ Any]
+  * An empty `IndexedChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$]].
+  * @see [[net.noresttherein.oldsql.collection.IndexedChain.|~]]
+  * @see [[net.noresttherein.oldsql.collection.LabeledChain]]
+  */
+sealed trait IndexedChain extends Chain
 
 
 
 
 
-object LiteralIndex extends IndexedChainFactory {
+object IndexedChain extends IndexedChainFactory {
 
 	/** The upper bound type of the first member of each tuple in the index. */
-	override type Key = Singleton
+	override type Key = Any
 	/** The upper bound for the second member of each tuple in the index */
 	override type Value = Any
 	override type Entry[+K <: Key, +V] = K :~ V
-	override type Type = LiteralIndex
+	override type Type = IndexedChain
 	override type Link[+I <: Type, +L <: Item] = I |~ L
 
 	/** Non-singleton lowest upper bound of `Item`, or `Item` if it is not a singleton type nor does it contain one. */
-	override type NonSingleton = Key :~ Value
+	override type NonSingleton = Any :~ Value
 
 	/** Factory method for non-empty chains of type `Type`.  */
 	protected override def link[I <: Type, L <: Item](init :I, last :L) = new |~[I, L](init, last)
 
-	protected override def get[K <: Key, V <: Value](index :LiteralIndex |~ (K :~ V)) :V = index.last.value
-	
-	protected override def get[K <: Key, V <: Value](index: LiteralIndex |~ (K :~ V), key :K) :V = index.last.value
+	protected override def get[K <: Key, V <: Value](index :IndexedChain |~ (K :~ V)) :V = index.last.value
 
-	protected override def set[I <: LiteralIndex, K <: Key, V <: Value](i :I |~ (K :~ V), key :K, v :V) :I |~ (K :~ V) =
+	protected override def get[K <: Key, V <: Value](index: IndexedChain |~ (K :~ V), key :K) :V = index.last.value
+
+	protected override def set[I <: IndexedChain, K <: Key, V <: Value](i :I |~ (K :~ V), key :K, v :V) :I |~ (K :~ V) =
 		new |~(i.init, new :~[K, V](v))
 
-	protected override def append[I <: LiteralIndex, K <: Key, V <: Any](index :I, key :K, value :V) :I |~ (K :~ V) =
+	protected override def append[I <: IndexedChain, K <: Key, V <: Any](index :I, key :K, value :V) :I |~ (K :~ V) =
 		new |~(index, new :~[K, V](value))
 
 
 
-	/** An entry of `LiteralIndex`, indexed solely on the type level by the singleton type `K` and storing only
+	/** An entry of `IndexedChain`, indexed solely on the type level by the singleton type `K` and storing only
 	  * the value `V`.
 	  */
 	class :~[+K, +V](val value :V) extends AnyVal {
@@ -1823,8 +1778,8 @@ object LiteralIndex extends IndexedChainFactory {
 
 
 
-	/** An extractor for pairs being elements of a `LiteralIndex`. Aside from introducing an infix format for the tuple,
-	  * it declares also an `unapply` method accepting a `LiteralIndex` itself, matching it ''iff'' it contains
+	/** An extractor for pairs being elements of a `IndexedChain`. Aside from introducing an infix format for the tuple,
+	  * it declares also an `unapply` method accepting a `IndexedChain` itself, matching it ''iff'' it contains
 	  * exactly one element. This allows to write extractors without the initial `@~`:
 	  * {{{
 	  *     val record = "silver" :~ "monsters |# "steel" :~ humans
@@ -1838,7 +1793,7 @@ object LiteralIndex extends IndexedChainFactory {
 		  */
 		@inline def apply[K <: Key] :constructor_:~[K] = new constructor_:~[K] {}
 
-		/** Creates an entry `K :~ V` of a `LiteralIndex`. Only the value is stored in the entry, with the key
+		/** Creates an entry `K :~ V` of a `IndexedChain`. Only the value is stored in the entry, with the key
 		  * existing solely in the type signature.
 		  */
 		@inline def apply[K <: Key, V](key :K, value :V) :K :~ V = new :~(value)
@@ -1847,37 +1802,38 @@ object LiteralIndex extends IndexedChainFactory {
 			Some(valueOf[K] -> entry.value)
 
 
-		def unapply[K <: Key :ValueOf, V](index: LiteralIndex |~ (K :~ V)) :Option[(K, V)] =
+		def unapply[K <: Key :ValueOf, V](index: IndexedChain |~ (K :~ V)) :Option[(K, V)] =
 			if (index.init eq @~) Some(valueOf[K] -> index.last.value) else None
 
-		def unapply(index :LiteralIndex) :Option[Value] = index match {
+		def unapply(index :IndexedChain) :Option[Value] = index match {
 			case @~ |~ value => Some(value)
 			case _ => None
 		}
 
 
-		/** A factory creating entries of a `LiteralIndex` with the type parameter as their key */
+		/** A factory creating entries of a `IndexedChain` with the type parameter as their key */
 		trait constructor_:~[K <: Key] extends Any {
 			@inline def apply[V](value :V): K :~ V = new :~(value)
 		}
 	}
 
+	class method_:~[K](private val key :K) extends AnyVal {
+		@inline def :~[V](value :V) :K :~ V = new :~(value)
+	}
 
 
 
-
-
-	/*** A non-empty `LiteralIndex`, consisting of another (possibly empty) `LiteralIndex` `init`, followed by
+	/*** A non-empty `IndexedChain`, consisting of another (possibly empty) `IndexedChain` `init`, followed by
 	  * the entry `last`. The entry is a value type `K :~ V` wrapping only its the value `V` - neither the key
 	  * nor the wrapper itself is really stored in this instance, only the value.
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	class |~[+I <: Type, +L <: Item] private[collection] (val init :I, val last :L) extends (I ~ L) with LiteralIndex {
+	class |~[+I <: Type, +L <: Item] private[collection] (val init :I, val last :L) extends (I ~ L) with IndexedChain {
 
-		@inline def values[O <: Chain](implicit chain :ToValueChain[I |~ L, O]) :O = 
-			this.asInstanceOf[O] //last is erased to last.value, so it will work in the bytecode! 
-		
+		@inline def values[O <: Chain](implicit chain :ToValueChain[I |~ L, O]) :O =
+			this.asInstanceOf[O] //last is erased to last.value, so it will work in the bytecode!
+
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[|~[_, _]]
 
 		override def equals(that :Any) :Boolean = that match {
@@ -1886,26 +1842,14 @@ object LiteralIndex extends IndexedChainFactory {
 			case _ => false
 		}
 
-		override def toString :String = {
-			def entry(sb :StringBuilder, e :Value) :StringBuilder =
-				if (e.isInstanceOf[Chain])
-					sb append "(:~" append e append ")"
-				else
-					sb append ":~" append e
-
-			def rec(t :LiteralIndex, h: Value) :StringBuilder = t match {
-				case r |~ e => entry(rec(r, e) append " |~ ", h)
-				case _ => entry(new StringBuilder(), h)
-			}
-			rec(init, last).toString
-		}
+		protected override def linkString = "|~"
 
 	}
 
 
 
-	/** A factory and extractor of non-empty `LiteralIndex` instances.
-	  * The extractor part is designed to be used in the infix notation, following the same order as the type `|#`
+	/** A factory and extractor of non-empty `IndexedChain` instances.
+	  * The extractor part is designed to be used in the infix notation, following the same order as the type `|~`
 	  * appears in the index's definition:
 	  * {{{
 	  *     "silver" :~ "monsters" |~ "steel" :~ "humans" match {
@@ -1913,29 +1857,28 @@ object LiteralIndex extends IndexedChainFactory {
 	  *     }
 	  * }}}
 	  * Note that in the above example we also use the feature of the `:~` entry extractor which matches also
-	  * any singleton `LiteralIndex` (that is, any value of type `@~ |~ E`).
-	  * Importing this symbol imports also implicit conversion which from any valid entry
-	  * (a pair `(String with Singleton, V)`) to a singleton record, and a conversion extending all string singletons
-	  * with a method `#>` for creating tuples with a singleton type as the key. Both of these features together
-	  * allow omitting of `@~` when creating records and starting with the first element instead, as also shown
-	  * in the above example.
+	  * any singleton `IndexedChain` (that is, any value of type `@~ |~ E`).
+	  * Importing this symbol imports also implicit conversion extending all types `K` with a method `:~` for creating
+	  * `K :~ V` entries, as well as a conversion extending any `K :~ V` with a `|~` method for creating two-element
+	  * chains. Both of these features together allow omitting of `@~` when creating records and starting
+	  * with the first element instead, as also shown in the above example.
 	  */
 	object |~ {
 		@inline def apply[K <: Key] :constructor_|~[K] = new constructor_|~[K] {}
 
-		@inline def apply[I <: LiteralIndex, L <: Singleton :~ Any](tail :I, head :L) :I |~ L = new |~(tail, head)
+		@inline def apply[I <: IndexedChain, L <: Singleton :~ Any](tail :I, head :L) :I |~ L = new |~(tail, head)
 
 
 		trait constructor_|~[K <: Key] extends Any {
-			@inline def apply[I <: LiteralIndex, V](init :I, value :V) :I |~ (K :~ V) =
+			@inline def apply[I <: IndexedChain, V](init :I, value :V) :I |~ (K :~ V) =
 				new |~[I, K :~ V](init, new :~(value))
 		}
 
 
 
-		@inline def unapply[I <: LiteralIndex, L <: Item](index :I |~ L) :I |~ L = index
+		@inline def unapply[I <: IndexedChain, L <: Item](index :I |~ L) :I |~ L = index
 
-		@inline def unapply(index :LiteralIndex) :Option[(LiteralIndex, Any)] = index match {
+		@inline def unapply(index :IndexedChain) :Option[(IndexedChain, Any)] = index match {
 			case nonEmpty: |~[_, _] => Some(nonEmpty.init -> nonEmpty.last.value)
 			case _ => None
 		}
@@ -1943,47 +1886,37 @@ object LiteralIndex extends IndexedChainFactory {
 
 
 
-	@inline implicit def |~[K <: Key, V](entry :K :~ V) :LiteralIndexOps[@~ |~ (K :~ V)] = @~ |~ entry
+	@inline implicit def |~[K <: Key, V](entry :K :~ V) :IndexedChainOps[@~ |~ (K :~ V)] = @~ |~ entry
 
-//	@inline implicit def |~[I <: LiteralIndex](index: I) :LiteralIndexOps[I] = new LiteralIndexOps(index)
-
-	@inline implicit def |~[K <: Key](key :K) :method_|~[K] = new method_|~(key)
-
-	class method_|~[K](private val key :K) extends AnyVal {
-		@inline def :~[V](value :V) :K :~ V = new :~(value)
-	}
+	@inline implicit def |~[K <: Key](key :K) :method_:~[K] = new method_:~(key)
 
 
 
 	/** Operations on the index `I` */
-	implicit class LiteralIndexOps[I <: LiteralIndex](private val self :I) extends AnyVal {
+	implicit class IndexedChainOps[I <: IndexedChain](private val self :I) extends AnyVal {
 
 		/** Extends the index with another entry `N`, becoming the new last entry. */
 		@inline def |~[N <: Key :~ Value](next :N) :I |~ N = new |~(self, next)
 
-		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
-		  * literal types (or at least, they where in the context in which it was created) and the key comparison
-		  * is made based on the types, rather than values, which are not stored. For this reason only entries
-		  * in the non-abstract part of type `I` (i.e., following the abstract `LiteralIndex`, if present) can
+		/** Retrieves the value of associated with the given key. The key comparison
+		  * is made based on the static types, rather than values, which are not stored. For this reason only entries
+		  * in the non-abstract part of type `I` (i.e., following the abstract `IndexedChain`, if present) can
 		  * be accessed this way.
-		  * @tparam K a singleton type of the key (a literal type in non-abstract contexts).
+		  * @tparam K the type of the key (often a literal type).
 		  * @tparam V the type of the value associated with the key `K`.
 		  */
 		@inline def apply[K <: Key, V](key :K)(implicit get :IndexGet[I, K, V]) :V = get(self, key)
 
-		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		/** Puts the given `(key, value)` pair in this index. If the key `K` is part of this index's type definition as
 		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
 		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
-		  * (it starts with `@~` rather than `LiteralIndex`), it returns a new index with the new pair at the end.
-		  * Note that, as `LiteralIndex` is covariant regarding both of its type arguments, it is possible to break
-		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
-		  * which would then match any other `K =:= I with Singleton` provided here.
+		  * (it starts with `@~` rather than `IndexedChain`), it returns a new index with the new pair at the end.
 		  */
-		@inline def update[K <: Key, V, R <: LiteralIndex](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
+		@inline def update[K <: Key, V, R <: IndexedChain](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
 		/** Appends the given index to the end of this chain. */
-		def ++[S <: LiteralIndex, R <: LiteralIndex](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
+		def ++[S <: IndexedChain, R <: IndexedChain](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
 			concat(self, suffix)
 
 		@inline def toMap[K, V](implicit convert :ToMap[I, K, V]) :Map[K, V] = convert(self).toMap
@@ -1995,7 +1928,7 @@ object LiteralIndex extends IndexedChainFactory {
 
 
 
-	sealed abstract class ToMap[I <: LiteralIndex, K, +V] {
+	sealed abstract class ToMap[I <: IndexedChain, K, +V] {
 		def apply(index :I) :List[(K, V)]
 	}
 
@@ -2003,7 +1936,7 @@ object LiteralIndex extends IndexedChainFactory {
 		def apply(monkey: @~) = Nil
 	}
 
-	implicit def toMap[I <: LiteralIndex, K <: U, L <: U :ValueOf, U <: Key, V]
+	implicit def toMap[I <: IndexedChain, K <: U, L <: U :ValueOf, U <: Key, V]
 	                  (bounds :ToMap[I, K, V]) :ToMap[I |~ (L :~ V), U, V]  =
 		new ToMap[I |~ (L :~ V), U, V] {
 			def apply(index :I |~ (L :~ V)) = (valueOf[L], index.last.value)::bounds(index.init)
@@ -2017,8 +1950,154 @@ object LiteralIndex extends IndexedChainFactory {
 
 
 
+/** A variant of `Chain` where all elements are pairs `(L, Any)`, with `L` being a singleton `String` type,
+  * (intended to by literal types). It exists to decrease the reliance on implicit witnesses for all operations
+  * and putting a static upper bound on such chains, simplifying generic operations, especially when the chain
+  * is abstract. The keys are not stored in the chain, only the values. This means that in order to extract
+  * the keys, their type must be known to leverage the implicit `ValueOf[K]`.
+  * Note that, like `Chain`, but unlike `List`, it is left-associative, thus being built
+  * 'from left to right', with the easy access to the last element rather than the first.
+  * An empty `LabeledChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$]].
+  * @see [[net.noresttherein.oldsql.collection.LabeledChain.>~]]
+  */
+sealed trait LabeledChain extends IndexedChain
+
+
+
+
+
+object LabeledChain extends IndexedChainFactory {
+
+	/** The upper bound type of the first member of each tuple in the index. */
+	override type Key = String with Singleton
+	/** The upper bound for the second member of each tuple in the index */
+	override type Value = Any
+	override type Entry[+K <: Key, +V] = K :~ V
+	override type Type = LabeledChain
+	override type Link[+I <: Type, +L <: Item] = I >~ L
+
+	/** Non-singleton lowest upper bound of `Item`, or `Item` if it is not a singleton type nor does it contain one. */
+	override type NonSingleton = String :~ Any
+
+	/** Factory method for non-empty chains of type `Type`.  */
+	protected override def link[I <: Type, L <: Item](init :I, last :L) = new >~[I, L](init, last)
+
+	protected override def get[K <: Key, V <: Value](index :LabeledChain >~ (K :~ V)) :V = index.last.value
+
+	protected override def get[K <: Key, V <: Value](index: LabeledChain >~ (K :~ V), key :K) :V = index.last.value
+
+	protected override def set[I <: LabeledChain, K <: Key, V <: Value](i :I >~ (K :~ V), key :K, v :V) :I >~ (K :~ V) =
+		new >~(i.init, new :~[K, V](v))
+
+	protected override def append[I <: LabeledChain, K <: Key, V <: Any](index :I, key :K, value :V) :I >~ (K :~ V) =
+		new >~(index, new :~[K, V](value))
+
+
+
+val test = "silver" :~ "monsters" >~ "steel" :~ "humans"
+
+
+
+	/*** A non-empty `LabeledChain`, consisting of another (possibly empty) `LabeledChain` `init`, followed by
+	  * the entry `last`. The entry is a value type `K :~ V` wrapping only its the value `V` - neither the key
+	  * nor the wrapper itself is really stored in this instance, only the value.
+	  * @tparam I the type of the chain with all elements but the last element of this type.
+	  * @tparam L the type of the last element in the chain.
+	  */
+	class >~[+I <: Type, +L <: Item] private[collection](init :I, last :L) extends |~[I, L](init, last) with LabeledChain {
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[>~[_, _]]
+
+		protected override def linkString = ">~"
+	}
+
+
+
+	/** A factory and extractor of non-empty `LabeledChain` instances.
+	  * The extractor part is designed to be used in the infix notation, following the same order as the type `>~`
+	  * appears in the index's definition:
+	  * {{{
+	  *     "silver" :~ "monsters" >~ "steel" :~ "humans" match {
+	  *         case key1 :~ value1 >~ key2 :~ value2
+	  *     }
+	  * }}}
+	  * Note that in the above example we also use the feature of the `:~` entry extractor which matches also
+	  * any singleton `LabeledChain` (that is, any value of type `@~ >~ E`).
+	  * Importing this symbol imports also implicit conversion extending all string literal types with a method `:~`
+	  * for creating index entries, as well as a conversion extending any `K :~ V` with a `>~` method for creating
+	  * two-element chains. Both of these features together allow omitting of `@~` when creating records and starting
+	  * with the first element instead, as also shown in the above example.
+	  */
+	object >~ {
+		@inline def apply[K <: Key] :constructor_>~[K] = new constructor_>~[K] {}
+
+		@inline def apply[I <: LabeledChain, L <: Key :~ Any](tail :I, head :L) :I >~ L = new >~(tail, head)
+
+
+		trait constructor_>~[K <: Key] extends Any {
+			@inline def apply[I <: LabeledChain, V](init :I, value :V) :I >~ (K :~ V) =
+				new >~[I, K :~ V](init, new :~(value))
+		}
+
+
+
+		@inline def unapply[I <: LabeledChain, L <: Item](index :I >~ L) :I >~ L = index
+
+		@inline def unapply(index :LabeledChain) :Option[(LabeledChain, Any)] = index match {
+			case nonEmpty: >~[_, _] => Some(nonEmpty.init -> nonEmpty.last.value)
+			case _ => None
+		}
+	}
+
+
+	@inline implicit def >~[K <: Key, V](entry :K :~ V) :LabeledChainOps[@~ >~ (K :~ V)] = @~ >~ entry
+	@inline implicit def >~[K <: Key](key :K) :method_:~[K] = new method_:~[K](key)
+
+
+
+	/** Operations on the index `I` */
+	implicit class LabeledChainOps[I <: LabeledChain](private val self :I) extends AnyVal {
+
+		/** Extends the index with another entry `N`, becoming the new last entry. */
+		@inline def >~[N <: Key :~ Value](next :N) :I >~ N = new >~(self, next)
+
+		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
+		  * literal types (or at least, they where in the context in which it was created) and the key comparison
+		  * is made based on the types, rather than values, which are not stored. For this reason only entries
+		  * in the non-abstract part of type `I` (i.e., following the abstract `LabeledChain`, if present) can
+		  * be accessed this way.
+		  * @tparam K a label for the key (a string literal type in non-abstract contexts).
+		  * @tparam V the type of the value associated with the key `K`.
+		  */
+		@inline def apply[K <: Key, V](key :K)(implicit get :IndexGet[I, K, V]) :V = get(self, key)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `LabeledChain`), it returns a new index with the new pair at the end.
+		  * Note that, as `LabeledChain` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `String with Singleton`,
+		  * which would then match any other `K =:= String with Singleton` provided here.
+		  */
+		@inline def update[K <: Key, V, R <: LabeledChain](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, key, value)
+
+		/** Appends the given index to the end of this chain. */
+		def ++[S <: LabeledChain, R <: LabeledChain](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
+			concat(self, suffix)
+
+	}
+
+}
+
+
+
+
+
+
 sealed trait ChainMapFactory extends IndexedChainFactory {
 	override type Type >: @~ <: ChainMap
+	override type Key <: Singleton
 	override type Entry[+K <: Key, +V <: Value] = (K, V)
 	override type Link[+I <: Type, +L <: Item] <: (I &~ L) with Type
 
@@ -2050,7 +2129,7 @@ sealed trait ChainMapFactory extends IndexedChainFactory {
 
 
 
-sealed trait ChainMap extends Chain with ChainBound[(Singleton, Any)]
+sealed trait ChainMap extends Chain
 
 
 
@@ -2187,7 +2266,7 @@ object ChainMap extends ChainMapFactory {
   * @see [[net.noresttherein.oldsql.collection.Record.|#]]
   * @see [[net.noresttherein.oldsql.collection.Record.#>]]
   */
-sealed trait Record extends ChainMap with ChainBound[(String with Singleton, Any)]
+sealed trait Record extends ChainMap 
 
 
 
@@ -2310,7 +2389,7 @@ object Record extends ChainMapFactory {
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
-		  * is made based on the types, rather than values. As `LiteralIndex` is covariant regarding both
+		  * is made based on the types, rather than values. As `IndexedChain` is covariant regarding both
 		  * of its type parameters, it is possible to break the implicit entry resolution mechanism by upcasting
 		  * an entry to `Singleton` (or some `I with Singleton`), in which case `K =:= Singleton` (alternatively,
 		  * the same `I with Singleton`) would resolve the first of such entries. If the key of the found entry
@@ -2326,8 +2405,8 @@ object Record extends ChainMapFactory {
 		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
 		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
 		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
-		  * (it starts with `@~` rather than `LiteralIndex`), it returns a new index with the new pair at the end.
-		  * Note that, as `LiteralIndex` is covariant regarding both of its type arguments, it is possible to break
+		  * (it starts with `@~` rather than `IndexedChain`), it returns a new index with the new pair at the end.
+		  * Note that, as `IndexedChain` is covariant regarding both of its type arguments, it is possible to break
 		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
 		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
 		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an

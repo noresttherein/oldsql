@@ -4,9 +4,9 @@ import scala.annotation.implicitNotFound
 import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, IndexedChain, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, ChainContains, ChainGet, ItemExists}
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
@@ -1171,16 +1171,16 @@ object MappingSchema {
 					concat(prefix(schema.prev), flatten(schema.last.schema.withOrigin[O]) compose schema.lastExtract)
 			}
 
-		implicit def appendFlattenedIndexedComponent[V <: LiteralIndex, C <: Chain, PV <: Chain, PC <: Chain,
-		                                             T, MV <: Chain, MC <: Chain, M <: |-|[T, MV, MC],
+		implicit def appendFlattenedIndexedComponent[V <: IndexedChain, C <: Chain, PV <: Chain, PC <: Chain,
+		                                             K <: IndexedChain.Key, T, MV <: Chain, MC <: Chain, M <: |-|[T, MV, MC],
 		                                             SV <: Chain,  SC <: Chain, FV <: Chain, FC <: Chain]
 		                                            (implicit prefix :SchemaFlattening[V, C, PV, PC],
 		                                             hint :Conforms[M, M, |-|[T, MV, MC]],
 		                                             flatten :SchemaFlattening[MV, MC, SV, SC],
 		                                             concat :ColumnSchemaConcat[PV, PC, SV, SC, FV, FC])
-				:SchemaFlattening[V |~ (LiteralIndex.Key :~ T), C ~ M, FV, FC] =
+				:SchemaFlattening[V |~ (K :~ T), C ~ M, FV, FC] =
 			appendFlattenedComponent(prefix, hint, flatten, concat)
-				.asInstanceOf[SchemaFlattening[V |~ (LiteralIndex.Key :~ T), C ~ M, FV, FC]]
+				.asInstanceOf[SchemaFlattening[V |~ (K :~ T), C ~ M, FV, FC]]
 
 	}
 
@@ -1194,10 +1194,11 @@ object MappingSchema {
 					init(schema.prev).col(schema.last, schema.lastExtract)
 			}
 
-		implicit def appendIndexedColumn[V <: LiteralIndex, C <: Chain, T, M <: ||[T], FV <: Chain, FC <: Chain]
+		implicit def appendIndexedColumn[V <: IndexedChain, C <: Chain, K <: IndexedChain.Key, T,
+		                                 M <: ||[T], FV <: Chain, FC <: Chain]
 		                                (implicit init :SchemaFlattening[V, C, FV, FC])
-				:SchemaFlattening[V |~ (LiteralIndex.Key :~ T), C ~ M, FV ~ T, FC ~ M] =
-			appendColumn(init).asInstanceOf[SchemaFlattening[V |~ (LiteralIndex.Key :~ T), C ~ M, FV ~ T, FC ~ M]]
+				:SchemaFlattening[V |~ (K :~ T), C ~ M, FV ~ T, FC ~ M] =
+			appendColumn(init).asInstanceOf[SchemaFlattening[V |~ (K :~ T), C ~ M, FV ~ T, FC ~ M]]
 	}
 
 
@@ -1224,7 +1225,7 @@ object MappingSchema {
 					schema.lastExtract
 			}
 
-		implicit def lastIndexed[N <: Label, V <: LiteralIndex, C <: Chain, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain]]
+		implicit def lastIndexed[N <: Label, V <: IndexedChain, C <: Chain, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain]]
 				:GetLabeledComponent[N, V |~ (N :~ T), C ~ M, T, M] =
 			last[N, V, C, T, M].asInstanceOf[GetLabeledComponent[N, V |~ (N :~ T), C ~ M, T, M]]
 
@@ -1240,7 +1241,7 @@ object MappingSchema {
 					get.extract(schema.prev, label)
 			}
 
-		implicit def previousIndexed[N <: Label, V <: LiteralIndex, C <: Chain, X <: (_ <: Label) :~ _,
+		implicit def previousIndexed[N <: Label, V <: IndexedChain, C <: Chain, X <: (_ <: Label) :~ _,
 			                         T, M <: @|-|[N, T, _ <: Chain, _ <: Chain], L <: Mapping]
 		                            (implicit get :GetLabeledComponent[N, V, C, T, M])
 				:GetLabeledComponent[N, V |~ X, C ~ L, T, M] =
@@ -1281,7 +1282,7 @@ object MappingSchema {
 				:GetSchemaComponent[J, V ~ T, C ~ M, T, M] =
 			singleton[T, M].asInstanceOf[GetSchemaComponent[J, V ~ T, C ~ M, T, M]]
 
-		implicit def lastIndexed[I <: Numeral, J <: Numeral, V <: LiteralIndex, C <: Chain,
+		implicit def lastIndexed[I <: Numeral, J <: Numeral, V <: IndexedChain, C <: Chain,
 			                     N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain]]
 		                        (implicit inc :Inc[I, J], size :GetSchemaComponent[I, V, C, _, _])
 				:GetSchemaComponent[J, V |~ (N :~ T), C ~ M, T, M] =
@@ -1299,7 +1300,7 @@ object MappingSchema {
 					get.extract(schema.prev, idx)
 			}
 
-		implicit def previousIndexed[I <: Numeral, V <: LiteralIndex, C <: Chain, X <: (_ <: Label) :~ _, L <: Mapping,
+		implicit def previousIndexed[I <: Numeral, V <: IndexedChain, C <: Chain, X <: (_ <: Label) :~ _, L <: Mapping,
 		                             N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain]]
 		                            (implicit get :GetSchemaComponent[I, V, C, T, M])
 				:GetSchemaComponent[I, V |~ X, C ~ L, T, M] =

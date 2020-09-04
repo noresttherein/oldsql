@@ -2,10 +2,10 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{PreparedStatement, ResultSet}
 
-import net.noresttherein.oldsql.collection.{Chain, ChainMap, LiteralIndex, Record}
+import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.schema.SQLForm.{ChainForm, ChainMapForm, FlatMappedSQLForm, MappedSQLForm, NullValue}
 import net.noresttherein.oldsql.schema.SQLReadForm.{ChainIndexReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, SeqReadForm}
@@ -14,9 +14,11 @@ import net.noresttherein.oldsql.slang._
 import scala.collection.immutable.Seq
 import scala.reflect.ClassTag
 
+import net.noresttherein.oldsql.collection.LabeledChain.>~
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.ScalaForms.Tuple2Form
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang
 
 
@@ -290,10 +292,13 @@ object SQLForm extends SQLFormLevel1Implicits {
 		override def toString = "@~"
 	}
 
-	implicit def LiteralIndexForm[I <: LiteralIndex :SQLForm, K <: Singleton :ValueOf, V :SQLForm] :SQLForm[I |~ (K :~ V)] =
-		new LiteralIndexForm(SQLForm[I], valueOf[K], SQLForm[V])
+	implicit def IndexedChainFrom[I <: IndexedChain :SQLForm, K :ValueOf, V :SQLForm] :SQLForm[I |~ (K :~ V)] =
+		new IndexedChainForm(SQLForm[I], valueOf[K], SQLForm[V])
 
-	implicit def RecordForm[I <: Record :SQLForm, K <: String with Singleton :ValueOf, V :SQLForm] :SQLForm[I |# (K, V)] =
+	implicit def LabeledChainForm[I <: LabeledChain :SQLForm, K <: Label :ValueOf, V :SQLForm] :SQLForm[I >~ (K :~ V)] =
+		new LabeledChainForm(SQLForm[I], valueOf[K], SQLForm[V])
+
+	implicit def RecordForm[I <: Record :SQLForm, K <: Label :ValueOf, V :SQLForm] :SQLForm[I |# (K, V)] =
 		new RecordForm(SQLForm[I], valueOf[K], SQLForm[V])
 
 
@@ -665,28 +670,36 @@ object SQLForm extends SQLFormLevel1Implicits {
 	}
 
 
-	private class LiteralIndexForm[I <: LiteralIndex, K <: Singleton, V]
+	private class IndexedChainForm[I <: IndexedChain, K <: IndexedChain.Key, V]
 	                              (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
 		extends GenericChainWriteForm[|~, I, K :~ V, V](init, value.unmap(_.value), value, "|~")
-		   with ChainIndexReadForm[|~, :~, I, K, V] with SQLForm[I |~ (K :~ V)]
+		   with ChainIndexReadForm[|~, :~, IndexedChain.Key, I, K, V] with SQLForm[I |~ (K :~ V)]
 	{
 		protected[this] override def cons(init :I, value :V) :I |~ (K :~ V) = init |~ (key :~ value)
 	}
 
+	private class LabeledChainForm[I <: LabeledChain, K <: LabeledChain.Key, V]
+	                              (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
+		extends GenericChainWriteForm[>~, I, K :~ V, V](init, value.unmap(_.value), value, ">~")
+		   with ChainIndexReadForm[>~, :~, LabeledChain.Key, I, K, V] with SQLForm[I >~ (K :~ V)]
+	{
+		protected[this] override def cons(init :I, value :V) :I >~ (K :~ V) = init >~ (key :~ value)
+	}
 
-	private[schema] class ChainMapForm[I <: ChainMap, K <: Singleton, V]
+
+	private[schema] class ChainMapForm[I <: ChainMap, K <: ChainMap.Key, V]
 	                          (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
 		extends GenericChainWriteForm[&~, I, (K, V), V](init, value.unmap(_._2), value, "&~")
-		   with ChainIndexReadForm[&~, Tuple2, I, K, V] with SQLForm[I &~ (K, V)]
+		   with ChainIndexReadForm[&~, Tuple2, ChainMap.Key, I, K, V] with SQLForm[I &~ (K, V)]
 	{
 		override protected[this] def cons(init :I, value :V) :I &~ (K, V) = init &~ (key -> value)
 	}
 
 
-	private class RecordForm[I <: Record, K <: String with Singleton, V]
+	private class RecordForm[I <: Record, K <: Record.Key, V]
 	                        (override val init :SQLForm[I], override val key :K, override val value :SQLForm[V])
 		extends GenericChainWriteForm[|#, I, (K, V), V](init, value.unmap(_._2), value, "|#")
-		   with ChainIndexReadForm[|#, Tuple2, I, K, V] with SQLForm[I |# (K, V)]
+		   with ChainIndexReadForm[|#, Tuple2, Record.Key, I, K, V] with SQLForm[I |# (K, V)]
 	{
 		override protected[this] def cons(init :I, value :V) :I |# (K, V) = init |# key -> value
 	}

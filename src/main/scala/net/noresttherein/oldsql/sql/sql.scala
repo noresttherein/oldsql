@@ -7,5 +7,5 @@ package object sql {
 
 	type SQLBoolean[-F <: FromClause] = ColumnSQL[F, Boolean]
 
-//	type GroupBy[+F <: DiscreteFrom, T] = GroupByAll[F, MappingOf[T]#TypedProjection]
+//	type GroupBy[+F <: FromSome, T] = GroupByAll[F, MappingOf[T]#TypedProjection]
 }

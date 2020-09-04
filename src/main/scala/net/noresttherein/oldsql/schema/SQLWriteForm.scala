@@ -2,15 +2,18 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
-import net.noresttherein.oldsql.collection.{Chain, ChainMap, LiteralIndex, Record}
+import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, CombinedWriteForm, FlatMappedSQLWriteForm, GenericChainWriteForm, MappedSQLWriteForm}
 import scala.collection.immutable.Seq
+
+import net.noresttherein.oldsql.collection.LabeledChain.>~
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 
 //implicits
 import net.noresttherein.oldsql.slang._
@@ -358,10 +361,16 @@ object SQLWriteForm extends ScalaWriteForms with SQLWriteFormLevel1Implicits {
 	  */
 	implicit val EmptyChainWriteForm :SQLWriteForm[@~] = empty
 
-	implicit def LiteralIndexWriteForm[I <: LiteralIndex :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I |~ (K :~ V)] =
+	implicit def IndexedChainWriteFrom[I <: IndexedChain :SQLWriteForm, K <: IndexedChain.Key, V :SQLWriteForm]
+			:SQLWriteForm[I |~ (K :~ V)] =
 		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_.value), SQLWriteForm[V], "|~")
 
-	implicit def RecordWriteForm[I <: Record :SQLWriteForm, K <: String with Singleton, V :SQLWriteForm] :SQLWriteForm[I |# (K, V)] =
+	implicit def LabeledChainWriteForm[I <: LabeledChain :SQLWriteForm, K <: Label, V :SQLWriteForm]
+			:SQLWriteForm[I >~ (K :~ V)] =
+		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_.value), SQLWriteForm[V], ">~")
+
+	implicit def RecordWriteForm[I <: Record :SQLWriteForm, K <: String with Singleton, V :SQLWriteForm]
+			:SQLWriteForm[I |# (K, V)] =
 		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_._2), SQLWriteForm[V], "|#")
 
 

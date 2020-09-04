@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainContains, ChainGet, ItemExists}
-import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap}
+import net.noresttherein.oldsql.collection.{Chain, IndexedChain, NaturalMap}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTempla
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.{slang, OperationType}
 import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.IndexedMappingSchema.{ExtensibleFlatIndexedSchema, ExtensibleIndexedSchema, FlatIndexedMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
@@ -939,16 +939,16 @@ object SchemaMapping {
 			schema => prefix(schema.prev).col(schema.last, schema.lastExtract)
 
 
-		implicit def includeInIndexedSchema[S, V <: LiteralIndex, C <: Chain, N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain],
-		                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: LiteralIndex, FC <: Chain, O]
+		implicit def includeInIndexedSchema[S, V <: IndexedChain, C <: Chain, N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain],
+		                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: IndexedChain, FC <: Chain, O]
 		                            (implicit prefix :FilterSchema[IndexedMappingSchema[S, V, C, O], E, I,
 			                                                       ExtensibleIndexedSchema[S, FV, FC, O]])
 				:FilterSchema[IndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J,
 				              ExtensibleIndexedSchema[S, FV |~ (N :~ T), FC ~ M, O]] =
 			schema => prefix(schema.prev).append(schema.last, schema.lastExtract)
 
-		implicit def includeInFlatIndexedSchema[S, V <: LiteralIndex, C <: Chain, N <: Label, T, M <: @||[N, T],
-			                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: LiteralIndex, FC <: Chain, O]
+		implicit def includeInFlatIndexedSchema[S, V <: IndexedChain, C <: Chain, N <: Label, T, M <: @||[N, T],
+			                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: IndexedChain, FC <: Chain, O]
 		                                       (implicit prefix :FilterSchema[FlatIndexedMappingSchema[S, V, C, O], E, I,
 			                                                                  ExtensibleFlatIndexedSchema[S, FV, FC, O]])
 				:FilterSchema[FlatIndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J,
@@ -1025,16 +1025,16 @@ object SchemaMapping {
 				:FilterSchema[FlatMappingSchema[S, V ~ T, C ~ M, O], E, J, ExtensibleFlatMappingSchema[S, FV, FC, O]] =
 			schema => prefix(schema.prev)
 
-		implicit def excludeFromIndexedSchema[S, V <: LiteralIndex, C <: Chain, N <: Label, T, M <: @|-|[N, T, _, _],
-			                                  E <: Chain, I <: Numeral, J <: Numeral, FV <: LiteralIndex, FC <: Chain, O]
+		implicit def excludeFromIndexedSchema[S, V <: IndexedChain, C <: Chain, N <: Label, T, M <: @|-|[N, T, _, _],
+			                                  E <: Chain, I <: Numeral, J <: Numeral, FV <: IndexedChain, FC <: Chain, O]
 		                                     (implicit prefix :FilterSchema[IndexedMappingSchema[S, V, C, O], E, I,
 			                                                                ExtensibleIndexedSchema[S, FV, FC, O]],
 		                                      inc :Inc[I, J], exclude :ExcludeComponent[M, I, E])
 				:FilterSchema[IndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J, ExtensibleIndexedSchema[S, FV, FC, O]] =
 			schema => prefix(schema.prev)
 
-		implicit def excludeFromFlatIndexedSchema[S, V <: LiteralIndex, C <: Chain, N <: Label, T, M <: @||[N, T],
-			                                      E <: Chain, I <: Numeral, J <: Numeral, FV <: LiteralIndex, FC <: Chain, O]
+		implicit def excludeFromFlatIndexedSchema[S, V <: IndexedChain, C <: Chain, N <: Label, T, M <: @||[N, T],
+			                                      E <: Chain, I <: Numeral, J <: Numeral, FV <: IndexedChain, FC <: Chain, O]
 		                                         (implicit prefix :FilterSchema[FlatIndexedMappingSchema[S, V, C, O], E, I,
 			                                                                    ExtensibleFlatIndexedSchema[S, FV, FC, O]],
 		                                          inc :Inc[I, J], exclude :ExcludeComponent[M, I, E])

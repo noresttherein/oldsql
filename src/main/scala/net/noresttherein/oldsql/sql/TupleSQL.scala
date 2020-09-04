@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 
-import net.noresttherein.oldsql.collection.{Chain, LiteralIndex}
+import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom}
@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.SeqTuple.{CaseSeq, SeqMatcher}
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
 import net.noresttherein.oldsql.sql.SelectSQL.{FreeSelectSQL, SubselectSQL}
@@ -204,7 +204,7 @@ object TupleSQL {
 	//does not extend ChainTuple because IndexedChainHead doesn't extend ChainHead and it would cause problems
 	// in pattern matching a ChainTuple
 	/** A variant of [[net.noresttherein.oldsql.sql.TupleSQL.ChainTuple ChainTuple]] which maps
-	  * to a [[net.noresttherein.oldsql.collection.LiteralIndex LiteralIndex]] - a `Chain` subtype with key-value pairs
+	  * to a [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]] - a `Chain` subtype with key-value pairs
 	  * in the form of `K :~ V` as its only elements. The keys exist only on the type level in the `T` type parameter;
 	  * Member SQL expressions are not of the `K :~ V` type, but rather directly the value type `V`.
 	  * The indexing has no special effect on the generated SQL other than an `IndexedColumn` being a subclass of
@@ -223,7 +223,7 @@ object TupleSQL {
 	  * Note that, in order to provide clear cases when pattern matching, this type does not extend the standard
 	  * `ChainTuple`.
 	  */
-	trait IndexedChainTuple[-F <: FromClause, T <: LiteralIndex] extends TupleSQL[F, T] with IndexedSQLExpression[F, T] {
+	trait IndexedChainTuple[-F <: FromClause, T <: IndexedChain] extends TupleSQL[F, T] with IndexedSQLExpression[F, T] {
 		def size :Int
 
 		protected override def parts :Seq[SQLExpression[F, _]] = {
@@ -289,7 +289,7 @@ object TupleSQL {
 		}
 
 
-		case class IndexedChainHead[-F <: FromClause, T <: LiteralIndex, K <: Label :ValueOf, H]
+		case class IndexedChainHead[-F <: FromClause, T <: IndexedChain, K <: Label :ValueOf, H]
 		                           (init :IndexedChainTuple[F, T], last :IndexedSQLExpression[F, H])
 			extends IndexedChainTuple[F, T |~ (K :~ H)]
 		{
@@ -298,7 +298,7 @@ object TupleSQL {
 			override def size :Int = init.size + 1
 
 			override def readForm :SQLReadForm[T |~ (K :~ H)] =
-				SQLReadForm.LiteralIndexReadForm[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
+				SQLReadForm.IndexedChainReadFrom[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
 
 
 			override def freeValue :Option[T |~ (K :~ H)] =
@@ -314,7 +314,7 @@ object TupleSQL {
 
 
 		trait IndexedChainMatcher[+F <: FromClause, +Y[X]] {
-			def indexedChain[X <: LiteralIndex](e :IndexedChainTuple[F, X]) :Y[X]
+			def indexedChain[X <: IndexedChain](e :IndexedChainTuple[F, X]) :Y[X]
 		}
 
 		type CaseIndexedChain[+F <: FromClause, +Y[X]] = IndexedChainMatcher[F, Y]
@@ -322,10 +322,10 @@ object TupleSQL {
 		trait MatchIndexedChain[+F <: FromClause, +Y[X]] extends IndexedChainMatcher[F, Y] {
 			def emptyChain :Y[@~]
 
-			def indexedChainHead[I <: LiteralIndex, K <: Label :ValueOf, L]
+			def indexedChainHead[I <: IndexedChain, K <: Label :ValueOf, L]
 			                    (init :IndexedChainTuple[F, I], last :IndexedSQLExpression[F, L]) :Y[I |~ (K :~ L)]
 
-			override def indexedChain[X <: LiteralIndex](e :IndexedChainTuple[F, X]) :Y[X] = (e match {
+			override def indexedChain[X <: IndexedChain](e :IndexedChainTuple[F, X]) :Y[X] = (e match {
 				case tuple @ IndexedChainHead(tail, head) => indexedChainHead(tail, head)(new ValueOf(tuple.key))
 				case _ => emptyChain
 			}).asInstanceOf[Y[X]]
@@ -348,7 +348,7 @@ object TupleSQL {
 
 		override def chain[X <: Chain](e :ChainTuple[F, X]) :Y[X] = tuple(e)
 
-		override def indexedChain[X <: LiteralIndex](e :IndexedChainTuple[F, X]) :Y[X] = tuple(e)
+		override def indexedChain[X <: IndexedChain](e :IndexedChainTuple[F, X]) :Y[X] = tuple(e)
 
 		override def seq[X](e: SeqTuple[F, X]): Y[Seq[X]] = tuple(e)
 

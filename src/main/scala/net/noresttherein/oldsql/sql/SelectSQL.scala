@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.collection.{Chain, LiteralIndex, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, IndexedChain, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.generic.=#>
@@ -29,7 +29,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.MatchChain
 import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, IndexedChainTuple, SeqTuple}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.collection.LiteralIndex.{:~, |~}
+import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedSQLExpression, MatchIndexedChain}
@@ -540,7 +540,7 @@ object SelectSQL {
 				pieces => for (t <- tl(pieces); h <- hd(pieces)) yield t ~ h
 			}
 
-			override def indexedChainHead[I <: LiteralIndex, K <: Label :ValueOf, L]
+			override def indexedChainHead[I <: IndexedChain, K <: Label :ValueOf, L]
 			                             (init :IndexedChainTuple[S, I], last :IndexedSQLExpression[S, L]) =
 			{
 				val tl = apply(init)
@@ -655,7 +655,7 @@ object SelectSQL {
 				headExs ++: tailExs
 			}
 
-			override def indexedChainHead[I <: LiteralIndex, K <: Label :ValueOf, L]
+			override def indexedChainHead[I <: IndexedChain, K <: Label :ValueOf, L]
 			                             (init :IndexedChainTuple[S, I], last :IndexedSQLExpression[S, L]) = {
 				val tailExs = apply(init).map(schema.composeColumnExtractAssoc(outer, Chain.init[I] _)(_))
 				val headExs = apply(last).map(schema.composeColumnExtractAssoc(outer, (_:(I |~ (K :~ L))).last.value)(_))
