@@ -7,8 +7,8 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{As, ClauseComposition, ExtendedBy, PrefixOf}
+import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.FromClause.{As, ClauseComposition, ClauseDecomposition, ExtendedBy, PrefixOf}
 import net.noresttherein.oldsql.sql.JoinLike.JoinWith
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
@@ -208,11 +208,11 @@ object AndFrom {
 
 
 	implicit def andFromDecomposition[L <: FromClause, R[O] <: MappingAt[O]]
-			:ExtendedComposition[L AndFrom R, L, R, AndFrom, FromClause] =
-		decomposition.asInstanceOf[ExtendedComposition[L AndFrom R, L, R, AndFrom, FromClause]]
+			:ExtendedDecomposition[L AndFrom R, L, R, AndFrom, FromClause] =
+		decomposition.asInstanceOf[ExtendedDecomposition[L AndFrom R, L, R, AndFrom, FromClause]]
 
 	private[this] val decomposition =
-		new ExtendedComposition[FromClause AndFrom MappingAt, FromClause, MappingAt, AndFrom, FromClause]
+		new ExtendedDecomposition[FromClause AndFrom MappingAt, FromClause, MappingAt, AndFrom, FromClause]
 
 
 
@@ -475,11 +475,11 @@ object AndFrom {
 //
 //
 //	implicit def emptyJoinDecomposition[L <: EmptyFrom, R[O] <: MappingAt[O]]
-//			:ExtendedComposition[L EmptyJoin R, L, R, EmptyJoin, EmptyFrom] =
-//		decomposition.asInstanceOf[ExtendedComposition[L EmptyJoin R, L, R, EmptyJoin, EmptyFrom]]
+//			:ExtendedDecomposition[L EmptyJoin R, L, R, EmptyJoin, EmptyFrom] =
+//		decomposition.asInstanceOf[ExtendedDecomposition[L EmptyJoin R, L, R, EmptyJoin, EmptyFrom]]
 //
 //	private[this] val decomposition =
-//		new ExtendedComposition[EmptyFrom EmptyJoin MappingAt, EmptyFrom, MappingAt, EmptyJoin, EmptyFrom]
+//		new ExtendedDecomposition[EmptyFrom EmptyJoin MappingAt, EmptyFrom, MappingAt, EmptyJoin, EmptyFrom]
 //
 //
 //
@@ -705,10 +705,10 @@ object From {
 
 	
 	
-	implicit def fromDecomposition[T[O] <: MappingAt[O]] :FromComposition[T] =
-		decomposition.asInstanceOf[FromComposition[T]]
+	implicit def fromComposition[T[O] <: MappingAt[O]] :FromComposition[T] =
+		composition.asInstanceOf[FromComposition[T]]
 	
-	private[this] val decomposition = new FromComposition[MappingAt]
+	private[this] val composition = new FromComposition[MappingAt]
 
 
 	class FromComposition[M[O] <: MappingAt[O]] extends ClauseComposition[From[M], Dual, Dual] {
@@ -721,13 +721,17 @@ object From {
 		override def extension[A <: Dual] :A PrefixOf From[M] =
 			PrefixOf.itself[From[M]].asInstanceOf[A PrefixOf From[M]]
 
-		override def apply(from :From[M]) :Dual = from.left
+		override def strip(from :From[M]) :Dual = from.left
 
-		override def upcast[A >: Dual <: Dual] :ClauseComposition[From[M], A, Dual] =
-			this.asInstanceOf[ClauseComposition[From[M], A, Dual]]
+		override def apply[D <: Dual](template :From[M], dual :D) :From[M] =
+			if (template.left.filter == dual.filter) template //this assumes Dual is sealed and thus it doesn't matter
+			else template.withCondition(dual.filter && template.condition) //which instance is used if the filter is right
 
-		override def cast[A <: Dual] :ClauseComposition[From[M], A, Dual] =
-			this.asInstanceOf[ClauseComposition[From[M], A, Dual]]
+		override def upcast[A >: Dual <: Dual] :ClauseDecomposition[From[M], A, Dual] =
+			this.asInstanceOf[ClauseDecomposition[From[M], A, Dual]]
+
+		override def cast[A <: Dual] :ClauseDecomposition[From[M], A, Dual] =
+			this.asInstanceOf[ClauseDecomposition[From[M], A, Dual]]
 	}
 	
 	

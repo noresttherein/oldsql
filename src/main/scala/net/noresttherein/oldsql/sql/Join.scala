@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.sql
 
 
+import scala.annotation.implicitNotFound
+
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
@@ -14,7 +16,7 @@ import net.noresttherein.oldsql.sql.SQLScribe.ReplaceRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
+import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
 
@@ -270,12 +272,30 @@ object JoinLike {
 
 
 
-	implicit def joinDecomposition[L <: FromSome, R[O] <: MappingAt[O], J[+A <: FromSome, B[O] <: MappingAt[O]] <: A JoinLike B]
-			:ExtendedComposition[L J R, L, R, J, FromSome] =
-		decomposition.asInstanceOf[ExtendedComposition[L J R, L, R, J, FromSome]]
+	@implicitNotFound("I do not know how to decompose ${F} into a join ${L} ${J} ${R}.\n" +
+	                  "Missing implicit JoinComposition[${F}, ${L}, ${R}, ${J}].")
+	class JoinComposition[L <: FromSome, R[O] <: MappingAt[O],
+	                      J[+A <: FromSome, B[O] <: MappingAt[O]] <:
+	                        (A JoinLike B) { type LikeJoin[+X <: FromSome, Y[O] <: MappingAt[O]] <: X J Y }]
+		extends ExtendedComposition[L J R, L, R, J, FromSome, MappingAt]
+	{
+		override def apply[C <: FromSome](template :L J R, left :C) :C J R = template.withLeft(left)(True)
 
-	private[this] val decomposition =
-		new ExtendedComposition[FromSome JoinLike MappingAt, FromSome, MappingAt, JoinLike, FromSome]
+		def apply[A <: FromSome, B[O] <: BaseMapping[S, O], S]
+		         (template :L J R, left :A, right :Relation[B])
+		         (condition :SQLBoolean[template.GeneralizedJoin[left.Generalized, B]]) :A J B =
+			template.likeJoin[A, B, S](left, right)(condition)
+	}
+
+
+	implicit def joinComposition[L <: FromSome, R[O] <: MappingAt[O],
+	                             J[+A <: FromSome, B[O] <: MappingAt[O]] <:
+	                                (A JoinLike B) { type LikeJoin[+X <: FromSome, Y[O] <: MappingAt[O]] <: X J Y }]
+			:JoinComposition[L, R, J] =
+		composition.asInstanceOf[JoinComposition[L, R, J]]
+
+	private[this] val composition = new JoinComposition[FromSome, MappingAt, JoinLike]
+
 
 
 	/** Type alias for `JoinLike` with erased type parameters, covering all instances of `JoinLike`.

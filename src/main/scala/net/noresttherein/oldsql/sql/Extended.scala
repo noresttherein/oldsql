@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -127,7 +127,7 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 	  * unchanged. It is the target of the `where` and other filtering methods (which add to the condition, rather
 	  * then completely replacing it).
 	  */
-	protected def withCondition(filter :SQLBoolean[Generalized]) :This
+	def withCondition(filter :SQLBoolean[Generalized]) :This
 
 	override def where(filter :SQLBoolean[Generalized]) :This =
 		if (filter == True) this else withCondition(condition && filter)
@@ -462,38 +462,51 @@ object Extended {
 
 
 
-	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
-	                  "Missing implicit ExtendedUpcasting[${F}, ${L}, ${R}, ${J}, ${U}].")
-	sealed class ExtendedUpcasting[-F <: L J R, +L <: U, R[O] <: MappingAt[O],
-	                               +J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause]
+
+
 
 	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
-	                  "Missing implicit UsingDecomposition[${F}, ${L}, ${R}, ${J}, ${U}].")
-	final class ExtendedComposition[F <: L J R, L <: U, R[O] <: MappingAt[O],
-	                                  J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause]
-		extends ExtendedUpcasting[F, L, R, J, U] with ClauseComposition[F, L, U]
+	                  "Missing implicit ExtendedDecomposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
+	class ExtendedDecomposition[F <: L J R, L <: U, R[O] <: MappingAt[O],
+	                            J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause]
+		extends ClauseDecomposition[F, L, U]
 	{
 		override type E[+A <: U] = A J R
 		override type S[+A >: L <: U] = A J R
 
-		@inline override def prefix[A >: L <: U] :A PrefixOf (A J R) = PrefixOf.itself[A].extend[J, R]
-		@inline override def extension[A <: U] :A PrefixOf (A J R) = PrefixOf.itself[A].extend[J, R]
+		@inline final override def prefix[A >: L <: U] :A PrefixOf (A J R) = PrefixOf.itself[A].extend[J, R]
+		@inline final override def extension[A <: U] :A PrefixOf (A J R) = PrefixOf.itself[A].extend[J, R]
 
-		@inline override def apply(join :F) :L = join.left
+		@inline final override def strip(join :F) :L = join.left
 
-		override def upcast[A >: L <: U] :ExtendedComposition[A J R, A, R, J, U] =
-			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U]]
+		override def upcast[A >: L <: U] :ExtendedDecomposition[A J R, A, R, J, U] =
+			this.asInstanceOf[ExtendedDecomposition[A J R, A, R, J, U]]
 
-		override def cast[A <: U] :ExtendedComposition[A J R, A, R, J, U] =
-			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U]]
+		override def cast[A <: U] :ExtendedDecomposition[A J R, A, R, J, U] =
+			this.asInstanceOf[ExtendedDecomposition[A J R, A, R, J, U]]
+	}
+
+	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
+	                  "Missing implicit ExtendedComposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
+	abstract class ExtendedComposition[F <: L J R, L <: U, R[O] <: M[O],
+	                                   J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause, M[O] <: MappingAt[O]]
+		extends ExtendedDecomposition[F, L, R, J, U] with ClauseComposition[F, L, U]
+	{
+
+		override def upcast[A >: L <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
+			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
+
+		override def cast[A <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
+			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
 	}
 
 
+
 	implicit def extendedDecomposition[L <: FromClause, R[O] <: MappingAt[O]]
-			:ExtendedComposition[L Extended R, L, R, Extended, FromClause] =
-		decomposition.asInstanceOf[ExtendedComposition[L Extended R, L, R, Extended, FromClause]]
+			:ExtendedDecomposition[L Extended R, L, R, Extended, FromClause] =
+		decomposition.asInstanceOf[ExtendedDecomposition[L Extended R, L, R, Extended, FromClause]]
 
 	private[this] val decomposition =
-		new ExtendedComposition[FromClause Extended MappingAt, FromClause, MappingAt, Extended, FromClause]
+		new ExtendedDecomposition[FromClause Extended MappingAt, FromClause, MappingAt, Extended, FromClause]
 
 }

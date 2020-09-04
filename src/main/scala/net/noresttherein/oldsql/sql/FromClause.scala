@@ -17,9 +17,9 @@ import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, JoinedRelation, Re
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, LabeledFromParam, ParamAt, ParamRelation}
 import net.noresttherein.oldsql.sql.SQLTerm.True
-import net.noresttherein.oldsql.sql.DecoratedFrom.{Alias, DecoratorComposition, GenericDecorator}
+import net.noresttherein.oldsql.sql.DecoratedFrom.{Alias, DecoratorDecomposition, GenericDecorator}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.Extended.{ExtendedComposition, NonSubselect}
+import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupByAll.ByAll
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.SelectSQL.{SelectAs, SelectColumn}
@@ -1909,10 +1909,10 @@ object FromClause {
 	  *           which preserves the type constructor `C` intact.
 	  */
 	@implicitNotFound("I don't know how to extract a prefix clause ${P} (with an upper bound ${U}) from ${F}.\n" +
-	                  "Missing implicit ClauseComposition[${F}, ${P}, ${U}.\n" +
-	                  "You may wish to define an implicit Using.ExtendedComposition " +
-	                  "or DecoratedFrom.DecoratorComposition for F if it is a custom implementation.")
-	trait ClauseComposition[F <: FromClause, P <: U, U <: FromClause] {
+	                  "Missing implicit ClauseDecomposition[${F}, ${P}, ${U}.\n" +
+	                  "You may wish to define an implicit Using.ExtendedDecomposition " +
+	                  "or DecoratedFrom.DecoratorDecomposition for F if it is a custom implementation.")
+	trait ClauseDecomposition[F <: FromClause, P <: U, U <: FromClause] {
 		/** The type constructor of `F`, accepting a prefix clause. This is the generic version of `S[A]`,
 		  * accepting any type conforming to `U`, but without the lower bound of `F` in the result.
 		  */
@@ -1927,10 +1927,19 @@ object FromClause {
 		def prefix[A >: P <: U] :A PrefixOf S[A]
 		def extension[A <: U] :A PrefixOf E[A]
 
-		def apply(clause :F) :P
+		def strip(clause :F) :P
 
-		def upcast[A >: P <: U] :ClauseComposition[S[A], A, U]
-		def cast[A <: U] :ClauseComposition[E[A], A, U]
+		def upcast[A >: P <: U] :ClauseDecomposition[S[A], A, U]
+		def cast[A <: U] :ClauseDecomposition[E[A], A, U]
+	}
+
+
+	@implicitNotFound("I don't know how to extract a prefix clause ${P} (with an upper bound ${U}) from ${F}.\n" +
+	                  "Missing implicit ClauseComposition[${F}, ${P}, ${U}.\n" +
+	                  "You may wish to define an implicit Extended.ExtendedDecomposition " +
+	                  "or DecoratedFrom.DecoratorDecomposition for F if it is a custom implementation.")
+	trait ClauseComposition[F <: FromClause, P <: U, U <: FromClause] extends ClauseDecomposition[F, P, U] {
+		def apply[C <: U](template :F, clause :C) :E[C]
 	}
 
 
@@ -2035,7 +2044,7 @@ object FromClause {
 		implicit def extended[F <: L J R, L <: U, R[O] <: MappingAt[O],
 		                      J[+A <: U, B[O] <: MappingAt[O]] <: A NonSubselect B, U <: FromClause,
 		                      M <: Numeral, N <: Numeral]
-		                     (implicit decompose :ExtendedComposition[F, L, R, J, U],
+		                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U],
 		                      prev :SubselectClauseSize[L, M], plus :Inc[M, N]) :SubselectClauseSize[F, N] =
 			new SubselectClauseSize[F, N](plus.n)
 
@@ -2075,7 +2084,7 @@ object FromClause {
 		implicit def extended[F <: L J R, L <: U, R[O] <: MappingAt[O],
 		                      J[+A <: U, B[O] <: MappingAt[O]] <: A Extended B, U <: FromClause,
 		                      M <: Numeral, N <: Numeral]
-		                     (implicit decompose :ExtendedComposition[F, L, R, J, U],
+		                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U],
 		                      count :TableCount[L, M], inc :Inc[M, N])
 				:TableCount[F, N] =
 			new TableCount[F, N](inc.n)
@@ -2088,7 +2097,7 @@ object FromClause {
 			new TableCount[F GroupByAll T, N](plus.n)
 
 		implicit def decorated[E <: D[F], F <: U, D[+C <: U] <: DecoratedFrom[C], U <: FromClause, N <: Numeral]
-		                      (implicit decompose :DecoratorComposition[E, F, D, U], count :TableCount[F, N])
+		                      (implicit decompose :DecoratorDecomposition[E, F, D, U], count :TableCount[F, N])
 				:TableCount[E, N] =
 			new TableCount[E, N](count.tables)
 
@@ -2127,13 +2136,13 @@ object FromClause {
 
 		implicit def extended[E <: L J R, L <: U, R[O] <: MappingAt[O], J[+A <: U, B[O] <: MappingAt[O]] <: A Extended B,
 		                      U <: FromClause, M <: Numeral, N <: Numeral]
-		             (implicit decompose :ExtendedComposition[E, L, R, J, U],
+		             (implicit decompose :ExtendedDecomposition[E, L, R, J, U],
 		              prev :SubselectTableCount[E, M], inc :Inc[M, N])
 				:SubselectTableCount[E, N] =
 			new SubselectTableCount[E, N](inc.n)
 
 		implicit def decorated[E <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause, N <: Numeral]
-		                      (implicit decompose :DecoratorComposition[E, C, D, U], count :SubselectTableCount[C, N])
+		                      (implicit decompose :DecoratorDecomposition[E, C, D, U], count :SubselectTableCount[C, N])
 				:SubselectTableCount[E, N] =
 			new SubselectTableCount[E, N](count.tables)
 
@@ -2186,7 +2195,7 @@ object FromClause {
 		implicit def extended[E <: L J R, L <: U, R[O] <: MappingAt[O],
 		                      J[+A <: U, B[O] <: MappingAt[O]] <: A Extended B, U <: FromClause,
 		                      T[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
-		                     (implicit decompose :ExtendedComposition[E, L, R, J, U],
+		                     (implicit decompose :ExtendedDecomposition[E, L, R, J, U],
 		                      prev :TableShift[L, T, M], inc :Inc[M, N])
 				:TableShift[E, T, N] =
 			new TableShift[E, T, N](inc.n)
@@ -2199,7 +2208,7 @@ object FromClause {
 
 		implicit def decorated[E <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause,
 		                       T[O] <: MappingAt[O], N <: Numeral]
-		                      (implicit decompose :DecoratorComposition[E, C, D, U], body :TableShift[C, T, N])
+		                      (implicit decompose :DecoratorDecomposition[E, C, D, U], body :TableShift[C, T, N])
 				:TableShift[E, T, N] =
 			new TableShift[E, T, N](body.tables)
 
@@ -2394,7 +2403,7 @@ object FromClause {
 			implicit def extended[F <: L J R, L <: U, R[O] <: MappingAt[O],
 			                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause,
 			                      X, M <: Numeral, N <: Numeral]
-			                     (implicit extend :ExtendedComposition[F, L, R, J, U],
+			                     (implicit extend :ExtendedDecomposition[F, L, R, J, U],
 			                      get :Found[L, X] { type G >: L <: U; type I = N }, dec :Inc[M, N])
 					:Return[F, X] { type T[O] = get.T[O]; type G = J[get.G, R]; type I = M } =
 				new EvidenceTemplate[F, X, J[get.G, R], get.S, get.T, M](get.stretch.extend(extend.extension[get.G]))
@@ -2416,7 +2425,7 @@ object FromClause {
 
 
 			implicit def decorated[F <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause, X]
-			                      (implicit extend :DecoratorComposition[F, C, D, U],
+			                      (implicit extend :DecoratorDecomposition[F, C, D, U],
 			                       get :Found[C, X] { type G >: C <: U })
 					:Return[F, X] { type T[O] = get.T[O]; type G = D[get.G]; type I = get.I } =
 				new EvidenceTemplate[F, X, D[get.G], get.S, get.T, get.I](
@@ -2444,8 +2453,8 @@ object FromClause {
 
 
 			implicit def tunnelJoin[F <: L J R, L <: U, R[O] <: MappingAt[O],
-			                        J[+A <: U, B[O] <: MappingAt[O]] <: NonSubselect[A, B], U <: FromClause, X]
-			                       (implicit extend :ExtendedComposition[F, L, R, J, U],
+			                        J[+A <: U, B[O] <: R[O]] <: NonSubselect[A, B], U <: FromClause, X]
+			                       (implicit extend :ExtendedDecomposition[F, L, R, J, U],
 			                        get :GroupedTunnel[L, X] { type G >: L <: U })
 					:GroupedTunnel[F, X]
 						{ type T[O] = get.T[O]; type G = J[get.G, R]; type O = get.O; type I = get.I } =
@@ -2460,7 +2469,7 @@ object FromClause {
 
 
 			implicit def tunnelDecorator[F <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause, X]
-			                            (implicit decorate :DecoratorComposition[F, C, D, U],
+			                            (implicit decorate :DecoratorDecomposition[F, C, D, U],
 			                             get :GroupedTunnel[C, X] { type G >: C <: U })
 					:GroupedTunnel[F, X]
 						{ type T[O] = get.T[O]; type G = D[get.G]; type O = get.O; type I = get.I } =
@@ -2602,7 +2611,7 @@ object FromClause {
 				implicit def previous[F <: L J R, L <: U, R[O] <: MappingAt[O],
 				                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause,
 				                      X <: Numeral, M <: Numeral, N <: Numeral]
-				                     (implicit extend :ExtendedComposition[F, L, R, J, U],
+				                     (implicit extend :ExtendedDecomposition[F, L, R, J, U],
 				                      dec :Inc[M, N], get :Found[L, X] { type G >: L <: U; type I = N })
 						:Return[F, X] { type T[O] = get.T[O]; type G = J[get.G, R]; type I = M } =
 					extended(extend, get, dec)
@@ -2931,13 +2940,13 @@ object FromClause {
 			dual.asInstanceOf[OuterPartOf[L, L Subselect R]]
 
 		implicit def extended[O <: FromClause, F <: L J R, L <: U, R[A] <: MappingAt[A],
-		                      J[+C <: U, T[A] <: MappingAt[A]] <: NonSubselect[C, T], U <: FromClause]
-		                     (implicit decompose :ExtendedComposition[F, L, R, J, U], outer :OuterPartOf[O, L])
+		                      J[+C <: U, T[A] <: R[A]] <: NonSubselect[C, T], U <: FromClause]
+		                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U], outer :OuterPartOf[O, L])
 				:OuterPartOf[O, F] =
 			outer.asInstanceOf[OuterPartOf[O, F]]
 
 		implicit def wrapped[O <: FromClause, F <: D[C], D[+B <: U] <: DecoratedFrom[B], C <: U, U <: FromClause]
-		                    (implicit decompose :DecoratorComposition[F, C, D, U], outer :OuterPartOf[O, C])
+		                    (implicit decompose :DecoratorDecomposition[F, C, D, U], outer :OuterPartOf[O, C])
 				:OuterPartOf[O, F] =
 			outer.asInstanceOf[OuterPartOf[O, F]]
 
@@ -3093,7 +3102,7 @@ object FromClause {
 		implicit def itself[F <: FromClause] :F PrefixOf F = new PrefixOf(0)
 
 		implicit def extend[F <: FromClause, E <: FromClause, L <: U, U <: FromClause]
-		                    (implicit decompose :ClauseComposition[E, L, U], prefix :F PrefixOf L) :F PrefixOf E =
+		                    (implicit decompose :ClauseDecomposition[E, L, U], prefix :F PrefixOf L) :F PrefixOf E =
 			new PrefixOf[F, E](prefix.diff + decompose.extension.diff)
 
 		implicit def group[F <: FromClause, O <: FromClause, E <: FromSome, R[A] <: MappingAt[A]]

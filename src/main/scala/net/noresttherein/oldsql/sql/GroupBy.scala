@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
+import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -469,12 +469,12 @@ object GroupByAll {
 
 
 
-		implicit def andFromDecomposition[L <: GroupByClause, R[O] <: MappingAt[O]]
-				:ExtendedComposition[L ByAll R, L, R, ByAll, GroupByClause] =
-			decomposition.asInstanceOf[ExtendedComposition[L ByAll R, L, R, ByAll, GroupByClause]]
+		implicit def byAllDecomposition[L <: GroupByClause, R[O] <: MappingAt[O]]
+				:ExtendedDecomposition[L ByAll R, L, R, ByAll, GroupByClause] =
+			composition.asInstanceOf[ExtendedDecomposition[L ByAll R, L, R, ByAll, GroupByClause]]
 
-		private[this] val decomposition =
-			new ExtendedComposition[GroupByClause ByAll MappingAt, GroupByClause, MappingAt, ByAll, GroupByClause]
+		private[this] val composition =
+			new ExtendedDecomposition[GroupByClause ByAll MappingAt, GroupByClause, MappingAt, ByAll, GroupByClause]
 
 
 

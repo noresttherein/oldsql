@@ -4,8 +4,9 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.sql.DecoratedFrom.GenericDecorator.GenericDecoratorComposition
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ExtendedBy, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -25,6 +26,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   */ //this could benefit from being derived from Any
 trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 	val clause :F
+	type Bound >: clause.FromLast <: FromClause
 
 	override type LastMapping[O] = clause.LastMapping[O]
 
@@ -32,7 +34,7 @@ trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 	override def fullSize :Int = clause.fullSize
 
 	/** Wraps a (possibly modified) copy of the underlying clause in a new decorator instance. */
-	def copy[C <: clause.FromLast](body :C) :DecoratedFrom[C]
+	def withClause[C <: Bound](body :C) :DecoratedFrom[C]
 
 
 	override type Params = clause.Params
@@ -74,7 +76,7 @@ object DecoratedFrom {
 	  * underlying clause. It requires all implementing classes to be applicable to any non empty clause `F`.
 	  */
 	trait GenericDecorator[+F <: FromSome] extends FromSome with DecoratedFrom[F] { thisClause =>
-
+		override type Bound = FromSome
 		override type FromLast = GeneralizedClause[clause.FromLast]
 		override type Generalized = GeneralizedClause[clause.Generalized]
 		override type Self = WithClause[clause.Self]
@@ -89,8 +91,6 @@ object DecoratedFrom {
 		type WithClause[+G <: FromSome] <: GeneralizedClause[G] {
 			type WithClause[+S <: FromSome] = thisClause.WithClause[S]
 		}
-
-		override def copy[C <: clause.FromLast](from :C) :WithClause[C] = withClause(from)
 
 		def withClause[C <: FromSome](from :C) :WithClause[C]
 
@@ -157,6 +157,28 @@ object DecoratedFrom {
 
 
 
+	object GenericDecorator {
+
+		@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
+			"and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
+		class GenericDecoratorComposition
+		            [F <: D[C], C <: FromSome,
+		             D[+B <: FromSome] <: GenericDecorator[B] { type WithClause[+P <: FromSome] <: D[P] }]
+			extends DecoratorComposition[F, C, D, FromSome]
+		{
+			@inline final override def apply[B <: FromSome](template :F, clause :B) :D[B] = template.withClause(clause)
+		}
+
+		implicit def genericDecoratorComposition
+		             [F <: D[C], C <: FromSome,
+		              D[+B <: FromSome] <: GenericDecorator[B] { type WithClause[+P <: FromSome] <: D[P] }]
+				:GenericDecoratorComposition[F, C, D] =
+			composition.asInstanceOf[GenericDecoratorComposition[F, C, D]]
+
+	}
+
+
+
 	/** Introduces an alias name to the last relation in the wrapped clause, translating to an `as` keyword
 	  * in the underlying SQL.
 	  */
@@ -214,9 +236,9 @@ object DecoratedFrom {
 		type WithClause[C <: FromSome] = { type F[A <: Label] = C Alias A }
 
 
-		implicit def aliasDecomposition[F <: FromSome, A <: Label]
-				:DecoratorComposition[F Alias A, F, WithLabel[A]#F, FromSome] =
-			decomposition.asInstanceOf[DecoratorComposition[F Alias A, F, WithLabel[A]#F, FromSome]]
+		implicit def aliasComposition[F <: FromSome, A <: Label]
+				:GenericDecoratorComposition[F Alias A, F, WithLabel[A]#F] =
+			composition.asInstanceOf[GenericDecoratorComposition[F Alias A, F, WithLabel[A]#F]]
 
 	}
 
@@ -240,35 +262,38 @@ object DecoratedFrom {
 	  * of this type with the proper deconstruction in its companion object.
 	  */
 	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
-	                  "and the decorated clause ${C}.\nMissing implicit DecoratorUpcasting[${F}, ${D}, ${C}, ${U}].")
-	sealed abstract class DecoratorUpcasting[-F <: D[C], +C <: U, +D[+B <: U] <: DecoratedFrom[B], U <: FromClause]
-
-
-	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
-	                  "and the decorated clause ${C}.\nMissing implicit DecoratorComposition[${F}, ${C}, ${D}, ${U}].")
-	final class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause]
-		extends DecoratorUpcasting[F, C, D, U] with ClauseComposition[F, C, U]
+	                  "and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
+	class DecoratorDecomposition[F <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause]
+		extends ClauseDecomposition[F, C, U]
 	{
 		override type E[+A <: U] = D[A]
 		override type S[+A >: C <: U] = D[A]
 
-		@inline override def prefix[A >: C <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
-		@inline override def extension[A <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
+		@inline final override def prefix[A >: C <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
+		@inline final override def extension[A <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
 
-		@inline override def apply(decorator :F) :C = decorator.clause
+		@inline final override def strip(decorator :F) :C = decorator.clause
 
-		override def upcast[A >: C <: U] :DecoratorComposition[D[A], A, D, U] =
-			this.asInstanceOf[DecoratorComposition[D[A], A, D, U]]
+		override def upcast[A >: C <: U] :DecoratorDecomposition[D[A], A, D, U] =
+			this.asInstanceOf[DecoratorDecomposition[D[A], A, D, U]]
 
-		override def cast[A <: U] :DecoratorComposition[D[A], A, D, U] =
-			this.asInstanceOf[DecoratorComposition[D[A], A, D, U]]
+		override def cast[A <: U] :DecoratorDecomposition[D[A], A, D, U] =
+			this.asInstanceOf[DecoratorDecomposition[D[A], A, D, U]]
 	}
 
 
+	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
+		"and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
+	abstract class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause]
+		extends DecoratorDecomposition[F, C, D, U] with ClauseComposition[F, C, U]
+
+
 	implicit def DecoratorDecomposition[D[+C <: FromSome] <: FromSomeDecorator[C], F <: FromSome]
-			:DecoratorComposition[D[F], F, D, FromSome] =
-		decomposition.asInstanceOf[DecoratorComposition[D[F], F, D, FromSome]]
+			:DecoratorDecomposition[D[F], F, D, FromSome] =
+		decomposition.asInstanceOf[DecoratorDecomposition[D[F], F, D, FromSome]]
 
 	private[this] val decomposition =
-		new DecoratorComposition[FromSomeDecorator[FromSome], FromSome, FromSomeDecorator, FromSome]
+		new DecoratorDecomposition[FromSomeDecorator[FromSome], FromSome, FromSomeDecorator, FromSome]
+
+	private[this] val composition = new GenericDecoratorComposition[Alias[FromSome, ""], FromSome, Alias.WithLabel[""]#F]
 }

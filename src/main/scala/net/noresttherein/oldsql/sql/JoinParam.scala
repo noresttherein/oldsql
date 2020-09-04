@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, NonEmptyFrom, OuterFrom, OuterFromSome, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
-import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, NonSubselect}
+import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLScribe.{RemoveParam, ReplaceParam}
@@ -325,6 +325,7 @@ object UnboundParam {
 			case param :UnboundParam.* @unchecked => Some(param.left -> param.right)
 			case _ => None
 		}
+
 
 
 
@@ -959,13 +960,16 @@ object JoinParam {
 		}
 
 
-//for now commented out, would need a custom upper bound on R
-//	implicit def joinParamDecomposition[L <: DiscreteFrom, R[O] <: ParamAt[O]]
-//			:ExtendedComposition[L JoinParam R, L, R, JoinParam, DiscreteFrom] =
-//		decomposition.asInstanceOf[ExtendedComposition[L JoinParam R, L, R, JoinParam, DiscreteFrom]]
-//
-//	private[this] val decomposition =
-//		new ExtendedComposition[DiscreteFrom JoinParam ParamAt, DiscreteFrom, ParamAt, JoinParam, DiscreteFrom]
+
+	implicit def joinParamComposition[L <: FromSome, R[O] <: ParamAt[O]]
+			:ExtendedComposition[L JoinParam R, L, R, JoinParam, FromSome, ParamAt] =
+		composition.asInstanceOf[ExtendedComposition[L JoinParam R, L, R, JoinParam, FromSome, ParamAt]]
+
+	private[this] val composition =
+		new ExtendedComposition[FromSome JoinParam ParamAt, FromSome, ParamAt, JoinParam, FromSome, ParamAt] {
+			override def apply[C <: FromSome](template :FromSome JoinParam ParamAt, clause :C) :C JoinParam ParamAt =
+				template.withLeft(clause)(True)
+		}
 
 
 
@@ -1217,6 +1221,19 @@ object GroupParam {
 		from match {
 			case param :GroupParam.* @unchecked => Some(param.left -> param.right)
 			case _ => None
+		}
+
+
+
+	implicit def groupParamComposition[L <: GroupByClause, R[O] <: ParamAt[O]]
+			:ExtendedComposition[L GroupParam R, L, R, GroupParam, GroupByClause, ParamAt] =
+		composition.asInstanceOf[ExtendedComposition[L GroupParam R, L, R, GroupParam, GroupByClause, ParamAt]]
+
+	private[this] val composition =
+		new ExtendedComposition[GroupByClause GroupParam ParamAt, GroupByClause, ParamAt, GroupParam, GroupByClause, ParamAt] {
+			override def apply[C <: GroupByClause]
+			                  (template :GroupByClause GroupParam ParamAt, clause :C) :C GroupParam ParamAt =
+				template.withLeft(clause)(True)
 		}
 
 

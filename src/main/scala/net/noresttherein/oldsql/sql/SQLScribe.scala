@@ -144,7 +144,7 @@ object SQLScribe {
 				case d :DecoratedFrom[_] =>
 					val wrap = d.asInstanceOf[DecoratedFrom[FromClause]]
 					val sub = subselectClause(wrap.clause)
-					val res = wrap.copy(sub.clause.asInstanceOf[wrap.clause.FromLast]).asInstanceOf[newClause.Nested]
+					val res = wrap.withClause(sub.clause.asInstanceOf[wrap.clause.FromLast]).asInstanceOf[newClause.Nested]
 					val newExtension = sub.newExtension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized]
 					RecursiveScribeSubselectExtension(res)(newExtension)
 
