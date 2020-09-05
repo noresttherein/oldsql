@@ -106,7 +106,7 @@ object Buff {
 	case object NoInsert extends ComboFlag(NoInsertByDefault)
 	/** This column/component can't be included in an update statement (as the updated column). */
 	case object NoUpdate extends ComboFlag(NoUpdateByDefault)
-	/** This column/component can't be included as part of the where clause of a select or update statement. */
+	/** This column/component can't be included as part of the ''where'' clause of a select or update statement. */
 	case object NoQuery extends ComboFlag(NoQueryByDefault)
 
 	/** This column/component is never written to the database by the application. */
@@ -155,14 +155,14 @@ object Buff {
 
 
 
-	/** A buff marking that a given column or component can be omitted from the the parameter list of the WHERE
+	/** A buff marking that a given column or component can be omitted from the the parameter list of the ''where'' 
 	  * clause of an SQL statement. This covers the case when a comparison in an SQL expression happens between
 	  * whole subjects of a multi column mapping, rather than listing the columns individually. The annotated component
 	  * is still included by default when comparing the owning mapping's subjects and needs to be excluded explicitly.
 	  */
 	case object OptionalQuery extends FlagBuffType
 
-	/** A buff marking that a given column or component can be omitted from the parameter list of the WHERE clause
+	/** A buff marking that a given column or component can be omitted from the parameter list of the ''where'' clause
 	  * of an SQL statement and needs to be included explicitly. This applies when the comparison expression
 	  * happens on the level of the subject of a multi column mapping enclosing the buffed component without listing
 	  * its columns individually. It implies `OptionalQuery` and `NoQueryByDefault`. */
@@ -220,7 +220,7 @@ object Buff {
 
 	/** Signifies that a column/component must be listed explicitly in order to be included in any database operation
 	  * (it is not included by default).
-	  * It is a shortcut for marking it with `Optional`, `ExplicitSelect`, `ExplicitQuery` and `ExlicitWrite`. */
+	  * It is a shortcut for marking it with `Optional`, `ExplicitSelect`, `ExplicitQuery` and `ExplicitWrite`. */
 	case object Explicit extends ComboValueBuffType(Optional, ExplicitSelect, ExplicitQuery, ExplicitWrite)
 
 
@@ -278,7 +278,7 @@ object Buff {
 
 
 
-	/** Marks that a column/component ''must'' be included as part of the where clause of any update statement. */
+	/** Marks that a column/component ''must'' be included as part of the ''where'' clause of any update statement. */
 	case object UpdateMatch extends FlagBuffType
 
 	/** A buff type marking that a column contains an application generated timestamp set once, when the row is inserted.
@@ -304,7 +304,7 @@ object Buff {
 	  * It is the same as [[net.noresttherein.oldsql.schema.Buff.UpdateTimestamp UpdateTimestamp]], but also
 	  * implies [[net.noresttherein.oldsql.schema.Buff.UpdateMatch UpdateMatch]]. This means the values
 	  * carried by entities will be ignored during the update and instead a fresh timestamp will be used as the new
-	  * value ''and'' the old value must be included in the 'where' clause of the update statement to prevent
+	  * value ''and'' the old value must be included in the ''where'' clause of the update statement to prevent
 	  * overwriting a concurrent update.
 	  * Note that the value of the column can, strictly speaking, be of any type not related to time, as long as
 	  * an implicit instance of the [[net.noresttherein.oldsql.schema.bits.Temporal Temporal]] type class is provided

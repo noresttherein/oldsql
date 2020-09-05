@@ -350,7 +350,7 @@ object JDBCTypes {
 	}
 
 
-	implicit object NullForm extends NullForm[Null] {
+	object NullForm extends NullForm[Null] {
 		def as[T >: Null] :NullForm[T] = this.asInstanceOf[NullForm[T]]
 	}
 

@@ -12,11 +12,11 @@ import net.noresttherein.oldsql.sql.LogicalSQL.{AND, CaseLogical, LogicalMatcher
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.CaseFreeColumn
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, FreeColumn, MappingColumnMatcher}
-import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelectColumn, FreeSelectColumn, SelectColumnMatcher, SubselectColumn}
+import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelectColumn, FreeSelectColumn, SelectColumn, SelectColumnMatcher, SubselectColumn}
 import net.noresttherein.oldsql.sql.ConditionSQL.{CaseCondition, ConditionMatcher, In, LikeSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, Lift, SQLTypePromotion}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
-import net.noresttherein.oldsql.sql.SQLTerm.{False, True}
+import net.noresttherein.oldsql.sql.SQLTerm.{ColumnTerm, False, True}
 import net.noresttherein.oldsql.sql.TupleSQL.SeqTuple
 
 
@@ -26,8 +26,6 @@ import net.noresttherein.oldsql.sql.TupleSQL.SeqTuple
   */
 trait ColumnSQL[-F <: FromClause, V] extends SQLExpression[F, V] {
 	override def readForm :ColumnReadForm[V]
-
-
 
 	def and[S <: F](other :SQLBoolean[S])(implicit ev :this.type <:< SQLBoolean[S]) :SQLBoolean[S] =
 		AND(ev(this)) and other
@@ -110,7 +108,7 @@ object ColumnSQL {
 	class AliasedColumn[-F <: FromClause, V](val column :ColumnSQL[F, V], val alias :String)
 		extends CompositeColumnSQL[F, V]
 	{
-		protected override val parts = column::Nil
+		protected override val parts :Seq[ColumnSQL[F, _]] = column::Nil
 
 		override def readForm :ColumnReadForm[V] = column.readForm
 
@@ -172,8 +170,8 @@ object ColumnSQL {
 
 
 	trait ColumnMatcher[+F <: FromClause, +Y[X]]
-		extends ColumnTermMatcher[F, Y] with CompositeColumnMatcher[F, Y] with MappingColumnMatcher[F, Y]
-			with SelectColumnMatcher[F, Y]
+		extends ColumnTermMatcher[F, Y] with CompositeColumnMatcher[F, Y]
+		   with MappingColumnMatcher[F, Y] with SelectColumnMatcher[F, Y]
 
 	trait MatchColumn[+F <: FromClause, +Y[X]] extends ColumnMatcher[F, Y]
 		with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
@@ -188,13 +186,12 @@ object ColumnSQL {
 		                      (e :ColumnComponentSQL[F, T, E, M, V, O]) :Y[V] =
 			column(e)
 
-		override def freeComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-		                          (e :FreeColumn[O, M, V]) :Y[V] =
+		override def freeComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V](e :FreeColumn[O, M, V]) :Y[V] =
 			column(e)
 
-		override def select[V, O](e :SelectSQL.SelectColumn[F, V, O]) :Y[Rows[V]] = column(e)
+		override def select[V, O](e :SelectColumn[F, V, O]) :Y[Rows[V]] = column(e)
 
-		override def term[X](e :SQLTerm.ColumnTerm[X]) :Y[X] = column(e)
+		override def term[X](e :ColumnTerm[X]) :Y[X] = column(e)
 
 	}
 

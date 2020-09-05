@@ -115,9 +115,9 @@ trait SQLExpression[-F <: FromClause, V] {
 	  */
 	def basedOn[E <: FromClause](implicit subtype :E <:< F) :SQLExpression[E, V] = this.asInstanceOf[SQLExpression[E, V]]
 
-	/** Treat this expression as an expression of a FROM clause extending (i.e. containing additional tables)
+	/** Treat this expression as an expression of a ''from'' clause extending (i.e. containing additional tables)
 	  * the clause `F` this expression is based on. */
-	def stretch[U <: F, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLExpression[S, V]
+	def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :SQLExpression[E, V]
 
 
 
@@ -130,7 +130,8 @@ trait SQLExpression[-F <: FromClause, V] {
 	protected def reverseCollect[X](fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
 		fun.lift(this) ++: acc
 
-	protected[this] def reverseCollect[X](e :SQLExpression.*)(fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
+	protected[this] def reverseCollect[X](e :SQLExpression.*)
+	                                     (fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
 		e.reverseCollect(fun, acc)
 
 

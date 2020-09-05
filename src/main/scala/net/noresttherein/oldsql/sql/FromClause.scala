@@ -1222,7 +1222,7 @@ object FromClause {
 	  * [[net.noresttherein.oldsql.sql.FromClause.OuterDiscreteFrom OuterDiscreteFrom]],
 	  * [[net.noresttherein.oldsql.sql.FromClause.OuterFromSome OuterFromSome]] and
 	  * [[net.noresttherein.oldsql.sql.FromClause.OuterGroupedFrom OuterGroupedFrom]]; they all conform to this type.
-	  */ //we opt for minimalistic definition so that more abstract method results conform to it, rather than have more info
+	  */ //we opt for a minimalistic definition so that more abstract method results conform to it, rather than have more info
 	type OuterFrom = FromClause {
 		//type FromLast >: this.type <: FromClause //these properties would hold for static types, but are not preserved
 		//type Generalized >: this.type <: FromLast// on generalization
@@ -2662,7 +2662,7 @@ object FromClause {
 
 
 
-		/** Implicit witness accessing the last relation in the ''from'' clause `F` with alias `A`.
+ 		/** Implicit witness accessing the last relation in the ''from'' clause `F` with alias `A`.
 		  * It is defined as the last relation of the clause `L`, such that
 		  * `L` [[net.noresttherein.oldsql.sql.DecoratedFrom.Alias Alias]] `A` appears as a part of type `F` and
 		  * is the right-most such occurrence.
