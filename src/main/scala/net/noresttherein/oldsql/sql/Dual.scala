@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, JoinedEntities, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FreeFromSome, JoinedEntities, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -91,24 +91,21 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 		From.narrow(this, right, filter)
 
 
-	override type AppendedTo[+P <: DiscreteFrom] = P
-
-	override def appendedTo[P <: DiscreteFrom](prefix :P) :P = prefix
-
-
 	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R, F <: FromClause] = F
 
 	override def joinWith[F <: FromClause](suffix :F, join :JoinLike.*) :F = suffix
 
 
-	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] = P
+	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = P
 
 	override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :F = prefix
 
-	override type JoinedWithSubselect[+P <: FromSome] = Nothing
+	override type JoinedWithSubselect[+P <: NonEmptyFrom] = Nothing
 
-	override def joinedWithSubselect[F <: DiscreteFrom](prefix :F) :Nothing =
+	override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) :Nothing =
 		throw new UnsupportedOperationException(s"Dual.joinedWithSubselect($prefix)")
+
+	override def appendedTo[P <: DiscreteFrom](prefix :P) :P = prefix
 
 
 
@@ -164,11 +161,11 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 
 
-	override type FromSubselect[+F <: FromSome] = F { type Implicit = FromClause }
+	override type FromSubselect[+F <: NonEmptyFrom] = F { type Implicit = FromClause }
 
 	override type FromRelation[T[O] <: MappingAt[O]] = From[T]
 
-	override def from[F <: FreeFromSome](suffix :F) :F = suffix
+	override def from[F <: FreeFrom](suffix :F) :F = suffix
 
 	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	                 (next :Relation[M])
@@ -177,7 +174,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 			:From[T] =
 		From(cast(next))
 
-	override def fromSubselect[F <: FromSome]
+	override def fromSubselect[F <: NonEmptyFrom]
 	                          (subselect :F)(implicit extension :subselect.Implicit ExtendedBy FromClause)
 			:F { type Implicit = FromClause; type DefineBase[+I <: FromClause] = subselect.DefineBase[I] } =
 		subselect.asInstanceOf[F { type Implicit = FromClause; type DefineBase[+I <: FromClause] = subselect.DefineBase[I] }]

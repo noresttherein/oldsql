@@ -10,9 +10,8 @@ import net.noresttherein.oldsql.schema.Relation.NamedRelation
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, NonEmptyFrom, OuterFrom, OuterFromSome, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, OuterFrom, OuterFromSome, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
@@ -57,9 +56,9 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends Extended
 		type Outer = thisClause.Outer
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+C <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] = thisClause.JoinedWith[C, J]
+		type JoinedWith[+C <: FromClause, +J[+L <: C, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[C, J]
 		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+C <: FromSome] = thisClause.FromSubselect[C]
+		type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
 	}
 
 	override type This >: this.type <: F UnboundParam P
@@ -74,7 +73,7 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends Extended
 	override def isParameterized :Boolean = true
 
 
-	override type JoinedWithSubselect[+S <: FromSome] = Nothing
+	override type JoinedWithSubselect[+S <: NonEmptyFrom] = Nothing
 
 	override def joinedWithSubselect[S <: FromClause](prefix :S) :Nothing =
 		throw new UnsupportedOperationException(
@@ -91,7 +90,7 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends Extended
 	override def base = throw new UnsupportedOperationException(s"JoinParam.base on $this")
 
 
-	override type AsSubselectOf[+O <: FromSome] = Nothing
+	override type AsSubselectOf[+O <: NonEmptyFrom] = Nothing
 
 	override def asSubselectOf[O <: FromClause](outer :O)(implicit extension :Implicit ExtendedBy O) :Nothing =
 		throw new UnsupportedOperationException(
@@ -99,20 +98,20 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends Extended
 				s"$this asSubselectOf $outer"
 		)
 
+
 	/** Provides the value for the joined parameter, removing it from this clause and replacing all references to it
 	  * with bound parameters in the form of `SQLParameter` instances.
 	  */
 	def apply(value :Param) :F#This
 
 
-//	/** Substitutes the joined parameter mapping for one labeled with `String` literal `name`. */
-//	def as[N <: Label](name :N) :F JoinParam (N ?: Param)#T
+	/** Substitutes the joined parameter mapping for one labeled with `String` literal `name`. */
+	def as[N <: Label](name :N) :F UnboundParam (N ?: Param)#T
 
 
-	override def canEqual(that :Any) :Boolean =
-		that.isInstanceOf[UnboundParam[_, T] forSome { type T[O] <: ParamAt[O] }]
 
-	
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[UnboundParam.* @unchecked]
+
 	override def name = "param"
 
 }
@@ -320,7 +319,7 @@ object UnboundParam {
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply(from :FromClause) :Option[(FromSome, Relation[M] forSome { type M[O] <: FromParam[_, O] })] =
+	def unapply(from :FromClause) :Option[(FromClause, Relation[M] forSome { type M[O] <: FromParam[_, O] })] =
 		from match {
 			case param :UnboundParam.* @unchecked => Some(param.left -> param.right)
 			case _ => None
@@ -333,7 +332,7 @@ object UnboundParam {
 	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
 	  * be matched directly with the wildcard '_'.
 	  */
-	type * = UnboundParam[_ <: FromSome, M] forSome { type M[O] <: FromParam[_, O] }
+	type * = UnboundParam[_ <: FromClause, M] forSome { type M[O] <: FromParam[_, O] }
 
 	/** A curried type constructor for `UnboundParam` instances, accepting the left `FromClause` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
@@ -352,16 +351,6 @@ object UnboundParam {
 
 
 
-	protected[sql] trait AbstractParam[+F <: FromClause, P[O] <: FromParam[X, O], X]
-		extends AbstractExtended[F, P, X] with UnboundParam[F, P]
-	{ thisClause =>
-		
-	}
-	
-	
-	
-	
-	
 	//it would be beneficial to make these relations protected in order for the applications to not depend on them
 	//  and use only an alias for  Relation[({ type P[O] = FromParam[X, O] })#P], but every JoinParam must use 
 	//  a unique FromParam, instance to distinguish their components.  
@@ -468,7 +457,7 @@ object UnboundParam {
 	  *             for the name of the parameter in the generated SQL.
 	  * @tparam P the parameter type needed to prepare statements using this mapping in their ''from'' clauses.
 	  * @tparam O a marker type serving as a unique identifier for this mapping within a `FromClause`.
-	  *///todo: think of another name, this can be confusing
+	  *///consider: think of another name, this can be confusing
 	class FromParam[P, O] private[UnboundParam] (val name :String)(implicit sqlForm :SQLForm[P])
 		extends ParamMapping[P, P, O] with ParamAt[O]
 	{ This =>
@@ -740,18 +729,14 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]] extends AndFrom[F, P]
 		PrefixOf.itself[C].extend[JoinParam, P]
 
 
-
-	override type AppendedTo[+S <: DiscreteFrom] = left.AppendedTo[S] JoinParam P
-
-	override def appendedTo[S <: DiscreteFrom](prefix :S) :left.AppendedTo[S] JoinParam P =
-		withLeft(left.appendedTo(prefix))(condition)
-
-	override type JoinedWith[+S <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] =
+	override type JoinedWith[+S <: FromClause, +J[+L <: S, R[O] <: MappingAt[O]] <: L AndFrom R] =
 		left.JoinedWith[S, J] JoinParam P
 
 	override def joinedWith[S <: FromSome](prefix :S, firstJoin :Join.*) :JoinedWith[S, firstJoin.LikeJoin] =
 		withLeft(left.joinedWith(prefix, firstJoin))(condition)
 
+	override def appendedTo[S <: DiscreteFrom](prefix :S) :left.JoinedWith[S, AndFrom] JoinParam P =
+		withLeft(left.appendedTo(prefix))(condition)
 
 
 	override type Explicit = left.Explicit JoinParam P
@@ -1008,7 +993,6 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
 	extends NonEmptyFrom with UnboundParam[F, P] with AndByAll[F, P]
 { thisClause =>
 
-//	override type FromLast = GroupByClause GroupParam P
 	override type Generalized = left.Generalized GroupParam P
 	override type Self = left.Self GroupParam P
 	override type This >: this.type <: F GroupParam P
@@ -1017,38 +1001,20 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
 	type WithLeft[+L <: GroupByClause] = L GroupParam P
 
 
-	override def generalizedExtension[C <: GroupByClause] :C PrefixOf (C GroupParam P) =
-		PrefixOf.itself[C].extend[GroupParam, P]
-
-	override def extension[C <: GroupByClause] :C PrefixOf (C GroupParam P) =
-		PrefixOf.itself[C].extend[GroupParam, P]
-
-
-	override type JoinedWith[+S <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] =
+	override type JoinedWith[+S <: FromClause, +J[+L <: S, R[O] <: MappingAt[O]] <: L AndFrom R] =
 		left.JoinedWith[S, J] GroupParam P
 
 	override def joinedWith[S <: FromSome](prefix :S, firstJoin :Join.*) :JoinedWith[S, firstJoin.LikeJoin] =
 		withLeft(left.joinedWith(prefix, firstJoin))(condition)
+
+	override def appendedTo[S <: DiscreteFrom](prefix :S) :left.JoinedWith[S, AndFrom] GroupParam P =
+		withLeft(left.appendedTo(prefix))(condition)
 
 
 	override type Explicit = left.Explicit GroupParam P
 	override type Inner = left.Inner GroupParam P
 
 
-	override type FromSubselect[+E <: FromSome] = Nothing //todo:
-
-	override type FromRelation[T[O] <: MappingAt[O]] = Nothing //todo:
-
-	override def from[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	                 (first :Relation[R])
-	                 (implicit infer :Conforms[Relation[R], Relation[T], Relation[MappingOf[S]#TypedProjection]])
-			:FromRelation[T] =
-	???
-
-	override def from[S <: FreeFromSome](subselect :S) :FromSubselect[S] = ???
-
-	override def fromSubselect[S <: FromSome](subselect :S)(implicit extension :subselect.Implicit ExtendedBy Generalized)
-			:FromSubselect[S] = ???
 
 	/** Substitutes the joined parameter mapping for one labeled with `String` literal `name`. */
 	def as[N <: Label](name :N) :F GroupParam (N ?: Param)#T

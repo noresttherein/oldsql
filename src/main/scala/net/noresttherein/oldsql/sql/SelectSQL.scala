@@ -702,7 +702,7 @@ object SelectSQL {
 					type Ext = SubselectOf[G] //FromClause { type Implicit = G }
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
-					val substitute = AndFrom.shiftBack[S, Ext](from, stretched, ev.length, some.innerSize)
+					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ev.length, some.innerSize)
 					new ArbitrarySubselect[G, Ext, V, O](stretched, substitute(header))
 
 				case empty :Dual =>
@@ -803,7 +803,7 @@ object SelectSQL {
 					type Ext = SubselectOf[G] //FromClause { type Implicit = G }
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
-					val substitute = AndFrom.shiftBack[S, Ext](from, stretched, ev.length, some.innerSize)
+					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ev.length, some.innerSize)
 					new ArbitrarySubselectColumn[G, Ext, V, O](stretched, substitute(header))
 
 				case empty :Dual =>

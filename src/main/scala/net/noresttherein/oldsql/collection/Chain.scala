@@ -152,7 +152,6 @@ object Chain extends ChainFactory {
 		def get :(I, L) = init -> last
 
 		override def isEmpty = false
-
 		override def length :Int = init.length + 1
 
 
@@ -167,20 +166,19 @@ object Chain extends ChainFactory {
 		override def hashCode :Int = init.hashCode * 31 + last.hashCode
 
 
-
 		override def toString :String = {
 			def entry(sb :StringBuilder, e :Any) :StringBuilder = e match {
 				case chain : Chain => rec(chain, sb append "(") append ")"
 				case _ => sb append e
 			}
 			def rec(chain :Chain, prefix :StringBuilder) :StringBuilder = chain match {
-				case t ~ h => entry(rec(t, prefix) append linkString, h)
+				case t ~ h => entry(rec(t, prefix) append symbol, h)
 				case _ => prefix append chain
 			}
 			rec(this, new StringBuilder).toString
 		}
 
-		protected def linkString :String = "~"
+		protected def symbol :String = "~"
 	}
 
 
@@ -1842,7 +1840,7 @@ object IndexedChain extends IndexedChainFactory {
 			case _ => false
 		}
 
-		protected override def linkString = "|~"
+		protected override def symbol = "|~"
 
 	}
 
@@ -2008,7 +2006,7 @@ val test = "silver" :~ "monsters" >~ "steel" :~ "humans"
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[>~[_, _]]
 
-		protected override def linkString = ">~"
+		protected override def symbol = ">~"
 	}
 
 

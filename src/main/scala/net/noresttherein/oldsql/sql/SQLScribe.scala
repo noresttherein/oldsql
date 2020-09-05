@@ -567,6 +567,42 @@ object SQLScribe {
 
 
 
+
+
+
+	/** An SQL expression rewriter shifting back references to all relations before the last `Subselect` join
+	  * by `extension` positions. Used when a subselect clause is 'transplanted' onto another clause,
+	  * extending the `Implicit` clause of the subselect.
+	  * @param old a subselect clause serving as SQL expression base.
+	  * @param extending a new subselect clause with some additional relations inserted between `F#Implicit`
+	  *                  and the mapping joined in with a `Subselect` join.
+	  * @param extension the difference in relations number between `F` and `G`.
+	  * @param subselectSize number of relations in the explicit ''from'' clause of subselects `F` and `G`.
+	  */
+	private[sql] def shiftBack[F <: FromClause, G <: FromClause]
+	                          (old :F, extending :G, extension :Int, subselectSize :Int) :SQLScribe[F, G] =
+		new SubstituteComponents[F, G] {
+			protected[this] override val oldClause = old
+			protected[this] override val newClause = extending
+
+			private[this] val relations = extending.fullTableStack.to(Array)
+
+			override def relation[T[A] <: BaseMapping[E, A], E, O >: F <: FromClause](e :RelationSQL[F, T, E, O])
+					:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingAt[A] } =
+//				(if (e.shift < innerSize) e
+//				 else RelationSQL[G, T, E, G](e.relation, e.shift + extension)).asInstanceOf[RelationSQL[G, T, E, G]]
+				(if (e.shift < subselectSize) e.asInstanceOf[RelationSQL[G, T, E, G]]
+				 else relations(e.shift + extension).asInstanceOf[RelationSQL[G, T, E, G]]).asInstanceOf[RelationSQL[G, T, E, G]]
+
+
+			protected override def extended[S <: FromClause, N <: FromClause]
+			                               (subselect :S, replacement :N)
+			                               (implicit oldExt :oldClause.Generalized ExtendedBy S,
+			                                         newExt :newClause.Generalized ExtendedBy N) =
+				shiftBack[S, N](subselect, replacement, extension, subselectSize + oldExt.length)
+		}
+
+
 }
 
 

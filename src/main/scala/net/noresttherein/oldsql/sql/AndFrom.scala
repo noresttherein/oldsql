@@ -1,19 +1,16 @@
 package net.noresttherein.oldsql.sql
 
-import scala.annotation.implicitNotFound
-
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.As
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, PrefixOf}
-import net.noresttherein.oldsql.sql.JoinLike.JoinWith
-import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
-import net.noresttherein.oldsql.sql.SQLScribe.{ReplaceRelation, SubstituteComponents}
+import net.noresttherein.oldsql.sql.SQLScribe.ReplaceRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
@@ -33,13 +30,6 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
   * to work properly, more specific type than `AndFrom` may be needed, typically
   * the [[net.noresttherein.oldsql.sql.FromClause#Generalized Generalized]] form of this clause.
   *
-  * The given mapping doesn't have to represent a table at this point - it might be for example a table component
-  * to be 'planted' in a particular table at a later point. This is the root of the class hierarchy of non-empty
-  * ''from'' clauses: this includes both [[net.noresttherein.oldsql.sql.Join true joins]]
-  * (inner, outer, left outer, right outer), synthetic combined ''from'' clauses of a
-  * [[net.noresttherein.oldsql.sql.Subselect subselect]] and its outer select, as well as non-SQL sources of values
-  * used in SQL select statements, such as statement [[net.noresttherein.oldsql.sql.JoinParam parameters]].
-  *
   * Note that, as with all generic types taking exactly two arguments, it can be written in the infix notation:
   * `val usersGuns :From[Users] Join UserGuns Join Guns`. This class is covariant regarding its left side,
   * so a sequence of joined mappings `X0 J1 X1 J2 X2 .. JN XN &lt;: X0 Join X1 Join X2 ... Join XN`
@@ -47,11 +37,8 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
   *
   * @tparam L the left side of this join: a `FromClause` listing all preceding relations.
   * @tparam R the right side of this join: a mapping type constructor for the last relation in this clause.
-  * @see [[net.noresttherein.oldsql.sql.InnerJoin]]
-  * @see [[net.noresttherein.oldsql.sql.OuterJoin]]
-  * @see [[net.noresttherein.oldsql.sql.LeftJoin]]
-  * @see [[net.noresttherein.oldsql.sql.RightJoin]]
   * @see [[net.noresttherein.oldsql.sql.From]]
+  * @see [[net.noresttherein.oldsql.sql.Join]]
   * @see [[net.noresttherein.oldsql.sql.Subselect]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
@@ -78,8 +65,8 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome with Exte
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S JoinLike T] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
+		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 	}
 
 	override type This >: this.type <: L AndFrom R
@@ -214,43 +201,6 @@ object AndFrom {
 
 	private[this] val decomposition =
 		new ExtendedDecomposition[FromClause AndFrom MappingAt, FromClause, MappingAt, AndFrom, FromClause]
-
-
-
-	/** An SQL expression rewriter shifting back references to all relations before the last `Subselect` join
-	  * by `extension` positions. Used when a subselect clause is 'transplanted' onto another clause,
-	  * extending the `Implicit` clause of the subselect.
-	  * @param old a subselect clause serving as SQL expression base.
-	  * @param extending a new subselect clause with some additional relations inserted between `F#Implicit`
-	  *                  and the mapping joined in with a `Subselect` join.
-	  * @param extension the difference in relations number between `F` and `G`.
-	  * @param subselectSize number of relations in the explicit ''from'' clause of subselects `F` and `G`.
-	  */
-	private[sql] def shiftBack[F <: FromClause, G <: FromClause]
-	                          (old :F, extending :G, extension :Int, subselectSize :Int) :SQLScribe[F, G] =
-		new SubstituteComponents[F, G] {
-			protected[this] override val oldClause = old
-			protected[this] override val newClause = extending
-
-			private[this] val relations = extending.fullTableStack.to(Array)
-
-			override def relation[T[A] <: BaseMapping[E, A], E, O >: F <: FromClause](e :RelationSQL[F, T, E, O])
-					:BaseComponentSQL[G, M, T, _ >: G <: FromClause] forSome { type M[A] <: MappingAt[A] } =
-//				(if (e.shift < innerSize) e
-//				 else RelationSQL[G, T, E, G](e.relation, e.shift + extension)).asInstanceOf[RelationSQL[G, T, E, G]]
-				(if (e.shift < subselectSize) e.asInstanceOf[RelationSQL[G, T, E, G]]
-				 else relations(e.shift + extension).asInstanceOf[RelationSQL[G, T, E, G]]).asInstanceOf[RelationSQL[G, T, E, G]]
-
-
-			protected override def extended[S <: FromClause, N <: FromClause]
-			                               (subselect :S, replacement :N)
-			                               (implicit oldExt :oldClause.Generalized ExtendedBy S,
-			                                         newExt :newClause.Generalized ExtendedBy N) =
-				shiftBack[S, N](subselect, replacement, extension, subselectSize + oldExt.length)
-		}
-
-
-
 
 
 
@@ -544,12 +494,11 @@ sealed trait From[T[O] <: MappingAt[O]] extends AndFrom[Dual, T] with NonSubsele
 	override type Params = @~
 
 //	overriden for clarity
-	override type AppendedTo[+P <: DiscreteFrom] = P AndFrom T
-	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] = P J T
-	override type JoinedWithSubselect[+P <: FromSome] = P Subselect T
+	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = P J T
+	override type JoinedWithSubselect[+P <: NonEmptyFrom] = P Subselect T
 
 	override type Explicit = FromClause AndFrom T
-	override type Inner = DiscreteFrom AndFrom T
+	override type Inner = FromClause AndFrom T
 	override type Implicit = FromClause
 	override type Outer = Dual
 	override type Base = FromClause
@@ -559,7 +508,7 @@ sealed trait From[T[O] <: MappingAt[O]] extends AndFrom[Dual, T] with NonSubsele
 	override def base :Dual = left
 
 
-	override type AsSubselectOf[+F <: FromSome] = F Subselect T
+	override type AsSubselectOf[+F <: NonEmptyFrom] = F Subselect T
 
 
 	/** Specify an alias for this relation. This is not necessary and may be overriden in case of conflicts,
@@ -658,13 +607,13 @@ object From {
 				newLeft.extend(last, filter)
 
 
-			override def appendedTo[P <: DiscreteFrom](prefix :P) :P AndFrom T = prefix.extend(last, filter)
-
 			override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :firstJoin.LikeJoin[F, T] =
 				firstJoin.likeJoin[F, T, S](prefix, right)(filter)
 
-			override def joinedWithSubselect[F <: FromSome](prefix :F) :F Subselect T =
+			override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) :F Subselect T =
 				Subselect[F, T, S](prefix, last)(filter)
+
+			override def appendedTo[P <: DiscreteFrom](prefix :P) :P AndFrom T = prefix.extend(last, filter)
 
 
 			override def innerTableStack[E <: FromClause]
@@ -672,8 +621,7 @@ object From {
 				last.stretch[Generalized, E](target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
-			override def asSubselectOf[F <: FromSome](newOuter :F)(implicit extension :Implicit ExtendedBy F)
-					:newOuter.type Subselect T =
+			override def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit extension :Implicit ExtendedBy F) =
 				Subselect[newOuter.type, T, S](newOuter, last)(filter)
 
 

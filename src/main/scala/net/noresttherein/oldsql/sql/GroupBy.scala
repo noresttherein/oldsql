@@ -2,16 +2,14 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFromSome, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
-import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
 
 
@@ -44,18 +42,20 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 		left.outerRow(target)(explicitSpan.extend(extension)) ~ last.stretch(target)
 
 
-	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] =
+	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
 		left.JoinedWith[P, J] GroupByAll M
 
 	override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*)
 			:left.JoinedWith[P, firstJoin.LikeJoin] GroupByAll M =
 		withLeft(left.joinedWith(prefix, firstJoin))(condition)
 
-	override type JoinedWithSubselect[+P <: FromSome] = left.JoinedWithSubselect[P] GroupByAll M
+	override type JoinedWithSubselect[+P <: NonEmptyFrom] = left.JoinedWithSubselect[P] GroupByAll M
 
-	override def joinedWithSubselect[P <: FromSome](prefix :P) :left.JoinedWithSubselect[P] GroupByAll M =
+	override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :left.JoinedWithSubselect[P] GroupByAll M =
 		withLeft(left.joinedWithSubselect(prefix))(condition)
 
+	override def appendedTo[P <: DiscreteFrom](prefix :P) :left.JoinedWith[P, AndFrom] GroupByAll M =
+		withLeft(left.appendedTo(prefix))(condition)
 
 
 	override type GeneralizedDiscrete = left.Generalized
@@ -89,37 +89,20 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 		left.outerRow(target)
 
 
-	override type AsSubselectOf[+P <: FromSome] = left.AsSubselectOf[P] GroupByAll M
+	override type AsSubselectOf[+P <: NonEmptyFrom] = left.AsSubselectOf[P] GroupByAll M
 
-	override def asSubselectOf[P <: FromSome](newOuter :P)(implicit extension :Implicit ExtendedBy P)
+	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
 			:AsSubselectOf[P] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 	{
 		val newLeft = left.asSubselectOf(newOuter)
 		//todo: refactor joins so they take functions creating conditions and move this to the constructor
 		//  this would however introduce problem with JoinLike.as: one of the relation becoming unavailable
 		val unfiltered = withLeft[newLeft.Generalized](newLeft.generalized)(True)
-		val substitute = AndFrom.shiftBack[Generalized, newLeft.Generalized GroupByAll M](
+		val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized GroupByAll M](
 			generalized, unfiltered, extension.length, innerSize + 1
 		)
 		withLeft[newLeft.type](newLeft)(substitute(condition))
 	}
-
-
-
-	override type FromSubselect[+E <: FromSome] = Nothing //todo:
-
-	override type FromRelation[T[O] <: MappingAt[O]] = Nothing //todo:
-
-	override def from[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	                 (first :Relation[R])
-	                 (implicit infer :Conforms[Relation[R], Relation[T], Relation[MappingOf[S]#TypedProjection]])
-			:FromRelation[T] =
-		???
-
-	override def from[S <: FreeFromSome](subselect :S) :FromSubselect[S] = ???
-
-	override def fromSubselect[S <: FromSome](subselect :S)(implicit extension :subselect.Implicit ExtendedBy Generalized)
-			:FromSubselect[S] = ???
 
 
 
@@ -135,8 +118,6 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 
 
 object GroupByAll {
-//	type By[+F <: GroupByClause, T] = ByAll[F, MappingOf[T]#TypedProjection]
-
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -242,11 +223,11 @@ object GroupByAll {
 
 
 
-	trait AndByAll[+F <: GroupByClause, G[A] <: MappingAt[A]] extends GroupByClause with NonSubselect[F, G] { thisClause =>
+	trait AndByAll[+F <: GroupByClause, G[A] <: MappingAt[A]] extends GroupByClause with NonSubselect[F, G] {
+		thisClause =>
+
 		override type FromLast = GroupByClause AndByAll G
 
-//		override type Generalized = GeneralizedLeft[left.Generalized]
-//		override type Self = WithLeft[left.Self]
 		override type Generalized >: Self <: (left.Generalized AndByAll G) {
 			type FromLast <: thisClause.FromLast
 			type Generalized <: thisClause.Generalized
@@ -268,11 +249,11 @@ object GroupByAll {
 			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 			type InnerRow = thisClause.InnerRow
 			type OuterRow = thisClause.OuterRow
-			type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] =
+			type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] =
 				thisClause.JoinedWith[P, J]
-			type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
+			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+P <: FromSome] = thisClause.FromSubselect[P]
+			type FromSubselect[+P <: NonEmptyFrom] = thisClause.FromSubselect[P]
 		}
 
 		override type This >: this.type <: F AndByAll G
@@ -293,19 +274,8 @@ object GroupByAll {
 		def withLeft[L <: GroupByClause](left :L)(filter :SQLBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[L]
 
 
-		/** A proof that the generalized form of this type extends its left side.
-		  * Used as evidence required by some implicits.
-		  */
-		def generalizedExtension[P <: GroupByClause] :P PrefixOf GeneralizedLeft[P]
-
-		/** A proof that this type extends its left side. Used as evidence required by some implicits. */
-		def extension[P <: GroupByClause] :P PrefixOf WithLeft[P]
-
-
 		override type GeneralizedDiscrete = left.GeneralizedDiscrete
 		override type Discrete = left.Discrete
-//		override type Explicit = GeneralizedLeft[left.Generalized]
-//		override type Inner = WithLeft[left.Inner]
 
 
 		override def canEqual(that :Any) :Boolean =
@@ -316,7 +286,6 @@ object GroupByAll {
 
 
 	trait ByAll[+F <: GroupByClause, G[A] <: MappingAt[A]] extends AndByAll[F, G] { thisClause =>
-//		override type FromLast = GroupByClause ByAll G
 
 		override type Generalized = left.Generalized ByAll G
 		override type Self = left.Self ByAll G
@@ -325,27 +294,23 @@ object GroupByAll {
 		override type GeneralizedLeft[+L <: GroupByClause] = L ByAll G
 		override type WithLeft[+L <: GroupByClause] = L ByAll G
 
-		override def generalizedExtension[P <: GroupByClause] :P PrefixOf (P ByAll G) =
-			PrefixOf.itself[P].extend[ByAll, G]
-
-		override def extension[P <: GroupByClause] :P PrefixOf (P ByAll G) =
-			PrefixOf.itself[P].extend[ByAll, G]
-
 
 		override type Params = left.Params
 
 
-		override type JoinedWith[+P <: FromSome, J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] =
+		override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
 			left.JoinedWith[P, J] ByAll G
 
 		override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :left.JoinedWith[P, firstJoin.LikeJoin] ByAll G =
 			withLeft(left.joinedWith(prefix, firstJoin))(condition)
 
-		override type JoinedWithSubselect[+P <: FromSome] = left.JoinedWithSubselect[P] ByAll G
+		override type JoinedWithSubselect[+P <: NonEmptyFrom] = left.JoinedWithSubselect[P] ByAll G
 
-		override def joinedWithSubselect[P <: FromSome](prefix :P) :left.JoinedWithSubselect[P] ByAll G =
+		override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :left.JoinedWithSubselect[P] ByAll G =
 			withLeft(left.joinedWithSubselect(prefix))(condition)
 
+		override def appendedTo[P <: DiscreteFrom](prefix :P) :left.JoinedWith[P, AndFrom] ByAll G =
+			withLeft(left.appendedTo(prefix))(condition)
 
 
 		override type Explicit = left.Explicit ByAll G
@@ -355,39 +320,21 @@ object GroupByAll {
 		override def base :Base = left.base
 
 
-		override type AsSubselectOf[+P <: FromSome] = left.AsSubselectOf[P] ByAll G
+		override type AsSubselectOf[+P <: NonEmptyFrom] = left.AsSubselectOf[P] ByAll G
 
-		override def asSubselectOf[P <: FromSome](newOuter :P)(implicit extension :Implicit ExtendedBy P)
+		override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
 				:AsSubselectOf[P] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 		{
 			val newLeft = left.asSubselectOf(newOuter)
 			//todo: refactor joins so they take functions creating conditions and move this to the constructor
 			//  this would however introduce problem with JoinLike.as: one of the relation becoming unavailable
 			val unfiltered = withLeft[newLeft.Generalized](newLeft.generalized)(True)
-			val substitute = AndFrom.shiftBack[Generalized, newLeft.Generalized ByAll G](
+			val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized ByAll G](
 				generalized, unfiltered, extension.length, innerSize + 1
 			)
 			withLeft[newLeft.type](newLeft)(substitute(condition))
 		}
 
-
-
-		//todo:
-		override type FromSubselect[+S <: FromSome] = Nothing
-		//todo:
-		override type FromRelation[T[O] <: MappingAt[O]] = Nothing
-
-		override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                 (first :Relation[M])
-		                 (implicit infer :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
-				:FromRelation[T] =
-			???
-
-		override def from[S <: FreeFromSome](subselect :S) :FromSubselect[S] = ???
-
-		override def fromSubselect[S <: FromSome]
-		                          (subselect :S)(implicit extension :subselect.Implicit ExtendedBy Generalized)
-				:FromSubselect[S] = ???
 
 
 		override def name = "by"
@@ -500,24 +447,6 @@ object GroupByAll {
 	}
 
 
-
-
-
-
-
-
-	trait Groupable[E[F <: FromClause] <: SQLExpression[F, _]] {
-		type G[O] <: MappingAt[O]
-		type F
-	}
-
-//	implicit class GroupingMethods[F <: FromSome](val thisClause :F) extends AnyVal {
-//		def groupBy[E[S <: FromClause] <: SQLExpression[S, _]]
-//		           (component :JoinedEntities[thisClause.Generalized] => E[thisClause.Generalized])
-//		           (implicit groupType :Groupable[E]) :F GroupByAll groupType.G
-//
-//
-//	}
 
 }
 

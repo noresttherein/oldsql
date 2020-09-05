@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DecoratedFrom.GenericDecorator.GenericDecoratorComposition
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -101,21 +101,19 @@ object DecoratedFrom {
 			clause.fullTableStack(target)(extension.unwrapFront)
 
 
-		override type AppendedTo[+P <: DiscreteFrom] = WithClause[clause.AppendedTo[P]]
-
-		override def appendedTo[P <: DiscreteFrom](prefix :P) :WithClause[clause.AppendedTo[P]] =
-			withClause(clause.appendedTo(prefix))
-
-		override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] =
+		override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
 			WithClause[clause.JoinedWith[P, J]]
 
 		override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
 			withClause(clause.joinedWith(prefix, firstJoin))
 
-		override type JoinedWithSubselect[+P <: FromSome] = WithClause[clause.JoinedWithSubselect[P]]
+		override type JoinedWithSubselect[+P <:  NonEmptyFrom] = WithClause[clause.JoinedWithSubselect[P]]
 
-		override def joinedWithSubselect[P <: FromSome](prefix :P) :JoinedWithSubselect[P] =
+		override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :JoinedWithSubselect[P] =
 			withClause(clause.joinedWithSubselect(prefix))
+
+		override def appendedTo[P <: DiscreteFrom](prefix :P) :WithClause[clause.JoinedWith[P, AndFrom]] =
+			withClause(clause.appendedTo(prefix))
 
 
 
@@ -142,9 +140,9 @@ object DecoratedFrom {
 				:ChainTuple[E, clause.OuterRow] =
 			clause.outerRow(target)
 
-		override type AsSubselectOf[+P <: FromSome] = WithClause[clause.AsSubselectOf[P]]
+		override type AsSubselectOf[+P <: NonEmptyFrom] = WithClause[clause.AsSubselectOf[P]]
 
-		override def asSubselectOf[P <: FromSome](newOuter :P)(implicit extension :Implicit ExtendedBy P)
+		override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
 				:WithClause[clause.AsSubselectOf[P]] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 			withClause(clause.asSubselectOf(newOuter))
 

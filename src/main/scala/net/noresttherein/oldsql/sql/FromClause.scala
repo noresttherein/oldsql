@@ -7,8 +7,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, Numeral, Positive, Sum}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.schema.Relation.NamedRelation
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause.GetTable.{ByIndex, ByLabel, ByParamName, BySubject, ByTypeConstructor}
@@ -19,9 +18,10 @@ import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, LabeledFromPara
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.DecoratedFrom.{Alias, DecoratorDecomposition, GenericDecorator}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.Extended.{ExtendedComposition, ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupByAll.ByAll
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
+import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SelectSQL.{SelectAs, SelectColumn}
 import net.noresttherein.oldsql.sql.SQLScribe.RemoveParams
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
@@ -150,7 +150,7 @@ trait FromClause { thisClause =>
 	  * `Dual` defines this type as the most generic `FromClause` to indicate that any expression based on
 	  * an empty clause can be used as part of expressions for any other clause.
 	  */
-	//type FromLast >: this.type <: FromClause
+	//type FromLast >: this.type <: FromClause //this.type lower bound doesn't hold for decorators
 	type FromLast <: FromClause
 
 	/** Given a type constructor for a ''from'' clause accepting a `FromSome` type, apply this type to it
@@ -239,11 +239,12 @@ trait FromClause { thisClause =>
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
-//		type AsSubselectOf[+F <: FromSome] <: thisClause.AsSubselectOf[F]    //not for JoinLike, not worth it making it work
-//		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T] //not for Dual
-//		type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]     //not for Dual
+		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+		//type AsSubselectOf[+F <: FromSome] <: thisClause.AsSubselectOf[F]    //not for JoinLike, not worth it making it work
+		//type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T] //not for Dual
+		//type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]     //not for Dual
 	}
 
 	/** This clause as its [[net.noresttherein.oldsql.sql.FromClause#Self Self]] type.
@@ -432,8 +433,7 @@ trait FromClause { thisClause =>
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#joinedWith]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#JoinedWithSubselect]]
 	  */
-	type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] <:
-		NonEmptyFrom with Generalized //a volatile type so it can be overriden by volatile types with bounds required for implementation
+	type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] <: Generalized
 
 	/** A join of relations from the clause `F` with relations of this clause. This is the type resulting
 	  * from substituting `Dual` in this type's signature with `F`, that is appending all mappings from this clause
@@ -459,10 +459,10 @@ trait FromClause { thisClause =>
 	  * The join kinds of both clauses are preserved.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#joinedWithSubselect]]
 	  */
-	type JoinedWithSubselect[+P <: FromSome] <: JoinedWith[P, Subselect] {
+	type JoinedWithSubselect[+P <: NonEmptyFrom] <: JoinedWith[P, Subselect] {
 		type InnerRow = thisClause.InnerRow
-		type Explicit <: thisClause.Explicit //JoinLike loses equality
-//		type Inner <: thisClause.Inner //Doesn't work in JoinLike, too complex
+		type Explicit = thisClause.Explicit //JoinLike loses equality
+		//type Inner <: thisClause.Inner //Doesn't work in JoinLike, too complex
 	}
 
 	/** Represents this ''from'' clause as a subselect of the clause `prefix` by joining them with the
@@ -477,7 +477,21 @@ trait FromClause { thisClause =>
 	  * @throws UnsupportedOperationException if this clause is empty or the first join in this clause is a `JoinParam`.
 	  * @see [[[net.noresttherein.oldsql.sql.FromClause#asSubselectOf]]
 	  */
-	def joinedWithSubselect[F <: FromSome](prefix :F) :JoinedWithSubselect[F]
+	def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) :JoinedWithSubselect[F]
+
+	/** Joins the clause given as the parameter with this clause. The type of the resulting clause is the result
+	  * of replacing the empty clause `Dual` in this clause's type with `P` and upcasting the join between `Dual`
+	  * and the first relation `T` to `P AndFrom T`. The clauses are joined using an inner join,
+	  * unless `prefix` any of the clauses are empty, in which case the other is returned.
+	  * The difference from [[net.noresttherein.oldsql.sql.FromClause#joinWith joinWith]] is that it accepts
+	  * empty clauses as arguments, but the return type is upcast to `AndFrom`.
+	  *
+	  * This is a low-level method and client code should generally prefer the implicit extension method
+	  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseExtension#andFrom andFrom]] which uses the more natural
+	  * prefix - suffix order rather than the inversion as in this method.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#joinedWith]]
+	  */
+	def appendedTo[P <: DiscreteFrom](prefix :P) :JoinedWith[P, AndFrom]
 
 
 
@@ -533,7 +547,7 @@ trait FromClause { thisClause =>
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Generalized]]
 	  */
-	type Explicit >: Generalized <: FromLast //{ type Explicit <: thisClause.Explicit }
+	type Explicit >: Generalized <: FromLast// { type Explicit <: thisClause.Explicit } //it's either this or AsSubselectOf <: Inner
 
 	/** The suffix clause containing all relations from the explicit portion of this subselect clause.
 	  * It represents the actual ''from'' clause of an associated SQL subselect. For subselect clauses, it results from
@@ -544,7 +558,7 @@ trait FromClause { thisClause =>
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Outer]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Self]]
 	  */
-	type Inner >: Self <: Explicit// { type Inner <: thisClause.Inner }
+	type Inner >: Self <: Explicit// { type Inner <: thisClause.Inner } //it's either this or AsSubselectOf <: Inner
 
 	/** A prefix ''from'' clause of this clause consisting of all relations available to SQL expressions implicitly,
 	  * that is not included in the actual ''from'' clause of this subselect clause.
@@ -771,12 +785,12 @@ trait FromClause { thisClause =>
 	  * would otherwise ''not'' become a subselect clause of `F`.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Implicit]]
 	  */ //consider: parameterizing it instead (or also) with a singleton type, so we can have Implicit = F#Generalized, etc.
-	type AsSubselectOf[+F <: FromSome] <: FromLast { //todo: refine it more in NonEmptyFrom
+	type AsSubselectOf[+F <: NonEmptyFrom] <: Inner {
 		type Explicit = thisClause.Explicit
-//		type Inner <: thisClause.Inner //Doesn't hold for From[T] and makes asSubselectOf result volatile
+		//type Inner <: thisClause.Inner //Doesn't hold for From[T] and makes asSubselectOf result volatile
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
-		type AsSubselectOf[+E <: FromSome] = thisClause.AsSubselectOf[E]
+		type AsSubselectOf[+E <: NonEmptyFrom] = thisClause.AsSubselectOf[E]
 	}
 
 	/** For subselect clauses - that is subtypes with a `Subselect` join kind occurring somewhere in their definition,
@@ -798,8 +812,8 @@ trait FromClause { thisClause =>
 	  * @throws `UnsupportedOperationException` if this clause is empty or there is an `UnboundParam` 'join'
 	  *                                         in its explicit portion.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
-	  */ //todo: it should accept any NonEmptyClause
-	def asSubselectOf[F <: FromSome](newOuter :F)(implicit extension :Implicit ExtendedBy F)
+	  */
+	def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit extension :Implicit ExtendedBy F)
 			:AsSubselectOf[F] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self }
 
 
@@ -841,12 +855,12 @@ trait FromClause { thisClause =>
 	  */
 	def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	        (first :Relation[M]) //todo: make this use JoinedRelationSubject to cast back the result
-//	        (implicit cast :InferSubject[this.type, Subselect, M, T, S])
+	        //(implicit cast :InferSubject[this.type, Subselect, M, T, S]) //subselect would have to accept FromClause (including empty)
 	        (implicit infer :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 			:FromRelation[T]
 
 	/** Type resulting from replacing the `Outer`/`Implicit` part of `F` with `Self` type of this clause.*/
-	type FromSubselect[+F <: FromSome] <: FromSome { //consider: parameterizing with a singleton type
+	type FromSubselect[+F <: NonEmptyFrom] <: NonEmptyFrom { //consider: parameterizing with a singleton type
 		type Explicit <: F#Explicit
 		type Implicit = thisClause.Generalized
 		//type Outer = thisClause.Self //too much refining by casting in Dual
@@ -874,8 +888,8 @@ trait FromClause { thisClause =>
 	  * @return a ''from'' clause adapted from the `subselect` argument by prepending this clause to it.
 	  *         It will conform to `this.Nested` and, as long as this clause is ''generalized'',
 	  *         to `SubselectOf[Generalized]`.
-	  */ //todo: make this accept any non-empty outer clause once subselect accepts it as its left side
-	def from[F <: FreeFromSome](subselect :F) :FromSubselect[F] { type DefineBase[+I <: FromClause] = I }
+	  */
+	def from[F <: NonEmptyFrom with FreeFrom](subselect :F) :FromSubselect[F] { type DefineBase[+I <: FromClause] = I }
 
 	/** Creates a ''from'' clause for a subselect of a select with this clause. It uses the ''explicit''/''inner''
 	  * portion of the given `subselect` clause as its ''explicit'' suffix (i.e. all the explicit relations
@@ -902,7 +916,7 @@ trait FromClause { thisClause =>
 	  *         conforming to `outer.Nested` and `SubselectOf[Generalized]` (if this clause's `Generalized` type
 	  *         is well defined).
 	  */
-	def fromSubselect[F <: FromSome](subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
+	def fromSubselect[F <: NonEmptyFrom](subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
 			:FromSubselect[F] { type DefineBase[+I <: FromClause] = subselect.DefineBase[I] }
 
 
@@ -1139,10 +1153,10 @@ object FromClause {
 			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 			type InnerRow = thisClause.InnerRow
 			type OuterRow = thisClause.OuterRow
-			type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] = thisClause.JoinedWith[P, J]
-			type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
+			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
+			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]
+			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 		}
 
 		override def lastAsIn[E <: FromClause](implicit extension :FromLast PrefixOf E) :JoinedRelation[E, LastMapping] =
@@ -1157,6 +1171,33 @@ object FromClause {
 		override def innerRow :ChainTuple[Generalized, InnerRow] = innerRow(generalized)
 		override def innerTableStack :LazyList[RelationSQL.AnyIn[Generalized]] = innerTableStack(generalized)
 		override def outerRow :ChainTuple[Generalized, OuterRow] = outerRow(generalized)(explicitSpan)
+
+
+		override type FromRelation[T[O] <: MappingAt[O]] = Self Subselect T
+
+		override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                 (first :Relation[M])
+		//               (implicit cast :InferSubject[this.type, Subselect, M, T, S])
+		                 (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+				:FromRelation[T] =
+			Subselect[Self, T, S](self, LastRelation(cast(first)))(True)
+
+
+		override type FromSubselect[+F <: NonEmptyFrom] = F#AsSubselectOf[Self] {
+			//type Self <: AsSubselectOf[Outer]
+			type Implicit = thisClause.Generalized
+			type Outer = thisClause.Self
+			type InnerRow <: F#InnerRow
+		}
+
+		override def from[F <: NonEmptyFrom with FreeFrom](subselect :F)
+				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized; type Outer = thisClause.Self } =
+			subselect.asSubselectOf(self)
+
+		override def fromSubselect[F <: NonEmptyFrom]
+		                          (subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
+				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized; type Outer = thisClause.Self } =
+			subselect.asSubselectOf(self)
 
 	}
 
@@ -1439,7 +1480,7 @@ object FromClause {
 	  * to this type.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.SubselectOf]]
 	  */
-	type SubselectFrom = FromClause { //do we need the FromSome bound?
+	type SubselectFrom = FromClause {
 		type Implicit <: NonEmptyFrom //this holds only if there is a Subselect involved (meaning clear way to the Subselect)
 		type Base = Implicit //this excludes clauses with an UnboundParam in the explicit portion
 		type DefineBase[+I <: FromClause] = I //only to preserve the validity on rebasing and to conform to Nested
@@ -1687,7 +1728,7 @@ object FromClause {
 		@inline def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                (table :Relation[M])
 		                (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
-//		                (implicit cast :InferSubject[clause.type, Subselect, M, T, S]) :F#Extend[Subselect, M] =
+		//              (implicit cast :InferSubject[clause.type, Subselect, M, T, S]) :F#Extend[Subselect, M] =
 				:clause.FromRelation[T] =
 			{ val res = clause.from(table); res }  //decouple type inference from the result type
 
@@ -1843,7 +1884,7 @@ object FromClause {
 		@inline def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                (table :Relation[M])
 		                (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
-//		                (implicit cast :InferSubject[clause.type, Subselect, M, T, S]) :F#Extend[Subselect, M] =
+		//              (implicit cast :InferSubject[clause.type, Subselect, M, T, S]) :F#Extend[Subselect, M] =
 				:clause.FromRelation[T] =
 			{ val res = clause.from(table); res } //decouple type inference from the result type
 
@@ -2044,15 +2085,14 @@ object FromClause {
 
 		implicit def from[T[O] <: MappingAt[O]] :SubselectClauseSize[From[T], 1] = new SubselectClauseSize[From[T], 1](1)
 
-		implicit def subselect[T[O] <: MappingAt[O]] :SubselectClauseSize[FromSome Subselect T, 1] =
-			new SubselectClauseSize[FromSome Subselect T, 1](1)
+		implicit def subselect[T[O] <: MappingAt[O]] :SubselectClauseSize[NonEmptyFrom Subselect T, 1] =
+			new SubselectClauseSize[NonEmptyFrom Subselect T, 1](1)
 
 		implicit def grouped[L <: FromSome, T[O] <: MappingAt[O]] :SubselectClauseSize[L GroupByAll T, 1] =
 			new SubselectClauseSize[L GroupByAll T, 1](1)
 
 		implicit def extended[F <: L J R, L <: U, R[O] <: MappingAt[O],
-		                      J[+A <: U, B[O] <: MappingAt[O]] <: A NonSubselect B, U <: FromClause,
-		                      M <: Numeral, N <: Numeral]
+		                      J[+A <: U, B[O] <: R[O]] <: A NonSubselect B, U <: FromClause, M <: Numeral, N <: Numeral]
 		                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U],
 		                      prev :SubselectClauseSize[L, M], plus :Inc[M, N]) :SubselectClauseSize[F, N] =
 			new SubselectClauseSize[F, N](plus.n)
@@ -2077,7 +2117,7 @@ object FromClause {
 	  */
 	@implicitNotFound("Failed to count the tables in ${F}. Is ${N} the number of mappings listed in its definition?\n" +
 	                  "Note that witness TableCount[F, N] is invariant in type F, but requires that it starts " +
-	                  "with one of FromClause, FromSome, DiscreteFrom, GroupByClause or Dual (including From[_]).")
+	                  "with one of FromClause, DiscreteFrom, FromSome, GroupByClause or Dual (including From[_]).")
 	class TableCount[F <: FromClause, N <: Numeral] private[FromClause] (private val n :Int) extends AnyVal {
 		@inline def tables :N = n.asInstanceOf[N] //val tables :N crashes scalac
 	}
@@ -2085,21 +2125,19 @@ object FromClause {
 
 	object TableCount {
 		implicit final val FromClauseHasZero :TableCount[FromClause, 0] = new TableCount[FromClause, 0](0)
-		implicit final val FromSomeHasZero :TableCount[FromSome, 0] = new TableCount[FromSome, 0](0)
 		implicit final val DiscreteFromHasZero :TableCount[DiscreteFrom, 0] = new TableCount[DiscreteFrom, 0](0)
-		implicit final val GroupedFromHasZero :TableCount[GroupByClause, 0] = new TableCount[GroupByClause, 0](0)
+		implicit final val FromSomeHasZero :TableCount[FromSome, 0] = new TableCount[FromSome, 0](0)
 		implicit final val DualHasZero :TableCount[Dual, 0] = new TableCount[Dual, 0](0)
+		implicit final val GroupByClauseHasZero :TableCount[GroupByClause, 0] = new TableCount[GroupByClause, 0](0)
 
 		implicit def extended[F <: L J R, L <: U, R[O] <: MappingAt[O],
-		                      J[+A <: U, B[O] <: MappingAt[O]] <: A Extended B, U <: FromClause,
-		                      M <: Numeral, N <: Numeral]
+		                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause, M <: Numeral, N <: Numeral]
 		                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U],
 		                      count :TableCount[L, M], inc :Inc[M, N])
 				:TableCount[F, N] =
 			new TableCount[F, N](inc.n)
 
-		implicit def grouped[F <: FromSome, T[A] <: MappingAt[A],
-		                     U <: Numeral, S <: Numeral, O <: Numeral, N <: Numeral]
+		implicit def grouped[F <: FromSome, T[A] <: MappingAt[A], U <: Numeral, S <: Numeral, O <: Numeral, N <: Numeral]
 		                    (implicit ungrouped :TableCount[F, U], subselect :SubselectTableCount[F, S],
 		                              minus :Sum[O, S, U], plus :Inc[O, N])
 				:TableCount[F GroupByAll T, N] =
@@ -2123,7 +2161,7 @@ object FromClause {
 	  */
 	@implicitNotFound("Failed to count joined relations since last Subselect in ${F}.\n" +
 	                  "Most likely the type contains joins with unknown Generalized form or it starts with" +
-	                  "an undefined prefix other than FromClause, FromSome, DiscreteFrom, GroupByClause, Dual, From. " +
+	                  "an undefined prefix other than FromClause, DiscreteFrom, FromSome, Dual, From, GroupByClause. " +
 	                  "Missing implicit SubselectTableCount[${F}, ${N}]")
 	class SubselectTableCount[F <: FromClause, N <: Numeral] private (private val n :Int) extends AnyVal {
 		@inline def tables :N = n.asInstanceOf[N]
@@ -2137,14 +2175,14 @@ object FromClause {
 		implicit def from[T[A] <: MappingAt[A]] :SubselectTableCount[From[T], 1] =
 			new SubselectTableCount[From[T], 1](1)
 
-		implicit def subselect[F <: FromSome, T[A] <: MappingAt[A]] :SubselectTableCount[F Subselect T, 1] =
+		implicit def subselect[F <: NonEmptyFrom, T[A] <: MappingAt[A]] :SubselectTableCount[F Subselect T, 1] =
 			new SubselectTableCount[F Subselect T, 1](1)
 
 		implicit def groupBy[F <: FromSome, T[A] <: MappingAt[A]] :SubselectTableCount[F GroupByAll T, 1] =
 			new SubselectTableCount[F GroupByAll T, 1](1)
 
-		implicit def extended[E <: L J R, L <: U, R[O] <: MappingAt[O], J[+A <: U, B[O] <: MappingAt[O]] <: A Extended B,
-		                      U <: FromClause, M <: Numeral, N <: Numeral]
+		implicit def extended[E <: L J R, L <: U, R[O] <: MappingAt[O],
+		                      J[+A <: U, B[O] <: R[O]] <: A NonSubselect B, U <: FromClause, M <: Numeral, N <: Numeral]
 		             (implicit decompose :ExtendedDecomposition[E, L, R, J, U],
 		              prev :SubselectTableCount[E, M], inc :Inc[M, N])
 				:SubselectTableCount[E, N] =
@@ -2177,19 +2215,22 @@ object FromClause {
 
 
 	object TableShift {
-
-		implicit def firstUngrouped[T[A] <: MappingAt[A]] :TableShift[DiscreteFrom AndFrom T, T, 0] =
-			new TableShift[DiscreteFrom AndFrom T, T, 0](0)
-
+		//this is the only one really needed by JoinedRelations + GetTable, which use FromLast
+		implicit def firstAndFrom[T[A] <: MappingAt[A]] :TableShift[FromClause AndFrom T, T, 0] =
+			new TableShift[FromClause AndFrom T, T, 0](0)
+		//these firstXxx are here mostly to allow other uses of TableShift
 		implicit def firstFrom[T[A] <: MappingAt[A]] :TableShift[From[T], T, 0] =
 			new TableShift[From[T], T, 0](0)
 
-		implicit def firstJoin[J[+L <: FromSome, R[A] <: MappingAt[A]] <: L JoinLike R, T[A] <: MappingAt[A]]
+		implicit def firstJoin[J[+L <: FromSome, R[A] <: MappingAt[A]] <: L Join R, T[A] <: MappingAt[A]]
 				:TableShift[FromSome J T, T, 0] =
 			new TableShift[FromSome J T, T, 0](0)
 
-//		implicit def firstParam[P[A] <: ParamAt[A]] :TableShift[FromSome JoinParam P, P, 0] =
-//			new TableShift[FromSome JoinParam P, P, 0](0)
+		implicit def firstSubselect[T[A] <: MappingAt[A]] :TableShift[NonEmptyFrom Subselect T, T, 0] =
+			new TableShift[NonEmptyFrom Subselect T, T, 0](0)
+
+		implicit def firstParam[P[A] <: ParamAt[A]] :TableShift[FromSome JoinParam P, P, 0] =
+			new TableShift[FromSome JoinParam P, P, 0](0)
 
 		implicit def firstGroupParam[P[A] <: ParamAt[A]] :TableShift[GroupByClause GroupParam P, P, 0] =
 			new TableShift[GroupByClause GroupParam P, P, 0](0)
@@ -2202,7 +2243,7 @@ object FromClause {
 
 
 		implicit def extended[E <: L J R, L <: U, R[O] <: MappingAt[O],
-		                      J[+A <: U, B[O] <: MappingAt[O]] <: A Extended B, U <: FromClause,
+		                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause,
 		                      T[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
 		                     (implicit decompose :ExtendedDecomposition[E, L, R, J, U],
 		                      prev :TableShift[L, T, M], inc :Inc[M, N])
@@ -2782,7 +2823,7 @@ object FromClause {
 	@implicitNotFound("Cannot apply the FROM clause ${F}\nto parameters ${P}. I cannot prove that the parameter chain P " +
 	                  "is a subtype of F#Params - most likely F is incomplete or contains AndFrom joins.\n"+
 	                  "Missing implicit value ApplyJoinParams[${F}, ${P}, ${U}].")
-	sealed abstract class ApplyJoinParams[-F <: FromClause, -P <: Chain, +U <: ParameterlessFrom] {
+	sealed abstract class ApplyJoinParams[-F <: FromClause, -P <: Chain, +U] {
 		type lastWasParam <: Boolean with Singleton
 		def apply(from :F, params :P) :U
 	}
@@ -2822,27 +2863,28 @@ object FromClause {
 				}
 			}
 
-		implicit def nonParamJoin[J[A <: FromSome, B[O] <: MappingAt[O]] <: A JoinLike B,
-		                          L <: FromSome, R[A] <: MappingAt[A], P <: _ ~ _, U <: FromSome with ParameterlessFrom]
-		                         (implicit prev :ApplyJoinParams[L, P, U])
-				:ApplyJoinParams[L J R, P, J[L, R]#WithLeft[U]] { type lastWasParam = false } =
-			new ApplyJoinParams[L J R, P, (L J R)#WithLeft[U]] {
+		implicit def nonParamJoin[J[+A <: U, B[O] <: M[O]] <: A JoinLike B, U <: FromClause, M[A] <: MappingAt[A],
+		                          L <: U, R[A] <: M[A], P <: _ ~ _, Q <: U]
+		                         (implicit composition :ExtendedComposition[L J R, L, R, J, U, M],
+		                                   prev :ApplyJoinParams[L, P, Q])
+				:ApplyJoinParams[L J R, P, (Q J R)#This] { type lastWasParam = false } =
+			new ApplyJoinParams[L J R, P, (Q J R)#This] {
 				override type lastWasParam = false
 
 				override def apply(from :L J R, params :P) = {
 					val left = prev(from.left, params)
-					val unfiltered = from.withLeft[left.type](left)(True)
+					val unfiltered = composition[left.type](from, left)// from.withLeft[left.type](left)(True)
 					val generalized = from.generalized
 					val ps = params.asInstanceOf[generalized.Params]
 					val substitute = new RemoveParams(generalized, unfiltered.generalized)(ps)
-					from.withLeft(left)(substitute(from.condition))
+					unfiltered where substitute(from.condition)
 				}
 			}
 
-		implicit def groupBy[L <: FromSome, R[A] <: MappingAt[A], P <: _ ~ _, U <: FromSome with ParameterlessFrom]
-		                    (implicit prev :ApplyJoinParams[L, P, U])
-				:ApplyJoinParams[L GroupByAll R, P, U GroupByAll R] { type lastWasParam = false } =
-			new ApplyJoinParams[L GroupByAll R, P, U GroupByAll R] {
+		implicit def groupBy[L <: FromSome, R[A] <: MappingAt[A], P <: _ ~ _, Q <: FromSome with ParameterlessFrom]
+		                    (implicit prev :ApplyJoinParams[L, P, Q])
+				:ApplyJoinParams[L GroupByAll R, P, Q GroupByAll R] { type lastWasParam = false } =
+			new ApplyJoinParams[L GroupByAll R, P, Q GroupByAll R] {
 				override type lastWasParam = false
 
 				override def apply(from :L GroupByAll R, params :P) = {
@@ -2856,10 +2898,10 @@ object FromClause {
 
 			}
 
-		implicit def by[L <: GroupByClause, R[A] <: MappingAt[A], P <: _ ~ _, U <: GroupByClause with ParameterlessFrom]
-		               (implicit prev :ApplyJoinParams[L, P, U])
-				:ApplyJoinParams[L ByAll R, P, U ByAll R] { type lastWasParam = false } =
-			new ApplyJoinParams[L ByAll R, P, U ByAll R] {
+		implicit def by[L <: GroupByClause, R[A] <: MappingAt[A], P <: _ ~ _, Q <: GroupByClause with ParameterlessFrom]
+		               (implicit prev :ApplyJoinParams[L, P, Q])
+				:ApplyJoinParams[L ByAll R, P, Q ByAll R] { type lastWasParam = false } =
+			new ApplyJoinParams[L ByAll R, P, Q ByAll R] {
 				override type lastWasParam = false
 
 				override def apply(from :L ByAll R, params :P) = {
@@ -2874,50 +2916,50 @@ object FromClause {
 			}
 
 		implicit def nonParamDecorator[D <: GenericDecorator[F], F <: FromSome,
-		                               P <: _ ~ _, U <: FromSome with ParameterlessFrom]
+		                               P <: _ ~ _, Q <: FromSome with ParameterlessFrom]
 		                              (implicit deconstruct :Conforms[D, D, GenericDecorator[F]],
-		                                        prev :ApplyJoinParams[F, P, U] { type lastWasParam = false })
-				:ApplyJoinParams[D, P, D#WithClause[U]] { type lastWasParam = false } =
-			new ApplyJoinParams[D, P, D#WithClause[U]] {
+		                                        prev :ApplyJoinParams[F, P, Q] { type lastWasParam = false })
+				:ApplyJoinParams[D, P, D#WithClause[Q]] { type lastWasParam = false } =
+			new ApplyJoinParams[D, P, D#WithClause[Q]] {
 				override type lastWasParam = false
 
-				override def apply(from :D, params :P) :D#WithClause[U] =
+				override def apply(from :D, params :P) :D#WithClause[Q] =
 					from.withClause(prev(from.clause, params))
 			}
 
 
-		implicit def applyParam[L <: FromSome, R[A] <: FromParam[X, A], X, I <: Chain, U <: ParameterlessFrom]
-		                       (implicit prev :ApplyJoinParams[L, I, U])
-				:ApplyJoinParams[L JoinParam R, I ~ X, U] { type lastWasParam = true } =
-			new ApplyJoinParams[L JoinParam R, I ~ X, U] {
+		implicit def applyParam[L <: FromSome, R[A] <: FromParam[X, A], X, I <: Chain, Q <: ParameterlessFrom]
+		                       (implicit prev :ApplyJoinParams[L, I, Q])
+				:ApplyJoinParams[L JoinParam R, I ~ X, Q] { type lastWasParam = true } =
+			new ApplyJoinParams[L JoinParam R, I ~ X, Q] {
 				override type lastWasParam = true
 
 				override def apply(from :JoinParam[L, R], params :I ~ X) = {
 					val res = prev(from.left, params.init)
 					val generalized = from.generalized
 					val substitute = new RemoveParams(generalized, res.generalized)(params.asInstanceOf[generalized.Params])
-					res.where(substitute(from.condition)).asInstanceOf[U]
+					res.where(substitute(from.condition)).asInstanceOf[Q]
 				}
 			}
 
-		implicit def applyGroupParam[L <: GroupByClause, R[A] <: FromParam[X, A], X, I <: Chain, U <: ParameterlessFrom]
-		                            (implicit prev :ApplyJoinParams[L, I, U])
-				:ApplyJoinParams[L GroupParam R, I ~ X, U] { type lastWasParam = true } =
-			new ApplyJoinParams[L GroupParam R, I ~ X, U] {
+		implicit def applyGroupParam[L <: GroupByClause, R[A] <: FromParam[X, A], X, I <: Chain, Q <: ParameterlessFrom]
+		                            (implicit prev :ApplyJoinParams[L, I, Q])
+				:ApplyJoinParams[L GroupParam R, I ~ X, Q] { type lastWasParam = true } =
+			new ApplyJoinParams[L GroupParam R, I ~ X, Q] {
 				override type lastWasParam = true
 
 				override def apply(from :GroupParam[L, R], params :I ~ X) = {
 					val res = prev(from.left, params.init)
 					val generalized = from.generalized
 					val substitute = new RemoveParams(generalized, res.generalized)(params.asInstanceOf[generalized.Params])
-					res.where(substitute(from.condition)).asInstanceOf[U]
+					res.where(substitute(from.condition)).asInstanceOf[Q]
 				}
 			}
 
-		implicit def paramDecorator[F <: FromSome, P <: _ ~ _, U <: ParameterlessFrom]
-		                           (implicit prev :ApplyJoinParams[F, P, U] { type lastWasParam = true })
-				:ApplyJoinParams[DecoratedFrom[F], P, U] { type lastWasParam = true } =
-			new ApplyJoinParams[DecoratedFrom[F], P, U] {
+		implicit def paramDecorator[F <: FromSome, P <: _ ~ _, Q <: ParameterlessFrom]
+		                           (implicit prev :ApplyJoinParams[F, P, Q] { type lastWasParam = true })
+				:ApplyJoinParams[DecoratedFrom[F], P, Q] { type lastWasParam = true } =
+			new ApplyJoinParams[DecoratedFrom[F], P, Q] {
 				override type lastWasParam = true
 
 				override def apply(from :DecoratedFrom[F], params :P) = prev(from.clause, params)

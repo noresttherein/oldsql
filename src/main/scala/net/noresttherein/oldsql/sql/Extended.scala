@@ -6,7 +6,6 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -107,10 +106,10 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S JoinLike T] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
+		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]
+		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
 	override type This >: this.type <: L Using R
@@ -326,8 +325,6 @@ object Using {
 trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thisClause =>
 	override type FromLast >: Generalized <: FromClause Extended R
 
-	//WithLeft/GeneralizedLeft
-
 	override type Generalized >: Self <: (left.Generalized Extended R) {
 		type FromLast <: thisClause.FromLast
 		type Generalized <: thisClause.Generalized
@@ -349,10 +346,10 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thi
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromSome, +J[+S <: FromSome, T[O] <: MappingAt[O]] <: S JoinLike T] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: FromSome] = thisClause.JoinedWithSubselect[P]
+		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: FromSome] = thisClause.FromSubselect[F]
+		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
 	override type This >: this.type <: L Extended R
@@ -361,6 +358,8 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thi
 	  * using member types of `FromClause`, as they become proper path types instead of projections.
 	  */
 	protected def narrow :left.type Extended R
+
+	//WithLeft/GeneralizedLeft
 
 
 	override type FullRow = left.FullRow ~ last.Subject
@@ -433,7 +432,7 @@ object Extended {
 	/** A marker trait for [[net.noresttherein.oldsql.sql.Extended Extended]] implementations other than
 	  * the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join. While not mandatory, it is recommended
 	  * that all such clauses extend this type, as several implicit parameters responsible for traversing
-	  * composite ''from'' clauses, in particular acessors for the joined relations, depend on any `Extended` type
+	  * composite ''from'' clauses, in particular accessors for the joined relations, depend on any `Extended` type
 	  * to conform to either it, or the `Subselect`, with no provision for other cases. Note that this holds only
 	  * for `Extended` subtypes, and there are other clauses, in particular
 	  * [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]], which are neither.
@@ -442,8 +441,6 @@ object Extended {
 
 		override type Implicit = left.Implicit
 		override type Outer = left.Outer
-
-//		override def outer :Outer = left.outer //can't be implemented here because it is an abstract val in GroupByClause
 
 		override type InnerRow = left.InnerRow ~ last.Subject
 
@@ -484,6 +481,7 @@ object Extended {
 			this.asInstanceOf[ExtendedDecomposition[A J R, A, R, J, U]]
 	}
 
+
 	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
 	                  "Missing implicit ExtendedComposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
 	abstract class ExtendedComposition[F <: L J R, L <: U, R[O] <: M[O],
@@ -497,7 +495,6 @@ object Extended {
 		override def cast[A <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
 			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
 	}
-
 
 
 	implicit def extendedDecomposition[L <: FromClause, R[O] <: MappingAt[O]]

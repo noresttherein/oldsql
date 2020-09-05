@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFromSome, JoinedEntities, NonEmptyFrom, ParameterlessFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedEntities, NonEmptyFrom, ParameterlessFrom}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
   * @see [[net.noresttherein.oldsql.sql.GroupByClause]]
   */ //FromClause is redundant but makes the signature more clear.
 trait DiscreteFrom extends FromClause { thisClause =>
-//	override type FromLast <: DiscreteFrom //can't have this because Dual.FromLast = FromClause to be a fixed point.
+	//override type FromLast <: DiscreteFrom //can't have this because Dual.FromLast = FromClause to be a fixed point.
 	override type This <: DiscreteFrom
 
 
@@ -77,28 +77,7 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	def joinWith[F <: FromSome](suffix :F, join :JoinLike.* = InnerJoin.template) :JoinWith[join.LikeJoin, F]
 
 
-	override type JoinedWith[+P <: FromSome, +J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R] <:
-		FromSome with Generalized
-
-	/** Joins the given parameter clause with this clause. The type of the resulting clause is the result
-	  * of replacing the empty clause `Dual` in this clause's type with `P` and replacing `From[X]` with `P AndFrom X`.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#JoinedWith]]
-	  */
-	type AppendedTo[+P <: DiscreteFrom] <: DiscreteFrom with Generalized
-
-	/** Joins the clause given as the parameter with this clause. The type of the resulting clause is the result
-	  * of replacing the empty clause `Dual` in this clause's type with `P` and upcasting the join between `Dual`
-	  * and the first relation `T` to `P AndFrom T`. The clauses are joined using an inner join,
-	  * unless `prefix` any of the clauses are empty, in which case the other is returned.
-	  * The difference from [[net.noresttherein.oldsql.sql.FromClause#joinWith joinWith]] is that it accepts
-	  * empty clauses as arguments, but the return type is upcast to `AndFrom`.
-	  *
-	  * This is a low-level method and client code should generally prefer the implicit extension method
-	  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseExtension#andFrom andFrom]] which uses the more natural
-	  * prefix - suffix order rather than the inversion as in this method.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#joinedWith]]
-	  */
-	def appendedTo[P <: DiscreteFrom](prefix :P) :AppendedTo[P]
+	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] <: Generalized
 
 
 
@@ -124,7 +103,7 @@ object DiscreteFrom {
 	  */
 	trait FromSome extends NonEmptyFrom with DiscreteFrom { thisClause =>
 		override type LastTable[F <: FromClause] = JoinedRelation[F, LastMapping]
-//		override type FromLast >: this.type <: FromSome
+		//override type FromLast >: this.type <: FromSome //>: this.type doesn't hold for decorators
 		override type FromLast <: FromSome
 		override type FromNext[E[+L <: FromSome] <: FromClause] = E[FromLast]
 		override type This <: FromSome
@@ -160,33 +139,6 @@ object DiscreteFrom {
 		override def joinWith[F <: FromSome](suffix :F, join :JoinLike.*) :suffix.JoinedWith[Self, join.LikeJoin] =
 			join.likeJoin(self, suffix)
 
-
-
-		override type FromRelation[T[O] <: MappingAt[O]] = Self Subselect T
-
-		override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                 (first :Relation[M])
-//		                 (implicit cast :InferSubject[this.type, Subselect, M, T, S])
-		                 (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
-				:FromRelation[T] =
-			Subselect[Self, T, S](self, LastRelation(cast(first)))(True)
-
-
-		override type FromSubselect[+F <: FromSome] = F#AsSubselectOf[Self] {
-//			type Self <: AsSubselectOf[Outer]
-			type Implicit = thisClause.Generalized
-			type Outer = thisClause.Self
-			type InnerRow <: F#InnerRow
-		}
-
-		override def from[F <: FreeFromSome](subselect :F)
-				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized; type Outer = thisClause.Self } =
-			subselect.asSubselectOf(self)
-
-		override def fromSubselect[F <: FromSome]
-		                          (subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
-				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized; type Outer = thisClause.Self } =
-			subselect.asSubselectOf(self)
 
 	}
 
@@ -225,7 +177,7 @@ object DiscreteFrom {
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def andFrom[R <: DiscreteFrom](other :R) :other.AppendedTo[F] = other.appendedTo(clause)
+		@inline def andFrom[R <: DiscreteFrom](other :R) :other.JoinedWith[F, AndFrom] = other.appendedTo(clause)
 	}
 
 
@@ -472,7 +424,7 @@ object DiscreteFrom {
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  * @throws UnsupportedOperationException if `other` is empty or its first join is a `JoinParam`.
 		  */
-		@inline def subselect[R <: FromSome](other :R) :other.JoinedWith[F, Subselect] =
+		@inline def subselect[R <: FromSome](other :R) :other.JoinedWithSubselect[F] =
 			other.joinedWithSubselect(clause)
 
 
