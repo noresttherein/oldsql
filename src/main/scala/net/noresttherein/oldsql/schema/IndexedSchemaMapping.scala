@@ -927,8 +927,8 @@ object IndexedSchemaMapping {
 			if (prefix.length == 0)
 				this
 			else
-                new PrefixedMapping[this.type, S, O](prefix, this)
-	                with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
+				new PrefixedMapping[this.type, S, O](prefix, this)
+					with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
 					with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
 		override def renamed(name :String) :IndexedSchemaMappingAdapter[M, T, S, V, C, O] =

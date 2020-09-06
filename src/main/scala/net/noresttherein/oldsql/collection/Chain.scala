@@ -1,15 +1,14 @@
 package net.noresttherein.oldsql.collection
 
+import scala.annotation.{implicitNotFound, tailrec}
+
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, UpperBound}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, method_:~, |~}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Positive}
 import net.noresttherein.oldsql.morsels.generic.{Const, GenericFun, Self}
 import net.noresttherein.oldsql.morsels.LUB
-import scala.annotation.{implicitNotFound, tailrec}
 
-import net.noresttherein.oldsql.collection.LabeledChain.>~
-import net.noresttherein.oldsql.collection.Record.|#
-import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Positive}
 
 
 
@@ -39,6 +38,9 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Posit
 sealed trait Chain {
 	def isEmpty :Boolean
 	def length :Int
+
+	type Cat[+P <: Chain] <: Chain
+	protected[collection] def cat[P <: Chain](prefix :P) :Cat[P]
 }
 
 
@@ -92,24 +94,6 @@ trait ChainFactory extends BaseChainFactory {
 
 
 
-	abstract class ChainConcat[P <: Type, S <: Type, C <: Type] private[ChainFactory] {
-		def apply(prefix :P, suffix :S) :C
-	}
-
-	private[this] final val cat_@~ = new ChainConcat[Type, @~, Type] {
-		override def apply(prefix :Type, suffix: @~) = prefix
-	}
-
-	implicit def emptyConcat[P <: Type] :ChainConcat[P, @~, P] = cat_@~.asInstanceOf[ChainConcat[P, @~, P]]
-
-	implicit def concatLast[P <: Type, S <: Type, C <: Type, L <: Item](implicit init :ChainConcat[P, S, C])
-			:ChainConcat[P, S Link L, C Link L] =
-		new ChainConcat[P, S Link L, C Link L] {
-			override def apply(prefix :P, suffix :Link[S, L]) = link(init(prefix, suffix.init), suffix.last)
-		}
-
-
-
 	implicit def ordering[I <: Type :Ordering, L <: Item :Ordering] :Ordering[I Link L] =
 		(left :I Link L, right :I Link L) => Ordering[I].compare(left.init, right.init) match {
 			case 0 => Ordering[L].compare(left.last, right.last)
@@ -146,7 +130,7 @@ object Chain extends ChainFactory {
 	  * @tparam L the type of the last element in the chain.
 	  */
 	trait ~[+I <: Chain, +L] extends Chain {
-		def init :I
+		val init :I
 		def last :L
 
 		def get :(I, L) = init -> last
@@ -154,6 +138,7 @@ object Chain extends ChainFactory {
 		override def isEmpty = false
 		override def length :Int = init.length + 1
 
+		override type Cat[+P <: Chain] <: init.Cat[P] ~ L
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[~[_, _]]
 
@@ -196,7 +181,11 @@ object Chain extends ChainFactory {
 
 
 
-	private class link[+I <: Chain, +L](val init :I, val last :L) extends (I ~ L)
+	protected[collection] class link[I <: Chain, L](override val init :I, override val last :L) extends (I ~ L) {
+		override type Cat[+P <: Chain] = init.Cat[P] ~ L
+
+		protected[collection] override def cat[P <: Chain](prefix :P) :Cat[P] = init.cat(prefix) ~ last
+	}
 
 
 
@@ -209,16 +198,29 @@ object Chain extends ChainFactory {
 	sealed class @~ private[Chain] extends Record with LabeledChain {
 		override def isEmpty = true
 		override def length = 0
+
+		override type Cat[+P <: Chain] = P
+		override type IndexedCat[+P <: IndexedChain] = P
+		override type LabeledCat[+P <: LabeledChain] = P
+		override type MapCat[+P <: ChainMap] = P
+		override type RecordCat[+P <: Record] = P
+
+		protected[collection] override def cat[P <: Chain](prefix :P) :P = prefix
+		protected[collection] override def indexedCat[P <: IndexedChain](prefix :P) :P = prefix
+		protected[collection] override def labeledCat[P <: LabeledChain](prefix :P) :P = prefix
+		protected[collection] override def mapCat[P <: ChainMap](prefix :P) :P = prefix
+		protected[collection] override def recordCat[P <: Record](prefix :P) :P = prefix
+
 	}
 
 
 	/** An empty `Chain`, which is also an instance of every `Chain` variants defined here. */
 	case object @~ extends @~ {
 		def ~[N](next :N): @~ ~ N = new link(this, next)
-		def |~[N <: IndexedChain.Item](next :N) = new |~(this, next)
-		def >~[N <: LabeledChain.Item](next :N) = new >~(this, next)
-		def &~[N <: ChainMap.Item](next :N) = new &~(this, next)
-		def |#[N <: Record.Item](next :N) = new |#(this, next)
+		def |~[N <: IndexedChain.Item](next :N) = new IndexedChain.link(this, next)
+		def >~[N <: LabeledChain.Item](next :N) = new LabeledChain.link(this, next)
+		def &~[N <: ChainMap.Item](next :N) = new ChainMap.link(this, next)
+		def |#[N <: Record.Item](next :N) = new Record.link(this, next)
 
 		def unapply(chain :Chain) :Boolean = chain.isInstanceOf[@~]
 	}
@@ -301,8 +303,7 @@ object Chain extends ChainFactory {
 
 
 		/** Appends the given chain to the end of this chain. */
-		def ++[S <: Chain, R <: Chain](suffix :S)(implicit concat :ChainConcat[C, S, R]) :R =
-			concat(self, suffix)
+		@inline def ++[S <: Chain](suffix :S) :suffix.Cat[C] = suffix.cat(self)
 
 		/** Given a function `F` accepting the same number of arguments, of the same types and in the same order
 		  * as the elements of this chain, apply it to the elements of this chain and return the result.
@@ -1724,7 +1725,10 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
   * @see [[net.noresttherein.oldsql.collection.IndexedChain.|~]]
   * @see [[net.noresttherein.oldsql.collection.LabeledChain]]
   */
-sealed trait IndexedChain extends Chain
+sealed trait IndexedChain extends Chain {
+	type IndexedCat[+P <: IndexedChain] <: IndexedChain
+	protected[collection] def indexedCat[P <: IndexedChain](prefix :P) :IndexedCat[P]
+}
 
 
 
@@ -1744,17 +1748,17 @@ object IndexedChain extends IndexedChainFactory {
 	override type NonSingleton = Any :~ Value
 
 	/** Factory method for non-empty chains of type `Type`.  */
-	protected override def link[I <: Type, L <: Item](init :I, last :L) = new |~[I, L](init, last)
+	protected override def link[I <: Type, L <: Item](init :I, last :L) = new link[I, L](init, last)
 
 	protected override def get[K <: Key, V <: Value](index :IndexedChain |~ (K :~ V)) :V = index.last.value
 
 	protected override def get[K <: Key, V <: Value](index: IndexedChain |~ (K :~ V), key :K) :V = index.last.value
 
 	protected override def set[I <: IndexedChain, K <: Key, V <: Value](i :I |~ (K :~ V), key :K, v :V) :I |~ (K :~ V) =
-		new |~(i.init, new :~[K, V](v))
+		new link(i.init, new :~[K, V](v))
 
 	protected override def append[I <: IndexedChain, K <: Key, V <: Any](index :I, key :K, value :V) :I |~ (K :~ V) =
-		new |~(index, new :~[K, V](value))
+		new link(index, new :~[K, V](value))
 
 
 
@@ -1827,9 +1831,11 @@ object IndexedChain extends IndexedChainFactory {
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	class |~[+I <: Type, +L <: Item] private[collection] (val init :I, val last :L) extends (I ~ L) with IndexedChain {
+	sealed trait |~[+I <: Type, +L <: Item] extends (I ~ L) with IndexedChain {
 
-		@inline def values[O <: Chain](implicit chain :ToValueChain[I |~ L, O]) :O =
+		override type IndexedCat[+P <: IndexedChain] <: init.IndexedCat[P] |~ L
+
+		@inline final def values[O <: Chain](implicit chain :ToValueChain[I |~ L, O]) :O =
 			this.asInstanceOf[O] //last is erased to last.value, so it will work in the bytecode!
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[|~[_, _]]
@@ -1842,6 +1848,15 @@ object IndexedChain extends IndexedChainFactory {
 
 		protected override def symbol = "|~"
 
+	}
+
+	protected[collection] class link[I <: Type, L <: Item](override val init :I, override val last :L)
+		extends Chain.link[I, L](init, last) with |~[I, L]
+	{
+		override type IndexedCat[+P <: IndexedChain] = init.IndexedCat[P] |~ L
+
+		protected[collection] override def indexedCat[P <: IndexedChain](prefix :P) :IndexedCat[P] =
+			init.indexedCat(prefix) |~ last
 	}
 
 
@@ -1864,12 +1879,12 @@ object IndexedChain extends IndexedChainFactory {
 	object |~ {
 		@inline def apply[K <: Key] :constructor_|~[K] = new constructor_|~[K] {}
 
-		@inline def apply[I <: IndexedChain, L <: Singleton :~ Any](tail :I, head :L) :I |~ L = new |~(tail, head)
+		@inline def apply[I <: IndexedChain, L <: Singleton :~ Any](tail :I, head :L) :I |~ L = new link(tail, head)
 
 
 		trait constructor_|~[K <: Key] extends Any {
 			@inline def apply[I <: IndexedChain, V](init :I, value :V) :I |~ (K :~ V) =
-				new |~[I, K :~ V](init, new :~(value))
+				new link[I, K :~ V](init, new :~(value))
 		}
 
 
@@ -1894,7 +1909,7 @@ object IndexedChain extends IndexedChainFactory {
 	implicit class IndexedChainOps[I <: IndexedChain](private val self :I) extends AnyVal {
 
 		/** Extends the index with another entry `N`, becoming the new last entry. */
-		@inline def |~[N <: Key :~ Value](next :N) :I |~ N = new |~(self, next)
+		@inline def |~[N <: Key :~ Value](next :N) :I |~ N = new link(self, next)
 
 		/** Retrieves the value of associated with the given key. The key comparison
 		  * is made based on the static types, rather than values, which are not stored. For this reason only entries
@@ -1914,8 +1929,7 @@ object IndexedChain extends IndexedChainFactory {
 			put(self, key, value)
 
 		/** Appends the given index to the end of this chain. */
-		def ++[S <: IndexedChain, R <: IndexedChain](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
-			concat(self, suffix)
+		@inline def ++[S <: IndexedChain](suffix :S) :suffix.IndexedCat[I] = suffix.indexedCat(self)
 
 		@inline def toMap[K, V](implicit convert :ToMap[I, K, V]) :Map[K, V] = convert(self).toMap
 
@@ -1958,7 +1972,10 @@ object IndexedChain extends IndexedChainFactory {
   * An empty `LabeledChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$]].
   * @see [[net.noresttherein.oldsql.collection.LabeledChain.>~]]
   */
-sealed trait LabeledChain extends IndexedChain
+sealed trait LabeledChain extends IndexedChain {
+	type LabeledCat[+P <: LabeledChain] <: LabeledChain
+	protected[collection] def labeledCat[P <: LabeledChain](prefix :P) :LabeledCat[P]
+}
 
 
 
@@ -1978,21 +1995,17 @@ object LabeledChain extends IndexedChainFactory {
 	override type NonSingleton = String :~ Any
 
 	/** Factory method for non-empty chains of type `Type`.  */
-	protected override def link[I <: Type, L <: Item](init :I, last :L) = new >~[I, L](init, last)
+	protected override def link[I <: Type, L <: Item](init :I, last :L) = new link[I, L](init, last)
 
 	protected override def get[K <: Key, V <: Value](index :LabeledChain >~ (K :~ V)) :V = index.last.value
 
 	protected override def get[K <: Key, V <: Value](index: LabeledChain >~ (K :~ V), key :K) :V = index.last.value
 
 	protected override def set[I <: LabeledChain, K <: Key, V <: Value](i :I >~ (K :~ V), key :K, v :V) :I >~ (K :~ V) =
-		new >~(i.init, new :~[K, V](v))
+		new link(i.init, new :~[K, V](v))
 
 	protected override def append[I <: LabeledChain, K <: Key, V <: Any](index :I, key :K, value :V) :I >~ (K :~ V) =
-		new >~(index, new :~[K, V](value))
-
-
-
-val test = "silver" :~ "monsters" >~ "steel" :~ "humans"
+		new link(index, new :~[K, V](value))
 
 
 
@@ -2002,11 +2015,21 @@ val test = "silver" :~ "monsters" >~ "steel" :~ "humans"
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	class >~[+I <: Type, +L <: Item] private[collection](init :I, last :L) extends |~[I, L](init, last) with LabeledChain {
+	trait >~[+I <: Type, +L <: Item] extends |~[I, L] with LabeledChain {
+		override type LabeledCat[+P <: LabeledChain] <: init.LabeledCat[P] >~ L
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[>~[_, _]]
 
 		protected override def symbol = ">~"
+	}
+
+	protected[collection] class link[I <: Type, L <: Item](override val init :I, override val last :L)
+		extends IndexedChain.link[I, L](init, last) with >~[I, L]
+	{
+		override type LabeledCat[+P <: LabeledChain] = init.LabeledCat[P] >~ L
+
+		protected[collection] override def labeledCat[P <: LabeledChain](prefix :P) :LabeledCat[P] =
+			init.labeledCat(prefix) >~ last
 	}
 
 
@@ -2029,12 +2052,12 @@ val test = "silver" :~ "monsters" >~ "steel" :~ "humans"
 	object >~ {
 		@inline def apply[K <: Key] :constructor_>~[K] = new constructor_>~[K] {}
 
-		@inline def apply[I <: LabeledChain, L <: Key :~ Any](tail :I, head :L) :I >~ L = new >~(tail, head)
+		@inline def apply[I <: LabeledChain, L <: Key :~ Any](tail :I, head :L) :I >~ L = new link(tail, head)
 
 
 		trait constructor_>~[K <: Key] extends Any {
 			@inline def apply[I <: LabeledChain, V](init :I, value :V) :I >~ (K :~ V) =
-				new >~[I, K :~ V](init, new :~(value))
+				new link[I, K :~ V](init, new :~(value))
 		}
 
 
@@ -2057,7 +2080,7 @@ val test = "silver" :~ "monsters" >~ "steel" :~ "humans"
 	implicit class LabeledChainOps[I <: LabeledChain](private val self :I) extends AnyVal {
 
 		/** Extends the index with another entry `N`, becoming the new last entry. */
-		@inline def >~[N <: Key :~ Value](next :N) :I >~ N = new >~(self, next)
+		@inline def >~[N <: Key :~ Value](next :N) :I >~ N = new link(self, next)
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
@@ -2081,8 +2104,7 @@ val test = "silver" :~ "monsters" >~ "steel" :~ "humans"
 			put(self, key, value)
 
 		/** Appends the given index to the end of this chain. */
-		def ++[S <: LabeledChain, R <: LabeledChain](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
-			concat(self, suffix)
+		@inline def ++[S <: LabeledChain](suffix :S) :suffix.LabeledCat[I] = suffix.labeledCat(self)
 
 	}
 
@@ -2127,7 +2149,10 @@ sealed trait ChainMapFactory extends IndexedChainFactory {
 
 
 
-sealed trait ChainMap extends Chain
+sealed trait ChainMap extends Chain {
+	type MapCat[+P <: ChainMap] <: ChainMap
+	protected[collection] def mapCat[P <: ChainMap](prefix :P) :MapCat[P]
+}
 
 
 
@@ -2139,7 +2164,7 @@ object ChainMap extends ChainMapFactory {
 	override type NonSingleton = (Any, Any)
 	override type Entry[+K <: Key, +V <: Value] = (K, V)
 
-	protected override def link[T <: ChainMap, H <: (Key, Value)](tail :T, head :H) :T &~ H = new &~(tail, head)
+	protected override def link[T <: ChainMap, H <: (Key, Value)](tail :T, head :H) :T &~ H = new link(tail, head)
 
 
 	/*** A non-empty `ChainMap`, consisting of another (possibly empty) `ChainMap` `init`, followed by
@@ -2147,10 +2172,13 @@ object ChainMap extends ChainMapFactory {
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	class &~[+I <: ChainMap, +L <: (Key, Any)](val init :I, val last :L) extends ~[I, L] with ChainMap {
+	sealed trait &~[+I <: ChainMap, +L <: (Key, Any)] extends ~[I, L] with ChainMap {
 
 		@inline final def values[O <: Chain](implicit chain :ToValueChain[I &~ L, O]) :O = chain(this)
-		
+
+		override type MapCat[+P <: ChainMap] <: init.MapCat[P] &~ L
+
+
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[&~[_, _]]
 
 		override def equals(that :Any) :Boolean = that match {
@@ -2175,6 +2203,14 @@ object ChainMap extends ChainMapFactory {
 
 	}
 
+	protected[collection] class link[I <: Type, L <: Item](override val init :I, override val last :L)
+		extends Chain.link[I, L](init, last) with &~[I, L]
+	{
+		override type MapCat[+P <: ChainMap] = init.MapCat[P] &~ L
+
+		protected[collection] override def mapCat[P <: ChainMap](prefix :P) :MapCat[P] = init.mapCat(prefix) &~ last
+	}
+
 
 
 	/** A constructor and extractor of non-empty `ChainMap` implementations.
@@ -2187,7 +2223,7 @@ object ChainMap extends ChainMapFactory {
 	  * }}}
 	  */
 	object &~ {
-		@inline def apply[T <: ChainMap, H <: (Key, Any)](tail :T, head :H) :T &~ H = new &~(tail, head)
+		@inline def apply[T <: ChainMap, H <: (Key, Any)](tail :T, head :H) :T &~ H = new link(tail, head)
 
 		@inline def unapply[T<: ChainMap, H <: (Key, Any)](index :T &~ H) :T &~ H = index
 
@@ -2211,7 +2247,7 @@ object ChainMap extends ChainMapFactory {
 	class ChainMapOps[I <: ChainMap](private val self :I) extends AnyVal {
 
 		/** Extends the index with another entry `N`, becoming the new last entry. */
-		@inline def &~[N <: (Key, Value)](next :N) :I &~ N = new &~(self, next)
+		@inline def &~[N <: (Key, Value)](next :N) :I &~ N = new link(self, next)
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
@@ -2242,11 +2278,7 @@ object ChainMap extends ChainMapFactory {
 			put(self, key, value)
 
 		/** Appends the given chain to the end of this chain. */
-		def ++[S <: ChainMap, R <: ChainMap](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
-			concat(self, suffix)
-
-//		@inline def toMap[K, V](implicit ub :UpperBound[I, (K, V)]) :Map[K, V] =
-//			self.toSeq[(K, V)].toMap
+		@inline def ++[S <: ChainMap](suffix :S) :suffix.MapCat[I] = suffix.mapCat(self)
 
 	}
 
@@ -2264,7 +2296,10 @@ object ChainMap extends ChainMapFactory {
   * @see [[net.noresttherein.oldsql.collection.Record.|#]]
   * @see [[net.noresttherein.oldsql.collection.Record.#>]]
   */
-sealed trait Record extends ChainMap 
+sealed trait Record extends ChainMap {
+	type RecordCat[+P <: Record] <: Record
+	protected[collection] def recordCat[P <: Record](prefix :P) :RecordCat[P]
+}
 
 
 
@@ -2275,7 +2310,7 @@ object Record extends ChainMapFactory {
 	override type Value = Any
 	override type NonSingleton = (String, Any)
 
-	protected override def link[T <: Record, H <: (Key, Any)](tail :T, head :H) :T |# H = new |#(tail, head)
+	protected override def link[T <: Record, H <: (Key, Any)](tail :T, head :H) :T |# H = new link(tail, head)
 
 
 
@@ -2285,8 +2320,11 @@ object Record extends ChainMapFactory {
 	/** A non-empty record, consisting of the given record as its first elements, followed by the element `next`.
 	  * Importing this class also imports implicit conversions which add a `#>` method to any `String`,
 	  */
-	final class |#[+I <: Record, +E <: (Key, Any)](record :I, next :E) extends &~[I, E](record, next) with Record {
-		
+	sealed trait |#[+I <: Record, +E <: (Key, Any)] extends &~[I, E] with Record {
+
+		override type RecordCat[+P <: Record] <: init.RecordCat[P] |# E
+
+
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[|#[_, _]]
 
 		override def equals(that :Any) :Boolean = that match {
@@ -2306,6 +2344,15 @@ object Record extends ChainMapFactory {
 			rec(init, last).toString
 		}
 
+	}
+
+	protected[collection] class link[I <: Type, L <: Item](override val init :I, override val last :L)
+		extends ChainMap.link[I, L](init, last) with |#[I, L]
+	{
+		override type RecordCat[+P <: Record] = init.RecordCat[P] |# L
+
+		protected[collection] override def recordCat[P <: Record](prefix :P) :RecordCat[P] =
+			init.recordCat(prefix) |# last
 	}
 
 
@@ -2329,7 +2376,7 @@ object Record extends ChainMapFactory {
 	object |# {
 
 		@inline def apply[T <: Record, K <: Key, V](tail :T, head :(K, V)) :T |# (K, V) =
-			new |#(tail, head)
+			new link(tail, head)
 
 		@inline def unapply[T <: Record, E <: (Key, Any)](record :T |# E) :T |# E = record
 
@@ -2383,7 +2430,7 @@ object Record extends ChainMapFactory {
 	implicit class RecordOps[I <: Record](private val self :I) extends AnyVal {
 
 		/** Appends a next entry to the end of the record. */
-		@inline def |#[E <: (Key, Any)](entry :E) :I |# E = new |#(self, entry)
+		@inline def |#[E <: (Key, Any)](entry :E) :I |# E = new link(self, entry)
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
@@ -2414,11 +2461,7 @@ object Record extends ChainMapFactory {
 			put(self, key, value)
 
 		/** Appends the given record to the end of this record. */
-		def ++[S <: Record, R <: Record](suffix :S)(implicit concat :ChainConcat[I, S, R]) :R =
-			concat(self, suffix)
-
-//		@inline def toMap[K, V](implicit ub :UpperBound[I, (K, V)]) :Map[K, V] =
-//			self.toSeq[(K, V)].toMap
+		@inline def ++[S <: Record](suffix :S) :suffix.RecordCat[I] = suffix.recordCat(self)
 
 	}
 
