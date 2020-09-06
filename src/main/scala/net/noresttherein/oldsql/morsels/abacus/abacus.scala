@@ -126,5 +126,26 @@ package object abacus {
 	}
 
 
+
+	@implicitNotFound("Cannot prove that ${A} < ${B}.")
+	final class LT[A <: Numeral, B <: Numeral] private[abacus]()
+	private[this] val lt = new LT[Numeral, Numeral]
+
+	implicit def LT[A <: Numeral, B <: Numeral, N <: Numeral, S <: Numeral]
+	               (implicit neg :Sum[B, N, 0], cmp :Sum[A, N, S], lt :Negative[S]) :LT[A, B] =
+		lt.asInstanceOf[LT[A, B]]
+
+
+
+	@implicitNotFound("Cannot prove that ${A} <= ${B}")
+	final class LTE[A <: Numeral, B <: Numeral] private[abacus]()
+	private[this] val lte = new LTE[Numeral, Numeral]
+
+	implicit def LTE[A <: Numeral, B <: Numeral, N <: Numeral, S <: Numeral]
+	                (implicit neg :Sum[B, N, 0], cmp :Sum[A, N, S], lt :NegativeInc[_, S]) :LTE[A, B] =
+		lte.asInstanceOf[LTE[A, B]]
+
+
+
 }
 

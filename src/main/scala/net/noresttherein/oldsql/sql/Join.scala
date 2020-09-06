@@ -57,7 +57,22 @@ sealed trait JoinLike[+L <: FromClause, R[O] <: MappingAt[O]] extends AndFrom[L,
 		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 	}
 
-	override type This >: this.type <: L JoinLike R
+	override type This >: this.type <: (L JoinLike R) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
 
 	protected override def narrow :left.type JoinLike R
 
@@ -257,7 +272,25 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]] extends JoinLike[L, R] w
 
 	override type Generalized = left.Generalized Join R
 	override type Self = left.Self LikeJoin R
-	override type This >: this.type <: L Join R
+
+	override type This >: this.type <: (L Join R) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+F <: P, T[O] <: MappingAt[O]] <: F AndFrom T] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
+
 
 	protected override def narrow :WithLeft[left.type]
 
@@ -472,9 +505,26 @@ object Join {
   * on the right, filtered by the conjunction of this join's `condition` with the combined filter expression
   * of the left side.
   */
-sealed trait InnerJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] {
+sealed trait InnerJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] { thisClause =>
 
-	override type This >: this.type <: L InnerJoin R
+	override type This >: this.type <: (L InnerJoin R) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+F <: P, T[O] <: MappingAt[O]] <: F AndFrom T] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
+
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F InnerJoin T
 
 	override def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X]
@@ -618,9 +668,26 @@ object InnerJoin {
   * as a single relation for this purpose. The join is, filtered by the conjunction of this join's `condition`
   * with the combined filter expression of the left side.
   */
-sealed trait OuterJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] {
+sealed trait OuterJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] { thisClause =>
 
-	override type This >: this.type <: L OuterJoin R
+	override type This >: this.type <: (L OuterJoin R) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+F <: P, T[O] <: MappingAt[O]] <: F AndFrom T] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
+
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F OuterJoin T
 
 	override def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X]
@@ -758,9 +825,26 @@ object OuterJoin {
 
 
 
-sealed trait LeftJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] {
+sealed trait LeftJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] { thisClause =>
 
-	override type This >: this.type <: L LeftJoin R
+	override type This >: this.type <: (L LeftJoin R) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+F <: P, T[O] <: MappingAt[O]] <: F AndFrom T] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
+
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F LeftJoin T
 
 	override def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X]
@@ -897,9 +981,26 @@ object LeftJoin {
 
 
 
-sealed trait RightJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] {
+sealed trait RightJoin[+L <: FromSome, R[O] <: MappingAt[O]] extends Join[L, R] { thisClause =>
 
-	override type This >: this.type <: L RightJoin R
+	override type This >: this.type <: (L RightJoin R) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+F <: P, T[O] <: MappingAt[O]] <: F AndFrom T] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
+
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F RightJoin T
 
 	override def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X]
@@ -1089,7 +1190,26 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]] extends JoinLik
 
 	override type Generalized = left.Generalized Subselect T
 	override type Self = left.Self Subselect T
-	override type This >: this.type <: F Subselect T
+
+	override type This >: this.type <: (F Subselect T) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
+
+
 	override type WithRight[R[O] <: MappingAt[O]] <: F Subselect R
 	override type GeneralizedJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L Subselect R
 	override type LikeJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L Subselect R

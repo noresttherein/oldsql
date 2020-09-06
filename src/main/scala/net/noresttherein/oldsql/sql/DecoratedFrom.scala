@@ -76,7 +76,27 @@ object DecoratedFrom {
 		override type FromLast = GeneralizedClause[clause.FromLast]
 		override type Generalized = GeneralizedClause[clause.Generalized]
 		override type Self = WithClause[clause.Self]
-		override type This <: WithClause[clause.This]
+
+		override type This <: WithClause[clause.This] {
+			type FromLast = thisClause.FromLast
+			type Generalized = thisClause.Generalized
+			type Self = thisClause.Self
+			type Params = thisClause.Params
+			type FullRow = thisClause.FullRow
+			type Explicit = thisClause.Explicit
+			type Inner = thisClause.Inner
+			type Implicit = thisClause.Implicit
+			type Outer = thisClause.Outer
+			type Base = thisClause.Base
+			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+			type InnerRow = thisClause.InnerRow
+			type OuterRow = thisClause.OuterRow
+			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
+			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+			type FromSubselect[+S <: NonEmptyFrom] = thisClause.FromSubselect[S]
+		}
+
 
 		override def last :JoinedRelation[FromLast, LastMapping] = clause.last.extend[FromLast]
 

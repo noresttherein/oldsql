@@ -112,7 +112,25 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
-	override type This >: this.type <: L Using R
+	override type This >: this.type <: (L Using R) {
+		type FromLast = thisClause.FromLast
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+	}
+
 
 	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
 	  * using member types of `FromClause`, as they become proper path types instead of projections.
@@ -352,7 +370,25 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thi
 		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
-	override type This >: this.type <: L Extended R
+	override type This >: this.type <: (L Extended R) {
+		type FromLast = thisClause.FromLast
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+	}
+
 
 	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
 	  * using member types of `FromClause`, as they become proper path types instead of projections.

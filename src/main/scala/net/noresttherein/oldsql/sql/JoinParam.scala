@@ -61,7 +61,22 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends Extended
 		type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
 	}
 
-	override type This >: this.type <: F UnboundParam P
+	override type This >: this.type <: (F UnboundParam P) {
+		type FromLast = thisClause.FromLast
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+C <: FromClause, +J[+L <: C, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[C, J]
+		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+		type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
+	}
 
 
 
@@ -708,12 +723,27 @@ object UnboundParam {
   * @see [[net.noresttherein.oldsql.sql.JoinParam.WithParam]]
   * @see [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]    
   */ //lets try to widen the bound to `DiscreteFrom`
-sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]] extends AndFrom[F, P] with UnboundParam[F, P] {
-	thisClause =>
+sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]] extends AndFrom[F, P] with UnboundParam[F, P] { thisClause =>
 
-	override type This >: this.type <: F JoinParam P
 	override type Generalized = left.Generalized JoinParam P
 	override type Self = left.Self JoinParam P
+
+	override type This >: this.type <: (F JoinParam P) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+S <: FromClause, +J[+L <: S, R[O] <: MappingAt[O]] <: L AndFrom R] =
+			thisClause.JoinedWith[S, J]
+	}
 
 	protected override def narrow :left.type JoinParam P
 
@@ -995,7 +1025,23 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
 
 	override type Generalized = left.Generalized GroupParam P
 	override type Self = left.Self GroupParam P
-	override type This >: this.type <: F GroupParam P
+
+	override type This >: this.type <: (F GroupParam P) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+S <: FromClause, +J[+L <: S, R[O] <: MappingAt[O]] <: L AndFrom R] =
+			thisClause.JoinedWith[S, J]
+	}
 
 	type GeneralizedLeft[+L <: GroupByClause] = L GroupParam P
 	type WithLeft[+L <: GroupByClause] = L GroupParam P

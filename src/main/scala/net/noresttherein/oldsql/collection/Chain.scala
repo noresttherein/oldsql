@@ -351,8 +351,8 @@ object Chain extends ChainFactory {
 
 
 
-	implicit val EmptyOrdering :Ordering[@~] = (x : @~, y : @~) => 0
 
+	implicit val EmptyOrdering :Ordering[@~] = (x : @~, y : @~) => 0
 
 
 	@implicitNotFound("Type ${U} is not an upper bound of elements in chain ${C}.")
@@ -362,8 +362,6 @@ object Chain extends ChainFactory {
 
 	@inline implicit def upperBound[T <: Chain, H, U, X](implicit tail :UpperBound[T, U], lub :LUB[H, U, X]) :UpperBound[T ~ H, X] =
 		tail.asInstanceOf[UpperBound[T ~ H, X]]
-
-
 
 
 
@@ -381,7 +379,6 @@ object Chain extends ChainFactory {
 	}
 
 
-
 	@implicitNotFound("Can't find an element X satisfying ${P}[X] in chain ${C}: implicit ${P}[${X}] not found.")
 	class ItemExists[C <: Chain, P[_], X] private (val found :P[X]) extends AnyVal
 
@@ -392,7 +389,6 @@ object Chain extends ChainFactory {
 		implicit def earlier[C <: Chain, T, P[_], X](implicit exists :ItemExists[C, P, X]) :ItemExists[C ~ T, P, X] =
 			new ItemExists[C ~ T, P, X](exists.found)
 	}
-
 
 
 	type ChainContains[C <: Chain, X] = ItemExists[C, ({ type EQ[T] = X =:= T })#EQ, X]

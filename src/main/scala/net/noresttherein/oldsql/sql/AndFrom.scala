@@ -69,7 +69,22 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends FromSome with Exte
 		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 	}
 
-	override type This >: this.type <: L AndFrom R
+	override type This >: this.type <: (L AndFrom R) {
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
+
 
 	protected override def narrow :left.type AndFrom R
 

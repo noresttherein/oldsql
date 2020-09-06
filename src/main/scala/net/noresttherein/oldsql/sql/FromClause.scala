@@ -3,14 +3,14 @@ package net.noresttherein.oldsql.sql
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Chain
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainLength}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, Numeral, Positive, Sum}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause.GetTable.{ByIndex, ByLabel, ByParamName, BySubject, ByTypeConstructor}
+import net.noresttherein.oldsql.sql.FromClause.GetTable.{ByIndex, ByLabel, ByParamIndex, ByParamName, BySubject, ByTypeConstructor}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FreeFromSome, JoinedEntities, NonEmptyFrom, PrefixOf, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -267,7 +267,26 @@ trait FromClause { thisClause =>
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#Self]]
 	  */
 	//type This >: this.type <: FromLast //doesn't hold for decorators
-	type This <: FromClause //todo: refine this with everything
+	type This <: FromClause {
+		type LastMapping[O] = thisClause.LastMapping[O]
+		type LastTable[F <: FromClause] = thisClause.LastTable[F]
+		type FromLast = thisClause.FromLast
+		type Generalized = thisClause.Generalized
+		type Self = thisClause.Self
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type Outer = thisClause.Outer
+		type Base = thisClause.Base
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+			thisClause.JoinedWith[P, J]
+		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+	}
 
 
 
@@ -854,7 +873,7 @@ trait FromClause { thisClause =>
 	  *        to `SubselectOf[Generalized]`.
 	  */
 	def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	        (first :Relation[M]) //todo: make this use JoinedRelationSubject to cast back the result
+	        (first :Relation[M]) //uses Conforms instead of JoinedRelationSubject because the result type might be a Subselect or From
 	        //(implicit cast :InferSubject[this.type, Subselect, M, T, S]) //subselect would have to accept FromClause (including empty)
 	        (implicit infer :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 			:FromRelation[T]
@@ -1137,9 +1156,29 @@ object FromClause {
 	trait NonEmptyFrom extends FromClause { thisClause =>
 		override type LastTable[F <: FromClause] = JoinedRelation[F, LastMapping]
 		override type FromLast <: NonEmptyFrom
-		override type This <: NonEmptyFrom
 
 		type Self <: FromLast {
+			type FromLast = thisClause.FromLast
+			type Generalized = thisClause.Generalized
+			type Self = thisClause.Self
+			type Params = thisClause.Params
+			type FullRow = thisClause.FullRow
+			type Explicit = thisClause.Explicit
+			type Inner = thisClause.Inner
+			type Implicit = thisClause.Implicit
+			type Outer = thisClause.Outer
+			type Base = thisClause.Base
+			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+			type InnerRow = thisClause.InnerRow
+			type OuterRow = thisClause.OuterRow
+			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
+			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+		}
+
+		override type This <: NonEmptyFrom {
+			type LastMapping[O] = thisClause.LastMapping[O]
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
 			type Self = thisClause.Self
@@ -1626,6 +1665,7 @@ object FromClause {
 
 
 
+
 	/** A facade to a ''from'' clause of type `F`, providing access to mappings for all relations listed in its type.
 	  * The `Origin` type of every returned `M[O] &lt;: MappingAt[O]` instance (and, by transition, its components)
 	  * is the generalized super type of `F` formed by replacing all mappings preceding `M` in its type definition
@@ -1692,19 +1732,26 @@ object FromClause {
 
 
 
-		//todo: ByParamIndex
 		/** Returns the `Mapping` instance for the last clause parameter of type `X`. */
 		def ?[X](implicit get :ByTypeConstructor[F, ParamRelation[X]#Param]) :get.T[get.G] =
 			get(clause).mapping
 
 		/** Returns the `Mapping` instance for the last clause parameter with name `name` as its label.
-		  * This takes into account only `JoinParam (N ?: _)#T` joins, that is with the name listed as
+		  * This takes into account only `UnboundParam (N ?: _)#T` joins, that is with the name listed as
 		  *  a mapping label in its type, not the actual parameter names which might have been given to
 		  *  standard `ParamRelation[X]` instances.
 		  */
 		def ?[N <: Label](name :N)(implicit get :ByParamName[F, N]) :get.T[get.G] =
-			get.apply(clause).mapping
+			get(clause).mapping
 
+		/** Returns the `Mapping` instance for the `n`-th unbound parameter with name `name` as its label.
+		  * The returned parameter is the same as the one at the `n`-th position in `F#FullRow`. In particular,
+		  * any `JoinParam` joins present under the grouped section of a `GroupByAll` clause, which correspond
+		  * to unavailable relations, are not excluded from indexing: any such relations will remain unavailable,
+		  * creating a gap between available indices.
+		  */
+		def ?[N <: Numeral](n :N)(implicit get :ByParamIndex[F, N]) :get.T[get.G] =
+			get(clause).mapping
 
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using this clause.
@@ -1848,17 +1895,25 @@ object FromClause {
 
 
 
-		//todo: ByParamIndex
-		/** Returns the `Mapping` instance for the last clause parameter of type `X`. */
+		/** Returns the `JoinedRelation` instance for the last clause parameter of type `X`. */
 		def ?[X](implicit get :ByTypeConstructor[F, ParamRelation[X]#Param]) :JoinedRelation[get.G, get.T] =
 			get(clause)
 
-		/** Returns the `Mapping` instance for the last clause parameter with name `name` as its label.
-		  * This takes into account only `JoinParam (N ?: _)#T` joins, that is with the name listed as
+		/** Returns the `JoinedRelation` instance for the last clause parameter with name `name` as its label.
+		  * This takes into account only `UnboundParam (N ?: _)#T` joins, that is with the name listed as
 		  *  a mapping label in its type, not the actual parameter names which might have been given to
 		  *  standard `ParamRelation[X]` instances.
 		  */
 		def ?[N <: Label](name :N)(implicit get :ByParamName[F, N]) :JoinedRelation[get.G, get.T] =
+			get(clause)
+
+		/** Returns the `JoinedRelation` instance for the `n`-th unbound parameter with name `name` as its label.
+		  * The returned parameter is the same as the one at the `n`-th position in `F#FullRow`. In particular,
+		  * any `JoinParam` joins present under the grouped section of a `GroupByAll` clause, which correspond
+		  * to unavailable relations, are not excluded from indexing: any such relations will remain unavailable,
+		  * creating a gap between available indices.
+		  */
+		def ?[N <: Numeral](n :N)(implicit get :ByParamIndex[F, N]) :JoinedRelation[get.G, get.T] =
 			get(clause)
 
 
@@ -2304,6 +2359,7 @@ object FromClause {
 			/** Getter for the matching relation. */
 			def apply(from :F) :JoinedRelation[G, T] = table(from).extend(stretch)
 
+			/** The returned relation based on its containig extension clause `S`, before extending it over `F`. */
 			private[FromClause] def table(from :F) :JoinedRelation[S, T]
 		}
 
@@ -2332,7 +2388,7 @@ object FromClause {
 		  * such 'public' implicit definition.
 		  * @tparam F the input `FromClause` from which the relation is taken.
 		  * @tparam X the 'key' type used to match the `Mapping` types of all relations in search for an implicit
-		  *           `Predicate[M[Any], X]`.
+		  *           `Predicate[F, M[Any], X]`.
 		  * @tparam O the `Origin` type for the mapping, which is a supertype of `F` resulting from replacing
 		  *           the prefix clause which contains the accessed relation with its `FromLast` type.
 		  * @tparam M the mapping of the accessed relation.
@@ -2356,31 +2412,46 @@ object FromClause {
 
 
 
-		abstract class GetTableTemplate {
+		abstract class GetTableTemplate { this :GetTableByPredicate =>
 
 			/** The upper type of the key type against which the relations are matched. */
 			type Key
 
-			/* Derived from some implicit `Found[F, X, I]`. This duplication
-			 * is required because the index `I` needs to be a type parameter for the type-level arithmetic to work
-			 * and the accessor methods accepting `Get` do not declare 'output' types. Additionally, different
-			 * accessors with the same signature but for different `GetTableByPredicate` instance will lead to
-			 * conflicts after erasure, so subclasses introduce their own `Get` subclass to prevent it.
-			 */
-			/** The companion evidence class to this object. */
+			/** The companion evidence class to this object. It is unnecessary for the subclasses
+			  * to provide a definition, but doing so introduces an implicit conversion `Get => Found`
+			  * of the lowest precedence, which allows adapting an existing implicit evidence `Get[F X]`
+			  * for an abstract clause `F` into `Get[E, X]`, where `F ExtendedBy E`.
+			  */
 			type Get[-F <: FromClause, X <: Key] <: RelationEvidence[F, X]
 
 
 
-			/** Implicit resolution of search for a mapping `M` in the `FromClause` `F` satisfying a `Predicate[M, X]`
+			/** Implicit resolution of search for a mapping `M` in the `FromClause` `F` satisfying a `Predicate[F, M, X]`
 			  * (that is, an `M` for which such an implicit value exists. The type of the mapping of the found relation
-			  * is returned as the member type `T[O]`. In other words, an implicit value `found :Found[F, X, I]`
+			  * is returned as the member type `T[O]`. In other words, an implicit value `found :Found[F, X] { type I = N }`
 			  * witnesses that `found.T` is the mapping of the last relation (rightmost) in the clause `F` for which
-			  * an implicit `Predicate[T, X]` exists, with `I` being the ''negative'' index of the mapping
-			  * (starting with `-1` for the last mapping and decreasing).
+			  * an implicit `Predicate[F, T, X]` exists, with `N` being the ''negative'' index of the mapping
+			  * (starting with `-1` for the last mapping and decreasing). It is not the actual companion evidence class
+			  * reported by this object for two reasons: first, various implementations introduce additional refinements
+			  * over the standard [[net.noresttherein.oldsql.sql.FromClause.GetTable.RelationEvidence RelationEvidence]]
+			  * interface and, second, because after erasure all GetTableByPredicate#Found` classes are equal
+			  * and methods of the same signature accepting evidence from different `GetTableByEvidence` instances
+			  * would clash with each other. The typical procedure is thus to implement the evidence resolution in
+			  * means of `Found` and convert the final `Found` evidence into a `Get`. Leaving things at that would
+			  * however not allow to perform the search based on an existing implicit `Get` (for example, to convert
+			  * `Get[F, X] { type I = -2 }` into `Get[F Join T, X] { type I = -3 }`. For this reason, `GetTableByPredicate`
+			  * subclasses typically introduce also a fallback conversion in the other direction - from `Get` to `Found`.
+			  * As this would lead to inifinite loops when the evidence cannot be found (and reporting a 'diverging
+			  * implicit expansion' error instead of 'implicit not found' with the customized message),
+			  * `Found` instances obtained through scanning of the ''from'' clause `F` rather than from an implicit `Get`
+			  * are always returned as its subclass
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]], and only values
+			  * of that class are legible for conversion into the final `Get` evidence.
 			  */
 			@implicitNotFound("Cannot find a mapping for key type ${X} in the clause ${F}: missing implicit Found[F, X].")
-			sealed trait Found[-F <: FromClause, X] extends RelationEvidence[F, X]
+			sealed trait Found[-F <: FromClause, X] extends RelationEvidence[F, X] {
+				def how :GetTableByPredicate = GetTableTemplate.this
+			}
 
 			/** The working subtype of `Found` returned by all recursive implicit methods, but not the one
 			  * converting an implicit `Get` into a `Found`. Only values of this type can be adapted as the final,
@@ -2547,108 +2618,135 @@ object FromClause {
 		  * @tparam F the input `FromClause`.
 		  * @tparam N index of the desired relation as a literal `Int` type.
 		  */
-		@implicitNotFound("Cannot get ${N}-th relation of the FROM clause ${F}. \n" +
-		                  "Either ${N} >= size (where size is the number of relations in the FROM clause),\n" +
+		@implicitNotFound("Cannot get ${N}-th relation of the FROM clause ${F}.\n" +
+		                  "Either ${N} >= size (where size is the number of relations in the whole FROM clause),\n" +
 		                  "or -(${N}) is greater the number of relations in the instantiated suffix of the FROM clause,\n" +
-		                  "or ${N} >= 0 and the size is not known (the clause type starts with FromClause and not Dual/From.")
+		                  "or ${N} >= 0 and the size is not known (the clause starts with an abstract type).")
 		sealed trait ByIndex[-F <: FromClause, N <: Numeral] extends RelationEvidence[F, N]
 
 
 		object ByIndex {
 
 			implicit def byPositiveIndex[F <: FromClause, N <: Numeral, M <: Numeral]
-			                            (implicit positive :Positive[N], found :ReturnPositive[F, N])
+			                            (implicit positive :Positive[N], found :ByPositiveIndex[F, N])
 					:ByIndex[F, N] { type T[O] = found.T[O]; type G = found.G; type I = found.I } =
 				found.byIndex
 
 			implicit def byNegativeIndex[F <: FromClause, N <: Numeral]
-			                            (implicit negative :Negative[N], found :ReturnNegative[F, N])
+			                            (implicit negative :Negative[N], found :ByNegativeIndex[F, N])
 					:ByIndex[F, N] { type T[O] = found.T[O]; type G = found.G; type I = N } =
 				found.byIndex
 
 
-
-			sealed trait ByPositiveIndex[-F <: FromClause, N <: Numeral] extends ByPositiveIndex.Found[F, N]
-
-			sealed trait ReturnPositive[-F <: FromClause, N <: Numeral] extends ByPositiveIndex[F, N] { pos =>
+			/** Performs for the `ByIndex` evidence the same function as
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]] for
+			  * `GetTableByPredicate` instances, that is marks a
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex.ByPositiveIndex.Found ByPositiveIndex.Found]]
+			  * evidence as being a search result rather than a conversion from an existing `ByIndex` to avoid infinite
+			  * implicit resolution loops.
+			  */
+			@implicitNotFound("Cannot get ${N}-th relation of the FROM clause ${F}.\n" +
+			                  "Either ${N} >= size (where size is the number of relations in the whole FROM clause,\n" +
+			                  "or the size is not known (the clause starts with an abstract type).\n"+
+			                  "Missing implicit ByPositiveIndex[${F}, ${N}]")
+			sealed trait ByPositiveIndex[-F <: FromClause, N <: Numeral] extends RelationEvidence[F, N] { pos =>
 				protected[ByIndex] def byIndex :ByIndex[F, N] { type T[O] = pos.T[O]; type G = pos.G; type I = pos.I }
 			}
 
 
-			sealed trait ByPositiveIndexFallback {
+			object ByPositiveIndex extends GetTableByPredicate {
 
-				implicit def byIndex[F <: FromClause, N <: Numeral](positive :Positive[N], get :ByIndex[F, N])
-						:ByPositiveIndex[F, N] { type T[O] = get.T[O]; type G = get.G; type I = get.I } =
+				//this has actually precedence over real found instances, which introduces extra steps,
+				// but is the only way to resolve implicit conflicts.
+				/** Adapts an existing implicit value of `ByIndex[F, N]` into a `ByPositiveIndex.Found[F, N]`
+				  * to use for further search, especially when `F` is incomplete. */
+				implicit def byIndex[F <: FromClause, N <: Numeral](implicit positive :Positive[N], get :ByIndex[F, N])
+						:ByPositiveIndex.Found[F, N] { type T[O] = get.T[O]; type G = get.G; type I = get.I } =
 					get match {
-						case pos :ByPositiveIndex[_, _] =>
-							pos.asInstanceOf[ByPositiveIndex[F, N] { type T[O] = get.T[O]; type G = get.G; type I = get.I }]
+						case pos :GetTableByPredicate#Found[_, _] if pos.how == ByPositiveIndex =>
+							pos.asInstanceOf[Found[F, N] { type T[O] = get.T[O]; type G = get.G; type I = get.I }]
 						case _ =>
-							new Delegate[F, N, get.G, get.T, get.I](get) with ByPositiveIndex[F, N]
+							new Delegate[F, N, get.G, get.T, get.I](get) with Found[F, N]
 					}
-			}
-
-			object ByPositiveIndex extends GetTableByPredicate with ByPositiveIndexFallback {
 
 				implicit def byPositiveIndex[F <: FromClause, N <: Numeral]
-				                            (implicit found :ByPositiveIndex.Return[F, N])
-						:ReturnPositive[F, N] { type T[O] = found.T[O]; type G = found.G; type I = found.I } =
+				                            (implicit found :Return[F, N])
+						:ByPositiveIndex[F, N] { type T[O] = found.T[O]; type G = found.G; type I = found.I } =
 					new Delegate[F, N, found.G, found.T, found.I](found)
-						with ReturnPositive[F, N] with ByIndex[F, N]
+						with ByPositiveIndex[F, N] with ByIndex[F, N] with Found[F, N]
 				{
 					override def byIndex = this
 				}
 
-				implicit def satisfies[F <: L Using R, L <: FromClause, R[O] <: MappingAt[O], N <: Numeral]
-				                      (implicit param :Conforms[F, F, L Using R], size :FromClauseSize[L, N])
-						:Predicate[F, R, N] =
+				implicit def satisfies[L <: FromClause, R[O] <: MappingAt[O], N <: Numeral]
+				                      (implicit size :FromClauseSize[L, N]) :Predicate[L Extended R, R, N] =
+					report
+
+				implicit def outerSatisfies[O <: FromClause, L <: FromSome, R[O] <: MappingAt[O], N <: Numeral]
+				                           (implicit outer :O OuterClauseOf L, size :FromClauseSize[O, N])
+						:Predicate[L GroupByAll R, R, N] =
 					report
 			}
 
 
 
-			sealed trait ByNegativeIndex[-F <: FromClause, N <: Numeral] extends ByNegativeIndex.Found[F, N] {
+			/** Performs for the `ByIndex` evidence the same function as
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]] for
+			  * `GetTableByPredicate` instances, that is marks a
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex.ByNegativeIndex.Found ByNegativeIndex.Found]]
+			  * evidence as being a search result rather than a conversion from an existing `ByIndex` to avoid infinite
+			  * implicit resolution loops.
+			  *
+			  * Note that, unlike `ByNegativeIndex.Found`, the 'key' type `N` and the member type `N` are equal
+			  * and thus only values of this class constitute valid evidence for the position of the relation `this.T`
+			  * in the ''from'' clause `F`. This is because, in order to leverage
+			  * the [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate GetTableByPredicate]]
+			  * framework (which does not have provisions for changing the key type `N` during search),
+			  * `ByNegativeIndex.Found[F, X]` is reported for every relation regardless of its position and
+			  * the value of the `Int` literal `X`: the matching of the desired index with the relation's position
+			  * happens as the last step, by comparing `f.I` with `N` for `f :Found[F, N]`, instead of when reporting
+			  * the initial `Found` based on
+			  * the [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate#Predicate Predicate]] in
+			  * the [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate#last last]] method.
+			  */
+			@implicitNotFound("Cannot get ${N}-th relation of the FROM clause ${F}.\n" +
+			                  "Either ${N} is not negative, or it is less than -size - 1, where size is the number " +
+			                  "of known relations in the clause.\nMissing implicit ByNegativeIndex[${F}, ${N}].")
+			sealed trait ByNegativeIndex[-F <: FromClause, N <: Numeral] extends RelationEvidence[F, N] { neg =>
 				override type I = N
-			}
-
-			sealed trait ReturnNegative[-F <: FromClause, N <: Numeral] extends ByNegativeIndex[F, N] { neg =>
 				protected[ByIndex] def byIndex :ByIndex[F, N] { type T[O] = neg.T[O]; type G = neg.G; type I = N }
 			}
 
 
-			sealed trait ByNegativeIndexFoundFallback {
-
-				implicit def negative[F <: FromClause, X <: Numeral, N <: Numeral](implicit get :ByNegativeIndex[F, N])
-						:ByNegativeIndex.Found[F, X] { type T[O] = get.T[O]; type G = get.G; type I = N } =
-					get.asInstanceOf[ByNegativeIndex.Found[F, X] { type T[O] = get.T[O]; type G = get.G; type I = N }]
-			}
-
-			sealed trait ByNegativeIndexFallback extends ByNegativeIndexFoundFallback {
-
-				implicit def byIndex[F <: FromClause, N <: Numeral](implicit negative :Negative[N], get :ByIndex[F, N])
-						:ByNegativeIndex[F, N] { type T[O] = get.T[O]; type G = get.G  } =
+			object ByNegativeIndex extends GetTableByPredicate {
+				//this has actually precedence over real found instances, which introduces extra steps,
+				// but is the only way to resolve implicit conflicts.
+				/** Adapts an existing implicit value of `ByIndex[F, N]` into a `ByNegativeIndex.Found[F, X] { type I = N }`
+				  * to use, especially when `F` is incomplete. This process allows
+				  */
+				implicit def byIndex[F <: FromClause, X <: Numeral, N <: Numeral]
+				                    (implicit negative :Negative[N], get :ByIndex[F, N])
+						:ByNegativeIndex.Found[F, X] { type T[O] = get.T[O]; type G = get.G; type I = N  } =
 					get match {
-						case pos :ByNegativeIndex[_, _] =>
-							pos.asInstanceOf[ByNegativeIndex[F, N] { type T[O] = get.T[O]; type G = get.G }]
+						case pos :GetTableByPredicate#Found[_, _] if pos.how == ByNegativeIndex =>
+							pos.asInstanceOf[ByNegativeIndex.Found[F, X] { type T[O] = get.T[O]; type G = get.G; type I = N }]
 						case _ =>
-							new EvidenceTemplate[F, N, get.G, get.S, get.T, N](get.stretch) with ByNegativeIndex[F, N] {
+							new EvidenceTemplate[F, X, get.G, get.S, get.T, N](get.stretch) with Found[F, X] {
 								override def table(from :F) = get.table(from)
 							}
 					}
-			}
-
-			object ByNegativeIndex extends GetTableByPredicate with ByNegativeIndexFallback {
 
 				implicit def byNegativeIndex[F <: FromClause, N <: Numeral]
 				                            (implicit found :ByNegativeIndex.Return[F, N] { type I = N })
-						:ReturnNegative[F, N] { type T[O] = found.T[O]; type G = found.G } =
+						:ByNegativeIndex[F, N] { type T[O] = found.T[O]; type G = found.G } =
 					new Delegate[F, N, found.G, found.T, N](found)
-						with ReturnNegative[F, N] with ByIndex[F, N]
+						with ByNegativeIndex[F, N] with ByIndex[F, N] with Found[F, N]
 					{
 						override def byIndex = this
 					}
 
 				//this predicate is satisfied for every relation and every index, however ByIndex.byNegativeIndex
-				//requires a Found[F, N, N], that is that the computed negative index is the same as the input parameter
+				//requires a Found[F, N] { type I = N }, that is that the computed negative index is the same as the input parameter
 				implicit def satisfies[M[O] <: MappingAt[O], N <: Numeral] :Predicate[FromClause Using M, M, N] =
 					report
 
@@ -2690,6 +2788,8 @@ object FromClause {
 		  * of the `LabeledMapping` used for the relation. Implicit ByLabel.Get[F, L] returns the last relation
 		  * with label `L` in `F`. */
 		object ByLabel extends GetTableByPredicate {
+			override type Key = Label
+			override type Get[-F <: FromClause, A <: Label] = ByLabel[F, A]
 
 			implicit def byLabel[F <: FromClause, A <: Label]
 			                    (implicit found :Return[F, A] { type T[O] <: LabeledMapping[A, _, O] })
@@ -2713,6 +2813,8 @@ object FromClause {
 
 
 		object ByAlias extends GetTableByPredicate {
+			override type Key = Label
+			override type Get[-F <: FromClause, X <: Label] = ByAlias[F, X]
 
 			implicit def byAlias[F <: FromClause, A <: Label](implicit found :Return[F, A])
 					:ByAlias[F, A] { type T[O] = found.T[O]; type G = found.G; type I = found.I } =
@@ -2736,6 +2838,8 @@ object FromClause {
 
 		/** Accesses relations in a `FromClause` based on their `Subject` member type. */
 		object BySubject extends GetTableByPredicate {
+			override type Key = Any
+			override type Get[-F <: FromClause, S] = BySubject[F, S]
 
 			implicit def bySubject[F <: FromClause, S, M[O] <: RefinedMapping[S, O]]
 			                      (implicit found :Return[F, S] { type T[O] = M[O] })
@@ -2793,6 +2897,8 @@ object FromClause {
 		  * `LabeledFromParam[N, X, O]` in `F`.
 		  */
 		object ByParamName extends GetTableByPredicate {
+			type Key = Label
+			override type Get[-F <: FromClause, N <: Label] = ByParamName[F, N]
 
 			implicit def byParamName[F <: FromClause, A <: Label]
 			                        (implicit found :Return[F, A] { type T[O] <: LabeledFromParam[A, _, O] })
@@ -2800,14 +2906,121 @@ object FromClause {
 				new Delegate[F, A, found.G, found.T, found.I](found) with ByParamName[F, A]
 
 			implicit def satisfies[M[A] <: LabeledFromParam[N, _, A], N <: Label]
-					:Predicate[FromSome JoinParam M, M, N] =
-				report[FromSome JoinParam M, M, N]
+					:Predicate[FromClause UnboundParam M, M, N] =
+				report[FromClause UnboundParam M, M, N]
 
-			implicit def groupParamSatisfies[M[A] <: LabeledFromParam[N, _, A], N <: Label]
-					:Predicate[GroupByClause GroupParam M, M, N] =
-				report[GroupByClause GroupParam M, M, N]
 		}
 
+
+
+
+		/** Implicit resolution of the `N`-th unbound parameter in the ''from'' clause `F`. This works both
+		  * for positive numbers, indexed from zero and going from left to right (in which case `F` must be complete),
+		  * and negative - indexed from `-1` and going from right to left (which is available always,
+		  * but whose index changes with joining new tables).
+		  * @tparam F the input `FromClause`.
+		  * @tparam N index of the desired parameter as a literal `Int` type.
+		  */
+		@implicitNotFound("Cannot get the ${N}-th unbound parameter of the FROM clause ${F}.\n" +
+		                  "Either ${N} is greater or equal than the total number of parameters in the FROM clause,\n" +
+			              "or ${N} is less than the number of parameters in the instantiated suffix of the FROM clause,\n" +
+			              "or ${N} >= 0 and the clause is incomplete (starts with an abstract type).")
+		sealed trait ByParamIndex[-F <: FromClause, N <: Numeral] extends RelationEvidence[F, N]
+
+
+		object ByParamIndex {
+
+			implicit def byPositiveParamIndex[F <: FromClause, N <: Numeral]
+			                                 (implicit positive :Positive[N], get :ByPositiveParamIndex[F, N])
+					:ByParamIndex[F, N] { type T[O] = get.T[O]; type G = get.G; type I = get.I } =
+				get.byParamIndex
+
+
+			/** Performs for the `ByParamIndex` evidence the same function as
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]] for
+			  * `GetTableByPredicate` instances, that is marks a
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByParamIndex.ByPositiveParamIndex.Found ByPositiveParamIndex.Found]]
+			  * evidence as being a search result rather than a conversion from an existing `ByParamIndex`
+			  * to avoid infinite implicit resolution loops.
+			  */
+			@implicitNotFound("Cannot get the ${N}-th unbound parameter of the FROM clause ${F}.\n" +
+			                  "Either ${N} is greater or equal than the total number of parameters in the FROM clause," +
+			                  "or it is incomplete (starts with an abstract type).\n" +
+			                  "Missing implicit ByParamIndex[${F}, ${N}]")
+			sealed trait ByPositiveParamIndex[-F <: FromClause, N <: Numeral] extends RelationEvidence[F, N] { self =>
+				protected[ByParamIndex] def byParamIndex
+					:ByParamIndex[F, N] { type T[O] = self.T[O]; type G = self.G; type I = self.I }
+			}
+
+			object ByPositiveParamIndex extends GetTableByPredicate {
+
+				implicit def byPositiveParamIndex[F <: FromClause, N <: Numeral](implicit get :Return[F, N])
+						:ByPositiveParamIndex[F, N] { type T[O] = get.T[O]; type G = get.G; type I = get.I } =
+					new Delegate[F, N, get.G, get.T, get.I](get)
+						with Found[F, N] with ByPositiveParamIndex[F, N] with ByParamIndex[F, N]
+					{
+						override def byParamIndex = this
+					}
+
+				implicit def byParamIndex[F <: FromClause, N <: Numeral](implicit positive :Positive[N], get :ByParamIndex[F, N])
+						:Found[F, N] { type T[O] = get.T[O]; type G = get.G; type I = get.I } =
+					get match {
+						case pos :GetTableByPredicate#Found[_, _] if pos.how == ByPositiveParamIndex =>
+							pos.asInstanceOf[Found[F, N] { type T[O] = get.T[O]; type G = get.G; type I = get.I }]
+						case _ =>
+							new Delegate[F, N, get.G, get.T, get.I](get) with Found[F, N]
+					}
+
+				implicit def satisfies[F <: FromClause, P[O] <: ParamAt[O], N <: Numeral]
+				                      (implicit preceding :ChainLength[F#Params, N]) =
+					report[F UnboundParam P, P, N]
+			}
+
+
+
+			/** Performs for the `ByParamIndex` evidence the same function as
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]] for
+			  * `GetTableByPredicate` instances, that is marks a
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByParamIndex.ByPositiveParamIndex.Found ByPositiveParamIndex.Found]]
+			  * evidence as being a search result rather than a conversion from an existing `ByParamIndex`
+			  * to avoid infinite implicit resolution loops.
+			  */
+/*
+			sealed trait ByNegativeParamIndex[-F <: FromClause, N <: Numeral] extends RelationEvidence[F, N] { self =>
+				protected[ByParamIndex] def byParamIndex
+						:ByParamIndex[F, N] { type T[O] = self.T[O]; type G = self.G; type I = self.I }
+			}
+
+
+			object ByNegativeParamIndex extends GetTableByPredicate {
+				object KnownParamIndex extends GetTableByPredicate {
+					implicit def satisfies[P[O] <: ParamAt[O]] :Predicate[FromClause UnboundParam]
+				}
+
+				implicit def anyIsGood[P[O] <: ParamAt[O], N <: Numeral] :Predicate[FromClause UnboundParam P, P, N]
+
+				/** Optimistically assumes every parameter occurrence is the first known one in `F`.
+				  * If it is not, `notFirstKnown` will introduce a conflicting implicit value. */
+				implicit def firstKnown[P[O] <: ParamAt[O]] :Predicate[FromClause UnboundParam P, P, -1] =
+					report
+
+				/** Falsifies the `firstKnown` implicit */
+				implicit def notFirstKnown[L <: FromClause, P[O] <: ParamAt[O]](implicit prev :Found[L, -1])
+						:Predicate[L UnboundParam P, P, -1] =
+					report
+
+//				implicit def next[F <: FromClause, L <: U, P[O] <: ParamAt[O],
+//				                  J[+A <: U, B[O] <: ParamAt[O]] <: A UnboundParam B, U <: FromClause,
+//				                  M <: Numeral, N <: Numeral]
+//				                 (implicit decompose :ExtendedDecomposition[F, L, P, J, U],
+//				                           dec :Inc[M, N], prev :Found[L, M])
+//						:Return[F, ]
+				implicit def satisfies[L <: FromClause, P[O] <: ParamAt[O], M <: Numeral, N <: Numeral]
+				                      (implicit dec :Inc[M, N], prev :Found[L, M]) :Predicate[L UnboundParam P, P, N] =
+					report[L UnboundParam P, P, N]
+			}
+*/
+		}
 	}
 
 
@@ -2821,7 +3034,7 @@ object FromClause {
 	  * a `ParamMapping` in the filter with a `BoundParameterSQL` wrapping the corresponding value from `P`.
 	  */
 	@implicitNotFound("Cannot apply the FROM clause ${F}\nto parameters ${P}. I cannot prove that the parameter chain P " +
-	                  "is a subtype of F#Params - most likely F is incomplete or contains AndFrom joins.\n"+
+	                  "is a subtype of F#Params - most likely F is incomplete or its Generalized type is unknown.\n"+
 	                  "Missing implicit value ApplyJoinParams[${F}, ${P}, ${U}].")
 	sealed abstract class ApplyJoinParams[-F <: FromClause, -P <: Chain, +U] {
 		type lastWasParam <: Boolean with Singleton
@@ -3016,16 +3229,16 @@ object FromClause {
 	  * listed by type `F` as a consecutive, ordered sequence. If `F` is a ''complete'' clause
 	  * (starting with `Dual`/`From`), then `F` is a supertype of some prefix of `E`. More formally,
 	  * `F ExtendedBy E` if one of the following conditions hold:
-	  *   - `F >: E`,
+	  *   - `E &lt;: F`,
 	  *   - `E &lt;: DecoratedFrom[F]`,
 	  *   - `E &lt;: S Extended _` for some `S` such that `F ExtendedBy S`,
 	  *   - `E &lt;: S GroupByAll _` for some `S &lt;: F#Nested`,
 	  *   - `F =:= Dual` and `E &lt;: S GroupByAll _` for some `S &lt;: OuterFrom`.
 	  *
-	  * It means that `E &lt;: F AndFrom T1 ... AndFrom Tn`,
-	  * or `E &lt;: F AndFrom T1 ... AndFrom Tn Subselect Tn+1 Join ... Join Tm GroupByAll Tm+1 By ... By Tk`,
-	  * or `F =:= Dual` and `E &lt;: Dual Join T1 ... Join Tn GroupByAll Tn+1 By ... By Tm`,
-	  * for some mapping types `Ti[O] &lt;: MappingAt[O]`.
+	  * It means that a value of type `F` can be extracted from `E` by a sequence of operations:
+	  *   - taking the inner clause of a `DecoratedFrom`;
+	  *   - taking the left side of an `Extended` clause;
+	  *   - taking the outer clause of a `GroupByAll` clause.
 	  *
 	  * This takes into account only the static type of both clauses and the actual mapping lists on both can
 	  * differ and be of different lengths if `F` is not a complete clause and has an abstract prefix.
@@ -3045,7 +3258,7 @@ object FromClause {
 	  * it is based on. As a result, this proof is indeed a valid representation that such a conversion from `F` to `E`
 	  * is possible for any `SQLExpression`. Due to this contravariance in `E`, this isn't any form
 	  * of a generalized subtyping relation and should be relied upon only in the context of the actual extension.
-	  */ //todo: docs for the GroupBy ... Subselect case
+	  */
 	@implicitNotFound("The FROM clause ${F} is not a prefix of the clause ${E} (ignoring join kinds).")
 	class ExtendedBy[+F <: FromClause, -E <: FromClause] private[FromClause] (val length :Int) extends AnyVal {
 
@@ -3111,15 +3324,17 @@ object FromClause {
 	  *
 	  * It means that `E =:= F E1 T1 ... En Tn`,
 	  * or `E =:= F E1 O1 ... En On Subselect T0 J1 T1 ... Jm Om GroupByAll G1 By ... By Gk`,
+	  * or `E =:= F E1 O1 ... En On Subselect T0 J1 T1 ... Jm Om GroupByAll G1 By ... By Gk Subselect S0 U1 S1 ... Sl`
 	  * or `F =:= Dual` and `E =:= T0 J1 T1 ... Jn Tn GroupByAll G1 By ... By Gk`, for some join types
-	  * `Ji[L, R] &lt;: L Join R`, extended types `Ei[L, R] &lt;: L AndFrom R` and mapping types
-	  * `Ti[O], Oi[O], Gi[O] &lt;: MappingAt[O]`.
+	  * `Ji[L, R] &lt;: L Join R`, `Ei[L, R] &lt;: L Extended R`, `Ui[L, R] &lt;: L Using R` and mapping types
+	  * `Ti[O], Oi[O], Gi[O], Si[O] &lt;: MappingAt[O]`. Any decorators in the above examples were ommitted.
+	  *
 	  * This takes into account only the static type of both clauses and the actual mapping lists on both can
 	  * differ and be of different lengths if `F` is not a complete clause and has an abstract prefix.
 	  * For this reason this class should be in general relied upon only in the context of the actual extension,
 	  * rather than a proof of `E` containing all the relations of `F` unless `F` is complete.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
-	  */ //todo: docs for the GroupBy ... Subselect case
+	  */
 	@implicitNotFound("The FROM clause ${F} is not a prefix of the clause ${E}.")
 	class PrefixOf[F <: FromClause, E <: FromClause] private[FromClause] (val diff :Int) extends AnyVal {
 
