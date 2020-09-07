@@ -1,15 +1,15 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~, UniqueKey}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, CustomizedSchema, EmptySchema, FlatMappingSchema, FlatMappingSchemaProxy, MappingSchemaProxy}
+import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, CustomizedSchema, EmptySchema, FlatMappingSchema, FlatMappingSchemaProxy, MappingSchemaProxy, SubjectConstructor}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.IndexedMappingSchema.{CustomizedFlatIndexedSchema, CustomizedIndexedSchema, ExtensibleFlatIndexedSchema, FlatIndexedMappingSchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, CustomizedSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, OptMappedSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
-import net.noresttherein.oldsql.schema.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchema, MappedIndexedSchemaMapping, OptMappedIndexSchema}
+import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, CustomizedSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
+import net.noresttherein.oldsql.schema.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchema, MappedIndexedSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -437,65 +437,68 @@ object IndexedMappingSchema {
 
 
 		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions,
-		  * provided with component and column definitions when building this schema, for disassembly of its subject `S`
-		  * before writing to the database, and the function specified here for assembling its subject from the index
-		  * of subjects of all top-level components of this schema. If any of the components in this schema
-		  * is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce a value
-		  * during assembly, this function will not be called and the created mapping will likewise fail to produce
-		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping#Pieces Pieces]].
-		  * @param constructor a function accepting a `IndexedChain` with the values of all components as they appear
-		  *                    in the components chain `C`, indexed by component labels for direct access.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-		  */
-		def map(constructor :V => S) :IndexedSchemaMapping[S, V, C, O] =
-			new MappedIndexedSchema(this, constructor, packedBuffs)
-
-		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions,
 		  * provided with component and column definitions when building this schema, for disassembly of its subject
 		  * before writing to the database, and the function specified here for assembling its subject from the index
-		  * of subjects of all top-level components of this schema. This will result in slightly more efficient
-		  * assembly than the other overloaded `map` method, as no chain with the values of all components will be assembled
-		  * as an intermediate step. If any of the components in this schema
+		  * of subjects of all top-level components of this schema. The function can take many forms, both in terms
+		  * of the argument and the returned value. For the latter, both `S` and `Option[S]` results are supported.
+		  * As for the former, it can take either the value chain `V` with values of all top-level components
+		  * (the subject of this schema) or any other set of arguments for which an implicit
+		  * [[net.noresttherein.oldsql.collection.Chain.ChainApplication ChainApplication]][V, F, S]
+		  * (or `ChainApplication[V, F, Option[S]]`) exists, allowing the indirect application of the value chain.
+		  * Alternatively, it can take the subjects of all top-level components as individual arguments, in the order
+		  * in which they appear on the value and component chains. The latter approach is recommended, because it
+		  * avoids assembling the value chain by this schema altogether, as well as the linear access tax of elements
+		  * from the chain. This allows direct passing of factory methods from companion objects as arguments
+		  * to this method. The keys of the index chain will however be completely ignored in that case.
+		  * Note that the values of components are accessed 'forcibly'
+		  * from the [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] passed for assembly rather than
+		  * by the `Option` returning `get` method and, instead, `NoSuchElementException` exceptions are caught
+		  * and translated to a `None` result in the [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]]
+		  * method. The created `Mapping`, regardless if by mapping the value chain or using direct component access,
+		  * will thus require the values for all listed components to be present in order for the whole assembly
+		  * to succeed. If any of the components in this schema
 		  * is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce a value
 		  * during assembly, this function will not be called and the created mapping will likewise fail to produce
 		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping#Pieces Pieces]].
-		  * @param constructor a function which number of arguments and their types match the subject types of all
-		  *                    components as listed by the chain `V`. The keys in the index are ignored.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
+		  *
+		  * The `SchemaMapping` created by this method will be thus more efficient both in assembly and disassembly
+		  * than a mapping created with the standard [[net.noresttherein.oldsql.schema.Mapping#map map]] method
+		  * as declared by `Mapping` by skipping the intermediate steps.
+		  * @param constructor a function whose argument(s) contain all the subjects of components in the chain `C`.
+		  *                    It can take either: a) the value chain `V` itself; b) a scala tuple with the same elements;
+		  *                    c) subjects of all components as separate arguments.
+		  *                    It must return either `S` or `Option[S]`.
 		  */
-		def map[F](constructor :F)(implicit apply :ChainApplication[V, F, S]) :IndexedSchemaMapping[S, V, C, O] =
-			map(apply(constructor, _))
+		def map[F](constructor :F)(implicit apply :SubjectConstructor[S, V, C, O, F]) :IndexedSchemaMapping[S, V, C, O] =
+			new MappedIndexedSchema(this, constructor, packedBuffs)
 
-
-
-		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
-		  * provided with component and column definitions when building this schema for disassembly of its subject
-		  * before writing to the database, and the function specified here for assembling its subject from the
-		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may
-		  * not produce the subject value for all input rows. This will also happen if any of the components
-		  * in this schema is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce
-		  * a value during assembly, as the intermediate index chain with unpacked values will be impossible to assemble.
-		  * @param constructor a function accepting a `IndexedChain` with the values of all components as they appear
-		  *                    in the components chain `C`, indexed by component labels for direct access.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-		  */
-		def optMap(constructor :V => Option[S]) :IndexedSchemaMapping[S, V, C, O] =
-			new OptMappedIndexSchema(this, constructor, packedBuffs)
-
-		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
-		  * provided with component and column definitions when building this schema for disassembly of its subject
-		  * before writing to the database, and the function specified here for assembling its subject from the
-		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
-		  * the subject value for all input rows. This will also happen if any of the components
-		  * in this schema is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce
-		  * a value during assembly, as the intermediate index chain with unpacked values will be impossible to assemble.
-		  * @param constructor a function which number of arguments and their types match the subject types of all
-		  *                    components as listed by the chain `V`. The keys in the index are ignored.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-		  */
-		def optMap[F](constructor :F)(implicit apply :ChainApplication[V, F, Option[S]])
-				:IndexedSchemaMapping[S, V, C, O] =
-			optMap(apply(constructor, _))
+//		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions,
+//		  * provided with component and column definitions when building this schema, for disassembly of its subject `S`
+//		  * before writing to the database, and the function specified here for assembling its subject from the index
+//		  * of subjects of all top-level components of this schema. If any of the components in this schema
+//		  * is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce a value
+//		  * during assembly, this function will not be called and the created mapping will likewise fail to produce
+//		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping#Pieces Pieces]].
+//		  * @param constructor a function accepting a `IndexedChain` with the values of all components as they appear
+//		  *                    in the components chain `C`, indexed by component labels for direct access.
+//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
+//		  */
+//		def map(constructor :V => S) :IndexedSchemaMapping[S, V, C, O] =
+//			map[V => S](constructor)
+//
+//		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
+//		  * provided with component and column definitions when building this schema for disassembly of its subject
+//		  * before writing to the database, and the function specified here for assembling its subject from the
+//		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may
+//		  * not produce the subject value for all input rows. This will also happen if any of the components
+//		  * in this schema is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce
+//		  * a value during assembly, as the intermediate index chain with unpacked values will be impossible to assemble.
+//		  * @param constructor a function accepting a `IndexedChain` with the values of all components as they appear
+//		  *                    in the components chain `C`, indexed by component labels for direct access.
+//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
+//		  */
+//		def optMap(constructor :V => Option[S]) :IndexedSchemaMapping[S, V, C, O] =
+//			map[V => Option[S]](constructor)
 
 	}
 
@@ -553,30 +556,21 @@ object IndexedMappingSchema {
 
 
 
-		override def map(constructor :V => S) :FlatIndexedSchemaMapping[S, V, C, O] =
-			new MappedIndexedSchema[S, V, C, O](this, constructor, packedBuffs)
+		override def map[F](constructor :F)(implicit apply :SubjectConstructor[S, V, C, O, F])
+				:FlatIndexedSchemaMapping[S, V, C, O] =
+			new MappedIndexedSchema[S, V, C, O, F](this, constructor, packedBuffs)
 				with FlatIndexedSchemaMapping[S, V, C, O]
 				with MappingSchemaDelegate[FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
 			{//this override is only to narrow the type, the property is initialized by the extended class to the same value
 				override val backer = outer
 			}
 
-		override def map[F](constructor :F)(implicit apply :ChainApplication[V, F, S])
-				:FlatIndexedSchemaMapping[S, V, C, O] =
-			map(apply(constructor, _))
-
-		override def optMap(constructor :V => Option[S]) :FlatIndexedSchemaMapping[S, V, C, O] =
-			new OptMappedIndexSchema[S, V, C, O](this, constructor, packedBuffs)
-				with FlatIndexedSchemaMapping[S, V, C, O]
-				with MappingSchemaDelegate[FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
-			{//this override is only to narrow the type, the property is initialized by the extended class to the same value
-				override val backer = outer
-			}
-
-		override def optMap[F](constructor :F)(implicit apply :ChainApplication[V, F, Option[S]])
-				:FlatIndexedSchemaMapping[S, V, C, O] =
-			optMap(apply(constructor, _))
-
+//		override def map(constructor :V => S) :FlatIndexedSchemaMapping[S, V, C, O] =
+//			map[V => S](constructor)(SubjectConstructor.map())
+//
+//		override def optMap(constructor :V => Option[S]) :FlatIndexedSchemaMapping[S, V, C, O] =
+//			map[V => Option[S]](constructor)(SubjectConstructor.optMap())
+//
 	}
 
 
@@ -1108,21 +1102,11 @@ object IndexedSchemaMapping {
 
 
 
-
-
-
-	private[schema] class MappedIndexedSchema[S, V <: IndexedChain, C <: Chain, O]
+	private[schema] class MappedIndexedSchema[S, V <: IndexedChain, C <: Chain, O, F]
 	                      (protected override val backer :IndexedMappingSchema[S, V, C, O],
-	                       constructor :V => S, buffs :Seq[Buff[S]] = Nil)
-		extends MappedSchema[S, V, C, O](backer, constructor, buffs) with IndexedSchemaMapping[S, V, C, O]
-		   with MappingSchemaDelegate[IndexedMappingSchema[S, V, C, O], S, V, C, O]
-
-
-
-	private[schema] class OptMappedIndexSchema[S, V <: IndexedChain, C <: Chain, O]
-	                      (protected override val backer :IndexedMappingSchema[S, V, C, O],
-	                       constructor :V => Option[S], buffs :Seq[Buff[S]] = Nil)
-		extends OptMappedSchema[S, V, C, O](backer, constructor, buffs) with IndexedSchemaMapping[S, V, C, O]
+	                       constructor :F, buffs :Seq[Buff[S]] = Nil)
+	                      (implicit conversion :SubjectConstructor[S, V, C, O, F])
+		extends MappedSchema[S, V, C, O, F](backer, constructor, buffs) with IndexedSchemaMapping[S, V, C, O]
 		   with MappingSchemaDelegate[IndexedMappingSchema[S, V, C, O], S, V, C, O]
 
 

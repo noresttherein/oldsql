@@ -137,7 +137,7 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
   * @see [[net.noresttherein.oldsql.schema.support.LazyMapping]]
   */
 trait StableMapping extends Mapping { this :MappingSeal =>
-	//todo: this should extend BaseMapping but currently it is extended by some traits with confliciting (narrowed)
+	//todo: this should extend BaseMapping but currently it is extended by some traits with conflicting (narrowed)
 	// declarations of methods implemented in BaseMapping
 
 	override def writtenValues[T](op :WriteOperationType, subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =

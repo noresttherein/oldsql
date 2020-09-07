@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn, MappingLabel}
 import net.noresttherein.oldsql.schema.support.{DelegateMapping, StableMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnSupport, StableColumn}
-import net.noresttherein.oldsql.schema.MappingSchema.{CustomizedFlatSchema, CustomizedSchema, EmptySchema, ExtensibleFlatMappingSchema, ExtensibleMappingSchema, FlatMappingSchema, GetLabeledComponent, MappingSchemaSupport, SchemaFlattening}
+import net.noresttherein.oldsql.schema.MappingSchema.{CustomizedFlatSchema, CustomizedSchema, EmptySchema, ExtensibleFlatMappingSchema, ExtensibleMappingSchema, FlatMappingSchema, GetLabeledComponent, MappingSchemaSupport, SchemaFlattening, SubjectConstructor}
 import net.noresttherein.oldsql.schema.SchemaMapping.{|-|, CustomizeSchema, DelegateSchemaMapping, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaMapping, MappedFlatSchemaMapping, MappedSchemaMapping, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, CustomizedMapping, LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
@@ -1254,46 +1254,24 @@ object SchemaMapping {
 
 
 
-	private[schema] abstract class AbstractMappedSchema[S, V <: Chain, C <: Chain, O]
-	                               (protected override val backer :MappingSchema[S, V, C, O],
-	                                override val buffs :Seq[Buff[S]])
+	private[schema] class MappedSchema[S, V <: Chain, C <: Chain, O, F]
+	                                  (protected override val backer :MappingSchema[S, V, C, O],
+	                                   constructor :F, override val buffs :Seq[Buff[S]] = Nil)
+	                                  (implicit conversion :SubjectConstructor[S, V, C, O, F])
 		extends MappingSchemaDelegate[MappingSchema[S, V, C, O], S, V, C, O] with StableMapping
-
-
-
-	private[schema] class MappedSchema[S, V <: Chain, C <: Chain, O]
-	                      (schema :MappingSchema[S, V, C, O], constructor :V => S,
-	                       buffs :Seq[Buff[S]] = Nil)
-		extends AbstractMappedSchema(schema, buffs)
 	{
-		override def assemble(pieces :Pieces) :Option[S] =
-			pieces.get(schemaExtract) map constructor
+		private[this] val cons = conversion(schema, constructor)
+
+		override def assemble(pieces :Pieces) :Option[S] = cons(pieces)
 	}
 
 
 
-	private[schema] class OptMappedSchema[S, V <: Chain, C <: Chain, O]
-			              (schema :MappingSchema[S, V, C, O], constructor :V => Option[S], buffs :Seq[Buff[S]] = Nil)
-		extends AbstractMappedSchema(schema, buffs)
-	{
-		override def assemble(pieces :Pieces) :Option[S] =
-			pieces.get(schemaExtract) flatMap constructor
-	}
-
-
-
-	private[schema] class MappedFlatSchema[S, V <: Chain, C <: Chain, O]
-	                      (protected override val backer :FlatMappingSchema[S, V, C, O], constructor :V => S,
-	                       buffs :Seq[Buff[S]] = Nil)
+	private[schema] class MappedFlatSchema[S, V <: Chain, C <: Chain, O, F]
+	                      (protected override val backer :FlatMappingSchema[S, V, C, O],
+	                       constructor :F, buffs :Seq[Buff[S]] = Nil)
+	                      (implicit conversion :SubjectConstructor[S, V, C, O, F])
 		extends MappedSchema(backer, constructor, buffs) with FlatSchemaMapping[S, V, C, O]
-		   with MappingSchemaDelegate[FlatMappingSchema[S, V, C, O], S, V, C, O]
-
-
-
-	private[schema] class OptMappedFlatSchema[S, V <: Chain, C <: Chain, O]
-	                      (protected override val backer :FlatMappingSchema[S, V, C, O], constructor :V => Option[S],
-	                       buffs :Seq[Buff[S]] = Nil)
-		extends OptMappedSchema(backer, constructor, buffs) with FlatSchemaMapping[S, V, C, O]
 		   with MappingSchemaDelegate[FlatMappingSchema[S, V, C, O], S, V, C, O]
 
 

@@ -598,12 +598,12 @@ object Chain extends ChainFactory {
 
 
 	@implicitNotFound("Can't apply object ${F} to the chain ${X} with any known conversion.")
-	class ChainApplication[-X <: Chain, -F, +Y] private[Chain](application :(F, X) => Y) extends ((F, X) => Y) {
-		override def apply(f :F, x :X) :Y = application(f, x)
-	}
+	abstract class ChainApplication[-X <: Chain, -F, +Y] extends ((F, X) => Y)
 
-	private[collection] def ChainApplication[X <: Chain, F, Y](apply :(F, X) => Y) :ChainApplication[X, F, Y] =
-		new ChainApplication(apply)
+	/** Forces SAM conversion of a function literal `(F, X) => Y` into a `ChainApplication`. */
+	@inline private[collection] def ChainApplication[X <: Chain, F, Y]
+	                                                (apply :ChainApplication[X, F, Y]) :ChainApplication[X, F, Y] =
+		apply
 
 
 

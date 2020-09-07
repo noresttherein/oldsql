@@ -158,7 +158,7 @@ object ChainMapping {
 	  * with outer subject type being a `Chain` longer by one entry. This is essentially a component
 	  * mapping for a prefix chain `V` of a chain `S`.
 	  * @tparam S the outer subject type of this schema.
-	  * @tparam V the subject chain type of this schema, a prefix of the chain `T`.
+	  * @tparam V the subject chain type of this schema, a prefix of the chain `S`.
 	  * @tparam C the chain with all components in this schema.
 	  */
 	private[schema] class ChainPrefixSchema[S <: V ~ Any, V <: Chain, C <: Chain, O]

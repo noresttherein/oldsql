@@ -5,26 +5,23 @@ import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain, NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, ChainContains, ChainGet, ItemExists}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral, PositiveInc}
-import net.noresttherein.oldsql.{schema, OperationType}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
+import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.MappingSchema.{GetLabeledComponent, GetSchemaComponent, MappingSchemaSupport}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, |||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, OptMappedFlatSchema, OptMappedSchema, SchemaColumn}
-import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping, LabeledMapping}
+import net.noresttherein.oldsql.schema.MappingSchema.{MappingSchemaSupport}
+import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
+import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.{DelegateMapping, LazyMapping}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.schema.IndexedMappingSchema.{ExtensibleFlatIndexedSchema, ExtensibleIndexedSchema, FlatIndexedMappingSchema}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
 
 
@@ -43,9 +40,9 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, Shallo
   * `assemble` method, where components in this schema can be individually accessed, without constructing
   * an intermediate chain of values. There is an automatically available implicit conversion from non-empty
   * schemas (where `C` and `V` are not empty) which add methods for retrieving its components:
-  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaMethods#last last]],
-  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaMethods#apply apply()]],
-  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaMethods#prev prev]].
+  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaExtension#last last]],
+  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaExtension#apply apply()]],
+  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaExtension#prev prev]].
   *
   * @tparam S the entity type of an owning `SchemaMapping`. This schema disassembles this value into a chain
   *           of component values `V`.
@@ -908,70 +905,69 @@ object MappingSchema {
 
 
 
+
 		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
 		  * provided with component and column definitions when building this schema for disassembly of its subject
-		  * before writing to the database, and the function specified here for assembling its subject from the
-		  * chain of subjects of all top-level components of this schema. Note that if, during the assembly,
-		  * any of the optional components defined in this schema fails to produce a value, the whole chain `V`
-		  * with the unpacked values will be impossible to assemble, and the whole assembly of the packed subject `S`
-		  * will yield no value.
-		  * @param constructor a function accepting a chain with the values of all components as they appear in the
-		  *                    components chain `C`.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
+		  * before writing to the database, and the function specified here for assembling its subject
+		  * from the values of all top-level components of this schema. The function can take many forms, both in terms
+		  * of the argument and the returned value. For the latter, both `S` and `Option[S]` results are supported.
+		  * As for the former, it can take either the value chain `V` with values of all top-level components
+		  * (the subject of this schema) or any other set of arguments for which an implicit
+		  * [[net.noresttherein.oldsql.collection.Chain.ChainApplication ChainApplication]][V, F, S]
+		  * (or `ChainApplication[V, F, Option[S]]`) exists, allowing the indirect application of the value chain.
+		  * Alternatively, it can take the subjects of all top-level components as individual arguments, in the order
+		  * in which they appear on the value and component chains. The latter approach is recommended, because it
+		  * avoids assembling the value chain by this schema altogether, as well as the linear access tax of elements
+		  * from the chain. This allows direct passing of factory methods from companion objects as arguments
+		  * to this method. Note that the values of components are accessed 'forcibly'
+		  * from the [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] passed for assembly rather than
+		  * by the `Option` returning `get` method and, instead, `NoSuchElementException` exceptions are caught
+		  * and translated to a `None` result in the [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]]
+		  * method. The created `Mapping`, regardless if by mapping the value chain or using direct component access,
+		  * will thus require the values for all listed components to be present in order for the whole assembly
+		  * to succeed.
+		  *
+		  * The `SchemaMapping` created by this method will be thus more efficient both in assembly and disassembly
+		  * than a mapping created with the standard [[net.noresttherein.oldsql.schema.Mapping#map map]] method
+		  * as declared by `Mapping` by skipping the intermediate steps.
+		  * @param constructor a function whose argument(s) contain all the subjects of components in the chain `C`.
+		  *                    It can take either: a) the value chain `V` itself; b) a scala tuple with the same elements;
+		  *                    c) subjects of all components as separate arguments.
+		  *                    It must return either `S` or `Option[S]`.
 		  */
-		def map(constructor :V => S) : SchemaMapping[S, V, C, O] =
+		def map[F](constructor :F)(implicit apply :SubjectConstructor[S, V, C, O, F]) :SchemaMapping[S, V, C, O] =
 			new MappedSchema(this, constructor, packedBuffs)
 
-		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
-		  * provided with component and column definitions when building this schema for disassembly of its subject
-		  * before writing to the database, and the function specified here for assembling its subject from the
-		  * chain of subjects of all top-level components of this schema. This will result in slightly more efficient
-		  * disassembly than the other overloaded `map` method, as no chain with the values of all components
-		  * will be assembled as an intermediate step. Note that if, during the assembly, any of the optional components
-		  * defined in this schema fails to produce a value, the whole chain `V` with the unpacked values will be
-		  * impossible to assemble, and the whole assembly of the packed subject `S` will yield no value.
-		  * @param constructor a function which number of arguments and their types match the subject types of all
-		  *                    components listed by the chain `V`.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-		  */
-		def map[F](constructor :F)(implicit apply :ChainApplication[V, F, S]) :SchemaMapping[S, V, C, O] =
-			map { v :V => v.feedTo(constructor) }
+//		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+//		  * provided with component and column definitions when building this schema for disassembly of its subject
+//		  * before writing to the database, and the function specified here for assembling its subject from the
+//		  * chain of subjects of all top-level components of this schema. Note that if, during the assembly,
+//		  * any of the optional components defined in this schema fails to produce a value, the whole chain `V`
+//		  * with the unpacked values will be impossible to assemble, and the whole assembly of the packed subject `S`
+//		  * will yield no value.
+//		  * @param constructor a function accepting a chain with the values of all components as they appear in the
+//		  *                    components chain `C`.
+//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
+//		  */
+//		def map(constructor :V => S) : SchemaMapping[S, V, C, O] =
+//			map[V => S](constructor)(SubjectConstructor.map())
+//
+//		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
+//		  * provided with component and column definitions when building this schema for disassembly of its subject
+//		  * before writing to the database, and the function specified here for assembling its subject from the
+//		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
+//		  * the subject value for all input rows; this will also be the case if any of the optional components
+//		  * in the schema fail to produce a value, as the intermediate value chain `V` will be impossible to assemble.
+//		  * This method is preferable to the standard `Mapping` method it overloads because the values for the
+//		  * components will be extracted directly from the subject value `S`, without building an intermediate
+//		  * 'unpacked' value chain during disassembly.
+//		  * @param constructor a function accepting a chain with the values of all components as they appear in the
+//		  *                    components chain `C`.
+//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
+//		  */
+//		def optMap(constructor :V => Option[S]) :SchemaMapping[S, V, C, O] =
+//			map[V => Option[S]](constructor)(SubjectConstructor.optMap())
 
-
-
-		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
-		  * provided with component and column definitions when building this schema for disassembly of its subject
-		  * before writing to the database, and the function specified here for assembling its subject from the
-		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
-		  * the subject value for all input rows; this will also be the case if any of the optional components
-		  * in the schema fail to produce a value, as the intermediate value chain `V` will be impossible to assemble.
-		  * This method is preferable to the standard `Mapping` method it overloads because the values for the
-		  * components will be extracted directly from the subject value `S`, without building an intermediate
-		  * 'unpacked' value chain during disassembly.
-		  * @param constructor a function accepting a chain with the values of all components as they appear in the
-		  *                    components chain `C`.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-		  */
-		def optMap(constructor :V => Option[S]) :SchemaMapping[S, V, C, O] =
-			new OptMappedSchema(this, constructor, packedBuffs)
-
-
-		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
-		  * provided with component and column definitions when building this schema for disassembly of its subject
-		  * before writing to the database, and the function specified here for assembling its subject from the
-		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
-		  * the subject value for all input rows; this will also be the case if any of the optional components
-		  * in the schema fail to produce a value, as the intermediate value chain `V` will be impossible to assemble.
-		  * This method is preferable to the standard `Mapping` method it overloads, not only because it accepts
-		  * standard, multi-argument factory method values as the argument, but also because the values for the
-		  * components will be extracted directly from the subject value `S`, without building an intermediate
-		  * 'unpacked' value chain during disassembly.
-		  * @param constructor a function which number of arguments and their types match the subject types of all
-		  *                    components as listed by the chain `V`.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-		  */
-		def optMap[F](constructor :F)(implicit apply :ChainApplication[V, F, Option[S]]) :SchemaMapping[S, V, C, O] =
-			optMap { row :V => row.feedTo(constructor) }
 
 	}
 
@@ -1045,19 +1041,15 @@ object MappingSchema {
 
 
 
-		override def map(constructor :V => S) :FlatSchemaMapping[S, V, C, O] =
+		override def map[F](constructor :F)(implicit apply :SubjectConstructor[S, V, C, O, F]) :FlatSchemaMapping[S, V, C, O] =
 			new MappedFlatSchema(this, constructor, packedBuffs)
 
-		override def map[F](constructor :F)(implicit apply :ChainApplication[V, F, S]) :FlatSchemaMapping[S, V, C, O] =
-			map(apply(constructor, _))
+//		override def map(constructor :V => S) :FlatSchemaMapping[S, V, C, O] =
+//			map[V => S](constructor)
+//
+//		override def optMap(constructor :V => Option[S]) :FlatSchemaMapping[S, V, C, O] =
+//			map[V => Option[S]](constructor)
 
-
-		override def optMap(constructor :V => Option[S]) :FlatSchemaMapping[S, V, C, O] =
-			new OptMappedFlatSchema(this, constructor, packedBuffs)
-
-		override def optMap[F](constructor :F)(implicit apply :ChainApplication[V, F, Option[S]])
-				:FlatSchemaMapping[S, V, C, O] =
-			optMap(apply(constructor, _))
 	}
 
 
@@ -1066,8 +1058,8 @@ object MappingSchema {
 
 
 	/** Additional methods for `MappingSchema` instances which could cause conflicts in multiple inheritance scenarios. */
-	implicit class MappingSchemaMethods[S, V <: Chain, C <: Chain, O]
-	                                   (private val self :MappingSchema[S, V, C, O]) extends AnyVal
+	implicit class MappingSchemaExtension[S, V <: Chain, C <: Chain, O]
+	                                     (private val self :MappingSchema[S, V, C, O]) extends AnyVal
 	{
 		/** Transforms this schema into an equivalent `FlatMappingSchema` by recursively replacing each component in the
 		  * chain `C` with its columns. This process loses all information about replaced components and the new schema
@@ -1087,14 +1079,6 @@ object MappingSchema {
 				case flat :FlatMappingSchema[_, _, _, _] => flat.asInstanceOf[FlatMappingSchema[S, FR, FC, O]]
 				case _ => flatterer(self)
 			}
-
-//		/** The schema for the chain `I`, containing all components of this schema except for the last one.
-//		  * This is the same as [[net.noresttherein.oldsql.schema.MappingSchema#prefix MappingSchema.prefix]],
-//		  * but has consistent naming with `IndexedMappingSchema`, which could not simply override `prefix`
-//		  * due to narrower upper type bound.
-//		  */
-//		def prev[I <: Chain, P <: Chain](implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any)) :MappingSchema[S, I, P, O] =
-//			self.prefix
 	}
 
 
@@ -1306,6 +1290,971 @@ object MappingSchema {
 				:GetSchemaComponent[I, V |~ X, C ~ L, T, M] =
 			previous[I, V, C, X, L, T, M].asInstanceOf[GetSchemaComponent[I, V |~ X, C ~ L, T, M]]
 	}
+
+
+
+
+
+
+	/** Implicit rules of application of some functional type `F` to the values of components
+	  * from a `MappingSchema[S, V, C, O]`, in order to produce the target subject type `S` of the `SchemaMapping`
+	  * owning the schema.
+	  */
+	@implicitNotFound("I don't know how to use ${F} to construct the subject ${S} from chain ${V}.\n" +
+	                  "Missing implicit SubjectConstructor[${S}, ${V}, ${C}, ${O}, ${F}].")
+	trait SubjectConstructor[S, V <: Chain, C <: Chain, O, F] {
+		def apply(schema :MappingSchema[S, V, C, O], f :F) :ComponentValues[S, O] => Option[S]
+	}
+
+
+	sealed abstract class ChainSubjectConstructors {
+		/** Applies a value of the functional type `F` to the value chain `V` assembled by a `MappingSchema[S, V, C, O]`
+		  * using an implicitly available [[net.noresttherein.oldsql.collection.Chain.ChainApplication ChainApplication]].
+		  * This provides implicit values adapting constructor functions accepting either the value chain `F` itself,
+		  * all its elements as separate parameters, or a tuple consisting of the same elements as the chain `V`.
+		  */
+		implicit def mapValueChain[S, V <: Chain, C <: Chain, O, F]
+		                          (implicit apply :ChainApplication[V, F, S]) :SubjectConstructor[S, V, C, O, F] =
+			(schema :MappingSchema[S, V, C, O], f :F) =>
+				(pieces :ComponentValues[S, O]) => pieces.get(schema).map(apply(f, _))
+
+		/** Applies a value of the functional type `F` to the value chain `V` assembled by a `MappingSchema[S, V, C, O]`
+		  * using an implicitly available [[net.noresttherein.oldsql.collection.Chain.ChainApplication ChainApplication]].
+		  * This provides implicit values adapting constructor functions accepting either the value chain `F` itself,
+		  * all its elements as separate parameters, or a tuple consisting of the same elements as the chain `V`.
+		  */
+		implicit def optMapValueChain[S, V <: Chain, C <: Chain, O, F]
+		                             (implicit apply :ChainApplication[V, F, Option[S]]) :SubjectConstructor[S, V, C, O, F] =
+			(schema :MappingSchema[S, V, C, O], f :F) =>
+				(pieces :ComponentValues[S, O]) => pieces.get(schema).flatMap(apply(f, _))
+	}
+
+
+	
+	object SubjectConstructor extends ChainSubjectConstructors {
+
+		def apply[S, V <: Chain, C <: Chain, O, F]
+		         (construct :(MappingSchema[S, V, C, O], F) => ComponentValues[S, O] => Option[S])
+				:SubjectConstructor[S, V, C, O, F] =
+			(schema :MappingSchema[S, V, C, O], f :F) => construct(schema, f)
+
+		def apply[S, V <: Chain, C <: Chain, O, F]
+		         (construct :(MappingSchema[S, V, C, O], F, ComponentValues[S, O]) => Option[S])
+				:SubjectConstructor[S, V, C, O, F] =
+			(schema :MappingSchema[S, V, C, O], f :F) => (pieces :ComponentValues[S, O]) => construct(schema, f, pieces)
+
+
+		/** A [[net.noresttherein.oldsql.schema.MappingSchema.SubjectConstructor SubjectConstructor]] which assembles
+		  * the value chain `V` using the provided schema and maps the result with to the intended subject type.
+		  */
+		implicit def map[S, V <: Chain, C <: Chain, O]() :SubjectConstructor[S, V, C, O, V => S] =
+			(schema :MappingSchema[S, V, C, O], f :V => S) =>
+				(pieces :ComponentValues[S, O]) => pieces.get(schema).map(f)
+
+		/** A [[net.noresttherein.oldsql.schema.MappingSchema.SubjectConstructor SubjectConstructor]] which assembles
+		  * the value chain `V` using the provided schema and flat maps the result with to the intended subject type.
+		  */
+		implicit def optMap[S, V <: Chain, C <: Chain, O]() :SubjectConstructor[S, V, C, O, V => Option[S]] =
+			(schema :MappingSchema[S, V, C, O], f :V => Option[S]) =>
+				(pieces :ComponentValues[S, O]) => pieces.get(schema).flatMap(f)
+
+
+		@inline def SAM[S, V <: Chain, C <: Chain, O, F]
+		               (construct :SubjectConstructor[S, V, C, O, F]) :SubjectConstructor[S, V, C, O, F] =
+			construct
+
+
+
+		type X[T] = |-|[T, _ <: Chain, _ <: Chain]
+
+		@inline private def get[S, T, O](schema :MappingSchema[S, _ <: Chain, _ <: Chain ~ X[T], O])
+		                                (implicit pieces :ComponentValues[S, O]) :T =
+			pieces(schema.lastExtract)
+
+
+
+		implicit def optMap1[Vs <: Chain, CA <: X[A], A, Y, Z] = SAM {
+			(schema :MappingSchema[Y, Vs, @~ ~CA, Z], f :A => Option[Y]) => (pieces :ComponentValues[Y, Z]) =>
+				pieces.get(schema.lastExtract) flatMap f
+		}
+
+		implicit def optMap2[Vs <: @~ ~_~_, CA <: X[A], A, CB <: X[B], B, Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB, Z], f :(A, B) => Option[Y]) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = schema.prev
+							f(get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def optMap3[Vs <: @~ ~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC, Z], f :(A, B, C) => Option[Y]) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev
+							f(get(c2), get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def optMap4[Vs <: @~ ~_~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD, Z], f :(A, B, C, D) => Option[Y]) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev
+							f(get(c3), get(c2), get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def optMap5[Vs <: @~ ~_~_~_~_~_,
+		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE, Z], f :(A, B, C, D, E) => Option[Y]) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							f(get(c4), get(c3), get(c2), get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def optMap6[Vs <: @~ ~_~_~_~_~_~_,
+			                 CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                     Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF, Z], f :(A, B, C, D, E, F) => Option[Y]) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev
+							f(get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def optMap7[Vs <: @~ ~_~_~_~_~_~_~_,
+		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                     CG <: X[G], G,
+		                     Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG, Z], f :(A, B, C, D, E, F, G) => Option[Y]) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev
+							f(get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def optMap8[Vs <: @~ ~_~_~_~_~_~_~_~_,
+		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                     CG <: X[G], G, CH <: X[H], H,
+		                     Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH, Z],
+				 f :(A, B, C, D, E, F, G, H) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev
+							f(get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap9[Vs <: @~ ~_~_~_~_~_~_~_~_~_,
+		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                     CG <: X[G], G, CH <: X[H], H, CI <: X[I], I,
+		                     Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI, Z],
+				 f :(A, B, C, D, E, F, G, H, I) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev
+							f(get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap10[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							f(get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap11[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev
+							f(get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap12[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev
+							f(get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap13[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev
+							f(get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap14[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev
+							f(get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap15[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							f(get(c14), get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap16[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev
+							f(get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap17[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev
+							f(get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap18[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev
+							f(get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap19[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                      CS <: X[S], S,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev
+							f(get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap20[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                      CS <: X[S], S, CT <: X[T], T,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
+							f(get(c19),
+							  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap21[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_ ~ _,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                      CS <: X[S], S, CT <: X[T], T, CU <: X[U], U,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
+							val c20 = c19.prev
+							f(get(c20), get(c19),
+							  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def optMap22[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_ ~ _,
+		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                      CS <: X[S], S, CT <: X[T], T, CU <: X[U], U, CV <: X[V], V,
+		                      Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU~CV, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Option[Y]) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
+							val c20 = c19.prev; val c21 = c20.prev
+							f(get(c21), get(c20), get(c19),
+							  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+
+
+		implicit def map1[Vs <: Chain, CA <: X[A], A, Y, Z] = SAM {
+			(schema :MappingSchema[Y, Vs, @~ ~CA, Z], f :A => Y) => (pieces :ComponentValues[Y, Z]) =>
+				pieces.get(schema.lastExtract) map f
+		}
+
+		implicit def map2[Vs <: @~ ~_~_, CA <: X[A], A, CB <: X[B], B, Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB, Z], f :(A, B) => Y) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = schema.prev
+							Some(f(get(c1), get(c0)))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def map3[Vs <: @~ ~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC, Z], f :(A, B, C) => Y) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev
+							Some(f(get(c2), get(c1), get(c0)))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def map4[Vs <: @~ ~_~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD, Z], f :(A, B, C, D) => Y) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev
+							Some(f(get(c3), get(c2), get(c1), get(c0)))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def map5[Vs <: @~ ~_~_~_~_~_,
+		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE, Z], f :(A, B, C, D, E) => Y) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							Some(f(get(c4), get(c3), get(c2), get(c1), get(c0)))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def map6[Vs <: @~ ~_~_~_~_~_~_,
+			              CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                  Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF, Z], f :(A, B, C, D, E, F) => Y) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev
+							Some(f(get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)))
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def map7[Vs <: @~ ~_~_~_~_~_~_~_,
+		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                  CG <: X[G], G,
+		                  Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG, Z], f :(A, B, C, D, E, F, G) => Y) => {
+					implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev
+							Some(
+								f(get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+				}
+			}
+
+		implicit def map8[Vs <: @~ ~_~_~_~_~_~_~_~_,
+		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                  CG <: X[G], G, CH <: X[H], H,
+		                  Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH, Z],
+				 f :(A, B, C, D, E, F, G, H) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev
+							Some(
+								f(get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map9[Vs <: @~ ~_~_~_~_~_~_~_~_~_,
+		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                  CG <: X[G], G, CH <: X[H], H, CI <: X[I], I,
+		                  Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI, Z],
+				 f :(A, B, C, D, E, F, G, H, I) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev
+							Some(
+								f(get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map10[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							Some(
+								f(get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map11[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev
+							Some(
+								f(get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map12[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev
+							Some(
+								f(get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map13[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev
+							Some(
+								f(get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map14[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev
+							Some(
+								f(get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map15[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							Some(
+								f(get(c14), get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map16[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev
+							Some(
+								f(get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map17[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev
+							Some(
+								f(get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map18[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev
+							Some(
+								f(get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map19[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                   CS <: X[S], S,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev
+							Some(
+								f(get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map20[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                   CS <: X[S], S, CT <: X[T], T,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
+							Some(
+								f(get(c19),
+								  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map21[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_ ~ _,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                   CS <: X[S], S, CT <: X[T], T, CU <: X[U], U,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
+							val c20 = c19.prev
+							Some(
+								f(get(c20), get(c19),
+								  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+		implicit def map22[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_ ~ _,
+		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
+		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
+		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
+		                   CS <: X[S], S, CT <: X[T], T, CU <: X[U], U, CV <: X[V], V,
+		                   Y, Z] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU~CV, Z],
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Y) =>
+					{ implicit pcs :ComponentValues[Y, Z] =>
+						try {
+							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
+							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
+							val c20 = c19.prev; val c21 = c20.prev
+							Some(
+								f(get(c21), get(c20), get(c19),
+								  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
+								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
+								)
+							)
+						} catch {
+							case _ :NoSuchElementException => None
+						}
+					}
+			}
+
+	}
+
 
 
 
