@@ -36,7 +36,7 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
   * expressions (instances of the [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] class hierarchy)
   * are defined, providing all non-constant values available to them. It consists of a list of
   * [[net.noresttherein.oldsql.schema.Relation relations]] with associated
-  * [[net.noresttherein.oldsql.schema.Mapping Mappings]], together with an optional filter working on those relations,
+  * [[net.noresttherein.oldsql.schema.Mapping Mapping]]s, together with an optional filter working on those relations,
   * especially any required join conditions. While the individual elements of a clause are referred to often as tables
   * for simplicity, they can not only be arbitrary relations such as other ''selects'', but also synthetic artifacts
   * such as query parameters. It is even possible to use arbitrary mapping components, to be replaced at a later time
@@ -102,7 +102,7 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
   *     to [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension FromSomeExtension]], which define
   *     factory methods for other join types;
   *   - from clauses without a `Subselect` join `F &lt;: OuterFromSome`
-  *     to [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension OuterFromExtension]] for adding unbound
+  *     to [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension OuterFromSomeExtension]] for adding unbound
   *     query parameters in the form of the [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] synthetic 'joins'.
   * {{{}}}
   * Aside from the above extensions, associated implicits and other helper classes, the companion object
@@ -381,7 +381,7 @@ trait FromClause { thisClause =>
 
 
 	/** A [[net.noresttherein.oldsql.collection.Chain Chain]] listing all parameters of this clause joined with
-	  * the [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension.param param]] method.
+	  * the [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param]] method.
 	  * In particular, a `FromClause` subtype with no `JoinParam` joins in its full type has this type equal to `@~`.
 	  * This is can be used to statically enforce that a clause is parameterless by refining on this type:
 	  * `from :FromClause { type Params = @~ }`, or `from :ParameterlessFrom` as a less bug-prone alternative.
@@ -534,7 +534,7 @@ trait FromClause { thisClause =>
 	  * it to work for abstract clauses: `f :f.outer.Nested`
 	  * for any `f :`[[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]]. Similarly,
 	  * `s :f.Nested` for any clause `s = f subselect t ...` (where '...' denote any sequence of join / group by
-	  * methods other than [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param]] and `subselect`
+	  * methods other than [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param]] and `subselect`
 	  * (or any other method creating a [[net.noresttherein.oldsql.sql.Subselect Subselect]] join).
 	  * This type differs from [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]] in several aspects:
 	  *   - it always works on the full, concrete types - if either clause `S` or `F` has an abstract clause as
@@ -662,12 +662,12 @@ trait FromClause { thisClause =>
 
 	/** The ''where'' clause of this subselect clause representing the explicit filter condition as an SQL AST.
 	  * It is the conjunction of join conditions for all joins in this clause since the last `Subselect` or `GroupByAll`
-	  * join. For non subselect clauses, it is equal to [[net.noresttherein.oldsql.sql.FromClause#fullFilter fullFilter]].
+	  * join.
 	  */
 	def filter :SQLBoolean[Generalized]
 
 	/** The combined join conditions of all joins since the last `Subselect` or `GroupByAll` join as a expression based
-	  * on an extending clause. Used by zero-argument `fullFilter` to request the individual join conditions
+	  * on an extending clause. Used by zero-argument `filter` to request the individual join conditions
 	  * as expressions based on the clause it was called for.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
@@ -1420,7 +1420,7 @@ object FromClause {
 
 	/** A non empty `FromClause` without any [[net.noresttherein.oldsql.sql.Subselect Subselect]],
 	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]],
-	  * or [[net.noresttherein.oldsql.sql.GroupByAll, GroupByAll]]/[[net.noresttherein.oldsql.sql.GroupByAll.ByAll By All]]
+	  * or [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
 	  * joins. Representing a single ''from'' clause (and not one of a nested subselect), without a ''group by'' clause,
 	  * it can be used as a basis of (top level) SQL ''selects''. In order to conform naturally (rather than by refinement),
 	  * a type must be ''complete'', and the [[net.noresttherein.oldsql.sql.FromClause#Generalized generalized]] form
@@ -1614,58 +1614,6 @@ object FromClause {
 
 
 
-	/** Extension methods for `OuterFrom` objects (''from'' clauses without any `Subselect`s which can serve
-	  * as the basis for independent selects). It provides methods for introducing unbound parameters
-	  * to the clause in the form of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins',
-	  * which can be substituted with
-	  */
-	implicit class OuterFromExtension[F <: OuterFromSome](private val clause :F) extends AnyVal {
-
-		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
-		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
-		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
-		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
-		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
-		  * as a parameter of SQL statements created using the returned instance.
-		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
-		  */
-		@inline def param[X :SQLForm] :F WithParam X = JoinParam(clause, ParamRelation[X]())
-
-		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
-		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
-		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
-		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
-		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
-		  * as a parameter of SQL statements created using the returned instance.
-		  * @param name the suggested name for the parameter in the generated SQL, as specified by JDBC.
-		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
-		  */
-		@inline def param[X :SQLForm](name :String) :F WithParam X = JoinParam(clause, ParamRelation[X](name))
-
-		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
-		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
-		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
-		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
-		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
-		  * as a parameter of SQL statements created using the returned instance.
-		  * @tparam N a string literal used as the label for the mapping and suggested parameter name.
-		  * @tparam X parameter type.
-		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
-		  */
-		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F JoinParam (N ?: X)#T =
-			JoinParam(clause, form ?: (name.value :N))
-
-	}
-
-
-
-
-
-
-
 	/** A facade to a ''from'' clause of type `F`, providing access to mappings for all relations listed in its type.
 	  * The `Origin` type of every returned `M[O] &lt;: MappingAt[O]` instance (and, by transition, its components)
 	  * is the generalized super type of `F` formed by replacing all mappings preceding `M` in its type definition
@@ -1697,8 +1645,8 @@ object FromClause {
 		def of[E](implicit get :BySubject[F, E]) :get.T[get.G] = get(clause).mapping
 
 		/** Returns the `Mapping` instance for the last relation using a `LabeledMapping` with label type `A`.
-		  * This in particular includes relations aliased using the [[net.noresttherein.oldsql.sql.JoinLike.as JoinLike.as]]
-		  * method.
+		  * This in particular includes relations aliased using
+		  * the [[net.noresttherein.oldsql.sql.JoinLike#as JoinLike.as]] method.
 		  * @param alias a `String` literal used as the label of the accessed mapping.
 		  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping]]
 		  */
@@ -1865,8 +1813,8 @@ object FromClause {
 			get(clause)
 
 		/** Returns the `JoinedRelation` instance for the last relation using a `LabeledMapping` with label type `A`.
-		  * This in particular includes relations aliased using the [[net.noresttherein.oldsql.sql.JoinLike.as JoinLike.as]]
-		  * method.
+		  * This in particular includes relations aliased using
+		  * the [[net.noresttherein.oldsql.sql.JoinLike#as JoinLike.as]] method.
 		  * @param alias a string literal which is used as the label of the accessed mapping
 		  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping]]
 		  */
@@ -2044,6 +1992,9 @@ object FromClause {
 	                  "You may wish to define an implicit Extended.ExtendedDecomposition " +
 	                  "or DecoratedFrom.DecoratorDecomposition for F if it is a custom implementation.")
 	trait ClauseComposition[F <: FromClause, P <: U, U <: FromClause] extends ClauseDecomposition[F, P, U] {
+		/** Create a new ''from'' clause by replacing the 'prefix' `P` in `template` with `F`.
+		  * The created instance will contain no filter condition over what already exists in the clause `C`.
+		  */
 		def apply[C <: U](template :F, clause :C) :E[C]
 	}
 
@@ -2434,7 +2385,7 @@ object FromClause {
 			  * (starting with `-1` for the last mapping and decreasing). It is not the actual companion evidence class
 			  * reported by this object for two reasons: first, various implementations introduce additional refinements
 			  * over the standard [[net.noresttherein.oldsql.sql.FromClause.GetTable.RelationEvidence RelationEvidence]]
-			  * interface and, second, because after erasure all GetTableByPredicate#Found` classes are equal
+			  * interface and, second, because after erasure all `GetTableByPredicate#Found` classes are equal
 			  * and methods of the same signature accepting evidence from different `GetTableByEvidence` instances
 			  * would clash with each other. The typical procedure is thus to implement the evidence resolution in
 			  * means of `Found` and convert the final `Found` evidence into a `Get`. Leaving things at that would
@@ -2445,7 +2396,7 @@ object FromClause {
 			  * implicit expansion' error instead of 'implicit not found' with the customized message),
 			  * `Found` instances obtained through scanning of the ''from'' clause `F` rather than from an implicit `Get`
 			  * are always returned as its subclass
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]], and only values
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate.Return Return]], and only values
 			  * of that class are legible for conversion into the final `Get` evidence.
 			  */
 			@implicitNotFound("Cannot find a mapping for key type ${X} in the clause ${F}: missing implicit Found[F, X].")
@@ -2639,9 +2590,9 @@ object FromClause {
 
 
 			/** Performs for the `ByIndex` evidence the same function as
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]] for
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate.Return Return]] for
 			  * `GetTableByPredicate` instances, that is marks a
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex.ByPositiveIndex.Found ByPositiveIndex.Found]]
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate.Found ByPositiveIndex.Found]]
 			  * evidence as being a search result rather than a conversion from an existing `ByIndex` to avoid infinite
 			  * implicit resolution loops.
 			  */
@@ -2691,9 +2642,9 @@ object FromClause {
 
 
 			/** Performs for the `ByIndex` evidence the same function as
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]] for
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate.Return Return]] for
 			  * `GetTableByPredicate` instances, that is marks a
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex.ByNegativeIndex.Found ByNegativeIndex.Found]]
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate.Found ByNegativeIndex.Found]]
 			  * evidence as being a search result rather than a conversion from an existing `ByIndex` to avoid infinite
 			  * implicit resolution loops.
 			  *
@@ -2706,7 +2657,7 @@ object FromClause {
 			  * the value of the `Int` literal `X`: the matching of the desired index with the relation's position
 			  * happens as the last step, by comparing `f.I` with `N` for `f :Found[F, N]`, instead of when reporting
 			  * the initial `Found` based on
-			  * the [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate#Predicate Predicate]] in
+			  * the [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate.Predicate Predicate]] in
 			  * the [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate#last last]] method.
 			  */
 			@implicitNotFound("Cannot get ${N}-th relation of the FROM clause ${F}.\n" +
@@ -2937,9 +2888,9 @@ object FromClause {
 
 
 			/** Performs for the `ByParamIndex` evidence the same function as
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]] for
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate.Return Return]] for
 			  * `GetTableByPredicate` instances, that is marks a
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByParamIndex.ByPositiveParamIndex.Found ByPositiveParamIndex.Found]]
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate.Found ByPositiveParamIndex.Found]]
 			  * evidence as being a search result rather than a conversion from an existing `ByParamIndex`
 			  * to avoid infinite implicit resolution loops.
 			  */
@@ -2979,9 +2930,9 @@ object FromClause {
 
 
 			/** Performs for the `ByParamIndex` evidence the same function as
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate#Return Return]] for
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableTemplate.Return Return]] for
 			  * `GetTableByPredicate` instances, that is marks a
-			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByParamIndex.ByPositiveParamIndex.Found ByPositiveParamIndex.Found]]
+			  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.GetTableByPredicate.Found ByPositiveParamIndex.Found]]
 			  * evidence as being a search result rather than a conversion from an existing `ByParamIndex`
 			  * to avoid infinite implicit resolution loops.
 			  */
@@ -3258,7 +3209,8 @@ object FromClause {
 	  * it is based on. As a result, this proof is indeed a valid representation that such a conversion from `F` to `E`
 	  * is possible for any `SQLExpression`. Due to this contravariance in `E`, this isn't any form
 	  * of a generalized subtyping relation and should be relied upon only in the context of the actual extension.
-	  */
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.PrefixOf]]
+	  */ //alternative names :PartOf IncludedIn, ProvidedBy, UsedBy
 	@implicitNotFound("The FROM clause ${F} is not a prefix of the clause ${E} (ignoring join kinds).")
 	class ExtendedBy[+F <: FromClause, -E <: FromClause] private[FromClause] (val length :Int) extends AnyVal {
 

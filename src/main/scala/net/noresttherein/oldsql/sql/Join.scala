@@ -30,7 +30,7 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
   * which represent various actual join kinds (inner, outer, etc) and [[net.noresttherein.oldsql.sql.Subselect Subselect]]
   * which is a synthetic linearization of the ''from'' clause of a subselect joined with the ''from'' clause
   * of its outer select.
-  */
+  */ //this class is almost unused; it seems to serve only the purpose of 'not join param'
 sealed trait JoinLike[+L <: FromClause, R[O] <: MappingAt[O]] extends AndFrom[L, R] { thisClause =>
 
 	override type Generalized >: Self <: (left.Generalized JoinLike R) {
@@ -88,7 +88,7 @@ sealed trait JoinLike[+L <: FromClause, R[O] <: MappingAt[O]] extends AndFrom[L,
 
 	/** This join type, fully parameterized with arbitrary prefix clause and relation mapping. Used by copy constructors
 	  * of this class.
-	  * @see [[net.noresttherein.oldsql.sql.JoinLike.likeJoin]]
+	  * @see [[net.noresttherein.oldsql.sql.JoinLike#likeJoin]]
 	  */
 	type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] <: (F GeneralizedJoin T) {
 		type LikeJoin[+S <: FromSome, M[O] <: MappingAt[O]] = thisClause.LikeJoin[S, M]

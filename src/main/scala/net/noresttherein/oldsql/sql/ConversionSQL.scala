@@ -100,7 +100,7 @@ object ConversionSQL {
 
 
 	private[sql] class MappedColumnSQL[-F <: FromClause, T, U] protected[sql]
-	(override val expr :ColumnSQL[F, T])(fun :T => U)
+	                                  (override val expr :ColumnSQL[F, T])(fun :T => U)
 		extends MappedSQL[F, T, U](expr)(fun) with ColumnConversionSQL[F, T, U]
 	{
 		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnConversionSQL[S, T, U] =

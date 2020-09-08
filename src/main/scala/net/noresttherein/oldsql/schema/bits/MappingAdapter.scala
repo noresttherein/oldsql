@@ -38,7 +38,7 @@ sealed trait AdapterOf[+M <: Mapping] extends Mapping { this :MappingSeal =>
   * should generally be of the same `Origin` type `O` as this adapter. Unfortunately, this in most cases results
   * in a duplication of the origin type in the type signature as a `M &lt;: MappingAt[_]` type bound results in
   * issues with type unification of the type parameter at the use site (see the
-  * [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type documentation for more information about this limitation).
+  * [[net.noresttherein.oldsql.schema.Mapping#Origin Origin]] type documentation for more information about this limitation).
   *
   * Client code should, if possible, use one of the type aliases defined in the companion object which propagate
   * some combination of the subject and origin types from the original mapping to the adapter.

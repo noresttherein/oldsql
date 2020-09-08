@@ -67,7 +67,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
   * have reusable components accept at least a prefix/suffix to include in column names, but exceptions will always
   * exist, especially when dealing with preexisting schemas. A `Mapping` is therefore completely free to translate
   * a component it uses by modifying the column names as it sees fit. Additionally, any mapping can declare
-  * [[net.noresttherein.oldsql.schema.Buff Buffs]] which can modify the handling of all of its subcomponents
+  * [[net.noresttherein.oldsql.schema.Buff Buff]]s which can modify the handling of all of its subcomponents
   * (such as making them read-only). Their handling is the responsibility of the mapping class and not all components
   * support it. A logical component being part of a larger mapping can thus exist in several versions:
   * the original instance of the implementing class, the decorator serving as the operative version with modifications
@@ -127,7 +127,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
   * loss of generality, a type constructor `M[O] &lt;: MappingAt[O]` can be passed instead of the full mapping type.
   *
   * @see [[net.noresttherein.oldsql.schema.BaseMapping]]
-  * @see [[MappingFrame]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
 trait Mapping { this :MappingSeal =>
@@ -284,11 +284,11 @@ trait Mapping { this :MappingSeal =>
 	  * Standard implementation will test several sources together with `pieces` before giving up:
 	  * a ready value present for this mapping in the `pieces`, assembling the result from subcomponents and, finally,
 	  * a default coming from an attached `OptionalSelect` (or related). By default it forwards to
-	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and should stay consistent with it.
+	  * [[net.noresttherein.oldsql.schema.Mapping#optionally optionally]] and should stay consistent with it.
 	  * Mapping implementations for concrete domain model classes should typically override `assemble` instead of
 	  * this method directly.
 	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]]
 	  */
 	def apply(pieces: Pieces): Subject =
 		optionally(pieces) getOrElse {
@@ -297,14 +297,14 @@ trait Mapping { this :MappingSeal =>
 
 	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
 	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
-	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.assemble assemble]]
+	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues#assemble assemble]]
 	  * method of `ComponentValues` (which, by default, will first check if it has a predefined value stored
 	  * for this mapping, and, only if not, forward to this instance's
-	  * [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] method which is responsible for the actual
+	  * [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]] method which is responsible for the actual
 	  * assembly of the subject from the values of the subcomponents, recursively obtained from `pieces`.
 	  *
 	  * If all of the above fails, this method will check for a predefined value stored in an attached
-	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] (or related) buff if it exists.
+	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect$ OptionalSelect]] (or related) buff if it exists.
 	  * Additionally, any `AuditBuff`s present can modify the returned value and subclasses are free to
 	  * handle other buffs or implement additional behaviour directly.
 	  *
@@ -318,17 +318,17 @@ trait Mapping { this :MappingSeal =>
 	  * default 'missing' value; it is ultimately always up to the mapping implementation to handle the matter.
 	  * The above distinction is complicated further by the fact that the mapped type `Subject` itself can be
 	  * an `Option` type, used to signify either or both of these cases.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]]
 	  */
 	def optionally(pieces: Pieces): Option[Subject]
 
 	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
 	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
 	  * in [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] and should not be called directly.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply apply]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.subject ComponentValues.root]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.optionally ComponentValues.optionally]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping#optionally optionally]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping#apply apply]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues#subject ComponentValues.subject]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues#optionally ComponentValues.optionally]]
 	  */
 	def assemble(pieces :Pieces) :Option[Subject]
 
@@ -1082,7 +1082,7 @@ object Mapping {
 		/** Upcasts this instance to a type `P[M#Origin] &lt;: RefinedMapping[M#Subject, M#Origin]` such that
 		  * the type constructor `P` substitutes all occurrences of the `Origin` type in `M`'s type signature
 		  * with its type parameter. This is equivalent to simply calling
-		  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin[O]]] -
+		  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]]`[O]` -
 		  * a useful alternative when the projection invariant mapping type is required without changing its origin,
 		  * as concrete `Origin` types are typically long.
 		  */
@@ -1127,7 +1127,7 @@ object Mapping {
 	  *
 	  *     val c = a.withOrigin["C"] //c :Adapter[BaseMapping[Int, "C"], Int, "C"]
 	  * }}}
-	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection[M]]]
+	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection]]`[M]`
 	  * is the implementation subtype of `OriginProjection`, invariant in its type parameter; every instance
 	  * of `OriginProjection[M, _]` is also an instance of `ExactProjection[_ &lt;: M]`.
 	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef ProjectionDef]] is a type alias

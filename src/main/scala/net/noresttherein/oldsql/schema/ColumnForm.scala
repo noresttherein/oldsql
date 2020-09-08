@@ -264,7 +264,7 @@ object ColumnForm {
 
 	/** A convenience mixin trait for forms of reference types using `null` as their `nullValue`.
 	  * Implements also the null literal methods to return "null".
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#nullValue]]
 	  */
 	trait NullableColumnForm[T >: Null] extends NullableForm[T] with ColumnForm[T] {
 		override def apply(position :Int)(res :ResultSet) :T = read(position)(res)

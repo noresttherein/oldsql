@@ -339,7 +339,7 @@ object Using {
   * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
   * @author Marcin Mościcki
-  */
+  */ //other words :Tack, Include With
 trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thisClause =>
 	override type FromLast >: Generalized <: FromClause Extended R
 

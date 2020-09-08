@@ -91,7 +91,7 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 		From.narrow(this, right, filter)
 
 
-	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R, F <: FromClause] = F
+	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L AndFrom R, F <: FromClause] = F
 
 	override def joinWith[F <: FromClause](suffix :F, join :JoinLike.*) :F = suffix
 

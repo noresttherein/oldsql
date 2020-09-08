@@ -191,7 +191,7 @@ object ComposedOf {
 		def apply[C, E](implicit composition :C CollectionOf E) :C CollectionOf E = composition
 
 		/** Creates an instance of `C CollectionOf E` from the given constructor and extractor the same way as
-		  * [[net.noresttherein.oldsql.model.ComposedOf.apply ComposedOf(compose, decompose)]]. Note that instances
+		  * [[net.noresttherein.oldsql.model.ComposedOf#apply ComposedOf(compose, decompose)]]. Note that instances
 		  * of `C CollectionOf E` will equal (symmetrically) instances of `C ComposedOf E` as long as their corresponding
 		  * constituents are equal.
 		  */

@@ -46,7 +46,7 @@ import slang._
   * only their operative (from the point of view of its components) versions. This is solved by component aliasing:
   * every mapping is required to publish both the operative and original versions of its components and subcomponents
   * and be able to provide the operative version for any of them by its
-  * [[net.noresttherein.oldsql.schema.Mapping.export export()]] method. Aliased `ComponentValues` instances will
+  * [[net.noresttherein.oldsql.schema.Mapping#export export()]] method. Aliased `ComponentValues` instances will
   * in turn always substitute the component for which a value (or dedicated `ComponentValues`) is being requested with
   * its operative version before checking for a preset value or using it for assembly. This process can be enabled
   * on any mapping by calling one of its `aliased` methods and some implementations returned by the companion object
@@ -698,7 +698,7 @@ object ComponentValues {
 		  * obtained by disassembling (extracting) their value from the argument based on the function specified by
 		  * the `MappingExtract` provided by the component. The final value returned for a component
 		  * is the result of its `optionally` method and may differ from the one extracted from the argument.
-		  * Before assembly, every component is aliased using the [[net.noresttherein.oldsql.schema.Mapping.export export]]
+		  * Before assembly, every component is aliased using the [[net.noresttherein.oldsql.schema.Mapping#export export]]
 		  * method of the mapping provided earlier. This method can be used to easily get the column values
 		  * for a mapping before inserting/updating a value, or as fallback values for another, not complete instance.
 		  * @param value proposed result of the mapping.
@@ -725,7 +725,7 @@ object ComponentValues {
 		  * supplied by the mapping provided earlier and `preset()` calls for all other will always return `None`,
 		  * so that their value is assembled from lower level components. All components used for assembly
 		  * (including those with preset values) are aliased with the mapping's
-		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before invoking their `optionally`
+		  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method before invoking their `optionally`
 		  * (or `apply`) method. Note that while you can supply any components, not only columns, if any mapping
 		  * in the hierarchy relies in its assembly on a value of a non-direct subcomponent, it can bypass the
 		  * value preset here. This will likely result in its failure to assemble its subject.
@@ -746,7 +746,7 @@ object ComponentValues {
 		  * accesses any of its subcomponents directly, as it would read the exact value returned by the provided
 		  * function - if it is `None` it may result in an assembly failure.
 		  * All components passed to the created instance will be aliased using the supplied mapping's
-		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
+		  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method before being passed to the given function
 		  * or calls to their methods. You can supply a `NaturalMap` as an argument.
 		  * @param values factory of values for components.
 		  */
@@ -769,7 +769,7 @@ object ComponentValues {
 		  * accesses any of its subcomponents directly, as it would read the exact value returned by the provided
 		  * function - if it is `None` it may result in an assembly failure.
 		  * All components passed to the created instance will be aliased using the supplied mapping's
-		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
+		  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method before being passed to the given function
 		  * or calls to their methods.
 		  * You can supply a `Map` as an argument.
 		  * @param values factory of values for components, must return an option of the same type as the input mapping.
@@ -794,7 +794,7 @@ object ComponentValues {
 		  * other than a column (instead of its columns) requires that no other component, including its owner,
 		  * accesses any of its subcomponents directly, as it would yield a value only if explicitly provided here.
 		  * All components passed to the created instance will be aliased using the supplied mapping's
-		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
+		  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method before being passed to the given function
 		  * or calls to their methods.
 		  * @param values preset values for selected components of the supplied mapping, in any order consistent
 		  *               with `index`.
@@ -810,7 +810,7 @@ object ComponentValues {
 		/** Create an empty instance returning always `None`/another `Empty ComponentValues` or throwing
 		  * a `NoSuchElementException`. It will print the provided mapping in its `toString` method and
 		  * any exception messages resulting from a lack of value. Note that all components passed to this
-		  * instance will be aliased with this mapping's [[net.noresttherein.oldsql.schema.Mapping.export export]]
+		  * instance will be aliased with this mapping's [[net.noresttherein.oldsql.schema.Mapping#export export]]
 		  * method, which guarantees that the operative version of the component is being used for assembly
 		  * (and thus it and its subcomponents have the final set of buffs), but is somewhat less efficient
 		  * and might be completely unnecessary in most use cases.
@@ -1756,7 +1756,7 @@ object ComponentValues {
 			  * obtained by disassembling (extracting) their value from the argument based on the function specified by
 			  * the `MappingExtract` provided by the mapping. The values for all other components however, including
 			  * the root mapping, will be assembled using the normal process.
-			  * Before assembly, every component is aliased using the [[net.noresttherein.oldsql.schema.Mapping.export export]]
+			  * Before assembly, every component is aliased using the [[net.noresttherein.oldsql.schema.Mapping#export export]]
 			  * method of the mapping provided earlier. This method can be used to easily get the column values
 			  * for a mapping before inserting/updating a value, or as fallback values for another, not complete instance.
 			  * @param value proposed result of the mapping.
@@ -1789,7 +1789,7 @@ object ComponentValues {
 			  * a `MappingExtract` supplied by the mapping provided earlier, while `preset()` calls for all other
 			  * columns and components will always return `None`, so that their value is assembled from lower level
 			  * components. All components used for assembly are aliased with the mapping's
-			  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before invoking their `optionally`
+			  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method before invoking their `optionally`
 			  * (or `apply`) method.
 			  * @param value      subject of the root mapping serving as input for values of the given columns.
 			  * @param components list of columns which should be used as the value set in the assembly process.
@@ -1807,7 +1807,7 @@ object ComponentValues {
 			  * The return values of the function are used as the preset values yielded by the created instance,
 			  * with the presets for all non-column components being `None` by contract.
 			  * All components passed to the created instance will be aliased using the supplied mapping's
-			  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
+			  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method before being passed to the given function
 			  * or calls to their methods. You can supply a `NaturalMap` as an argument.
 			  * @param values factory of values for columns.
 			  */
@@ -1831,7 +1831,7 @@ object ComponentValues {
 			  * The return values of the function are used as the preset values yielded by the created instance,
 			  * with the presets for non-column components being `None` by contract.
 			  * All components passed to the created instance will be aliased using the supplied mapping's
-			  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
+			  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method before being passed to the given function
 			  * or calls to their methods. You can supply a `Map` as an argument.
 			  * @param values factory of values for columns, must return an option of the input mapping's subject type.
 			  */
@@ -1855,7 +1855,7 @@ object ComponentValues {
 			  * by the use of the provided indexing function. An entry of `None` or a negative index results in
 			  * no preset value for the column, with the presets for all non-column components being `None` by contract.
 			  * All components passed to the created instance will be aliased using the supplied mapping's
-			  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
+			  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method before being passed to the given function
 			  * or calls to their methods.
 			  * @param values preset values for selected columns of the supplied mapping, in any order consistent
 			  *               with `index`.
@@ -1874,7 +1874,7 @@ object ComponentValues {
 			/** Create an empty instance returning always `None`/another empty `ColumnValues` or throwing
 			  * a `NoSuchElementException`. It will print the provided mapping in its `toString` method and
 			  * any exception messages resulting from a lack of value. Note that all components passed to this
-			  * instance will be aliased with this mapping's [[net.noresttherein.oldsql.schema.Mapping.export export]]
+			  * instance will be aliased with this mapping's [[net.noresttherein.oldsql.schema.Mapping#export export]]
 			  * method, which guarantees that the operative version of the component is being used for assembly
 			  * (and thus it and its subcomponents have the final set of buffs), but is somewhat less efficient
 			  * and might be completely unnecessary in most use cases.

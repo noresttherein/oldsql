@@ -44,7 +44,7 @@ object SQLScribe {
 
 	/** Base `SQLScribe` trait implementing methods for all `SQLExpression` types which do not depend on the clause `F`
 	  * (such as terms) as well as for `CompositeSQL` subclasses by recursively applying itself using their
-	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.rephrase rephrase]] method.
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL#rephrase rephrase]] method.
 	  */
 	trait AbstractSQLScribe[+F <: FromClause, -R <: FromClause] extends SQLScribe[F, R]
 		with CaseComposite[F, ExpressionResult[R]#T] with CaseCompositeColumn[F, ColumnResult[R]#T]
@@ -75,7 +75,7 @@ object SQLScribe {
 	  * from parts transformed with this instance, while the latter creates a new instance with its
 	  * [[net.noresttherein.oldsql.sql.SQLScribe.RecursiveScribe#extended extended]] method for the subselect's
 	  * ''from'' clause. The subselect clause is then transplanted onto the result clause `G` in a way similar
-	  * to [[net.noresttherein.oldsql.sql.FromClause.asSubselectOf FromClause.asSubselectOf]], rewriting all
+	  * to [[net.noresttherein.oldsql.sql.FromClause#asSubselectOf FromClause.asSubselectOf]], rewriting all
 	  * join conditions and the subselect header before creating a new `SubselectSQL`.
 	  * In order to be able to rewrite subselect expressions, it requires the output clause instance `G` to use
 	  * as their `Outer`/`Implicit` portion. This can be achieved either by using this scribe in a `Using`
@@ -500,7 +500,7 @@ object SQLScribe {
 
 
 	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
-	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.stretch stretch]]
+	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression#stretch stretch]]
 	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
 	  */
 	def stretcher[F <: FromClause, E <: FromClause](clause :E)(implicit extension :F ExtendedBy E) :SQLScribe[F, E] =

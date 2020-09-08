@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.MappingSchema.{MappingSchemaSupport}
+import net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport
 import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -378,7 +378,7 @@ object MappingSchema {
 		  * @tparam N the string singleton type of the label key.
 		  * @tparam T the subject type of the returned component.
 		  * @tparam M the full type of the returned component, as present on the component list `C`.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
+		  * @see [[net.noresttherein.oldsql.schema.MappingSchema#apply[N,T](label:N) MappingSchema.apply(label)]]
 		  */
 		def /[N <: Label, T, M <: @|-|[N, T, _, _]]
 		     (label :N)(implicit get :GetLabeledComponent[N, Unpacked, Components, T, M], project :OriginProjection[M, T])
@@ -411,7 +411,7 @@ object MappingSchema {
 		  * @tparam M the full type of the returned component, as present on the component list `C`.
 		  * @tparam I the `Int` literal type of the label key.
 		  * @tparam T the subject type of the returned component.
-		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N)]]
+		  * @see [[net.noresttherein.oldsql.schema.MappingSchema#apply[N,T](label:N) MappingSchema.apply(label)]]
 		  */
 		def /[I <: Numeral, T, M <: |-|[T, _, _]]
 		     (idx :I)(implicit get :GetSchemaComponent[I, Unpacked, Components, T, M], project :OriginProjection[M, T])
@@ -947,7 +947,7 @@ object MappingSchema {
 //		  * will yield no value.
 //		  * @param constructor a function accepting a chain with the values of all components as they appear in the
 //		  *                    components chain `C`.
-//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
+//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema#optMap]]
 //		  */
 //		def map(constructor :V => S) : SchemaMapping[S, V, C, O] =
 //			map[V => S](constructor)(SubjectConstructor.map())
@@ -963,7 +963,7 @@ object MappingSchema {
 //		  * 'unpacked' value chain during disassembly.
 //		  * @param constructor a function accepting a chain with the values of all components as they appear in the
 //		  *                    components chain `C`.
-//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
+//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema#optMap]]
 //		  */
 //		def optMap(constructor :V => Option[S]) :SchemaMapping[S, V, C, O] =
 //			map[V => Option[S]](constructor)(SubjectConstructor.optMap())
@@ -1330,7 +1330,6 @@ object MappingSchema {
 	}
 
 
-	
 	object SubjectConstructor extends ChainSubjectConstructors {
 
 		def apply[S, V <: Chain, C <: Chain, O, F]
@@ -2254,7 +2253,6 @@ object MappingSchema {
 			}
 
 	}
-
 
 
 

@@ -33,11 +33,11 @@ import net.noresttherein.oldsql.model.types.ValueTypes
   * externally in an explicit way, but it is something to be aware of.
   *
   * @tparam T type of the associated value.
-  * @see [[net.noresttherein.oldsql.model.Kin.Present Present]]
-  * @see [[net.noresttherein.oldsql.model.Kin.Absent Absent]]
-  * @see [[net.noresttherein.oldsql.model.Kin.Unknown Unknown]]
+  * @see [[net.noresttherein.oldsql.model.Kin.Present$ Present]]
+  * @see [[net.noresttherein.oldsql.model.Kin.Absent$ Absent]]
+  * @see [[net.noresttherein.oldsql.model.Kin.Unknown$ Unknown]]
   * @see [[net.noresttherein.oldsql.model.Kin.OptKin OptKin]]
-  * @see [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]]
+  * @see [[net.noresttherein.oldsql.model.Kin.Nonexistent$ Nonexistent]]
   */
 trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 //	type Item
@@ -97,8 +97,8 @@ trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 		if (isEmpty) Unknown else ev(this.get)
 
 	/** If the given condition is false, return an `Unknown` instance. Otherwise return `this`.
-	  * Note that importing implicit conversion [[Kin$.?:]] will patch any type with the same method,
-	  * creating a conditional expression producing a `Kin` instance.
+	  * Note that importing implicit conversion [[net.noresttherein.oldsql.model.Kin.?: ?:]] will patch any type
+	  * with the same method, creating a conditional expression producing a `Kin` instance.
 	  */
 	@inline final def ?:(condition :Boolean) :Kin[T] =
 		if (condition && !isEmpty) this
@@ -134,7 +134,8 @@ trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 	@inline final def orElse[U >: T](alternative: => Kin[U]): Kin[U] =
 		if (isEmpty) alternative else this
 
-	/** Returns `this` if it contains a value or `alternative` otherwise. The difference from [[orElse]] is that
+	/** Returns `this` if it contains a value or `alternative` otherwise. The difference from
+	  * [[net.noresttherein.oldsql.model.Kin#orElse orElse]] is that
 	  * the argument is evaluated eagerly, guaranteeing that no closure will be created and should have better performance
 	  * if the alternative value was computed beforehand.
 	  */
@@ -495,7 +496,7 @@ object Kin {
 	/** A flattened `Kin[Option[T]]` which extends the standard `Present`/`Absent` division by adding a third state:
 	  * `Naught`/`Nonexistent`. `Present` retains its meaning of containing a value, while `Absent` and `Nonexistent`
 	  *  make a distinction between no such value existing (the latter) and it being simply missing from this instance.
-	  *  @see [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]]
+	  *  @see [[net.noresttherein.oldsql.model.Kin.Nonexistent$ Nonexistent]]
 	  */
 	class OptKin[+T] private[Kin] (kin :Kin[Option[T]]) extends Kin[T] {
 		override def toOpt :Option[T] = kin.toOpt.flatten
@@ -552,7 +553,7 @@ object Kin {
 		/** Create a composer as the first step of Kin creation. Returned composer can be asked to produce
 		  * a `Kin` exporting values of the given type as a desired composite type (for example, a collection or option).
 		  * Example: `All.of[E].in[Seq]`.
-		  * @see [[net.noresttherein.oldsql.model.Kin.All.apply[T] apply[T] ]]
+		  * @see [[net.noresttherein.oldsql.model.Kin.All#apply[T] apply]]`[T]`
 		  */
 		def of[T] :KinComposer[T] = composer.asInstanceOf[KinComposer[T]]
 

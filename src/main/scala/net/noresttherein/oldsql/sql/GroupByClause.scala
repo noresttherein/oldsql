@@ -1,8 +1,15 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.{BaseMapping, SQLForm}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{JoinedEntities, NonEmptyFrom}
+import net.noresttherein.oldsql.sql.FromClause.{JoinedEntities, NonEmptyFrom, OuterGroupedFrom}
+import net.noresttherein.oldsql.sql.GroupByAll.ByAll
+import net.noresttherein.oldsql.sql.GroupParam.ByParam
+import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
+import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.UnboundParam.{?:, ParamRelation}
 
 
 
@@ -104,5 +111,70 @@ trait GroupByClause extends NonEmptyFrom { thisClause =>
 
 
 object GroupByClause {
+
+	implicit class GroupByClauseExtension[F <: GroupByClause](private val clause :F) extends AnyVal {
+		def byAll[E <: SQLExpression[F, V], V, G <: GroupByClause]
+		         (expr :JoinedEntities[F] => E)(implicit grouping :GroupingExpression[F, E, V, G]) :G =
+			grouping(clause, expr(clause.entities))
+
+	}
+
+
+
+	implicit class OuterGroupedFromExtension[F <: OuterGroupedFrom](private val clause :F) extends AnyVal {
+
+		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
+		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
+		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
+		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
+		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
+		  * as a parameter of SQL statements created using the returned instance.
+		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  */
+		@inline def param[X :SQLForm] :F ByParam X = GroupParam(clause, ParamRelation[X]())
+
+		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
+		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
+		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
+		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
+		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
+		  * as a parameter of SQL statements created using the returned instance.
+		  * @param name the suggested name for the parameter in the generated SQL, as specified by JDBC.
+		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  */
+		@inline def param[X :SQLForm](name :String) :F ByParam X = GroupParam(clause, ParamRelation[X](name))
+
+		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
+		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
+		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
+		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
+		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
+		  * as a parameter of SQL statements created using the returned instance.
+		  * @tparam N a string literal used as the label for the mapping and suggested parameter name.
+		  * @tparam X parameter type.
+		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  */
+		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F GroupParam (N ?: X)#T =
+			GroupParam(clause, form ?: (name.value :N))
+
+	}
+
+
+
+	trait GroupingExpression[F <: GroupByClause, -S <: SQLExpression[F, V], V, G <: GroupByClause] {
+		def apply(clause :F, expr :S) :G
+	}
+
+
+	object GroupingExpression {
+		implicit def groupByComponent[F <: GroupByClause, M[O] <: BaseMapping[S, O], S]
+				:GroupingExpression[F, FreeComponent[F, M, S], S, F ByAll M] =
+			(clause :F, expr :FreeComponent[F, M, S]) => ByAll[F, M, S](clause, ???)(True)
+
+	}
+
 
 }

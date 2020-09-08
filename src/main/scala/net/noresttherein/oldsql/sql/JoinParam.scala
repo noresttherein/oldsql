@@ -160,10 +160,10 @@ object UnboundParam {
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 //	  * it is generally recommended to use
-//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[X]]] DSL instead.
+//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromSomeExtension#param param[X]]] DSL instead.
 //	  * @param from  the first relation of the ''from'' clause, using the `FA[O] &lt;: BaseMapping[A, O]` `Mapping` type.
 //	  * @param param the last relation of the created ''from'' clause,
-//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 //	  * @param castL implicit witness providing proper type inference for the subject of the left relation
 //	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
 //	  * @tparam F  the type constructor for the mapping of the first relation, accepting the `Origin` type.
@@ -183,11 +183,11 @@ object UnboundParam {
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 //	  * it is generally recommended to use
-//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[X]]] DSL instead.
+//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromSomeExtension#param param[X]]] DSL instead.
 //	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 //	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 //	  * @param param the last relation of the created ''from'' clause,
-//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 //	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 //	  * @return `F` [[net.noresttherein.oldsql.sql.JoinParam.WithParam WithParam]] `X`.
 //	  */
@@ -202,11 +202,11 @@ object UnboundParam {
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 //	  * it is generally recommended to use
-//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[N, X]]] DSL instead.
+//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromSomeExtension#param param[N, X] ]] DSL instead.
 //	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 //	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 //	  * @param param the last relation of the created ''from'' clause,
-//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 //	  * @return `F JoinParam (N `[[net.noresttherein.oldsql.sql.JoinParam.?: ?:]]` X)#T`.
 //	  */
 //	def apply[F <: OuterFromSome, N <: Label, X](from :F, param :NamedParamRelation[N, X]) :F JoinParam (N ?: X)#T =
@@ -218,11 +218,11 @@ object UnboundParam {
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 //	  * it is generally recommended to use
-//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[N, X]]] DSL instead.
+//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromSomeExtension#param param[N, X] ]] DSL instead.
 //	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 //	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 //	  * @param param the last relation of the created ''from'' clause,
-//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 //	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 //	  * @return `F JoinParam (N `[[net.noresttherein.oldsql.sql.JoinParam.?: ?:]]` X)#T`.
 //	  */
@@ -239,11 +239,11 @@ object UnboundParam {
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 //	  * it is generally recommended to use
-//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[X]]] DSL instead.
+//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromSomeExtension#param param[X] ]] DSL instead.
 //	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 //	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 //	  * @param param the last relation of the created ''from'' clause,
-//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+//	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 //	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 //	  * @return `F` [[net.noresttherein.oldsql.sql.GroupParam.ByParam ByParam]] `X`.
 //	  */
@@ -258,7 +258,7 @@ object UnboundParam {
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 //	  * it is generally recommended to use
-//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[N, X]]] DSL instead.
+//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromSomeExtension#param param[N, X] ]] DSL instead.
 //	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 //	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 //	  * @param param the last relation of the created ''from'' clause,
@@ -275,7 +275,7 @@ object UnboundParam {
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 //	  * it is generally recommended to use
-//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[N, X]]] DSL instead.
+//	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromSomeExtension#param param[N, X]]] DSL instead.
 //	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 //	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 //	  * @param param the last relation of the created ''from'' clause,
@@ -713,15 +713,14 @@ object UnboundParam {
   * from the outside, preventing providing a value for it and making the outer clause appear parameterless
   * (and hence a valid ''free'' select or subselect clause. This is enforced
   * by the [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]]`[F]` type, used to define valid
-  * subselect clauses of a clause `F`, which defines an empty 
-  * [[net.noresttherein.oldsql.sql.FromClause#InnerParams InnerParams]] list of parameters.
+  * subselect clauses of a clause `F`.
   *
   * @tparam F the actual ''from'' clause of the parameterized select statement, used as the left side of the 'join'.
   * @tparam P a synthetic `FromParam` mapping, the subject of which is the parameter type.
   *           
   * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam.WithParam]]
-  * @see [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]    
+  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
   */ //lets try to widen the bound to `DiscreteFrom`
 sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]] extends AndFrom[F, P] with UnboundParam[F, P] { thisClause =>
 
@@ -811,10 +810,10 @@ object JoinParam {
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[X]]] DSL instead.
+	  * `from` [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param[X] ]] DSL instead.
 	  * @param from  the first relation of the ''from'' clause, using the `FA[O] &lt;: BaseMapping[A, O]` `Mapping` type.
 	  * @param param the last relation of the created ''from'' clause,
-	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param castL implicit witness providing proper type inference for the subject of the left relation
 	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
 	  * @tparam F  the type constructor for the mapping of the first relation, accepting the `Origin` type.
@@ -834,11 +833,11 @@ object JoinParam {
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[X]]] DSL instead.
+	  * `from` [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param[X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 	  * @param param the last relation of the created ''from'' clause,
-	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 	  * @return `F` [[net.noresttherein.oldsql.sql.JoinParam.WithParam WithParam]] `X`.
 	  */
@@ -853,11 +852,11 @@ object JoinParam {
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[N, X]]] DSL instead.
+	  * `from` [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param[N, X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 	  * @param param the last relation of the created ''from'' clause,
-	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @return `F JoinParam (N `[[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]]` X)#T`.
 	  */
 	def apply[F <: OuterFromSome, N <: Label, X](from :F, param :NamedParamRelation[N, X]) :F JoinParam (N ?: X)#T =
@@ -869,11 +868,11 @@ object JoinParam {
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[N, X]]] DSL instead.
+	  * `from` [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param[N, X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 	  * @param param the last relation of the created ''from'' clause,
-	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 	  * @return `F JoinParam (N `[[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]]` X)#T`.
 	  */
@@ -1075,7 +1074,7 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
 
 
 object GroupParam {
-
+	//fixme: the docs are unedited from JoinParam and refer to AndFrom, FromSomeExtension, etc.
 	/** A template `GroupParam` instance with a dummy mapping, for use as a polymorphic factory of `OuterJoin` joins. */
 	final val template :GroupParam.* = GroupParam(GroupByAll(From(Relation.Dummy), Relation.Dummy), ParamRelation[Unit]())
 
@@ -1092,11 +1091,11 @@ object GroupParam {
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[X]]] DSL instead.
+	  * `from` [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param[X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 	  * @param param the last relation of the created ''from'' clause,
-	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 	  * @return `F` [[net.noresttherein.oldsql.sql.GroupParam.ByParam ByParam]] `X`.
 	  */
@@ -1111,11 +1110,11 @@ object GroupParam {
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[N, X]]] DSL instead.
+	  * `from` [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param[N, X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 	  * @param param the last relation of the created ''from'' clause,
-	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]]` X)#T`.
 	  */
 	def apply[F <: GroupByClause with OuterFrom, N <: Label, X]
@@ -1128,11 +1127,11 @@ object GroupParam {
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `from` [[net.noresttherein.oldsql.sql.FromClause.OuterFromExtension#param param[N, X]]] DSL instead.
+	  * `from` [[net.noresttherein.oldsql.sql.DiscreteFrom.OuterFromSomeExtension#param param[N, X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
 	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
 	  * @param param the last relation of the created ''from'' clause,
-	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
+	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]]` X)#T`.
 	  */

@@ -193,7 +193,7 @@ object Chain extends ChainFactory {
 
 
 	/** The type of all empty chains, with a single member being its companion object
-	  * [[net.noresttherein.oldsql.collection.Chain.@~$]].
+	  * [[net.noresttherein.oldsql.collection.Chain.@~$ @~]].
 	  */
 	sealed class @~ private[Chain] extends Record with LabeledChain {
 		override def isEmpty = true
@@ -283,7 +283,7 @@ object Chain extends ChainFactory {
 
 		/** Maps this chain using the given generic (polymorphic) function.
 		  * @tparam XF type constructor which forms the type of every element in this chain. If this chain contains
-		  *            elements without a common type constructor, [[net.noresttherein.oldsql.morsels.generic.Self]]
+		  *            elements without a common type constructor, [[net.noresttherein.oldsql.morsels.generic.Self Self]]
 		  *            can be used which is an identity functor for types.
 		  * @tparam YF the type constructor which is being applied to every argument of functor `XF` in this chain.
 		  * @tparam Y the type of the transformed chain, which is the result of replacing every top-level application
@@ -1717,7 +1717,7 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
   * the keys, their type must be known to leverage the implicit `ValueOf[K]`.
   * Note that, like `Chain`, but unlike `List`, it is left-associative, thus being built
   * 'from left to right', with the easy access to the last element rather than the first.
-  * An empty `IndexedChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$]].
+  * An empty `IndexedChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$ @~]].
   * @see [[net.noresttherein.oldsql.collection.IndexedChain.|~]]
   * @see [[net.noresttherein.oldsql.collection.LabeledChain]]
   */
@@ -1965,7 +1965,7 @@ object IndexedChain extends IndexedChainFactory {
   * the keys, their type must be known to leverage the implicit `ValueOf[K]`.
   * Note that, like `Chain`, but unlike `List`, it is left-associative, thus being built
   * 'from left to right', with the easy access to the last element rather than the first.
-  * An empty `LabeledChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$]].
+  * An empty `LabeledChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$ @~]].
   * @see [[net.noresttherein.oldsql.collection.LabeledChain.>~]]
   */
 sealed trait LabeledChain extends IndexedChain {
@@ -2232,7 +2232,7 @@ object ChainMap extends ChainMapFactory {
 
 
 	/** Implicitly extends an index of type `T` with methods requiring its static type. As this method uses the same
-	  * name as the non-empty index class [[net.noresttherein.oldsql.collection.ChainMap.&~]], this implicit
+	  * name as the non-empty index class [[net.noresttherein.oldsql.collection.ChainMap.&~ &~]], this implicit
 	  * conversion is imported automatically automatically alongside it.
 	  */
 	@inline implicit def &~[T <: ChainMap](index :T) :ChainMapOps[T] = new ChainMapOps(index)

@@ -23,8 +23,8 @@ trait JDBCTypes
   * implementations using the default classes associated by JDBC with the a given SQL type, except where
   * a scala counterpart to the type exists (for example `BigDecimalForm` is a form of `scala.BigDecimal`, not
   * `java.math.BigDecimal`. Forms for competing Java classes, including all Java boxed primitives, can be
-  * found in [[net.noresttherein.oldsql.schema.JavaForms]]. All these forms are in the implicit search scope for
-  * all form classes, so, prefer to rely on implicit resolution by using `SQLForm[Xxx]` to access a form
+  * found in [[net.noresttherein.oldsql.schema.JavaForms JavaForms]]. All these forms are in the implicit search scope
+  * for all form classes, so, prefer to rely on implicit resolution by using `SQLForm[Xxx]` to access a form
   * for the type `Xxx` instead of explicit references to declarations in this object and others.
   */
 object JDBCTypes {

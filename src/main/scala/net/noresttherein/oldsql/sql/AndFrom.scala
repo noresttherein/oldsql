@@ -178,7 +178,7 @@ object AndFrom {
 	/** Create a ''from'' clause extending the `left` clause with the relation `right` for mapping `R`.
 	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
 	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method.
-	  * This method will create a [[net.noresttherein.oldsql.sql.From From[R]]] instance if `left` is empty (`Dual`),
+	  * This method will create a [[net.noresttherein.oldsql.sql.From From]]`[R]` instance if `left` is empty (`Dual`),
 	  * or an [[net.noresttherein.oldsql.sql.InnerJoin L InnerJoin R]] otherwise. This method's use is somewhat limited
 	  * as the result type of `L AndFrom R` is too abstract (its `Generalized` form is undefined) for many purposes.
 	  * Prefer using the factory methods of `FromClause` and, in particular, its extension methods from
@@ -333,7 +333,7 @@ object AndFrom {
 //	/** Create a cross join between the given empty clause as the `left` side, and the the `right` relation representing
 //	  * the first joined table, relation or some temporary surrogate mapping.
 //	  * The ''where'' clause can be subsequently specified using the
-//	  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast]],
+//	  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast]],
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
 //	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method.
 //	  * It is a lower level method returning a non-standard singleton class, created to allow different empty clause

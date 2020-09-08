@@ -1,14 +1,17 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Relation}
+import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Relation, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedEntities, NonEmptyFrom, ParameterlessFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedEntities, NonEmptyFrom, OuterFromSome, ParameterlessFrom}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
+import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.UnboundParam.{?:, ParamRelation}
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
 
@@ -23,6 +26,7 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
   */ //FromClause is redundant but makes the signature more clear.
 trait DiscreteFrom extends FromClause { thisClause =>
 	//override type FromLast <: DiscreteFrom //can't have this because Dual.FromLast = FromClause to be a fixed point.
+
 	override type This <: DiscreteFrom {
 		type LastMapping[O] = thisClause.LastMapping[O]
 		type LastTable[F <: FromClause] = thisClause.LastTable[F]
@@ -71,7 +75,7 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	  * Non-empty clauses define it as `F#JoinedWith[Self, J]]`, while `Dual` defines it as `F` - the indirection
 	  * enforced by the join type `J` (and `Join` subclasses) having `FromSome` as the upper bound of their left side.
 	  */
-	type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R, F <: FromClause] <: FromClause
+	type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L AndFrom R, F <: FromClause] <: FromClause
 
 	/** Joins the clause given as the parameter with this clause. If any of the clauses is empty, the other is
 	  * returned. Otherwise the created clause contains this clause as its prefix, followed by all relations
@@ -171,7 +175,7 @@ object DiscreteFrom {
 
 
 
-		override type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L JoinLike R, F <: FromClause] =
+		override type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L AndFrom R, F <: FromClause] =
 			F#JoinedWith[Self, J]
 
 		override def joinWith[F <: FromSome](suffix :F, join :JoinLike.*) :suffix.JoinedWith[Self, join.LikeJoin] =
@@ -478,5 +482,57 @@ object DiscreteFrom {
 			apply(clause, params)
 
 	}
+
+
+
+
+
+
+	/** Extension methods for `OuterFrom` objects (''from'' clauses without any `Subselect`s which can serve
+	  * as the basis for independent selects). It provides methods for introducing unbound parameters
+	  * to the clause in the form of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins',
+	  * which can be substituted with
+	  */
+	implicit class OuterFromSomeExtension[F <: OuterFromSome](private val clause :F) extends AnyVal {
+
+		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
+		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
+		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
+		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
+		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
+		  * as a parameter of SQL statements created using the returned instance.
+		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  */
+		@inline def param[X :SQLForm] :F WithParam X = JoinParam(clause, ParamRelation[X]())
+
+		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
+		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
+		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
+		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
+		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
+		  * as a parameter of SQL statements created using the returned instance.
+		  * @param name the suggested name for the parameter in the generated SQL, as specified by JDBC.
+		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  */
+		@inline def param[X :SQLForm](name :String) :F WithParam X = JoinParam(clause, ParamRelation[X](name))
+
+		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
+		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
+		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
+		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
+		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
+		  * as a parameter of SQL statements created using the returned instance.
+		  * @tparam N a string literal used as the label for the mapping and suggested parameter name.
+		  * @tparam X parameter type.
+		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
+		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  */
+		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F JoinParam (N ?: X)#T =
+			JoinParam(clause, form ?: (name.value :N))
+
+	}
+
 
 }

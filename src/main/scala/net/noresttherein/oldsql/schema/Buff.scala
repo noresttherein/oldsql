@@ -144,7 +144,7 @@ object Buff {
 	/** A buff marking a column as non-selectable, and providing the value for the annotated component.
 	  * This can be used in particular for 'virtual' columns - components which take part in the mapping, but
 	  * aren't present in the database at all.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual]] */
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual$]] */
 	case object ExtraSelect extends ComboValueBuffType(NoSelect)
 
 	/** A buff marking a component or column which does not exist in the database and will not be used as part
@@ -171,7 +171,7 @@ object Buff {
 	/** A buff type marking that a given column/component must be included in every query against the table, using
 	  * the value provided by the buff. It implies `NoSelect` and `NoQuery` and is used to artificially limit the number
 	  * of mapped entities.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped]] */
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped$]] */
 	case object ExtraQuery extends ComboValueBuffType(NoSelect, NoQuery)
 
 
@@ -263,7 +263,7 @@ object Buff {
 	  * through the function `S => S` provided by the buff. This buff type thus makes a good extension point
 	  * for consistency validation, both of data already in the database and that being written. If you wish to limit
 	  * the check only to insert and update operations, use
-	  * the [[net.noresttherein.oldsql.schema.Buff.WriteAudit WriteAudit]] buff instead (or those specifically dedicated
+	  * the [[net.noresttherein.oldsql.schema.Buff.WriteAudit$ WriteAudit]] buff instead (or those specifically dedicated
 	  * to a single database operation type0.
 	  */
 	case object Audit extends ComboBuffType(SelectAudit, QueryAudit, WriteAudit) with AuditBuffType
@@ -301,8 +301,8 @@ object Buff {
 	}
 
 	/** A buff type marking that a column serves as a timestamp-based optimistic lock.
-	  * It is the same as [[net.noresttherein.oldsql.schema.Buff.UpdateTimestamp UpdateTimestamp]], but also
-	  * implies [[net.noresttherein.oldsql.schema.Buff.UpdateMatch UpdateMatch]]. This means the values
+	  * It is the same as [[net.noresttherein.oldsql.schema.Buff.UpdateTimestamp$ UpdateTimestamp]], but also
+	  * implies [[net.noresttherein.oldsql.schema.Buff.UpdateMatch$ UpdateMatch]]. This means the values
 	  * carried by entities will be ignored during the update and instead a fresh timestamp will be used as the new
 	  * value ''and'' the old value must be included in the ''where'' clause of the update statement to prevent
 	  * overwriting a concurrent update.
@@ -361,9 +361,10 @@ object Buff {
 	  * Certain buff types are ''abstract'', meaning they can't be used to create new instances, but serve only
 	  * as a grouping of more specific buff types which imply it. This is analogous to a common abstract base class.
 	  * In particular, certain buff types serve only to indicate ''when'' the buff should be applied, without any
-	  * information about its purpose. For example, creating a [[net.noresttherein.oldsql.schema.Buff.AuditBuffType]]
-	  * which implies the [[net.noresttherein.oldsql.schema.Buff.UpdateAudit]] will map all updated values with the
-	  * function provided by the buff before they are written to the database.
+	  * information about its purpose. For example, creating
+	  * a [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]],
+	  * which implies the [[net.noresttherein.oldsql.schema.Buff.UpdateAudit$ UpdateAudit]], will map all updated values
+	  * with the function provided by the buff before they are written to the database.
 	  *
 	  * See [[net.noresttherein.oldsql.schema.Buff$ Buff]] for the full list of predefined buff types.
 	  *
@@ -600,12 +601,12 @@ object Buff {
 	  *   - implying `ExtraUpdate` means that buff's value is used instead of any value carried by the entity
 	  *     when updating a row in the database.
 	  *  As always, extending classes can imply several of the above at the same time.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuff]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraSelect]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraQuery]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraInsert]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraUpdate]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraWrite]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraSelect$ ExtraSelect]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraQuery$ ExtraQuery]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraInsert$ ExtraInsert]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraUpdate$ ExtraUpdate]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraWrite$ ExtraWrite]]
 	  */
 	trait ValueBuffType extends DedicatedBuffType[ValueBuff] {
 		protected[this] def classTag :ClassTag[_] = implicitly[ClassTag[ValueBuff[Any]]]
@@ -783,10 +784,10 @@ object Buff {
 	/** A buff type which inspects and possibly modifies the value of the annotated column/component during
 	  * a database operation. Exactly which operation(s) is/are affected is determined declaratively by
 	  * implying one of the 'audit' types: `SelectAudit`, `QueryAudit`, `InsertAudit`, `UpdateAudit`.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.SelectAudit]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.QueryAudit]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.InsertAudit]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.UpdateAudit]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.SelectAudit$ SelectAudit]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.QueryAudit$ QueryAudit]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.InsertAudit$ InsertAudit]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.UpdateAudit$ UpdateAudit]]
 	  */
 	trait AuditBuffType extends DedicatedBuffType[AuditBuff] { self =>
 		protected[this] override  def classTag :ClassTag[_] = implicitly[ClassTag[AuditBuff[Any]]]

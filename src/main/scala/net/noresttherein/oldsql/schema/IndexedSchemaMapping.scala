@@ -179,7 +179,7 @@ object IndexedMappingSchema {
 		/** Appends a new labeled component to this schema. The component will inherit any column prefix and all buffs
 		  * provided for the outer mapping of `S` at the initialization of this schema. Inherited buffs will follow
 		  * any buffs passed to this method. The label can be used to access the component by passing it as the argument
-		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/, /]] method.
+		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method.
 		  * @param label a `String` literal (or just a singleton type in generic code) which will be attached
 		  *              to the created component in order to turn into a `LabeledMapping` instance of
 		  *              [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], the form in which it will
@@ -209,7 +209,7 @@ object IndexedMappingSchema {
 		/** Appends a new labeled component to this schema. The component will inherit any column prefix and all buffs
 		  * provided for the outer mapping of `S` at the initialization of this schema. Inherited buffs will follow
 		  * any buffs passed to this method. The label can be used to access the component by passing it as the argument
-		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/, /]] method.
+		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method.
 		  * @param label a `String` literal (or just a singleton type in generic code) which will be attached
 		  *              to the created component in order to turn into a `LabeledMapping` instance of
 		  *              [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], the form in which it will
@@ -272,7 +272,7 @@ object IndexedMappingSchema {
 		  * and all buffs provided for the outer mapping of `S` at the initialization of this schema.
 		  * Inherited buffs will follow any buffs passed to this method. The label can be used to access the component
 		  * by passing it as the argument to the
-		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/, /]] method. The extractor function
+		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method. The extractor function
 		  * may not produce a value for all instances of the subject type `S`, in which case the component
 		  * will be omitted from a database write. The impact its lack will have on the assembly of the ''packed'' value
 		  * depends on the implementation of the outer mapping based on this schema.
@@ -309,7 +309,7 @@ object IndexedMappingSchema {
 		  * and all buffs provided for the outer mapping of `S` at the initialization of this schema.
 		  * Inherited buffs will follow any buffs passed to this method. The label can be used to access the component
 		  * by passing it as the argument to the
-		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/, /]] method. The extractor function
+		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method. The extractor function
 		  * may not produce a value for all instances of the subject type `S`, in which case the component
 		  * will be omitted from a database write. The impact its lack will have on the assembly of the ''packed'' value
 		  * depends on the implementation of the outer mapping based on this schema.
@@ -766,7 +766,7 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema[S, _]]],
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema#apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
@@ -784,7 +784,7 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema[S, _]]],
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema#apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
@@ -806,7 +806,7 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema[S, _]]],
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema#apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].

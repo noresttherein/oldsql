@@ -44,7 +44,7 @@ trait SQLReadForm[+T] extends SQLForms {
 	  *                                table per class hierarchy mapping.
 	  * @throws NullPointerException if the read column is `null` and type `T` does not define a value corresponding to `null`.
 	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#opt opt]]
 	  */
 	def apply(position :Int)(res :ResultSet) :T = opt(position)(res) match {
 		case Some(x) => x
@@ -113,8 +113,8 @@ trait SQLReadForm[+T] extends SQLForms {
 	  * to be used when `null` value(s) are read from the `ResultSet`. This guarantees that the given function will
 	  * not be called for `null` arguments unless this form returns `Some(null)` from its `opt` method in a non-standard
 	  * practice and allows handling of `null` values also when `T` is a value type without a natural `null` value.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullMap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#nullMap]]
 	  */
 	def map[X :NullValue](fun :T => X) :SQLReadForm[X] = NullValue[X] match {
 		case null => new MappedSQLReadForm(fun)(this, nulls.map(fun))
@@ -126,15 +126,15 @@ trait SQLReadForm[+T] extends SQLForms {
 	  * not be called for `null` arguments unless this form returns `Some(null)` from its `opt` method in a non-standard
 	  * practice and allows handling of `null` values also when `T` is a value type without a natural `null` value.
 	  * Note that `this.nullValue` is never called, directly or indirectly, by the created form.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullMap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#nullMap]]
 	  */
 	def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] = map(fun)(NullValue(nullValue))
 
 	/** Maps the value of `T` read by this form to `X` in order to obtain a form for `X`. Note that the given
 	  * function may be called for `null` arguments, even if the underlying columns have a ''not null'' constraint
 	  * in case of outer join queries.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#map]]
 	  */
 	def nullMap[X](fun :T => X) :SQLReadForm[X] = map(fun)(nulls.map(fun))
 
@@ -144,7 +144,7 @@ trait SQLReadForm[+T] extends SQLForms {
 	/** Attempts to map the value of `T` read by this form to type `X` in order to produce a form for `X`.
 	  * Unlike `map`, not all values of `T` may have an associated counterpart in `X`, in which case the given function
 	  * returns `None` and the new form defaults to its `nullValue`. This method variant relies on implicit
-	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] to provide the value of `X` which should be used
+	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue NullValue]] to provide the value of `X` which should be used
 	  * when the underlying columns carry null values or a value of `X` cannot be assembled due to anticipated reasons.
 	  * If the value cannot be assembled due to unforeseen circumstances or data errors, the form should
 	  * throw an exception. The function is guaranteed not to be called for `null` arguments, with the created form
