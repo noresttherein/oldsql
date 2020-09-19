@@ -254,8 +254,8 @@ object SQLFormula {
 	/** Attests that expressions of type `L` and `R` are compatible from the SQL point of view and
 	  * can be directly compared in scala after lifting both sides to type `T`.
 	  * This may mean for example that, for the purpose of generated SQL, we treat `Option[X]` and `X`
-	  * as directly comparable: `SQLTypePromotion[Option[X], X, Option[X]]` or let us promote number types to
-	  * a higher precision: `SQLTypePromotion[Int, Long, Long]`.
+	  * as directly comparable: `SQLTypeUnification[Option[X], X, Option[X]]` or let us promote number types to
+	  * a higher precision: `SQLTypeUnification[Int, Long, Long]`.
 	  *
 	  * @param left a function lifting both `SQLFormula[_, L]` and type `L` itself to a comparable type `T`.
 	  * @param right a function lifting both `SQLFormula[_, R]` and type `R` itself to a comparable type `T`.
@@ -360,7 +360,7 @@ object SQLFormula {
 
 				override def apply[S <: FromClause](expr: SQLFormula[S, Rows[Any]]): SQLFormula[S, Any] =
 					expr.asSubclassOf[SelectFormula[S, _, Any]].map(_.single) getOrElse {
-						throw new IllegalArgumentException(s"Can't lift a non-select formula $expr to a single row select formula")
+						throw new IllegalArgumentException(s"Can't lift a non-select expression $expr to a single row select formula")
 					}
 
 				override def toString = "Rows.one"
@@ -375,7 +375,7 @@ object SQLFormula {
 
 				override def apply[S <: FromClause](expr: SQLFormula[S, Rows[Any]]): SQLFormula[S, Seq[Any]] =
 					expr.asSubclassOf[SelectFormula[S, _, Any]].map(_.rows) getOrElse {
-						throw new IllegalArgumentException(s"Can't lift a non-select formula $expr to a row seq formula")
+						throw new IllegalArgumentException(s"Can't lift a non-select expression $expr to a row seq formula")
 					}
 
 				override def toString = "Rows.seq"

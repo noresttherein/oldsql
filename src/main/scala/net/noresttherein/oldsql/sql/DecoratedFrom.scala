@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.sql.DecoratedFrom.GenericDecorator.GenericDecora
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 
@@ -113,7 +114,7 @@ object DecoratedFrom {
 
 
 		override def fullRow[E <: FromClause]
-		                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, FullRow] =
+		             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
 			clause.fullRow(target)(extension.unwrapFront)
 
 		override def fullTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
@@ -145,11 +146,11 @@ object DecoratedFrom {
 		override def base :Base = clause.base
 
 		override def filter[E <: FromClause]
-		                   (target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
+		                   (target :E)(implicit extension :Generalized ExtendedBy E) :GlobalBoolean[E] =
 			clause.filter(target)(extension.unwrapFront)
 
 		override def innerRow[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
-				:ChainTuple[E, clause.InnerRow] =
+				:ChainTuple[E, GlobalScope, clause.InnerRow] =
 			clause.innerRow(target)(extension.unwrapFront)
 
 		override def innerTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
@@ -157,7 +158,7 @@ object DecoratedFrom {
 			clause.innerTableStack(target)(extension.unwrapFront)
 
 		override def outerRow[E <: FromClause](target :E)(implicit extension :Implicit ExtendedBy E)
-				:ChainTuple[E, clause.OuterRow] =
+				:ChainTuple[E, GlobalScope, clause.OuterRow] =
 			clause.outerRow(target)
 
 		override type AsSubselectOf[+P <: NonEmptyFrom] = WithClause[clause.AsSubselectOf[P]]
@@ -204,8 +205,8 @@ object DecoratedFrom {
 
 		override def withClause[G <: FromSome](from :G) :G Alias N = Alias(from, alias)
 
-		override def where(filter :SQLBoolean[Generalized]) :This =
-			withClause(clause where filter.asInstanceOf[SQLBoolean[clause.Generalized]]) //todo: eliminate the cast
+		override def where(filter :GlobalBoolean[Generalized]) :This =
+			withClause(clause where filter.asInstanceOf[GlobalBoolean[clause.Generalized]]) //todo: eliminate the cast
 
 
 		override val outer :Outer = clause.outer

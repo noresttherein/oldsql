@@ -11,13 +11,13 @@ trait SQLMapper[+S<:RowSource, +Y[X]] {
 	def apply[X](f :SQLFormula[S, X]) :Y[X]
 
 	def unhandled(f :SQLFormula[S, _]) :Nothing =
-		throw new IllegalArgumentException(s"Can't map formula $f :${f.getClass.getName} using $this")
+		throw new IllegalArgumentException(s"Can't map expression $f :${f.getClass.getName} using $this")
 	
 	def unknown[F<:SQLFormula[S, _]](f :F, clazz :Class[F]) :Nothing =
-		throw new IllegalArgumentException(s"Can't map formula $f :${f.getClass.getName} using $this - unexpected subclass of ${clazz.getName}")
+		throw new IllegalArgumentException(s"Can't map expression $f :${f.getClass.getName} using $this - unexpected subclass of ${clazz.getName}")
 
 	def unknown[F <:SQLFormula[S, _] :ClassTag](f :F) :Nothing =
-		throw new IllegalArgumentException(s"Can't map formula $f :${f.getClass.getName} using $this - unexpected subclass of ${implicitly[ClassTag[F]].runtimeClass.getName}")
+		throw new IllegalArgumentException(s"Can't map expression $f :${f.getClass.getName} using $this - unexpected subclass of ${implicitly[ClassTag[F]].runtimeClass.getName}")
 }
 
 //trait SQLMatcher[+S<:RowSource, +Y[X]] extends SQLMapper[S, Y] with FormulaMatcher[S, Y]

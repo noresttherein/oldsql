@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.sql
 
 import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime}
 
+import scala.reflect.ClassTag
+
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.sql.SQLOrdering.{MappedSQLOrdering, ReverseSQLOrdering}
@@ -17,7 +19,7 @@ sealed trait SQLOrdering[X] extends Ordering[X] with Serializable {
 	override def reverse :SQLOrdering[X] = new ReverseSQLOrdering[X](this)
 
 	override def isReverseOf(other :Ordering[_]) :Boolean = other match {
-		case rev :ReverseSQLOrdering[_] => rev.order == this
+		case rev :ReverseSQLOrdering[_] => rev.reverse == this
 		case _ => false
 	}
 
@@ -30,20 +32,31 @@ sealed trait SQLOrdering[X] extends Ordering[X] with Serializable {
 
 object SQLOrdering {
 
-	def apply[X :SQLOrdering] :SQLOrdering[X] = implicitly[SQLOrdering[X]]
+	@inline def apply[X :SQLOrdering] :SQLOrdering[X] = implicitly[SQLOrdering[X]]
+
+	def by[X, Y :SQLOrdering](f :X => Y) :SQLOrdering[X] = SQLOrdering[Y].unmap(f)
+
 
 	private class MappedSQLOrdering[X, Y](lower :Y => X)(implicit order :SQLOrdering[X]) extends SQLOrdering[Y] {
 		override def compare(x :Y, y :Y) :Int = order.compare(lower(x), lower(y))
+
+		override def toString = "by[" + order + "]"
 	}
 
-	private class ReverseSQLOrdering[X](val order :SQLOrdering[X]) extends SQLOrdering[X] {
-		override def compare(x :X, y :X) :Int = order.compare(y, x)
+
+	private class ReverseSQLOrdering[X](override val reverse :SQLOrdering[X]) extends SQLOrdering[X] {
+		override def compare(x :X, y :X) :Int = reverse.compare(y, x)
+
+		override def isReverseOf(other :Ordering[_]) :Boolean = other == reverse
+
+		override def toString :String = reverse.toString + ".reverse"
 	}
 
 
-
-	private class Adapter[X](implicit order :Ordering[X]) extends SQLOrdering[X] {
+	private class Adapter[X :ClassTag](implicit order :Ordering[X]) extends SQLOrdering[X] {
 		override def compare(x :X, y :X) :Int = order.compare(x, y)
+
+		override def toString :String = "<=[" + implicitly[ClassTag[X]] + "]"
 	}
 
 

@@ -37,6 +37,6 @@ class FromClauseMatcher[Y] {
 	def groupParam[L <: GroupByClause, P[O] <: FromParam[S, O], S](param :L GroupParam P) :Option[Y] =
 		andBy[L, P, S](param)
 
-	def using[L <: FromClause, R[O] <: BaseMapping[S, O], S](from :L Using R) :Option[Y] = fromClause(from)
+	def using[L <: FromClause, R[O] <: BaseMapping[S, O], S](from :L Compound R) :Option[Y] = fromClause(from)
 	def extended[L <: FromClause, R[O] <: BaseMapping[S, O], S](from :L Extended R) :Option[Y] = using[L, R, S](from)
 }

@@ -569,11 +569,9 @@ object SchemaMapping {
 //	trait @:[L <: Label, M <: MappingSchemaSupport]
 //		extends SchemaMapping[M#Subject, M#Unpacked, M#Components, M#Origin] with LabeledMapping[L, M#Subject, M#Origin]
 //		   with MappingAdapter[M, M#Subject, M#Origin] { this :AdapterSeal => }
-
-
-
-
-
+	type IXI[S, V <: Chain, C <: Chain] = |-|[S, V, C]
+	type III[S, V <: Chain, C <: Chain] = |||[S, V, C]
+	type I[S] = ||[S]
 
 
 

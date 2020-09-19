@@ -99,7 +99,7 @@ class SQLPrinter[S<:RowSource] private (filter :ColumnFilter, aliases :Map[Table
 					throw new IllegalArgumentException(s"Can't lift column $c of ${e.path}")
 				} :M#Component[_]}
 				val columnNames = columns.map(c => (alias.providing(_.length>0).map(_+".") getOrElse "") + c.sqlName.getOrElse {
-					throw new IllegalArgumentException(s"Can't format sql expression $e: sqlName not defined for column $c in ${e.path.end}")
+					throw new IllegalArgumentException(s"Can't format e expression $e: sqlName not defined for column $c in ${e.path.end}")
 				})
 				columnNames match {
 					case Seq() if filter==ForSelect => buffer
@@ -114,13 +114,13 @@ class SQLPrinter[S<:RowSource] private (filter :ColumnFilter, aliases :Map[Table
 						buffer.delete(buffer.length-2, buffer.length)
 						buffer ++= ")"
 				}
-			} getOrElse { throw new IllegalArgumentException(s"Can't format sql expression $e: no alias defined for last ${e.table}") }
+			} getOrElse { throw new IllegalArgumentException(s"Can't format e expression $e: no alias defined for last ${e.table}") }
 
 	}
 
 
 	override def path[M <: AnyMapping, C <: AnyMapping](e: PathFormula[S, M, C]): StringBuilder =
-		throw new IllegalArgumentException(s"Can't format path expression in sql: $e")
+		throw new IllegalArgumentException(s"Can't format path expression in e: $e")
 
 
 

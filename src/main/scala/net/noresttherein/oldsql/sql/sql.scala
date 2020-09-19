@@ -1,13 +1,13 @@
 package net.noresttherein.oldsql
 
-import net.noresttherein.oldsql.schema.bits.LabeledMapping
-import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 
 
 
 package object sql {
 
-	type SQLBoolean[-F <: FromClause] = ColumnSQL[F, Boolean]
+	type SQLBoolean[-F <: FromClause, -S >: LocalScope <: GlobalScope] = ColumnSQL[F, S, Boolean]
+	type LocalBoolean[-F <: FromClause] = ColumnSQL[F, LocalScope, Boolean]
+	type GlobalBoolean[-F <: FromClause] = ColumnSQL[F, GlobalScope, Boolean]
 
-//	type GroupBy[+F <: FromSome, T] = GroupByAll[F, LabeledMapping.[T]#TypedProjection]
 }

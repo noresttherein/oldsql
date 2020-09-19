@@ -4,8 +4,8 @@ import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.FunctorProjection
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.sql.Using
-import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Compound
+import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 
 
 
@@ -48,7 +48,7 @@ object Relation {
 		@inline def as[A <: Label](alias :A) :M As A = new As[M, A](self, alias)
 	}
 
-	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Using M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
+	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Compound M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
 	                         (source :Relation[R])
 	                         (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt]) :Relation[T] =
 		cast(source)

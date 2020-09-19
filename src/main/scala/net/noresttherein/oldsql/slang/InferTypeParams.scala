@@ -59,7 +59,7 @@ import scala.annotation.implicitNotFound
   * @see [[net.noresttherein.oldsql.slang.InferTypeParams.Conforms Conforms]]
   * @author Marcin Mościcki
   */
-@implicitNotFound("Cannot infer type arguments: can't prove ${X} =:= ${T} and ${X} <: ${U}.\n" +
+@implicitNotFound("Cannot infer type arguments: can't prove ${X} =:= ${T} <:< ${U}.\n" +
                   "This may be caused by the second type parameter occurring outside of the " +
                   "InferTypeParams[${X}, ${T}, ${U}] in the method signature.")
 sealed abstract class InferTypeParams[X, T, +U] extends (X => T) {

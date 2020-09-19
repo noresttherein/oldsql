@@ -17,9 +17,8 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
-import net.noresttherein.oldsql.sql.SQLScribe.{RemoveParam, ReplaceParam}
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, NamedParamRelation, ParamAt, ParamRelation}
-import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 
 
 
@@ -34,7 +33,7 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
   * (''from'' clauses without a ''group by'' clause) and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]
   * for clauses with a [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] join to the left.
   */
-sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends Extended[F, P] with NonSubselect[F, P] {
+sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends NonSubselect[F, P] {
 	thisClause =>
 
 	override type Generalized >: Self <: (left.Generalized UnboundParam P) {
@@ -324,7 +323,7 @@ object UnboundParam {
 	/** Matches all `UnboundParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: FromClause, X](from :F Using M forSome { type M[O] <: RefinedMapping[X, O] })
+	def unapply[F <: FromClause, X](from :F Compound M forSome { type M[O] <: RefinedMapping[X, O] })
 			:Option[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
 			case param :UnboundParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))
@@ -473,7 +472,7 @@ object UnboundParam {
 	  * @tparam P the parameter type needed to prepare statements using this mapping in their ''from'' clauses.
 	  * @tparam O a marker type serving as a unique identifier for this mapping within a `FromClause`.
 	  *///consider: think of another name, this can be confusing
-	class FromParam[P, O] private[UnboundParam] (val name :String)(implicit sqlForm :SQLForm[P])
+	class FromParam[P, O](val name :String)(implicit sqlForm :SQLForm[P])
 		extends ParamMapping[P, P, O] with ParamAt[O]
 	{ This =>
 
@@ -583,7 +582,7 @@ object UnboundParam {
 			extends ParamComponent[T](pick) with ColumnMapping[T, O]
 		{
 			override def extract :ParamColumnExtract[P, T, O] = GenericMappingExtract(this)(pick)
-			override def name = This.name
+			override def name :String = This.name
 		}
 
 
@@ -592,14 +591,14 @@ object UnboundParam {
 
 
 
-		def unapply[X](expr :ColumnSQL[_, X]) :Option[ParamColumn[X]] = expr match {
+		def unapply[X](expr :ColumnSQL[_, _, X]) :Option[ParamColumn[X]] = expr match {
 			case ComponentSQL(_, MappingExtract(_, _, col :FromParam[_, _]#ParamColumn[_])) if col.root == this =>
 				Some(col.asInstanceOf[ParamColumn[X]])
 			case _ =>
 				None
 		}
 
-		def unapply[X](expr :SQLExpression[_, X]) :Option[ParamMapping[P, X, O]] = expr match {
+		def unapply[X](expr :SQLExpression[_, _, X]) :Option[ParamMapping[P, X, O]] = expr match {
 			case ComponentSQL(_, MappingExtract(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
 				Some(comp.asInstanceOf[ParamMapping[P, X, O]])
 			case _ => None
@@ -623,8 +622,8 @@ object UnboundParam {
 		/** An extractor matching `ComponentSQL` expressions for components of this mapping,
 		  * that is actual sql statement parameters.
 		  */
-		def ParamForm :Extractor[SQLExpression[_, _], SQLWriteForm[P]] = Extractor.Optional(
-			(sql :SQLExpression[_, _]) => unapply(sql).map(_.derivedForm)
+		def ParamForm :Extractor[SQLExpression[_, _, _], SQLWriteForm[P]] = Extractor.Optional(
+			(sql :SQLExpression[_, _, _]) => unapply(sql).map(_.derivedForm)
 		)
 
 	}
@@ -636,10 +635,30 @@ object UnboundParam {
 
 	object FromParam {
 
-		def apply[P, N <: String with Singleton](name :N)(implicit form :SQLForm[P]) :FromParam[P, N] =
+		def apply[P :SQLForm, O] :FromParam[P, O] = new FromParam
+
+		def apply[P :SQLForm, O](name :String) :FromParam[P, O] =
 			new FromParam(name)
 
+		type Projection[S] = { type WithOrigin[O] = FromParam[S, O] }
+	}
 
+
+
+	class LabeledFromParam[N <: Label, X :SQLForm, O](override val name :N)
+		extends FromParam[X, O](name) with LabeledMapping[N, X, O]
+
+
+	object LabeledFromParam {
+
+		def apply[P :SQLForm, N <: Label, O](name :N) :FromParam[P, O] = new LabeledFromParam(name)
+
+		type Projection[N <: Label, S] = { type WithOrigin[O] = LabeledFromParam[N, S, O] }
+	}
+
+
+
+	object UnboundParamSQL {
 
 		def unapply[F <: FromClause, T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
 		           (expr :ColumnComponentSQL[F, T, E, M, V, O])
@@ -656,9 +675,9 @@ object UnboundParam {
 				val param = expr.extract.export.asInstanceOf[ParamMapping[E, V, O]]
 				Some((param.root, param.extract, expr.from.shift))
 			} else
-				None
+				  None
 
-		def unapply[X](expr :SQLExpression[_, X])
+		def unapply[X](expr :SQLExpression[_, _, X])
 				:Option[(FromParam[P, O], ParamExtract[P, X, O], Int)] forSome { type P; type O } =
 			expr match {
 				case ComponentSQL(table, extractor) if extractor.export.isInstanceOf[ParamMapping[_, _, _]] =>
@@ -668,15 +687,6 @@ object UnboundParam {
 			}
 
 	}
-
-
-
-
-
-
-	class LabeledFromParam[N <: Label, X :SQLForm, O](override val name :N)
-		extends FromParam[X, O](name) with LabeledMapping[N, X, O]
-
 }
 
 
@@ -750,6 +760,11 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]] extends AndFrom[F, P]
 	override type WithLeft[+L <: FromSome] = L JoinParam P
 	//overriden to widen the upper bound on left
 //	override def withLeft[L <: DiscreteFrom](left :L)(filter :SQLBoolean[left.Generalized JoinParam P]) :L JoinParam P
+
+
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :GlobalBoolean[E] =
+		left.filter(target)(extension.extendFront[left.Generalized, P]) && condition.stretch(target)
+
 
 	override def generalizedExtension[C <: FromSome] :C PrefixOf (C JoinParam P) =
 		PrefixOf.itself[C].extend[JoinParam, P]
@@ -842,7 +857,7 @@ object JoinParam {
 	  * @return `F` [[net.noresttherein.oldsql.sql.JoinParam.WithParam WithParam]] `X`.
 	  */
 	def apply[F <: OuterFromSome, X](from :F, param :ParamRelation[X],
-	                                 filter :SQLBoolean[F#Generalized JoinParam ParamRelation[X]#Param] = True)
+	                                 filter :GlobalBoolean[F#Generalized JoinParam ParamRelation[X]#Param] = True)
 			:F WithParam X =
 		JoinParam[from.type, ParamRelation[X]#Param, X](from, LastRelation(param))(filter)
 
@@ -878,7 +893,7 @@ object JoinParam {
 	  */
 	def apply[F <: OuterFromSome, N <: Label, X]
 	         (from :F, param :NamedParamRelation[N, X],
-	          filter :SQLBoolean[F#Generalized JoinParam NamedParamRelation[N, X]#Param]) :F JoinParam (N ?: X)#T =
+	          filter :GlobalBoolean[F#Generalized JoinParam NamedParamRelation[N, X]#Param]) :F JoinParam (N ?: X)#T =
 		JoinParam[F, (N ?: X)#T, X](from, LastRelation(param))(filter)
 
 
@@ -900,7 +915,7 @@ object JoinParam {
 
 	private[sql] def apply[L <: FromSome, M[O] <: FromParam[X, O], X]
 	                      (clause :L, param :LastRelation[M, X])
-	                      (cond :SQLBoolean[clause.Generalized JoinParam M]) :L JoinParam M =
+	                      (cond :GlobalBoolean[clause.Generalized JoinParam M]) :L JoinParam M =
 		new JoinParam[clause.type, M] with AbstractExtended[clause.type, M, X] {
 			override val left = clause
 			override val last = param
@@ -911,11 +926,11 @@ object JoinParam {
 			override type This = left.type JoinParam M
 			override def narrow :left.type JoinParam M = this
 
-			override def withCondition(filter :SQLBoolean[Generalized]) =
+			override def withCondition(filter :GlobalBoolean[Generalized]) =
 				JoinParam[left.type, M, X](left, last)(filter)
 
 			override def withLeft[F <: FromSome]
-			                     (left :F)(filter :SQLBoolean[left.Generalized JoinParam M]) :F JoinParam M =
+			                     (left :F)(filter :GlobalBoolean[left.Generalized JoinParam M]) :F JoinParam M =
 			JoinParam[F, M, X](left, last)(filter)
 
 
@@ -929,15 +944,14 @@ object JoinParam {
 			override def as[N <: Label](name :N) :left.type JoinParam (N ?: X)#T = {
 				val replacement = LastRelation[(N ?: X)#T, X](last.mapping.form ?: (name :N))
 				val unfiltered = JoinParam[left.type, (N ?: X)#T, X](left, replacement)(True)
-				val substitute =
-					new ReplaceParam[Generalized, unfiltered.Generalized, FromClause AndFrom (N ?: X)#T, (N ?: X)#T, X, X](
-						generalized, unfiltered.generalized)(replacement, Extractor.ident[X]
-                    )
+				val substitute = SQLScribe.replaceParam(
+					generalized, unfiltered.generalized, last, replacement, Extractor.ident[X]
+				)
 				JoinParam[left.type, (N ?: X)#T, X](left, replacement)(substitute(condition))
 			}
 
 			override def apply(value :X) :left.This = {
-				val substitute = new RemoveParam(generalized, left.generalized, value, 0)
+				val substitute = SQLScribe.applyParam(generalized, left.generalized, value, 0)
 				left where substitute(condition)
 			}
 
@@ -957,7 +971,7 @@ object JoinParam {
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: FromClause, X](from :F Using M forSome { type M[O] <: RefinedMapping[X, O] })
+	def unapply[F <: FromClause, X](from :F Compound M forSome { type M[O] <: RefinedMapping[X, O] })
 			:Option[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
 			case param :JoinParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))
@@ -1018,9 +1032,8 @@ object JoinParam {
 
 
 
-sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
-	extends NonEmptyFrom with UnboundParam[F, P] with AndByAll[F, P]
-{ thisClause =>
+sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]] extends AndByAll[F, P] with UnboundParam[F, P] {
+	thisClause =>
 
 	override type Generalized = left.Generalized GroupParam P
 	override type Self = left.Self GroupParam P
@@ -1100,7 +1113,7 @@ object GroupParam {
 	  * @return `F` [[net.noresttherein.oldsql.sql.GroupParam.ByParam ByParam]] `X`.
 	  */
 	def apply[F <: GroupByClause with OuterFrom, X]
-	         (from :F, param :ParamRelation[X], filter :SQLBoolean[F#Generalized GroupParam ParamRelation[X]#Param] = True)
+	         (from :F, param :ParamRelation[X], filter :LocalBoolean[F#Generalized GroupParam ParamRelation[X]#Param] = True)
 			:F ByParam X =
 		GroupParam[from.type, ParamRelation[X]#Param, X](from, RelationSQL(param, 0))(filter)
 
@@ -1137,7 +1150,7 @@ object GroupParam {
 	  */
 	def apply[F <: GroupByClause with OuterFrom, N <: Label, X]
 	         (from :F, param :NamedParamRelation[N, X],
-	          filter :SQLBoolean[F#Generalized GroupParam NamedParamRelation[N, X]#Param]) :F GroupParam (N ?: X)#T =
+	          filter :LocalBoolean[F#Generalized GroupParam NamedParamRelation[N, X]#Param]) :F GroupParam (N ?: X)#T =
 		GroupParam[F, (N ?: X)#T, X](from, RelationSQL(param, 0))(filter)
 
 
@@ -1159,7 +1172,7 @@ object GroupParam {
 
 	private[sql] def apply[L <: GroupByClause, M[O] <: FromParam[X, O], X]
 	                      (clause :L, param :RelationSQL[GroupByClause AndByAll M, M, X, GroupByClause AndByAll M])
-	                      (cond :SQLBoolean[clause.Generalized GroupParam M]) :L GroupParam M =
+	                      (cond :LocalBoolean[clause.Generalized GroupParam M]) :L GroupParam M =
 		new GroupParam[clause.type, M] with AbstractExtended[clause.type, M, X] {
 			override val left = clause
 			override val last = param
@@ -1171,11 +1184,11 @@ object GroupParam {
 			override type This = left.type GroupParam M
 			override def narrow :left.type GroupParam M = this
 
-			override def withCondition(filter :SQLBoolean[Generalized]) =
+			override def withCondition(filter :LocalBoolean[Generalized]) =
 				GroupParam[left.type, M, X](left, last)(filter)
 
 			override def withLeft[F <: GroupByClause]
-			                     (left :F)(filter :SQLBoolean[left.Generalized GroupParam M]) :F GroupParam M =
+			                     (left :F)(filter :LocalBoolean[left.Generalized GroupParam M]) :F GroupParam M =
 				GroupParam[F, M, X](left, last)(filter)
 
 
@@ -1190,16 +1203,15 @@ object GroupParam {
 				type Last = GroupByClause AndByAll (N ?: X)#T
 				val replacement = RelationSQL[Last, (N ?: X)#T, X, Last](last.mapping.form ?: (name :N), 0)
 				val unfiltered = GroupParam[left.type, (N ?: X)#T, X](left, replacement)(True)
-				val substitute =
-					new ReplaceParam[Generalized, unfiltered.Generalized, GroupByClause AndByAll (N ?: X)#T, (N ?: X)#T, X, X](
-						generalized, unfiltered.generalized)(replacement, Extractor.ident[X]
-					)
+				val substitute = SQLScribe.replaceParam(
+					generalized, unfiltered.generalized, last, replacement, Extractor.ident[X]
+				)
 				GroupParam[left.type, (N ?: X)#T, X](left, replacement)(substitute(condition))
 			}
 
 			override def apply(value :X) :left.This = {
-				val substitute = new RemoveParam(generalized, left.generalized, value, 0)
-				left where substitute(condition)
+				val substitute = SQLScribe.applyParam(generalized, left.generalized, value, 0)
+				left having substitute(condition)
 			}
 
 		}
@@ -1218,7 +1230,7 @@ object GroupParam {
 	/** Matches all `GroupParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: FromClause, X](from :F Using M forSome { type M[O] <: RefinedMapping[X, O] })
+	def unapply[F <: FromClause, X](from :F Compound M forSome { type M[O] <: RefinedMapping[X, O] })
 			:Option[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
 			case param :GroupParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))

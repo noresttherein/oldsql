@@ -6,9 +6,10 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FreeFromSome, JoinedEntities, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, JoinedMappings, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
+import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 
@@ -22,7 +23,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * As the result, it is a supertype of any ''from'' clause prepending any number of relations to this clause.
   * The drawback is that the `T => T#Generalized` type transformation is not a fixed point operation.
   */
-sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends DiscreteFrom { thisClause =>
+sealed class Dual private (override val filter :GlobalBoolean[FromClause]) extends DiscreteFrom { thisClause =>
 
 	override type LastMapping[O] = Nothing
 	override type LastTable[-F <: FromClause] = Nothing
@@ -37,12 +38,12 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override type Self = Dual
 	override type This = Dual
 
-	override def where(condition :SQLBoolean[FromClause]) :Dual =
+	override def where(condition :GlobalBoolean[FromClause]) :Dual =
 		if (filter == condition || condition == True) this
 		else new Dual(condition && filter)
 
-	override def where(condition :JoinedEntities[FromClause] => SQLBoolean[FromClause]) :Dual = {
-		val bool = condition(new JoinedEntities(this))
+	override def where(condition :JoinedMappings[FromClause] => GlobalBoolean[FromClause]) :Dual = {
+		val bool = condition(new JoinedMappings(this))
 		if (bool == True) this
 		else new Dual(filter && bool)
 	}
@@ -66,9 +67,10 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 	override type FullRow = @~
 
-	override def fullRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+	override def fullRow :ChainTuple[FromClause, GlobalScope, @~] = ChainTuple.EmptyChain
 
-	override def fullRow[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :ChainTuple[E, @~] =
+	override def fullRow[E <: FromClause]
+	                    (target :E)(implicit extension :FromClause ExtendedBy E) :ChainTuple[E, GlobalScope, @~] =
 		ChainTuple.EmptyChain
 
 	override def fullTableStack :LazyList[RelationSQL.AnyIn[FromClause]] = LazyList.empty
@@ -82,11 +84,11 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 	override type Extend[J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = From[T]
 
 	override def extend[T[O] <: BaseMapping[S, O], S]
-	                   (next :Relation[T], filter :SQLBoolean[FromClause AndFrom T], join :JoinLike.*) :From[T] =
+	                   (next :Relation[T], filter :GlobalBoolean[FromClause AndFrom T], join :JoinLike.*) :From[T] =
 		From[T, S](next, filter)
 
 	protected[sql] override def extend[T[O] <: BaseMapping[S, O], S]
-	                                  (right :LastRelation[T, S], filter :SQLBoolean[FromClause AndFrom T])
+	                                  (right :LastRelation[T, S], filter :GlobalBoolean[FromClause AndFrom T])
 			:this.type AndFrom T =
 		From.narrow(this, right, filter)
 
@@ -126,16 +128,16 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 
 
-	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :SQLBoolean[E] =
+	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :GlobalBoolean[E] =
 		filter
 
 
 	override type InnerRow = @~
 
-	override def innerRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+	override def innerRow :ChainTuple[FromClause, GlobalScope, @~] = ChainTuple.EmptyChain
 
 	override def innerRow[E <: FromClause]
-	                     (target :E)(implicit extension :FromClause ExtendedBy E) :ChainTuple[E, @~] =
+	                     (target :E)(implicit extension :FromClause ExtendedBy E) :ChainTuple[E, GlobalScope, @~] =
 		ChainTuple.EmptyChain
 
 	override def innerTableStack :LazyList[RelationSQL.AnyIn[FromClause]] = LazyList.empty
@@ -147,10 +149,10 @@ sealed class Dual private (override val filter :SQLBoolean[FromClause]) extends 
 
 	override type OuterRow = @~
 
-	override def outerRow :ChainTuple[FromClause, @~] = ChainTuple.EmptyChain
+	override def outerRow :ChainTuple[FromClause, GlobalScope, @~] = ChainTuple.EmptyChain
 
 	override def outerRow[E <: FromClause]
-	                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[FromClause, @~] =
+	                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[FromClause, GlobalScope, @~] =
 		ChainTuple.EmptyChain
 
 

@@ -5,15 +5,15 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedEntities, NonEmptyFrom, OuterFromSome, ParameterlessFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedMappings, NonEmptyFrom, OuterFromSome, ParameterlessFrom}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, ParamRelation}
-import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 
 
 
@@ -48,6 +48,12 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	}
 
 
+	override def filter :GlobalBoolean[Generalized]
+
+	override def filter[E <: FromClause](target :E)(implicit extension :ExtendedBy[Generalized, E]) :GlobalBoolean[E]
+
+
+
 	/** A join between this clause and the relation for mapping `T`. For non empty clauses, this is simply `J[Self, T]`,
 	  * but `Dual` defines it as `From[T]` instead.
 	  */
@@ -60,14 +66,14 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	  * @return `From(next)` if this clause is empty and `join.likeJoin(self, next)` for non empty clauses.
 	  */
 	def extend[T[O] <: BaseMapping[S, O], S]
-	          (next :Relation[T], filter :SQLBoolean[Generalized AndFrom T] = True, join :JoinLike.* = InnerJoin.template)
+	    (next :Relation[T], filter :GlobalBoolean[Generalized AndFrom T] = True, join :JoinLike.* = InnerJoin.template)
 			:Extend[join.LikeJoin, T]
 
 	/** Used to add any relation to any clause, creates the clause of a type depending on this clause:
 	  * empty clauses return `From[T]`, while non empty clauses create `this.type InnerJoin T`.
 	  */ //this method serves also as a seal ensuring that every discrete clause extends either EmptyFrom or FromSome
 	protected[sql] def extend[T[O] <: BaseMapping[S, O], S]
-	                   (right :LastRelation[T, S], filter :SQLBoolean[Generalized AndFrom T]) :this.type AndFrom T
+	                   (right :LastRelation[T, S], filter :GlobalBoolean[Generalized AndFrom T]) :this.type AndFrom T
 
 
 
@@ -150,26 +156,30 @@ object DiscreteFrom {
 			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 		}
 
+
+		override def filter :GlobalBoolean[Generalized] = filter(generalized)
+
 		override type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
-			                    (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => SQLBoolean[G]
+			                    (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => GlobalBoolean[G]
 
 		protected override def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
 		                       (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N])
 				:next.This =
 		{
 			val condition = filter(last.extend(next.generalizedExtension[FromLast]), next.last)
-			val grounded = SQLScribe.groundFreeComponents[next.Generalized, Boolean](next.generalized, condition)
+			val grounded = SQLScribe.groundFreeComponents(next.generalized)(condition)
 			next.where(grounded)
 		}
 
 		override type Extend[+J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = Self J T
 
 		override def extend[T[O] <: BaseMapping[S, O], S]
-		             (next :Relation[T], filter :SQLBoolean[Generalized AndFrom T], join :JoinLike.*) :join.LikeJoin[Self, T] =
+		                   (next :Relation[T], filter :GlobalBoolean[Generalized AndFrom T], join :JoinLike.*)
+				:join.LikeJoin[Self, T] =
 			join.likeJoin[Self, T, S](self, next)(filter)
 
 		protected[sql] def extend[T[O] <: BaseMapping[S, O], S]
-		                         (right :LastRelation[T, S], filter :SQLBoolean[Generalized AndFrom T])
+		                         (right :LastRelation[T, S], filter :GlobalBoolean[Generalized AndFrom T])
 				:this.type AndFrom T =
 			InnerJoin[this.type, T, S](this, right)(filter)
 
@@ -406,9 +416,9 @@ object DiscreteFrom {
 
 
 		private def naturalFilter[T[O] <: BaseMapping[_, O]]
-		                         (tables :JoinedEntities[clause.Generalized Join T])
+		                         (tables :JoinedMappings[clause.Generalized Join T])
 		                         (implicit prev :ByIndex[clause.Generalized Join T, -2])
-				:SQLBoolean[clause.Generalized Join T] =
+				:GlobalBoolean[clause.Generalized Join T] =
 		{
 			val firstTable = tables.prev
 			val secondTable = tables.last

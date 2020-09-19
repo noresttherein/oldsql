@@ -4,14 +4,15 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.LogicalSQL.AND.{ANDMatcher, CaseAND}
-import net.noresttherein.oldsql.sql.LogicalSQL.NOT.{CaseNot, NotMatcher}
+import net.noresttherein.oldsql.sql.LogicalSQL.NOT.{CaseNOT, NOTMatcher}
 import net.noresttherein.oldsql.sql.LogicalSQL.OR.{CaseOR, ORMatcher}
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.{False, True}
 
 
 
 /** Base trait for SQL formulas implementing Boolean algebra. */
-trait LogicalSQL[-F <: FromClause] extends CompositeColumnSQL[F, Boolean] {
+trait LogicalSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope] extends CompositeColumnSQL[F, S, Boolean] {
 	override def readForm :ColumnReadForm[Boolean] = ColumnForm[Boolean]
 
 }
@@ -23,36 +24,40 @@ trait LogicalSQL[-F <: FromClause] extends CompositeColumnSQL[F, Boolean] {
 
 object LogicalSQL {
 
-	case class NOT[-F <: FromClause](formula :SQLBoolean[F]) extends LogicalSQL[F] {
+	case class NOT[-F <: FromClause, -S >: LocalScope <: GlobalScope](expression :ColumnSQL[F, S, Boolean])
+		extends LogicalSQL[F, S]
+	{
 
-		override def parts: Seq[SQLExpression[F, _]] = formula::Nil
+		override def parts: Seq[SQLExpression[F, S, _]] = expression::Nil
 
 //		override def get(values: RowValues[F]): Option[Boolean] = expression.get(values).map(!_)
 
-		override def freeValue: Option[Boolean] = formula.freeValue.map(!_)
+		override def freeValue: Option[Boolean] = expression.freeValue.map(!_)
 
 
-		override def unary_![S <: F](implicit ev :this.type <:< SQLBoolean[S]) :SQLBoolean[S] =
-			formula
+		override def unary_![E <: F, O >: LocalScope <: S]
+		                    (implicit ev :this.type <:< ColumnSQL[E, O, Boolean]) :ColumnSQL[E, O, Boolean] =
+			expression
 
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.not(this)
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.not(this)
 
-		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = NOT(mapper(formula))
+		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) :NOT[E, S] = NOT(mapper(expression))
 
-		override def toString = "NOT " + formula
+		override def toString :String = "NOT " + expression
 	}
 
 
 
 	object NOT {
-		trait NotMatcher[+F <: FromClause, +Y[X]] {
-			def not(e :NOT[F]) :Y[Boolean]
+		trait NOTMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def not[S >: LocalScope <: GlobalScope](e :NOT[F, S]) :Y[S, Boolean]
 		}
 
-		type MatchNot[+F <: FromClause, +Y[X]] = NotMatcher[F, Y]
+		type MatchNOT[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = NOTMatcher[F, Y]
 
-		type CaseNot[+F <: FromClause, +Y[X]] = NotMatcher[F, Y]
+		type CaseNOT[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = NOTMatcher[F, Y]
 
 	}
 
@@ -61,10 +66,13 @@ object LogicalSQL {
 
 
 
-	case class AND[-F <: FromClause] private(protected val parts :List[SQLBoolean[F]]) extends LogicalSQL[F] {
-		def conditions :Seq[SQLBoolean[F]] = parts.reverse
+	class AND[-F <: FromClause, -S >: LocalScope <: GlobalScope] private
+	         (protected override val parts :List[ColumnSQL[F, S, Boolean]])
+		extends LogicalSQL[F, S]
+	{
+		def conditions :Seq[ColumnSQL[F, S, Boolean]] = parts.reverse
 
-		override def inOrder :Seq[SQLBoolean[F]] = parts.reverse
+		override def inOrder :Seq[ColumnSQL[F, S, Boolean]] = parts.reverse
 
 //		override def get(values: RowValues[F]): Option[Boolean] = (Option(true) /: parts) {
 //			case (acc, e) => for (v1 <- acc; v2 <- e.get(values)) yield v1 && v2
@@ -74,30 +82,39 @@ object LogicalSQL {
 			case (acc, e) => for (v1 <- acc; v2 <- e.freeValue) yield v1 && v2
 		}
 
-		override def and[S <: F](other: SQLBoolean[S])
-		                        (implicit ev: this.type <:< SQLBoolean[S]): AND[S] =
+		override def and[E <: F, O >: LocalScope <: S]
+		             (other: ColumnSQL[E, O, Boolean])(implicit ev: this.type <:< ColumnSQL[E, O, Boolean]): AND[E, O] =
 			other match {
-				case and :AND[S] => new AND(and.parts ::: parts)
+				case and :AND[E, O] => new AND(and.parts ::: parts)
 				case _ => new AND(other :: parts)
 			}
 
-		override def &&[S <: F](other :SQLBoolean[S])
-		                       (implicit ev: this.type <:< SQLBoolean[S]) :SQLBoolean[S] =
+		override def &&[E <: F, O >: LocalScope <: S]
+		               (other :ColumnSQL[E, O, Boolean])(implicit ev: this.type <:< ColumnSQL[E, O, Boolean])
+				:ColumnSQL[E, O, Boolean] =
 			other match {
 				case True() => this
 				case False() => other
-				case and :AND[S] => ((this :SQLBoolean[S]) /: and.inOrder)((acc, cond) => acc && cond)
+				case and :AND[E, O] => ((this :ColumnSQL[E, O, Boolean]) /: and.inOrder)((acc, cond) => acc && cond)
 				case _ if parts.contains(other) => this
 				case _ => new AND(other :: parts)
 			}
 
 
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.and(this)
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.and(this)
 
-		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = new AND(parts.map(mapper(_)))
+		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) = new AND(parts.map(mapper(_)))
 
 
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case and :AND[_, _] if and canEqual this => and.parts == parts
+			case _ => false
+		}
+
+		override def hashCode :Int = parts.hashCode
 
 		override def toString :String = parts.reverse.mkString("(", " AND ", ")")
 	}
@@ -105,23 +122,27 @@ object LogicalSQL {
 
 
 	object AND {
-		def apply[F <: FromClause](parts :SQLBoolean[F]*) :AND[F] =
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope](parts :ColumnSQL[F, S, Boolean]*) :AND[F, S] =
 			new AND(parts.toList.reverse)
 
-		def unapply[F <: FromClause](sql :SQLBoolean[F]) :Option[Seq[SQLBoolean[F]]] = sql match {
-			case and :AND[F] => Some(and.conditions)
-			case _ => None
+		def unapplySeq[F <: FromClause, S >: LocalScope <: GlobalScope](e :AND[F, S]) :Seq[ColumnSQL[F, S, Boolean]] = e.conditions
+
+		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
+				:Option[Seq[ColumnSQL[F, S, Boolean]]] =
+			e match {
+				case and :AND[F, S] => Some(and.conditions)
+				case _ => None
+			}
+
+
+
+		trait ANDMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def and[S >: LocalScope <: GlobalScope](e :AND[F, S]) :Y[S, Boolean]
 		}
 
+		type MatchAND[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ANDMatcher[F, Y]
 
-
-		trait ANDMatcher[+F <: FromClause, +Y[X]] {
-			def and(e :AND[F]) :Y[Boolean]
-		}
-
-		type MatchAND[+F <: FromClause, +Y[X]] = ANDMatcher[F, Y]
-
-		type CaseAND[+F <: FromClause, +Y[X]] = ANDMatcher[F, Y]
+		type CaseAND[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ANDMatcher[F, Y]
 	}
 
 
@@ -129,10 +150,13 @@ object LogicalSQL {
 
 
 
-	case class OR[-F <: FromClause] private(protected val parts :List[SQLBoolean[F]]) extends LogicalSQL[F] {
-		def conditions :Seq[SQLBoolean[F]] = parts.reverse
+	class OR[-F <: FromClause, S >: LocalScope <: GlobalScope] private
+	        (protected override val parts :List[ColumnSQL[F, S, Boolean]])
+		extends LogicalSQL[F, S]
+	{
+		def conditions :Seq[ColumnSQL[F, S, Boolean]] = parts.reverse
 
-		override def inOrder :Seq[SQLBoolean[F]] = parts.reverse
+		override def inOrder :Seq[ColumnSQL[F, S, Boolean]] = parts.reverse
 
 
 //		override def get(values: RowValues[F]): Option[Boolean] = (Option(false) /: parts) {
@@ -144,30 +168,37 @@ object LogicalSQL {
 		}
 
 
-		override def or[S <: F](other: SQLBoolean[S])
-		                       (implicit ev: this.type <:< SQLBoolean[S]): OR[S] =
+		override def or[E <: F, O >: LocalScope <: S]
+		               (other: ColumnSQL[E, O, Boolean])(implicit ev: this.type <:< ColumnSQL[E, O, Boolean]): OR[E, O] =
 			other match {
-				case or :OR[S] => new OR(or.parts ::: parts)
+				case or :OR[E, O] => new OR(or.parts ::: parts)
 				case _ => new OR(other :: parts)
 			}
 
-		override def ||[S <: F](other :SQLBoolean[S])
-		                       (implicit ev :this.type <:< SQLBoolean[S]) :SQLBoolean[S] =
+		override def ||[E <: F, O >: LocalScope <: S]
+		               (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
+				:ColumnSQL[E, O, Boolean] =
 			other match {
 				case True() => other
 				case False() => this
-				case or :OR[S] => ((this :SQLBoolean[S]) /: or.inOrder)((acc, cond) => acc || cond)
+				case or :OR[E, O] => ((this :ColumnSQL[E, O, Boolean]) /: or.inOrder)((acc, cond) => acc || cond)
 				case _ if parts contains other => this
 				case _ => new OR(other :: parts)
 			}
 
 
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] = matcher.or(this)
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.or(this)
-
-		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = new OR(parts.map(mapper(_)))
+		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) = new OR(parts.map(mapper(_)))
 
 
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case or :OR[_, _] if or canEqual this => or.parts == parts
+			case _ => false
+		}
+
+		override def hashCode :Int = parts.hashCode
 
 		override def toString :String = parts.reverse.mkString("(", ") OR (", ")")
 	}
@@ -176,15 +207,26 @@ object LogicalSQL {
 
 	object OR {
 
-		def apply[F <: FromClause](conditions :SQLBoolean[F]*) :OR[F] = new OR(conditions.toList.reverse)
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope](conditions :ColumnSQL[F, S, Boolean]*) :OR[F, S] =
+			new OR(conditions.toList.reverse)
 
-		trait ORMatcher[+F <: FromClause, +Y[X]] {
-			def or(e :OR[F]) :Y[Boolean]
+		def unapplySeq[F <: FromClause, S >: LocalScope <: GlobalScope](or :OR[F, S]) :Seq[ColumnSQL[F, S, Boolean]] =
+			or.conditions
+
+		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
+				:Option[Seq[ColumnSQL[F, S, Boolean]]] =
+			e match {
+				case or :OR[F, S] => Some(or.conditions)
+				case _ => None
+			}
+
+		trait ORMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def or[S >: LocalScope <: GlobalScope](e :OR[F, S]) :Y[S, Boolean]
 		}
 
-		type MatchOR[+F <: FromClause, +Y[X]] = ORMatcher[F, Y]
+		type MatchOR[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ORMatcher[F, Y]
 
-		type CaseOR[+F <: FromClause, +Y[X]] = ORMatcher[F, Y]
+		type CaseOR[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ORMatcher[F, Y]
 	}
 
 
@@ -193,18 +235,20 @@ object LogicalSQL {
 
 
 
-	trait LogicalMatcher[+F <: FromClause, +Y[X]] extends NotMatcher[F, Y] with ANDMatcher[F, Y] with ORMatcher[F, Y]
+	trait LogicalMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends NOTMatcher[F, Y] with ANDMatcher[F, Y] with ORMatcher[F, Y]
 
-	trait MatchLogical[+F <: FromClause, +Y[X]] extends CaseNot[F, Y] with CaseAND[F, Y] with CaseOR[F, Y]
+	trait MatchLogical[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends LogicalMatcher[F, Y] with CaseNOT[F, Y] with CaseAND[F, Y] with CaseOR[F, Y]
 
-	trait CaseLogical[+F <: FromClause, +Y[X]] extends LogicalMatcher[F, Y] with MatchLogical[F, Y] {
-		def logical(e :LogicalSQL[F]) :Y[Boolean]
+	trait CaseLogical[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchLogical[F, Y] {
+		def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean]
 
-		override def not(e :NOT[F]) :Y[Boolean] = logical(e)
+		override def not[S >: LocalScope <: GlobalScope](e :NOT[F, S]) :Y[S, Boolean] = logical(e)
 
-		override def and(e :AND[F]) :Y[Boolean] = logical(e)
+		override def and[S >: LocalScope <: GlobalScope](e :AND[F, S]) :Y[S, Boolean] = logical(e)
 
-		override def or(e :OR[F]) :Y[Boolean] = logical(e)
+		override def or[S >: LocalScope <: GlobalScope](e :OR[F, S]) :Y[S, Boolean] = logical(e)
 
 	}
 

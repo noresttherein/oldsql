@@ -226,6 +226,10 @@ object Chain extends ChainFactory {
 	}
 
 
+	type Knot = @~
+	final val Knot = @~
+
+
 
 	@inline implicit class ChainOps[C <: Chain](private val self :C) extends AnyVal {
 

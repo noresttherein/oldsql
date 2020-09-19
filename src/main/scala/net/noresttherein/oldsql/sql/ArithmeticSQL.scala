@@ -1,21 +1,17 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.ColumnReadForm
-import net.noresttherein.oldsql.sql.ArithmeticSQL.Divide.{CaseDivide, DivideMatcher}
-import net.noresttherein.oldsql.sql.ArithmeticSQL.Minus.{CaseMinus, MinusMatcher}
-import net.noresttherein.oldsql.sql.ArithmeticSQL.Plus.{CasePlus, PlusMatcher}
-import net.noresttherein.oldsql.sql.ArithmeticSQL.Remainder.{CaseRemainder, RemainderMatcher}
-import net.noresttherein.oldsql.sql.ArithmeticSQL.Times.{CaseTimes, TimesMatcher}
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL
+import net.noresttherein.oldsql.sql.ArithmeticSQL.BinaryOperationSQL.{BinaryOperation, BinaryOperationMatcher}
+import net.noresttherein.oldsql.sql.ArithmeticSQL.UnaryOperationSQL.{UnaryOperation, UnaryOperationMatcher}
+import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, GlobalScope, LocalScope}
 
 
 
 /**
   * @author Marcin Mościcki
   */
-trait ArithmeticSQL[-F <: FromClause, V] extends CompositeColumnSQL[F, V]
-
-
+trait ArithmeticSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends CompositeColumnSQL[F, S, V]
 
 
 
@@ -44,87 +40,188 @@ object ArithmeticSQL {
 
 
 
-	class Plus[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
-	                               (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticSQL[F, V]
+	class UnaryOperationSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
+	                       (val operation :UnaryOperation, val value :ColumnSQL[F, S, V])
+						   (implicit val arithmetic :SQLArithmetic[V])
+		extends ArithmeticSQL[F, S, V]
+	{
+		override def readForm :ColumnReadForm[V] = value.readForm
+
+		protected override def parts :Seq[ColumnSQL[F, S, V]] = value::Nil
+
+		override def rephrase[E <: FromClause](scribe :SQLScribe[F, E]) :UnaryOperationSQL[E, S, V] =
+			new UnaryOperationSQL(operation, scribe(value))
+
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
+			matcher.unaryArithmetic(this)
+
+		override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other match {
+			case op :UnaryOperationSQL[_, _, _] => op.operation == operation
+			case _ => false
+		}
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :UnaryOperationSQL[_, _, _] if other canEqual this =>
+				other.operation == operation && other.value == value && other.arithmetic == arithmetic
+			case _ => false
+		}
+
+		override def hashCode :Int = (operation.hashCode * 31 + value.hashCode) * 31 + arithmetic.hashCode
+
+		override def toString :String = operation.toString + value
+	}
+
+
+
+	object UnaryOperationSQL {
+
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLArithmetic]
+		         (op :UnaryOperation, value :ColumnSQL[F, S, V]) :UnaryOperationSQL[F, S, V] =
+			new UnaryOperationSQL(op, value)
+
+		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope, V]
+		           (e :SQLExpression[F, S, V]) :Option[(UnaryOperation, ColumnSQL[F, S, V])] =
+			e match {
+				case op :UnaryOperationSQL[F @unchecked, S @unchecked, V @unchecked] =>
+					Some((op.operation, op.value))
+				case _ => None
+			}
+
+
+		class UnaryOperation(val symbol :String) extends AnyVal {
+
+			def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLArithmetic]
+			         (value :ColumnSQL[F, S, V]) :UnaryOperationSQL[F, S, V] =
+				new UnaryOperationSQL(this, value)
+
+			def unapply[F <: FromClause, S >: LocalScope <: GlobalScope, V]
+			           (e :SQLExpression[F, S, V]) :Option[ColumnSQL[F, S, V]] =
+				e match {
+					case op :UnaryOperationSQL[F @unchecked, S @unchecked, V @unchecked] if op.operation == this =>
+						Some(op.value)
+					case _ => None
+				}
+		}
+
+		final val Neg = new UnaryOperation("-")
+
+
+		trait UnaryOperationMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def unaryArithmetic[S >: LocalScope <: GlobalScope, V](e :UnaryOperationSQL[F, S, V]) :Y[S, V]
+		}
+
+		type MatchUnaryOperation[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = UnaryOperationMatcher[F, Y]
+
+		type CaseUnaryOperation[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = UnaryOperationMatcher[F, Y]
+
+	}
+
+
+
+
+
+
+	class BinaryOperationSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
+	                  (val left :ColumnSQL[F, S, V], val operation :BinaryOperation, val right :ColumnSQL[F, S, V])
+					  (implicit val arithmetic :SQLArithmetic[V])
+		extends ArithmeticSQL[F, S, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
 
-		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
+		protected override def parts :Seq[ColumnSQL[F, S, V]] = left::right::Nil
+
+		override def rephrase[E <: FromClause](scribe :SQLScribe[F, E]) :BinaryOperationSQL[E, S, V] =
+			new BinaryOperationSQL(scribe(left), operation, scribe(right))
+
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
+			matcher.binaryArithmetic(this)
 
 
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
-			Plus(mapper(left), mapper(right))
+		override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other match {
+			case op :BinaryOperationSQL[_, _, _] => op.operation == operation
+			case _ => false
+		}
 
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.plus(this)
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case op :BinaryOperationSQL[_, _, _] if op canEqual this =>
+				op.operation == operation && op.left == left && op.right == right && op.arithmetic == arithmetic
+			case _ => false
+		}
 
+		override def hashCode :Int =
+			((operation.hashCode * 31 + left.hashCode) * 31 + right.hashCode) * 31 + arithmetic.hashCode
 
-		override def toString = "(" + left + " + " + right + ")"
+		override def toString :String = "(" + left + " " + operation + " " + right + ")"
+
 	}
 
 
 
-	object Plus {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Plus[F, V] =
-			new Plus(left, right)
+	object BinaryOperationSQL {
 
-		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLArithmetic]
+		         (left :ColumnSQL[F, S, V], operation :BinaryOperation, right :ColumnSQL[F, S, V])
+				:BinaryOperationSQL[F, S, V] =
+			new BinaryOperationSQL(left, operation, right)
+
+		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V])
+				:Option[(ColumnSQL[F, S, V], BinaryOperation, ColumnSQL[F, S, V])] =
 			e match {
-				case sum :Plus[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
+				case op :BinaryOperationSQL[F @unchecked, S @unchecked, V @unchecked] =>
+					Some((op.left, op.operation, op.right))
 				case  _ => None
 			}
 
-		trait PlusMatcher[+F <: FromClause, +Y[X]] {
-			def plus[V](e :Plus[F, V]) :Y[V]
+
+		class BinaryOperation private[BinaryOperationSQL](val symbol :String) extends AnyVal {
+
+			def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLArithmetic]
+			         (left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :BinaryOperationSQL[F, S, V] =
+				new BinaryOperationSQL(left, this, right)
+
+			def unapply[F <: FromClause, S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V])
+					:Option[(ColumnSQL[F, S, V], ColumnSQL[F, S, V])] =
+				e match {
+					case op :BinaryOperationSQL[F @unchecked, S @unchecked, V @unchecked] if op.operation == this =>
+						Some((op.left, op.right))
+					case _ => None
+				}
 		}
 
-		type MatchPlus[+F <: FromClause, +Y[X]] = PlusMatcher[F, Y]
-
-		type CasePlus[+F <: FromClause, +Y[X]] = PlusMatcher[F, Y]
-	}
-
-
-
+		final val Plus = new BinaryOperation("+")
+		final val Minus = new BinaryOperation("-")
+		final val Times = new BinaryOperation("*")
+		final val Divide = new BinaryOperation("/")
+		final val Remainder = new BinaryOperation("%")
 
 
-
-	class Minus[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
-	                               (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticSQL[F, V]
-	{
-		override def readForm :ColumnReadForm[V] = left.readForm
-
-		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
-
-
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
-			Minus(mapper(left), mapper(right))
-
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.minus(this)
-
-
-		override def toString = "(" + left + " - " + right + ")"
-	}
-
-
-
-	object Minus {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Minus[F, V] =
-			new Minus(left, right)
-
-		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
-			e match {
-				case sum :Minus[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
-				case  _ => None
-			}
-
-		trait MinusMatcher[+F <: FromClause, +Y[X]] {
-			def minus[V](e :Minus[F, V]) :Y[V]
+		trait BinaryOperationMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def binaryArithmetic[S >: LocalScope <: GlobalScope, V](e :BinaryOperationSQL[F, S, V]) :Y[S, V]
 		}
 
-		type MatchMinus[+F <: FromClause, +Y[X]] = MinusMatcher[F, Y]
+		type MatchBinaryOperation[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = BinaryOperationMatcher[F, Y]
 
-		type CaseMinus[+F <: FromClause, +Y[X]] = MinusMatcher[F, Y]
+//		trait MatchBinaryOperation[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchBinaryOperation[F, Y] {
+//			override def binaryArithmetic[S <: LocalScope, V](e :BinaryOperationSQL[F, S, V]) :Y[S, V] = e.operation match {
+//				case Plus => plus(e.left, e.right)(e.arithmetic)
+//				case Minus => minus(e.left, e.right)(e.arithmetic)
+//				case Times => times(e.left, e.right)(e.arithmetic)
+//				case Divide => divide(e.left, e.right)(e.arithmetic)
+//				case Remainder => remainder(e.left, e.right)(e.arithmetic)
+//				case error => throw new IllegalArgumentException("Unknown arithmetic operation: " + error)
+//			}
+//
+//			def plus[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def minus[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def times[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def divide[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def remainder[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//		}
+
+		type CaseBinaryOperation[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = BinaryOperationMatcher[F, Y]
+
 	}
 
 
@@ -132,158 +229,19 @@ object ArithmeticSQL {
 
 
 
-	class Times[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
-	                                (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticSQL[F, V]
-	{
-		override def readForm :ColumnReadForm[V] = left.readForm
+	trait ArithmeticMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends BinaryOperationMatcher[F, Y] with UnaryOperationMatcher[F, Y]
 
-		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
+	type MatchArithmetic[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ArithmeticMatcher[F, Y]
 
+	trait CaseArithmetic[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchArithmetic[F, Y] {
+		def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V]
 
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
-			Times(mapper(left), mapper(right))
+		override def unaryArithmetic[S >: LocalScope <: GlobalScope, V](e :UnaryOperationSQL[F, S, V]) :Y[S, V] =
+			arithmetic(e)
 
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.times(this)
-
-
-		override def toString = "(" + left + " * " + right + ")"
-	}
-
-
-
-	object Times {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Times[F, V] =
-			new Times(left, right)
-
-		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
-			e match {
-				case sum :Times[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
-				case  _ => None
-			}
-
-		trait TimesMatcher[+F <: FromClause, +Y[X]] {
-			def times[V](e :Times[F, V]) :Y[V]
-		}
-
-		type MatchTimes[+F <: FromClause, +Y[X]] = TimesMatcher[F, Y]
-
-		type CaseTimes[+F <: FromClause, +Y[X]] = TimesMatcher[F, Y]
-	}
-
-
-
-
-
-
-	class Divide[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
-	                                (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticSQL[F, V]
-	{
-		override def readForm :ColumnReadForm[V] = left.readForm
-
-		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
-
-
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
-			Divide(mapper(left), mapper(right))
-
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.divide(this)
-
-
-		override def toString = "(" + left + " / " + right + ")"
-	}
-
-
-
-	object Divide {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Divide[F, V] =
-			new Divide(left, right)
-
-		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
-			e match {
-				case sum :Divide[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
-				case  _ => None
-			}
-
-		trait DivideMatcher[+F <: FromClause, +Y[X]] {
-			def divide[V](e :Divide[F, V]) :Y[V]
-		}
-
-		type MatchDivide[+F <: FromClause, +Y[X]] = DivideMatcher[F, Y]
-
-		type CaseDivide[+F <: FromClause, +Y[X]] = DivideMatcher[F, Y]
-	}
-
-
-
-
-
-
-	class Remainder[-F <: FromClause, V](val left :ColumnSQL[F, V], val right :ColumnSQL[F, V])
-	                                (implicit val arithmetic :SQLArithmetic[V])
-		extends ArithmeticSQL[F, V]
-	{
-		override def readForm :ColumnReadForm[V] = left.readForm
-
-		protected override def parts :Seq[ColumnSQL[F, V]] = left::right::Nil
-
-
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, V] =
-			Remainder(mapper(left), mapper(right))
-
-		override def applyTo[Y[_]](matcher :ColumnSQL.ColumnMatcher[F, Y]) :Y[V] = matcher.remainder(this)
-
-
-		override def toString = "(" + left + " % " + right + ")"
-	}
-
-
-
-	object Remainder {
-		def apply[F <: FromClause, V :SQLArithmetic](left :ColumnSQL[F, V], right :ColumnSQL[F, V]) :Remainder[F, V] =
-			new Remainder(left, right)
-
-		def unapply[F <: FromClause, V](e :SQLExpression[F, V]) :Option[(ColumnSQL[F, V], ColumnSQL[F, V], SQLArithmetic[V])] =
-			e match {
-				case sum :Remainder[F @unchecked, V @unchecked] => Some((sum.left, sum.right, sum.arithmetic))
-				case  _ => None
-			}
-
-		trait RemainderMatcher[+F <: FromClause, +Y[X]] {
-			def remainder[V](e :Remainder[F, V]) :Y[V]
-		}
-
-		type MatchRemainder[+F <: FromClause, +Y[X]] = RemainderMatcher[F, Y]
-
-		type CaseRemainder[+F <: FromClause, +Y[X]] = RemainderMatcher[F, Y]
-	}
-
-
-
-
-
-
-	trait ArithmeticMatcher[+F <: FromClause, +Y[X]]
-		extends PlusMatcher[F, Y] with MinusMatcher[F, Y] with TimesMatcher[F, Y] with DivideMatcher[F, Y]
-		   with RemainderMatcher[F, Y]
-
-	type MatchArithmetic[+F <: FromClause, +Y[X]] = ArithmeticMatcher[F, Y]
-
-	trait CaseArithmetic[+F <: FromClause, +Y[X]] extends MatchArithmetic[F, Y]
-		with CasePlus[F, Y] with CaseMinus[F, Y] with CaseTimes[F, Y] with CaseDivide[F, Y] with CaseRemainder[F, Y]
-	{
-		def arithmetic[V](e :ArithmeticSQL[F, V]) :Y[V]
-		
-		override def plus[V](e :Plus[F, V]) :Y[V] = arithmetic(e)
-
-		override def minus[V](e :Minus[F, V]) :Y[V] = arithmetic(e)
-		
-		override def times[V](e :Times[F, V]) :Y[V] = arithmetic(e)
-		
-		override def divide[V](e :Divide[F, V]) :Y[V] = arithmetic(e)
-
-		override def remainder[V](e :Remainder[F, V]) :Y[V] = arithmetic(e)
+		override def binaryArithmetic[S >: LocalScope <: GlobalScope, V](e :BinaryOperationSQL[F, S, V]) :Y[S, V] =
+			arithmetic(e)
 	}
 	
 	

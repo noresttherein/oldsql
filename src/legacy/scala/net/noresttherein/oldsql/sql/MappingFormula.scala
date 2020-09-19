@@ -218,7 +218,7 @@ object MappingFormula {
 			ComponentFormula(table, this.path \ path)
 
 
-//		def :=[S <: FromClause, R, U](expr :SQLFormula[S, R])(implicit lift :SQLTypePromotion[V, R, U]) :SetComponent[S, T, C, R, U] =
+//		def :=[S <: FromClause, R, U](expr :SQLFormula[S, R])(implicit lift :SQLTypeUnification[V, R, U]) :SetComponent[S, T, C, R, U] =
 //			SetComponent(path, expr)
 
 		override def queryLiteral(value :E) :SQLFormula[FromClause, V] =

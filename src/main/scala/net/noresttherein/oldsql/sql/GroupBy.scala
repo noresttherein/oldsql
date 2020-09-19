@@ -10,7 +10,8 @@ import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
-import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 
 
 
@@ -20,7 +21,7 @@ import net.noresttherein.oldsql.sql.Using.JoinedRelationSubject.InferSubject
 /**
   * @author Marcin Mościcki
   */
-trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause with Using[F, M] { thisClause =>
+trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause with Compound[F, M] { thisClause =>
 
 	override type FromLast = FromSome GroupByAll M
 	override type Generalized = left.Generalized GroupByAll M
@@ -46,7 +47,24 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 
 	protected override def narrow :left.type GroupByAll M
 
-	def withLeft[L <: FromSome](left :L)(condition :SQLBoolean[left.Generalized GroupByAll M]) :L GroupByAll M
+	def withLeft[L <: FromSome](left :L)(condition :LocalBoolean[left.Generalized GroupByAll M]) :L GroupByAll M
+
+
+	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
+	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
+	  * condition, as it doesn't include any join conditions defined on the left side of this join.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
+	  */ //overriden due to a conflict between Compound and GroupByClause
+	override def condition :LocalBoolean[Generalized]
+
+	override def filter :LocalBoolean[Generalized] = condition
+
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :LocalBoolean[E] =
+		condition.stretch(target)
+
+	override def having(filter :LocalBoolean[Generalized]) :This =
+		if (filter == True) this else withCondition(condition && filter)
+
 
 
 	override def fullSize :Int = outer.fullSize + 1
@@ -55,7 +73,7 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 	override type FullRow = OuterRow ~ last.Subject
 
 	override def fullRow[E <: FromClause]
-	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, FullRow] =
+	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
 		left.outerRow(target)(explicitSpan.extend(extension)) ~ last.stretch(target)
 
 
@@ -88,21 +106,16 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 	override def base :Base = left.base
 
 
-	override def filter :SQLBoolean[Generalized] = condition
-
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
-		condition.stretch(target)
-
 	override type InnerRow = @~ ~ last.Subject
 
 	override def innerRow[E <: FromClause]
-	                     (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, InnerRow] =
+	                     (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, InnerRow] =
 		EmptyChain ~ last.stretch(target)
 
 	override type OuterRow = left.OuterRow
 
 	override def outerRow[E <: FromClause]
-	                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, OuterRow] =
+	                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, GlobalScope, OuterRow] =
 		left.outerRow(target)
 
 
@@ -155,7 +168,7 @@ object GroupByAll {
 	  * @return an `F GroupByAll G`.
 	  */
 	def apply[F <: FromSome, G[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (from :F, group :Relation[G], filter :SQLBoolean[F#Generalized GroupByAll G] = True)
+	         (from :F, group :Relation[G], filter :LocalBoolean[F#Generalized GroupByAll G] = True)
 	         (implicit cast :InferSubject[F, GroupByAll, G, T, S]) :F GroupByAll G =
 	{
 		val last = RelationSQL[FromSome GroupByAll T, T, S, FromSome GroupByAll T](cast(group), 0)
@@ -165,7 +178,7 @@ object GroupByAll {
 
 	private[sql] def apply[F <: FromSome, T[O] <: BaseMapping[S, O], S]
 	                      (clause :F, group :RelationSQL[FromSome GroupByAll T, T, S, FromSome GroupByAll T])
-	                      (cond :SQLBoolean[clause.Generalized GroupByAll T])
+	                      (cond :LocalBoolean[clause.Generalized GroupByAll T])
 			:F GroupByAll T =
 		new GroupByAll[clause.type, T] {
 			override val left = clause
@@ -179,10 +192,10 @@ object GroupByAll {
 
 			override def narrow :left.type GroupByAll T = this
 
-			override def withCondition(filter :SQLBoolean[Generalized]) =
+			override def withCondition(filter :LocalBoolean[Generalized]) =
 				GroupByAll[left.type, T, S](left, last)(filter)
 
-			override def withLeft[L <: FromSome](left :L)(condition :SQLBoolean[left.Generalized GroupByAll T]) =
+			override def withLeft[L <: FromSome](left :L)(condition :LocalBoolean[left.Generalized GroupByAll T]) =
 				GroupByAll[L, T, S](left, last)(condition)
 
 
@@ -200,8 +213,8 @@ object GroupByAll {
 
 	/** Matches all `GroupByAll` instances, splitting them into their left (ungrouped ''from'' clause)
 	  * and right (the first column grouping) sides.
-	  */
-	def unapply[L <: FromClause, R[O] <: MappingAt[O]](from :L Using R) :Option[(L, Relation[R])] = from match {
+	  *///consider: shouldn't it return also condition?
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
 		case _ :GroupByAll[_, _] => Some((from.left, from.right))
 		case _ => None
 	}
@@ -293,7 +306,6 @@ object GroupByAll {
 			type FromSubselect[+P <: NonEmptyFrom] = thisClause.FromSubselect[P]
 		}
 
-
 		protected override def narrow :WithLeft[left.type]
 
 
@@ -307,7 +319,21 @@ object GroupByAll {
 			type WithLeft[+C <: GroupByClause] = thisClause.WithLeft[C]
 		}
 
-		def withLeft[L <: GroupByClause](left :L)(filter :SQLBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[L]
+		def withLeft[L <: GroupByClause](left :L)(filter :LocalBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[L]
+
+
+		/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
+		  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
+		  * condition, as it doesn't include any join conditions defined on the left side of this join.
+		  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
+		  */ //overriden due to a conflict between Compound and GroupByClause
+		override def condition :LocalBoolean[Generalized]
+
+		override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :LocalBoolean[E] =
+			left.filter(target)(extension.extendFront[left.Generalized, G]) && condition.stretch(target)
+
+		override def having(filter :LocalBoolean[Generalized]) :This =
+			if (filter == True) this else withCondition(condition && filter)
 
 
 		override type GeneralizedDiscrete = left.GeneralizedDiscrete
@@ -391,6 +417,8 @@ object GroupByAll {
 
 
 
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ByAll.*]
+
 		override def name = "by"
 
 	}
@@ -420,7 +448,7 @@ object GroupByAll {
 		  * @return an `F GroupByAll G`.
 		  */
 		def apply[F <: GroupByClause, G[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		         (from :F, group :Relation[G], filter :SQLBoolean[F#Generalized ByAll G] = True)
+		         (from :F, group :Relation[G], filter :LocalBoolean[F#Generalized ByAll G] = True)
 		         (implicit cast :InferSubject[F, ByAll, G, T, S]) :F ByAll G =
 			ByAll[F, T, S](from, RelationSQL(cast(group), 0))(cast.cast(filter))
 
@@ -428,7 +456,7 @@ object GroupByAll {
 
 		private[sql] def apply[F <: GroupByClause, T[O] <: BaseMapping[S, O], S]
 		                      (clause :F, group :RelationSQL[GroupByClause AndByAll T, T, S, GroupByClause AndByAll T])
-		                      (cond :SQLBoolean[clause.Generalized ByAll T])
+		                      (cond :LocalBoolean[clause.Generalized ByAll T])
 				:F ByAll T =
 			new ByAll[clause.type, T] with AbstractExtended[clause.type, T, S] {
 				override val left = clause
@@ -442,10 +470,11 @@ object GroupByAll {
 
 				override def narrow :left.type ByAll T = this
 
-				override def withCondition(filter :SQLBoolean[Generalized]) =
+				override def withCondition(filter :LocalBoolean[Generalized]) =
 					ByAll[left.type, T, S](left, last)(filter)
 
-				override def withLeft[L <: GroupByClause](left :L)(condition :SQLBoolean[left.Generalized ByAll T]) :L ByAll T =
+				override def withLeft[L <: GroupByClause]
+				                     (left :L)(condition :LocalBoolean[left.Generalized ByAll T]) :L ByAll T =
 					ByAll[L, T, S](left, last)(condition)
 
 			}
@@ -455,7 +484,7 @@ object GroupByAll {
 		/** Matches all `ByAll` instances, splitting them into their left (preceding column groupings)
 		  * and right (the last column grouping) sides.
 		  */
-		def unapply[L <: FromClause, R[O] <: MappingAt[O]](from :L Using R) :Option[(L, Relation[R])] = from match {
+		def unapply[L <: FromClause, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
 			case _ :ByAll[_, _] => Some((from.left, from.right))
 			case _ => None
 		}

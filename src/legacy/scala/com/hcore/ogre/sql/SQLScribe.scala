@@ -184,7 +184,7 @@ object SQLScribe {
 	abstract class ConcreteSQLScribe[F<:RowSource, T<:RowSource](from :F, to :T) extends SQLScribe[F, T](from, to) with MatchPath[F, Res[T]#T] {
 
 		override def path[M <: AnyMapping, C <: AnyMapping](f: PathFormula[F, M, C]): SQLFormula[T, C#ResultType] =
-			throw new IllegalArgumentException(s"can't rewrite formula containing abstract path $f :${f.getClass.getName} with $this")
+			throw new IllegalArgumentException(s"can't rewrite expression containing abstract path $f :${f.getClass.getName} with $this")
 	}
 
 	abstract class Replanter[F<:RowSource, T<:RowSource](from :F, to :T) extends AbstractSQLScribe[F, T](from, to) {

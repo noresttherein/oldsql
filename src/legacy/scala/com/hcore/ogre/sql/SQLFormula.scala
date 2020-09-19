@@ -339,7 +339,7 @@ object SQLFormula {
 
 				override def apply[S <: RowSource](expr: SQLFormula[S, RowCursor[Any]]): SQLFormula[S, Any] =
 					expr.asSubclassOf[SelectFormula[S, Any]].map(_.single) getOrElse {
-						throw new IllegalArgumentException(s"Can't lift a non-select formula $expr to a one row select formula")
+						throw new IllegalArgumentException(s"Can't lift a non-select expression $expr to a one row select formula")
 					}
 			}
 
@@ -352,7 +352,7 @@ object SQLFormula {
 
 				override def apply[S <: RowSource](expr: SQLFormula[S, RowCursor[Any]]): SQLFormula[S, Seq[Any]] =
 					expr.asSubclassOf[SelectFormula[S, Any]].map(_.rows) getOrElse {
-						throw new IllegalArgumentException(s"Can't lift a non-select formula $expr to a row seq formula")
+						throw new IllegalArgumentException(s"Can't lift a non-select expression $expr to a row seq formula")
 					}
 			}
 

@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 
@@ -39,11 +40,11 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
-trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisClause =>
+trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisClause =>
 
 	override type LastMapping[O] = R[O]
 	override type LastTable[F <: FromClause] = JoinedRelation[F, R]
-	override type FromLast >: Generalized <: FromClause Using R
+	override type FromLast >: Generalized <: FromClause Compound R
 
 
 	/** A `FromClause` constituting a pre-existing joined list of relations - may be empty (`Dual`). */
@@ -64,7 +65,7 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 	  * and not a valid reference to the relation from the point of view of this clause. Its type parameter
 	  * makes it incompatible for direct use in SQL expressions based on this clause and casting it will result
 	  * in generating invalid SQL. You can however use the method
-	  * [[net.noresttherein.oldsql.sql.Using#lastAsIn lastAsIn]] in the following way:
+	  * [[net.noresttherein.oldsql.sql.Compound#lastAsIn lastAsIn]] in the following way:
 	  * {{{
 	  *     def secondLast[T1[O] <: MappingAt[O], T2 <: MappingAt[O]](from :FromClause AndFrom T1 AndFrom T2) =
 	  *         from.left.lastAsIn[FromClause AndFrom T1 AndFrom T2]
@@ -80,12 +81,11 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
 	  * condition, as it doesn't include any join conditions defined on the left side of this join.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
-	  */
-	def condition :SQLBoolean[Generalized]
+	  */ //declared here to have a single equals/hashCode implementation
+	protected def condition :LocalBoolean[Generalized]
 
 
-
-	override type Generalized >: Self <: (left.Generalized Using R) {
+	override type Generalized >: Self <: (left.Generalized Compound R) {
 		type FromLast <: thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
@@ -93,7 +93,7 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 		type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 	}
 
-	override type Self <: (left.Self Using R) {
+	override type Self <: (left.Self Compound R) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Self = thisClause.Self
@@ -112,7 +112,7 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
-	override type This >: this.type <: (L Using R) {
+	override type This >: this.type <: (L Compound R) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Self = thisClause.Self
@@ -135,31 +135,21 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
 	  * using member types of `FromClause`, as they become proper path types instead of projections.
 	  */
-	protected def narrow :left.type Using R
+	protected def narrow :left.type Compound R
 
 
-
-	/** A copy of this clause with the `condition` being replaced with the given `filter`.
-	  * This does not replace the whole ''where'' filter, as the conditions (if present) of the left clause remain
-	  * unchanged. It is the target of the `where` and other filtering methods (which add to the condition, rather
-	  * then completely replacing it).
-	  */
-	def withCondition(filter :SQLBoolean[Generalized]) :This
-
-	override def where(filter :SQLBoolean[Generalized]) :This =
-		if (filter == True) this else withCondition(condition && filter)
 
 	/** Apply a filter condition to the last relation in this clause. The condition is combined using `&&` with
 	  * `this.condition` and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
-	  * It is equivalent to `this.where(entities => condition(entities.last))`.
+	  * It is equivalent to `this.where(mappings => condition(mappings.last))`.
 	  * @param condition a function accepting the expression for the last relation in this clause and creating
 	  *                  an additional SQL expression for the join condition.
 	  * @return an `Extended` instance of the same kind as this one, with the same left and right sides,
 	  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
 	  *         returned by the passed filter function.
 	  */
-	def whereLast(condition :JoinedRelation[FromLast, R] => SQLBoolean[FromLast]) :This =
-		where(SQLScribe.groundFreeComponents(generalized, condition(last)))
+	def whereLast(condition :JoinedRelation[FromLast, R] => GlobalBoolean[FromLast]) :This =
+		where(SQLScribe.groundFreeComponents(generalized)(condition(last)))
 
 
 	override def fullSize :Int = left.fullSize + 1
@@ -170,7 +160,7 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 	override type Base = DefineBase[Implicit]
 
 
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Using.*]
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Compound.*]
 
 	override def equals(that :Any) :Boolean = that match {
 		case self :AnyRef if self eq this => true
@@ -197,24 +187,24 @@ trait Using[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisC
 
 
 
-object Using {
+object Compound {
 
-	/** An existential upper bound of all `Using` instances that can be used in casting or pattern matching
+	/** An existential upper bound of all `Compound` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
 	  */
-	type * = Using[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
+	type * = Compound[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
 
-	/** A curried type constructor for `Using` instances, accepting the left `FromClause` type parameter
+	/** A curried type constructor for `Compound` instances, accepting the left `FromClause` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
 	  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
 	  */
-	type WithLeft[L <: FromClause] = { type F[R[O] <: MappingAt[O]] = L Using R }
+	type WithLeft[L <: FromClause] = { type F[R[O] <: MappingAt[O]] = L Compound R }
 
-	/** A curried type constructor for `Using` instances, accepting the right mapping type parameter
+	/** A curried type constructor for `Compound` instances, accepting the right mapping type parameter
 	  * and returning a type with a member type `F` accepting the left `FromClause` type.
 	  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
 	  */
-	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: FromClause] = L Using R }
+	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: FromClause] = L Compound R }
 
 
 
@@ -253,15 +243,17 @@ object Using {
 
 		def apply(join :F[T]) :F[R]
 
-		def cast[E[M[O] <: MappingAt[O]] <: FromClause, X](e :SQLExpression[E[R], X]) :SQLExpression[E[T], X]
+		def cast[E[M[O] <: MappingAt[O]] <: FromClause, S >: LocalScope <: GlobalScope, X]
+		        (e :SQLExpression[E[R], S, X]) :SQLExpression[E[T], S, X]
 
-		def cast[E[M[O] <: MappingAt[O]] <: FromClause, X](e :ColumnSQL[E[R], X]) :ColumnSQL[E[T], X]
+		def cast[E[M[O] <: MappingAt[O]] <: FromClause, S >: LocalScope <: GlobalScope, X]
+		        (e :ColumnSQL[E[R], S, X]) :ColumnSQL[E[T], S, X]
 
-		def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Using B, X]
-                 (e :ColumnSQL[L J R, X]) :ColumnSQL[L J T, X]
+		def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B, S >: LocalScope <: GlobalScope, X]
+                 (e :ColumnSQL[L J R, S, X]) :ColumnSQL[L J T, S, X]
 
-		def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Using B, X]
-		         (e :SQLExpression[L J R, X]) :SQLExpression[L J T, X]
+		def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B, S >: LocalScope <: GlobalScope, X]
+		         (e :SQLExpression[L J R, S, X]) :SQLExpression[L J T, S, X]
 
 		def self :JoinedRelationSubject[F, T, T, U]
 	}
@@ -272,30 +264,35 @@ object Using {
 		import BaseMapping.AnyAt
 
 		private[this] val instance =
-			new JoinedRelationSubject[Using.WithLeft[FromClause]#F, AnyAt, AnyAt, AnyAt] {
+			new JoinedRelationSubject[Compound.WithLeft[FromClause]#F, AnyAt, AnyAt, AnyAt] {
 				override def apply(rows :Relation[AnyAt]) = rows
 
-				override def apply(join :FromClause Using AnyAt) = join
+				override def apply(join :FromClause Compound AnyAt) = join
 
-				override def cast[F[M[O] <: MappingAt[O]] <: FromClause, X](e :ColumnSQL[F[AnyAt], X]) = e
-				override def cast[F[M[O] <: MappingAt[O]] <: FromClause, X](e :SQLExpression[F[AnyAt], X]) = e
+				override def cast[F[M[O] <: MappingAt[O]] <: FromClause, S >: LocalScope <: GlobalScope, X]
+				                 (e :ColumnSQL[F[AnyAt], S, X]) = e
 
-				override def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Using B, X]
-				                  (e :ColumnSQL[J[L, AnyAt], X]) = e
+				override def cast[F[M[O] <: MappingAt[O]] <: FromClause, S >: LocalScope <: GlobalScope, X]
+				                 (e :SQLExpression[F[AnyAt], S, X]) = e
 
-				override def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Using B, X]
-				                  (e :SQLExpression[J[L, AnyAt], X]) = e
+				override def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B,
+				                   S >: LocalScope <: GlobalScope, X]
+				                  (e :ColumnSQL[J[L, AnyAt], S, X]) = e
+
+				override def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B,
+				                   S >: LocalScope <: GlobalScope, X]
+				                  (e :SQLExpression[J[L, AnyAt], S, X]) = e
 
 				override def self = this
 			}
 
-		implicit def identity[J[M[O] <: MappingAt[O]] <: _ Using M, R[O] <: BaseMapping[_, O]]
+		implicit def identity[J[M[O] <: MappingAt[O]] <: _ Compound M, R[O] <: BaseMapping[_, O]]
 				:JoinedRelationSubject[J, R, R, R] =
 			instance.asInstanceOf[JoinedRelationSubject[J, R, R, R]]
 
 
 		/** A simplified form of the implicit witness
-		  * [[net.noresttherein.oldsql.sql.Using.JoinedRelationSubject JoinedRelationSubject]], it guides the compiler
+		  * [[net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject JoinedRelationSubject]], it guides the compiler
 		  * into proper inference of both the type of a mapping, and its `Subject` type as defined by `BaseMapping`.
 		  * It is used when constructing a new `Extended` subtype to avoid the need for explicit specification
 		  * of the joined mapping type and its subject.
@@ -311,7 +308,7 @@ object Using {
 		  * used in the construction on the join, and then converted back to a type expressed in terms of the input
 		  * parameters.
 		  */
-		type InferSubject[L <: FromClause, J[+F <: L, M[O] <: MappingAt[O]] <: F Using M,
+		type InferSubject[L <: FromClause, J[+F <: L, M[O] <: MappingAt[O]] <: F Compound M,
 		                  R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S] =
 			JoinedRelationSubject[({ type F[M[O] <: MappingAt[O]] = L J M })#F, R, T, MappingOf[S]#TypedProjection]
 
@@ -339,8 +336,8 @@ object Using {
   * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
   * @author Marcin Mościcki
-  */ //other words :Tack, Include With
-trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thisClause =>
+  */ //other words :Tack, Include, With
+trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Compound[L, R] { thisClause =>
 	override type FromLast >: Generalized <: FromClause Extended R
 
 	override type Generalized >: Self <: (left.Generalized Extended R) {
@@ -401,17 +398,8 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Using[L, R] { thi
 	override type FullRow = left.FullRow ~ last.Subject
 
 	override def fullRow[E <: FromClause]
-	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, FullRow] =
+	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
 		left.fullRow(target)(extension.extendFront[left.Generalized, R]) ~ last.stretch(target)
-
-
-
-	private[this] val lzyFilter = Lazy { filter(generalized) }
-
-	override def filter :SQLBoolean[Generalized] = lzyFilter.get
-
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :SQLBoolean[E] =
-		left.filter(target)(extension.extendFront[left.Generalized, R]) && condition.stretch(target)
 
 
 
@@ -481,13 +469,13 @@ object Extended {
 		override type InnerRow = left.InnerRow ~ last.Subject
 
 		override def innerRow[E <: FromClause]
-		                     (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, InnerRow] =
+		             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, InnerRow] =
 			left.innerRow(target)(extension.extendFront[left.Generalized, R]) ~ last.stretch(target)
 
 		override type OuterRow = left.OuterRow
 
 		override def outerRow[E <: FromClause]
-		                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, OuterRow] =
+		             (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, GlobalScope, OuterRow] =
 			left.outerRow(target)
 	}
 

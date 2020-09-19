@@ -9,24 +9,25 @@ import net.noresttherein.oldsql.sql.GroupedExpression.{FlatMapGroup, MapGroup}
 import net.noresttherein.oldsql.sql.ArithmeticSQL.SQLArithmetic
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
 
 
 
 
 
 
-class AggregateSQL[-F <: FromClause, S, T]
-                  (val function :AggregateFunction, val expr :GroupedExpression[F, S], val isDistinct :Boolean)
-                  (implicit override val readForm :ColumnReadForm[T])
-	extends ColumnSQL[F, T]
+class AggregateSQL[-F <: FromClause, X, Y]
+                  (val function :AggregateFunction, val expr :GroupedExpression[F, X], val isDistinct :Boolean)
+                  (implicit override val readForm :ColumnReadForm[Y])
+	extends ColumnSQL[F, LocalScope, Y]
 {
-	def distinct :AggregateSQL[F, S, T] =
+	def distinct :AggregateSQL[F, X, Y] =
 		if (isDistinct) this
-		else new AggregateSQL[F, S, T](function, expr, true)
+		else new AggregateSQL[F, X, Y](function, expr, true)
 
-	override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[T] = ??? //matcher.aggregate(this)
+	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, R]) :R[LocalScope, Y] = ??? //matcher.aggregate(this)
 
-	override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :AggregateSQL[E, S, T] = ???
+	override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :AggregateSQL[E, X, Y] = ???
 //		new AggregateSQL[E, S, T](function, expr.stretch(base), isDistinct)
 
 	override def isomorphic(that: SQLExpression.*) :Boolean = that match {
@@ -66,7 +67,8 @@ object AggregateSQL {
 	           (e :AggregateSQL[F, S, T]) :Some[(AggregateFunction, GroupedExpression[F, S], Boolean)] =
 		Some((e.function, e.expr, e.isDistinct))
 
-	def unapply[F <: FromClause, T](e :SQLExpression[F, T]) :Option[(AggregateFunction, GroupedExpression[F, _], Boolean)] =
+	def unapply[F <: FromClause, T](e :SQLExpression[F, LocalScope, T])
+			:Option[(AggregateFunction, GroupedExpression[F, _], Boolean)] =
 		e match {
 			case aggr :AggregateSQL[F @unchecked, _, _] =>Some((aggr.function, aggr.expr, aggr.isDistinct))
 			case _ => None
@@ -96,14 +98,14 @@ object AggregateSQL {
 
 		object * extends GroupedExpression[FromClause, Nothing] {
 
-			override protected case object expr extends ColumnSQL[FromClause, Nothing] {
+			override protected case object expr extends ColumnSQL[FromClause, LocalScope, Nothing] {
 				override def readForm :ColumnReadForm[Nothing] =
 					ColumnReadForm.unsupported("count(*).readForm")
 
 				override def stretch[U <: FromClause, E <: FromClause]
-				                    (base :E)(implicit ev :U ExtendedBy E) :ColumnSQL[E, Nothing] = this
+				                    (base :E)(implicit ev :U ExtendedBy E) :ColumnSQL[E, LocalScope, Nothing] = this
 
-				override def applyTo[Y[_]](matcher :ColumnMatcher[FromClause, Y]) :Y[Nothing] = ??? //matcher.*(this)
+				override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[FromClause, Y]) :Y[LocalScope, Nothing] = ??? //matcher.*(this)
 
 				override def isomorphic(expression: SQLExpression.*) :Boolean = this == expression
 
@@ -160,17 +162,17 @@ object AggregateSQL {
 
 
 
-	trait AggregateMatcher[+F <: FromClause, +Y[_]] {
-		def aggregate[S, T](e :AggregateSQL[F, S, T]) :Y[T]
+	trait AggregateMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		def aggregate[S, T](e :AggregateSQL[F, S, T]) :Y[LocalScope, T]
 
 		/** A special pseudo expression used inside `count(*)`. The type itself is not exposed and this method
 		  * will never be called under normal circumstances. */
-		def *(e :ColumnSQL[FromClause, Nothing]) :Y[Nothing]
+		def *(e :ColumnSQL[FromClause, LocalScope, Nothing]) :Y[LocalScope, Nothing]
 	}
 
-	type MatchAggregate[+F <: FromClause, +Y[_]] = AggregateMatcher[F, Y]
+	type MatchAggregate[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = AggregateMatcher[F, Y]
 
-	type CaseAggregate[+F <: FromClause, +Y[_]] = AggregateMatcher[F, Y]
+	type CaseAggregate[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = AggregateMatcher[F, Y]
 
 }
 
@@ -188,7 +190,7 @@ object AggregateSQL {
   * @see [[net.noresttherein.oldsql.sql.GroupByAll]]
   */
 trait GroupedExpression[-F <: FromClause, V] {
-	protected val expr :SQLExpression[F, V]
+	protected val expr :LocalSQL[F, V]
 
 	def map[I, O, G <: GroupedExpression[_, _]](f :I => O)(implicit doMap :MapGroup[this.type, I, O, G]) :G = doMap(this, f)
 
@@ -218,14 +220,14 @@ trait GroupedExpression[-F <: FromClause, V] {
 
 object GroupedExpression {
 
-	private class BaseGroupedExpression[F <: FromClause, V](protected override val expr :SQLExpression[F, V])
+	private class BaseGroupedExpression[F <: FromClause, V](protected override val expr :LocalSQL[F, V])
 		extends GroupedExpression[F, V]
 
 
 
 	//consider: parameterize with M[O] <: MappingAt to avoid long origin types; can't be contravariant in that case
 	trait MappingGroupedExpression[-F <: FromClause, M <: Mapping] extends GroupedExpression[F, M#Subject] {
-		protected override val expr :MappingSQL[F, M] //fixme: this must be a ComponetSQL, ugh
+		protected override val expr :MappingSQL[F, LocalScope, M] //fixme: this must be a ComponetSQL, ugh
 
 		def mapping :M = expr.mapping
 
@@ -237,7 +239,8 @@ object GroupedExpression {
 		override def toString :String = "MappingGroupedExpression(" + expr.mapping + ")"
 	}
 
-	private class BaseMappingGroupedExpression[-F <: FromClause, M <: Mapping](protected override val expr :MappingSQL[F, M])
+	private class BaseMappingGroupedExpression[-F <: FromClause, M <: Mapping]
+	                                          (protected override val expr :MappingSQL[F, LocalScope, M])
 		extends MappingGroupedExpression[F, M]
 
 
@@ -249,8 +252,8 @@ object GroupedExpression {
 			(group :MappingGroupedExpression[F, X[O]], f :X[O] => Y[O]) => ??? //new BaseMappingGroupedExpression(f(group.mapping))
 
 		implicit def mapMappingToExpression[F <: FromClause, X <: Mapping, Y]
-				:MapGroup[MappingGroupedExpression[F, X], X, SQLExpression[F, Y], GroupedExpression[F, Y]] =
-			(group :MappingGroupedExpression[F, X], f :X => SQLExpression[F, Y]) => ???
+				:MapGroup[MappingGroupedExpression[F, X], X, LocalSQL[F, Y], GroupedExpression[F, Y]] =
+			(group :MappingGroupedExpression[F, X], f :X => LocalSQL[F, Y]) => ???
 
 
 		implicit def flatMapMappingToMapping[F <: FromClause, X[A] <: MappingAt[A], Y[A] <: MappingAt[A], O]
@@ -278,8 +281,8 @@ object GroupedExpression {
 	}
 
 	implicit def defaultMapGroup[F <: FromClause, X, Y]
-			:MapGroup[GroupedExpression[F, X], SQLExpression[F, X], SQLExpression[F, Y], GroupedExpression[F, Y]] =
-		(group :GroupedExpression[F, X], f :SQLExpression[F, X] => SQLExpression[F, Y]) => new BaseGroupedExpression(f(group.expr))
+			:MapGroup[GroupedExpression[F, X], LocalSQL[F, X], LocalSQL[F, Y], GroupedExpression[F, Y]] =
+		(group :GroupedExpression[F, X], f :LocalSQL[F, X] => LocalSQL[F, Y]) => new BaseGroupedExpression(f(group.expr))
 
 
 
@@ -294,8 +297,8 @@ object GroupedExpression {
 	}
 
 	implicit def defaultFlatMapGroup[F <: FromClause, X, Y]
-			:FlatMapGroup[GroupedExpression[F, X], SQLExpression[F, X], GroupedExpression[F, Y]] =
-		(group :GroupedExpression[F, X], f :SQLExpression[F, X] => GroupedExpression[F, Y]) => f(group.expr)
+			:FlatMapGroup[GroupedExpression[F, X], LocalSQL[F, X], GroupedExpression[F, Y]] =
+		(group :GroupedExpression[F, X], f :LocalSQL[F, X] => GroupedExpression[F, Y]) => f(group.expr)
 
 
 

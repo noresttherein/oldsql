@@ -49,7 +49,7 @@ class MappingFilter[M<:Mapping[T], T](val mapping :M, pathfinder :Pathfinder[T, 
 //		case SQLRestriction()
 //		case ForAll
 //		case Exists
-		case _ => throw new IllegalArgumentException(s"Don't know how to create sql filter for $restriction")
+		case _ => throw new IllegalArgumentException(s"Don't know how to create e filter for $restriction")
 
 
 	}

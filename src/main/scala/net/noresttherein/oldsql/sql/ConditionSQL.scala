@@ -3,22 +3,22 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
-import net.noresttherein.oldsql.sql.ConditionSQL.ComparisonSQL.{CaseComparison, ComparisonMatcher}
+import net.noresttherein.oldsql.sql.ConditionSQL.ComparisonSQL.{CaseComparison, Comparison, ComparisonMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.EqualitySQL.EqualityMatcher
 import net.noresttherein.oldsql.sql.ConditionSQL.ExistsSQL.{CaseExists, ExistsMatcher}
-import net.noresttherein.oldsql.sql.ConditionSQL.In.{CaseIn, InMatcher}
+import net.noresttherein.oldsql.sql.ConditionSQL.InSQL.{CaseIn, InMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.InequalitySQL.InequalityMatcher
 import net.noresttherein.oldsql.sql.ConditionSQL.IsNULL.{CaseIsNull, IsNullMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.LikeSQL.{CaseLike, LikeMatcher}
 import net.noresttherein.oldsql.sql.ConditionSQL.OrderComparisonSQL.OrderComparisonMatcher
-import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, GlobalScope, LocalScope}
 
 
 
 
 
 
-trait ConditionSQL[-F <: FromClause] extends CompositeColumnSQL[F, Boolean] {
+trait ConditionSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope] extends CompositeColumnSQL[F, S, Boolean] {
 	override def readForm :ColumnReadForm[Boolean] = ColumnForm[Boolean]
 }
 
@@ -29,28 +29,30 @@ trait ConditionSQL[-F <: FromClause] extends CompositeColumnSQL[F, Boolean] {
 
 object ConditionSQL {
 
-	case class IsNULL[-F <: FromClause, T](expr :SQLExpression[F, T]) extends ConditionSQL[F] {
-		protected override def parts :Seq[SQLExpression[F, T]] = expr::Nil
+	case class IsNULL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T](expr :SQLExpression[F, S, T])
+		extends ConditionSQL[F, S]
+	{
+		protected override def parts :Seq[SQLExpression[F, S, T]] = expr::Nil
 
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
+		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, Boolean] =
 			new IsNULL(mapper(expr))
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] =
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.isNull(this)
 
-		override def toString = "(" + expr + "is null)"
+		override def toString :String = "(" + expr + "is null)"
 	}
 
 
 
 	object IsNULL {
-		trait IsNullMatcher[+F <: FromClause, +Y[X]] {
-			def isNull[T](e :IsNULL[F, T]) :Y[Boolean]
+		trait IsNullMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def isNull[S >: LocalScope <: GlobalScope, T](e :IsNULL[F, S, T]) :Y[S, Boolean]
 		}
 
-		type MatchIsNull[+F <: FromClause, +Y[X]] = IsNullMatcher[F, Y]
+		type MatchIsNull[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = IsNullMatcher[F, Y]
 
-		type CaseIsNull[+F <: FromClause, +Y[X]] = IsNullMatcher[F, Y]
+		type CaseIsNull[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = IsNullMatcher[F, Y]
 	}
 
 
@@ -58,58 +60,82 @@ object ConditionSQL {
 
 
 
-	trait ComparisonSQL[-F <: FromClause, T] extends ConditionSQL[F] {
-		val left :SQLExpression[F, T]
-		val right :SQLExpression[F, T]
-		def symbol :String
+	trait ComparisonSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T] extends ConditionSQL[F, S] {
+		val left :SQLExpression[F, S, T]
+		val right :SQLExpression[F, S, T]
+		def comparison :Comparison
+		def symbol :String = comparison.symbol
 
-		protected override def parts :Seq[SQLExpression[F, T]] = left::right::Nil
+		protected override def parts :Seq[SQLExpression[F, S, T]] = left::right::Nil
 
-		override def toString :String = left.toString + " " + symbol + " " + right
+		override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other match {
+			case cmp :ComparisonSQL[_, _, _] => cmp.comparison == comparison
+			case _ => false
+		}
+
+		override def toString :String = left.toString + " " + comparison + " " + right
 	}
 
 
 
 	object ComparisonSQL {
 
-		final val LT = "<"
-		final val LTE = "<="
-		final val GT = ">"
-		final val GTE = ">="
-		final val EQ = "="
-		final val NEQ = "<>"
-
-
-		def apply[F <: FromClause, T :SQLOrdering]
-		         (left :SQLExpression[F, T], symbol :String, right :SQLExpression[F, T]) :ComparisonSQL[F, T] =
-			symbol match {
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, T :SQLOrdering]
+		         (left :SQLExpression[F, S, T], cmp :Comparison, right :SQLExpression[F, S, T]) :ComparisonSQL[F, S, T] =
+			cmp match {
 				case EQ => EqualitySQL(left, right)
 				case NEQ => InequalitySQL(left, right)
-				case _ => OrderComparisonSQL(left, symbol, right)
+				case _ => OrderComparisonSQL(left, cmp, right)
+			}
+
+		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
+				:Option[(SQLExpression[F, S, T], Comparison, SQLExpression[F, S, T]) forSome { type T }] =
+			e match {
+				case cmp :ComparisonSQL[F @unchecked, S @unchecked, t] => //fixme: ComparisonSQL
+					Some((cmp.left, cmp.comparison, cmp.right))
+				case _ => None
 			}
 
 
-		def unapply[F <: FromClause](f :SQLExpression[F, _]) :Option[(SQLExpression[F, T], String, SQLExpression[F, T])] forSome { type T } =
-			f match {
-				case compare :ComparisonSQL[F @unchecked, t] =>
-					Some((compare.left, compare.symbol, compare.right))
-			}
+		class Comparison private[ConditionSQL] (val symbol :String) extends AnyVal {
+			def apply[F <: FromClause, S >: LocalScope <: GlobalScope, T :SQLOrdering]
+			         (left :SQLExpression[F, S, T], right :SQLExpression[F, S, T]) :ComparisonSQL[F, S, T] =
+				ComparisonSQL(left, this, right)
+
+			def unapply[F <: FromClause, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
+					:Option[(SQLExpression[F, S, T], SQLExpression[F, S, T]) forSome { type T }] =
+				e match {
+					case compare :ComparisonSQL[F @unchecked, S @unchecked, t] if compare.comparison == this =>
+						Some((compare.left, compare.right))
+					case _ => None
+				}
+		}
+
+		final val LT = new Comparison("<")
+		final val LTE = new Comparison("<=")
+		final val GT = new Comparison(">")
+		final val GTE = new Comparison(">=")
+		final val EQ = new Comparison("=")
+		final val NEQ = new Comparison("<>")
 
 
 
-		trait ComparisonMatcher[+F <: FromClause, +Y[X]]
+		trait ComparisonMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends OrderComparisonMatcher[F, Y] with EqualityMatcher[F, Y] with InequalityMatcher[F, Y]
 
-		type MatchComparison[+F <: FromClause, +Y[X]] = ComparisonMatcher[F, Y]
+		type MatchComparison[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ComparisonMatcher[F, Y]
 
-		trait CaseComparison[+F <: FromClause, +Y[X]] extends MatchComparison[F, Y] {
-			def comparison[X](e :ComparisonSQL[F, X]) :Y[Boolean]
+		trait CaseComparison[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchComparison[F, Y] {
+			def comparison[S >: LocalScope <: GlobalScope, X](e :ComparisonSQL[F, S, X]) :Y[S, Boolean]
 
-			override def order[X](e :OrderComparisonSQL[F, X]) :Y[Boolean] = comparison(e)
+			override def equality[S >: LocalScope <: GlobalScope, X](e :EqualitySQL[F, S, X]) :Y[S, Boolean] =
+				comparison(e)
 
-			override def equality[X](e :EqualitySQL[F, X]) :Y[Boolean] = comparison(e)
+			override def inequality[S >: LocalScope <: GlobalScope, X](e :InequalitySQL[F, S, X]) :Y[S, Boolean] =
+				comparison(e)
 
-			override def inequality[X](e :InequalitySQL[F, X]) :Y[Boolean] = comparison(e)
+			override def order[S >: LocalScope <: GlobalScope, X](e :OrderComparisonSQL[F, S, X]) :Y[S, Boolean] =
+				comparison(e)
 		}
 
 	}
@@ -119,44 +145,63 @@ object ConditionSQL {
 
 
 
-	case class OrderComparisonSQL[-F <: FromClause, T]
-	                          (ordering :SQLOrdering[T], left :SQLExpression[F, T], symbol :String, right :SQLExpression[F, T])
-		extends ComparisonSQL[F, T]
+	class OrderComparisonSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T]
+	                        (override val left :SQLExpression[F, S, T], override val comparison :Comparison,
+							 override val right :SQLExpression[F, S, T])
+							(implicit val ordering :SQLOrdering[T])
+		extends ComparisonSQL[F, S, T]
 	{
 		import ComparisonSQL._
 
 		override def freeValue :Option[Boolean] =
 			for (l <- left.freeValue; r <- right.freeValue)
 				yield ordering.compare(l, r) match {
-					case 0 => symbol == EQ || symbol == LTE || symbol == GTE
-					case n if n < 0 => symbol == LT || symbol == LTE || symbol == NEQ
-					case _ => symbol == GT || symbol == GTE || symbol == NEQ
+					case 0 => comparison == EQ || comparison == LTE || comparison == GTE
+					case n if n < 0 => comparison == LT || comparison == LTE || comparison == NEQ
+					case _ => comparison == GT || comparison == GTE || comparison == NEQ
 				}
 
 
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :SQLBoolean[S] =
-			new OrderComparisonSQL(ordering, mapper(left), symbol, mapper(right))
+		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, Boolean] =
+			new OrderComparisonSQL[E, S, T](mapper(left), comparison, mapper(right))
 
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.order[S, T](this)
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] =
-			matcher.order(this)
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :OrderComparisonSQL[_, _, _] if other canEqual this =>
+				other.comparison == comparison && other.left == left && other.right == right && other.ordering == ordering
+			case _ => false
+		}
+
+		override def hashCode :Int =
+			((comparison.hashCode * 31 + left.hashCode) * 31 + right.hashCode) * 31 + ordering.hashCode
 
 	}
 
 
 
 	object OrderComparisonSQL {
-		def apply[F <: FromClause, T](left :SQLExpression[F, T], symbol :String, right :SQLExpression[F, T])
-		                             (implicit ordering :SQLOrdering[T]) =
-			new OrderComparisonSQL(ordering, left, symbol, right)
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, T :SQLOrdering]
+		         (left :SQLExpression[F, S, T], cmp :Comparison, right :SQLExpression[F, S, T]) =
+			new OrderComparisonSQL(left, cmp, right)
 
-		trait OrderComparisonMatcher[+F <: FromClause, +Y[X]] {
-			def order[X](e :OrderComparisonSQL[F, X]) :Y[Boolean]
+		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
+			:Option[(SQLExpression[F, S, T], Comparison, SQLExpression[F, S, T]) forSome { type T }] =
+			e match {
+				case cmp :OrderComparisonSQL[F @unchecked, S @unchecked, t] =>
+					Some((cmp.left, cmp.comparison, cmp.right))
+				case _ => None
+			}
+
+		trait OrderComparisonMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def order[S >: LocalScope <: GlobalScope, X](e :OrderComparisonSQL[F, S, X]) :Y[S, Boolean]
 		}
 
-		type MatchOrderComparison[+F <: FromClause, +Y[X]] = OrderComparisonMatcher[F, Y]
+		type MatchOrderComparison[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = OrderComparisonMatcher[F, Y]
 
-		type CaseOrderComparison[+F <: FromClause, +Y[X]] = OrderComparisonMatcher[F, Y]
+		type CaseOrderComparison[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = OrderComparisonMatcher[F, Y]
 
 	}
 
@@ -165,91 +210,97 @@ object ConditionSQL {
 
 
 
-	case class EqualitySQL[-F <: FromClause, T](left :SQLExpression[F, T], right :SQLExpression[F, T])
-		extends ComparisonSQL[F, T]
+	case class EqualitySQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T]
+	                      (left :SQLExpression[F, S, T], right :SQLExpression[F, S, T])
+		extends ComparisonSQL[F, S, T]
 	{
 		override def freeValue :Option[Boolean] =
 			for (l <- left.freeValue; r <- right.freeValue) yield l == r
 
-		override def symbol :String = ComparisonSQL.EQ
+		override def comparison :Comparison = ComparisonSQL.EQ
 
 
+		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) :EqualitySQL[E, S, T] =
+			EqualitySQL(mapper(left), mapper(right))
 
-		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = EqualitySQL(mapper(left), mapper(right))
-
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.equality(this)
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.equality(this)
 
 	}
 
 
 
 	object EqualitySQL {
-		trait EqualityMatcher[+F <: FromClause, +Y[X]] {
-			def equality[X](e :EqualitySQL[F, X]) :Y[Boolean]
+		trait EqualityMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def equality[S >: LocalScope <: GlobalScope, X](e :EqualitySQL[F, S, X]) :Y[S, Boolean]
 		}
 
-		type MatchEquality[+F <: FromClause, +Y[X]] = EqualityMatcher[F, Y]
+		type MatchEquality[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = EqualityMatcher[F, Y]
 
-		type CaseEquality[+F <: FromClause, +Y[X]] = EqualityMatcher[F, Y]
+		type CaseEquality[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = EqualityMatcher[F, Y]
 	}
 
 
 
-	case class InequalitySQL[-F <: FromClause, T](left :SQLExpression[F, T], right :SQLExpression[F, T])
-		extends ComparisonSQL[F, T]
+	case class InequalitySQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T]
+	                        (left :SQLExpression[F, S, T], right :SQLExpression[F, S, T])
+		extends ComparisonSQL[F, S, T]
 	{
 		override def freeValue :Option[Boolean] =
 			for (l <- left.freeValue; r <- right.freeValue) yield l != r
 
-
-		override def symbol :String = ComparisonSQL.NEQ
-
+		override def comparison :Comparison = ComparisonSQL.NEQ
 
 
-		override def rephrase[S <: FromClause](mapper: SQLScribe[F, S]) = InequalitySQL(mapper(left), mapper(right))
+		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) :InequalitySQL[E, S, T] =
+			InequalitySQL(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.inequality(this)
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.inequality(this)
 
 	}
 
 
 
 	object InequalitySQL {
-		trait InequalityMatcher[+F <: FromClause, +Y[X]] {
-			def inequality[X](e :InequalitySQL[F, X]) :Y[Boolean]
+		trait InequalityMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def inequality[S >: LocalScope <: GlobalScope, X](e :InequalitySQL[F, S, X]) :Y[S, Boolean]
 		}
 
-		type MatchInequality[+F <: FromClause, +Y[X]] = InequalityMatcher[F, Y]
+		type MatchInequality[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = InequalityMatcher[F, Y]
 
-		type CaseInequality[+F <: FromClause, +Y[X]] = InequalityMatcher[F, Y]
+		type CaseInequality[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = InequalityMatcher[F, Y]
 	}
 
 
 
 
 
+	//consider: pattern as an SQLExpression
+	case class LikeSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope](expr :ColumnSQL[F, S, String], pattern :String)
+		extends ConditionSQL[F, S]
+	{
+		protected override def parts :Seq[SQLExpression[F, S, String]]= expr::Nil
 
-	case class LikeSQL[-F <: FromClause](expr :ColumnSQL[F, String], pattern :String) extends ConditionSQL[F] {
-		protected override def parts :Seq[SQLExpression[F, String]]= expr::Nil
-
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
+		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, Boolean] =
 			LikeSQL(mapper(expr), pattern)
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.like(this)
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.like(this)
 
-		override def toString = s"'$expr' like '$pattern'"
+		override def toString = s"'$expr' LIKE '$pattern'"
 	}
 
 
 
 	object LikeSQL {
-		trait LikeMatcher[+F <: FromClause, +Y[X]] {
-			def like(e :LikeSQL[F]) :Y[Boolean]
+		trait LikeMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def like[S >: LocalScope <: GlobalScope](e :LikeSQL[F, S]) :Y[S, Boolean]
 		}
 
-		type MatchLike[+F <: FromClause, +Y[X]] = LikeMatcher[F, Y]
+		type MatchLike[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = LikeMatcher[F, Y]
 
-		type CaseLike[+F <: FromClause, +Y[X]] = LikeMatcher[F, Y]
+		type CaseLike[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = LikeMatcher[F, Y]
 
 	}
 
@@ -258,19 +309,22 @@ object ConditionSQL {
 
 
 
-	case class ExistsSQL[-F <: FromClause, V, O](select :SelectSQL[F, V, O]) extends ConditionSQL[F] {
-		protected override def parts :Seq[SQLExpression[F, _]] = select::Nil
+	case class ExistsSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V](select :SelectSQL[F, S, V, _])
+		extends ConditionSQL[F, S]
+	{
+		protected override def parts :Seq[SQLExpression[F, S, _]] = select::Nil
 
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
+		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, Boolean] =
 			mapper(select) match {
-				case sel :SelectSQL[S, V, _] => sel.exists
+				case sel :SelectSQL[E, S, V, _] => sel.exists
 				case other =>
 					throw new IllegalArgumentException(
 						s"Can't map $this with $mapper because it didn't return a select expression: $other :${other.getClass}"
 					)
 			}
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.exists(this)
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.exists(this)
 
 		override def toString :String = s"EXISTS($select)"
 	}
@@ -278,13 +332,13 @@ object ConditionSQL {
 
 
 	object ExistsSQL {
-		trait ExistsMatcher[+F <: FromClause, +Y[X]] {
-			def exists[V, O](e :ExistsSQL[F, V, O]) :Y[Boolean]
+		trait ExistsMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def exists[S >: LocalScope <: GlobalScope, V](e :ExistsSQL[F, S, V]) :Y[S, Boolean]
 		}
 
-		type MatchExists[+F <: FromClause, +Y[X]] = ExistsMatcher[F, Y]
+		type MatchExists[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ExistsMatcher[F, Y]
 
-		type CaseExists[+F <: FromClause, +Y[X]] = ExistsMatcher[F, Y]
+		type CaseExists[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ExistsMatcher[F, Y]
 	}
 
 
@@ -292,29 +346,31 @@ object ConditionSQL {
 
 
 
-	case class In[-F <: FromClause, V](left :ColumnSQL[F, V], right :SQLExpression[F, Seq[V]])
-		extends ConditionSQL[F]
+	case class InSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
+	                (left :ColumnSQL[F, S, V], right :SQLExpression[F, S, Seq[V]])
+		extends ConditionSQL[F, S]
 	{
-		override protected def parts :Seq[SQLExpression[F, _]] = left::right::Nil
+		override protected def parts :Seq[SQLExpression[F, S, _]] = left::right::Nil
 
-		override def rephrase[S <: FromClause](mapper :SQLScribe[F, S]) :ColumnSQL[S, Boolean] =
-			In(mapper(left), mapper(right))
+		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, Boolean] =
+			InSQL(mapper(left), mapper(right))
 
-		override def applyTo[Y[_]](matcher :ColumnMatcher[F, Y]) :Y[Boolean] = matcher.in(this)
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.in(this)
 
 		override def toString :String = s"($left IN $right)"
 	}
 
 
 
-	object In {
-		trait InMatcher[+F <: FromClause, +Y[X]] {
-			def in[V](e :In[F, V]) :Y[Boolean]
+	object InSQL {
+		trait InMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def in[S >: LocalScope <: GlobalScope, V](e :InSQL[F, S, V]) :Y[S, Boolean]
 		}
 
-		type MatchIn[+F <: FromClause, +Y[X]] = InMatcher[F, Y]
+		type MatchIn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = InMatcher[F, Y]
 
-		type CaseIn[+F <: FromClause, +Y[X]] = InMatcher[F, Y]
+		type CaseIn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = InMatcher[F, Y]
 	}
 
 
@@ -322,27 +378,27 @@ object ConditionSQL {
 
 
 
-	trait ConditionMatcher[+F <: FromClause, +Y[X]]
+	trait ConditionMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends IsNullMatcher[F, Y] with ComparisonMatcher[F, Y] with LikeMatcher[F, Y]
 		   with ExistsMatcher[F, Y] with InMatcher[F, Y]
 
-	trait MatchCondition[+F <: FromClause, +Y[X]]
-		extends CaseIsNull[F, Y] with CaseComparison[F, Y] with CaseLike[F, Y] with CaseExists[F, Y] with CaseIn[F, Y]
+	trait MatchCondition[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ConditionMatcher[F, Y]
+		with CaseIsNull[F, Y] with CaseComparison[F, Y] with CaseLike[F, Y] with CaseExists[F, Y] with CaseIn[F, Y]
 
-	trait CaseCondition[+F <: FromClause, +Y[X]] extends ConditionMatcher[F, Y] with MatchCondition[F, Y] {
-		def condition(e :ConditionSQL[F]) :Y[Boolean]
+	trait CaseCondition[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchCondition[F, Y] {
+		def condition[S >: LocalScope <: GlobalScope](e :ConditionSQL[F, S]) :Y[S, Boolean]
 
-		override def isNull[T](e :IsNULL[F, T]) :Y[Boolean] = condition(e)
+		override def comparison[S >: LocalScope <: GlobalScope, X](e :ComparisonSQL[F, S, X]) :Y[S, Boolean] =
+			condition(e)
 
-		override def comparison[X](e :ComparisonSQL[F, X]) :Y[Boolean] = condition(e)
+		override def isNull[S >: LocalScope <: GlobalScope, T](e :IsNULL[F, S, T]) :Y[S, Boolean] = condition(e)
 
-		override def like(e :LikeSQL[F]) :Y[Boolean] = condition(e)
+		override def like[S >: LocalScope <: GlobalScope](e :LikeSQL[F, S]) :Y[S, Boolean] = condition(e)
 
-		override def in[V](e :In[F, V]) :Y[Boolean] = condition(e)
+		override def in[S >: LocalScope <: GlobalScope, V](e :InSQL[F, S, V]) :Y[S, Boolean] = condition(e)
 
-		override def exists[V, O](e :ExistsSQL[F, V, O]) :Y[Boolean] = condition(e)
+		override def exists[S >: LocalScope <: GlobalScope, V](e :ExistsSQL[F, S, V]) :Y[S, Boolean] = condition(e)
 	}
-
 
 
 }
