@@ -164,19 +164,17 @@ object SQLTerm {
 		extends SQLLiteral[T](literal) with ColumnTerm[T]
 	{
 		override def &&[E <: FromClause, O >: LocalScope <: GlobalScope]
-		               (other: ColumnSQL[E, O, Boolean])(implicit ev: this.type <:< ColumnSQL[E, O, Boolean])
-				:ColumnSQL[E, O, Boolean] =
+		               (other: ColumnSQL[E, O, Boolean])(implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
 			if (value.asInstanceOf[Boolean]) other
-			else ev(this)
+			else cast[Boolean]
 
 		override def ||[E <: FromClause, O >: LocalScope <: GlobalScope]
-		               (other: ColumnSQL[E, O, Boolean])(implicit ev: this.type <:< ColumnSQL[E, O, Boolean])
-				:ColumnSQL[E, O, Boolean] =
-			if (value.asInstanceOf[Boolean]) ev(this)
+		               (other: ColumnSQL[E, O, Boolean])(implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
+			if (value.asInstanceOf[Boolean]) cast[Boolean]
 			else other
 
 		override def unary_![E <: FromClause, O >: LocalScope <: GlobalScope]
-		                    (implicit ev :this.type <:< ColumnSQL[E, O, Boolean]) :ColumnSQL[E, O, Boolean] =
+		                    (implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
 			if (value.asInstanceOf[Boolean]) False else True
 
 
@@ -437,12 +435,12 @@ object SQLTerm {
 
 
 		override def &&[E <: FromClause, O >: LocalScope <: GlobalScope]
-		               (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
+		               (other :ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean)
 				:ColumnSQL[E, O, Boolean] =
 			other
 
 		override def ||[E <: FromClause, O >: LocalScope <: GlobalScope]
-		               (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
+		               (other :ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean)
 				:ColumnSQL[E, O, Boolean] =
 			this
 
@@ -461,13 +459,12 @@ object SQLTerm {
 		}
 
 
-
 		override def &&[E <: FromClause, O >: LocalScope <: GlobalScope]
-		               (other :SQLBoolean[E, O])(implicit ev :this.type <:< SQLBoolean[E, O]) :SQLBoolean[E, O] =
+		               (other :SQLBoolean[E, O])(implicit ev :Boolean =:= Boolean) :SQLBoolean[E, O] =
 			this
 
 		override def ||[E <: FromClause, O >: LocalScope <: GlobalScope]
-		               (other :SQLBoolean[E, O])(implicit ev :this.type <:< SQLBoolean[E, O]) :SQLBoolean[E, O] =
+		               (other :SQLBoolean[E, O])(implicit ev :Boolean =:= Boolean) :SQLBoolean[E, O] =
 			other
 
 		override def toString = "False"

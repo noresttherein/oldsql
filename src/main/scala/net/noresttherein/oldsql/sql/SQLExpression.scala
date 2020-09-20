@@ -89,6 +89,9 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 
 //todo: arithmetic
 
+	/** Casts this expression to one with value type `T` based on implicit evidence. */
+	def cast[T](implicit ev :V =:= T) :SQLExpression[F, S, T] =
+		ev.substituteCo[({ type E[X] = SQLExpression[F, S, X] })#E](this)
 
 	/** Lifts this expression to one of type `X`, without any effect on the actual generated SQL. */
 	def to[X](implicit lift :Lift[V, X]) :SQLExpression[F, S, X] = PromotionConversion(this, lift)

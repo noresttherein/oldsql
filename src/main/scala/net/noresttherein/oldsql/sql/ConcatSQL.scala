@@ -12,6 +12,8 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 class ConcatSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope] private (protected override val parts :List[ColumnSQL[F, S, String]])
 	extends CompositeColumnSQL[F, S, String]
 {
+	override def readForm :ColumnReadForm[String] = implicitly[ColumnForm[String]]
+
 	override def inOrder :Seq[ColumnSQL[F, S, String]] = parts.reverse
 
 
@@ -24,8 +26,6 @@ class ConcatSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope] private (prot
 
 	override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, String] =
 		new ConcatSQL(parts.map(mapper.apply))
-
-	override def readForm :ColumnReadForm[String] = implicitly[ColumnForm[String]]
 
 	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, String] =
 		matcher.concat(this)

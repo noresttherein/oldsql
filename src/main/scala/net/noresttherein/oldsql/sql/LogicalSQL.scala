@@ -35,8 +35,7 @@ object LogicalSQL {
 		override def freeValue: Option[Boolean] = expression.freeValue.map(!_)
 
 
-		override def unary_![E <: F, O >: LocalScope <: S]
-		                    (implicit ev :this.type <:< ColumnSQL[E, O, Boolean]) :ColumnSQL[E, O, Boolean] =
+		override def unary_![E <: F, O >: LocalScope <: S](implicit ev :Boolean =:= Boolean) :ColumnSQL[E, O, Boolean] =
 			expression
 
 
@@ -83,14 +82,14 @@ object LogicalSQL {
 		}
 
 		override def and[E <: F, O >: LocalScope <: S]
-		             (other: ColumnSQL[E, O, Boolean])(implicit ev: this.type <:< ColumnSQL[E, O, Boolean]): AND[E, O] =
+		             (other: ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean): AND[E, O] =
 			other match {
 				case and :AND[E, O] => new AND(and.parts ::: parts)
 				case _ => new AND(other :: parts)
 			}
 
 		override def &&[E <: F, O >: LocalScope <: S]
-		               (other :ColumnSQL[E, O, Boolean])(implicit ev: this.type <:< ColumnSQL[E, O, Boolean])
+		               (other :ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean)
 				:ColumnSQL[E, O, Boolean] =
 			other match {
 				case True() => this
@@ -169,15 +168,14 @@ object LogicalSQL {
 
 
 		override def or[E <: F, O >: LocalScope <: S]
-		               (other: ColumnSQL[E, O, Boolean])(implicit ev: this.type <:< ColumnSQL[E, O, Boolean]): OR[E, O] =
+		               (other: ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean): OR[E, O] =
 			other match {
 				case or :OR[E, O] => new OR(or.parts ::: parts)
 				case _ => new OR(other :: parts)
 			}
 
 		override def ||[E <: F, O >: LocalScope <: S]
-		               (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
-				:ColumnSQL[E, O, Boolean] =
+		               (other :ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean) :ColumnSQL[E, O, Boolean] =
 			other match {
 				case True() => other
 				case False() => this

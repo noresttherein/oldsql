@@ -31,46 +31,43 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 	def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(this, alias)
 
-	//todo: replace this.type <:< ColumnSQL[E, O, Boolean] with V =:= Boolean
+
 	def and[E <: F, O >: LocalScope <: S]
-	       (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
-			:ColumnSQL[E, O, Boolean] =
-		AND(ev(this)) and other
+	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =
+		AND(cast[Boolean]) and other
 
 	def or [E <: F, O >: LocalScope <: S]
-	       (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
-			:ColumnSQL[E, O, Boolean] =
-		OR(ev(this)) or other
+	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =
+		OR(cast[Boolean]) or other
 
 	def && [E <: F, O >: LocalScope <: S]
-	       (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
-			:ColumnSQL[E, O, Boolean] =
+	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =
 		other match {
-			case True() => ev(this)
+			case True() => cast[Boolean]
 			case False() => other
 			case _ => this and other
 		}
 
 	def || [E <: F, O >: LocalScope <: S]
-	       (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
+	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean)
 			:ColumnSQL[E, O, Boolean] =
 		other match {
 			case True() => other
-			case False() => ev(this)
+			case False() => cast[Boolean]
 			case _ => this or other
 		}
 
-	def unary_![E <: F, O >: LocalScope <: S]
-	           (implicit ev :this.type <:< ColumnSQL[E, O, Boolean]) :ColumnSQL[E, O, Boolean] = NOT(ev(this))
+	def unary_![E <: F, O >: LocalScope <: S](implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =
+		NOT(cast[Boolean])
 
 
 
 	def like(pattern :String)(implicit isString :V =:= String) :ColumnSQL[F, S, Boolean] =
-		LikeSQL(isString.substituteCo[({ type E[X] = ColumnSQL[F, S, X] })#E](this), pattern)
+		LikeSQL(cast[String], pattern)
 
 	def +[E <: F, O >: LocalScope <: S]
 	     (other :ColumnSQL[E, O, String])(implicit ev :V =:= String) :ColumnSQL[E, O, String] =
-		ConcatSQL(ev.substituteCo[({ type T[X] = ColumnSQL[E, S, X] })#T](this)) + other
+		ConcatSQL(cast[String]) + other
 
 //todo: arithmetic
 
@@ -80,6 +77,9 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 		new InSQL(lift.left(this), SeqTuple(that.parts.map(lift.right.apply[E, O])))
 
 
+
+	override def cast[T](implicit ev :V =:= T) :ColumnSQL[F, S, T] =
+		ev.substituteCo[({ type E[X] = ColumnSQL[F, S, X] })#E](this)
 
 	override def to[X](implicit lift :Lift[V, X]) :ColumnSQL[F, S, X] =
 		ColumnPromotionConversion(this, lift)
