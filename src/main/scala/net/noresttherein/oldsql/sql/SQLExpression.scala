@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, C
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, False, NULL, SQLLiteral, SQLParameter, SQLParameterColumn, SQLTermFactory, TermMatcher, True}
+import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, False, SQLLiteral, SQLParameter, SQLTermFactory, TermMatcher, True}
 import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, MappingMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
@@ -642,5 +642,5 @@ object SQLExpression extends SQLMultiColumnTerms {
 	}
 
 
-
 }
+

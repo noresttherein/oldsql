@@ -174,8 +174,8 @@ object DecoratedFrom {
 
 	object GenericDecorator {
 
-		@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
-			"and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
+		@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} and " +
+		                  "the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
 		class GenericDecoratorComposition
 		            [F <: D[C], C <: FromSome,
 		             D[+B <: FromSome] <: GenericDecorator[B] { type WithClause[+P <: FromSome] <: D[P] }]
@@ -299,8 +299,8 @@ object DecoratedFrom {
 	}
 
 
-	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
-		"and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
+	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} and " +
+	                  "the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
 	abstract class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: DecoratedFrom[B], U <: FromClause]
 		extends DecoratorDecomposition[F, C, D, U] with ClauseComposition[F, C, U]
 

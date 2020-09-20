@@ -193,7 +193,7 @@ object AndFrom {
 	  * @param right the second relation of the ''from'' clause.
 	  */
 	def apply[L[O] <: MappingAt[O], LG[O] <: BaseMapping[A, O], A,
-		      R[O] <: MappingAt[O], RG[O] <: BaseMapping[B, O], B]
+	          R[O] <: MappingAt[O], RG[O] <: BaseMapping[B, O], B]
 	         (left :Relation[L], right :Relation[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LG, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RG, B])

@@ -189,9 +189,10 @@ object ColumnSQL {
 			extends ConditionMatcher[F, Y] with LogicalMatcher[F, Y] with ArithmeticMatcher[F, Y]
 			   with ConcatMatcher[F, Y] with ColumnConversionMatcher[F, Y] with AliasedColumnMatcher[F, Y]
 
-		trait MatchCompositeColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends CompositeColumnMatcher[F, Y]
-			with CaseCondition[F, Y] with CaseLogical[F, Y] with CaseArithmetic[F, Y] with CaseColumnConversion[F, Y]
-			with CaseConcat[F, Y] with CaseAliasedColumn[F, Y]
+		trait MatchCompositeColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+			extends CompositeColumnMatcher[F, Y]
+			   with CaseCondition[F, Y] with CaseLogical[F, Y] with CaseArithmetic[F, Y] with CaseColumnConversion[F, Y]
+			   with CaseConcat[F, Y] with CaseAliasedColumn[F, Y]
 
 		trait CaseCompositeColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends MatchCompositeColumn[F, Y]
@@ -200,7 +201,8 @@ object ColumnSQL {
 
 			override def alias[S >: LocalScope <: GlobalScope, V](e :AliasedColumn[F, S, V]) :Y[S, V] = composite(e)
 
-			override def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V] = composite(e)
+			override def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V] =
+				composite(e)
 
 			override def concat[S >: LocalScope <: GlobalScope](e :ConcatSQL[F, S]) :Y[S, String] = composite(e)
 

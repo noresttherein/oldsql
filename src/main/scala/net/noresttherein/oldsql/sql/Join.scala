@@ -173,7 +173,7 @@ object JoinLike {
 	  * @return an unfiltered `From[L] InnerJoin R` clause joining the two relations.
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
-		      R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
+	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Relation[L], right :Relation[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
@@ -374,7 +374,7 @@ object Join {
 	  * @return an unfiltered `From[L] InnerJoin R` clause joining the two relations.
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
-		      R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
+	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Relation[L], right :Relation[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
@@ -574,7 +574,7 @@ object InnerJoin {
 	  * @return an unfiltered `From[L] InnerJoin R` clause joining the two relations.
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
-		      R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
+	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Relation[L], right :Relation[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
@@ -894,7 +894,7 @@ object LeftJoin {
 	  * @return an unfiltered `From[L] LeftJoin R` clause joining the two relations.
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
-		      R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
+	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Relation[L], right :Relation[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], LeftJoin, R, RB, B])
@@ -1051,7 +1051,7 @@ object RightJoin {
 	  * @return an unfiltered `From[L] RightJoin R` clause joining the two relations.
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
-		      R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
+	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Relation[L], right :Relation[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], RightJoin, R, RB, B])

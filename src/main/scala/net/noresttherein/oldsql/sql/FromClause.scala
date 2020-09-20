@@ -2065,7 +2065,7 @@ object FromClause {
 	  * (or `From`).
 	  */
 	@implicitNotFound("Can't calculate the size of the FROM clause ${F}.\nEither the clause is incomplete " +
-		              "or the expected number ${N} is incorrect. Missing implicit: FromClauseSize[${F}, ${N}].")
+	                  "or the expected number ${N} is incorrect. Missing implicit: FromClauseSize[${F}, ${N}].")
 	class FromClauseSize[-F <: FromClause, N <: Numeral] private (private val n :Int) extends AnyVal {
 		/** The number of tables in the clause `F`. */
 		@inline def size :N = n.asInstanceOf[N] //val size :N crashes scalac

@@ -147,8 +147,8 @@ object ConditionSQL {
 
 	class OrderComparisonSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T]
 	                        (override val left :SQLExpression[F, S, T], override val comparison :Comparison,
-							 override val right :SQLExpression[F, S, T])
-							(implicit val ordering :SQLOrdering[T])
+	                         override val right :SQLExpression[F, S, T])
+	                        (implicit val ordering :SQLOrdering[T])
 		extends ComparisonSQL[F, S, T]
 	{
 		import ComparisonSQL._
@@ -188,7 +188,7 @@ object ConditionSQL {
 			new OrderComparisonSQL(left, cmp, right)
 
 		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
-			:Option[(SQLExpression[F, S, T], Comparison, SQLExpression[F, S, T]) forSome { type T }] =
+				:Option[(SQLExpression[F, S, T], Comparison, SQLExpression[F, S, T]) forSome { type T }] =
 			e match {
 				case cmp :OrderComparisonSQL[F @unchecked, S @unchecked, t] =>
 					Some((cmp.left, cmp.comparison, cmp.right))

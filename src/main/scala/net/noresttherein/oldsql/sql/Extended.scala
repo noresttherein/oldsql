@@ -232,7 +232,7 @@ object Compound {
 	  *           of its (and, by extension, `R`'s) type parameters (`S`).
 	  */
 	@implicitNotFound("Failed to infer the Subject type of mapping ${R}: cannot prove that " +
-		              "${R}[O] <: ${T}[O] with ${U}. This may be caused by the inferred type ${T} or its subject type S " +
+	                  "${R}[O] <: ${T}[O] with ${U}. This may be caused by the inferred type ${T} or its subject type S " +
 	                  "occurring before the implicit parameter JoinedRelationSubject[${F}, ${R}, ${T}, ${U}] " +
 	                  "(alias InferSubject[?, ?, ${R}, ${T}, ?]) or in the method's result type.")
 	sealed abstract class JoinedRelationSubject[F[M[O] <: MappingAt[O]] <: FromClause,

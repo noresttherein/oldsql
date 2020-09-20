@@ -42,7 +42,7 @@ object ArithmeticSQL {
 
 	class UnaryOperationSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
 	                       (val operation :UnaryOperation, val value :ColumnSQL[F, S, V])
-						   (implicit val arithmetic :SQLArithmetic[V])
+	                       (implicit val arithmetic :SQLArithmetic[V])
 		extends ArithmeticSQL[F, S, V]
 	{
 		override def readForm :ColumnReadForm[V] = value.readForm
@@ -124,7 +124,7 @@ object ArithmeticSQL {
 
 	class BinaryOperationSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
 	                  (val left :ColumnSQL[F, S, V], val operation :BinaryOperation, val right :ColumnSQL[F, S, V])
-					  (implicit val arithmetic :SQLArithmetic[V])
+	                  (implicit val arithmetic :SQLArithmetic[V])
 		extends ArithmeticSQL[F, S, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm

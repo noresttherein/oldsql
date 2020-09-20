@@ -242,8 +242,8 @@ object SQLScribe {
 
 	class ReplaceRelation[T[X] <: BaseMapping[E, X], E, N[X] <: BaseMapping[V, X], V, F <: FromClause, G <: FromClause]
 	                     (override val oldClause :F, override val newClause :G)
-                         (relation :RelationSQL[F, T, E, _ >: F <: FromClause],
-                          replacement :ComponentSQL[G, N, V, T, E, _ >: G <: FromClause])
+	                     (relation :RelationSQL[F, T, E, _ >: F <: FromClause],
+	                      replacement :ComponentSQL[G, N, V, T, E, _ >: G <: FromClause])
 		extends SubstituteComponents[F, G]
 	{
 		override def relation[M[X] <: BaseMapping[S, X], S, J >: F <: FromClause](e :RelationSQL[F, M, S, J]) =
@@ -276,8 +276,8 @@ object SQLScribe {
 	private[sql] def replaceParam[F <: FromClause, T[A] <: FromParam[P, A], P,
 	                              G <: FromClause, M[A] <: FromParam[X, A], X, O >: G <: FromClause]
 	                             (oldClause :F, newClause :G,
-								  oldParam :RelationSQL[F, T, P, _ >: F <: FromClause],
-								  newParam :RelationSQL[G, M, X, O], substitute :X =?> P)
+	                              oldParam :RelationSQL[F, T, P, _ >: F <: FromClause],
+	                              newParam :RelationSQL[G, M, X, O], substitute :X =?> P)
 			:SQLScribe[F, G] =
 		new ReplaceParam[F, T, P, G, M, X, O](oldClause, newClause)(oldParam, newParam, substitute)
 
@@ -286,7 +286,7 @@ object SQLScribe {
 	                           -G <: FromClause, N[A] <: FromParam[X, A], X, O >: G <: FromClause]
 	                          (protected[this] override val oldClause :F, protected[this] override val newClause :G)
 	                          (oldParam :RelationSQL[F, M, P, _ >: F <: FromClause],
-							   newParam :RelationSQL[G, N, X, O], extractor :X =?> P)
+	                           newParam :RelationSQL[G, N, X, O], extractor :X =?> P)
 		extends RecursiveScribe[F, G]
 	{
 		protected override def extended[S <: FromClause, E <: FromClause]
@@ -457,7 +457,7 @@ object SQLScribe {
 
 	private class ApplyParam[+F <: FromClause, -G <: FromClause, X](
 	                         protected[this] override val oldClause :F, protected[this] override val newClause :G,
-							 param :X, idx :Int)
+	                         param :X, idx :Int)
 		extends RecursiveScribe[F, G] //with CaseColumnComponent[F, ColumnResult[G]#T]
 	{
 

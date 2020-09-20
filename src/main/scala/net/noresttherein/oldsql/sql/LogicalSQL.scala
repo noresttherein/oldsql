@@ -124,7 +124,8 @@ object LogicalSQL {
 		def apply[F <: FromClause, S >: LocalScope <: GlobalScope](parts :ColumnSQL[F, S, Boolean]*) :AND[F, S] =
 			new AND(parts.toList.reverse)
 
-		def unapplySeq[F <: FromClause, S >: LocalScope <: GlobalScope](e :AND[F, S]) :Seq[ColumnSQL[F, S, Boolean]] = e.conditions
+		def unapplySeq[F <: FromClause, S >: LocalScope <: GlobalScope](e :AND[F, S]) :Seq[ColumnSQL[F, S, Boolean]] =
+			e.conditions
 
 		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
 				:Option[Seq[ColumnSQL[F, S, Boolean]]] =
@@ -185,7 +186,8 @@ object LogicalSQL {
 			}
 
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] = matcher.or(this)
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+			matcher.or(this)
 
 		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) = new OR(parts.map(mapper(_)))
 
