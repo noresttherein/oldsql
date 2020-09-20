@@ -166,7 +166,7 @@ trait FromClause { thisClause =>
 	def last :LastTable[FromLast]
 
 	/** The last relation in this clause as an expression based on some extending clause `E`.
-	  * This is equivalent to `last.extend[E]`, but returns the result as the narrowed `LastTable[E]` rather than
+	  * This is equivalent to `last.asIn[E]`, but returns the result as the narrowed `LastTable[E]` rather than
 	  * `JoinedRelation[E, LastMapping]`. Thus it preserves the `Nothing` return type for empty clauses and allows
 	  * its use in the `on` filtering method.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.PrefixOf]]
@@ -672,7 +672,7 @@ trait FromClause { thisClause =>
 	  * as expressions based on the clause it was called for.
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  */
-	def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :LocalBoolean[E]
+	def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E]
 
 
 
@@ -1216,7 +1216,7 @@ object FromClause {
 		}
 
 		override def lastAsIn[E <: FromClause](implicit extension :FromLast PrefixOf E) :JoinedRelation[E, LastMapping] =
-			last.extend[E]
+			last.asIn[E]
 
 		override def isEmpty = false
 
@@ -1514,7 +1514,7 @@ object FromClause {
 	  * is an `SQLExpression[F, _]`. If `F &lt;: GeneralizedFrom`, then such a subselect expression can be used
 	  * as a part of both ''select'' and ''where'' clauses of a select from `F`. On the other hand,
 	  * an `SQLExpression[F, T]` is convertible to `SQLExpression[S, T]` by a call
-	  * [[net.noresttherein.oldsql.sql.SQLExpression#stretch stretch]]`(s)(s.explicitSpan)`.
+	  * [[net.noresttherein.oldsql.sql.SQLExpression#extend extend]]`(s)(s.explicitSpan)`.
 	  *
 	  * Perhaps counterintuitively, this type is contravariant rather than covariant. There are two reasons behind it:
 	  * one, preventing any type from becoming a subselect clause of a clause with a more abstract prefix (with fewer
@@ -2329,7 +2329,7 @@ object FromClause {
 			def stretch :S PrefixOf G
 
 			/** Getter for the matching relation. */
-			def apply(from :F) :JoinedRelation[G, T] = table(from).extend(stretch)
+			def apply(from :F) :JoinedRelation[G, T] = table(from).asIn(stretch)
 
 			/** The returned relation based on its containig extension clause `S`, before extending it over `F`. */
 			private[FromClause] def table(from :F) :JoinedRelation[S, T]

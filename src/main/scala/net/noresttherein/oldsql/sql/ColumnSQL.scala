@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
 import net.noresttherein.oldsql.sql.ConcatSQL.{CaseConcat, ConcatMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseColumnConversion, ColumnConversionMatcher, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf}
 import net.noresttherein.oldsql.sql.LogicalSQL.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.CaseFreeColumn
@@ -26,6 +26,11 @@ import net.noresttherein.oldsql.sql.TupleSQL.SeqTuple
   */
 trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQLExpression[F, S, V] {
 	override def readForm :ColumnReadForm[V]
+
+	override def asGlobal :Option[ColumnSQL[F, GlobalScope, V]]
+
+	def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(this, alias)
+
 	//todo: replace this.type <:< ColumnSQL[E, O, Boolean] with V =:= Boolean
 	def and[E <: F, O >: LocalScope <: S]
 	       (other :ColumnSQL[E, O, Boolean])(implicit ev :this.type <:< ColumnSQL[E, O, Boolean])
@@ -75,6 +80,7 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 		new InSQL(lift.left(this), SeqTuple(that.parts.map(lift.right.apply[E, O])))
 
 
+
 	override def to[X](implicit lift :Lift[V, X]) :ColumnSQL[F, S, X] =
 		ColumnPromotionConversion(this, lift)
 
@@ -86,7 +92,16 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 	override def basedOn[E <: FromClause](implicit subtype :E <:< F) :ColumnSQL[E, S, V] =
 		this.asInstanceOf[ColumnSQL[E, S, V]]
 
-	override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :ColumnSQL[E, S, V]
+	override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :ColumnSQL[E, S, V]
+
+	override def extend[U <: F, E <: FromClause]
+	                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, V]
+
+
+	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V] =
+		applyTo(matcher :ColumnMatcher[F, Y])
+
+	def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V]
 
 
 
@@ -95,17 +110,6 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 	override def subselectFrom[E <: F, O](from :E) :SubselectColumn[from.Base, V, O] =
 		SelectSQL.subselect[from.Base, from.type, V, O](from, this)
-
-
-
-	def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(this, alias)
-
-
-
-	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V] =
-		applyTo(matcher :ColumnMatcher[F, Y])
-
-	def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V]
 
 }
 
@@ -130,6 +134,13 @@ object ColumnSQL {
 		protected override val parts :Seq[ColumnSQL[F, S, _]] = column::Nil
 
 		override def readForm :ColumnReadForm[V] = column.readForm
+
+		override def isGlobal :Boolean = column.isGlobal
+
+		override def asGlobal :Option[AliasedColumn[F, GlobalScope, V]] =
+			if (column.isGlobal) Some(this.asInstanceOf[AliasedColumn[F, GlobalScope, V]])
+			else None
+
 
 		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, V] =
 			new AliasedColumn(mapper(column), alias)
@@ -156,10 +167,18 @@ object ColumnSQL {
 	trait CompositeColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, X]
 		extends CompositeSQL[F, S, X] with ColumnSQL[F, S, X]
 	{
-		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, X]
+		override def asGlobal :Option[ColumnSQL[F, GlobalScope, X]] =
+			if (isGlobal) Some(this.asInstanceOf[ColumnSQL[F, GlobalScope, X]])
+			else None
 
-		override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :ColumnSQL[E, S, X] =
-			rephrase(SQLScribe.stretcher(base))
+		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :ColumnSQL[E, S, X] =
+			rephrase(SQLScribe.extend(base))
+
+		override def extend[U <: F, E <: FromClause]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, X] =
+			rephrase(SQLScribe.extend(base))
+
+		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, X]
 	}
 
 

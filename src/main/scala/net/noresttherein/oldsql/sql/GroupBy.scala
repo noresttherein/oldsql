@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -59,8 +59,8 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 
 	override def filter :LocalBoolean[Generalized] = condition
 
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :LocalBoolean[E] =
-		condition.stretch(target)
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] =
+		condition.basedOn(target)
 
 	override def having(filter :LocalBoolean[Generalized]) :This =
 		if (filter == True) this else withCondition(condition && filter)
@@ -74,7 +74,7 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 
 	override def fullRow[E <: FromClause]
 	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		left.outerRow(target)(explicitSpan.extend(extension)) ~ last.stretch(target)
+		left.outerRow(target)(explicitSpan.extend(extension)) ~ last.extend(target)
 
 
 	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
@@ -110,7 +110,7 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 
 	override def innerRow[E <: FromClause]
 	                     (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, InnerRow] =
-		EmptyChain ~ last.stretch(target)
+		EmptyChain ~ last.extend(target)
 
 	override type OuterRow = left.OuterRow
 
@@ -200,12 +200,12 @@ object GroupByAll {
 
 
 			override def fullTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) =
-				last.stretch(target) #:: outer.fullTableStack(target)(explicitSpan.extend(extension))
+				last.extend(target) #:: outer.fullTableStack(target)(explicitSpan.extend(extension))
 
 
 			override def innerTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 					:LazyList[RelationSQL.AnyIn[E]] =
-				last.stretch(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
+				last.extend(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 		}
 
@@ -329,8 +329,8 @@ object GroupByAll {
 		  */ //overriden due to a conflict between Compound and GroupByClause
 		override def condition :LocalBoolean[Generalized]
 
-		override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :LocalBoolean[E] =
-			left.filter(target)(extension.extendFront[left.Generalized, G]) && condition.stretch(target)
+		override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] =
+			left.filter(target)(extension.extendFront[left.Generalized, G]) && condition.basedOn(target)
 
 		override def having(filter :LocalBoolean[Generalized]) :This =
 			if (filter == True) this else withCondition(condition && filter)

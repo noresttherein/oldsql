@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.sql.AggregateSQL.AggregateFunction
 import net.noresttherein.oldsql.sql.GroupedExpression.{FlatMapGroup, MapGroup}
 import net.noresttherein.oldsql.sql.ArithmeticSQL.SQLArithmetic
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
 
 
@@ -25,10 +25,17 @@ class AggregateSQL[-F <: FromClause, X, Y]
 		if (isDistinct) this
 		else new AggregateSQL[F, X, Y](function, expr, true)
 
-	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, R]) :R[LocalScope, Y] = ??? //matcher.aggregate(this)
+	override def isGlobal = false
+	override def asGlobal :Option[Nothing] = None
 
-	override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :AggregateSQL[E, X, Y] = ???
-//		new AggregateSQL[E, S, T](function, expr.stretch(base), isDistinct)
+
+	override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :AggregateSQL[E, X, Y] = ???
+
+	override def extend[U <: F, E <: FromClause]
+	                   (base :E)(implicit extension :U ExtendedBy E, global: GlobalScope <:< LocalScope) :AggregateSQL[E, X, Y] = ???
+//		new AggregateSQL[E, S, T](function, expr.extend(base), isDistinct)
+
+	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, R]) :R[LocalScope, Y] = ??? //matcher.aggregate(this)
 
 	override def isomorphic(that: SQLExpression.*) :Boolean = that match {
 		case self :AnyRef if self eq this => true
@@ -102,17 +109,27 @@ object AggregateSQL {
 				override def readForm :ColumnReadForm[Nothing] =
 					ColumnReadForm.unsupported("count(*).readForm")
 
-				override def stretch[U <: FromClause, E <: FromClause]
-				                    (base :E)(implicit ev :U ExtendedBy E) :ColumnSQL[E, LocalScope, Nothing] = this
 
-				override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[FromClause, Y]) :Y[LocalScope, Nothing] = ??? //matcher.*(this)
+				override def asGlobal :Option[ColumnSQL[FromClause, GlobalScope, Nothing]] = None
+
+				override def basedOn[U <: FromClause, E <: FromClause]
+				                    (base :E)(implicit ext :U PartOf E) :ColumnSQL[E, LocalScope, Nothing] =
+					this
+
+				override def extend[U <: FromClause, E <: FromClause]
+				                    (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< LocalScope)
+						:ColumnSQL[E, LocalScope, Nothing] =
+					this
+
+				override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+				                    (matcher :ColumnMatcher[FromClause, Y]) :Y[LocalScope, Nothing] = ??? //matcher.*(this)
 
 				override def isomorphic(expression: SQLExpression.*) :Boolean = this == expression
 
 				override def toString = "*"
 			}
 
-//			override def stretch[S <: FromClause, E <: GroupByClause]
+//			override def extend[S <: FromClause, E <: GroupByClause]
 //			                    (base :E)(implicit extension :S ExtendedBy E) :GroupedExpression[E, Nothing] = this
 
 			override def toString = "*"
@@ -196,7 +213,7 @@ trait GroupedExpression[-F <: FromClause, V] {
 
 	def flatMap[I, G <: GroupedExpression[_, _]](f :I => G)(implicit doMap :FlatMapGroup[this.type, I, G]) :G = doMap(this, f)
 
-//	def stretch[S <: F, E <: GroupByClause](base :E)(implicit extension :S ExtendedBy E) :GroupedExpression[E, V] =
+//	def extend[S <: F, E <: GroupByClause](base :E)(implicit extension :S ExtendedBy E) :GroupedExpression[E, V] =
 
 	def isomorphic(that :GroupedExpression[_ <: FromClause, _]) :Boolean = expr isomorphic that.expr
 
@@ -231,7 +248,7 @@ object GroupedExpression {
 
 		def mapping :M = expr.mapping
 
-//		override def stretch[S <: F, E <: GroupByClause]
+//		override def extend[S <: F, E <: GroupByClause]
 //		                    (base :E)(implicit extension :ExtendedBy[S, E]) :GroupedExpression[E, M#Subject] = ???
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[MappingGroupedExpression[_, _]]

@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.As
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLScribe.ReplaceRelation
@@ -306,8 +306,8 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]] extends JoinLike[L, R] w
 		right.joinedWith(left, this)
 
 	
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :GlobalBoolean[E] =
-		left.filter(target)(extension.extendFront[left.Generalized, R]) && condition.stretch(target)
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
+		left.filter(target)(extension.extendFront[left.Generalized, R]) && condition.basedOn(target)
 
 	
 	
@@ -1245,8 +1245,8 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]] extends JoinLik
 
 
 
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :GlobalBoolean[E] =
-		condition.stretch(target)
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
+		condition.basedOn(target)
 
 
 	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
@@ -1260,7 +1260,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]] extends JoinLik
 
 	override def innerRow[E <: FromClause]
 	             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, @~ ~ last.Subject] =
-		ChainTuple.EmptyChain ~ last.stretch(target)(extension)
+		ChainTuple.EmptyChain ~ last.extend(target)(extension, implicitly[GlobalScope <:< GlobalScope])
 
 
 	override type OuterRow = left.FullRow
@@ -1364,7 +1364,7 @@ object Subselect {
 
 			override def innerTableStack[E <: FromClause]
 			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
-				last.stretch(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
+				last.extend(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
 			override def as[A <: Label](alias :A) :left.type Subselect (R As A)#T = {

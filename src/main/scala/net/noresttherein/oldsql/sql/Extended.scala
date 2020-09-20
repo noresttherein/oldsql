@@ -75,7 +75,7 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { th
 
 
 	override def lastAsIn[E <: FromClause](implicit extension :FromLast PrefixOf E) :JoinedRelation[E, R] =
-		last.extend[E]
+		last.asIn[E]
 
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
@@ -399,7 +399,7 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Compound[L, R] { 
 
 	override def fullRow[E <: FromClause]
 	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		left.fullRow(target)(extension.extendFront[left.Generalized, R]) ~ last.stretch(target)
+		left.fullRow(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
 
 
 
@@ -440,12 +440,12 @@ object Extended {
 
 		override def fullTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			last.stretch(target) #:: left.fullTableStack(target)(extension.extendFront[left.Generalized, R])
+			last.extend(target) #:: left.fullTableStack(target)(extension.extendFront[left.Generalized, R])
 
 
 		override def innerTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			last.stretch(target) #:: left.innerTableStack(target)(extension.extendFront[left.Generalized, R])
+			last.extend(target) #:: left.innerTableStack(target)(extension.extendFront[left.Generalized, R])
 	}
 
 
@@ -470,7 +470,7 @@ object Extended {
 
 		override def innerRow[E <: FromClause]
 		             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, InnerRow] =
-			left.innerRow(target)(extension.extendFront[left.Generalized, R]) ~ last.stretch(target)
+			left.innerRow(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
 
 		override type OuterRow = left.OuterRow
 

@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, PartOf}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, CaseMapping, ColumnComponentSQL, ComponentSQL, FreeColumn, FreeComponent, RelationSQL}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectColumn, FreeSelectColumn, FreeSelectSQL, SubselectColumn, SubselectSQL}
@@ -523,21 +523,75 @@ object SQLScribe {
 
 
 	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
-	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression#stretch stretch]]
+	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression#extend extend]]
 	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
 	  */
-	def stretcher[F <: FromClause, E <: FromClause](clause :E)(implicit extension :F ExtendedBy E) :SQLScribe[F, E] =
-		new Stretcher[F, E](clause)
+	def rebase[F <: FromClause, E <: FromClause](clause :E)(implicit extension :F PartOf E) :SQLScribe[F, E] =
+		new RebaseExpression[F, E](clause)
 
-	private class Stretcher[+F <: FromClause, R <: FromClause](clause :R)(implicit extension :F ExtendedBy R)
-		extends CaseExpression[F, ExpressionResult[R]#T] with CaseColumn[F, ColumnResult[R]#T]
-		   with AbstractSQLScribe[F, R] //overrides the catch-all from the preceding traits
+	private class RebaseExpression[+F <: FromClause, E <: FromClause](clause :E)(implicit extension :F PartOf E)
+		extends CaseExpression[F, ExpressionResult[E]#T] with CaseColumn[F, ColumnResult[E]#T]
+		   with AbstractSQLScribe[F, E] //overrides the catch-all from the preceding traits
 	{
-		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :SQLExpression[R, S, X] =
-			e.stretch(clause)
+		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) =
+			e.basedOn(clause)
 
-		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :ColumnSQL[R, S, X] =
-			e.stretch(clause)
+		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :ColumnSQL[E, S, X] =
+			e.basedOn(clause)
+
+
+		override def toString = s"Rebase[to $clause]"
+	}
+
+
+
+	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
+	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression#extend extend]]
+	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
+	  * For this reason it can only be applied to global expressions, i.e. those for which
+	  * [[net.noresttherein.oldsql.sql.SQLExpression#asGlobal asGlobal]] returns `Some`. For all other expressions
+	  * it will throw an `IllegalArgumentException`
+	  */
+	def extend[F <: FromClause, E <: FromClause](clause :E)(implicit extension :F ExtendedBy E) :SQLScribe[F, E] =
+		new ExtendExpression[F, E](clause)
+
+
+	private class ExtendExpression[+F <: FromClause, E <: FromClause](clause :E)(implicit extension :F ExtendedBy E)
+		extends CaseExpression[F, ExpressionResult[E]#T] with CaseColumn[F, ColumnResult[E]#T]
+		   with AbstractSQLScribe[F, E] //overrides the catch-all from the preceding traits
+	{
+		private def nonGlobal(e :SQLExpression.*) :Nothing =
+			throw new IllegalArgumentException(
+				s"Cannot extend non global expression $e by ${extension.length} relations to to clause $clause."
+			)
+
+		override def apply[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :GlobalSQL[E, V] =
+			e.asGlobal match {
+				case Some(global) => global.applyTo(this)
+				case _ => nonGlobal(e)
+			}
+
+		override def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[E, GlobalScope, V] =
+			e.asGlobal match {
+				case Some(global) => global.applyTo(this)
+				case _ => nonGlobal(e)
+			}
+
+
+		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :SQLExpression[E, S, X] =
+			e.asGlobal match {
+				case Some(global) => global.extend(clause)
+				case _ => nonGlobal(e)
+			}
+
+		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :ColumnSQL[E, S, X] =
+			e.asGlobal match {
+				case Some(global) => global.extend(clause)
+				case _ => nonGlobal(e)
+			}
+
+
+		override def toString = s"Extend[$clause]"
 	}
 
 

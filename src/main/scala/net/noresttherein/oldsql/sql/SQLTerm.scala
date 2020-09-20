@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.FromClause.ExtendedBy
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn.{CaseParameterColumn, ParameterColumnMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter.{CaseParameter, ParameterMatcher}
@@ -23,9 +23,17 @@ trait SQLTerm[T] extends SQLExpression[FromClause, GlobalScope, T] {
 	protected def form :SQLForm[T]
 
 	override def readForm :SQLReadForm[T] = form
+
 	def writeForm :SQLWriteForm[Unit]
 
-	override def stretch[U <: FromClause, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :SQLTerm[T] = this
+	override def isGlobal = true
+	override def asGlobal :Option[GlobalSQL[FromClause, T]] = Some(this)
+
+	override def basedOn[U <: FromClause, E <: FromClause](base :E)(implicit ext :U PartOf E) :SQLTerm[T] = this
+
+	override def extend[U <: FromClause, E <: FromClause]
+	                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :SQLTerm[T] =
+		this
 
 
 
@@ -66,7 +74,13 @@ object SQLTerm {
 
 		override def readForm :ColumnReadForm[T] = form
 
-		override def stretch[U <: FromClause, S <: FromClause](base :S)(implicit ev :U ExtendedBy S) :ColumnTerm[T] =
+		override def asGlobal :Option[ColumnSQL[FromClause, GlobalScope, T]] = Some(this)
+
+		override def basedOn[U <: FromClause, E <: FromClause](base :E)(implicit ext :U PartOf E) :ColumnTerm[T] =
+			this
+
+		override def extend[U <: FromClause, E <: FromClause]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :ColumnTerm[T] =
 			this
 	}
 
@@ -218,7 +232,8 @@ object SQLTerm {
 		override def freeValue :Option[T] = Some(value)
 
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[FromClause, Y]): Y[GlobalScope, T] =
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                    (matcher: ExpressionMatcher[FromClause, Y]): Y[GlobalScope, T] =
 			matcher.param(this)
 
 
@@ -581,13 +596,15 @@ object SQLTerm {
 
 
 
-	trait TermMatcher[+S <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnTermMatcher[S, Y]
-		with LiteralMatcher[S, Y]  with CompositeNullMatcher[S, Y] with ParameterMatcher[S, Y] with NativeMatcher[S, Y]
+	trait TermMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnTermMatcher[F, Y]
+		with LiteralMatcher[F, Y]  with CompositeNullMatcher[F, Y] with ParameterMatcher[F, Y] with NativeMatcher[F, Y]
 
-	trait MatchTerm[+S <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends CaseLiteral[S, Y]  with CaseCompositeNull[S, Y] with CaseParameter[S, Y] with CaseNative[S, Y]
+	trait MatchTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends CaseLiteral[F, Y]  with CaseCompositeNull[F, Y] with CaseParameter[F, Y] with CaseNative[F, Y]
 
-	trait CaseTerm[+S <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends TermMatcher[S, Y] with MatchTerm[S, Y] {
+	trait CaseTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends TermMatcher[F, Y] with MatchTerm[F, Y]
+	{
 		def term[X](e :SQLTerm[X]) :Y[GlobalScope, X]
 
 		def param[X](e: SQLParameter[X]): Y[GlobalScope, X] = term(e)

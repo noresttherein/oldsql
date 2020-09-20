@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, JoinedMappings, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
@@ -128,7 +128,7 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause]) exten
 
 
 
-	override def filter[E <: FromClause](target :E)(implicit extension :FromClause ExtendedBy E) :GlobalBoolean[E] =
+	override def filter[E <: FromClause](target :E)(implicit extension :FromClause PartOf E) :GlobalBoolean[E] =
 		filter
 
 

@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, OuterFrom, OuterFromSome, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, OuterFrom, OuterFromSome, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
@@ -762,8 +762,8 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]] extends AndFrom[F, P]
 //	override def withLeft[L <: DiscreteFrom](left :L)(filter :SQLBoolean[left.Generalized JoinParam P]) :L JoinParam P
 
 
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :GlobalBoolean[E] =
-		left.filter(target)(extension.extendFront[left.Generalized, P]) && condition.stretch(target)
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
+		left.filter(target)(extension.extendFront[left.Generalized, P]) && condition.basedOn(target)
 
 
 	override def generalizedExtension[C <: FromSome] :C PrefixOf (C JoinParam P) =
@@ -937,7 +937,7 @@ object JoinParam {
 
 			override def innerTableStack[E <: FromClause]
 			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
-				last.stretch(target) #:: left.innerTableStack(target)(stretch.extendFront[left.Generalized, M])
+				last.extend(target) #:: left.innerTableStack(target)(stretch.extendFront[left.Generalized, M])
 
 
 
@@ -1195,7 +1195,7 @@ object GroupParam {
 
 			override def innerTableStack[E <: FromClause]
 			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
-				last.stretch(target) #:: left.innerTableStack(target)(stretch.extendFront[left.Generalized, M])
+				last.extend(target) #:: left.innerTableStack(target)(stretch.extendFront[left.Generalized, M])
 
 
 

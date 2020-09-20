@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.As
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLScribe.ReplaceRelation
@@ -311,9 +311,9 @@ object AndFrom {
 //
 //	override def withLeft[F <: DiscreteFrom](newLeft :F)(filter :SQLBoolean[newLeft.Generalized AndFrom T]) :F AndFrom T
 //
-//	override def generalizedExtension[F <: FromSome] :F PrefixOf (F AndFrom T) = PrefixOf.itself[F].extend[AndFrom, T]
+//	override def generalizedExtension[F <: FromSome] :F PrefixOf (F AndFrom T) = PrefixOf.itself[F].asIn[AndFrom, T]
 //
-//	override def extension[F <: FromSome] :F PrefixOf (F AndFrom T) = PrefixOf.itself[F].extend[AndFrom, T]
+//	override def extension[F <: FromSome] :F PrefixOf (F AndFrom T) = PrefixOf.itself[F].asIn[AndFrom, T]
 //
 //	override def narrow :left.type EmptyJoin T
 //
@@ -409,7 +409,7 @@ object AndFrom {
 //
 //			override def withLeft[F <: DiscreteFrom](newLeft :F)(filter :SQLBoolean[newLeft.Generalized AndFrom T])
 //					:F AndFrom T =
-//				newLeft.extend(last, filter)
+//				newLeft.asIn(last, filter)
 //
 //
 //			override def appendedTo[P <: DiscreteFrom](prefix :P) :AppendedTo[P] =
@@ -423,8 +423,8 @@ object AndFrom {
 //
 //
 //			override def innerTableStack[E <: FromClause]
-//			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
-//				last.stretch[Generalized, E](target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
+//			             (target :E)(implicit extend :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+//				last.extend[Generalized, E](target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 //
 //			override def asSubselectOf[F <: FromSome](newOuter :F)(implicit extension :Implicit ExtendedBy F)
 //					:AsSubselectOf[F] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
@@ -528,8 +528,8 @@ sealed trait From[T[O] <: MappingAt[O]] extends AndFrom[Dual, T] with NonSubsele
 	override def filter :GlobalBoolean[FromClause AndFrom T] =
 		if (left.filter eq True) condition else left.filter && condition
 
-	override def filter[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E) :GlobalBoolean[E] =
-		filter.stretch(target)
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
+		filter.basedOn(target)
 
 	override def fullSize = 1
 
@@ -665,7 +665,7 @@ object From {
 
 			override def innerTableStack[E <: FromClause]
 			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
-				last.stretch[Generalized, E](target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
+				last.extend[Generalized, E](target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
 			override def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit extension :Implicit ExtendedBy F) =

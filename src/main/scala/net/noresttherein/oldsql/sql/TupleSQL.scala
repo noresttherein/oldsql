@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.{CaseChain, ChainHead, ChainMatcher, EmptyChain}
@@ -26,14 +26,14 @@ import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedChainHead
   */
 trait TupleSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T] extends CompositeSQL[F, S, T] {
 
-	override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other.isInstanceOf[TupleSQL[_, _, _]]
-
-
 	override def selectFrom[E <: F with FreeFrom, O](from :E) :FreeSelectSQL[T, O] =
 		SelectSQL(from, this)
 
 	override def subselectFrom[E <: F, O](from :E) :SubselectSQL[from.Base, T, O] =
 		SelectSQL.subselect[from.Base, from.type, T, O](from, this)
+
+
+	override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other.isInstanceOf[TupleSQL[_, _, _]]
 }
 //todo: conversion to MappingSQL
 
@@ -49,9 +49,6 @@ object TupleSQL {
 			case t: TupleSQL[_, _, _] => Some(t.inOrder.asInstanceOf[Seq[SQLExpression[F, S, _]]])
 			case _ => None
 		}
-
-
-
 
 
 
@@ -73,12 +70,11 @@ object TupleSQL {
 //			}.map(_.reverse)
 
 
+		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) :SeqTuple[E, S, T] =
+			SeqTuple(inOrder.map(mapper(_)))
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[F, Y]): Y[S, Seq[T]] =
 			matcher.seq(this)
-
-		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) :SeqTuple[E, S, T] =
-			SeqTuple(inOrder.map(mapper(_)))
 
 
 		override def toString :String = inOrder.mkString("Seq(", ",", ")")
@@ -127,14 +123,27 @@ object TupleSQL {
 
 		def toSeq :Seq[SQLExpression[F, S, _]] = parts
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
-			matcher.chain(this)
+
+		override def asGlobal :Option[ChainTuple[F, GlobalScope, T]] =
+			if (isGlobal) Some(this.asInstanceOf[ChainTuple[F, GlobalScope, T]])
+			else None
+
+		//overriden to narrow down the result type
+		override def basedOn[U <: F, E <: FromClause]
+		                    (base :E)(implicit ext :U PartOf E) :ChainTuple[E, S, T] =
+			rephrase(SQLScribe.extend(base))
+
+		//overriden to narrow down the result type
+		override def extend[U <: F, E <: FromClause]
+		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< S) :ChainTuple[E, S, T] =
+			rephrase(SQLScribe.extend(base))
+
 		//overriden to narrow down the result type
 		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ChainTuple[E, S, T]
 
-		//overriden to narrow down the result type
-		override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :ChainTuple[E, S, T] =
-			rephrase(SQLScribe.stretcher(base))
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
+			matcher.chain(this)
+
 
 		def ~[E <: F, O >: LocalScope <: S, H](head :SQLExpression[E, O, H]) :ChainHead[E, O, T, H] =
 			new ChainHead(this, head)
@@ -180,11 +189,15 @@ object TupleSQL {
 			override def freeValue :Option[T ~ H] =
 				for (t <- init.freeValue; h <- last.freeValue) yield t ~ h
 
+			override def isGlobal :Boolean = last.isGlobal && init.isGlobal
+
+
+			override def extend[U <: F, E <: FromClause]
+			                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :ChainTuple[E, S, T ~ H] =
+				init.extend(base) ~ last.extend(base)
+
 			override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ChainTuple[E, S, T ~ H] =
 				init.rephrase(mapper) ~ mapper(last)
-
-			override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :ChainTuple[E, S, T ~ H] =
-				init.stretch(base) ~ last.stretch(base)
 		}
 
 
@@ -204,9 +217,18 @@ object TupleSQL {
 
 			override val freeValue :Option[@~] = Some(@~)
 
-			override def rephrase[E <: FromClause](mapper :SQLScribe[FromClause, E]) :this.type = this
+			override def isGlobal = true
+			override def asGlobal :Option[EmptyChain.type] = Some(this)
 
-			override def stretch[U <: FromClause, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :this.type = this
+
+			override def basedOn[U <: FromClause, E <: FromClause](base :E)(implicit ext :U PartOf E) :this.type =
+				this
+
+			override def extend[U <: FromClause, E <: FromClause]
+			                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :this.type =
+				this
+
+			override def rephrase[E <: FromClause](mapper :SQLScribe[FromClause, E]) :this.type = this
 		}
 	}
 
@@ -252,14 +274,25 @@ object TupleSQL {
 		def toSeq :Seq[SQLExpression[F, S, _]] = parts
 
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
-			matcher.indexedChain(this)
+		override def asGlobal :Option[IndexedChainTuple[F, GlobalScope, T]] =
+			if (isGlobal) Some(this.asInstanceOf[IndexedChainTuple[F, GlobalScope, T]])
+			else None
+
+
+		//overriden to narrow down the result type
+		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :IndexedChainTuple[E, S, T] =
+			rephrase(SQLScribe.extend(base))
+
+		//overriden to narrow down the result type
+		override def extend[U <: F, E <: FromClause]
+		             (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :IndexedChainTuple[E, S, T] =
+			rephrase(SQLScribe.extend(base))
+
 		//overriden to narrow down the result type
 		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :IndexedChainTuple[E, S, T]
 
-		//overriden to narrow down the result type
-		override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :IndexedChainTuple[E, S, T] =
-			rephrase(SQLScribe.stretcher(base))
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
+			matcher.indexedChain(this)
 
 
 		def |~[E <: F, O >: LocalScope <: S, K <: Label :ValueOf, H]
@@ -290,22 +323,40 @@ object TupleSQL {
 	object IndexedChainTuple {
 		final val EmptyIndexedChain = ChainTuple.EmptyChain
 
-		sealed trait IndexedSQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, T] extends SQLExpression[F, S, T] {
-			def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :IndexedSQLExpression[E, S, T]
+		sealed trait IndexedSQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, T]
+			extends SQLExpression[F, S, T]
+		{
+			override def asGlobal :Option[IndexedSQLExpression[F, GlobalScope, T]]
 
-			def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :IndexedSQLExpression[E, S, T]
+
+			override def basedOn[U <: F, E <: FromClause]
+			                    (base :E)(implicit ext :U PartOf E) :IndexedSQLExpression[E, S, T]
+
+			override def extend[U <: F, E <: FromClause]
+			             (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :IndexedSQLExpression[E, S, T]
+
+			def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :IndexedSQLExpression[E, S, T]
 		}
 
+
 		class IndexedColumn[-F <: FromClause, -S >: LocalScope <: GlobalScope, N <: Label, V]
-		                   (column :ColumnSQL[F, S, V], override val alias :N)
+		                   (override val column :ColumnSQL[F, S, V], override val alias :N)
 			extends AliasedColumn[F, S, V](column, alias) with IndexedSQLExpression[F, S, V]
 		{
+			override def asGlobal :Option[IndexedColumn[F, GlobalScope, N, V]] =
+				if (column.isGlobal) Some(this.asInstanceOf[IndexedColumn[F, GlobalScope, N, V]])
+				else None
+
+			override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :IndexedColumn[E, S, N, V] =
+				new IndexedColumn(column.basedOn(base), alias)
+
+			override def extend[U <: F, E <: FromClause]
+			             (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< S) :IndexedColumn[E, S, N, V] =
+				new IndexedColumn(column.extend(base), alias)
+
 			override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :IndexedColumn[E, S, N, V] =
 				new IndexedColumn(mapper(column), alias)
 
-			override def stretch[U <: F, E <: FromClause]
-			                    (base :E)(implicit ev :U ExtendedBy E) :IndexedColumn[E, S, N, V] =
-				new IndexedColumn(column.stretch(base), alias)
 		}
 
 
@@ -324,12 +375,21 @@ object TupleSQL {
 			override def freeValue :Option[T |~ (K :~ H)] =
 				for (t <- init.freeValue; h <- last.freeValue) yield t |~ :~[K](h)
 
+			override def isGlobal :Boolean = last.isGlobal && init.isGlobal
+
+
+			override def basedOn[U <: F, E <: FromClause]
+			                    (base :E)(implicit ext :U PartOf E) :IndexedChainTuple[E, S, T |~ (K :~ H)] =
+				init.basedOn(base) |~ :~[K](last.basedOn(base))
+
+			override def extend[U <: F, E <: FromClause]
+			                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S)
+					:IndexedChainTuple[E, S, T |~ (K :~ H)] =
+				init.extend(base) |~ :~[K](last.extend(base))
+
+
 			override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :IndexedChainTuple[E, S, T |~ (K :~ H)] =
 				init.rephrase(mapper) |~ :~[K](last.rephrase(mapper))
-
-			override def stretch[U <: F, E <: FromClause]
-			                    (base :E)(implicit ev :U ExtendedBy E) :IndexedChainTuple[E, S, T |~ (K :~ H)] =
-				init.stretch(base) |~ :~[K](last.stretch(base))
 		}
 
 

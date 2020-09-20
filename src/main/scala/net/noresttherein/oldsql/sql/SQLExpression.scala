@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
-import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, Lift, LocalScope, SQLTypeUnification}
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, False, NULL, SQLLiteral, SQLParameter, SQLParameterColumn, SQLTermFactory, TermMatcher, True}
 import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, MappingMatcher}
@@ -35,6 +35,19 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 	import SQLExpression.boundParameterSQL
 
 	def readForm :SQLReadForm[V]
+
+
+	/** If this expression is a free expression - not dependent on `F` or free parameters -
+	  * which value can be determined at this point, return its value. */
+	def freeValue :Option[V] = None
+
+	/** Is this expression independent of any relations from the FROM clause? */
+	def isFree :Boolean = freeValue.isDefined
+
+	def isGlobal :Boolean = false
+
+	def asGlobal :Option[GlobalSQL[F, V]]
+
 
 //	def =:[T <: RefinedMapping[O, E], C <: RefinedMapping[O, L], O, E, L, R >: V, X]
 //	      (path :ComponentPath[T, C, O, E, L])(implicit lift :SQLTypeUnification[L, R, X]) :SetComponent[F, T, C, O, E, L, R, X] =
@@ -88,6 +101,34 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 
 
 
+	/** Upcasts this expression to the base ''from'' clause `E &lt;: F`, using only implicit evidence about the subtype
+	  * relation rather than explicit lower type bound (which would be an identity cast in Scala).
+	  */
+	def basedOn[E <: FromClause](implicit subtype :E <:< F) :SQLExpression[E, S, V] =
+		this.asInstanceOf[SQLExpression[E, S, V]]
+
+	/** Treat this expression as an expression of a ''from'' clause containing this clause as its prefix.
+	  * The extension is limited only to clauses representing the same select as this clause - no
+	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'joins' can occur in `E` after `F`.
+	  * This method is thus applicable to a strictly smaller set of ''from'' clauses than
+	  * [[net.noresttherein.oldsql.sql.SQLExpression#extend extend]], but is available for all expressions.
+	  */
+	def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V]
+
+	/** Treat this expression as an expression of a ''from'' clause extending (i.e. containing additional tables)
+	  * the clause `F` this expression is based on. This method is available only for global expressions, i.e. those
+	  * which can occur inside any subselect of a select with the ''from'' clause `F`. This method has thus a wider
+	  * range of applicable ''from'' clauses than [[net.noresttherein.oldsql.sql.SQLExpression#basedOn basedOn]],
+	  * but is limited only to expressions conforming to `SQLExpression[F, GlobalScope, V]`.
+	  */
+	def extend[U <: F, E <: FromClause]
+	          (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V]
+
+
+	def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V]
+
+
+
 	/** Creates a `SelectSQL` with this expression as the ''select'' clause and the given `from` clause.
 	  * This method is supported only by a few expression types, namely [[net.noresttherein.oldsql.sql.TupleSQL TupleSQL]]
 	  * and [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] subclasses. It is considered
@@ -116,23 +157,9 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 			s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
 		)
 
-	/** Upcasts this expression to the base ''from'' clause `E &lt;: F`, using only implicit evidence about the subtype
-	  * relation rather than explicit lower type bound (which would be an identity cast in Scala).
-	  */
-	def basedOn[E <: FromClause](implicit subtype :E <:< F) :SQLExpression[E, S, V] =
-		this.asInstanceOf[SQLExpression[E, S, V]]
-
-//	def basedOn[U <: F, E <: FromClause](base :E)(implicit ev :U PartOf E) :SQLExpression[E, S, V]
-
-	/** Treat this expression as an expression of a ''from'' clause extending (i.e. containing additional tables)
-	  * the clause `F` this expression is based on. */
-	def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :SQLExpression[E, S, V]
-
 
 
 	def parameters :Seq[SQLParameter[_]] = collect { case x :SQLParameter[_] => x }
-
-
 
 	def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X] = reverseCollect(fun, Nil).reverse
 
@@ -142,19 +169,6 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 	protected[this] def reverseCollect[X](e :SQLExpression.*)
 	                                     (fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
 		e.reverseCollect(fun, acc)
-
-
-	def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V]
-
-
-
-	/** If this expression is a free expression - not dependent on `F` or free parameters -
-	  * which value can be determined at this point, return its value. */
-	def freeValue :Option[V] = None
-
-
-	/** Is this expression independent of any relations from the FROM clause? */
-	def isFree :Boolean = freeValue.isDefined
 
 
 
@@ -286,15 +300,25 @@ object SQLExpression extends SQLMultiColumnTerms {
 
 		protected def parts :Seq[SQLExpression[F, S, _]]
 
+		override def isGlobal :Boolean = parts.forall(_.isGlobal)
 
-		protected override def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] =
-			(super.reverseCollect(fun, acc) /: inOrder)((collected, member) => member.reverseCollect(fun, collected))
+		override def asGlobal :Option[GlobalSQL[F, V]] =
+			if (isGlobal) Some(this.asInstanceOf[GlobalSQL[F, V]])
+			else None
 
+
+		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V] =
+			rephrase(SQLScribe.extend(base))
+
+		override def extend[U <: F, E <: FromClause]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V] =
+			rephrase(SQLScribe.extend(base))
 
 		def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :SQLExpression[E, S, V]
 
-		override def stretch[U <: F, E <: FromClause](base :E)(implicit ev :U ExtendedBy E) :SQLExpression[E, S, V] =
-			rephrase(SQLScribe.stretcher(base))
+
+		protected override def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] =
+			(super.reverseCollect(fun, acc) /: inOrder)((collected, member) => member.reverseCollect(fun, collected))
 
 
 		def sameAs(other :CompositeSQL[_, _, _]) :Boolean = canEqual(other)

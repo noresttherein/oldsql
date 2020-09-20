@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DecoratedFrom.GenericDecorator.GenericDecoratorComposition
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -99,7 +99,7 @@ object DecoratedFrom {
 		}
 
 
-		override def last :JoinedRelation[FromLast, LastMapping] = clause.last.extend[FromLast]
+		override def last :JoinedRelation[FromLast, LastMapping] = clause.last.asIn[FromLast]
 
 		type GeneralizedClause[+G <: FromSome] <: GenericDecorator[G] {
 			type GeneralizedClause[+S <: FromSome] = thisClause.GeneralizedClause[S]
@@ -146,7 +146,7 @@ object DecoratedFrom {
 		override def base :Base = clause.base
 
 		override def filter[E <: FromClause]
-		                   (target :E)(implicit extension :Generalized ExtendedBy E) :GlobalBoolean[E] =
+		                   (target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
 			clause.filter(target)(extension.unwrapFront)
 
 		override def innerRow[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)

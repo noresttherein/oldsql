@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedMappings, NonEmptyFrom, OuterFromSome, ParameterlessFrom}
+import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedMappings, NonEmptyFrom, OuterFromSome, ParameterlessFrom, PartOf}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, JoinedRelation}
@@ -50,7 +50,7 @@ trait DiscreteFrom extends FromClause { thisClause =>
 
 	override def filter :GlobalBoolean[Generalized]
 
-	override def filter[E <: FromClause](target :E)(implicit extension :ExtendedBy[Generalized, E]) :GlobalBoolean[E]
+	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E]
 
 
 
@@ -166,7 +166,7 @@ object DiscreteFrom {
 		                       (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N])
 				:next.This =
 		{
-			val condition = filter(last.extend(next.generalizedExtension[FromLast]), next.last)
+			val condition = filter(last.asIn(next.generalizedExtension[FromLast]), next.last)
 			val grounded = SQLScribe.groundFreeComponents(next.generalized)(condition)
 			next.where(grounded)
 		}
