@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.model
 import java.{lang => j}
 
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, DecomposableTo, ExtractAs}
-import net.noresttherein.oldsql.model.Restraint.Comparison.{GT, GTE, LT, LTE}
-import net.noresttherein.oldsql.model.Restraint.{Comparison, Equality, Exists, False, ForAll, IsNull, Membership, Restrainer, StringLike, True}
+import net.noresttherein.oldsql.model.Restraint.Compares.{GT, GTE, LT, LTE}
+import net.noresttherein.oldsql.model.Restraint.{Compares, Equal, Exists, False, ForAll, IsNull, Membership, Restrainer, StringLike, True}
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, Collection, ComposedRestrictive, ConcatRestrictive, Literal, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
 import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{DIV, MINUS, MULT, Operator, PLUS, REM}
 import net.noresttherein.oldsql.model.types.{ArithmeticSupport, OrderingSupport}
@@ -86,30 +86,30 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 
 
 	/** Create a `Restrainer` testing if this term is less then the value of the key supplied as its parameter. */
-	def ?< (implicit ordered :OrderingSupport[V]) :Restrainer[T, V] = Comparison(this, LT)
+	def ?< (implicit ordered :OrderingSupport[V]) :Restrainer[T, V] = Compares(this, LT)
 	/** Create a `Restrainer` testing if this term is less then or equal the value of the key supplied as its parameter. */
-	def ?<=(implicit ordered :OrderingSupport[V]) :Restrainer[T, V] = Comparison(this, LTE)
+	def ?<=(implicit ordered :OrderingSupport[V]) :Restrainer[T, V] = Compares(this, LTE)
 	/** Create a `Restrainer` testing if this term is greater then the value of the key supplied as its parameter. */
-	def ?> (implicit ordered :OrderingSupport[V]) :Restrainer[T, V] = Comparison(this, GT)
+	def ?> (implicit ordered :OrderingSupport[V]) :Restrainer[T, V] = Compares(this, GT)
 	/** Create a `Restrainer` testing if this term is greater then or equal the value of the key supplied as its parameter. */
-	def ?>=(implicit ordered :OrderingSupport[V]) :Restrainer[T, V] = Comparison(this, GTE)
+	def ?>=(implicit ordered :OrderingSupport[V]) :Restrainer[T, V] = Compares(this, GTE)
 
 
 	/** Creates a `Restraint` mandating that this term be less then `other`. */
 	def < [S <: T](other :TranslableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
-		Comparison(this, LT, other.toRestrictive)
+		Compares(this, LT, other.toRestrictive)
 
 	/** Creates a `Restraint` mandating that this term be less then or equal `other`. */
 	def <=[S <: T](other :TranslableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
-		Comparison(this, LTE, other.toRestrictive)
+		Compares(this, LTE, other.toRestrictive)
 
 	/** Creates a `Restraint` mandating that this term be greater then `other`. */
 	def > [S <: T](other :TranslableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
-		Comparison(this, GT, other.toRestrictive)
+		Compares(this, GT, other.toRestrictive)
 
 	/** Creates a `Restraint` mandating that this term be greater then or equal `other`. */
 	def >=[S <: T](other :TranslableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
-		Comparison(this, GTE, other.toRestrictive)
+		Compares(this, GTE, other.toRestrictive)
 
 
 
@@ -127,13 +127,13 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 	def isNull :Restraint[T] = IsNull(this)
 
 	/** Create a `Restrainer` for T which will compare this expression with a given precomputed value of type `V`. */
-	def ?== :Restrainer[T, V] = Equality(this)
+	def ?== :Restrainer[T, V] = Equal(this)
 
-	/** Create a restraint testing this expression and another expression for equality. Equivalent to `Equality(this, other)`. */
-	def ===[S<:T](other :TranslableTerm[S, V]) :Restraint[S] = Equality(this, other.toRestrictive)
+	/** Create a restraint testing this expression and another expression for equality. Equivalent to `Equal(this, other)`. */
+	def ===[S<:T](other :TranslableTerm[S, V]) :Restraint[S] = Equal(this, other.toRestrictive)
 
 //	/** Create a restriction testing this expression for equality with the given precomputed value. */
-//	def ===(other :V) :Restraint[T] = Equality(this, Literal[T, V](other))
+//	def ===(other :V) :Restraint[T] = Equal(this, Literal[T, V](other))
 
 
 	/** Create a `Restrainer` for `T` which will test if this expression is a member of the given set of

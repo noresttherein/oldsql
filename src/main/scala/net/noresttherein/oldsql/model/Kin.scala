@@ -201,7 +201,7 @@ object Kin {
 	  * will specify the expected result type for the found values (single value, `Seq`, `Set`, etc).
 	  * Implicit conversion exists converting a `KinComposer[T]` to a `Kin[T]`.
 	  *
-	  * Example: `Kin[Hero](Equality(_.id, id)).one`.
+	  * Example: `Kin[Hero](Equal(_.id, id)).one`.
 	  *
 	  * This call delegates to `AllWhere(Restraint)`.
 	  *
@@ -219,7 +219,7 @@ object Kin {
 	  * desired (composite) type of the created `Kin` and how can it be constructed from values found by the filter
 	  * created in the previous steps.
 	  *
-	  * Example: `Kin[Familiar](Equality(_.owner))(hero).in[Seq]`
+	  * Example: `Kin[Familiar](Equal(_.owner))(hero).in[Seq]`
 	  *
 	  * This call delegates to `AllWhere(Restrainer)`.
 	  * @param restrainer a factory of `Restraint` instances for entity `T` using values of `K` as parameters.

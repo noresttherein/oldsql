@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.model
 
 import java.{lang => j}
 
-import net.noresttherein.oldsql.model.Restraint.Comparison
+import net.noresttherein.oldsql.model.Restraint.Compares
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, NegatedRestrictive}
 import net.noresttherein.oldsql.model.types.ArithmeticSupport.MappedArithmeticSupport
 import net.noresttherein.oldsql.model.types.LiteralSupport.MappedLiteral
@@ -99,7 +99,7 @@ object types {
 		@inline def apply[T :OrderingSupport] :OrderingSupport[T] = implicitly[OrderingSupport[T]]
 
 		def unapply[T](restraint :Restraint[T]) :Option[OrderingSupport[_]] = restraint match {
-			case cmp :Comparison[T, _] => Some(cmp.ordering)
+			case cmp :Compares[T, _] => Some(cmp.ordering)
 			case _ => None
 		}
 

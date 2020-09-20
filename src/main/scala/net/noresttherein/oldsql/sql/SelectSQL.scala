@@ -156,7 +156,9 @@ sealed trait SelectSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V, O]
 
 	override def hashCode :Int = header.hashCode * 31 + from.hashCode
 
-	override def toString = s"SELECT $header FROM $from"
+	override def toString :String =
+		if (isDistinct) s"SELECT DISTINCT $header FROM $from"
+		else  s"SELECT $header FROM $from"
 
 }
 

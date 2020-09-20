@@ -26,7 +26,7 @@ import net.noresttherein.oldsql.slang._
   * a set of values of `S` is of course a set of values of `T>:S`. This becomes an issue when used inside a
   * `Kin[T]`, which is covariant with regards to `T` and care has to be taken when dealing with such cases.
   */
-trait Restraint[-T] extends (T => Boolean) with implicits with Serializable {
+trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable with implicits {
 
 	/** Creates a restraint implementing the negated condition of this restraint (i.e. selecting a value ''iff''
 	  * it was not selected by this instance. The domain stays the same.
@@ -87,7 +87,7 @@ trait Restraint[-T] extends (T => Boolean) with implicits with Serializable {
 
 /** `Restraint` factory, allowing to create search filters. */
 object Restraint {
-	import Comparison._
+	import Compares._
 	import implicits._
 
 	/** A `Restraint` factory for some type `T`, working on some part of `T` expressed as type `P`. `P` may be just `T`
@@ -221,7 +221,7 @@ object Restraint {
 	  */
 	trait RestrainerFactory[T] extends Any {
 		/** Constrain the whole value of target type T */
-		def self(implicit tag :TypeTag[T]) :Restrainer[T, T] = Equality[T]()
+		def self(implicit tag :TypeTag[T]) :Restrainer[T, T] = Equal[T]()
 
 		/** Constrain the value of the given property of T */
 		def Property[P](property :PropertyPath[T, P]) :Restrainer[T, P] =
@@ -245,11 +245,11 @@ object Restraint {
 
 	/** A Restrainer constraining the value of the given property of T */
 	@inline def Property[T, P](property :PropertyPath[T, P]) :Restrainer[T, P] =
-		Equality(property)
+		Equal(property)
 
 	/** A Restrainer constraining the value of the given property of T */
 	@inline def Property[T :TypeTag, P](property :T=>P) :Restrainer[T, P] =
-		Equality(PropertyPath(property))
+		Equal(PropertyPath(property))
 
 
 
@@ -310,11 +310,20 @@ object Restraint {
 
 
 
-	/** A `Restraint` explicitly testing if the given term is null by the explicit `SQL` 'IS NULL' expression. */
+	/** A `Restraint` explicitly testing if the given term is null using the SQL 'IS NULL' expression. */
 	case class IsNull[-T, V](term :Restrictive[T, V]) extends Restraint[T] {
 		override def apply(x :T) :Boolean = term.derive(x) == null
 
 		override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] = new IsNull(term compose nest)
+	}
+
+
+
+	/** A `Restraint` explicitly testing if the given term is not null using the SQL 'IS NOT NULL' expression. */
+	case class NotNull[-T, V](term :Restrictive[T, V]) extends Restraint[T] {
+		override def apply(x :T) :Boolean = term.derive(x) != null
+
+		override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] = new NotNull(term compose nest)
 	}
 
 
@@ -392,7 +401,7 @@ object Restraint {
 
 
 	/** Create restraints comparing two expressions for equality and matches such restraints. */
-	object Equality {
+	object Equal {
 
 		/** A `Restrainer` constraining the whole value of `T`. */
 		def apply[T :TypeTag]() :Restrainer[T, T] = new EqualityRestrainer[T, T](Self())
@@ -400,36 +409,36 @@ object Restraint {
 		/** A `Restrainer` comparing the given term derived from `T` to a specified literal. */
 		def apply[T, P](term :Restrictive[T, P]) :Restrainer[T, P] = new EqualityRestrainer(term)
 
-		/** Create a restriction meaning 'values of `T` equal to this value'. */
+		/** Create a restraint meaning 'values of `T` equal to this value'. */
 		def apply[T :TypeTag](value :T) :Restraint[T] =
 			new EqualityTest[T, T](Self[T](), Literal[T, T](value))
 
-		/** Create a restriction representing an equality test between the given to terms. */
+		/** Create a restraint representing an equality test between the given to terms. */
 		def apply[T, V](left :Restrictive[T, V], right :Restrictive[T, V]) :Restraint[T] =
 			new EqualityTest(left, right)
 
-		/** Create a restriction representing an equality test between the given to terms. */
+		/** Create a restraint representing an equality test between the given to terms. */
 		def apply[T, V](left :Restrictive[T, V], right :V) :Restraint[T] =
 			new EqualityTest(left, Literal(right))
 
-		/** Create a restriction representing an equality test between the given to terms. */
+		/** Create a restraint representing an equality test between the given to terms. */
 		def apply[T, V](left :V, right :Restrictive[T, V]) :Restraint[T] =
 			new EqualityTest(Literal(left), right)
 
 
 
-		/** Check if the given restriction is an equality restriction with a specified value.
-		  * It will also match membership restrictions for singleton sets, so this check should be performed before
-		  * any future membership check.
+		/** Check if the given restraint is an equality restriction with a specified value.
+		  * It will also match membership restrictions for singleton sets.
 		  */
 		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, E], Restrictive[T, E]) forSome { type E }] =
 			restraint match {
 				case EqualityTest(left, right) => Some((left, right))
-//				case Comparison(left, EQ, right) => Some((left, right)) //this loses the information that left and right are of the same type
+				case compare :Compares[T, v] => Some((compare.left, compare.right))
+//				case Compares(left, EQ, right) => Some((left, right)) //this loses the information that left and right are of the same type
 				case Membership(left, Collection(right, _), _) if right.size == 1 =>
 					Some((left.asInstanceOf[Restrictive[T, Any]], right.head.asInstanceOf[Restrictive[T, Any]]))
-				case _ => Comparison.unapply(restraint) collect { case (l, EQ, r) => (l, r) }
-//				case _ => None
+//				case _ => Compares.unapply(restraint) collect { case (l, EQ, r) => (l, r) }
+				case _ => None
 			}
 
 
@@ -447,10 +456,10 @@ object Restraint {
 
 		private class EqualityRestrainer[-T, K](val Term :Restrictive[T, K]) extends AbstractTermRestrainer[T, K] {
 
-			override def apply(key :K) :Restraint[T] = Equality[T, K](Term, Literal(key))
+			override def apply(key :K) :Restraint[T] = Equal[T, K](Term, Literal(key))
 
 			override def from[X <: T](restraint :Restraint[X]) :Option[K] = restraint match {
-				case Equality(Term, Literal(v)) => Some(v.asInstanceOf[K])
+				case Equal(Term, Literal(v)) => Some(v.asInstanceOf[K])
 				case _ => None
 			}
 
@@ -467,18 +476,20 @@ object Restraint {
 
 
 
-	private[model] class Comparison[-T, V](val left :Restrictive[T, V], val relation :Relation, val right :Restrictive[T, V])
-	                               (implicit val ordering :OrderingSupport[V])
+	private[model] class Compares[-T, V](val left :Restrictive[T, V], val relation :Comparison, val right :Restrictive[T, V])
+	                                    (implicit val ordering :OrderingSupport[V])
 		extends Restraint[T]
 	{
 		override def apply(t :T) :Boolean = relation(left.derive(t), right.derive(t))
 
 		override def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
-			new Comparison(left compose nest, relation, right compose nest)
+			new Compares(left compose nest, relation, right compose nest)
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[Compares[_, _]]
 
 		override def equals(other: Any): Boolean = other match {
 			case self :AnyRef if self eq this => true
-			case that: Comparison[_, _] =>
+			case that: Compares[_, _] =>
 				left == that.left && relation == that.relation && right == that.right && ordering == that.ordering
 			case _ => false
 		}
@@ -496,58 +507,58 @@ object Restraint {
 	/** Factory of `Restraint`s comparing the magnitude of two expressions with one of
 	  * the standard `<`, `<=`, `>`, `>=` operators.
 	  */
-	object Comparison {
+	object Compares {
 
 		/** A factory of `Restraint`s comparing the 'self' value (i.e. an identity Restrictive`[T]`)
 		  * and supplied 'key' parameters using the relation provided here.
 		  */
-		def apply[T :TypeTag :OrderingSupport](comparison :Relation) :Restrainer[T, T] =
+		def apply[T :TypeTag :OrderingSupport](comparison :Comparison) :Restrainer[T, T] =
 			new ComparisonRestrainer(Self(), comparison)
 
 		/** A factory of `Restraint`s comparing the value of the given term `term` with a supplied 'key' parameter
 		  * using the relation provided here.
 		  */
-		def apply[T, P :OrderingSupport](term :Restrictive[T, P], comparison :Relation) :Restrainer[T, P] =
+		def apply[T, P :OrderingSupport](term :Restrictive[T, P], comparison :Comparison) :Restrainer[T, P] =
 			new ComparisonRestrainer(term, comparison)
 
 
 		/** A `Restraint` verifying if the given relation `rel` holds between the two terms: `left ''rel'' right`. */
-		def apply[T, V](left :Restrictive[T, V], rel :Relation, right :Restrictive[T, V])
+		def apply[T, V](left :Restrictive[T, V], rel :Comparison, right :Restrictive[T, V])
 		               (implicit ordering :OrderingSupport[V]) :Restraint[T] =
-			new Comparison(left, rel, right)
+			new Compares(left, rel, right)
 
 		/** A `Restraint` verifying if the given relation `rel` holds between the two terms: `left ''rel'' right`. */
-		def apply[T, V](left :Restrictive[T, V], rel :Relation, right :V)
+		def apply[T, V](left :Restrictive[T, V], rel :Comparison, right :V)
 		               (implicit ordering :OrderingSupport[V]) :Restraint[T] =
-			new Comparison(left, rel, Literal(right))
+			new Compares(left, rel, Literal(right))
 
 		/** A `Restraint` verifying if the given relation `rel` holds between the two terms: `left ''rel'' right`. */
-		def apply[T, V](left :V, rel :Relation, right :Restrictive[T, V])
+		def apply[T, V](left :V, rel :Comparison, right :Restrictive[T, V])
 		               (implicit ordering :OrderingSupport[V]) :Restraint[T] =
-			new Comparison(Literal(left), rel, right)
+			new Compares(Literal(left), rel, right)
 
 
 
 		def unapply[T](restraint :Restraint[T])
-				:Option[(Restrictive[T, V], Relation, Restrictive[T, V])] forSome { type V } =
+				:Option[(Restrictive[T, V], Comparison, Restrictive[T, V]) forSome { type V }] =
 			restraint match {
-				case comp :Comparison[T, v] => Some((comp.left, comp.relation, comp.right))
+				case comp :Compares[T, v] => Some((comp.left, comp.relation, comp.right))
 				case _ => None
 			}
 
 
 		/** A relation comparing the magnitude of two comparable terms, i.e. `<`, `<=`, `>`, `>=`, `==`.
 		  * This is simply a token used to carry the information about its nature in `Restriction`s and doesn't
-		  * implement anything. Constants exist in [[net.noresttherein.oldsql.model.Restraint.Comparison Comparison]].
+		  * implement anything. Constants exist in [[net.noresttherein.oldsql.model.Restraint.Compares Compares]].
 		  */
-		final class Relation private[Comparison](val symbol :String, expect :Int, invert :Boolean = false)
+		final class Comparison private[Compares](val symbol :String, expect :Int, invert :Boolean = false)
 			extends Serializable
 		{
 			def apply[T :OrderingSupport](left :T, right :T) :Boolean =
 				implicitly[OrderingSupport[T]].compare(left, right).sign == expect ^ invert
 
 			override def equals(that :Any) :Boolean = that match {
-				case other :Relation => symbol == other.symbol
+				case other :Comparison => symbol == other.symbol
 				case _ => false
 			}
 
@@ -557,25 +568,25 @@ object Restraint {
 		}
 
 		/** The `<` relation. */
-		final val LT = new Relation("<", -1)
+		final val LT = new Comparison("<", -1)
 		/** The `<=` relation. */
-		final val LTE = new Relation("<=", 1, true)
+		final val LTE = new Comparison("<=", 1, true)
 		/** The `>` relation. */
-		final val GT = new Relation(">", 1)
+		final val GT = new Comparison(">", 1)
 		/** The `>=` relation. */
-		final val GTE = new Relation(">=", -1, true)
+		final val GTE = new Comparison(">=", -1, true)
 		/** The `==` relation. */
-		final val EQ = new Relation("=", 0)
+		final val EQ = new Comparison("=", 0)
 
 
-		private class ComparisonRestrainer[-T, K](val Term :Restrictive[T, K], Cmp :Relation)
+		private class ComparisonRestrainer[-T, K](val Term :Restrictive[T, K], Cmp :Comparison)
 		                                         (implicit order :OrderingSupport[K])
 			extends AbstractTermRestrainer[T, K]
 		{
-			override def apply(key :K) :Restraint[T] = Comparison(Term, Cmp, Literal(key))
+			override def apply(key :K) :Restraint[T] = Compares(Term, Cmp, Literal(key))
 
 			override def from[X](restraint :Restraint[X]) :Option[K] = restraint match {
-				case Comparison(Term, Cmp, Literal(right)) => Some(right.asInstanceOf[K])
+				case Compares(Term, Cmp, Literal(right)) => Some(right.asInstanceOf[K])
 				case _ => None
 			}
 
@@ -604,8 +615,8 @@ object Restraint {
 		/** Creates a `Restraint` implementing the SQL expression `matched like pattern`.
 		  * @param matched a `String` expression to compare with the pattern `pattern`.
 		  * @param pattern a pattern to match in the common command line format (and '''not''' the SQL format);
-		  *                '?' and '*' special characters are used to match a single and any number of any characters,
-		  *                respectively, with `\` working as a string expression.
+		  *                '?' and '*' special characters are used to match a single and any number of any characters
+		  *                respectively, with `\` working as an escape character.
 		  */
 		def apply[T](matched :TranslableTerm[T, String], pattern :String) :Restraint[T] =
 			new Like(matched.toRestrictive, pattern)
@@ -696,7 +707,7 @@ object Restraint {
 		  */
 		def apply[T, E](member :Restrictive[T, E], values :Iterable[TranslableTerm[T, E]]) :Restraint[T] = values.size match {
 //			case 0 => False
-//			case 1 => Equality(member, values.head)
+//			case 1 => Equal(member, values.head)
 			case _ => new MembershipTest[T, Iterable[E], E](member, Collection(values.map(_.toRestrictive)))
 		}
 
@@ -713,7 +724,7 @@ object Restraint {
 			val decomposed = composite.decomposer(values)
 			decomposed.size match {
 //				case 0 => False
-//				case 1 => Equality(member, decomposed.head)
+//				case 1 => Equal(member, decomposed.head)
 				case _ =>
 					val collection = Collection[T, C, E](decomposed.map(Literal(_)))
 					new MembershipTest[T, C, E](member, collection)(composite.decomposer)
@@ -723,14 +734,11 @@ object Restraint {
 
 
 
-		/** Check if the given restriction is a membership test for a set.
-		  * This will also match all effective equality, whether it was created by Equality or MemberOf(Set(singleton)),
-		  * so check for equality before checking for membership restriction.
-		  */
+		/** Check if the given restriction is a membership test for a set. */
 		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, E], Restrictive[T, C], C DecomposableTo E) forSome { type E; type C }] =
 			restraint match {
 				case m :MembershipTest[T, c, e] => Some((m.member, m.values, m.decomposer))
-//				case Equality(left, right) => Some((left, right, DecomposableTo.Subclass()))
+//				case Equal(left, right) => Some((left, right, DecomposableTo.Subclass()))
 				case _ => None
 			}
 
