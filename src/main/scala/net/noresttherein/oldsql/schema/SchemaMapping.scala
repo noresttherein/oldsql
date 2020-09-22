@@ -57,8 +57,8 @@ import slang._
   * creating a [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaMapping LabeledSchemaMapping]]
   * (or [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaColumn LabeledSchemaColumn]]).
   * Components labeled in this way can be retrieved from the schema or this mapping using
-  * [[net.noresttherein.oldsql.schema.SchemaMapping#/ this / label]] and
-  * [[net.noresttherein.oldsql.schema.SchemaMapping#apply this(label)]]:
+  * [[net.noresttherein.oldsql.schema.SchemaMapping./ this / label]] and
+  * [[net.noresttherein.oldsql.schema.SchemaMapping.apply this(label)]]:
   * {{{
   *     def HumanSchema[O] = MappingSchema[Human, O].comp(_.gun, "gun" @: GunSchema[O])
   *                                                 .comp(_.backup, "backup" @: GunSchema[O])
@@ -81,7 +81,7 @@ import slang._
   *           but coming from different sources (especially different aliases for a table occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
-  *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
+  *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
   *
   * @see [[net.noresttherein.oldsql.schema.MappingSchema]]
   * @see [[net.noresttherein.oldsql.schema.AbstractSchemaMapping]]
@@ -96,24 +96,24 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 	//todo: this really reads better as a right-associative method
 	/** Attaches a label type to this mapping, being the singleton type of the given string literal.
 	  * A labeled component can be retrieved from the schema using its
-	  * [[net.noresttherein.oldsql.schema.MappingSchema#apply[N](label:N) apply(label)]] method, or `String` extension
+	  * [[net.noresttherein.oldsql.schema.MappingSchema.apply[N](label:N) apply(label)]] method, or `String` extension
 	  * methods provided by [[net.noresttherein.oldsql.schema.SchemaMapping.SchemaComponentLabel SchemaComponentLabel]]'s
 	  * methods, available in [[net.noresttherein.oldsql.schema.AbstractSchemaMapping AbstractSchemaMapping]]'s
 	  * subclasses.
-	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping#labeled]]
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.labeled]]
 	  */
 	override def apply[N <: Label :ValueOf] :LabeledSchemaMapping[N, S, V, C, O] = this labeled valueOf[N]
 
 	/** Attaches a label type to this mapping, being the singleton type of the given string literal.
 	  * A labeled component can be retrieved from the schema using its
-	  * [[net.noresttherein.oldsql.schema.MappingSchema#apply apply(label)]] method, or `String` extension
+	  * [[net.noresttherein.oldsql.schema.MappingSchema.apply apply(label)]] method, or `String` extension
 	  * methods provided by [[net.noresttherein.oldsql.schema.SchemaMapping.SchemaComponentLabel SchemaComponentLabel]]'s
 	  * methods, available in [[net.noresttherein.oldsql.schema.AbstractSchemaMapping AbstractSchemaMapping]]'s
 	  * subclasses.
 	  * Note that this method can sometimes lead the compiler to erroneously infer a unique singleton type for the label,
 	  * rather than the literal type denoted by the given string literal. In that case, you may wish to use
 	  * the `:@` method instead, which takes the type parameter instead of the singleton value.
-	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping#apply]]
+	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.apply]]
 	  */
 	override def labeled[N <: Label](label :N) :LabeledSchemaMapping[N, S, V, C, O] =
 		LabeledSchemaMapping(label, this)
@@ -307,7 +307,7 @@ object SchemaMapping {
 
 
 	/** Base trait for [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]], with an unspecified `Origin` type.
-	  * This makes it suited for inclusion in the [[net.noresttherein.oldsql.schema.MappingSchema#Components Components]]
+	  * This makes it suited for inclusion in the [[net.noresttherein.oldsql.schema.MappingSchema.Components Components]]
 	  * list of the latter and [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]], as it leaves
 	  * the `Origin` type parameter of the two a free variable, not occurring anywhere else in their type,
 	  * and thus the [[net.noresttherein.oldsql.schema.Mapping.OriginProjection origin projection]] of these types
@@ -315,7 +315,7 @@ object SchemaMapping {
 	  * the origins of individual components.
 	  *
 	  * Every instance of this must be also an instance of `SchemaMapping` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `SchemaMapping[S, V, C, O]`. Subtypes exist for various specialized `Mapping` types
 	  * which may occur as components in a `MappingSchema`.
 	  * @tparam S the `Subject` type of this mapping.
@@ -349,17 +349,17 @@ object SchemaMapping {
 
 		/** Attaches a label type to this mapping, being the singleton type of the given string literal.
 		  * A labeled component can be retrieved from the schema using its
-		  * [[net.noresttherein.oldsql.schema.MappingSchema#apply[N](label:N) apply(label)]] method, or `String` extension
+		  * [[net.noresttherein.oldsql.schema.MappingSchema.apply[N](label:N) apply(label)]] method, or `String` extension
 		  * methods provided by [[net.noresttherein.oldsql.schema.SchemaMapping.SchemaComponentLabel SchemaComponentLabel]]'s
 		  * methods, available in [[net.noresttherein.oldsql.schema.AbstractSchemaMapping AbstractSchemaMapping]]'s
 		  * subclasses.
-		  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.|-|#labeled]]
+		  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.|-|.labeled]]
 		  */
 		def apply[N <: Label :ValueOf]: @|-|[N, S, V, C]
 
 		/** Attaches a label type to this mapping, being the singleton type of the given string literal.
 		  * A labeled component can be retrieved from the schema using its
-		  * [[net.noresttherein.oldsql.schema.MappingSchema#apply apply(label)]] method, or `String` extension
+		  * [[net.noresttherein.oldsql.schema.MappingSchema.apply apply(label)]] method, or `String` extension
 		  * methods provided by [[net.noresttherein.oldsql.schema.SchemaMapping.SchemaComponentLabel SchemaComponentLabel]]'s
 		  * methods, available in [[net.noresttherein.oldsql.schema.AbstractSchemaMapping AbstractSchemaMapping]]'s
 		  * subclasses.
@@ -384,7 +384,7 @@ object SchemaMapping {
 
 	/** Base trait for [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping FlatSchemaMapping]],
 	  * with an unspecified `Origin` type. This makes it suited for inclusion
-	  * in the [[net.noresttherein.oldsql.schema.MappingSchema#Components Components]] list of
+	  * in the [[net.noresttherein.oldsql.schema.MappingSchema.Components Components]] list of
 	  * [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] and
 	  * and [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]], as it leaves
 	  * the `Origin` type parameter of the two a free variable, not occurring anywhere else in their type,
@@ -393,7 +393,7 @@ object SchemaMapping {
 	  * the origins of individual components.
 	  *
 	  * Every instance of this must be also an instance of `FlatSchemaMapping` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `FlatSchemaMapping[S, V, C, O]`.
 	  * @tparam S the `Subject` type of this mapping.
 	  * @tparam V the value chain, listing the value types of all components. In the default implementation,
@@ -421,7 +421,7 @@ object SchemaMapping {
 
 	/** Base trait for [[net.noresttherein.oldsql.schema.SchemaMapping.SchemaColumn SchemaColumn]],
 	  * with an unspecified `Origin` type. This makes it suited for inclusion
-	  * in the [[net.noresttherein.oldsql.schema.MappingSchema#Components Components]] list of
+	  * in the [[net.noresttherein.oldsql.schema.MappingSchema.Components Components]] list of
 	  * [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] and
 	  * and [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]], as it leaves
 	  * the `Origin` type parameter of the two a free variable, not occurring anywhere else in their type,
@@ -430,7 +430,7 @@ object SchemaMapping {
 	  * the origins of individual components.
 	  *
 	  * Every instance of this type must be also an instance of `SchemaColumn` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `SchemaColumn[S, O]`. Subtypes exist for various specialized `Mapping` types
 	  * which may occur as components in a `MappingSchema`.
 	  * @tparam S the `Subject` type of this mapping.
@@ -452,7 +452,7 @@ object SchemaMapping {
 
 	/** Base trait for [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledSchemaMapping LabeledSchemaMapping]],
 	  * with an unspecified `Origin` type. This makes it suited for inclusion
-	  * in the [[net.noresttherein.oldsql.schema.MappingSchema#Components Components]] list of
+	  * in the [[net.noresttherein.oldsql.schema.MappingSchema.Components Components]] list of
 	  * [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] and
 	  * and [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]], as it leaves
 	  * the `Origin` type parameter of the two a free variable, not occurring anywhere else in their type,
@@ -462,7 +462,7 @@ object SchemaMapping {
 	  * by providing the label `L`.
 	  *
 	  * Every instance of this must be also an instance of `FlatSchemaMapping` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `FlatSchemaMapping[S, V, C, O]`.
 	  * @tparam L a unique string literal identifying this component within the containing schema.
 	  * @tparam S the `Subject` type of this mapping.
@@ -496,7 +496,7 @@ object SchemaMapping {
 
 	/** Base trait for [[net.noresttherein.oldsql.schema.SchemaMapping.LabeledFlatSchemaMapping LabeledFlatSchemaMapping]],
 	  * with an unspecified `Origin` type. This makes it suited for inclusion
-	  * in the [[net.noresttherein.oldsql.schema.MappingSchema#Components Components]] list of
+	  * in the [[net.noresttherein.oldsql.schema.MappingSchema.Components Components]] list of
 	  * [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] and
 	  * and [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]], as it leaves
 	  * the `Origin` type parameter of the two a free variable, not occurring anywhere else in their type,
@@ -821,7 +821,7 @@ object SchemaMapping {
 	  *           but coming from different sources (especially different aliases for a table occurring more then once
 	  *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
 	  *           included in a query can be used in the creation of SQL expressions used by that query.
-	  *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
+	  *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping]]
 	  */
 	trait OperationSchema[-A <: OperationType, S, V <: Chain, C <: Chain, O]
@@ -1341,7 +1341,7 @@ object SchemaMapping {
 
 /** Base trait for `SchemaMapping` implementations which need individual access to their components during
   * the construction process. This class extends `StaticMapping`, meaning that within its
-  * [[net.noresttherein.oldsql.schema.support.StaticMapping#construct construct(Pieces)]] method components are implicitly
+  * [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct(Pieces)]] method components are implicitly
   * converted into their values, allowing their direct use as arguments for the subject's constructor.
   * Note that accepting a `MappingSchema` as the parameter, all type parameters of this class can be usually inferred
   * automatically:
@@ -1383,7 +1383,7 @@ object SchemaMapping {
   *           but coming from different sources (especially different aliases for a table occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
-  *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
+  *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
   * @see [[net.noresttherein.oldsql.schema.SchemaMapping.SchemaComponentLabel]]
   */
 abstract class AbstractSchemaMapping[S, V <: Chain, C <: Chain, O]

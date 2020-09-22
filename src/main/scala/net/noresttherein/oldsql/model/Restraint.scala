@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.slang._
   *   b) it seems natural when viewed as a filter function.
   *
   * Intuitively, any condition that can be used to narrow down
-  * a set of values of `T` can be used to narrow down a set of values of `S&lt;:T`. However, the problem starts when it is
+  * a set of values of `T` can be used to narrow down a set of values of `S<:T`. However, the problem starts when it is
   * treated as a result set of values of `T`, because then it would have to be covariant with regards to `T` -
   * a set of values of `S` is of course a set of values of `T>:S`. This becomes an issue when used inside a
   * `Kin[T]`, which is covariant with regards to `T` and care has to be taken when dealing with such cases.
@@ -130,7 +130,7 @@ object Restraint {
 		def compose[K](oldKey :P=>K, newKey :K=>P) :Restrainer[T, K] =
 			new MappedRestrainer[T, P, K](this)(oldKey, newKey)
 
-		/** Create a restrainer working on some other, larger type `X` from which values of `S&lt;:T` can be derived. */
+		/** Create a restrainer working on some other, larger type `X` from which values of `S<:T` can be derived. */
 		def derive[X, S<:T](nest :Restrictive[X, S]) :Restrainer[X, P] = new NestedRestrainer(this, nest)
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[Restrainer[_, _]]

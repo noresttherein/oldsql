@@ -37,33 +37,33 @@ import net.noresttherein.oldsql.slang._
   */
 trait SQLWriteForm[-T] extends SQLForms {
 
-	/** Set the values of parameters `&lt;position..position+writtenColumns)` of the given `PreparedStatement` to
+	/** Set the values of parameters `<position..position+writtenColumns)` of the given `PreparedStatement` to
 	  * the values obtained from the given value of `T`. This method simply delegates to `set` or `setNull`, depending
 	  * on whether the value is defined.
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm#set]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm#setNull]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.set]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull]]
 	  */
 	def setOpt(position  :Int)(statement :PreparedStatement, value :Option[T]) :Unit = value match {
 		case Some(x) => set(position)(statement, x)
 		case _ => setNull(position)(statement)
 	}
 
-	/** Set the values of parameters `&lt;position..position+writtenColumns)` of the given `PreparedStatement` to
+	/** Set the values of parameters `<position..position+writtenColumns)` of the given `PreparedStatement` to
 	  * the values obtained from the given value of `T`. While forms for reference types can in theory accept
 	  * `null` values, client code should not assume that passing `null` to this method will be handled gracefully
 	  * by arbitrary forms. This would be impossible to achieve for forms of built-in value types, which will always
 	  * throw a `NullPointerException` on a `null` unboxing attempt, but higher-level forms can depend on the internal
 	  * structure of the value `T` without checking it for nullity. Instead of calling `set` for a `null`, use
-	  * [[net.noresttherein.oldsql.schema.SQLWriteForm#setOpt setOpt]] for `None` or explicitly `setNull`.
+	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt setOpt]] for `None` or explicitly `setNull`.
 	  * If a value for a column/parameter cannot be obtained, a `null` value of the appropriate JDBC SQL type should
 	  * be set, unless this lack is a result of illegal argument or some other error, in which case an appropriate
 	  * exception should be thrown.
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm#setOpt]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm#setNull]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull]]
 	  */
 	def set(position :Int)(statement :PreparedStatement, value :T) :Unit
 
-	/** Set the values of parameters `&lt;position..position+writtenColumns)` of the given `PreparedStatement` to
+	/** Set the values of parameters `<position..position+writtenColumns)` of the given `PreparedStatement` to
 	  * represent the 'null value' of type `T`, however this form decides to define it. Typically, this means setting
 	  * all the columns which would be set with `set` to the appropriate `null` value, but it is not required.
 	  */
@@ -140,8 +140,8 @@ trait SQLWriteForm[-T] extends SQLForms {
 	  * extractor. This is equivalent to `unmap` or `flatUnmap`, depending on whether the extractor is
 	  * a `RequisiteExtractor` instance. In corner cases, such as a constant extractor, a special `SQLWriteForm`
 	  * instance may be returned.
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm#unmap]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm#flatUnmap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.unmap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.flatUnmap]]
 	  */
 	def from[X](extractor :X =?> T) :SQLWriteForm[X] = extractor match {
 		case _ :IdentityExtractor[_] => this.asInstanceOf[SQLWriteForm[X]]
@@ -156,8 +156,8 @@ trait SQLWriteForm[-T] extends SQLForms {
 	/** Creates a write form for `X` which will use this form after extracting a value from `X` with the given
 	  * extractor. This is equivalent to `unmap` or `flatUnmap`, depending on whether the extractor is
 	  * a `RequisiteExtractor` instance.
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm#unmap]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm#flatUnmap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.unmap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.flatUnmap]]
 	  */
 	def compose[X](extractor :X =?> T) :SQLWriteForm[X] = extractor match {
 		case _ :IdentityExtractor[_] => this.asInstanceOf[SQLWriteForm[X]]
@@ -319,14 +319,14 @@ object SQLWriteForm extends ScalaWriteForms with SQLWriteFormLevel1Implicits {
 
 
 
-	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#from from]] on the implicit form for `S`. */
+	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm.from from]] on the implicit form for `S`. */
 	def apply[S, T](map :T =?> S)(implicit writer :SQLWriteForm[S]) :SQLWriteForm[T] =
 		writer.from(map)
 
-	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#flatUnmap flatUnmap]] on the implicit form for `S`. */
+	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm.flatUnmap flatUnmap]] on the implicit form for `S`. */
 	def flatMap[S :SQLWriteForm, T](map :T => Option[S]) :SQLWriteForm[T] = SQLWriteForm[S].flatUnmap(map)
 
-	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm#unmap unmap]] on the implicit form for `S`. */
+	/** Calls [[net.noresttherein.oldsql.schema.SQLWriteForm.unmap unmap]] on the implicit form for `S`. */
 	def map[S :SQLWriteForm, T](map :T => S) :SQLWriteForm[T] = SQLWriteForm[S].unmap(map)
 
 

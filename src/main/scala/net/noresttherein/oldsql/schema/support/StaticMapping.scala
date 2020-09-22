@@ -24,8 +24,8 @@ import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
   * the latter for convenience, declaring `Pieces` as implicit and providing implicit conversion
   * from a `Component[T]` to `T`, allowing their use directly as constructor parameters to the assembled subject.
   * @see [[net.noresttherein.oldsql.schema.support.MappingFrame]]
-  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#construct]]
-  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#isDefined]]
+  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.construct]]
+  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.isDefined]]
   */
 trait StaticMapping[S, O] extends BaseMapping[S, O]
 	with StaticMappingTemplate[({ type A[M <: RefinedMapping[S, O], X] = MappingAdapter[M, X, O] })#A, S, O]
@@ -61,7 +61,7 @@ object StaticMapping {
 	  * this instance by the use of a custom `MappingAdapter` implementation. In addition to those adapting methods,
 	  * it overrides `optionally` for efficiency (by lazily caching needed buffs) and `assemble` for convenience,
 	  * by delegating to the
-	  * [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#construct construct]] method
+	  * [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.construct construct]] method
 	  * which declares the `Pieces` argument as implicit. In its presence, the components of this mapping are
 	  * implicitly converted to their values when needed, allowing their use directly as arguments to the constructor
 	  * of the subject entity.
@@ -79,8 +79,8 @@ object StaticMapping {
 	  * @tparam S the subject type of this mapping.
 	  * @tparam O the origin type of this mapping.
 	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping]]
-	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#construct]]
-	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#isDefined]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.construct]]
+	  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.isDefined]]
 	  *///extends Mapping, not BaseMapping as it narrows abstract declarations from Mapping which are implemented in BaseMapping
 	trait StaticMappingTemplate[+A[M <: RefinedMapping[S, O], X] <: RefinedMapping[X, O], S, O]
 		extends OptimizedMappingAssembly
@@ -94,16 +94,16 @@ object StaticMapping {
 		/** Performs the assembly of this mapping's subject from the components. This method is called in a double-dispatch
 		  * from `optionally`/`apply`, which should be used by external mappings, as they are responsible for
 		  * introducing default values and any manipulation of the final values. The standard implementation
-		  * invokes [[net.noresttherein.oldsql.schema.support.StaticMapping#construct construct(pieces)]] as long as
-		  * [[net.noresttherein.oldsql.schema.support.StaticMapping#isDefined isDefined(pieces)]] returns `true`.
+		  * invokes [[net.noresttherein.oldsql.schema.support.StaticMapping.construct construct(pieces)]] as long as
+		  * [[net.noresttherein.oldsql.schema.support.StaticMapping.isDefined isDefined(pieces)]] returns `true`.
 		  * Additionally, all `NoSuchElementException` exceptions (thrown by default by components' `apply` methods
 		  * when no value is preset or can be assembled) are caught and result in returning `None`. All other exceptions,
 		  * including `NullPointerException` (which may also result from unavailable columns), are propagated.
 		  * Subclasses should override those methods instead of `assemble`.
 		  * @return `Some(construct(pieces))` if `isDefined(pieces)` returns `true` or `None` if it returns `false` or
 		  *        a `NoSuchElementException` is caught.
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#construct construct]]
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#isDefined isDefined]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.construct construct]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.isDefined isDefined]]
 		  */
 		override def assemble(pieces: Pieces): Option[S] =
 			try {
@@ -136,8 +136,8 @@ object StaticMapping {
 		  *             Address(country, city, zip, street, no)
 		  *     }
 		  * }}}
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#isDefined isDefined]]
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#assemble assemble]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.isDefined isDefined]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.assemble assemble]]
 		  */
 		protected def construct(implicit pieces :Pieces) :S
 
@@ -148,8 +148,8 @@ object StaticMapping {
 		  * primarily with the thought of outer joins where all columns of a table can carry `null` values.
 		  * For this reason, it simply always returns `true`, but entity tables override it with a check of availability
 		  * of the primary key. The subclasses are free to implement any condition here.
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#onstruct construct]]
-		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate#assemble assemble]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.onstruct construct]]
+		  * @see [[net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate.assemble assemble]]
 		  */
 		protected def isDefined(implicit pieces :Pieces) :Boolean = true
 

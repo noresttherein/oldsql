@@ -44,7 +44,7 @@ object SQLScribe {
 
 	/** Base `SQLScribe` trait implementing methods for all `SQLExpression` types which do not depend on the clause `F`
 	  * (such as terms) as well as for `CompositeSQL` subclasses by recursively applying itself using their
-	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL#rephrase rephrase]] method.
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.rephrase rephrase]] method.
 	  */
 	trait AbstractSQLScribe[+F <: FromClause, -R <: FromClause] extends SQLScribe[F, R]
 		with CaseComposite[F, ExpressionResult[R]#T] with CaseCompositeColumn[F, ColumnResult[R]#T]
@@ -75,9 +75,9 @@ object SQLScribe {
 	  * applicable (such as `SQLTerm` and its subclasses), and recursively applies itself to both
 	  * `CompositeSQL` and `SubselectSQL`. The former uses the `rephrase` method to rebuild the composite expression
 	  * from parts transformed with this instance, while the latter creates a new instance with its
-	  * [[net.noresttherein.oldsql.sql.SQLScribe.RecursiveScribe#extended extended]] method for the subselect's
+	  * [[net.noresttherein.oldsql.sql.SQLScribe.RecursiveScribe.extended extended]] method for the subselect's
 	  * ''from'' clause. The subselect clause is then transplanted onto the result clause `G` in a way similar
-	  * to [[net.noresttherein.oldsql.sql.FromClause#asSubselectOf FromClause.asSubselectOf]], rewriting all
+	  * to [[net.noresttherein.oldsql.sql.FromClause.asSubselectOf FromClause.asSubselectOf]], rewriting all
 	  * join conditions and the subselect header before creating a new `SubselectSQL`.
 	  * In order to be able to rewrite subselect expressions, it requires the output clause instance `G` to use
 	  * as their `Outer`/`Implicit` portion. This can be achieved either by using this scribe in a `Compound`
@@ -200,7 +200,7 @@ object SQLScribe {
 
 	/** Base `SQLScribe` trait for implementations substituting one or more of the relations in the input clause
 	  * with mappings containing the replaced mappings as their components. The only remaining method left to implement
-	  * by subclasses is [[net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents#relation relation]], return type
+	  * by subclasses is [[net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents.relation relation]], return type
 	  * of which has been narrowed down to a `BaseComponentSQL`. The handler methods for `ComponentSQL` and
 	  * `ColumnComponentSQL` in this trait assume that the substitute relation also contains the original component
 	  * and simply graft it onto the new relation.
@@ -523,7 +523,7 @@ object SQLScribe {
 
 
 	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
-	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression#extend extend]]
+	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]]
 	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
 	  */
 	def rebase[F <: FromClause, E <: FromClause](clause :E)(implicit extension :F PartOf E) :SQLScribe[F, E] =
@@ -546,10 +546,10 @@ object SQLScribe {
 
 
 	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
-	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression#extend extend]]
+	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]]
 	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
 	  * For this reason it can only be applied to global expressions, i.e. those for which
-	  * [[net.noresttherein.oldsql.sql.SQLExpression#asGlobal asGlobal]] returns `Some`. For all other expressions
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.asGlobal asGlobal]] returns `Some`. For all other expressions
 	  * it will throw an `IllegalArgumentException`
 	  */
 	def extend[F <: FromClause, E <: FromClause](clause :E)(implicit extension :F ExtendedBy E) :SQLScribe[F, E] =

@@ -18,28 +18,28 @@ sealed trait OperationType {
 	
 	/** A buff marking a column/component as not allowed in a given operation type or, more specifically, 
 	  * that the column is not used in this statement type as part of the mapping - it can still be used by the
-	  * framework explicitly (see [[net.noresttherein.oldsql.OperationType#extra extra]]. Example: `NoSelect`. 
+	  * framework explicitly (see [[net.noresttherein.oldsql.OperationType.extra extra]]. Example: `NoSelect`.
 	  */
 	val prohibited :FlagBuffType
 	
 	/** A buff marking a column/component as not used as part of the owning mapping, but forcibly always included
 	  * by the framework, with the value specified by the buff instance. For example, `ExtraQuery` will apply
 	  * an additional filter on the queried table or view. It always implies 
-	  * [[net.noresttherein.oldsql.OperationType#prohibited prohibited]].
+	  * [[net.noresttherein.oldsql.OperationType.prohibited prohibited]].
 	  */
 	val extra :ValueBuffType
 	
 	/** A buff marking a column/component as not included by default in the operation, but possibly still allowed
 	  * if included explicitly. Example: `NoSelectByDefault`. It is implied by both
-	  * [[net.noresttherein.oldsql.OperationType#prohibited prohibited]] and
-	  * [[net.noresttherein.oldsql.OperationType#explicit explicit]].
+	  * [[net.noresttherein.oldsql.OperationType.prohibited prohibited]] and
+	  * [[net.noresttherein.oldsql.OperationType.explicit explicit]].
 	  */
 	val nonDefault :FlagBuffType
 	
 	/** A buff marking that a column/component must be included in the operation explicitly, as it is not included
 	  * by the mapping in the standard process. Example: `ExplicitSelect` for CLOB/BLOB types. This column implies
-	  * [[net.noresttherein.oldsql.OperationType#optional optional]] and
-	  * [[net.noresttherein.oldsql.OperationType#nonDefault nonDefault]].
+	  * [[net.noresttherein.oldsql.OperationType.optional optional]] and
+	  * [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]].
 	  */
 	val explicit :BuffType
 	
@@ -55,8 +55,8 @@ sealed trait OperationType {
 	val audit :AuditBuffType
 
 	/** All columns, direct or indirect, of the given mapping which are applicable to this operation type. 
-	  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping#columns columns]] list ''without''
-	  * the [[net.noresttherein.oldsql.OperationType#prohibited prohibited]] buff.
+	  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
+	  * the [[net.noresttherein.oldsql.OperationType.prohibited prohibited]] buff.
 	  */
 	def columns[S, O](mapping :RefinedMapping[S, O]) :Unique[ColumnMapping[_, O]]
 

@@ -154,7 +154,7 @@ object ChainMapping {
 
 
 
-	/** Adapts a `MappingSchema` with the owning mapping's subject type `V &lt;: Chain` to a `MappingSchema`
+	/** Adapts a `MappingSchema` with the owning mapping's subject type `V <: Chain` to a `MappingSchema`
 	  * with outer subject type being a `Chain` longer by one entry. This is essentially a component
 	  * mapping for a prefix chain `V` of a chain `S`.
 	  * @tparam S the outer subject type of this schema.

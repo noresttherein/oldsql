@@ -70,7 +70,7 @@ trait GroupByClause extends NonEmptyFrom { thisClause =>
 	def withCondition(filter :LocalBoolean[Generalized]) :This
 
 
-	/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.GroupByClause#having having]].
+	/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.GroupByClause.having having]].
 	  * This means that the applied filter condition will become the ''having'' clause of the generated select,
 	  * rather than the ''where'' clause. The condition is combined using `&&` with `this.condition`
 	  * and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
@@ -83,7 +83,7 @@ trait GroupByClause extends NonEmptyFrom { thisClause =>
 	  */
 	override def where(condition :GlobalBoolean[Generalized]) :This = having(condition)
 
-	/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.GroupByClause#having having]].
+	/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.GroupByClause.having having]].
 	  * This means that the applied filter condition will become the ''having'' clause of the generated select,
 	  * rather than the ''where'' clause. The condition is combined using `&&` with `this.condition`
 	  * and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.

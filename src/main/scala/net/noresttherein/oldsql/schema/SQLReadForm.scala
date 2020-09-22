@@ -33,7 +33,7 @@ import net.noresttherein.oldsql.slang._
   */
 trait SQLReadForm[+T] extends SQLForms {
 
-	/** Reads the column values from columns `&lt;position..position + this.readColumns)` of the passed `ResultSet`
+	/** Reads the column values from columns `<position..position + this.readColumns)` of the passed `ResultSet`
 	  * and creates an instance of `T`. The default implementation delegates to `opt` and fallbacks to `nullValue`
 	  * if no value is available, but the exact handling is completely up to the implementation. Note that `null` column
 	  * values may happen even on not-null database columns in outer joins.
@@ -44,14 +44,14 @@ trait SQLReadForm[+T] extends SQLForms {
 	  *                                table per class hierarchy mapping.
 	  * @throws NullPointerException if the read column is `null` and type `T` does not define a value corresponding to `null`.
 	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#opt opt]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]
 	  */
 	def apply(position :Int)(res :ResultSet) :T = opt(position)(res) match {
 		case Some(x) => x
 		case _ => nullValue
 	}
 
-	/** Attempts to read the column values from columns `&lt;position..position + this.readColumns` of the passed
+	/** Attempts to read the column values from columns `<position..position + this.readColumns` of the passed
 	  * `ResultSet` and create an instance of `T`. If the values are unavailable (required columns carry `null` values),
 	  * `None` is returned. It is the recommended practice to have the returned option reflect only the availability
 	  * of the input values and not their validity. It is allowed for the form to return `Some(null)`
@@ -113,8 +113,8 @@ trait SQLReadForm[+T] extends SQLForms {
 	  * to be used when `null` value(s) are read from the `ResultSet`. This guarantees that the given function will
 	  * not be called for `null` arguments unless this form returns `Some(null)` from its `opt` method in a non-standard
 	  * practice and allows handling of `null` values also when `T` is a value type without a natural `null` value.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#map]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#nullMap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullMap]]
 	  */
 	def map[X :NullValue](fun :T => X) :SQLReadForm[X] = NullValue[X] match {
 		case null => new MappedSQLReadForm(fun)(this, nulls.map(fun))
@@ -126,15 +126,15 @@ trait SQLReadForm[+T] extends SQLForms {
 	  * not be called for `null` arguments unless this form returns `Some(null)` from its `opt` method in a non-standard
 	  * practice and allows handling of `null` values also when `T` is a value type without a natural `null` value.
 	  * Note that `this.nullValue` is never called, directly or indirectly, by the created form.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#map]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#nullMap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullMap]]
 	  */
 	def map[X](fun :T => X, nullValue :X) :SQLReadForm[X] = map(fun)(NullValue(nullValue))
 
 	/** Maps the value of `T` read by this form to `X` in order to obtain a form for `X`. Note that the given
 	  * function may be called for `null` arguments, even if the underlying columns have a ''not null'' constraint
 	  * in case of outer join queries.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
 	  */
 	def nullMap[X](fun :T => X) :SQLReadForm[X] = map(fun)(nulls.map(fun))
 
@@ -183,8 +183,8 @@ trait SQLReadForm[+T] extends SQLForms {
 	  * use the implicitly available `nullValue` except for when `fun` is an identity extractor, in which case
 	  * this instance will be returned. This will investigate the type of the extractor and either delegate to `map`
 	  * or `flatMap` or return a specific form in corner cases.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#map]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#flatMap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.flatMap]]
 	  */
 	def to[X :NullValue](fun :T =?> X) :SQLReadForm[X] = fun match {
 		case _ :EmptyExtractor[_, _] => SQLReadForm.nulls(readColumns)
@@ -199,15 +199,15 @@ trait SQLReadForm[+T] extends SQLForms {
 	  * use the given `nullValue` except for when `fun` is an identity extractor, in which case this instance
 	  * will be returned. This will investigate the type of the extractor and either delegate to `map` or `flatMap` or
 	  * return a specific form in corner cases.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#map]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#flatMap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.map]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.flatMap]]
 	  */
 	def to[X](f :T =?> X, nullValue :X) :SQLReadForm[X] = to(f)(NullValue(nullValue))
 
 	/** Maps the value of `T` read by this form to `X` in order to obtain a form for `X`.
 	  * This will call `nullMap` or `nullFlatMap` based on whether the extract is a `RequisiteExtractor`.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#nullMap]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm#nullFlatMap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullMap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullFlatMap]]
 	  */
 	def nullTo[X](f :T =?> X) :SQLReadForm[X] = to(f)(nulls.extract(f))
 

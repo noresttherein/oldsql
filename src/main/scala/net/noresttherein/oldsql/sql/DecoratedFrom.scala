@@ -263,12 +263,12 @@ object DecoratedFrom {
 
 	/** Implicit witness providing a type constructor for the decorator type `F`. It is used in type inference
 	  * to disassemble the type `F` into the decorator constructor `D` and the decorated clause `C`.
-	  * Type parameters in the form of `[D[+C &lt;: FromSome] &lt;: FromSomeDecorator, C &lt;: FromSome]`
+	  * Type parameters in the form of `[D[+C <: FromSome] <: FromSomeDecorator, C <: FromSome]`
 	  * can be properly inferred from the type `F` if it is a type formed from applying the single argument
 	  * type constructor directly to the decorated type (for example, for `F =:= GenericDecorator[C]`, the types
 	  * would be properly instantiated as `D[X] =:= GenericDecorator[X]` and `C =:= C`) or if `F` is formed
 	  * from applying a multi argument type constructor, with the decorated clause being the last type parameter
-	  * (so, for `trait Deco[F, +C &lt;: FromSome] extends GenericDecorator[C]`, `Deco[F, C]` will be correctly unified as
+	  * (so, for `trait Deco[F, +C <: FromSome] extends GenericDecorator[C]`, `Deco[F, C]` will be correctly unified as
 	  * `D[X] =:= Deco[F, X], C =:= C`). However, if the `C` type argument is not the last one, or the type definition
 	  * is more complex, automatic partial unification will fail - as it would for
 	  * [[net.noresttherein.oldsql.sql.DecoratedFrom.Alias Alias]], which takes the clause as its first argument.

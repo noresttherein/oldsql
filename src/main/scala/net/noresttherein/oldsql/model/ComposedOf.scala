@@ -26,7 +26,7 @@ object -> {
 
 /** Proof that type `C` is in some way composed of values of `E` and can be converted to and from `Iterable[E]`
   * (possibly with some restrictions in place). Serves as a single umbrella for collection types
-  * `( _&lt;: Iterable[E])`, `Option[E]` and `E` itself, allowing to create queries for `E` with result type `C`.
+  * `( _<: Iterable[E])`, `Option[E]` and `E` itself, allowing to create queries for `E` with result type `C`.
   * In order to statically exclude the identity composition (as it can lead to non obvious bugs, you can demand
   * an implicit of its subtype instead: `C CollectionOf E`.
   * It is generally written in the code using infix notation for clarity: `C ComposedOf E`.
@@ -191,7 +191,7 @@ object ComposedOf {
 		def apply[C, E](implicit composition :C CollectionOf E) :C CollectionOf E = composition
 
 		/** Creates an instance of `C CollectionOf E` from the given constructor and extractor the same way as
-		  * [[net.noresttherein.oldsql.model.ComposedOf#apply ComposedOf(compose, decompose)]]. Note that instances
+		  * [[net.noresttherein.oldsql.model.ComposedOf.apply ComposedOf(compose, decompose)]]. Note that instances
 		  * of `C CollectionOf E` will equal (symmetrically) instances of `C ComposedOf E` as long as their corresponding
 		  * constituents are equal.
 		  */
@@ -422,7 +422,7 @@ object ComposedOf {
 			}
 		}
 
-		/** A factory and matcher for instances of `C ConstructFrom E` for types `C &lt;: Iterable[E]` using
+		/** A factory and matcher for instances of `C ConstructFrom E` for types `C <: Iterable[E]` using
 		  * implicitly available `CanBuildFrom[_, E, C]`.
 		  */
 		object Collection {

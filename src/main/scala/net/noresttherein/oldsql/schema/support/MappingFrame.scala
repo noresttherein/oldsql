@@ -1250,8 +1250,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * @throws IllegalStateException if reentered while a another call to `initPreceding` is present on the stack
 	  *                               as a result of being called from initialization code of a component or
 	  *                               if the mapping is already initialized.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame#initPreceding[T](value:T) initPreceding(value)]]
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.FrameComponent#include() FrameComponent.include()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initPreceding[T](value:T) initPreceding(value)]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.FrameComponent.include() FrameComponent.include()]]
 	  */
 	protected final def initPreceding() :Unit = synchronized {
 		if (initializationState == 2)
@@ -1269,7 +1269,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	/** An ease-of-life variant of no-argument `initPreceding()` which returns the given argument after finishing
 	  * the initialization of all already defined components. It allows to 'inject' the initialization as an intermediate
 	  * step into any expression.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame#initPreceding() initPreceding()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initPreceding() initPreceding()]]
 	  */
 	@inline protected final def initPreceding[T](value :T) :T = { initPreceding(); value }
 
@@ -1290,10 +1290,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	/** Tests if the component lists of this instance have already been initialized and can not be changed any further.
 	  * This happens either when any of the column/component lists of this instance are accessed, or when a subclass
 	  * manually triggers the initialization by a call to
-	  * [[net.noresttherein.oldsql.schema.support.MappingFrame#initialize() initialize()]].
+	  * [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]].
 	  * Any attempt to create new components after this happens will result in `IllegalStateException` thrown
 	  * by the constructor.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame#initialize() initialize()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]]
 	  */
 	protected final def isInitialized :Boolean = initializationState == 2
 
@@ -1312,7 +1312,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * the first one are ignored.
 	  * @throws IllegalStateException if called when the initialization is already in progress, but has not completed.
 	  *                               This can be in particular caused by calling from initialization of a component.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame#finalizeInitialization()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.finalizeInitialization()]]
 	  */
 	protected final def initialize() :Unit =
 		if (!isInitialized) synchronized {
@@ -1351,7 +1351,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 	/** A hook method called by `initialize()` after component lists are initialized. By default it does nothing,
 	  * but subclasses may override it to implement any additional initialization steps they require.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame#initialize() initialize()]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]]
 	  */
 	protected def finalizeInitialization() :Unit = ()
 

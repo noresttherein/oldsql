@@ -98,7 +98,7 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 	/** True if `null` is a valid value for this column. Unless the `Nullable` buff is attached,
 	  * `optionally` will deliberately throw a `NullPointerException` if a `null` value is preset in
-	  * the [[net.noresttherein.oldsql.schema.Mapping#Pieces Pieces]] argument (typically as the result of
+	  * the [[net.noresttherein.oldsql.schema.Mapping.Pieces Pieces]] argument (typically as the result of
 	  * this column's form returning `Some(null)`).
 	  * @return `Nullable.enabled(buffs)`.
 	  */

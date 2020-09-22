@@ -34,7 +34,7 @@ trait Buff[T] {
 	  * This will be true if this buff was created by this group or if the group which created this buff
 	  * has strictly narrower meaning than the passed argument, effectively implying the latter.
 	  * This method delegates the test to the associated `BuffType`'s
-	  * [[net.noresttherein.oldsql.schema.Buff.BuffType#implies implies]].
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies implies]].
 	  */
 	def is(group :BuffType) :Boolean = buffType.implies(group)
 
@@ -345,7 +345,7 @@ object Buff {
 	  *
 	  * Instances of this class form a subtype relation of sorts, meaning certain buffs created by some factories
 	  * are recognized as 'belonging' also to other buff types. This is implemented through the
-	  * [[net.noresttherein.oldsql.schema.Buff.BuffType#implies implies]] method. If a `BuffType` `A` implies
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies implies]] method. If a `BuffType` `A` implies
 	  * a `BuffType` `B`, then `B.enabled(a)` and `a is B` will be true for every buff `a` created by the buff type `A`.
 	  * If the actual `Buff` class, defining what information is carried by a buff, used by the type `A`
 	  * is a subclass of the class of buffs produces by the type `B` (which should be the case for all such pairs),
@@ -881,7 +881,7 @@ object Buff {
 
 
 
-	/** An exception thrown when the [[net.noresttherein.oldsql.schema.Mapping#optMap Mapping.optMap]] operation
+	/** An exception thrown when the [[net.noresttherein.oldsql.schema.Mapping.optMap Mapping.optMap]] operation
 	  * fails due to presence of a buff which cannot be mapped with the given function, either because
 	  * the operation is not supported at all, or the function returned `None` for the `Buff`'s value.
 	  * This exception can be thrown both from the `optMap` method and at some later point, when the buff's value

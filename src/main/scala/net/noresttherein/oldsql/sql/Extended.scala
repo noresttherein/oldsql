@@ -52,7 +52,7 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { th
 
 	/** The last SQL relation in this clause. This is the relation understood in the global sense, as a unique
 	  * database object, rather than an entry in the list of relations in the ''from'' clause -
-	  * for that have a look at [[net.noresttherein.oldsql.sql.FromClause#last last]].
+	  * for that have a look at [[net.noresttherein.oldsql.sql.FromClause.last last]].
 	  */
 	def right :Relation[R] = last.relation
 
@@ -65,7 +65,7 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { th
 	  * and not a valid reference to the relation from the point of view of this clause. Its type parameter
 	  * makes it incompatible for direct use in SQL expressions based on this clause and casting it will result
 	  * in generating invalid SQL. You can however use the method
-	  * [[net.noresttherein.oldsql.sql.Compound#lastAsIn lastAsIn]] in the following way:
+	  * [[net.noresttherein.oldsql.sql.Compound.lastAsIn lastAsIn]] in the following way:
 	  * {{{
 	  *     def secondLast[T1[O] <: MappingAt[O], T2 <: MappingAt[O]](from :FromClause AndFrom T1 AndFrom T2) =
 	  *         from.left.lastAsIn[FromClause AndFrom T1 AndFrom T2]
@@ -80,7 +80,7 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { th
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
 	  * condition, as it doesn't include any join conditions defined on the left side of this join.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
 	  */ //declared here to have a single equals/hashCode implementation
 	protected def condition :LocalBoolean[Generalized]
 
@@ -214,7 +214,7 @@ object Compound {
 	/** An implicit witness serving as type inference helper for the `Mapping` type of a joined
 	  * [[net.noresttherein.oldsql.schema.Relation Relation]]. It separates the inference of the mapping type itself
 	  * from its `Subject` type, thus allowing for both to function properly in methods with the type parameters
-	  * in the form of `[R &lt;: BaseMapping[S, _], S]` (and similar). It is used in particular when constructing new
+	  * in the form of `[R <: BaseMapping[S, _], S]` (and similar). It is used in particular when constructing new
 	  * `Join` instances to remove explicit type parameters from the call. Apart from this purely independent role,
 	  * it provides identity casting methods, similar to those of `=:=`, for various relevant types
 	  * (`SQLExpression`, `Relation`, `F`) between those parameterized with `R` and `T` to eliminate the need
@@ -225,7 +225,7 @@ object Compound {
 	  * @tparam T the type `R`, but with the upper bound of `U`. It generally should not be used in the method signature
 	  *           (in particular, it cannot appear before this argument), but can be used in the method's body.
 	  *           As the type argument `U` is generally a concrete type, the type `R` is typically a type parameter
-	  *           with an explicit upper bound consistent with `U`, such as `R[O] &lt;: BaseMapping[S, O]`.
+	  *           with an explicit upper bound consistent with `U`, such as `R[O] <: BaseMapping[S, O]`.
 	  * @tparam U an upper bound for the mapping type `R` (and `T`) required for the implementation.
 	  *           It is a concrete type with only its type parameters being abstract, typically given as
 	  *           `BaseMapping[S, O]`, where `S` is a free type parameter of the method. It allows the inference

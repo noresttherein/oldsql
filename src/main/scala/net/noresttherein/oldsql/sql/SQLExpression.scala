@@ -104,7 +104,7 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 
 
 
-	/** Upcasts this expression to the base ''from'' clause `E &lt;: F`, using only implicit evidence about the subtype
+	/** Upcasts this expression to the base ''from'' clause `E <: F`, using only implicit evidence about the subtype
 	  * relation rather than explicit lower type bound (which would be an identity cast in Scala).
 	  */
 	def basedOn[E <: FromClause](implicit subtype :E <:< F) :SQLExpression[E, S, V] =
@@ -114,14 +114,14 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 	  * The extension is limited only to clauses representing the same select as this clause - no
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'joins' can occur in `E` after `F`.
 	  * This method is thus applicable to a strictly smaller set of ''from'' clauses than
-	  * [[net.noresttherein.oldsql.sql.SQLExpression#extend extend]], but is available for all expressions.
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]], but is available for all expressions.
 	  */
 	def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V]
 
 	/** Treat this expression as an expression of a ''from'' clause extending (i.e. containing additional tables)
 	  * the clause `F` this expression is based on. This method is available only for global expressions, i.e. those
 	  * which can occur inside any subselect of a select with the ''from'' clause `F`. This method has thus a wider
-	  * range of applicable ''from'' clauses than [[net.noresttherein.oldsql.sql.SQLExpression#basedOn basedOn]],
+	  * range of applicable ''from'' clauses than [[net.noresttherein.oldsql.sql.SQLExpression.basedOn basedOn]],
 	  * but is limited only to expressions conforming to `SQLExpression[F, GlobalScope, V]`.
 	  */
 	def extend[U <: F, E <: FromClause]
@@ -136,7 +136,7 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 	  * This method is supported only by a few expression types, namely [[net.noresttherein.oldsql.sql.TupleSQL TupleSQL]]
 	  * and [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] subclasses. It is considered
 	  * low level API exposed only to support potential extension by custom expression types and should not be used
-	  * by the client code directly; prefer using [[net.noresttherein.oldsql.sql.FromClause#select select]]
+	  * by the client code directly; prefer using [[net.noresttherein.oldsql.sql.FromClause.select select]]
 	  * and its relatives instead.
 	  * @throws UnsupportedOperationException if this expression cannot be used as the complete ''select'' clause,
 	  *                                       which is the default for all classes which do not override this method.
@@ -150,7 +150,7 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 	  * This method is supported only by a few expression types, namely [[net.noresttherein.oldsql.sql.TupleSQL TupleSQL]]
 	  * and [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] subclasses. It is considered
 	  * low level API exposed only to support potential extension by custom expression types and should not be used
-	  * by the client code directly; prefer using [[net.noresttherein.oldsql.sql.FromClause#select select]]
+	  * by the client code directly; prefer using [[net.noresttherein.oldsql.sql.FromClause.select select]]
 	  * and its relatives instead.
 	  * @throws UnsupportedOperationException if this expression cannot be used as the complete ''select'' clause,
 	  *                                       which is the default for all classes which do not override this method.

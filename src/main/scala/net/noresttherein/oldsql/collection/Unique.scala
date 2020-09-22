@@ -110,7 +110,7 @@ object Unique extends IterableFactory[Unique] {
 		/** Treats the `this` argument as a ''by-name'' expression to be evaluated only when the created `Unique`
 		  * proxy's contents are accessed.
 		  * @return `Unique.delayed(initializer)`.
-		  * @see [[net.noresttherein.oldsql.collection.Unique#delayed delayed]]
+		  * @see [[net.noresttherein.oldsql.collection.Unique.delayed delayed]]
 		  */
 		@inline def delayed :Unique[T] = Unique.delayed(initializer)
 	}

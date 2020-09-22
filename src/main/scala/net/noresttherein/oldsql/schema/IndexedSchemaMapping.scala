@@ -179,7 +179,7 @@ object IndexedMappingSchema {
 		/** Appends a new labeled component to this schema. The component will inherit any column prefix and all buffs
 		  * provided for the outer mapping of `S` at the initialization of this schema. Inherited buffs will follow
 		  * any buffs passed to this method. The label can be used to access the component by passing it as the argument
-		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method.
+		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method.
 		  * @param label a `String` literal (or just a singleton type in generic code) which will be attached
 		  *              to the created component in order to turn into a `LabeledMapping` instance of
 		  *              [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], the form in which it will
@@ -209,7 +209,7 @@ object IndexedMappingSchema {
 		/** Appends a new labeled component to this schema. The component will inherit any column prefix and all buffs
 		  * provided for the outer mapping of `S` at the initialization of this schema. Inherited buffs will follow
 		  * any buffs passed to this method. The label can be used to access the component by passing it as the argument
-		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method.
+		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method.
 		  * @param label a `String` literal (or just a singleton type in generic code) which will be attached
 		  *              to the created component in order to turn into a `LabeledMapping` instance of
 		  *              [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], the form in which it will
@@ -272,7 +272,7 @@ object IndexedMappingSchema {
 		  * and all buffs provided for the outer mapping of `S` at the initialization of this schema.
 		  * Inherited buffs will follow any buffs passed to this method. The label can be used to access the component
 		  * by passing it as the argument to the
-		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method. The extractor function
+		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method. The extractor function
 		  * may not produce a value for all instances of the subject type `S`, in which case the component
 		  * will be omitted from a database write. The impact its lack will have on the assembly of the ''packed'' value
 		  * depends on the implementation of the outer mapping based on this schema.
@@ -309,7 +309,7 @@ object IndexedMappingSchema {
 		  * and all buffs provided for the outer mapping of `S` at the initialization of this schema.
 		  * Inherited buffs will follow any buffs passed to this method. The label can be used to access the component
 		  * by passing it as the argument to the
-		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method. The extractor function
+		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method. The extractor function
 		  * may not produce a value for all instances of the subject type `S`, in which case the component
 		  * will be omitted from a database write. The impact its lack will have on the assembly of the ''packed'' value
 		  * depends on the implementation of the outer mapping based on this schema.
@@ -453,16 +453,16 @@ object IndexedMappingSchema {
 		  * Note that the values of components are accessed 'forcibly'
 		  * from the [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] passed for assembly rather than
 		  * by the `Option` returning `get` method and, instead, `NoSuchElementException` exceptions are caught
-		  * and translated to a `None` result in the [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]]
+		  * and translated to a `None` result in the [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 		  * method. The created `Mapping`, regardless if by mapping the value chain or using direct component access,
 		  * will thus require the values for all listed components to be present in order for the whole assembly
 		  * to succeed. If any of the components in this schema
 		  * is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce a value
 		  * during assembly, this function will not be called and the created mapping will likewise fail to produce
-		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping#Pieces Pieces]].
+		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping.Pieces Pieces]].
 		  *
 		  * The `SchemaMapping` created by this method will be thus more efficient both in assembly and disassembly
-		  * than a mapping created with the standard [[net.noresttherein.oldsql.schema.Mapping#map map]] method
+		  * than a mapping created with the standard [[net.noresttherein.oldsql.schema.Mapping.map map]] method
 		  * as declared by `Mapping` by skipping the intermediate steps.
 		  * @param constructor a function whose argument(s) contain all the subjects of components in the chain `C`.
 		  *                    It can take either: a) the value chain `V` itself; b) a scala tuple with the same elements;
@@ -478,7 +478,7 @@ object IndexedMappingSchema {
 //		  * of subjects of all top-level components of this schema. If any of the components in this schema
 //		  * is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce a value
 //		  * during assembly, this function will not be called and the created mapping will likewise fail to produce
-//		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping#Pieces Pieces]].
+//		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping.Pieces Pieces]].
 //		  * @param constructor a function accepting a `IndexedChain` with the values of all components as they appear
 //		  *                    in the components chain `C`, indexed by component labels for direct access.
 //		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
@@ -709,7 +709,7 @@ object IndexedMappingSchema {
 /** A `Mapping` which has all its components listed in its type as the `Chain` parameter `C`.
   * The added benefit over the standard [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]] is that
   * all components are labeled with unique `String` literal types. This allows easy access by the
-  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method:
+  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method:
   * {{{
   *     val ownedSquirrels = this / "squirrelCount"
   * }}}.
@@ -722,7 +722,7 @@ object IndexedMappingSchema {
   *           but coming from different sources (especially different aliases for a table occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
-  *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
+  *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
   */
 trait IndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
 	extends SchemaMapping[S, V, C, O]
@@ -766,7 +766,7 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema#apply IndexedMappingSchema]]`[S, _]`,
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
@@ -784,7 +784,7 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema#apply IndexedMappingSchema]]`[S, _]`,
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
@@ -806,7 +806,7 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema#apply IndexedMappingSchema]]`[S, _]`,
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
@@ -830,7 +830,7 @@ object IndexedSchemaMapping {
 	  * to assemble the value index from the column values). The added benefit over the standard
 	  * [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping FlatSchemaMapping]] is that
 	  * all columns are labeled with unique `String` literal types. This allows easy access by the
-	  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport#/ /]] method:
+	  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method:
 	  * {{{
 	  *     val ownedSquirrels = this / "squirrelCount"
 	  * }}}.
@@ -843,7 +843,7 @@ object IndexedSchemaMapping {
 	  *           but coming from different sources (especially different aliases for a table occurring more then once
 	  *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
 	  *           included in a query can be used in the creation of SQL expressions used by that query.
-	  *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
+	  *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
 	  */
 	trait FlatIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
 		extends IndexedSchemaMapping[S, V, C, O] with FlatSchemaMapping[S, V, C, O]

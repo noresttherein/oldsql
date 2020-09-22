@@ -89,7 +89,7 @@ sealed trait JoinLike[+L <: FromClause, R[O] <: MappingAt[O]] extends AndFrom[L,
 
 	/** This join type, fully parameterized with arbitrary prefix clause and relation mapping. Used by copy constructors
 	  * of this class.
-	  * @see [[net.noresttherein.oldsql.sql.JoinLike#likeJoin]]
+	  * @see [[net.noresttherein.oldsql.sql.JoinLike.likeJoin]]
 	  */
 	type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] <: (F GeneralizedJoin T) {
 		type LikeJoin[+S <: FromSome, M[O] <: MappingAt[O]] = thisClause.LikeJoin[S, M]
@@ -154,12 +154,12 @@ sealed trait JoinLike[+L <: FromClause, R[O] <: MappingAt[O]] extends AndFrom[L,
 object JoinLike {
 
 	/** Create an (inner) cross join between the given two relations `left` and `right`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is an alternative to
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`,
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is an alternative to
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`,
 	  * which should be generally preferred.
-	  * @param left  the first relation of the ''from'' clause, using a `LA[O] &lt;: BaseMapping[A, O]` `Mapping` type.
-	  * @param right the second relation of the ''from'' clause, using a `RB[O] &lt;: BaseMapping[B, O]` `Mapping` type.
+	  * @param left  the first relation of the ''from'' clause, using a `LA[O] <: BaseMapping[A, O]` `Mapping` type.
+	  * @param right the second relation of the ''from'' clause, using a `RB[O] <: BaseMapping[B, O]` `Mapping` type.
 	  * @param castL implicit witness providing proper type inference for the subject of the left relation
 	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
 	  * @param castR implicit witness providing proper type inference for the subject of the right relation
@@ -182,14 +182,14 @@ object JoinLike {
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
 	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 	  *              `Mapping` type.
 	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
@@ -261,7 +261,7 @@ object JoinLike {
 /** Base trait for 'true' join implementations representing a real SQL join between relations, rather than a synthetic
   * `Subselect` representing a subselect of another select expression. Subclasses represent various join kinds
   * (inner, outer, left outer, right outer).
-  * It is the [[net.noresttherein.oldsql.sql.FromClause#Generalized generalized]] form of all extending classes, meaning
+  * It is the [[net.noresttherein.oldsql.sql.FromClause.Generalized generalized]] form of all extending classes, meaning
   * that all join conditions for subclasses use this type instead the proper concrete subclass in the `FromClause`
   * parameter of the `GlobalBoolean`.
   * @see [[net.noresttherein.oldsql.sql.InnerJoin]]
@@ -355,12 +355,12 @@ object Join {
 
 
 	/** Create an (inner) cross join between the given two relations `left` and `right`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is an alternative to
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`,
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is an alternative to
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`,
 	  * which should be generally preferred.
-	  * @param left  the first relation of the ''from'' clause, using a `LA[O] &lt;: BaseMapping[A, O]` `Mapping` type.
-	  * @param right the second relation of the ''from'' clause, using a `RB[O] &lt;: BaseMapping[B, O]` `Mapping` type.
+	  * @param left  the first relation of the ''from'' clause, using a `LA[O] <: BaseMapping[A, O]` `Mapping` type.
+	  * @param right the second relation of the ''from'' clause, using a `RB[O] <: BaseMapping[B, O]` `Mapping` type.
 	  * @param castL implicit witness providing proper type inference for the subject of the left relation
 	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
 	  * @param castR implicit witness providing proper type inference for the subject of the right relation
@@ -383,14 +383,14 @@ object Join {
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
 	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 	  *              `Mapping` type.
 	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
@@ -555,12 +555,12 @@ object InnerJoin {
 	final val template :InnerJoin.* = InnerJoin(Relation.Dummy, Relation.Dummy)
 
 	/** Create an (inner) cross join between the given two relations `left` and `right`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is an alternative to
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`,
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is an alternative to
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`,
 	  * which should be generally preferred.
-	  * @param left  the first relation of the ''from'' clause, using a `LA[O] &lt;: BaseMapping[A, O]` `Mapping` type.
-	  * @param right the second relation of the ''from'' clause, using a `RB[O] &lt;: BaseMapping[B, O]` `Mapping` type.
+	  * @param left  the first relation of the ''from'' clause, using a `LA[O] <: BaseMapping[A, O]` `Mapping` type.
+	  * @param right the second relation of the ''from'' clause, using a `RB[O] <: BaseMapping[B, O]` `Mapping` type.
 	  * @param castL implicit witness providing proper type inference for the subject of the left relation
 	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
 	  * @param castR implicit witness providing proper type inference for the subject of the right relation
@@ -583,14 +583,14 @@ object InnerJoin {
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
 	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 	  *              `Mapping` type.
 	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
@@ -718,12 +718,12 @@ object OuterJoin {
 	final val template :OuterJoin.* = OuterJoin(Relation.Dummy, Relation.Dummy)
 
 	/** Create an outer join between the given two relations `left` and `right`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is an alternative to
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#outerJoin outerJoin]] `right`,
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is an alternative to
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.outerJoin outerJoin]] `right`,
 	  * which should be generally preferred.
-	  * @param left  the first relation of the ''from'' clause, using a `LA[O] &lt;: BaseMapping[A, O]` `Mapping` type.
-	  * @param right the second relation of the ''from'' clause, using a `RB[O] &lt;: BaseMapping[B, O]` `Mapping` type.
+	  * @param left  the first relation of the ''from'' clause, using a `LA[O] <: BaseMapping[A, O]` `Mapping` type.
+	  * @param right the second relation of the ''from'' clause, using a `RB[O] <: BaseMapping[B, O]` `Mapping` type.
 	  * @param castL implicit witness providing proper type inference for the subject of the left relation
 	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
 	  * @param castR implicit witness providing proper type inference for the subject of the right relation
@@ -746,14 +746,14 @@ object OuterJoin {
 
 	/** Create an outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#outerJoin outerJoin]] `right`
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.outerJoin outerJoin]] `right`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
 	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 	  *              `Mapping` type.
 	  * @param filter an optional join condition narrowing the join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
@@ -875,12 +875,12 @@ object LeftJoin {
 	final val template :LeftJoin.* = LeftJoin(Relation.Dummy, Relation.Dummy)
 
 	/** Create a left outer join between the given two relations `left` and `right`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is an alternative to
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#leftJoin leftJoin]] `right`,
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is an alternative to
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.leftJoin leftJoin]] `right`,
 	  * which should be generally preferred.
-	  * @param left  the first relation of the ''from'' clause, using a `LA[O] &lt;: BaseMapping[A, O]` `Mapping` type.
-	  * @param right the second relation of the ''from'' clause, using a `RB[O] &lt;: BaseMapping[B, O]` `Mapping` type.
+	  * @param left  the first relation of the ''from'' clause, using a `LA[O] <: BaseMapping[A, O]` `Mapping` type.
+	  * @param right the second relation of the ''from'' clause, using a `RB[O] <: BaseMapping[B, O]` `Mapping` type.
 	  * @param castL implicit witness providing proper type inference for the subject of the left relation
 	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
 	  * @param castR implicit witness providing proper type inference for the subject of the right relation
@@ -903,14 +903,14 @@ object LeftJoin {
 
 	/** Create a left outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#leftJoin leftJoin]] `right`
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.leftJoin leftJoin]] `right`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
 	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 	  *              `Mapping` type.
 	  * @param filter an optional join condition narrowing the join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
@@ -1032,12 +1032,12 @@ object RightJoin {
 
 
 	/** Create a right outer join between the given two relations `left` and `right`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is an alternative to
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#rightJoin rightJoin]] `right`,
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is an alternative to
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.rightJoin rightJoin]] `right`,
 	  * which should be generally preferred.
-	  * @param left  the first relation of the ''from'' clause, using a `LA[O] &lt;: BaseMapping[A, O]` `Mapping` type.
-	  * @param right the second relation of the ''from'' clause, using a `RB[O] &lt;: BaseMapping[B, O]` `Mapping` type.
+	  * @param left  the first relation of the ''from'' clause, using a `LA[O] <: BaseMapping[A, O]` `Mapping` type.
+	  * @param right the second relation of the ''from'' clause, using a `RB[O] <: BaseMapping[B, O]` `Mapping` type.
 	  * @param castL implicit witness providing proper type inference for the subject of the left relation
 	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
 	  * @param castR implicit witness providing proper type inference for the subject of the right relation
@@ -1060,14 +1060,14 @@ object RightJoin {
 
 	/** Create a right outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#rightJoin rightJoin]] `right`
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.rightJoin rightJoin]] `right`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
 	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 	  *              `Mapping` type.
 	  * @param filter an optional join condition narrowing the join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
@@ -1173,7 +1173,7 @@ object RightJoin {
   * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]] join
   * is present to its right. Additionally, direct subselect clauses of some outer clause `F` (that is,
   * those without any `Subselect` to the right of `F` in their type definition) conform to
-  * [[net.noresttherein.oldsql.sql.FromClause#Nested F#Nested]] if both clauses are at least in their generalized form.
+  * [[net.noresttherein.oldsql.sql.FromClause.Nested F.Nested]] if both clauses are at least in their generalized form.
   * Outer clauses are also valid ''from'' clauses for a subselect of any other select, but do not conform to any
   * of the above, thus this relationship is typically established instead
   * by the [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[F] ]] type alias, which covers
@@ -1307,15 +1307,15 @@ object Subselect {
 	  * access to all its relations, without them appearing in the ''from'' clause of the generated select SQL)
 	  * and the ''explicit'' portion (the relations which actually appear in the ''from'' clause of the generated
 	  * subselect SQL), consisting of the relation `first` and any other, subsequently joined with the result.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `outer` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#subseleect subselect]] `first`
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `fullFilter` DSL instead.
+	  * `outer` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.subseleect subselect]] `first`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `fullFilter` DSL instead.
 	  * @param outer a ''from'' clause containing the list of relations preceding `first`.
 	  * @param first the first (and currently only) relation of the actual ''from'' clause of the created subselect,
-	  *              using the `T[O] &lt;: BaseMapping[S, O]` `Mapping` type.
+	  *              using the `T[O] <: BaseMapping[S, O]` `Mapping` type.
 	  * @param filter an optional join condition linking the subselect with the outer clause.
 	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
 	  *             and conversions of associated classes between instances parameterized with the more generic `R`

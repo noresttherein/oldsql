@@ -53,7 +53,7 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
 	  * condition, as it doesn't include any join conditions defined on the left side of this join.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
 	  */ //overriden due to a conflict between Compound and GroupByClause
 	override def condition :LocalBoolean[Generalized]
 
@@ -151,14 +151,14 @@ object GroupByAll {
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 	  * it is generally recommended to use
-	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
 	  * @param from a ''from'' clause containing the list of relations preceding `right`.
-	  * @param group the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+	  * @param group the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 	  *              `Mapping` type.
 	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
@@ -325,7 +325,7 @@ object GroupByAll {
 		/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 		  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
 		  * condition, as it doesn't include any join conditions defined on the left side of this join.
-		  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
+		  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
 		  */ //overriden due to a conflict between Compound and GroupByClause
 		override def condition :LocalBoolean[Generalized]
 
@@ -431,14 +431,14 @@ object GroupByAll {
 
 		/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 		  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-		  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]],
-		  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-		  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method. It is a lower level method;
+		  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+		  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+		  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
 		  * it is generally recommended to use
-		  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension#join join]] `right`
-		  * [[net.noresttherein.oldsql.sql.FromClause#where where]] `filter` DSL instead.
+		  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`
+		  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
 		  * @param from a ''from'' clause containing the list of relations preceding `right`.
-		  * @param group the last relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+		  * @param group the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 		  *              `Mapping` type.
 		  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
 		  *               clause in the generated SQL.

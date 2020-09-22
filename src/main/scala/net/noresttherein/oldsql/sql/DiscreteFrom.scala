@@ -88,7 +88,7 @@ trait DiscreteFrom extends FromClause { thisClause =>
 	  * from `suffix` joined with the same join kinds. The first `From` pseudo join in suffix is replaced with
 	  * the join type specified by the template parameter (`join.LikeJoin`); if the first relation in `suffix` is
 	  * however joined with `Dual` using another join type (such as `JoinParam`), it is preserved. This is a dispatch
-	  * call to [[net.noresttherein.oldsql.sql.FromClause#joinedWith suffix.joinedWith(self, join)]]. This extra level
+	  * call to [[net.noresttherein.oldsql.sql.FromClause.joinedWith suffix.joinedWith(self, join)]]. This extra level
 	  * of indirection is enforced by the upper bound of `FromSome` on the left type parameters in `Join` classes,
 	  * while this method can be called also if this clause is empty. Additionally, the join kind to use between
 	  * the last relation in this clause and the first relation in `suffix` can be specified as `Subselect`,
@@ -206,9 +206,9 @@ object DiscreteFrom {
 		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side. The real type of the result depends on the type of this clause:
 		  * for `Dual`, the result is `From[R]`, for non-empty clauses the result is `F InnerJoin R`.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom#where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
+		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @return `From[R]` if this clause is empty or `F InnerJoin R` otherwise.
@@ -225,7 +225,7 @@ object DiscreteFrom {
 		  * If either of the clauses is empty, the other is returned unchanged.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
 		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#where where()]] method.
+		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
@@ -242,9 +242,9 @@ object DiscreteFrom {
 
 		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom#where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
+		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
@@ -257,7 +257,7 @@ object DiscreteFrom {
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
 		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#where where()]] method.
+		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
@@ -268,9 +268,9 @@ object DiscreteFrom {
 
 		/** Performs a symmetric outer join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom#where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
+		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
@@ -284,7 +284,7 @@ object DiscreteFrom {
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
 		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#where where()]] method.
+		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
@@ -295,9 +295,9 @@ object DiscreteFrom {
 
 		/** Performs a left outer join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom#where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
+		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
@@ -311,7 +311,7 @@ object DiscreteFrom {
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
 		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#where where()]] method.
+		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
@@ -322,9 +322,9 @@ object DiscreteFrom {
 
 		/** Performs a right outer join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom#where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
+		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
@@ -338,7 +338,7 @@ object DiscreteFrom {
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
 		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#where where()]] method.
+		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
@@ -450,8 +450,8 @@ object DiscreteFrom {
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
 		  * ''where'' clause filters and `select` clause headers.
 		  * The join condition and the ''where'' clause filter can be subsequently specified using one of
-		  * the [[net.noresttherein.oldsql.sql.AndFrom#on on()]], [[net.noresttherein.oldsql.sql.AndFrom#where where()]]
-		  * and [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast()]] methods.
+		  * the [[net.noresttherein.oldsql.sql.AndFrom.on on()]], [[net.noresttherein.oldsql.sql.AndFrom.where where()]]
+		  * and [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] methods.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
@@ -469,8 +469,8 @@ object DiscreteFrom {
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
 		  * ''where'' clause filters and `select` clause headers.
 		  * The join condition and the ''where'' clause filter can be subsequently specified using one of
-		  * the [[net.noresttherein.oldsql.sql.AndFrom#on on()]], [[net.noresttherein.oldsql.sql.AndFrom#where where()]]
-		  * and [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast()]] methods.
+		  * the [[net.noresttherein.oldsql.sql.AndFrom.on on()]], [[net.noresttherein.oldsql.sql.AndFrom.where where()]]
+		  * and [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] methods.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]

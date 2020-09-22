@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.slang._
   * a value for a composite reference limits itself to type `E`, but any actual details are left for subclasses.
   *
   * This class no longer is covariant in regard to `T`, so you can't safely cast a `Kin[T]` to `CompositeKin[T, _]`,
-  * even if the underlying class is a `CompositeKin[_, _]`, but should use `CompositeKin[_&lt;:T, _]` instead!
+  * even if the underlying class is a `CompositeKin[_, _]`, but should use `CompositeKin[_<:T, _]` instead!
   *
   * @tparam T composite value type of this reference
   * @tparam E element type - `T` can be mapped into an `Iterable[E]` and back, possibly with some restriction on the number

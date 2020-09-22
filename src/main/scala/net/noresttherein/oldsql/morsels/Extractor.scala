@@ -13,8 +13,8 @@ import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtra
   * [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]] and
   * [[net.noresttherein.oldsql.morsels.Extractor.OptionalExtractor OptionalExtractor]] are,
   * meaning a compatible function expression in a position where they are expected types,
-  * such as [[net.noresttherein.oldsql.morsels.Extractor.Requisite#apply Requisite(...)]] and
-  * [[net.noresttherein.oldsql.morsels.Extractor.Optional#apply Optional(...)]], will be converted to one by the compiler.
+  * such as [[net.noresttherein.oldsql.morsels.Extractor.Requisite.apply Requisite(...)]] and
+  * [[net.noresttherein.oldsql.morsels.Extractor.Optional.apply Optional(...)]], will be converted to one by the compiler.
   * The values are typically declared using the infix notation of the shortened type alias `=?>`.
   * @see [[net.noresttherein.oldsql.morsels.Extractor.=?> =?>]]
   * @see [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]]

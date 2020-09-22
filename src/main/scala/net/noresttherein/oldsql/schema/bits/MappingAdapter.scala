@@ -36,9 +36,9 @@ sealed trait AdapterOf[+M <: Mapping] extends Mapping { this :MappingSeal =>
   * a common adapter type extending `BaseMapping` which is required by some classes rather than `RefinedMapping`.
   * For this reason the constraints are more lax than they ideally should be - in particular the mapping type `M`
   * should generally be of the same `Origin` type `O` as this adapter. Unfortunately, this in most cases results
-  * in a duplication of the origin type in the type signature as a `M &lt;: MappingAt[_]` type bound results in
+  * in a duplication of the origin type in the type signature as a `M <: MappingAt[_]` type bound results in
   * issues with type unification of the type parameter at the use site (see the
-  * [[net.noresttherein.oldsql.schema.Mapping#Origin Origin]] type documentation for more information about this limitation).
+  * [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type documentation for more information about this limitation).
   *
   * Client code should, if possible, use one of the type aliases defined in the companion object which propagate
   * some combination of the subject and origin types from the original mapping to the adapter.
@@ -110,7 +110,7 @@ object MappingAdapter {
 
 	/** A sealed trait used to enforce that each `MappingAdapter` extends `BaseAdapter`, directly or indirectly.
 	  * This is because several methods overriden by the former have only stub definitions, as proper
-	  * implementations are impossible without the constraint `M &lt;: MappingAt[O]`.
+	  * implementations are impossible without the constraint `M <: MappingAt[O]`.
 	  */
 	sealed trait AdapterSeal
 
@@ -126,25 +126,25 @@ object MappingAdapter {
 
 		/** @inheritdoc
 		  * @return `customize(SELECT, include, exclude)`.
-		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods#customize customize]] */
+		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods.customize customize]] */
 		override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
 			customize(SELECT, include, exclude)
 
 		/** @inheritdoc
 		  * @return `customize(QUERY, include, exclude)`.
-		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods#customize customize]] */
+		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods.customize customize]] */
 		override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
 			customize(QUERY, include, exclude)
 
 		/** @inheritdoc
 		  * @return `customize(UPDATE, include, exclude)`.
-		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods#customize customize]] */
+		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods.customize customize]] */
 		override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
 			customize(UPDATE, include, exclude)
 
 		/** @inheritdoc
 		  * @return `customize(INSERT, include, exclude)`.
-		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods#customize customize]] */
+		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods.customize customize]] */
 		override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
 			customize(INSERT, include, exclude)
 

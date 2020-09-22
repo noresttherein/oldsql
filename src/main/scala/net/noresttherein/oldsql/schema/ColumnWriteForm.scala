@@ -263,15 +263,15 @@ object ColumnWriteForm {
 
 
 
-	/** Calls [[net.noresttherein.oldsql.schema.ColumnWriteForm#extracted extracted]] on the implicit form for `S`. */
+	/** Calls [[net.noresttherein.oldsql.schema.ColumnWriteForm.extracted extracted]] on the implicit form for `S`. */
 	def apply[S, T](map :T =?> S)(implicit writer :ColumnWriteForm[S]) :ColumnWriteForm[T] =
 		writer.from(map)
 
-	/** Calls [[net.noresttherein.oldsql.schema.ColumnWriteForm#flatUnmap flatUnmap]] on the implicit form for `S`. */
+	/** Calls [[net.noresttherein.oldsql.schema.ColumnWriteForm.flatUnmap flatUnmap]] on the implicit form for `S`. */
 	def flatMap[S :ColumnWriteForm, T](map :T => Option[S]) :ColumnWriteForm[T] =
 		ColumnWriteForm[S].flatUnmap(map)
 
-	/** Calls [[net.noresttherein.oldsql.schema.ColumnWriteForm#unmap unmap]] on the implicit form for `S`. */
+	/** Calls [[net.noresttherein.oldsql.schema.ColumnWriteForm.unmap unmap]] on the implicit form for `S`. */
 	def map[S :ColumnWriteForm, T](map :T => S) :ColumnWriteForm[T] = ColumnWriteForm[S].unmap(map)
 
 

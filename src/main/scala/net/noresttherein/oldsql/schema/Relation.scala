@@ -84,7 +84,7 @@ object Relation {
 	  * The mapping of the relation is adapted to a [[net.noresttherein.oldsql.schema.bits.LabeledMapping LabeledMapping]]
 	  * `L @: M`. It exposes the labeled type as a single-argument type constructor `this.T[O]`
 	  * accepting the `Origin` type for use in `FromClause` subclasses and other types accepting such a type constructor:
-	  * `Dual Join (Humans As "humans")#T` (where `Humans[O] &lt;: MappingAt[O]`).
+	  * `Dual Join (Humans As "humans")#T` (where `Humans[O] <: MappingAt[O]`).
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
 	  */
 	class As[M[O] <: MappingAt[O], A <: Label](val relation :Relation[M], val alias :A)

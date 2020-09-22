@@ -57,7 +57,7 @@ object LabeledMapping {
 	  * Note that this mapping's `Origin` and `Subject` types are equal to the types defined in the adapted mapping,
 	  * but are not declared in the type signature directly as parameters. For this reason instances of this type
 	  * won't be adapted automatically to `MappingOf`.
-	  * See [[net.noresttherein.oldsql.schema.bits.LabeledMapping.LabeledProjection#WithOrigin LabeledProjection]]
+	  * See [[net.noresttherein.oldsql.schema.bits.LabeledMapping.LabeledProjection.WithOrigin LabeledProjection]]
 	  * for the appropriate type constructor.
 	  */ //todo: this unchecked variance looks very fishy, check if it doesn't break something
 	sealed trait @:[N <: Label, +M <: Mapping]

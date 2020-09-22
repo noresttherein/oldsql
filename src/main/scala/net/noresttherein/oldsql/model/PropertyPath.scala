@@ -62,7 +62,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
 	def argumentClass :Class[_] =
 		runtimeMirror(getClass.getClassLoader).runtimeClass(definedFor.dealias.erasure.typeSymbol.asClass)
 
-	/** Can this chain be safely invoked for arguments of type T? Checks if typeOf[T]&lt;:&lt;this.definedFor. */
+	/** Can this chain be safely invoked for arguments of type T? Checks if typeOf[T]<:<this.definedFor. */
 	def isApplicableTo[T :TypeTag] :Boolean = typeOf[T] <:< definedFor
 
 	/** Return an instance representing chained call of properties in this instance, followed by invoking the calls

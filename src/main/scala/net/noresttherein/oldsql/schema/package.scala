@@ -42,7 +42,7 @@ package object schema {
 	  * This is a type alias for a template class parameterized with the component mapping type, specified as
 	  * the most generic [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping[T, O] ]].
 	  * @see [[net.noresttherein.oldsql.schema.GenericMappingExtract]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#apply[T](RefinedMapping[T]) ]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](RefinedMapping[T]) ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  * @tparam S the subject type of the parent mapping.
 	  * @tparam T the subject type of the component mapping.

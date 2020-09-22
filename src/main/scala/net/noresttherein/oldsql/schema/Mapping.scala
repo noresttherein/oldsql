@@ -88,7 +88,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
   * instances of the same component type but coming from different sources. In fact, many generic operations
   * are impossible to reliably implement without asserting that the handled `Mapping` actually defines those types
   * (that is, those types are equal for all instances of the mapping type). This is done through the type alias
-  * defined here [[net.noresttherein.oldsql.schema.Mapping#Component[T] Component]], and global, static refinements
+  * defined here [[net.noresttherein.oldsql.schema.Mapping.Component[T] Component]], and global, static refinements
   * from the companion object: [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingAt MappingAt]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingOf MappingOf]]. For uniformity and interoperability, these
@@ -106,25 +106,25 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
   * preventing them from accepting the type parameters of `BaseMapping` or `RefinedMapping`. Abstract type parameters
   * of existential types such as `Component[_]` are not unified, leading to absurd situations
   * where 'obviously' equal types are not unified by the compiler, almost completely preventing their type safe use.
-  * This is particularly visible with classes with a type parameter `C[M &lt;: RefinedMapping[_, _]]`
-  * or `C[M &lt;: BaseMapping[_, _]]`, defining their Origin and Subject as `M#Origin` and `M#Subject`. While from the
+  * This is particularly visible with classes with a type parameter `C[M <: RefinedMapping[_, _]]`
+  * or `C[M <: BaseMapping[_, _]]`, defining their Origin and Subject as `M#Origin` and `M#Subject`. While from the
   * inside of the class `m.Origin =:= this.Origin` where `m :M`, when parameterized with a
-  * `X &lt;: RefinedMapping[S, O]`, the classes `Subject` and `Origin` types are unrelated to `S, O`:
+  * `X <: RefinedMapping[S, O]`, the classes `Subject` and `Origin` types are unrelated to `S, O`:
   * {{{
   *     trait C[M <: RefinedMapping[_, _]] extends BaseMapping[M#Subject, M#Origin]
   *     def assemble[M <: RefinedMapping[S, O], S, O](c :C[M]) :BaseMapping[S, O] = c //type clash
   * }}}
   * The third reason is the limitation of the type inferer which, when faced with
-  * a method with a signature in the form of `[M &lt;: RefinedMapping[S, O], S, O](m :M)` will, when applied to
+  * a method with a signature in the form of `[M <: RefinedMapping[S, O], S, O](m :M)` will, when applied to
   * `m :BaseMapping[Int, O]` infer types `BaseMapping[Int, O], Nothing, Nothing` causing a compile error.
-  * On the other hand, defining the type parameter as `[M &lt;: RefinedMapping[_, _]]` assigns new distinct types to the
+  * On the other hand, defining the type parameter as `[M <: RefinedMapping[_, _]]` assigns new distinct types to the
   * missing type parameters, which are not unified even with `m.Subject`/`m.Origin` itself, leading to a lot of issues.
   * This can be circumvented with implicit parameters, but at the cost of additional complexity.
   * Finally, there is a bug in the compiler which prevents the use of a refining type constructor such as
   * `RefinedMapping` as a type parameter in some scenarios, requiring a proper class type `BaseMapping`.
   *
   * Concrete implementing classes should accept a type parameter `O` defining their `Origin` type, so without much
-  * loss of generality, a type constructor `M[O] &lt;: MappingAt[O]` can be passed instead of the full mapping type.
+  * loss of generality, a type constructor `M[O] <: MappingAt[O]` can be passed instead of the full mapping type.
   *
   * @see [[net.noresttherein.oldsql.schema.BaseMapping]]
   * @see [[net.noresttherein.oldsql.schema.support.MappingFrame]]
@@ -148,11 +148,11 @@ trait Mapping { this :MappingSeal =>
 	  *
 	  * Casting a `Mapping` to a different `Origin` should be safe. In order to abbreviate the code and provide
 	  * better type safety, direct casting to that effect should be avoided, and instead the implicitly available
-	  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]] method
+	  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]] method
 	  * should be used. It relies on the existence of an implicit
 	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which defines the result type
 	  * of such a cast. If the type inferer can unify a mapping type `X` with some
-	  * `M[O] &lt;: Mapping { type Subject = S; type Origin = O }`, which will happen automatically for any mapping class
+	  * `M[O] <: Mapping { type Subject = S; type Origin = O }`, which will happen automatically for any mapping class
 	  * which accepts its origin type as the last type parameter, an implicit `OriginProjection[M, S]` will exist,
 	  * and `m.withOrigin[O]` will be an instance of `M[O]` for any `m :M[_]`. If such a conversion cannot be performed
 	  * or is unsuitable, the mapping class should declare its own implicit `OriginProjection` within its companion object.
@@ -165,7 +165,7 @@ trait Mapping { this :MappingSeal =>
 	  * the type parameter. Used in particular in expressions like `MappingOf[S]#Projection` to obtain a type
 	  * constructor for mappings with definitions of both the `Subject` and the `Origin` types.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#Component]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Component]]
 	  */
 	type Projection[O] = RefinedMapping[Subject, O]
 
@@ -175,7 +175,7 @@ trait Mapping { this :MappingSeal =>
 	  * `Origin` type and the same `Subject` type as this mapping. Used primarily in the expression
 	  * `MappingOf[S]#TypedProjection` as a sort of a curried type constructor for the `BaseMapping` trait.
 	  * @see [[net.noresttherein.oldsql.schema.BaseMapping]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#TypedComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.TypedComponent]]
 	  */
 	type TypedProjection[O] = BaseMapping[Subject, O]
 
@@ -183,7 +183,7 @@ trait Mapping { this :MappingSeal =>
 	  * `Origin` type and the same `Subject` type as this mapping. Used primarily in the expression
 	  * `MappingOf[S]#ColumnProjection` as a sort of a curried type constructor for the `ColumnMapping` trait.
 	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#Projection]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Projection]]
 	  */
 	type ColumnProjection[O] = ColumnMapping[Subject, O]
 
@@ -216,8 +216,8 @@ trait Mapping { this :MappingSeal =>
 	  * constructor for the narrowed down `RefinedMapping`, not necessarily in the context of components
 	  * of any particular mapping instance.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#Column]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#Projection]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Column]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Projection]]
 	  */
 	type Component[T] = RefinedMapping[T, Origin]
 
@@ -226,8 +226,8 @@ trait Mapping { this :MappingSeal =>
 	  * of the expression `MappingOf[S]#Column` as a sort of a curried type constructor for the `ColumnMapping` trait,
 	  * which doesn't necessarily describe columns of any particular mapping instance.
 	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#Component]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#ColumnProjection]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Component]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.ColumnProjection]]
 	  */
 	type Column[T] = ColumnMapping[T, Origin]
 
@@ -236,7 +236,7 @@ trait Mapping { this :MappingSeal =>
 	  * has the definition for the `Subject` type (which is of an unknown type). It is also not a direct
 	  * analogue of `AnyColumn`, as the `ColumnMapping` trait, extending `BaseMapping` defines both
 	  * the `Origin` and the `Subject` types.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#Component]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Component]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingAt]]
 	  */
 	type AnyComponent = MappingAt[Origin]
@@ -244,7 +244,7 @@ trait Mapping { this :MappingSeal =>
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin type as this mapping
 	  * and unknown (but determined) `Subject` type.
 	  * as this instance and thus a valid subcomponent type of this mapping.
-	  * @see [[[net.noresttherein.oldsql.schema.Mapping#Column]]
+	  * @see [[[net.noresttherein.oldsql.schema.Mapping.Column]]
 	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
 	  */
 	type AnyColumn = Column[_]
@@ -254,8 +254,8 @@ trait Mapping { this :MappingSeal =>
 	  * mapping, which is the domain of the more generic `Component` member type, but as part of a pseudo curried
 	  * type constructor `MappingAt[O]#TypedComponent`, to simply denote any `BaseMapping` instance with
 	  * the provided `Subject` and `Origin` types.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#Component]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#TypedProjection]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Component]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.TypedProjection]]
 	  * @see [[net.noresttherein.oldsql.schema.BaseMapping]]
 	  */
 	type TypedComponent[T] = BaseMapping[T, Origin]
@@ -263,8 +263,8 @@ trait Mapping { this :MappingSeal =>
 	/** A type alias for a dictionary mapping all components (and subcomponents) of this mapping, both their export,
 	  * original, and any in between forms, to their extracts. The dictionary is type safe in regard to the components'
 	  * `Subject` type, which is shared by both the key and the value of every entry.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#extracts]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#ColumnExtractMap]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.extracts]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.ColumnExtractMap]]
 	  * @see [[net.noresttherein.oldsql.schema.MappingExtract]]
 	  */
 	type ExtractMap = NaturalMap[Component, Extract]
@@ -272,8 +272,8 @@ trait Mapping { this :MappingSeal =>
 	/** A type alias for a dictionary mapping all columns (including indirect) of this mapping, both their export,
 	  * original, and any in between forms, to their extracts. The dictionary is type safe in regard to the components'
 	  * `Subject` type, which is shared by both the key and the value of every entry.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#columnExtracts]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#ExtractMap]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.columnExtracts]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.ExtractMap]]
 	  * @see [[net.noresttherein.oldsql.schema.ColumnMappingExtract]]
 	  */
 	type ColumnExtractMap = NaturalMap[Column, ColumnExtract]
@@ -284,11 +284,11 @@ trait Mapping { this :MappingSeal =>
 	  * Standard implementation will test several sources together with `pieces` before giving up:
 	  * a ready value present for this mapping in the `pieces`, assembling the result from subcomponents and, finally,
 	  * a default coming from an attached `OptionalSelect` (or related). By default it forwards to
-	  * [[net.noresttherein.oldsql.schema.Mapping#optionally optionally]] and should stay consistent with it.
+	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and should stay consistent with it.
 	  * Mapping implementations for concrete domain model classes should typically override `assemble` instead of
 	  * this method directly.
 	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
 	def apply(pieces: Pieces): Subject =
 		optionally(pieces) getOrElse {
@@ -297,10 +297,10 @@ trait Mapping { this :MappingSeal =>
 
 	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
 	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
-	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues#assemble assemble]]
+	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.assemble assemble]]
 	  * method of `ComponentValues` (which, by default, will first check if it has a predefined value stored
 	  * for this mapping, and, only if not, forward to this instance's
-	  * [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]] method which is responsible for the actual
+	  * [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] method which is responsible for the actual
 	  * assembly of the subject from the values of the subcomponents, recursively obtained from `pieces`.
 	  *
 	  * If all of the above fails, this method will check for a predefined value stored in an attached
@@ -318,17 +318,17 @@ trait Mapping { this :MappingSeal =>
 	  * default 'missing' value; it is ultimately always up to the mapping implementation to handle the matter.
 	  * The above distinction is complicated further by the fact that the mapped type `Subject` itself can be
 	  * an `Option` type, used to signify either or both of these cases.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#assemble assemble]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
 	def optionally(pieces: Pieces): Option[Subject]
 
 	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
 	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
 	  * in [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] and should not be called directly.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#optionally optionally]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#apply apply]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues#subject ComponentValues.subject]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues#optionally ComponentValues.optionally]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply apply]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.subject ComponentValues.subject]]
+	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.optionally ComponentValues.optionally]]
 	  */
 	def assemble(pieces :Pieces) :Option[Subject]
 
@@ -398,7 +398,7 @@ trait Mapping { this :MappingSeal =>
 	  * should a subclass require to do so manually. The default behaviour is to apply all the `QueryAudit` buffs
 	  * on this instance in order to the subject, and then invoke the same method on every ''direct'' component
 	  * with the value extracted from `subject` by the `MappingExtract` for the given component.
-	  * This method should stay consistent with [[net.noresttherein.oldsql.schema.Mapping#writtenValues writtenValues]],
+	  * This method should stay consistent with [[net.noresttherein.oldsql.schema.Mapping.writtenValues writtenValues]],
 	  * but the direction of delegation between the two varies between subclasses.
 	  * @return `writtenValues(QUERY, subject, collector)` unless overriden.
 	  */
@@ -430,7 +430,7 @@ trait Mapping { this :MappingSeal =>
 	  * should a subclass require to do so manually. The default behaviour is to apply all the `UpdateAudit` buffs
 	  * on this instance in order to the subject, and then invoke the same method on every ''direct'' component
 	  * with the value extracted from `subject` by the `MappingExtract` for the given component.
-	  * This method should stay consistent with [[net.noresttherein.oldsql.schema.Mapping#writtenValues writtenValues]],
+	  * This method should stay consistent with [[net.noresttherein.oldsql.schema.Mapping.writtenValues writtenValues]],
 	  * but the direction of delegation between the two varies between subclasses.
 	  * @return `writtenValues(UPDATE, subject, collector)` unless overriden.
 	  */
@@ -462,7 +462,7 @@ trait Mapping { this :MappingSeal =>
 	  * should a subclass require to do so manually. The default behaviour is to apply all the `InsertAudit` buffs
 	  * on this instance in order to the subject, and then invoke the same method on every ''direct'' component
 	  * with the value extracted from `subject` by the `MappingExtract` for the given component.
-	  * This method should stay consistent with [[net.noresttherein.oldsql.schema.Mapping#writtenValues writtenValues]],
+	  * This method should stay consistent with [[net.noresttherein.oldsql.schema.Mapping.writtenValues writtenValues]],
 	  * but the direction of delegation between the two varies between subclasses.
 	  * @return `writtenValues(INSERT, subject, collector)` unless overriden.
 	  */
@@ -507,7 +507,7 @@ trait Mapping { this :MappingSeal =>
 	  * by some enclosing component, the mapping passed to its `Pieces` is substituted with the export version
 	  * as defined by this mapping (the root). This is both to alias all versions to a single instance for the purpose
 	  * of presetting a value, as well as using the possibly modified assembly process to produce the subject value.
-	  * Unlike the [[net.noresttherein.oldsql.schema.Mapping#subcomponents subcomponents]] list, this collection
+	  * Unlike the [[net.noresttherein.oldsql.schema.Mapping.subcomponents subcomponents]] list, this collection
 	  * must contain not only all export components, but also all their original versions as defined by their
 	  * parent mappings. It must also contain entries for all mapping instances which can be potentially used in the
 	  * assembly process, even if they are not exposed - failing to include such a hidden component will most likely
@@ -553,12 +553,12 @@ trait Mapping { this :MappingSeal =>
 	  * by some enclosing component, the column passed to its `Pieces` is substituted with the export version
 	  * as defined by this mapping (the root). This is both to alias all versions to a single instance for the purpose
 	  * of presetting a value, as well as using their `optionally` method, possibly modified by modifications
-	  * to the buff list. Unlike the [[net.noresttherein.oldsql.schema.Mapping#columns columns]] list, this collection
+	  * to the buff list. Unlike the [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list, this collection
 	  * must contain not only all export columns, but also all their original versions as defined by their
 	  * parent mappings. It must also contain entries for all mapping instances which can be potentially used in the
 	  * assembly process, even if they are not exposed - failing to include such a hidden component will most likely
 	  * result in an exception being thrown from the `assemble` method.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#extracts extracts]] method documentation for more information
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.extracts extracts]] method documentation for more information
 	  *     about implementation.
 	  */
 	def columnExtracts :NaturalMap[Column, ColumnExtract]
@@ -571,7 +571,7 @@ trait Mapping { this :MappingSeal =>
 	  * This process can modify the mapping definition by changing names of the columns (prefixing them) and updating
 	  * their buffs by cascading the buffs present on this instance.
 	  * By default it returns the `export` property of the extract for the component returned by
-	  * [[net.noresttherein.oldsql.schema.Mapping#apply[T](component:Component[T]) apply(component)]].
+	  * [[net.noresttherein.oldsql.schema.Mapping.apply[T](component:Component[T]) apply(component)]].
 	  */
 	def export[T](component :Component[T]) :Component[T] = apply(component).export
 
@@ -655,10 +655,10 @@ trait Mapping { this :MappingSeal =>
 
 	/** All columns (in their operative versions) of this mapping which can be used as part of the given SQL statement type.
 	  * Delegates to the property specific to this operation type.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#selectable]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#queryable]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#updatable]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#insertable]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.selectable]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.queryable]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.updatable]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.insertable]]
 	  */
 	def columns(op :OperationType) :Unique[Column[_]] = op match {
 		case SELECT => selectable
@@ -738,7 +738,7 @@ trait Mapping { this :MappingSeal =>
 	  * It is a way to modify the default list of used columns by including those which normally aren't
 	  * (have the `ExplicitSelect` buff), or excluding those which normally are used, but are not mandatory
 	  * (have the `OptionalSelect` buff). All components on the list (and their columns) are first aliased to their
-	  * operative versions by the [[net.noresttherein.oldsql.schema.Mapping#export export]] method.
+	  * operative versions by the [[net.noresttherein.oldsql.schema.Mapping.export export]] method.
 	  * @param components a list of components which should be included in the form. It can include both direct
 	  *                   components and subcomponents, not only columns. The `ExplicitSelect` buff is ignored,
 	  *                   if present, but including a component with `NoSelect` buff (or one implying it) will result
@@ -762,8 +762,8 @@ trait Mapping { this :MappingSeal =>
 	  * of used columns by including those which normally aren't (have the `ExplicitQuery` buff), or excluding those
 	  * which normally are used, but are not mandatory (have the `OptionalQuery` buff). All components on the list
 	  * (and their columns) are first aliased to their operative versions by the
-	  * [[net.noresttherein.oldsql.schema.Mapping#export export]] method.
-	  * Should be equivalent to [[net.noresttherein.oldsql.schema.Mapping#writeForm writeForm(QUERY, components)]],
+	  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method.
+	  * Should be equivalent to [[net.noresttherein.oldsql.schema.Mapping.writeForm writeForm(QUERY, components)]],
 	  * but the direction of delegation between the two methods is left for subclasses to decide.
 	  * @param components a list of components which should be included in the form. It can include both direct
 	  *                   components and subcomponents, not only columns. The `ExplicitQuery` buff is ignored,
@@ -786,8 +786,8 @@ trait Mapping { this :MappingSeal =>
 	  * It is a way to modify the default list of used columns by including those which normally aren't
 	  * (have the `ExplicitUpdate` buff), or excluding those which normally are used, but are not mandatory
 	  * (have the `OptionalUpdate` buff). All components on the list (and their columns) are first aliased to their
-	  * operative versions by the [[net.noresttherein.oldsql.schema.Mapping#export export]] method.
-	  * Should be equivalent to [[net.noresttherein.oldsql.schema.Mapping#writeForm writeForm(UPDATE, components)]],
+	  * operative versions by the [[net.noresttherein.oldsql.schema.Mapping.export export]] method.
+	  * Should be equivalent to [[net.noresttherein.oldsql.schema.Mapping.writeForm writeForm(UPDATE, components)]],
 	  * but the direction of delegation between the two methods is left for subclasses to decide.
 	  * @param components a list of components which should be included in the form. It can include both direct
 	  *                   components and subcomponents, not only columns. The `ExplicitUpdate` buff is ignored,
@@ -810,8 +810,8 @@ trait Mapping { this :MappingSeal =>
 	  * It is a way to modify the default list of used columns by including those which normally aren't
 	  * (have the `ExplicitInsert` buff), or excluding those which normally are used, but are not mandatory
 	  * (have the `OptionalInsert` buff). All components on the list (and their columns) are first aliased to their
-	  * operative versions by the [[net.noresttherein.oldsql.schema.Mapping#export export]] method.
-	  * Should be equivalent to [[net.noresttherein.oldsql.schema.Mapping#writeForm writeForm(INSERT, components)]],
+	  * operative versions by the [[net.noresttherein.oldsql.schema.Mapping.export export]] method.
+	  * Should be equivalent to [[net.noresttherein.oldsql.schema.Mapping.writeForm writeForm(INSERT, components)]],
 	  * but the direction of delegation between the two methods is left for subclasses to decide.
 	  * @param components a list of components which should be included in the form. It can include both direct
 	  *                   components and subcomponents, not only columns. The `ExplicitInsert` buff is ignored,
@@ -833,16 +833,16 @@ trait Mapping { this :MappingSeal =>
 	/** Default write form (included columns) of this mapping used for the given SQL statement type.
 	  * It should return a form equal to the one of the property specific to the operation type, but
 	  * the direction of delegation between them is left for subclasses.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#queryForm]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#updateForm]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#insertForm]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.queryForm]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.updateForm]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.insertForm]]
 	  */
 	def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[Subject]
 
 	/** Default write form (included columns) of this mapping used for the given SQL statement type.
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#queryForm]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#updateForm]]
-	  * @see [[net.noresttherein.oldsql.schema.Mapping#insertForm]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.queryForm]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.updateForm]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.insertForm]]
 	  */
 	def writeForm(op :WriteOperationType) :SQLWriteForm[Subject]
 
@@ -859,7 +859,7 @@ trait Mapping { this :MappingSeal =>
 	  */
 	def buffs :Seq[Buff[Subject]]
 
-	/** A mapping like this instance but with [[net.noresttherein.oldsql.schema.Mapping#buffs buffs]] replaced
+	/** A mapping like this instance but with [[net.noresttherein.oldsql.schema.Mapping.buffs buffs]] replaced
 	  * with the given list. The buffs cascade to the components of the new mapping: the ''export'' version
 	  * of every component from this mapping has the new buffs prepended to its list. Note that any buffs from
 	  * this mapping which cascaded to any of its components as part of its initialization are ''not'' removed
@@ -1069,7 +1069,7 @@ object Mapping {
 
 		/** Converts this mapping to one where `type Origin = O`. The result type is determined by the implicit
 		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]].
-		  * If `M &lt;: C[A1, ..., AN, A]` where `C[_, ..., _, O] &lt;: BaseMapping[_, O]`, then the result type will
+		  * If `M <: C[A1, ..., AN, A]` where `C[_, ..., _, O] <: BaseMapping[_, O]`, then the result type will
 		  * be inferred as `C[A1, ..., AN, O]`. If the origin type parameter `A` is not the last one, or the mapping
 		  * defines its `Origin` type by other means entirely, type inference will fail and an implicit
 		  * `OriginProjection` value with the correct `WithOrigin` type should be provided in the companion object to `M`.
@@ -1079,10 +1079,10 @@ object Mapping {
 		@inline def withOrigin[O](implicit projection :OriginProjection[M, S]) :projection.WithOrigin[O] =
 			self.asInstanceOf[projection.WithOrigin[O]]
 
-		/** Upcasts this instance to a type `P[M#Origin] &lt;: RefinedMapping[M#Subject, M#Origin]` such that
+		/** Upcasts this instance to a type `P[M#Origin] <: RefinedMapping[M#Subject, M#Origin]` such that
 		  * the type constructor `P` substitutes all occurrences of the `Origin` type in `M`'s type signature
 		  * with its type parameter. This is equivalent to simply calling
-		  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]]`[O]` -
+		  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]` -
 		  * a useful alternative when the projection invariant mapping type is required without changing its origin,
 		  * as concrete `Origin` types are typically long.
 		  */
@@ -1129,18 +1129,18 @@ object Mapping {
 	  * }}}
 	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection]]`[M]`
 	  * is the implementation subtype of `OriginProjection`, invariant in its type parameter; every instance
-	  * of `OriginProjection[M, _]` is also an instance of `ExactProjection[_ &lt;: M]`.
+	  * of `OriginProjection[M, _]` is also an instance of `ExactProjection[_ <: M]`.
 	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef ProjectionDef]] is a type alias
 	  * which shortens the type signature and causes an implicit `ExactProjection[M]` to be picked up as the value
 	  * for an implicit parameter of `OriginProjection[M, M#Subject]` (which it would not by default).
 	  *
 	  * Implicit values for `OriginProjection` should generally be provided in the form of an
 	  * `ExactProjection`/`ProjectionDef`. For mapping types which do not have other mapping types in their
-	  * type signature, the [[net.noresttherein.oldsql.schema.Mapping.OriginProjection#functor functor]] method
+	  * type signature, the [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.functor functor]] method
 	  * of the companion object will be generally sufficient. Adapters of other mappings, such as in the earlier example,
 	  * should use one of the transformation methods defined in the `ExactProjection`, if possible, with custom
 	  * instances being created only as a last resort, as offering no type safety.
-	  * @tparam M the type of the mapping being projected. In practice, `M &lt;: MappingOf[S]` always holds,
+	  * @tparam M the type of the mapping being projected. In practice, `M <: MappingOf[S]` always holds,
 	  *           but the constraint is removed here to simplify type signatures of methods accepting
 	  *           an `OriginProjection` as a parameter.
 	  * @tparam S the `Subject` type of the mapping `M`, preserved by the projected mapping `WithOrigin[_]`.
@@ -1149,7 +1149,7 @@ object Mapping {
 		               "no (unique) implicit OriginProjection[${M}, ${S}].")
 	sealed trait OriginProjection[-M <: Mapping, S] { self =>
 
-		/** A type such that `M &lt;: WithOrigin[_]` which does not reference the origin type `O` in its signature
+		/** A type such that `M <: WithOrigin[_]` which does not reference the origin type `O` in its signature
 		  * anywhere except as the type parameter. In other words, a conversion `WithOrigin[A] => WithOrigin[B]`
 		  * replaces every reference to `A` with the type `B`. This in particular means that all components and extracts
 		  * returned by the mapping after conversion define their `Origin` type as `B`, consistently with the converted
@@ -1740,7 +1740,7 @@ object Mapping {
   *           but coming from different sources (especially different aliases for a table occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
   *           included in a query can be used in the creation of SQL expressions used by that query.
-  *           Consult [[net.noresttherein.oldsql.schema.Mapping#Origin Mapping.Origin]]
+  *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
   */
 trait BaseMapping[S, O] extends MappingSeal { self =>
 	override type Origin = O

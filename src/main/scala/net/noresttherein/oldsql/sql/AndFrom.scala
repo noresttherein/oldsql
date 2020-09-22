@@ -30,12 +30,12 @@ import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
   * Together with the empty clause [[net.noresttherein.oldsql.sql.Dual Dual]] it forms a heterogeneous list-like
   * structure with the information about all joined relations encoded in its type. Note however that for most functions
   * to work properly, more specific type than `AndFrom` may be needed, typically
-  * the [[net.noresttherein.oldsql.sql.FromClause#Generalized Generalized]] form of this clause.
+  * the [[net.noresttherein.oldsql.sql.FromClause.Generalized Generalized]] form of this clause.
   *
   * Note that, as with all generic types taking exactly two arguments, it can be written in the infix notation:
   * `val usersGuns :From[Users] Join UserGuns Join Guns`. This class is covariant regarding its left side,
-  * so a sequence of joined mappings `X0 J1 X1 J2 X2 .. JN XN &lt;: X0 Join X1 Join X2 ... Join XN`
-  * if for all `JN &lt;: AndFrom`.
+  * so a sequence of joined mappings `X0 J1 X1 J2 X2 .. JN XN <: X0 Join X1 Join X2 ... Join XN`
+  * if for all `JN <: AndFrom`.
   *
   * @tparam L the left side of this join: a `FromClause` listing all preceding relations.
   * @tparam R the right side of this join: a mapping type constructor for the last relation in this clause.
@@ -119,7 +119,7 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] wit
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
 	  * condition, as it doesn't include any join conditions defined on the left side of this join.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
 	  */
 	override def condition :GlobalBoolean[Generalized]
 
@@ -187,8 +187,8 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] wit
 object AndFrom {
 
 	/** Create an (inner) cross join between the given two relations `left` and `right`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method.
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method.
 	  * @param left the first relation of the ''from'' clause.
 	  * @param right the second relation of the ''from'' clause.
 	  */
@@ -202,8 +202,8 @@ object AndFrom {
 
 
 	/** Create a ''from'' clause extending the `left` clause with the relation `right` for mapping `R`.
-	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom#on on]] or
-	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method.
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method.
 	  * This method will create a [[net.noresttherein.oldsql.sql.From From]]`[R]` instance if `left` is empty (`Dual`),
 	  * or an [[net.noresttherein.oldsql.sql.InnerJoin L InnerJoin R]] otherwise. This method's use is somewhat limited
 	  * as the result type of `L AndFrom R` is too abstract (its `Generalized` form is undefined) for many purposes.
@@ -362,15 +362,15 @@ object AndFrom {
 //	/** Create a cross join between the given empty clause as the `left` side, and the the `right` relation representing
 //	  * the first joined table, relation or some temporary surrogate mapping.
 //	  * The ''where'' clause can be subsequently specified using the
-//	  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast]],
-//	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-//	  * [[net.noresttherein.oldsql.sql.FromClause#where where]] method.
+//	  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast]],
+//	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+//	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method.
 //	  * It is a lower level method returning a non-standard singleton class, created to allow different empty clause
 //	  * implementations than `Dual` (though likely based on it) and some functions may not be available for this type.
 //	  * Always prefer using the standard [[net.noresttherein.oldsql.sql.From From]] class unless a custom
 //	  * empty clause is involved.
 //	  * @param left an arbitrary empty ''from'' clause.
-//	  * @param right the first relation of the created ''from'' clause, using the `T[O] &lt;: BaseMapping[S, O]`
+//	  * @param right the first relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 //	  *              `Mapping` type.
 //	  * @param filter an optional condition filtering the relation to use as the ''where'' clause in the generated SQL.
 //	  * @param cast an implicit witness providing proper type inference for the mapping of the first relation
@@ -595,8 +595,8 @@ object From {
 
 	/** Creates a ''from'' clause consisting of a single relation (table, view, select, or even a surrogate temporary
 	  * mapping) with `Mapping` `R`. It can be later filtered using
-	  * the [[net.noresttherein.oldsql.sql.FromClause#where where]] or
-	  * [[net.noresttherein.oldsql.sql.AndFrom#whereLast whereLast]] method, providing the condition for the ''where''
+	  * the [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast]] method, providing the condition for the ''where''
 	  * clause associated with the created clause. The clause can be also subsequently joined with other relations
 	  * using join methods defined in [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension FromSomeExtension]]:
 	  * `join`, `outerJoin`, `leftJoin`, `rightJoin` and `subselect`.

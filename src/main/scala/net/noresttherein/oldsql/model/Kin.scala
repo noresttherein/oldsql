@@ -135,7 +135,7 @@ trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 		if (isEmpty) alternative else this
 
 	/** Returns `this` if it contains a value or `alternative` otherwise. The difference from
-	  * [[net.noresttherein.oldsql.model.Kin#orElse orElse]] is that
+	  * [[net.noresttherein.oldsql.model.Kin.orElse orElse]] is that
 	  * the argument is evaluated eagerly, guaranteeing that no closure will be created and should have better performance
 	  * if the alternative value was computed beforehand.
 	  */
@@ -262,7 +262,7 @@ object Kin {
 
 		/** Return the result set as a composite type `C`. A composite type is a type which can be constructed
 		  * and deconstructed to `Iterable[T]` (possibly with limitations to its size). The main examples for
-		  * composites of `T` are: just `T`, `Option[T]`, `_&lt;:Iterable[T]`.
+		  * composites of `T` are: just `T`, `Option[T]`, `_<:Iterable[T]`.
 		  * @param expand implicit definition of how the result is mapped into a collection of T values.
 		  * @tparam C Kin value type.
 		  */
@@ -553,7 +553,7 @@ object Kin {
 		/** Create a composer as the first step of Kin creation. Returned composer can be asked to produce
 		  * a `Kin` exporting values of the given type as a desired composite type (for example, a collection or option).
 		  * Example: `All.of[E].in[Seq]`.
-		  * @see [[net.noresttherein.oldsql.model.Kin.All#apply[T] apply]]`[T]`
+		  * @see [[net.noresttherein.oldsql.model.Kin.All.apply[T] apply]]`[T]`
 		  */
 		def of[T] :KinComposer[T] = composer.asInstanceOf[KinComposer[T]]
 
