@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
@@ -93,6 +94,9 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 		withLeft(left.appendedTo(prefix))(condition)
 
 
+	override type Grouping[+U <: FromSome] = U GroupByAll M
+//	override type GeneralizedGrouped = left.Explicit
+//	override type Grouped = left.Inner
 	override type GeneralizedDiscrete = left.Generalized
 	override type Discrete = left.Self
 
@@ -207,6 +211,9 @@ object GroupByAll {
 					:LazyList[RelationSQL.AnyIn[E]] =
 				last.extend(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.groupBy[F, T, S](this)
+
 		}
 
 
@@ -259,7 +266,6 @@ object GroupByAll {
 		override type FromLast = GroupByClause AndByAll G
 
 		override type Generalized >: Self <: (left.Generalized AndByAll G) {
-			type FromLast <: thisClause.FromLast
 			type Generalized <: thisClause.Generalized
 			type Explicit <: thisClause.Explicit
 			type Implicit <: thisClause.Implicit
@@ -329,6 +335,10 @@ object GroupByAll {
 		  */ //overriden due to a conflict between Compound and GroupByClause
 		override def condition :LocalBoolean[Generalized]
 
+		private[this] val cachedFilter = Lazy { filter(generalized) }
+
+		override def filter :LocalBoolean[Generalized] = cachedFilter.get
+
 		override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] =
 			left.filter(target)(extension.extendFront[left.Generalized, G]) && condition.basedOn(target)
 
@@ -336,6 +346,9 @@ object GroupByAll {
 			if (filter == True) this else withCondition(condition && filter)
 
 
+		override type Grouping[+U <: FromSome] = WithLeft[left.Grouping[U]]
+//		override type GeneralizedGrouped = left.GeneralizedGrouped
+//		override type Grouped = left.Grouped
 		override type GeneralizedDiscrete = left.GeneralizedDiscrete
 		override type Discrete = left.Discrete
 
@@ -416,7 +429,6 @@ object GroupByAll {
 		}
 
 
-
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ByAll.*]
 
 		override def name = "by"
@@ -476,6 +488,9 @@ object GroupByAll {
 				override def withLeft[L <: GroupByClause]
 				                     (left :L)(condition :LocalBoolean[left.Generalized ByAll T]) :L ByAll T =
 					ByAll[L, T, S](left, last)(condition)
+
+
+				override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.by[F, T, S](this)
 
 			}
 

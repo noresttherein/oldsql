@@ -1,64 +1,102 @@
 package net.noresttherein.oldsql.sql
 
-import scala.annotation.implicitNotFound
-
-import net.noresttherein.oldsql.schema.{ColumnReadForm, Mapping, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.sql.AggregateSQL.AggregateFunction
-import net.noresttherein.oldsql.sql.GroupedExpression.{FlatMapGroup, MapGroup}
-import net.noresttherein.oldsql.sql.ArithmeticSQL.SQLArithmetic
+import net.noresttherein.oldsql.schema.ColumnReadForm
+import net.noresttherein.oldsql.sql.AggregateSQL.{AggregateFunction, DefaultAggregateSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, PartOf}
-import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
+import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ExtendedBy, PartOf}
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLNumber.SQLFraction
 
 
 
 
 
 
-class AggregateSQL[-F <: FromClause, X, Y]
-                  (val function :AggregateFunction, val expr :GroupedExpression[F, X], val isDistinct :Boolean)
-                  (implicit override val readForm :ColumnReadForm[Y])
-	extends ColumnSQL[F, LocalScope, Y]
-{
-	def distinct :AggregateSQL[F, X, Y] =
+/** An SQL expression representing the application of an aggregate function such as `sum` to an expression using
+  * columns from multiple rows. Used in conjunction with queries featuring a ''group by'' clause,
+  * or in the ''select'' clause when all rows are being aggregated.
+  * @tparam F the ungrouped ''from'' clause whose [[net.noresttherein.oldsql.sql.FromClause.Explicit ''explicit'']]
+  *           section is aggregated, that is contains relations whose columns are not available individually
+  *           (unless featured in
+  *           [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]).
+  *           All instances of this class are always created with `F <: FromSome`, but the most abstract upper bound
+  *           is required for proper implementation of all operations.
+  * @tparam G the [[net.noresttherein.oldsql.sql.AggregateClause ''aggregated'']] clause for `F`. It is the
+  *           `FromClause` on which this expression is based; all instances of `AggregateSQL` are created with bounds
+  *           `F >: G#DiscreteFrom <: FromSome, G <: AggregateClause`. This is not enforced on this level in order to
+  *           preserve `G` when downcasting from [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]],
+  *           as well as contravariance in `G`.
+  * @tparam X the type of the expression which is the argument to the aggregate function.
+  * @tparam Y the return type of the aggregate function used and the value type of this expression.
+  */
+trait AggregateSQL[-F <: FromClause, -G <: FromClause, X, Y] extends ColumnSQL[G, LocalScope, Y] {
+	/** The aggregate function which is applied to the aggregated expression
+	  * [[net.noresttherein.oldsql.sql.AggregateSQL.arg arg]].
+	  */
+	def function :AggregateFunction
+
+	/** The argument expression passed to the aggregate [[net.noresttherein.oldsql.sql.AggregateSQL.function function]].
+	  * The expression is based on the ''from'' clause `F` under grouping introduced by `G`, thus giving access
+	  * to relations which columns are not available individually to expressions based on `G`.
+	  */
+	def arg :ColumnSQL[F, LocalScope, X]
+
+	/** If `true`, the argument will be prefixed with the `DISTINCT` clause and only non-null values of
+	  * [[net.noresttherein.oldsql.sql.AggregateSQL.arg arg]] will be taken into account.
+	  */
+	def isDistinct :Boolean
+
+	/** Add a `DISTINCT` clause to this aggregate expression. */
+	def distinct :AggregateSQL[F, G, X, Y] =
 		if (isDistinct) this
-		else new AggregateSQL[F, X, Y](function, expr, true)
+		else new DefaultAggregateSQL(function, arg, true)(readForm)
+
 
 	override def isGlobal = false
 	override def asGlobal :Option[Nothing] = None
 
 
-	override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :AggregateSQL[E, X, Y] = ???
+	override def basedOn[U <: G, E <: FromClause](base :E)(implicit ext :U PartOf E) :AggregateSQL[F, E, X, Y] =
+		new DefaultAggregateSQL(function, arg, isDistinct)(readForm) //we could just cast ourselves and it would be fine
 
-	override def extend[U <: F, E <: FromClause]
-	                   (base :E)(implicit extension :U ExtendedBy E, global: GlobalScope <:< LocalScope) :AggregateSQL[E, X, Y] = ???
-//		new AggregateSQL[E, S, T](function, expr.extend(base), isDistinct)
+	override def extend[U <: G, E <: FromClause]
+	                   (base :E)(implicit extension :U ExtendedBy E, global: GlobalScope <:< LocalScope) :Nothing =
+		throw new UnsupportedOperationException(
+			s"AggregateSQL expression cannot be extended over to a subselect clause $base."
+		)
 
-	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, R]) :R[LocalScope, Y] = ??? //matcher.aggregate(this)
+
+//	def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :AggregateSQL[E, G, X, Y] =
+//		new Default
+
+	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[G, R]) :R[LocalScope, Y] =
+		matcher.aggregate(this)
+
+
 
 	override def isomorphic(that: SQLExpression.*) :Boolean = that match {
 		case self :AnyRef if self eq this => true
-		case aggr :AggregateSQL[_, _, _] if aggr canEqual this =>
-			function == aggr.function && isDistinct == aggr.isDistinct && expr.isomorphic(aggr.expr)
+		case aggr :AggregateSQL.* if aggr canEqual this =>
+			function == aggr.function && isDistinct == aggr.isDistinct && arg.isomorphic(aggr.arg)
 		case _ => false
 	}
 
 
-
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[AggregateSQL[_, _, _]]
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[AggregateSQL.*]
 
 	override def equals(that :Any) :Boolean = that match {
 		case self :AnyRef if self eq this => true
-		case aggr :AggregateSQL[_, _, _] if aggr canEqual this =>
-			function == aggr.function && distinct == aggr.distinct && expr == aggr.expr
+		case aggr :AggregateSQL.* if aggr canEqual this =>
+			function == aggr.function && distinct == aggr.distinct && arg == aggr.arg
 		case _ => false
 	}
 
-	override def hashCode :Int = (function.hashCode * 31 + distinct.hashCode) * 31 + expr.hashCode
+	override def hashCode :Int = (function.hashCode * 31 + distinct.hashCode) * 31 + arg.hashCode
+
 
 	override def toString :String =
-		if (isDistinct) s"${function.name}(distinct $expr)" else s"${function.name}($expr)"
+		if (isDistinct) s"${function.name}(distinct $arg)" else s"${function.name}($arg)"
 
 }
 
@@ -69,20 +107,52 @@ class AggregateSQL[-F <: FromClause, X, Y]
 
 object AggregateSQL {
 
+	/** Creates an aggregate expression applying the function `fun` to the argument expression `arg`.
+	  * This is a low-level function targeted at implementors, applications should in almost all cases prefer
+	  * the factory methods from the appropriate
+	  * [[net.noresttherein.oldsql.sql.AggregateSQL.AggregateFunction AggregateFunction]] implementation.
+	  * @param fun an SQL aggregate function used.
+	  * @param arg an SQL expression based on `F` which is used as the argument for `fun`.
+	  * @param distinct a flag specifying if the argument should be preceded with the 'DISTINCT' clause.
+	  * @return an `SQLExpression` based on the ''from'' clause aggregating the rows from the clause `F`.
+	  */
+	def apply[F <: FromSome, X, V :ColumnReadForm]
+	         (fun :AggregateFunction, arg :ColumnSQL[F, LocalScope, X], distinct :Boolean)
+			:AggregateSQL[F, F#GeneralizedAggregate, X, V] =
+		new DefaultAggregateSQL(fun, arg, distinct)
 
-	def unapply[F <: FromClause, S, T]
-	           (e :AggregateSQL[F, S, T]) :Some[(AggregateFunction, GroupedExpression[F, S], Boolean)] =
-		Some((e.function, e.expr, e.isDistinct))
 
-	def unapply[F <: FromClause, T](e :SQLExpression[F, LocalScope, T])
-			:Option[(AggregateFunction, GroupedExpression[F, _], Boolean)] =
+	def unapply[F <: FromSome, G <: FromClause, X, Y]
+	           (e :AggregateSQL[F, G, X, Y]) :Some[(AggregateFunction, Boolean, ColumnSQL[F, LocalScope, X])] =
+		Some((e.function, e.isDistinct, e.arg))
+
+	def unapply[G <: FromClause, T](e :SQLExpression[G, LocalScope, T])
+			:Option[(AggregateFunction, Boolean, ColumnSQL[_ <: FromSome, LocalScope, _])] =
 		e match {
-			case aggr :AggregateSQL[F @unchecked, _, _] =>Some((aggr.function, aggr.expr, aggr.isDistinct))
+			case aggr :AggregateSQL.* =>
+				Some((aggr.function, aggr.isDistinct, aggr.arg.asInstanceOf[ColumnSQL[_ <: FromSome, LocalScope, _]]))
 			case _ => None
 		}
 
 
 
+	type * = AggregateSQL[_ <: FromClause, _ <: FromClause, _, _]
+
+	private class DefaultAggregateSQL[-F <: FromClause, -G <: FromClause, X, Y]
+	                                 (override val function :AggregateFunction,
+	                                  override val arg :ColumnSQL[F, LocalScope, X],
+	                                  override val isDistinct :Boolean)
+	                                 (implicit override val readForm :ColumnReadForm[Y])
+		extends AggregateSQL[F, G, X, Y]
+
+
+
+	/** An SQL aggregate function such as `count`, `max` or `stddev`. As these functions often work differently,
+	  * this interface is almost empty, serving only to group them all into a single type hierarchy.
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Count]]
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.HomomorphicAggregateFunction]]
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.FractionalAggregateFunction]]
+	  */
 	trait AggregateFunction {
 		val name :String
 
@@ -100,90 +170,160 @@ object AggregateSQL {
 
 
 
+	/** Implementations of the SQL `COUNT` function. It accepts expressions of any type as the argument.
+	  * When counting all the rows returned by an SQL ''select'', prefer the factory method
+	  * [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome.count count]] and its overloaded variants.
+	  */
 	case object Count extends AggregateFunction {
 		override val name = "count"
 
-		object * extends GroupedExpression[FromClause, Nothing] {
+		//todo: support for other integer return types, in particular Long
 
-			override protected case object expr extends ColumnSQL[FromClause, LocalScope, Nothing] {
-				override def readForm :ColumnReadForm[Nothing] =
-					ColumnReadForm.unsupported("count(*).readForm")
+		/** Represents the `COUNT(*)` SQL expression. */
+		def apply() :AggregateSQL[FromSome, AggregateClause, Nothing, Int] = *
+//			AggregateSQL[FromSome, Nothing, Int](this, *, false)
+
+		/** Represents the `COUNT(arg)` SQL expression. */
+		def apply[F <: FromSome, V](arg :ColumnSQL[F, LocalScope, V]) :AggregateSQL[F, F#GeneralizedAggregate, V, Int] =
+			AggregateSQL(this, arg, false)
+
+		/** Represents the `COUNT(DISTINCT arg)` SQL expression. */
+		def distinct[F <: FromSome, V](arg :ColumnSQL[F, LocalScope, V]) :AggregateSQL[F, F#GeneralizedAggregate, V, Int] =
+			AggregateSQL(this, arg, true)
 
 
-				override def asGlobal :Option[ColumnSQL[FromClause, GlobalScope, Nothing]] = None
+		/** Represents the `COUNT(*)` SQL expression. Note that this stands for the whole expression, not only
+		  * the '*' within it.
+		  */
+		final val * :AggregateSQL[FromSome, AggregateClause, Nothing, Int] =
+			new DefaultAggregateSQL[FromSome, AggregateOf[FromSome], Nothing, Int](this, AllColumns, false)
 
-				override def basedOn[U <: FromClause, E <: FromClause]
-				                    (base :E)(implicit ext :U PartOf E) :ColumnSQL[E, LocalScope, Nothing] =
-					this
 
-				override def extend[U <: FromClause, E <: FromClause]
-				                    (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< LocalScope)
-						:ColumnSQL[E, LocalScope, Nothing] =
-					this
+		private case object AllColumns extends ColumnSQL[FromClause, LocalScope, Nothing] {
+			override def readForm :ColumnReadForm[Nothing] =
+				ColumnReadForm.unsupported("count(*).expr.readForm")
 
-				override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-				                    (matcher :ColumnMatcher[FromClause, Y]) :Y[LocalScope, Nothing] = ??? //matcher.*(this)
 
-				override def isomorphic(expression: SQLExpression.*) :Boolean = this == expression
+			override def asGlobal :Option[ColumnSQL[FromClause, GlobalScope, Nothing]] = None
 
-				override def toString = "*"
-			}
+			override def basedOn[U <: FromClause, E <: FromClause]
+			                    (base :E)(implicit ext :U PartOf E) :ColumnSQL[E, LocalScope, Nothing] = this
 
-//			override def extend[S <: FromClause, E <: GroupByClause]
-//			                    (base :E)(implicit extension :S ExtendedBy E) :GroupedExpression[E, Nothing] = this
+			override def extend[U <: FromClause, E <: FromClause]
+			                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< LocalScope) :Nothing =
+				throw new UnsupportedOperationException("Count(*) cannot be extended over to subselect clauses.")
+
+			override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+			                    (matcher :ColumnMatcher[FromClause, Y]) :Y[LocalScope, Nothing] =
+				matcher.*(this)
+
+
+			override def isomorphic(expression: SQLExpression.*) :Boolean = this == expression
 
 			override def toString = "*"
 		}
 
-		def apply() :AggregateSQL[FromClause, Nothing, Int] =
-			new AggregateSQL[FromClause, Nothing, Int](this, *, false)
 
-		def apply[F <: FromClause, V](expr :GroupedExpression[F, V]) :AggregateSQL[F, V, Int] =
-			new AggregateSQL(this, expr, false)
+//		implicit def count_*(all : *.type) :AggregateSQL[FromSome, FromClause, Nothing, Int] = Count(*)
 
-		def distinct[F <: FromClause, V](expr :GroupedExpression[F, V]) :AggregateSQL[F, V, Int] =
-			new AggregateSQL(this, expr, true)
 	}
 
 
+
+	/** An SQL aggregate function whose result type is the same as the type of its argument.
+	  * It is applicable only to [[net.noresttherein.oldsql.sql.SQLNumber numeric]] SQL types.
+	  * Note that the preferred way for including an aggregate function in the ''select'' clause of an SQL ''select''
+	  * ''without'' a ''group by'' clause is to use one of the factory methods included in
+	  * [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]], which create the appropriate
+	  * '`select `''fun''`(`''arg''`) from `''F'' ' directly.
+	  * @param name the name of the function
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Max]]
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Min]]
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Sum]]
+	  */
 	class HomomorphicAggregateFunction(override val name :String) extends AggregateFunction {
 
-		def apply[F <: FromClause, X :SQLArithmetic :ColumnReadForm]
-		         (expr :GroupedExpression[F, X]) :AggregateSQL[F, X, X] =
-			new AggregateSQL[F, X, X](this, expr, false)
+		/** Applies this aggregate function to the given numeric expression.
+		  * @return an SQL expression representing `<this function>(`''arg''`)`. It can be used in the context
+		  *         of any [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] whose
+		  *         [[net.noresttherein.oldsql.sql.AggregateClause.Discrete Discrete]] ''from'' clause
+		  *         (i.e., the relations under the grouping) is a subtype of `F`, guaranteeing that all relations
+		  *         used by the argument are available to it.
+		  */
+		def apply[F <: FromSome, X :SQLNumber]
+		         (arg :ColumnSQL[F, LocalScope, X]) :AggregateSQL[F, F#GeneralizedAggregate, X, X] =
+			AggregateSQL(this, arg, false)(arg.readForm)
 
-		def distinct[F <: FromClause, X :SQLArithmetic :ColumnReadForm]
-		            (expr :GroupedExpression[F, X]) :AggregateSQL[F, X, X] =
-			new AggregateSQL[F, X, X](this, expr, true)
+		/** Applies this aggregate function to the given numeric expression preceded with the `DISTINCT` clause.
+		  * @return an SQL expression representing `<this function>(DISTINCT `''arg''`)`. It can be used in the context
+		  *         of any [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] whose
+		  *         [[net.noresttherein.oldsql.sql.AggregateClause.Discrete Discrete]] ''from'' clause
+		  *         (i.e., the relations under the grouping) is a subtype of `F`, guaranteeing that all relations
+		  *         used by the argument are available to it.
+		  */
+		def distinct[F <: FromSome, X :SQLNumber]
+		            (arg :ColumnSQL[F, LocalScope, X]) :AggregateSQL[F, F#GeneralizedAggregate, X, X] =
+			AggregateSQL(this, arg, true)(arg.readForm)
 	}
 
-	class FractionalAggregateFunction[T :SQLArithmetic :ColumnReadForm](override val name :String)
+
+	/** An SQL aggregate function applicable to any [[net.noresttherein.oldsql.sql.SQLNumber numeric]] type and
+	  * which always returns a [[net.noresttherein.oldsql.sql.SQLNumber.SQLFraction fractional]] value.
+	  * Note that the preferred way for including an aggregate function in the ''select'' clause of an SQL ''select''
+	  * ''without'' a ''group by'' clause is to use one of the factory methods included in
+	  * [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]], which create the appropriate
+	  * '`select `''fun''`(`''arg''`) from `''F'' ' directly.
+	  * @param name the name of the function.
+	  * @tparam V return type of the function. Must have implicit
+	  *           [[net.noresttherein.oldsql.sql.SQLNumber.SQLFraction fractional]] type class and a
+	  *           [[net.noresttherein.oldsql.schema.ColumnReadForm]].
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Avg]]
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Var]]
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.StdDev]]
+	  */
+	class FractionalAggregateFunction[V :SQLFraction :ColumnReadForm](override val name :String)
 		extends AggregateFunction
 	{
-		def apply[F <: FromClause, S :SQLArithmetic](expr :GroupedExpression[F, S]) :AggregateSQL[F, S, T] =
-			new AggregateSQL(this, expr, false)
+		/** Applies this aggregate function to the given numeric expression.
+		  * @return an SQL expression representing `<this function>(`''arg''`)`. It can be used in the context
+		  *         of any [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] whose
+		  *         [[net.noresttherein.oldsql.sql.AggregateClause.Discrete Discrete]] ''from'' clause
+		  *         (i.e., the relations under the grouping) is a subtype of `F`, guaranteeing that all relations
+		  *         used by the argument are available to it.
+		  */
+		def apply[F <: FromSome, X :SQLNumber]
+		         (arg :ColumnSQL[F, LocalScope, X]) :AggregateSQL[F, F#GeneralizedAggregate, X, V] =
+			AggregateSQL(this, arg, false)
 
-		def distinct[F <: FromClause, S :SQLArithmetic](expr :GroupedExpression[F, S]) :AggregateSQL[F, S, T] =
-			new AggregateSQL(this, expr, true)
+		/** Applies this aggregate function to the given numeric expression, preceded by the `DISTINCT` clause.
+		  * @return an SQL expression representing `<this function>(DISTINCT `''arg''`)`. It can be used in the context
+		  *         of any [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] whose
+		  *         [[net.noresttherein.oldsql.sql.AggregateClause.Discrete Discrete]] ''from'' clause
+		  *         (i.e., the relations under the grouping) is a subtype of `F`, guaranteeing that all relations
+		  *         used by the argument are available to it.
+		  */
+		def distinct[F <: FromSome, X :SQLNumber]
+		            (arg :ColumnSQL[F, LocalScope, X]) :AggregateSQL[F, F#GeneralizedAggregate, X, V] =
+			AggregateSQL(this, arg, true)
 	}
 
 
 
-	final val Max = new HomomorphicAggregateFunction("max")
 	final val Min = new HomomorphicAggregateFunction("min")
+	final val Max = new HomomorphicAggregateFunction("max")
 	final val Sum = new HomomorphicAggregateFunction("sum")
-
+	//todo: conversions to other fractional types
 	final val Avg = new FractionalAggregateFunction[BigDecimal]("avg")
 	final val Var = new FractionalAggregateFunction[BigDecimal]("var")
 	final val StdDev = new FractionalAggregateFunction[BigDecimal]("stddev")
 
 
 
+	//the problem with the visitor pattern is that it prevents us from narrowing F to GroupByClause
 	trait AggregateMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
-		def aggregate[S, T](e :AggregateSQL[F, S, T]) :Y[LocalScope, T]
+		def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :Y[LocalScope, V]
 
-		/** A special pseudo expression used inside `count(*)`. The type itself is not exposed and this method
-		  * will never be called under normal circumstances. */
+		/** A special pseudo expression of `*` used inside `count(*)`. The actual type is not exposed. */
 		def *(e :ColumnSQL[FromClause, LocalScope, Nothing]) :Y[LocalScope, Nothing]
 	}
 
@@ -194,129 +334,3 @@ object AggregateSQL {
 }
 
 
-
-
-
-
-/** A projections of rows from a single ''group by'' group to a column or columns evaluating to an `SQLExpression[F, V]`.
-  * A group expression can be used as an argument for SQL aggregate functions.
-  * It is a monad lifting that expression type, as evaluated for a single row, to multiple rows.
-  * @tparam F an ungrouped ''from'' clause, that is the left side (i.e. the first type argument)
-  *           of the `GroupBy`/`GroupByAll` clause owning this group.
-  * @tparam V the value type of the lifted SQL expression
-  * @see [[net.noresttherein.oldsql.sql.GroupByAll]]
-  */
-trait GroupedExpression[-F <: FromClause, V] {
-	protected val expr :LocalSQL[F, V]
-
-	def map[I, O, G <: GroupedExpression[_, _]](f :I => O)(implicit doMap :MapGroup[this.type, I, O, G]) :G = doMap(this, f)
-
-	def flatMap[I, G <: GroupedExpression[_, _]](f :I => G)(implicit doMap :FlatMapGroup[this.type, I, G]) :G = doMap(this, f)
-
-//	def extend[S <: F, E <: GroupByClause](base :E)(implicit extension :S ExtendedBy E) :GroupedExpression[E, V] =
-
-	def isomorphic(that :GroupedExpression[_ <: FromClause, _]) :Boolean = expr isomorphic that.expr
-
-	def canEqual(that :Any) :Boolean = that.isInstanceOf[GroupedExpression[_, _]]
-
-	override def equals(that :Any) :Boolean = that match {
-		case group :GroupedExpression[_, _] => (group eq this) || group.canEqual(this) && group.expr == expr
-		case _ => false
-	}
-
-	override def hashCode :Int = expr.hashCode
-
-	override def toString :String = "{" + expr + "*}"
-
-}
-
-
-
-
-
-
-object GroupedExpression {
-
-	private class BaseGroupedExpression[F <: FromClause, V](protected override val expr :LocalSQL[F, V])
-		extends GroupedExpression[F, V]
-
-
-
-	//consider: parameterize with M[O] <: MappingAt to avoid long origin types; can't be contravariant in that case
-	trait MappingGroupedExpression[-F <: FromClause, M <: Mapping] extends GroupedExpression[F, M#Subject] {
-		protected override val expr :MappingSQL[F, LocalScope, M] //fixme: this must be a ComponetSQL, ugh
-
-		def mapping :M = expr.mapping
-
-//		override def extend[S <: F, E <: GroupByClause]
-//		                    (base :E)(implicit extension :ExtendedBy[S, E]) :GroupedExpression[E, M#Subject] = ???
-
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[MappingGroupedExpression[_, _]]
-
-		override def toString :String = "MappingGroupedExpression(" + expr.mapping + ")"
-	}
-
-	private class BaseMappingGroupedExpression[-F <: FromClause, M <: Mapping]
-	                                          (protected override val expr :MappingSQL[F, LocalScope, M])
-		extends MappingGroupedExpression[F, M]
-
-
-
-	object MappingGroupedExpression {
-
-		implicit def mapMappingToMapping[F <: FromClause, X[A] <: MappingAt[A], Y[A] <: MappingAt[A], O]
-				:MapGroup[MappingGroupedExpression[F, X[O]], X[O], Y[O], MappingGroupedExpression[F, Y[O]]] =
-			(group :MappingGroupedExpression[F, X[O]], f :X[O] => Y[O]) => ??? //new BaseMappingGroupedExpression(f(group.mapping))
-
-		implicit def mapMappingToExpression[F <: FromClause, X <: Mapping, Y]
-				:MapGroup[MappingGroupedExpression[F, X], X, LocalSQL[F, Y], GroupedExpression[F, Y]] =
-			(group :MappingGroupedExpression[F, X], f :X => LocalSQL[F, Y]) => ???
-
-
-		implicit def flatMapMappingToMapping[F <: FromClause, X[A] <: MappingAt[A], Y[A] <: MappingAt[A], O]
-				:FlatMapGroup[MappingGroupedExpression[F, X[O]], X[O], MappingGroupedExpression[F, Y[O]]] =
-			(group :MappingGroupedExpression[F, X[O]], f :X[O] => MappingGroupedExpression[F, Y[O]]) => f(group.mapping)
-
-		implicit def flatMapMappingToExpression[F <: FromClause, X <: Mapping, Y]
-				:FlatMapGroup[MappingGroupedExpression[F, X], X, GroupedExpression[F, Y]] =
-			(group :MappingGroupedExpression[F, X], f :X => GroupedExpression[F, Y]) => f(group.mapping)
-	}
-
-
-//	trait GroupColumn[-F <: FromClause, V] extends GroupedExpression[F, V] {
-//	}
-
-
-	@implicitNotFound("Cannot map GroupBy group ${G}\nwith function ${I} => ${O}.\n" +
-	                  "The argument must be an SQLExpression with the same type parameters as the mapped group and " +
-	                  "the result type must be an SQLExpression of any type based on the same from clause. " +
-	                  "Alternatively, if the mapped group is a MappingGroupedExpression[F, M], the argument may be the mapping M " +
-	                  "and the result type may be any of its components.\n" +
-		              "Missing implicit MapGroup[${G}, ${I}, ${O}, ${G}].")
-	abstract class MapGroup[-G <: GroupedExpression[_, _], I, O, +R <: GroupedExpression[_, _]] {
-		def apply(group :G, f :I => O) :R
-	}
-
-	implicit def defaultMapGroup[F <: FromClause, X, Y]
-			:MapGroup[GroupedExpression[F, X], LocalSQL[F, X], LocalSQL[F, Y], GroupedExpression[F, Y]] =
-		(group :GroupedExpression[F, X], f :LocalSQL[F, X] => LocalSQL[F, Y]) => new BaseGroupedExpression(f(group.expr))
-
-
-
-	@implicitNotFound("Cannot flat map GroupBy group ${G}\nwith function ${I} => ${O}.\n" +
-	                  "The argument must be an SQLExpression with the same type parameters as the mapped group and " +
-	                  "the result type must be a GroupedExpression of any type based on the same from clause. " +
-	                  "Alternatively, if the mapped group is a MappingGroupedExpression[F, M], the argument may be the mapping M " +
-	                  "and the result type may be a MappingGroupedExpression for any of its components.\n" +
-	                  "Missing implicit FlatMapGroup[${G}, ${I}, ${O}].")
-	abstract class FlatMapGroup[-G <: GroupedExpression[_, _], I, O <: GroupedExpression[_, _]] {
-		def apply(group :G, f :I => O) :O
-	}
-
-	implicit def defaultFlatMapGroup[F <: FromClause, X, Y]
-			:FlatMapGroup[GroupedExpression[F, X], LocalSQL[F, X], GroupedExpression[F, Y]] =
-		(group :GroupedExpression[F, X], f :LocalSQL[F, X] => GroupedExpression[F, Y]) => f(group.expr)
-
-
-
-}

@@ -270,6 +270,17 @@ object JoinLike {
   * @see [[net.noresttherein.oldsql.sql.RightJoin]]
   */
 sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]] extends JoinLike[L, R] with NonSubselect[L, R] { thisClause =>
+//	implicitly[(left.Generalized Join R) <:< ((left.Generalized JoinLike R) {
+//		type Generalized <: thisClause.Generalized
+//		type Self <: thisClause.Generalized
+//	})]
+//	val j :left.Generalized Join R
+////	implicitly[j.Self <:< j.Generalized]
+//	implicitly[j.left.Self <:< j.left.Generalized]
+//	implicitly[left.Self <:< left.Generalized]
+//	implicitly[(left.Generalized Join R)#Generalized <:< Generalized]
+//	implicitly[(left.Generalized Join R)#Self <:< Generalized]
+//	implicitly[(left.Generalized Join R)#Self <:< (left.Generalized Join R)#Generalized]
 
 	override type Generalized = left.Generalized Join R
 	override type Self = left.Self LikeJoin R
@@ -498,6 +509,9 @@ object Join {
 				generalized, unfiltered)(last, replacement)
 			likeJoin[L, (R As A)#T, S](left, aliased)(substitute(condition))
 		}
+
+
+		protected override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.join[L, R, S](this)
 	}
 
 }
@@ -623,6 +637,9 @@ object InnerJoin {
 			//needs to be private because the result is This
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
 				InnerJoin[left.type, R, S](left, last)(filter)
+
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.innerJoin[L, R, S](this)
 		}
 
 
@@ -786,6 +803,9 @@ object OuterJoin {
 			//needs to be private because the result is This
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
 				OuterJoin[left.type, R, S](left, last)(filter)
+
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.outerJoin[L, R, S](this)
 		}
 
 
@@ -942,6 +962,9 @@ object LeftJoin {
 
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
 				LeftJoin[left.type, R, S](left, last)(filter)
+
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.leftJoin[L, R, S](this)
 		}
 
 
@@ -1099,6 +1122,9 @@ object RightJoin {
 
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
 				RightJoin[left.type, R, S](left, last)(filter)
+
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.rightJoin[L, R, S](this)
 		}
 
 
@@ -1193,7 +1219,6 @@ object RightJoin {
   * @see [[net.noresttherein.oldsql.sql.FromClause.OuterFrom]]
   */
 sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]] extends JoinLike[F, T] { thisClause =>
-
 	override type Generalized = left.Generalized Subselect T
 	override type Self = left.Self Subselect T
 
@@ -1377,6 +1402,9 @@ object Subselect {
 					generalized, unfiltered)(last, replacement)
 				Subselect[left.type, (R As A)#T, S](left, aliased)(substitute(condition))
 			}
+
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.subselect[L, R, S](this)
 
 		}
 

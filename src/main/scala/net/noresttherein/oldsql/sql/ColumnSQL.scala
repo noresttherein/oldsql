@@ -1,23 +1,28 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm}
+import net.noresttherein.oldsql.schema.bits.LabelPath.Label
+import net.noresttherein.oldsql.sql.AggregateSQL.{AggregateMatcher, CaseAggregate}
 import net.noresttherein.oldsql.sql.ArithmeticSQL.{ArithmeticMatcher, CaseArithmetic}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
 import net.noresttherein.oldsql.sql.ConcatSQL.{CaseConcat, ConcatMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseColumnConversion, ColumnConversionMatcher, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf}
+import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ExtendedBy, FreeFrom, PartOf}
 import net.noresttherein.oldsql.sql.LogicalSQL.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
 import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.CaseFreeColumn
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, FreeColumn, MappingColumnMatcher}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelectColumn, FreeSelectColumn, SelectColumn, SelectColumnMatcher, SubselectColumn}
 import net.noresttherein.oldsql.sql.ConditionSQL.{CaseCondition, ConditionMatcher, InSQL, LikeSQL}
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.{ColumnTerm, False, True}
+import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.IndexedColumn
 import net.noresttherein.oldsql.sql.TupleSQL.SeqTuple
+
 
 
 
@@ -31,6 +36,8 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 	def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(this, alias)
 
+	def @:[N <: Label](alias :N) :IndexedColumn[F, S, N, V] =
+		new IndexedColumn(this, alias)
 
 	def and[E <: F, O >: LocalScope <: S]
 	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =
@@ -119,6 +126,33 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 
 object ColumnSQL {
+	//todo: variant in uppercase
+	implicit class ColumnSQLAggregateMethods[F <: FromSome, V](private val self :ColumnSQL[F, LocalScope, V])
+		extends AnyVal
+	{
+		def count :AggregateSQL[F, F#GeneralizedAggregate, V, Int] = AggregateSQL.Count(self)
+
+		def min(implicit isNumber :SQLNumber[V]) :AggregateSQL[F, F#GeneralizedAggregate, V, V] =
+			AggregateSQL.Min(self)
+
+		def max(implicit isNumber :SQLNumber[V]) :AggregateSQL[F, F#GeneralizedAggregate, V, V] =
+			AggregateSQL.Max(self)
+
+		def sum(implicit isNumber :SQLNumber[V]) :AggregateSQL[F, F#GeneralizedAggregate, V, V] =
+			AggregateSQL.Sum(self)
+
+		def avg(implicit isNumber :SQLNumber[V]) :AggregateSQL[F, F#GeneralizedAggregate, V, BigDecimal] =
+			AggregateSQL.Avg(self)
+
+		def variance(implicit isNumber :SQLNumber[V]) :AggregateSQL[F, F#GeneralizedAggregate, V, BigDecimal] =
+			AggregateSQL.Var(self)
+
+		def stddev(implicit isNumber :SQLNumber[V]) :AggregateSQL[F, F#GeneralizedAggregate, V, BigDecimal] =
+			AggregateSQL.StdDev(self)
+
+	}
+
+
 
 	type * = ColumnSQL[_ <: FromClause, _ >: LocalScope <: GlobalScope, _]
 
@@ -134,6 +168,11 @@ object ColumnSQL {
 		protected override val parts :Seq[ColumnSQL[F, S, _]] = column::Nil
 
 		override def readForm :ColumnReadForm[V] = column.readForm
+
+		override def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(column, alias)
+
+		override def @:[N <: Label](alias :N) :IndexedColumn[F, S, N, V] =
+			new IndexedColumn(column, alias)
 
 		override def isGlobal :Boolean = column.isGlobal
 
@@ -221,15 +260,21 @@ object ColumnSQL {
 
 
 	trait ColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ColumnTermMatcher[F, Y] with CompositeColumnMatcher[F, Y]
+		extends AggregateMatcher[F, Y] with ColumnTermMatcher[F, Y] with CompositeColumnMatcher[F, Y]
 		   with MappingColumnMatcher[F, Y] with SelectColumnMatcher[F, Y]
 
 	trait MatchColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnMatcher[F, Y]
-		with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
+		with CaseAggregate[F, Y] with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
 		with CaseColumnComponent[F, Y] with CaseFreeColumn[F, Y] with CaseSelectColumn[F, Y]
 
 	trait CaseColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchColumn[F, Y] {
 		def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :Y[S, X]
+
+		override def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :Y[LocalScope, V] =
+			column(e)
+
+		override def *(e :ColumnSQL[FromClause, LocalScope, Nothing]) :Y[LocalScope, Nothing] =
+			column[LocalScope, Nothing](e)
 
 		override def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X] = column(e)
 

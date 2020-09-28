@@ -19,6 +19,13 @@ import net.noresttherein.oldsql.sql.SQLTerm.NULL.{CaseNull, NullMatcher}
 
 
 
+
+/** Base type for [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] implementations representing various
+  * atomic terms. The atomicity is in regard to the SQL AST defined in this package, but not necessarily the generated
+  * SQL, as instances for types `T` represented by multi column [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]s
+  * are possible.
+  * @see [[net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm]]
+  */
 trait SQLTerm[T] extends SQLExpression[FromClause, GlobalScope, T] {
 	protected def form :SQLForm[T]
 

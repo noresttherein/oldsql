@@ -37,7 +37,7 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends NonSubse
 	thisClause =>
 
 	override type Generalized >: Self <: (left.Generalized UnboundParam P) {
-		type FromLast <: thisClause.FromLast
+		type FromLast = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
 		type Implicit <: thisClause.Implicit
@@ -955,6 +955,9 @@ object JoinParam {
 				left where substitute(condition)
 			}
 
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.joinParam[L, M, X](this)
+
 		}
 
 
@@ -1076,6 +1079,7 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]] extends AndByAl
 
 	/** Substitutes the joined parameter mapping for one labeled with `String` literal `name`. */
 	def as[N <: Label](name :N) :F GroupParam (N ?: Param)#T
+
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroupParam.* @unchecked]
@@ -1213,6 +1217,9 @@ object GroupParam {
 				val substitute = SQLScribe.applyParam(generalized, left.generalized, value, 0)
 				left having substitute(condition)
 			}
+
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.groupParam[L, M, X](this)
 
 		}
 

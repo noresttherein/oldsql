@@ -23,7 +23,7 @@ import net.noresttherein.oldsql.sql.SelectFormula.{SelectAsRow, SelectAsRows}
   * based on the values of the tables in its ''from'' clause. If `F` is not `FromClause`, but contains tables, this is
   * a subselect nested inside a select for source `F` - in its header, ''from'' or ''where'' clause. The source for
   * this formula, given by the member type `Source`, is always an extension of `F`, and in fact
-  * `Source &lt;: AsSubselectOf[F]`, where `F` is the actual source type parameter given at this instance's creation -
+  * `Source <: AsSubselectOf[F]`, where `F` is the actual source type parameter given at this instance's creation -
   * we cannot declare it so because of contravariance.
   *
   * Apart from being an SQL formula, it is also a `BaseMapping[O, V]`, so it can be used as other mappings inside

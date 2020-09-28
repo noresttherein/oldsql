@@ -34,7 +34,7 @@ libraryDependencies ++= Seq(
 scalacOptions ++= Seq(
 //	"-Ylog-classpath",
 //	"-Xlog-implicits",
-//	"-explaintypes",
+	"-explaintypes",
 	"-Wconf:cat=deprecation&msg=foldLeft:silent,cat=deprecation&msg=foldRight:silent,cat=deprecation:w,cat=feature:w",
 	"-language:implicitConversions",
 	"-language:higherKinds",

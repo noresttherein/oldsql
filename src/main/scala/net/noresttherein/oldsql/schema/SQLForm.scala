@@ -52,7 +52,7 @@ trait SQLForms extends JDBCTypes with ScalaForms with JavaForms with Serializabl
   * relative order in the `ResultSet`/statement parameter list.
   *
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
-  */ //todo: specialization!
+  */ //todo: specialization! (or migration to Opt instead of Option).
 trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying

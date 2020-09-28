@@ -53,7 +53,7 @@ import slang._
   * a ''from'' clause.
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the mapped header type representing a single row.
-  */ //todo: instead of mapping, let it be a Relation - much more useful.
+  */ //todo: instead of mapping, let it be a Relation - much more useful. Make it a type alias and SelectAs the real root
 sealed trait SelectSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V, O]
 	extends SQLExpression[F, S, Rows[V]] with BaseMapping[V, O]
 {
@@ -342,7 +342,7 @@ object SelectSQL {
 
 
 		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :SubselectSQL[E, V, O] =
-			extend(base)(ext.extension, implicitly[GlobalScope <:< GlobalScope])
+			extend(base)(ext.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
 
 		override def extend[U <: F, E <: FromClause]
 		                   (base :E)(implicit extension :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
@@ -372,7 +372,7 @@ object SelectSQL {
 
 
 		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :SubselectColumn[E, V, O] =
-			extend(base)(ext.extension, implicitly[GlobalScope <:< GlobalScope])
+			extend(base)(ext.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
 
 		override def extend[U <: F, E <: FromClause]
 		                   (base :E)(implicit extension :U ExtendedBy E, global :GlobalScope <:< GlobalScope)

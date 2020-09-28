@@ -18,31 +18,9 @@ trait ArithmeticSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 
 object ArithmeticSQL {
 
-	sealed trait SQLArithmetic[T] extends Serializable//extends SQLOrdering[T]
-
-	object SQLArithmetic {
-		private class Adapter[T] extends SQLArithmetic[T]
-
-		private def adapt[T] :SQLArithmetic[T] = new Adapter
-
-		implicit val OfInt = adapt[Int]
-		implicit val OfLong = adapt[Long]
-		implicit val OfShort = adapt[Short]
-		implicit val OfByte = adapt[Byte]
-		implicit val OfDouble = adapt[Double]
-		implicit val OfFloat = adapt[Float]
-		implicit val OfBigInt = adapt[BigInt]
-		implicit val OfBigDecimal = adapt[BigDecimal]
-	}
-
-
-
-
-
-
 	class UnaryOperationSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
 	                       (val operation :UnaryOperation, val value :ColumnSQL[F, S, V])
-	                       (implicit val arithmetic :SQLArithmetic[V])
+	                       (implicit val arithmetic :SQLNumber[V])
 		extends ArithmeticSQL[F, S, V]
 	{
 		override def readForm :ColumnReadForm[V] = value.readForm
@@ -76,7 +54,7 @@ object ArithmeticSQL {
 
 	object UnaryOperationSQL {
 
-		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLArithmetic]
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLNumber]
 		         (op :UnaryOperation, value :ColumnSQL[F, S, V]) :UnaryOperationSQL[F, S, V] =
 			new UnaryOperationSQL(op, value)
 
@@ -91,7 +69,7 @@ object ArithmeticSQL {
 
 		class UnaryOperation(val symbol :String) extends AnyVal {
 
-			def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLArithmetic]
+			def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLNumber]
 			         (value :ColumnSQL[F, S, V]) :UnaryOperationSQL[F, S, V] =
 				new UnaryOperationSQL(this, value)
 
@@ -124,7 +102,7 @@ object ArithmeticSQL {
 
 	class BinaryOperationSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
 	                  (val left :ColumnSQL[F, S, V], val operation :BinaryOperation, val right :ColumnSQL[F, S, V])
-	                  (implicit val arithmetic :SQLArithmetic[V])
+	                  (implicit val arithmetic :SQLNumber[V])
 		extends ArithmeticSQL[F, S, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
@@ -161,7 +139,7 @@ object ArithmeticSQL {
 
 	object BinaryOperationSQL {
 
-		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLArithmetic]
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLNumber]
 		         (left :ColumnSQL[F, S, V], operation :BinaryOperation, right :ColumnSQL[F, S, V])
 				:BinaryOperationSQL[F, S, V] =
 			new BinaryOperationSQL(left, operation, right)
@@ -177,7 +155,7 @@ object ArithmeticSQL {
 
 		class BinaryOperation private[BinaryOperationSQL](val symbol :String) extends AnyVal {
 
-			def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLArithmetic]
+			def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V :SQLNumber]
 			         (left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :BinaryOperationSQL[F, S, V] =
 				new BinaryOperationSQL(left, this, right)
 
@@ -213,11 +191,11 @@ object ArithmeticSQL {
 //				case error => throw new IllegalArgumentException("Unknown arithmetic operation: " + error)
 //			}
 //
-//			def plus[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
-//			def minus[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
-//			def times[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
-//			def divide[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
-//			def remainder[S <: LocalScope, V :SQLArithmetic](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def plus[S <: LocalScope, V :SQLNumber](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def minus[S <: LocalScope, V :SQLNumber](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def times[S <: LocalScope, V :SQLNumber](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def divide[S <: LocalScope, V :SQLNumber](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
+//			def remainder[S <: LocalScope, V :SQLNumber](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
 //		}
 
 		type CaseBinaryOperation[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = BinaryOperationMatcher[F, Y]

@@ -20,6 +20,7 @@ sealed abstract class StandardFallbackImplicits {
 	implicit def arbitraryLiteral[T](value :T) :TranslableTerm[Any, T] = Literal(value)
 }
 
+
 /** Implicit conversions to and from classes used to define `Restraint`s.
   * Classes (and traits) covered by these conversions extend the trait
   * [[net.noresttherein.oldsql.model.implicits implicits]], so, as a companion object of a super type, its declarations

@@ -7,8 +7,8 @@ import net.noresttherein.oldsql.schema.{SQLReadForm, SQLWriteForm}
 
 /** The value type of `SelectSQL` instances with header (select clause) type `V`.
   * This indirection allows the use of a SQL select expression both as a sequence (for example, inside `exists`)
-  * and as a single value (or rather, single row). Implicit conversions exist from `SQLExpression[F, Rows[V]]` to
-  * both `SQLExpression[F, V]` and `SQLExpression[F, Seq[V]]`.
+  * and as a single value (or rather, single row). Implicit conversions exist from `SQLExpression[F, S, Rows[V]]` to
+  * both `SQLExpression[F, S, V]` and `SQLExpression[F, S, Seq[V]]`.
   */
 trait Rows[+V] {
 	def size :Int = seq.size

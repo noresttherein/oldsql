@@ -183,6 +183,9 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause]) exten
 
 
 
+	protected override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.dual(this)
+
+
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]
 
 	override def equals(that :Any) :Boolean = that match {

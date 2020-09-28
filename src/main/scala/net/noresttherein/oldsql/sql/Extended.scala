@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -86,7 +86,7 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { th
 
 
 	override type Generalized >: Self <: (left.Generalized Compound R) {
-		type FromLast <: thisClause.FromLast
+		type FromLast = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
 		type Implicit <: thisClause.Implicit
@@ -158,6 +158,7 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { th
 	override def isValidSubselect :Boolean = left.isValidSubselect
 
 	override type Base = DefineBase[Implicit]
+
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Compound.*]
@@ -337,11 +338,11 @@ object Compound {
   * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
   * @author Marcin Mościcki
   */ //other words :Tack, Include, With
-trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Compound[L, R] { thisClause =>
+trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Compound[L, R] with ExtendingClause[L] { thisClause =>
 	override type FromLast >: Generalized <: FromClause Extended R
 
 	override type Generalized >: Self <: (left.Generalized Extended R) {
-		type FromLast <: thisClause.FromLast
+		type FromLast = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
 		type Implicit <: thisClause.Implicit
@@ -404,6 +405,10 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Compound[L, R] { 
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Extended.*]
+
+
+	private[sql] override def concrete_ExtendingClause_subclass_must_extend_Extended_or_ExtendingDecorator :Nothing =
+		throw new UnsupportedOperationException
 
 }
 

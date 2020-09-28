@@ -50,7 +50,7 @@ trait FromClause {
 	/** Type of the outer source if this source represents a subselect source created by `Outer.from()`.
 	  * All 'real' `JoinLike` subclasses have this type equal to the `Outer` of their left side, but `SubselectJoin`
 	  * defines `Outer` as the type of its left side. Additionally, all 'real' joins implement `AsSubselectOf[L#Outer]`
-	  * and `SubselectJoin` implements `AsSubselectOf[L]`. This means that for any concrete class `S &lt;: FromClause`
+	  * and `SubselectJoin` implements `AsSubselectOf[L]`. This means that for any concrete class `S <: FromClause`
 	  * with fully instantiated parameters (i.e. all tables in `S` and types of joins in it are known)
 	  * value `(s :S) from t1 join t2 ... join t3` conforms to `AsSubselectOf[S]`. This way we can statically express
 	  * a dependency relationship between sources without resorting to implicit evidence.
@@ -217,7 +217,7 @@ object FromClause {
 	import JoinLike._
 
 	/** A `FromClause` representing a subselect source of `S`.
-	  * `S &lt;: AsSubselectOf[R]` if and only if `S =:= R SubselectJoin M1 JoinLike M2 ... JoinLike MN` for some mappings
+	  * `S <: AsSubselectOf[R]` if and only if `S =:= R SubselectJoin M1 JoinLike M2 ... JoinLike MN` for some mappings
 	  * `M1...MN`. Sources conforming to `AsSubselectOf[S]` can use all the mappings/tables which are a part of `S`,
 	  * but they are not a part of any select formulas created from that source. This allows the use of nested
 	  * select queries which depend on values from the 'FROM' clause of the outer select. Note that subselects
@@ -229,7 +229,7 @@ object FromClause {
 
 
 	/** A closed `FromClause`, which doesn't contain any parameters and is not a subsource of another source.
-	  * `S &lt;: SelectFrom` if and only if it is a concrete source (without any abstract types or `FromClause`
+	  * `S <: SelectFrom` if and only if it is a concrete source (without any abstract types or `FromClause`
 	  * occurrences in its definition) and doesn't contain any `WithParam` or `SubselectJoin`.
 	  * The name stems from the fact that only such sources can be used to create independent select statements.
 	  */

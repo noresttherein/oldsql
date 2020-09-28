@@ -30,9 +30,10 @@ import slang._
 /** A representation of an SQL expression as an AST.
   * @tparam F a ''from'' clause - list of relations/tables which provide columns used in this expression.
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
+  * @see [[net.noresttherein.oldsql.sql.ColumnSQL]]
   */
-trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
-	import SQLExpression.boundParameterSQL
+trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends implicitSQLLiterals {
+	import implicitSQLLiterals.boundParameterSQL
 
 	def readForm :SQLReadForm[V]
 
@@ -93,10 +94,18 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 	def cast[T](implicit ev :V =:= T) :SQLExpression[F, S, T] =
 		ev.substituteCo[({ type E[X] = SQLExpression[F, S, X] })#E](this)
 
-	/** Lifts this expression to one of type `X`, without any effect on the actual generated SQL. */
+	/** Lifts this expression to one of type `X`, without any effect on the actual generated SQL.
+	  * Note that the expression will use the same `ColumnReadForm[V]` as this instance and only the result will
+	  * be mapped into `X`, rather than switching to a different `getXxx` method of the JDBC `ResultSet`.
+	  * It thus works the same way as [[net.noresttherein.oldsql.sql.SQLExpression.map map]], but takes advantage
+	  * of an implicit `List` argument which can be compared with `equals`, making the resulting expression
+	  * comparable with other instances of [[net.noresttherein.oldsql.sql.ConversionSQL ConversionSQL]],
+	  * which a custom function of `map` cannot be expected to facilitate.
+	  */
 	def to[X](implicit lift :Lift[V, X]) :SQLExpression[F, S, X] = PromotionConversion(this, lift)
 
-	/** Lift this expression to one typed `Option[V]`, without any effect on the actual generated SQL. */
+	/** Lift this expression to one typed `Option[V]`, without any effect on the actual generated SQL.
+	  * This is implemented simply as `this.`[[net.noresttherein.oldsql.sql.SQLExpression.to to]]`[Option[V]]`. */
 	def opt :SQLExpression[F, S, Option[V]] = to[Option[V]]
 
 	/** Maps the read (selected) scala value of this expression, without any effect on the actual generated SQL. */
@@ -198,51 +207,7 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] {
 
 
 
-
-
-sealed abstract class SQLMultiColumnTerms {
-
-//	implicit def implicitMultiNull[T :SQLForm](value :null) :SQLTerm[T] = CompositeNULL[T]
-
-	implicit def implicitLiteral[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
-
-}
-
-
-
-object SQLExpression extends SQLMultiColumnTerms {
-
-	implicit def implicitBoolean(value :Boolean) :GlobalBoolean[FromClause] = if (value) True else False
-
-	implicit def implicitColumnLiteral[T :ColumnForm](value :T) :ColumnTerm[T] = ColumnLiteral(value)
-
-
-	trait SQLNullFactory[T] {
-		type NULL <: CompositeNULL[T]
-		def apply() :NULL
-	}
-
-	implicit def sqlNullFactory[T :SQLForm] :SQLNullFactory[T] { type NULL = CompositeNULL[T] } =
-		new SQLNullFactory[T] {
-			type NULL = CompositeNULL[T]
-			override def apply() = CompositeNULL[T]
-		}
-
-	implicit def nullSQLColumnFactory[T :ColumnForm] :SQLNullFactory[T] { type NULL = SQLTerm.NULL[T] } =
-		new SQLNullFactory[T] {
-			type NULL = SQLTerm.NULL[T]
-			override def apply() = SQLTerm.NULL[T]
-		}
-
-	implicit class nullSQL(private val n :Null) extends AnyVal {
-		@inline def apply[T](implicit factory :SQLNullFactory[T]) :factory.NULL = factory()
-	}
-
-
-	implicit class boundParameterSQL[T, P <: SQLParameter[T]](value :T)(implicit factory :SQLTermFactory[T, P]) {
-		@inline def ? :P = factory(value)
-	}
-
+object SQLExpression  {
 
 	implicit class SQLExpressionChaining[F <: FromClause, S >: LocalScope <: GlobalScope, T]
 	                                    (private val self :SQLExpression[F, S, T])
@@ -251,7 +216,6 @@ object SQLExpression extends SQLMultiColumnTerms {
 		@inline def ~[O >: LocalScope <: S, H](head :SQLExpression[F, O, H]) :ChainTuple[F, O, @~ ~ T ~ H] =
 			EmptyChain ~ self ~ head
 	}
-
 
 
 
@@ -280,12 +244,14 @@ object SQLExpression extends SQLMultiColumnTerms {
 	  */
 	type GlobalScope
 
+	val GlobalScope = implicitly[GlobalScope <:< GlobalScope]
+
 	type LocalSQL[-F <: FromClause, V] = SQLExpression[F, LocalScope, V]
 	type GlobalSQL[-F <: FromClause, V] = SQLExpression[F, GlobalScope, V]
 
 
 
-	/** An upper type bound of all `SQLExpression[_, _]` instances. */
+	/** An upper type bound of all `SQLExpression[_, _, _]` instances. */
 	type * = SQLExpression[_ <: FromClause, _ >: LocalScope <: GlobalScope, _]
 
 	/** A type alias for SQL expressions independent of any relations in the FROM clause, that is applicable
@@ -403,8 +369,8 @@ object SQLExpression extends SQLMultiColumnTerms {
 	  * as directly comparable: `SQLTypeUnification[Option[X], X, Option[X]]` or let us promote number types to
 	  * a higher precision: `SQLTypeUnification[Int, Long, Long]`.
 	  *
-	  * @param left a function lifting both `SQLExpression[_, L]` and type `L` itself to a comparable type `T`.
-	  * @param right a function lifting both `SQLExpression[_, R]` and type `R` itself to a comparable type `T`.
+	  * @param left a function lifting both `SQLExpression[_, _, L]` and type `L` itself to a comparable type `T`.
+	  * @param right a function lifting both `SQLExpression[_, _, R]` and type `R` itself to a comparable type `T`.
 	  * @tparam L type of the left side of a comparison.
 	  * @tparam R type of the right side of a comparison.
 	  * @tparam T type to which both types are promoted in order to be directly comparable.
@@ -447,7 +413,7 @@ object SQLExpression extends SQLMultiColumnTerms {
 
 
 
-	/** An implicit witness vouching that type `X` is a subtype of `Y` or can be promoted to type `Y`.
+	/** An implicit witness vouching that type `X` is a subtype of `Y` or can be automatically promoted to type `Y`.
 	  * It is used to conflate more strict scala types with the same, more loose SQL representations.
 	  */
 	abstract class Lift[X, Y] {

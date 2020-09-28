@@ -1,11 +1,12 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Relation, SQLForm}
+import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm, Relation, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql.AggregateSQL.{Avg, Count, Max, Min, StdDev, Sum, Var}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedMappings, NonEmptyFrom, OuterFromSome, ParameterlessFrom, PartOf}
+import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedMappings, NonEmptyFrom, OuterFromSome, ParameterlessFrom, PartOf}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, JoinedRelation}
@@ -14,6 +15,8 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, ParamRelation}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.SelectSQL.SelectColumn
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 
 
 
@@ -25,7 +28,6 @@ import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
   * @see [[net.noresttherein.oldsql.sql.GroupByClause]]
   */ //FromClause is redundant but makes the signature more clear.
 trait DiscreteFrom extends FromClause { thisClause =>
-	//override type FromLast <: DiscreteFrom //can't have this because Dual.FromLast = FromClause to be a fixed point.
 
 	override type This <: DiscreteFrom {
 		type LastMapping[O] = thisClause.LastMapping[O]
@@ -45,10 +47,12 @@ trait DiscreteFrom extends FromClause { thisClause =>
 		type OuterRow = thisClause.OuterRow
 		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
 		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
 
-	override def filter :GlobalBoolean[Generalized]
+	override def filter :GlobalBoolean[Generalized] = filter(generalized)
 
 	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E]
 
@@ -109,7 +113,10 @@ trait DiscreteFrom extends FromClause { thisClause =>
 
 
 
-	private[sql] def concrete_FromClause_subclass_must_extend_DiscreteFrom_or_GroupedFrom :Nothing =
+	protected override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.discreteFrom(this)
+
+
+	private[sql] def concrete_FromClause_subclass_must_extend_DiscreteFrom_or_GroupByClause :Nothing =
 		throw new UnsupportedOperationException
 }
 
@@ -120,8 +127,6 @@ trait DiscreteFrom extends FromClause { thisClause =>
 
 object DiscreteFrom {
 
-
-
 	/** Common upper bound for all ''from'' clauses containing at least one relation, but no ''group by'' clause.
 	  * Extended by every [[net.noresttherein.oldsql.sql.DiscreteFrom DiscreteFrom]] implementations
 	  * other than [[net.noresttherein.oldsql.sql.Dual Dual]]. Most types do not do this directly however, but
@@ -130,10 +135,40 @@ object DiscreteFrom {
 	  * `FromClause`.
 	  */
 	trait FromSome extends NonEmptyFrom with DiscreteFrom { thisClause =>
+
 		override type LastTable[F <: FromClause] = JoinedRelation[F, LastMapping]
 		//override type FromLast >: this.type <: FromSome //>: this.type doesn't hold for decorators
-		override type FromLast <: FromSome
+		override type FromLast >: Generalized <: FromSome
 		override type FromNext[E[+L <: FromSome] <: FromClause] = E[FromLast]
+
+		override type Generalized >: Self <: FromSome {
+			type FromLast = thisClause.FromLast
+			type Generalized <: thisClause.Generalized
+			type Explicit <: thisClause.Explicit
+			type Implicit <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = FromClause
+			type Base <: thisClause.Base
+			type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
+		}
+
+		override type Self <: FromSome {
+			type FromLast = thisClause.FromLast
+			type Generalized = thisClause.Generalized
+			type Self = thisClause.Self
+			type Params = thisClause.Params
+			type FullRow = thisClause.FullRow
+			type Explicit = thisClause.Explicit
+			type Inner = thisClause.Inner
+			type Implicit = thisClause.Implicit
+			type Outer = thisClause.Outer
+			type Base = thisClause.Base
+			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+			type InnerRow = thisClause.InnerRow
+			type OuterRow = thisClause.OuterRow
+			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
+			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+		}
 
 		override type This <: FromSome {
 			type LastMapping[O] = thisClause.LastMapping[O]
@@ -156,8 +191,6 @@ object DiscreteFrom {
 			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 		}
 
-
-		override def filter :GlobalBoolean[Generalized] = filter(generalized)
 
 		override type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
 			                    (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => GlobalBoolean[G]
@@ -192,6 +225,89 @@ object DiscreteFrom {
 			join.likeJoin(self, suffix)
 
 
+		type GeneralizedAggregate = AggregateClause {
+			type GeneralizedDiscrete >: thisClause.Generalized <: FromSome
+		}
+
+		/** The upper bound for all `FromClause` subtypes representing a ''group by'' clause grouping this clause. */
+		type Aggregate = AggregateClause {
+			type GeneralizedDiscrete = thisClause.Generalized
+			type Discrete = thisClause.Self
+		}
+
+
+
+		def select[V](header :AggregateSQL[Generalized, Aggregated[Generalized], _, V])
+				:SelectColumn[Base, GlobalScope, V, _] =
+			Aggregated(self).select(header)
+
+		def selectAggregate[V]
+		    (header :JoinedMappings[Generalized] => AggregateSQL[Generalized, Aggregated[Generalized], _, V])
+				:SelectColumn[Base, GlobalScope, V, _] =
+			select(header(generalized.mappings))
+
+
+		def count :SelectColumn[Base, GlobalScope, Int, _] = select(Count.*)
+
+		def count(column :ColumnSQL[Generalized, LocalScope, _]) :SelectColumn[Base, GlobalScope, Int, _] =
+			select(Count(column))
+
+		def count(column :JoinedMappings[Generalized] => ColumnSQL[Generalized, LocalScope, _])
+				:SelectColumn[Base, GlobalScope, Int, _] =
+			select(Count(column(generalized.mappings)))
+
+
+		def min[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, GlobalScope, X, _] =
+			select(Min(column))
+
+		def min[X :SQLNumber](column :JoinedMappings[Generalized] => ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, X, _] =
+			select(Min(column(generalized.mappings)))
+
+
+		def max[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, GlobalScope, X, _] =
+			select(Max(column))
+
+		def max[X :SQLNumber](column :JoinedMappings[Generalized] => ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, X, _] =
+			select(Max(column(generalized.mappings)))
+
+
+		def sum[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, GlobalScope, X, _] =
+			select(Sum(column))
+
+		def sum[X :SQLNumber](column :JoinedMappings[Generalized] => ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, X, _] =
+			select(Sum(column(generalized.mappings)))
+
+
+		def avg[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+			select(Avg(column))
+
+		def avg[X :SQLNumber](column :JoinedMappings[Generalized] => ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+			select(Avg(column(generalized.mappings)))
+
+
+		def variance[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+			select(Var(column))
+
+		def variance[X :SQLNumber](column :JoinedMappings[Generalized] => ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+			select(Var(column(generalized.mappings)))
+
+
+		def stddev[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+			select(StdDev(column))
+
+		def stddev[X :SQLNumber](column :JoinedMappings[Generalized] => ColumnSQL[Generalized, LocalScope, X])
+				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+			select(StdDev(column(generalized.mappings)))
+
+
 	}
 
 
@@ -201,7 +317,7 @@ object DiscreteFrom {
 
 	/** Extension methods performing most generic join between any ungrouped (i.e., pure) `FromClause`,
 	  * and other relations. */
-	implicit class DiscreteFromExtension[F <: DiscreteFrom](val clause :F) extends AnyVal {
+	implicit class DiscreteFromExtension[F <: DiscreteFrom](val thisClause :F) extends AnyVal {
 
 		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side. The real type of the result depends on the type of this clause:
@@ -217,7 +333,7 @@ object DiscreteFrom {
 		            (table :Relation[R])
 		            (implicit cast :JoinedRelationSubject[AndFrom.WithLeft[F]#F, R, T, MappingOf[S]#TypedProjection])
 				:F AndFrom R =
-			AndFrom(clause, table)
+			AndFrom(thisClause, table)
 
 		/** Performs a join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side. The join type between the clauses will be an `InnerJoin` if the dynamic
@@ -229,7 +345,7 @@ object DiscreteFrom {
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def andFrom[R <: DiscreteFrom](other :R) :other.JoinedWith[F, AndFrom] = other.appendedTo(clause)
+		@inline def andFrom[R <: DiscreteFrom](other :R) :other.JoinedWith[F, AndFrom] = other.appendedTo(thisClause)
 	}
 
 
@@ -238,7 +354,7 @@ object DiscreteFrom {
 	/** Extension methods for `FromSome` classes (non-empty ''from'' clauses) which benefit from having a static,
 	  * invariant self type. Most notably, this includes methods for joining it with other relations.
 	  */
-	implicit class FromSomeExtension[F <: FromSome](val clause :F) extends AnyVal {
+	implicit class FromSomeExtension[F <: FromSome](val thisClause :F) extends AnyVal {
 
 		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
@@ -250,7 +366,7 @@ object DiscreteFrom {
 		  */
 		@inline def join[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                (table :Relation[R])(implicit cast :InferSubject[F, InnerJoin, R, T, S]) :F InnerJoin R =
-			InnerJoin(clause, table)
+			InnerJoin(thisClause, table)
 
 		/** Performs an inner join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
@@ -262,7 +378,7 @@ object DiscreteFrom {
 		  *              preserving the order).
 		  */
 		@inline def join[R <: FromSome](other :R) :other.JoinedWith[F, InnerJoin] =
-			other.joinedWith(clause, InnerJoin.template)
+			other.joinedWith(thisClause, InnerJoin.template)
 
 
 
@@ -277,7 +393,7 @@ object DiscreteFrom {
 		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :Relation[R])
 		                     (implicit cast :InferSubject[F, OuterJoin, R, T, S]) :F OuterJoin R =
-			OuterJoin(clause, table)
+			OuterJoin(thisClause, table)
 
 		/** Performs a symmetric outer join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
@@ -289,7 +405,7 @@ object DiscreteFrom {
 		  *              preserving the order).
 		  */
 		@inline def outerJoin[R <: FromSome](other :R) :other.JoinedWith[F, OuterJoin] =
-			other.joinedWith(clause, OuterJoin.template)
+			other.joinedWith(thisClause, OuterJoin.template)
 
 
 
@@ -304,7 +420,7 @@ object DiscreteFrom {
 		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                    (table :Relation[R])
 		                    (implicit cast :InferSubject[F, LeftJoin, R, T, S]) :F LeftJoin R =
-			LeftJoin(clause, table)
+			LeftJoin(thisClause, table)
 
 		/** Performs a left outer join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
@@ -316,7 +432,7 @@ object DiscreteFrom {
 		  *              preserving the order).
 		  */
 		@inline def leftJoin[R <: FromSome](other :R) :other.JoinedWith[F, LeftJoin] =
-			other.joinedWith(clause, LeftJoin.template)
+			other.joinedWith(thisClause, LeftJoin.template)
 
 
 
@@ -331,7 +447,7 @@ object DiscreteFrom {
 		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :Relation[R])
 		                     (implicit cast :InferSubject[F, RightJoin, R, T, S]) :F RightJoin R =
-			RightJoin(clause, table)
+			RightJoin(thisClause, table)
 
 		/** Performs a right outer join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
@@ -343,7 +459,7 @@ object DiscreteFrom {
 		  *              preserving the order).
 		  */
 		@inline def rightJoin[R <: FromSome](other :R) :other.JoinedWith[F, RightJoin] =
-			other.joinedWith(clause, RightJoin.template)
+			other.joinedWith(thisClause, RightJoin.template)
 
 
 
@@ -358,10 +474,10 @@ object DiscreteFrom {
 		  */
 		@inline def naturalJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                       (table :Relation[R])
-		                       (implicit cast :InferSubject[clause.type, InnerJoin, R, T, S],
-		                        last :ByIndex[clause.Generalized, -1] { type G >: clause.Generalized <: FromSome })
+		                       (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
+		                        last :ByIndex[thisClause.Generalized, -1] { type G >: thisClause.Generalized <: FromSome })
 				:F InnerJoin R =
-			cast(InnerJoin[clause.type, T, T, S](clause, cast(table)) where naturalFilter[T] _)
+			cast(InnerJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
 
 
 		/** Performs a natural symmetric outer join between this clause on the left side, and the relation given
@@ -375,10 +491,10 @@ object DiscreteFrom {
 		  */
 		@inline def naturalOuterJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                            (table :Relation[R])
-		                            (implicit cast :InferSubject[clause.type, OuterJoin, R, T, S],
-		                             last :ByIndex[clause.Generalized, -1] { type G >: clause.Generalized <: FromSome })
+		                            (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
+		                             last :ByIndex[thisClause.Generalized, -1] { type G >: thisClause.Generalized <: FromSome })
 				:F OuterJoin R =
-			cast(OuterJoin[clause.type, T, T, S](clause, cast(table)) where naturalFilter[T] _)
+			cast(OuterJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
 
 
 		/** Performs a natural left outer join between this clause on the left side, and the relation given
@@ -392,10 +508,10 @@ object DiscreteFrom {
 		  */
 		@inline def naturalLeftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                           (table :Relation[R])
-		                           (implicit cast :InferSubject[clause.type, LeftJoin, R, T, S],
-		                            last :ByIndex[clause.Generalized, -1] { type G >: clause.Generalized <: FromSome })
+		                           (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
+		                            last :ByIndex[thisClause.Generalized, -1] { type G >: thisClause.Generalized <: FromSome })
 				:F LeftJoin R =
-			cast(LeftJoin[clause.type, T, T, S](clause, cast(table)) where naturalFilter[T] _)
+			cast(LeftJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
 
 
 		/** Performs a natural right outer join between this clause on the left side, and the relation given
@@ -409,16 +525,16 @@ object DiscreteFrom {
 		  */
 		@inline def naturalRightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                            (table :Relation[R])
-		                            (implicit cast :InferSubject[clause.type, RightJoin, R, T, S],
-		                             last :ByIndex[clause.Generalized, -1] { type G >: clause.Generalized <: FromSome })
+		                            (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
+		                             last :ByIndex[thisClause.Generalized, -1] { type G >: thisClause.Generalized <: FromSome })
 				:F RightJoin R =
-			cast(RightJoin[clause.type, T, T, S](clause, cast(table))(cast.self) where naturalFilter[T] _)
+			cast(RightJoin[thisClause.type, T, T, S](thisClause, cast(table))(cast.self) where naturalFilter[T] _)
 
 
 		private def naturalFilter[T[O] <: BaseMapping[_, O]]
-		                         (tables :JoinedMappings[clause.Generalized Join T])
-		                         (implicit prev :ByIndex[clause.Generalized Join T, -2])
-				:GlobalBoolean[clause.Generalized Join T] =
+		                         (tables :JoinedMappings[thisClause.Generalized Join T])
+		                         (implicit prev :ByIndex[thisClause.Generalized Join T, -2])
+				:GlobalBoolean[thisClause.Generalized Join T] =
 		{
 			val firstTable = tables.prev
 			val secondTable = tables.last
@@ -437,7 +553,7 @@ object DiscreteFrom {
 
 				FreeColumn(first, 1) === FreeColumn(second, 0)
 			}
-			(True[clause.Generalized Join T]() /: joins)(_ && _)
+			(True[thisClause.Generalized Join T]() /: joins)(_ && _)
 		}
 
 
@@ -459,7 +575,7 @@ object DiscreteFrom {
 		@inline def subselect[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :Relation[R])
 		                     (implicit cast :InferSubject[F, Subselect, R, T, S]) :F Subselect R =
-			Subselect(clause, table)
+			Subselect(thisClause, table)
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using on clause.
 		  * The explicit list of relations in the clause is initialized with the relations given as a `FromClause`
@@ -477,7 +593,7 @@ object DiscreteFrom {
 		  * @throws UnsupportedOperationException if `other` is empty or its first join is a `JoinParam`.
 		  */
 		@inline def subselect[R <: FromSome](other :R) :other.JoinedWithSubselect[F] =
-			other.joinedWithSubselect(clause)
+			other.joinedWithSubselect(thisClause)
 
 
 
@@ -487,10 +603,27 @@ object DiscreteFrom {
 		  *               in this clause in order of their appearance.
 		  * @tparam U `FromClause` subtype obtained by removing all `JoinParam` instances from this clause's type.
 		  */
-		def apply[U <: ParameterlessFrom](params :clause.Params)
-		                                 (implicit apply :ApplyJoinParams[F, clause.Params, U]) :U =
-			apply(clause, params)
+		def apply[U <: ParameterlessFrom](params :thisClause.Params)
+		                                 (implicit apply :ApplyJoinParams[F, thisClause.Params, U]) :U =
+			apply(thisClause, params)
 
+
+
+		/** Wraps this clause in a special adapter allowing the use of
+		  * [[net.noresttherein.oldsql.sql.AggregateSQL.AggregateFunction aggregate functions]] in its ''select'' clause.
+		  * While available methods such as `count`, `sum`, `avg` etc. allow selecting of a single statistic
+		  * directly from this instance, if results of more than one aggregate functions are required,
+		  * they must be passed using the standard `select` methods defined in
+		  * [[net.noresttherein.oldsql.sql.FromClause FromClause]]:
+		  * {{{
+		  *     import AggregateSQL._
+		  *     this.aggregate select { tables =>
+		  *         val weapon = tables[Weapons]
+		  *         Max(weapon.damage) ~ Min(weapon.damage) ~ Avg(weapon.damage)
+		  *     }
+		  * }}}
+		  */
+		@inline def aggregate :Aggregated[F] = Aggregated(thisClause)
 	}
 
 
@@ -503,7 +636,7 @@ object DiscreteFrom {
 	  * to the clause in the form of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins',
 	  * which can be substituted with
 	  */
-	implicit class OuterFromSomeExtension[F <: OuterFromSome](private val clause :F) extends AnyVal {
+	implicit class OuterFromSomeExtension[F <: OuterFromSome](private val thisClause :F) extends AnyVal {
 
 		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
 		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
@@ -514,7 +647,7 @@ object DiscreteFrom {
 		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  */
-		@inline def param[X :SQLForm] :F WithParam X = JoinParam(clause, ParamRelation[X]())
+		@inline def param[X :SQLForm] :F WithParam X = JoinParam(thisClause, ParamRelation[X]())
 
 		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
 		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
@@ -526,7 +659,7 @@ object DiscreteFrom {
 		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  */
-		@inline def param[X :SQLForm](name :String) :F WithParam X = JoinParam(clause, ParamRelation[X](name))
+		@inline def param[X :SQLForm](name :String) :F WithParam X = JoinParam(thisClause, ParamRelation[X](name))
 
 		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
 		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
@@ -540,7 +673,7 @@ object DiscreteFrom {
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  */
 		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F JoinParam (N ?: X)#T =
-			JoinParam(clause, form ?: (name.value :N))
+			JoinParam(thisClause, form ?: (name.value :N))
 
 	}
 

@@ -16,8 +16,8 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   *
   * Note that, as with all generic types taking exactly two arguments, it can be written in the infix notation:
   * `val usersGuns :From[Users] JoinLike UserGuns JoinLike Guns`. This class is covariant regarding its left side,
-  * so a sequence of joined mappings `X0 J1 X1 J2 X2 .. JN XN &lt;: X0 JoinLike X1 JoinLike X2 ... JoinLike XN`
-  * if for all `JN &lt;: JoinLike`.
+  * so a sequence of joined mappings `X0 J1 X1 J2 X2 .. JN XN <: X0 JoinLike X1 JoinLike X2 ... JoinLike XN`
+  * if for all `JN <: JoinLike`.
   *
   * @param left a FromClause constituting a pre-existing join list of tables - may be empty (Dual).
   * @param table the right side of the join - representation of a last alias containing the joined mapping.

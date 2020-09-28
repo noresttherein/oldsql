@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.model
 
 import java.{lang => j}
 
+import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.model.Restraint.Compares
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, NegatedRestrictive}
 import net.noresttherein.oldsql.model.types.ArithmeticSupport.MappedArithmeticSupport
@@ -27,7 +29,7 @@ object types {
 	object <%< {
 //		@inline implicit final def symmetrical[S, T](implicit equiv: S=%=T) :T=%=S = adapt(equiv.left, equiv.right)
 
-		implicit final val (byteUnoxing, byteBoxing) = adapt((_:j.Byte).byteValue, j.Byte.valueOf :Byte=>j.Byte)
+		implicit final val (byteUnboxing, byteBoxing) = adapt((_:j.Byte).byteValue, j.Byte.valueOf :Byte=>j.Byte)
 		implicit final val (shortUnboxing, shortBoxing) = adapt((_ :j.Short).shortValue, j.Short.valueOf :Short=>j.Short)
 		implicit final val (intUnboxing, intBoxing) = adapt((_ :j.Integer).intValue, j.Integer.valueOf :Int=>j.Integer)
 		implicit final val (longUnboxing, longBoxing) = adapt((_ :j.Long).longValue, j.Long.valueOf :Long=>j.Long)
@@ -106,27 +108,47 @@ object types {
 		def map[X :OrderingSupport, Y](down :Y=>X) :OrderingSupport[Y] = new MappedOrdering(down)
 
 
-		//todo: stub
 		implicit def numericOrdering[T :Numeric] :OrderingSupport[T] = {
 			(x :T, y :T) => implicitly[Numeric[T]].compare(x, y)
 		}
 
-		//todo: case sensitive/insensitive
-		implicit object OfString extends OrderingSupport[String] {
+		implicit object OfEmptyChain extends OrderingSupport[@~] {
+			override def compare(x: @~, y: @~) :Int = 0
+		}
+
+		implicit def OfChain[I <: Chain, L](implicit init :OrderingSupport[I], last :OrderingSupport[L])
+				:OrderingSupport[I ~ L] =
+			new ChainOrdering(init, last)
+
+
+		implicit case object OfString extends OrderingSupport[String] {
 			override def compare(x :String, y :String) :Int = x compare y
 
 			def noCase :OrderingSupport[String] = OfStringNoCase
 		}
 
-		object OfStringNoCase extends OrderingSupport[String] {
+		case object OfStringNoCase extends OrderingSupport[String] {
 			override def compare(x :String, y :String) :Int = x compareToIgnoreCase y
 		}
 
 
-		private class MappedOrdering[X, Y](down :Y=>X)(implicit ordering :OrderingSupport[X])
+		private case class ChainOrdering[I <: Chain, L](init :OrderingSupport[I], last :OrderingSupport[L])
+			extends OrderingSupport[I ~ L]
+		{
+			override def compare(x :I ~ L, y :I ~ L) = init.compare(x.init, y.init) match {
+				case 0 => last.compare(x.last, y.last)
+				case res => res
+			}
+
+			override def toString :String = init.toString + "~" + last.toString
+		}
+
+		private class MappedOrdering[X, Y](down :Y => X)(implicit ordering :OrderingSupport[X])
 			extends OrderingSupport[Y]
 		{
 			override def compare(x :Y, y :Y) :Int = ordering.compare(down(x), down(y))
+
+			override def toString = s"$ordering.map($down)"
 		}
 	}
 

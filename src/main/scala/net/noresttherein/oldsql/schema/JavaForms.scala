@@ -13,6 +13,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 
 
 
+/** Trait mixed in by all forms solely to bring into the implicit search scope declarations from its companion object. */
 trait JavaForms
 
 
@@ -23,7 +24,7 @@ trait JavaForms
 /** Implicit `SQLForm` definitions for common Java classes, in particular 'competing' with standard Scala types,
   * such as boxed primitives in the `java.lang` package and `Optional`.  All these forms are in the implicit search
   * scope for all form classes, so, prefer to rely on implicit resolution by using `SQLForm[Xxx]` to access a form
-  * for the type `Xxx` * instead of explicit references to declarations in this object and others.
+  * for the type `Xxx` instead of explicit references to declarations in this object and others.
   * @author Marcin Mościcki
   */
 object JavaForms {

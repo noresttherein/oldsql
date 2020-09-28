@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 
 
 
-/** Base trait for all forms used solely to bring into scope implicit declarations from its companion object. */
+/** Trait mixed in by all forms solely to bring into the implicit search scope declarations from its companion object. */
 trait ScalaForms
 
 

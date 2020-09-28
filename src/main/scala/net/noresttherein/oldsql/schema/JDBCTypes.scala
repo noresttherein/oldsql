@@ -15,6 +15,11 @@ import net.noresttherein.oldsql.schema.SQLForm.{NonLiteralForm, NullValue}
 
 
 
+/** A trait extended by all [[net.noresttherein.oldsql.schema.SQLReadForm SQLReadForm]]s and
+  * [[net.noresttherein.oldsql.schema.SQLWriteForm SQLWriteForm]]s in order to bring implicit forms for all
+  * standard JDBC types into the implicit search scope. This allows extracting of these forms into a separate
+  * companion object (and share them between read and write forms).
+  */
 trait JDBCTypes
 
 

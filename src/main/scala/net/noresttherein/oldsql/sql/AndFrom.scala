@@ -684,6 +684,8 @@ object From {
 				From[(T As A)#T, S](aliased, substitute(condition))
 			}
 
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.from[T, S](this)
 		}
 
 
