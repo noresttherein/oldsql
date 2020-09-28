@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, JoinedMappings, NonEmptyFrom, OuterFromSome, ParameterlessFrom, PartOf}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
-import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, JoinedRelation}
+import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumnComponent, JoinedRelation}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, ParamRelation}
@@ -225,8 +225,13 @@ object DiscreteFrom {
 			join.likeJoin(self, suffix)
 
 
+		/** The upper bound for all `FromClause` subtypes representing a ''group by'' clause grouping a clause
+		  * with the same [[net.noresttherein.oldsql.sql.FromClause.Generalized Genralized]] type as this clause.
+		  * This type is additionally extended to include the special [[net.noresttherein.oldsql.sql.Aggregated Aggregated]]
+		  * clause, representing ''from'' clauses of SQL ''selects'' with an aggregate function in their ''select'' clause.
+		  */
 		type GeneralizedAggregate = AggregateClause {
-			type GeneralizedDiscrete >: thisClause.Generalized <: FromSome
+			type GeneralizedDiscrete = thisClause.Generalized
 		}
 
 		/** The upper bound for all `FromClause` subtypes representing a ''group by'' clause grouping this clause. */
@@ -551,7 +556,7 @@ object DiscreteFrom {
 					throw new IllegalArgumentException(s"Can't perform a natural join of $firstTable and $secondTable: " +
 							s"columns $first and $second have different types (forms): ${first.form} and ${second.form}.")
 
-				FreeColumn(first, 1) === FreeColumn(second, 0)
+				FreeColumnComponent(first, 1) === FreeColumnComponent(second, 0)
 			}
 			(True[thisClause.Generalized Join T]() /: joins)(_ && _)
 		}

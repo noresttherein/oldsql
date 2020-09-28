@@ -18,10 +18,14 @@ import net.noresttherein.oldsql.sql.SQLTerm.{ColumnLiteral, ColumnTerm, Composit
 trait implicitSQLLiterals
 
 
+
 /** Namespace with implicit conversions from Scala literals providing extension methods for creating bound SQL parameter
   * expressions as well as SQL `null` literals.
   */
 object implicitSQLLiterals extends SQLLiteralImplicits
+
+
+
 
 
 
@@ -75,6 +79,9 @@ trait SQLLiteralImplicits extends SQLMultiColumnLiteralImplicits {
 	  */
 	implicit def nullSQL(n :Null) :nullSQL = new nullSQL {}
 }
+
+
+
 
 
 

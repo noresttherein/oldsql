@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentV
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.FromClause
 import net.noresttherein.oldsql.sql.FromClause.{TableCount, TableShift}
-import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumn, FreeComponent}
+import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumnComponent, FreeComponent}
 import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
 
 
@@ -273,8 +273,8 @@ object ColumnMapping {
 
 	implicit def columnSQLFormula[F <: FromClause, C <: ColumnMapping[_, _], M[A] <: ColumnMapping[S, A], S, N <: Numeral]
 	             (column :C)(implicit conforms :Conforms[C, M[F], ColumnMapping[S, F]], offset :TableShift[F, M, N])
-			:FreeColumn[F, M, S] =
-		FreeColumn(column, offset.tables)
+			:FreeColumnComponent[F, M, S] =
+		FreeColumnComponent(column, offset.tables)
 
 
 

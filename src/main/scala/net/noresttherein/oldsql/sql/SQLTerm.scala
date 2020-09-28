@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteF
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, PartOf}
-import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn.{CaseParameterColumn, ParameterColumnMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter.{CaseParameter, ParameterMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnLiteral.{CaseColumnLiteral, ColumnLiteralMatcher}
@@ -170,22 +170,20 @@ object SQLTerm {
 	class ColumnLiteral[T](literal :T)(implicit override val form :ColumnForm[T])
 		extends SQLLiteral[T](literal) with ColumnTerm[T]
 	{
+		override val writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.const(value)
+
 		override def &&[E <: FromClause, O >: LocalScope <: GlobalScope]
 		               (other: ColumnSQL[E, O, Boolean])(implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
-			if (value.asInstanceOf[Boolean]) other
-			else cast[Boolean]
+			if (value) other else False
 
 		override def ||[E <: FromClause, O >: LocalScope <: GlobalScope]
 		               (other: ColumnSQL[E, O, Boolean])(implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
-			if (value.asInstanceOf[Boolean]) cast[Boolean]
-			else other
+			if (value) True else other
 
 		override def unary_![E <: FromClause, O >: LocalScope <: GlobalScope]
 		                    (implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
-			if (value.asInstanceOf[Boolean]) False else True
+			if (value) False else True
 
-
-		override val writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.const(value)
 
 //		override def to[X](implicit lift :Lift[T, X]) :ColumnSQL[FromClause, X] =
 //			new ColumnLiteral[X](lift(value))(form.nullBimap(lift.apply)(lift.lower))
@@ -330,6 +328,10 @@ object SQLTerm {
 
 		override def freeValue :Option[T] = readForm.nulls.toOption
 
+		override def isNull :GlobalBoolean[FromClause] = True
+
+		//consider: overriding and simplifying comparisons
+
 //		override def to[X](implicit lift :Lift[T, X]) :ColumnSQL[FromClause, X] =
 //		    NULL[X](ColumnForm[T].nullBimap(lift.apply)(lift.lower))
 
@@ -383,6 +385,45 @@ object SQLTerm {
 		extends CompositeNULL[T] with ColumnTerm[T]
 	{
 		override def writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.none[T]
+
+
+		override def <>[E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
+		               (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U])
+				:ColumnSQL[E, O, Boolean] =
+			NULL[Boolean]
+
+		override def <=[E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
+		               (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U], ordering :SQLOrdering[U])
+				:ColumnSQL[E, O, Boolean] =
+			NULL[Boolean]
+
+		override def < [E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
+		              (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U], ordering :SQLOrdering[U])
+				:ColumnSQL[E, O, Boolean] =
+			NULL[Boolean]
+
+		override def >=[E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
+		               (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U], ordering :SQLOrdering[U])
+				:ColumnSQL[E, O, Boolean] =
+			NULL[Boolean]
+
+		override def > [E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
+		              (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U], ordering :SQLOrdering[U])
+				:ColumnSQL[E, O, Boolean] =
+			NULL[Boolean]
+
+
+		override def &&[E <: FromClause, O >: LocalScope <: GlobalScope]
+		               (other :ColumnSQL[E, O, Boolean])(implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
+			cast
+
+		override def ||[E <: FromClause, O >: LocalScope <: GlobalScope]
+		               (other :ColumnSQL[E, O, Boolean])(implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
+			cast
+
+		override def unary_![E <: FromClause, O >: LocalScope <: GlobalScope]
+		                    (implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
+			cast
 
 		override def opt: ColumnSQL[FromClause, GlobalScope, Option[T]] = NULL[Option[T]]
 

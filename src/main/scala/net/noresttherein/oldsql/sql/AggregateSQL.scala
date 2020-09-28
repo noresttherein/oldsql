@@ -172,7 +172,8 @@ object AggregateSQL {
 
 	/** Implementations of the SQL `COUNT` function. It accepts expressions of any type as the argument.
 	  * When counting all the rows returned by an SQL ''select'', prefer the factory method
-	  * [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome.count count]] and its overloaded variants.
+	  * [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome.count count]] and its overloaded variants,
+	  * available on not grouped, non-empty ''from'' clauses.
 	  */
 	case object Count extends AggregateFunction {
 		override val name = "count"

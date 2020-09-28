@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf, PrefixOf, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.{CaseColumnComponent, ColumnComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL.{CaseComponent, ComponentMatcher, ProperComponent}
-import net.noresttherein.oldsql.sql.MappingSQL.FreeColumn.FreeColumnMatcher
+import net.noresttherein.oldsql.sql.MappingSQL.FreeColumnComponent.FreeColumnMatcher
 import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent.{CaseFreeComponent, FreeComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.{CaseRelation, RelationMatcher}
 import net.noresttherein.oldsql.sql.SelectSQL.{SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumnMapping}
@@ -79,7 +79,8 @@ object MappingSQL {
 			new FreeComponent[E, M, V](mapping.asInstanceOf[M[E]], shift + ev.length)
 
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, M[F]#Subject] =
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, M[F]#Subject] =
 			matcher.freeComponent(this)
 
 
@@ -112,7 +113,7 @@ object MappingSQL {
 				:FreeComponent[F, M, V] =
 			conforms(mapping) match {
 				case column :ColumnMapping[V @unchecked, F @unchecked] =>
-					new FreeColumn[F, MappingOf[V]#ColumnProjection, V](column, shift).asInstanceOf[FreeComponent[F, M, V]]
+					new FreeColumnComponent[F, MappingOf[V]#ColumnProjection, V](column, shift).asInstanceOf[FreeComponent[F, M, V]]
 				case component =>
 					new FreeComponent[F, M, V](component, shift)
 			}
@@ -159,7 +160,7 @@ object MappingSQL {
 
 		trait CaseFreeComponent[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends FreeComponentMatcher[F, Y] {
 			override def freeComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-			                          (e :FreeColumn[O, M, V]) :Y[GlobalScope, V] =
+			                          (e :FreeColumnComponent[O, M, V]) :Y[GlobalScope, V] =
 				freeComponent(e :FreeComponent[O, M, V])
 		}
 
@@ -170,8 +171,8 @@ object MappingSQL {
 
 
 
-	class FreeColumn[F <: FromClause, M[A] <: ColumnMapping[V, A], V] private[MappingSQL]
-	                (column :M[F], shift :Int)
+	class FreeColumnComponent[F <: FromClause, M[A] <: ColumnMapping[V, A], V] private[MappingSQL]
+	                         (column :M[F], shift :Int)
 		extends FreeComponent[F, M, V](column, shift) with ColumnSQL[F, GlobalScope, V]
 	{
 		//this should really use mapping.selectForm, bot it is not a ColumnForm due to possible buffs
@@ -180,12 +181,13 @@ object MappingSQL {
 
 		override def asGlobal :Option[ColumnSQL[F, GlobalScope, V]] = Some(this)
 
-		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :FreeColumn[E, M, V] =
-			new FreeColumn[E, M, V](column.asInstanceOf[M[E]], shift + ext.diff)
+		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :FreeColumnComponent[E, M, V] =
+			new FreeColumnComponent[E, M, V](column.asInstanceOf[M[E]], shift + ext.diff)
 
 		override def extend[U <: F, E <: FromClause]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :FreeColumn[E, M, V] =
-			new FreeColumn[E, M, V](column.asInstanceOf[M[E]], shift + ev.length)
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+				:FreeColumnComponent[E, M, V] =
+			new FreeColumnComponent[E, M, V](column.asInstanceOf[M[E]], shift + ev.length)
 
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, V] =
@@ -198,49 +200,49 @@ object MappingSQL {
 
 
 
-	object FreeColumn {
+	object FreeColumnComponent {
 
 		def apply[F <: FromClause, C <: Mapping, M[A] <: ColumnMapping[V, A], V]
 		         (column :C, shift :Int)(implicit conforms :Conforms[C, M[F], ColumnMapping[V, F]])
-				:FreeColumn[F, M, V] =
-			new FreeColumn[F, M, V](column, shift)
+				:FreeColumnComponent[F, M, V] =
+			new FreeColumnComponent[F, M, V](column, shift)
 
 
 		def apply[F <: FromClause, C <: ColumnMapping[_, _], M[A] <: ColumnMapping[V, A], V]
 		         (column :C)
 		         (implicit conforms :Conforms[C, M[F], ColumnMapping[V, F]], shift :TableShift[F, M, _ <: Numeral])
-				:FreeColumn[F, M, V] =
+				:FreeColumnComponent[F, M, V] =
 			apply(column, shift.tables)
 
 
 		def unapply[F <: FromClause, X](expr :SQLExpression[F, _, X])
 				:Option[(ColumnMapping[X, _ >: F <: FromClause], Int)] =
 			expr match {
-				case free: FreeColumn.Typed[F, X] @unchecked => Some(free.mapping -> free.shift)
+				case free: FreeColumnComponent.Typed[F, X] @unchecked => Some(free.mapping -> free.shift)
 				case _ => None
 			}
 
 		def unapply[F <: FromClause, M[A] <: BaseMapping[X, A], X](expr :FreeComponent[F, M, X]) :Option[(M[F], Int)] =
 			(expr :FreeComponent.*) match {
-				case _ :FreeColumn.* @unchecked => Some(expr.mapping -> expr.shift)
+				case _ :FreeColumnComponent.* @unchecked => Some(expr.mapping -> expr.shift)
 				case _ => None
 			}
 
 
 
-		type * = FreeColumn[_ <: FromClause, M, V] forSome { type M[A] <: ColumnMapping[V, A]; type V }
+		type * = FreeColumnComponent[_ <: FromClause, M, V] forSome { type M[A] <: ColumnMapping[V, A]; type V }
 
-		type AnyIn[-F <: FromClause] = FreeColumn[O, M, V]
+		type AnyIn[-F <: FromClause] = FreeColumnComponent[O, M, V]
 				forSome { type O >: F <: FromClause; type M[A] <: ColumnMapping[V, A]; type V }
 
-		type Typed[-F <: FromClause, V] = FreeColumn[O, M, V]
+		type Typed[-F <: FromClause, V] = FreeColumnComponent[O, M, V]
 				forSome { type O >: F <: FromClause; type M[A] <: ColumnMapping[V, A] }
 
 
 
 		trait FreeColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def freeComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-			                 (e :FreeColumn[O, M, V]) :Y[GlobalScope, V]
+			                 (e :FreeColumnComponent[O, M, V]) :Y[GlobalScope, V]
 		}
 
 		type MatchFreeColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = FreeColumnMatcher[F, Y]

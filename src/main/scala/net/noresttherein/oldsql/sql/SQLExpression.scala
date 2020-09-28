@@ -3,14 +3,14 @@ package net.noresttherein.oldsql.sql
 import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.{ColumnForm, Mapping, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.{Mapping, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnLiteral, ColumnTerm, CompositeNULL, False, SQLLiteral, SQLParameter, SQLTermFactory, TermMatcher, True}
+import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, NULL, SQLParameter, TermMatcher}
 import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, MappingMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
@@ -29,12 +29,23 @@ import slang._
 
 /** A representation of an SQL expression as an AST.
   * @tparam F a ''from'' clause - list of relations/tables which provide columns used in this expression.
+  * @tparam S the ''scope'' defining where in an SQL statement this expression can be used.
+  *           [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope local]] scope means it is restricted
+  *           to the ''select'' and ''having'' clauses of SQL ''selects'' directly based on the clause `F`
+  *           (or another ''from'' clause containing all relations present in
+  *           the [[net.noresttherein.oldsql.sql.FromClause.Explicit ''explicit'']] portion of `F`).
+  *           [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope Global]] scope means that the expression
+  *           can be used anywhere in a ''select'' based on `F`, as well as in any of its subselects
+  *           - after rebasing with [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]].
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
   * @see [[net.noresttherein.oldsql.sql.ColumnSQL]]
   */
 trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends implicitSQLLiterals {
 	import implicitSQLLiterals.boundParameterSQL
 
+	/** A form which will be used to read the values of this expression from an SQL [[java.sql.ResultSet ResultSet]]
+	  * (if this expression is used as the ''select'' clause of a query).
+	  */
 	def readForm :SQLReadForm[V]
 
 
@@ -45,8 +56,16 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 	/** Is this expression independent of any relations from the FROM clause? */
 	def isFree :Boolean = freeValue.isDefined
 
+	/** Answers if this expressions is applicable to the [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope global]]
+	  * scope. If true, it can be safely cast to `SQLExpression[F, GlobalScope, V]`
+	  * (and [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL GlobalSQL]]`[F, V]`).
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.asGlobal]]
+	  */
 	def isGlobal :Boolean = false
 
+	/** Returns this expression in an option if it is a [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL global]]
+	  * expression or `None` otherwise.
+	  */
 	def asGlobal :Option[GlobalSQL[F, V]]
 
 
@@ -54,38 +73,165 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 //	      (path :ComponentPath[T, C, O, E, L])(implicit lift :SQLTypeUnification[L, R, X]) :SetComponent[F, T, C, O, E, L, R, X] =
 //		SetComponent(path, this :SQLExpression[F, R])
 
+	/** An SQL expression testing if the value of this expression is `NULL` (by the database when executing the query).
+	  * If this expression does not represent a single column, but a tuple/several inline columns, each individual
+	  * column is tested for nullity.
+	  */
 	def isNull :ColumnSQL[F, S, Boolean] = IsNULL(this)
 
+	/** An SQL expression comparing the value of this expression with the given value.
+	  * The argument value will be rendered as a parameter of the created [[java.sql.PreparedStatement PreparedStatement]],
+	  * but must be nevertheless known at this place.
+	  * @param value a value of any type `X` such that `V` and `X` can be automatically promoted by the database
+	  *              to the same type `U` for the purpose of the comparison, and for which an implicit
+	  *              [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists.
+	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
+	  *             to some unspecified type `U` for the purpose of the comparison by the database.
+	  *             Implicit values provided in its companion object depend on the existence of
+	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
+	  * @param form an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] used to set the value of the parameter
+	  *             in the `PreparedStatement` using this expression.
+	  * @see [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameter]] the expression for ''bound'' SQL parameters.
+	  * @see [[net.noresttherein.oldsql.sql.UnboundParam]] an ''unbound'' parameter introduced to the underlying `FromClause`.
+	  */ //we need SQLForm, not SQLReadForm because SQLParameter requires it, in case it's used in the select clause.
 	def ==?[X, U](value :X)(implicit lift :SQLTypeUnification[V, X, U], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
 		this === value.?
 
+	/** An SQL expression comparing the value of this expression with another expression for equality.
+	  * @param that another expression, which value type is comparable in the database with the value type
+	  *             of this expression.
+	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
+	  *             to some unspecified type `U` for the purpose of the comparison by the database.
+	  *             Implicit values provided in its companion object depend on the existence of
+	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.SQLTerm.NULL NULL]] literal,
+	  *         than `NULL[Boolean]`. Otherwise an `SQLExpression` based on
+	  *         a [[net.noresttherein.oldsql.sql.FromClause FromClause]] being the greatest lower bound of the bases
+	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
+	  *         of which is the intersection of the scopes of the two expressions.
+	  */
 	def ===[E <: F, O >: LocalScope <: S, X, U]
 	       (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[V, X, U]) :ColumnSQL[E, O, Boolean] =
-		EqualitySQL(lift.left(this), lift.right(that))
+		that match {
+			case NULL() => NULL[Boolean]
+			case _ => EqualitySQL(lift.left(this), lift.right(that))
+		}
 
+	/** An SQL expression checking if the value of this expression and another expression are not equal.
+	  * @param that another expression, which value type is comparable in the database with the value type
+	  *             of this expression.
+	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
+	  *             to some unspecified type `U` for the purpose of the comparison by the database.
+	  *             Implicit values provided in its companion object depend on the existence of
+	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.SQLTerm.NULL NULL]] literal,
+	  *         than `NULL[Boolean]`. Otherwise an `SQLExpression` based on
+	  *         a [[net.noresttherein.oldsql.sql.FromClause FromClause]] being the greatest lower bound of the bases
+	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
+	  *         of which is the intersection of the scopes of the two expressions.
+	  */
 	def <>[E <: F, O >: LocalScope <: S, X, U]
 	      (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[V, X, U]) :ColumnSQL[E, O, Boolean] =
-		InequalitySQL(lift.left(this), lift.right(that))
+		that match {
+			case NULL() => NULL[Boolean]
+			case _ => InequalitySQL(lift.left(this), lift.right(that))
+		}
 
+	/** An SQL expression comparing the value of this expression with another expression with `<=`.
+	  * @param that another expression, which value type is comparable in the database with the value type
+	  *             of this expression.
+	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
+	  *             to some unspecified type `U` for the purpose of the comparison by the database.
+	  *             Implicit values provided in its companion object depend on the existence of
+	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
+	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
+	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.SQLTerm.NULL NULL]] literal,
+	  *         than `NULL[Boolean]`. Otherwise an `SQLExpression` based on
+	  *         a [[net.noresttherein.oldsql.sql.FromClause FromClause]] being the greatest lower bound of the bases
+	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
+	  *         of which is the intersection of the scopes of the two expressions.
+	  */
 	def <=[E <: F, O >: LocalScope <: S, X, U]
 	      (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[V, X, U], ordering :SQLOrdering[U])
 			:ColumnSQL[E, O, Boolean] =
-		ComparisonSQL(lift.left(this), ComparisonSQL.LTE, lift.right(that))
+		that match {
+			case NULL() => NULL[Boolean]
+			case _ => ComparisonSQL(lift.left(this), ComparisonSQL.LTE, lift.right(that))
+		}
 
+	/** An SQL expression comparing the value of this expression with another expression with `<`.
+	  * @param that another expression, which value type is comparable in the database with the value type
+	  *             of this expression.
+	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
+	  *             to some unspecified type `U` for the purpose of the comparison by the database.
+	  *             Implicit values provided in its companion object depend on the existence of
+	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
+	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
+	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.SQLTerm.NULL NULL]] literal,
+	  *         than `NULL[Boolean]`. Otherwise an `SQLExpression` based on
+	  *         a [[net.noresttherein.oldsql.sql.FromClause FromClause]] being the greatest lower bound of the bases
+	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
+	  *         of which is the intersection of the scopes of the two expressions.
+	  */
 	def <[E <: F, O >: LocalScope <: S, X, U]
 	     (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[V, X, U], ordering :SQLOrdering[U])
 			:ColumnSQL[E, O, Boolean] =
-		ComparisonSQL(lift.left(this), ComparisonSQL.LT, lift.right(that))
+		that match {
+			case NULL() => NULL[Boolean]
+			case _ => ComparisonSQL(lift.left(this), ComparisonSQL.LT, lift.right(that))
+		}
 
+	/** An SQL expression comparing the value of this expression with another expression with `>=`.
+	  * @param that another expression, which value type is comparable in the database with the value type
+	  *             of this expression.
+	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
+	  *             to some unspecified type `U` for the purpose of the comparison by the database.
+	  *             Implicit values provided in its companion object depend on the existence of
+	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
+	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
+	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.SQLTerm.NULL NULL]] literal,
+	  *         than `NULL[Boolean]`. Otherwise an `SQLExpression` based on
+	  *         a [[net.noresttherein.oldsql.sql.FromClause FromClause]] being the greatest lower bound of the bases
+	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
+	  *         of which is the intersection of the scopes of the two expressions.
+	  */
 	def >=[E <: F, O >: LocalScope <: S, X, U]
 	      (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[V, X, U], ordering :SQLOrdering[U])
 			:ColumnSQL[E, O, Boolean] =
-		ComparisonSQL(lift.left(this), ComparisonSQL.GTE, lift.right(that))
+		that match {
+			case NULL() => NULL[Boolean]
+			case _ => ComparisonSQL(lift.left(this), ComparisonSQL.GTE, lift.right(that))
+		}
 
+	/** An SQL expression comparing the value of this expression with another expression with `>`.
+	  * @param that another expression, which value type is comparable in the database with the value type
+	  *             of this expression.
+	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
+	  *             to some unspecified type `U` for the purpose of the comparison by the database.
+	  *             Implicit values provided in its companion object depend on the existence of
+	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
+	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
+	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.SQLTerm.NULL NULL]] literal,
+	  *         than `NULL[Boolean]`. Otherwise an `SQLExpression` based on
+	  *         a [[net.noresttherein.oldsql.sql.FromClause FromClause]] being the greatest lower bound of the bases
+	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
+	  *         of which is the intersection of the scopes of the two expressions.
+	  */
 	def >[E <: F, O >: LocalScope <: S, X, U]
 	     (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[V, X, U], ordering :SQLOrdering[U])
 			:ColumnSQL[E, O, Boolean] =
-		ComparisonSQL(lift.left(this), ComparisonSQL.GT, lift.right(that))
+		that match {
+			case NULL() => NULL[Boolean]
+			case _ => ComparisonSQL(lift.left(this), ComparisonSQL.GT, lift.right(that))
+		}
 
 
 //todo: arithmetic
@@ -137,6 +283,7 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 	          (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V]
 
 
+	/** A visitor pattern callback in which this expression calls the method of `mather` most appropriate to its type. */
 	def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V]
 
 
@@ -171,13 +318,23 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 
 
 
+	/** List of [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameter ''bound'']] parameters used by this expression,
+	  * in the order in which they would appear in the rendered SQL.
+	  */
 	def parameters :Seq[SQLParameter[_]] = collect { case x :SQLParameter[_] => x }
 
+	/** Applies the given partial function recursively to all subexpressions of this expression (in the preorder). */
 	def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X] = reverseCollect(fun, Nil).reverse
 
+	/** Implementation target of [[net.noresttherein.oldsql.sql.SQLExpression.collect collect]], realising its
+	  * contract in the reversed order - the tree is traversed in postorder, and the parts preprended
+	  * to the accumulator `acc`.
+	  * @return by default `fun.lift(this) ++: acc`.
+	  */
 	protected def reverseCollect[X](fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
 		fun.lift(this) ++: acc
 
+	/** A bridge method exporting the `reverseCollect` method of other expressions to any subtype of this trait. */
 	protected[this] def reverseCollect[X](e :SQLExpression.*)
 	                                     (fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
 		e.reverseCollect(fun, acc)
@@ -219,17 +376,20 @@ object SQLExpression  {
 
 
 
-	/** Default scope of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]], signifying that an expression
-	  * can be used solely within the ''select'' statement for the [[net.noresttherein.oldsql.sql.FromClause FromClause]]
-	  * serving as the base for the expression. Such expressions are illegal for subselects of the mentioned select,
+	/** Default scope of an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]], signifying that it can be used
+	  * solely within the ''select'' statement for the [[net.noresttherein.oldsql.sql.FromClause FromClause]]
+	  * serving as the base for the expression. Such expressions are illegal for subselects of the mentioned ''select'',
 	  * that is it cannot be converted to another ''from'' clause `E` extending the original clause `F`. This stands
-	  * in contrast with the [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope GlobalScope]], which is a subtype
+	  * in contrast to the [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope GlobalScope]], which is a supertype
 	  * of this type, and which permits such usage. Purely local expressions are reserved for SQL aggregate functions:
 	  * `count(*)` of an SQL ''select'' cannot be used as a part of another ''select''.
+	  * Note that type `SQLExpression` is contravariant in scope, meaning `SQLExpression[F, LocalScope, T]`
+	  * is a supertype of `SQLExpression[F, GlobalScope, T]`, permitting the use of non-aggregate expressions
+	  * in the local scope of a ''select'' as expected.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalSQL]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.PartOf]]
-	  */ //fixme: docs
+	  */
 	type LocalScope <: GlobalScope
 
 	/** The type used as the ''scope'' type argument `S` of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]
@@ -246,24 +406,65 @@ object SQLExpression  {
 
 	val GlobalScope = implicitly[GlobalScope <:< GlobalScope]
 
+	/** An upper bound of all [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] subtypes
+	  * with the value type `V` and based on the [[net.noresttherein.oldsql.sql.FromClause ''from'' clause]] `F`.
+	  * It restricts the application scope of the expression to the ''select'' and ''having'' clauses
+	  * of an SQL ''select'' based on the clause `F`. It is not allowed in the ''where'' clause
+	  * or within subselects of the select it is based on. This allows it to include aggregate expressions
+	  * such as `count(*)` as its subtypes.
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope]]
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL]]
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL]]
+	  */
 	type LocalSQL[-F <: FromClause, V] = SQLExpression[F, LocalScope, V]
+
+	/** An upper bound of all [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] subtypes
+	  * with the value type `V` and based on the [[net.noresttherein.oldsql.sql.FromClause ''from'' clause]] `F`
+	  * which can be used freely in the context of any SQL ''select'' based on `F` as well as any of its subselects.
+	  * Most expression types derive from this type rather than
+	  * its supertype [[net.noresttherein.oldsql.sql.SQLExpression.LocalSQL LocalSQL]], with the sole exception being
+	  * [[net.noresttherein.oldsql.sql.AggregateSQL aggregate]] expressions.
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope]]
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalSQL]]
+	  */
 	type GlobalSQL[-F <: FromClause, V] = SQLExpression[F, GlobalScope, V]
 
+	/** A type alias for [[net.noresttherein.oldsql.sql.SQLExpression SQL expressions]] independent of any relations
+	  * in the FROM clause, that is applicable to any [[net.noresttherein.oldsql.sql.FromClause FromClause]].
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope]]
+	  */
+	type FreeExpression[T] = SQLExpression[FromClause, GlobalScope, T]
 
 
 	/** An upper type bound of all `SQLExpression[_, _, _]` instances. */
 	type * = SQLExpression[_ <: FromClause, _ >: LocalScope <: GlobalScope, _]
 
-	/** A type alias for SQL expressions independent of any relations in the FROM clause, that is applicable
-	  * to any `FromClause`. */
-//	type FreeExpression[T] = SQLExpression[FromClause, T]
 
 
 
 
 
 
-
+	/** Base type of [[net.noresttherein.oldsql.sql.SQLExpression expressions]] which are composed of other expressions.
+	  * The number of subexpressions can be fixed (including to a single one), or vary between instances.
+	  * Likewise, the composite subtype may define the value type of included expressions, or be heterogeneous/agnostic.
+	  * All constituting expressions must be applicable in the same context as this expression
+	  * ([[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
+	  * and the [[net.noresttherein.oldsql.sql.FromClause base]] ''from'' clause), which excludes
+	  * [[net.noresttherein.oldsql.sql.AggregateSQL aggregate]] expressions.
+	  * The assumption is however that their exact subtypes of the `SQLExpression` do not matter, aside from
+	  * the mentioned restrictions on their type parameters, and that any of them can be replaced with another
+	  * `SQLExpression` conforming to these bounds, and that the result will be a valid SQL expression which can
+	  * serve as a substitute for this expression, again producing a valid expression.
+	  *
+	  * Such expressions are often treated the same way by
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.ExpressionMatcher visitors]] of the `SQLExpression` type hierarchy,
+	  * which recursively reapply themselves to the subexpression of this expression (possibly producing another
+	  * `SQLExpression` by reapplying the same type of the composite expression to the mapped subexpressions.
+	  * The additional methods defined here facilitate this behaviour as well as structural comparison
+	  * for [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.equals equals]] and
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.isomorphic isomorphic]].
+	  */
 	trait CompositeSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQLExpression[F, S, V] {
 		def inOrder :Seq[SQLExpression[F, S, _]] = parts
 
@@ -283,6 +484,12 @@ object SQLExpression  {
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V] =
 			rephrase(SQLScribe.extend(base))
 
+		/** Method used in the implementation of
+		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.basedOn basedOn]] and
+		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.extend extend]].
+		  * It should apply `mapper` to all constituting subexpressions and reassemble them into another
+		  * composite expression of the same type as this one.
+		  */
 		def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :SQLExpression[E, S, V]
 
 
@@ -290,6 +497,7 @@ object SQLExpression  {
 			(super.reverseCollect(fun, acc) /: inOrder)((collected, member) => member.reverseCollect(fun, collected))
 
 
+		/** Defaults to [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.canEqual canEqual]]. */
 		def sameAs(other :CompositeSQL[_, _, _]) :Boolean = canEqual(other)
 
 		private[oldsql] override def equivalent(expression: SQLExpression.*): Boolean = expression match {
@@ -298,6 +506,14 @@ object SQLExpression  {
 			case _ => false
 		}
 
+		/** Compares this expression with another expression, which must be a `CompositeSQL` in order for the test
+		  * to turn out positive in a way mirroring the implementation of
+		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.equals equals]].
+		  * The difference is that [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.sameAs sameAs]] is used
+		  * instead of [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.canEqual canEqual]],
+		  * and the part lists are compared using their `isomorphic` methods instead of equality.
+		  * Both the order and the number of subexpressions must still match this expression.
+		  */
 		override def isomorphic(expression :SQLExpression.*) :Boolean = expression match {
 			case e :CompositeSQL.* =>
 				(this eq e) || sameAs(e) && e.sameAs(this) && contentsIsomorphic(e)
@@ -310,14 +526,26 @@ object SQLExpression  {
 				parts.forall(e => other.parts.exists(_ equivalent e)) &&
 				other.parts.forall(e => parts.exists(_ equivalent e))
 
+		/** Verifies that the [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.parts parts]] lists
+		  * of both expressions are of the same length and that all matched pairs are
+		  * [[net.noresttherein.oldsql.sql.SQLExpression.isomorphic isomorphic]].
+		  */
 		def contentsIsomorphic(other :CompositeSQL.*) :Boolean =
 			parts.size == other.parts.size &&
 				((parts zip other.parts) forall { case (left, right) => left isomorphic right })
 
 
-
+		/** A method used to attain the symmetry of the equality relation on `CompositeSQL` instances.
+		  * It is tested by the `equals` method in ''both'' directions before comparing the contents
+		  * of compared expressions. The default expressions checks if both `this` and `that` are of the same class
+		  * which should be satisfactory for most implementations.
+		  */
 		override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
+		/** Symmetrically tests that both `this canEqual that` and `that canEqual this` as well as the part lists
+		  * of both expressions are equal (including the ordering). This implementation is thus suitable for
+		  * most subtypes of this type, requiring derived classes to implement only `canEqual`.
+		  */
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
 			case composite :CompositeSQL[_, _, _] if canEqual(composite) && composite.canEqual(this) =>
@@ -414,7 +642,7 @@ object SQLExpression  {
 
 
 	/** An implicit witness vouching that type `X` is a subtype of `Y` or can be automatically promoted to type `Y`.
-	  * It is used to conflate more strict scala types with the same, more loose SQL representations.
+	  * It is used to conflate more strict scala types having the same, more loose SQL representation.
 	  */
 	abstract class Lift[X, Y] {
 		def apply(value :X) :Y

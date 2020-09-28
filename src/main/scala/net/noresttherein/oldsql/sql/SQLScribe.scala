@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.GroupByAll.ByAll
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
-import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, CaseMapping, ColumnComponentSQL, ComponentSQL, FreeColumn, FreeComponent, RelationSQL}
+import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, CaseMapping, ColumnComponentSQL, ComponentSQL, FreeColumnComponent, FreeComponent, RelationSQL}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectColumn, FreeSelectColumn, FreeSelectSQL, SubselectColumn, SubselectSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope, LocalSQL}
@@ -108,7 +108,7 @@ object SQLScribe {
 			unhandled(e)
 
 		override def freeComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-		                          (e :FreeColumn[O, M, V]) :ColumnSQL[G, GlobalScope, V] =
+		                          (e :FreeColumnComponent[O, M, V]) :ColumnSQL[G, GlobalScope, V] =
 			unhandled(e)
 
 
@@ -787,7 +787,7 @@ object SQLScribe {
 		}
 
 		override def freeComponent[J >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-		                          (e :FreeColumn[J, M, V]) :ColumnSQL[F, GlobalScope, V] =
+		                          (e :FreeColumnComponent[J, M, V]) :ColumnSQL[F, GlobalScope, V] =
 		{
 			val table = from.fullTableStack(e.shift).asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, J]]
 			(table \ e.mapping).upcast
