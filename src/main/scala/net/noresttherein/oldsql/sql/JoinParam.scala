@@ -665,7 +665,7 @@ object UnboundParam {
 				:Option[(FromParam[E, O], ParamColumnExtract[E, V, O], Int)] =
 			if (expr.extract.export.isInstanceOf[ParamMapping[_, _, _]]) {
 				val param = expr.extract.export.asInstanceOf[FromParam[E, O]#ParamColumn[V]]
-				Some((param.root, param.extract, expr.from.shift))
+				Some((param.root, param.extract, expr.origin.shift))
 			} else
 				  None
 
@@ -673,7 +673,7 @@ object UnboundParam {
 		           (expr :ComponentSQL[_, T, E, M, V, O]) :Option[(FromParam[E, O], ParamExtract[E, V, O], Int)] =
 			if (expr.extract.export.isInstanceOf[ParamMapping[_, _, _]]) {
 				val param = expr.extract.export.asInstanceOf[ParamMapping[E, V, O]]
-				Some((param.root, param.extract, expr.from.shift))
+				Some((param.root, param.extract, expr.origin.shift))
 			} else
 				  None
 

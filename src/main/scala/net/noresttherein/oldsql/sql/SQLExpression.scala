@@ -534,12 +534,12 @@ object SQLExpression  {
 	  * for abstract expressions and leaves all methods for direct subclasses of ''Expression'' not implemented.
 	  * The methods for ''their'' subclasses delegate as in the former example. This in turn has the effect of matching
 	  * against a smallest set of classes covering all concrete subclasses of ''Expr''. `ColumnSQL` subtypes
-	  * are a bit special, as they have their own hierarchy, parallel to that of plain SQLFormulas.
+	  * are a bit special, as they have their own hierarchy, parallel to that of plain `SQLExpression`s.
 	  * Wherever an expression type, for example `SQLLiteral`, exists in both non-column and column versions,
 	  * the non-column ''Expr''`Matcher` will extend the associated column ''Expr''`Matcher`. The `CaseLiteral` trait
 	  * in our example will implement the callback for the column literal by delegating it to the method
 	  * for the base literal. In this way, the standard delegation chain for any column expression always starts
-	  * by delegating to the non-column method. It is however possible to change by mixing in one or more
+	  * by delegating to the non-column method. It is however possible to change this by mixing in one or more
 	  * of the `Match`''Expr'' or `Case`''Expr'' traits for particular column expression types after the general
 	  * matcher traits. For example, `CaseExpression[F, Y] with CaseColumn[F, Y]` will change it
 	  * to the opposite: all callbacks for column formulas reach the `column` callback for the root `ColumnSQL`
@@ -556,8 +556,6 @@ object SQLExpression  {
 		   with SelectMatcher[F, Y] with TermMatcher[F, Y]
 	{
 		def apply[S >: LocalScope <: GlobalScope, V](e: SQLExpression[F, S, V]): Y[S, V] = e.applyTo(this)
-
-//		override def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :Y[S, V] = e.applyTo(this)
 
 
 		protected def unhandled(e :SQLExpression[F, _, _]) :Nothing =

@@ -1199,7 +1199,7 @@ object RightJoin {
   * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]] join
   * is present to its right. Additionally, direct subselect clauses of some outer clause `F` (that is,
   * those without any `Subselect` to the right of `F` in their type definition) conform to
-  * [[net.noresttherein.oldsql.sql.FromClause.Nested F.Nested]] if both clauses are at least in their generalized form.
+  * [[net.noresttherein.oldsql.sql.FromClause.DirectSubselect F.DirectSubselect]] if both clauses are at least in their generalized form.
   * Outer clauses are also valid ''from'' clauses for a subselect of any other select, but do not conform to any
   * of the above, thus this relationship is typically established instead
   * by the [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf[F] ]] type alias, which covers

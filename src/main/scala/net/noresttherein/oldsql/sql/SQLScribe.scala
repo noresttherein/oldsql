@@ -6,8 +6,10 @@ import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Mapping}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
+import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.GroupByAll.ByAll
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, CaseMapping, ColumnComponentSQL, ComponentSQL, FreeColumn, FreeComponent, RelationSQL}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectColumn, FreeSelectColumn, FreeSelectSQL, SubselectColumn, SubselectSQL}
@@ -23,13 +25,22 @@ import slang._
 
 
 
-/**
+/** A term rewriter translating any [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, S, T]`
+  * for the input ''from'' clause `F`, into an `SQLExpression[R, S, T]` for the output ''from'' clause `R`.
+  * If the expression is a subtype of [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]], the result will
+  * also be a `ColumnSQL` of the same value type and scope, but based on the clause `R`.
+  * It is implemented through the visitor pattern as defined by the
+  * [[net.noresttherein.oldsql.sql.SQLExpression.ExpressionMatcher ExpressionMatcher]] trait.
   * @author Marcin Mościcki
   */
 trait SQLScribe[+F <: FromClause, -R <: FromClause]
 	extends ExpressionMatcher[F, ExpressionResult[R]#T] with ColumnMatcher[F, ColumnResult[R]#T]
-{
-	def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[R, S, V] = e.applyTo(this)
+{   //overriden so that the column variant is correctly picked from between overloads
+	override def apply[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :SQLExpression[R, S, V] =
+		e.applyTo(this)
+
+	def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[R, S, V] =
+		e.applyTo(this)
 }
 
 
@@ -92,7 +103,6 @@ object SQLScribe {
 		protected[this] val oldClause :F
 		protected[this] val newClause :G
 
-
 		override def freeComponent[O >: F <: FromClause, M[A] <: BaseMapping[X, A], X]
 		                          (e :FreeComponent[O, M, X]) :MappingSQL[G, GlobalScope, M[O]] =
 			unhandled(e)
@@ -125,48 +135,46 @@ object SQLScribe {
 			}
 
 
-
 		/** A scribe rewriting expressions aggregated under the clause `F`. Used for `e.arg` of received instances of
 		  * `e :AggregateSQL[F, O, _, _]`, as well as expressions of any subselects of `oldClause.Discrete`.
 		  * @param oldGrouped base clause of input - either `oldClause.Discrete`, or its subselect (possibly indirect).
 		  * @param newGrouped base clause of the output. initially, when `oldGrouped = oldClause.from`,
-		  *                   `newGrouped = newClause.from`. Afterwards these are both arguments given to
+		  *                   `newGrouped = newClause.from`. Afterwards, these are both arguments given to
 		  *                   `extend` - that is a clause resulting from rebasing the input subselect clause onto their
-		  *                   common prefix.
+		  *                   common prefix, `this.oldClause.outer`.
 		  * @param oldOffset the index of the first relation from the outer clause of `this.oldClause` (i.e., `F`),
 		  *                  but inside the clause `O`.
 		  * @param newOffset the index of the first relation from the outer clause of `this.newClause` (i.e., `E`),
-		  *                  but inside the clause `N`.
+		  *                  but inside the clause `N`. This is the same relation as `oldGrouped.fullTableStack(oldOffset)`.
 		  * @param groupings number of pseudo relations in the ''group by'' clause of `this.oldClause`, that is
 		  *                  `this.oldClause.innerSize` (cached).
-		  *
 		  */
-		protected def group[O <: FromClause, N <: FromClause]
-		                   (oldGrouped :O, newGrouped :N, oldOffset :Int, newOffset :Int, groupings :Int) :SQLScribe[O, N] =
+		private def group[O <: FromClause, N <: FromClause]
+		                 (oldGrouped :O, newGrouped :N, oldOffset :Int, newOffset :Int, groupings :Int) :SQLScribe[O, N] =
 			new RecursiveScribe[O, N] {
 				override val oldClause = oldGrouped
 				override val newClause = newGrouped
 
 				override def component[T[A] <: BaseMapping[R, A], R, M[A] <: BaseMapping[V, A], V, U >: O <: FromClause]
 				                      (e :ComponentSQL[O, T, R, M, V, U]) =
-					if (e.from.shift >= oldOffset) { //relation is from an enclosing select of oldAggr, not the grouped portion
-						val adapted = RelationSQL[F, T, R, F](e.relation, e.from.shift - oldOffset + groupings)
+					if (e.origin.shift >= oldOffset) { //relation is from an enclosing select of oldAggr, not the grouped portion
+						val adapted = RelationSQL[F, T, R, F](e.relation, e.origin.shift - oldOffset + groupings)
 						val comp = adapted \ e.mapping.withOrigin[F]
 						self.component(comp).asInstanceOf[SQLExpression[N, GlobalScope, V]]
 					} else { //relation is in the grouped portion. All that needs to be done is to update the index
-						val adapted = RelationSQL[N, T, R, N](e.relation, e.from.shift - oldOffset + newOffset)
+						val adapted = RelationSQL[N, T, R, N](e.relation, e.origin.shift - oldOffset + newOffset)
 						val res = adapted \ e.mapping.withOrigin[N] //todo: why explicit type parameters are required?
 						res
 					}
 
 				override def component[T[A] <: BaseMapping[R, A], R, M[A] <: ColumnMapping[V, A], V, U >: O <: FromClause]
 				                      (e :ColumnComponentSQL[O, T, R, M, V, U]) =
-					if (e.from.shift >= oldOffset) { //relation is from an enclosing select of oldAggr, not the grouped portion
-						val adapted = RelationSQL[F, T, R, F](e.relation, e.from.shift - oldOffset + groupings)
+					if (e.origin.shift >= oldOffset) { //relation is from an enclosing select of oldAggr, not the grouped portion
+						val adapted = RelationSQL[F, T, R, F](e.relation, e.origin.shift - oldOffset + groupings)
 						val comp = adapted \ e.mapping.withOrigin[F]
 						self(comp).asInstanceOf[ColumnSQL[N, GlobalScope, V]]
 					} else { //relation is in the grouped portion. All that needs to be done is to update the index
-						val adapted = RelationSQL[N, T, R, N](e.relation, e.from.shift - oldOffset + newOffset)
+						val adapted = RelationSQL[N, T, R, N](e.relation, e.origin.shift - oldOffset + newOffset)
 						adapted \ e.mapping.withOrigin[N]
 					}
 
@@ -187,23 +195,40 @@ object SQLScribe {
 
 			}
 
+
+
 		override def subselect[V, O](e :SubselectColumn[F, V, O]) :ColumnSQL[G, GlobalScope, Rows[V]] =
 			subselect(e :SubselectSQL[F, V, O]).asInstanceOf[ColumnSQL[G, GlobalScope, Rows[V]]]
 
 		override def subselect[V, O](e :SubselectSQL[F, V, O]) :GlobalSQL[G, Rows[V]] = {
-			val replacement = subselectClause(e.from)//(e.from.outer)
+			val replacement = e.from match {
+				case discrete :FromSome => rebaseSubselect(discrete)//(e.from.outer)
+				case grouped :GroupByClause => rebaseGroupedSubselect(grouped)
+				case aggregated :Aggregated[_] =>
+					val discrete = rebaseSubselect(aggregated.clause)
+					val res = Aggregated[discrete.clause.type](discrete.clause)
+					implicit val newExtension = res.explicitSpan
+					RecursiveScribeSubselectExtension[FromClause, newClause.Generalized](res)
+			}
 			val newSubselect = replacement.clause.generalized
 			val oldExtension = replacement.newExtension.asInstanceOf[oldClause.Generalized ExtendedBy e.From]
 			val scribe = extended(e.from, newSubselect)(oldExtension, replacement.newExtension)
 			scribe(e.header).subselectFrom(newSubselect).asInstanceOf[GlobalSQL[G, Rows[V]]]
 		}
+
+
 		//todo: rewrite it with some sort of generic dispatch, because it's fugly
-		private def subselectClause(subselect :FromClause)
-				:RecursiveScribeSubselectExtension[oldClause.Generalized, newClause.Generalized] =
+		/** Given a clause `subselect` such that `oldClause.Generalized ExtendedBy subselect.Generalized` and
+		  * the first 'join' of the extension is a `Subselect`, create a new clause, based on `newClause.Generalized`,
+		  * which applies all relations and 'joins' from `subselect` following `oldClause`, including rewriting all
+		  * join conditions (`filter` properties) in it.
+		  */
+		private def rebaseSubselect(subselect :FromSome)
+				:RecursiveScribeSubselectExtension[FromSome, newClause.Generalized] =
 			subselect match {
 				case j :Join[_, _] =>
 					val join = j.asInstanceOf[FromSome Join MappingAt]
-					val sub = subselectClause(join.left)
+					val sub = rebaseSubselect(join.left)
 					val newExtension = sub.newExtension.extend[join.LastMapping]
 					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
 					val unfiltered = join.withLeft[sub.clause.type](sub.clause)(True) //todo: condition from a function
@@ -237,9 +262,9 @@ object SQLScribe {
 						.asInstanceOf[FromSome { type Implicit = newClause.Generalized }]
 					RecursiveScribeSubselectExtension(res)(extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized])
 
-				case d :DecoratedFrom[_] =>
-					val wrap = d.asInstanceOf[DecoratedFrom[FromClause]]
-					val sub = subselectClause(wrap.clause)
+				case d :FromSomeDecorator[_] =>
+					val wrap = d.asInstanceOf[FromSomeDecorator[FromSome]]
+					val sub = rebaseSubselect(wrap.clause)
 					val res = wrap.withClause(sub.clause.asInstanceOf[wrap.clause.FromLast])
 						.asInstanceOf[FromSome { type Implicit = newClause.Generalized }]
 					val newExtension = sub.newExtension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized]
@@ -253,35 +278,77 @@ object SQLScribe {
 			}
 
 
+		private def rebaseGroupedSubselect(subselect :GroupByClause)
+				:RecursiveScribeSubselectExtension[GroupByClause, newClause.Generalized] =
+			subselect match {
+				case j :ByAll[_, _] => //same as Join, really. A pity we can't implement polymorphism without implicits
+					val join = j.asInstanceOf[GroupByClause ByAll MappingAt]
+					val sub = rebaseGroupedSubselect(join.left)
+					val newExtension = sub.newExtension.extend[join.LastMapping]
+					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
+					val unfiltered = join.withLeft[sub.clause.type](sub.clause)(True)
+
+					val scribe = extended(join.generalized, unfiltered.generalized)(oldExtension, newExtension)
+					val res = join.withLeft[sub.clause.type](sub.clause)(scribe(join.condition))
+					RecursiveScribeSubselectExtension(res)(newExtension)
+
+				case j :GroupByAll[_, _] =>
+					val join = j.asInstanceOf[FromSome GroupByAll MappingAt]
+					val sub = rebaseSubselect(join.left)
+					val unfiltered = join.withLeft[sub.clause.type](sub.clause)(True)
+					implicit val newExtension = unfiltered.explicitSpan //this part differs from other cases
+					implicit val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
+
+					val scribe = extended(join.generalized, unfiltered.generalized)
+					val res = join.withLeft[sub.clause.type](sub.clause)(scribe(join.condition))
+					RecursiveScribeSubselectExtension(res)
+
+//					RecursiveScribeSubselectExtension(res)(newExtension)
+					???
+				case bogus =>
+					throw new IllegalArgumentException(
+						s"Unsupported clause in a subselect: $bogus.\nTransplanting a subselect of $oldClause\n onto $newClause."
+					)
+			}
+
+
 
 		/** Factory method for compatible rewriters extending their implementation to subselect clauses extending
 		  * the input clause `F`.
-		  * @param subselect a subselect of `F`, that is a ''from'' clause of type `F Subselect ...`.
-		  * @param replacement a subselect of the output clause `G`, that is a ''from'' clause of type `F Subselect ...`,
-		  *                    which contains all the same relations as `S` in its subselect span (`Inner`/`Explicit`),
-		  *                    but with the last join condition uninitialized/unchanged.
+		  * @param subselectClause a subselect of `F`, that is a ''from'' clause of type `F Subselect ...`.
+		  * @param replacementClause a subselect of the output clause `G`, that is a ''from'' clause of type
+		  *                          `F Subselect ...`, which contains all the same relations as `S`
+		  *                          in its subselect span (`Inner`/`Explicit`), but with the last join condition
+		  *                          uninitialized/unchanged.
 		  */
 		protected def extended[S <: FromClause, E <: FromClause]
-		                      (subselect :S, replacement :E)
+		                      (subselectClause :S, replacementClause :E)
 		                      (implicit oldExt :oldClause.Generalized ExtendedBy S,
-		                                newExt :newClause.Generalized ExtendedBy E) :SQLScribe[S, E]
+		                                newExt :newClause.Generalized ExtendedBy E) :SQLScribe[S, E] = ???
+//			new RecursiveScribe[S, E] {
+//				override val oldClause = subselectClause
+//				override val newClause = replacementClause
+//
+//
+//			}
 
 	}
 
 
 
-	private trait RecursiveScribeSubselectExtension[O <: FromClause, E <: FromClause] {
-		val clause :FromSome { type Implicit = E }
+	private trait RecursiveScribeSubselectExtension[+U <: FromClause, E <: FromClause] {
+		val clause :U { type Implicit = E }
 		implicit val newExtension :E ExtendedBy clause.Generalized
 	}
 
-	private def RecursiveScribeSubselectExtension[O <: FromClause, E <: FromClause]
-	            (result :FromSome { type Implicit = E })(implicit extension :E ExtendedBy result.Generalized)
-			:RecursiveScribeSubselectExtension[O, E] =
-		new RecursiveScribeSubselectExtension[O, E] {
+	private def RecursiveScribeSubselectExtension[U <: FromClause, E <: FromClause]
+	            (result :U { type Implicit = E })(implicit extension :E ExtendedBy result.Generalized)
+			:RecursiveScribeSubselectExtension[U, E] =
+		new RecursiveScribeSubselectExtension[U, E] {
 			override val clause :result.type = result
 			override val newExtension :E ExtendedBy clause.Generalized = extension
 		}
+
 
 
 
@@ -300,8 +367,8 @@ object SQLScribe {
 		override def component[T[A] <: BaseMapping[R, A], R, M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
 		                      (e :ComponentSQL[F, T, R, M, V, O]) :GlobalSQL[G, V] =
 		{
-			val table = relation(e.from).from.asInstanceOf[RelationSQL[G, T, R, G]]
-			if (table eq e.from)
+			val table = relation(e.origin).origin.asInstanceOf[RelationSQL[G, T, R, G]]
+			if (table eq e.origin)
 				e.asInstanceOf[ComponentSQL[G, T, R, M, V, G]]
 			else
 				(table \ e.mapping.withOrigin[G]).upcast
@@ -311,8 +378,8 @@ object SQLScribe {
 		override def component[T[A] <: BaseMapping[R, A], R, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
 		                      (e :ColumnComponentSQL[F, T, R, M, V, O]) :ColumnSQL[G, GlobalScope, V] =
 		{
-			val table = relation(e.from).from.asInstanceOf[RelationSQL[G, T, R, G]]
-			if (table eq e.from)
+			val table = relation(e.origin).origin.asInstanceOf[RelationSQL[G, T, R, G]]
+			if (table eq e.origin)
 				e.asInstanceOf[ColumnSQL[G, GlobalScope, V]]
 			else
 				(table \ e.mapping.withOrigin[G]).upcast
@@ -346,7 +413,7 @@ object SQLScribe {
 		                                         newExt :ExtendedBy[newClause.Generalized, H]) =
 		{
 			val shift = RelationSQL[S, T, E, S](relation.relation, relation.shift + oldExt.length)
-			val newRelation = RelationSQL[H, N, V, H](this.replacement.from.relation, shift.shift)
+			val newRelation = RelationSQL[H, N, V, H](this.replacement.origin.relation, shift.shift)
 			val comp = newRelation \ this.replacement.mapping.asInstanceOf[T[H]]
 			new ReplaceRelation[T, E, N, V, S, H](subselect, replacement)(shift, comp)
 		}
@@ -393,7 +460,7 @@ object SQLScribe {
 		override def component[T[A] <: BaseMapping[R, A], R, C[A] <: ColumnMapping[V, A], V, U >: F <: FromClause]
 		                      (e :ColumnComponentSQL[F, T, R, C, V, U]) :ColumnSQL[G, GlobalScope, V] =
 			e match {
-				case oldParam.mapping(old) if e.from.shift == oldParam.shift =>
+				case oldParam.mapping(old) if e.origin.shift == oldParam.shift =>
 					val column = newParam.mapping.col(extractor andThen old.extract.asInstanceOf[P =?> V])(old.form)
 					(newParam \ column).upcast
 				case _ =>
@@ -404,7 +471,7 @@ object SQLScribe {
 		override def component[T[A] <: BaseMapping[R, A], R, C[A] <: BaseMapping[V, A], V, U >: F <: FromClause]
 		                      (e :ComponentSQL[F, T, R, C, V, U]) :GlobalSQL[G, V] =
 			e match {
-				case oldParam.mapping(old) if e.from.shift == oldParam.shift =>
+				case oldParam.mapping(old) if e.origin.shift == oldParam.shift =>
 					val component = newParam.mapping(extractor andThen old.extract.asInstanceOf[P =?> V])(old.form)
 					(newParam \ component).upcast
 				case _ =>
@@ -499,11 +566,11 @@ object SQLScribe {
 						case _ => CompositeNULL[V](extract.export.form)
 					}
 				case _ =>
-					val shift = followingParams(followingParams.length - 1 - e.from.shift)
+					val shift = followingParams(followingParams.length - 1 - e.origin.shift)
 					if (shift == 0)
 						e.asInstanceOf[GlobalSQL[G, V]]
 					else {
-						val table = RelationSQL[G, T, E, G](e.relation, e.from.shift - shift)
+						val table = RelationSQL[G, T, E, G](e.relation, e.origin.shift - shift)
 						(table \ e.mapping.withOrigin[G]).upcast
 					}
 			}
@@ -520,11 +587,11 @@ object SQLScribe {
 						case _ => NULL[V](extract.export.form)
 					}
 				case _ =>
-					val shift = followingParams(followingParams.length - 1 - e.from.shift)
+					val shift = followingParams(followingParams.length - 1 - e.origin.shift)
 					if (shift == 0)
 						e.asInstanceOf[ColumnSQL[G, GlobalScope, V]]
 					else {
-						val table = RelationSQL[G, T, E, G](e.relation, e.from.shift - shift)
+						val table = RelationSQL[G, T, E, G](e.relation, e.origin.shift - shift)
 						(table \ e.mapping.withOrigin[G]).upcast
 					}
 			}
@@ -580,10 +647,10 @@ object SQLScribe {
 						case Some(v) => SQLParameter(v)(extract.export.form)
 						case _ => CompositeNULL[V](extract.export.form)
 					}
-				case _ if e.from.shift < idx =>
+				case _ if e.origin.shift < idx =>
 					e.asInstanceOf[GlobalSQL[G, V]]
 				case _ =>
-					val table = RelationSQL[G, T, E, G](e.relation, e.from.shift - idx)
+					val table = RelationSQL[G, T, E, G](e.relation, e.origin.shift - idx)
 					(table \ e.mapping.withOrigin[G]).upcast
 			}
 
@@ -597,10 +664,10 @@ object SQLScribe {
 						case Some(v) => SQLParameterColumn(v)(extract.export.form)
 						case _ => NULL[V](extract.export.form)
 					}
-				case _ if e.from.shift < idx =>
+				case _ if e.origin.shift < idx =>
 					e.asInstanceOf[ColumnSQL[G, GlobalScope, V]]
 				case _ =>
-					val table = RelationSQL[G, T, E, G](e.relation, e.from.shift - idx)
+					val table = RelationSQL[G, T, E, G](e.relation, e.origin.shift - idx)
 					(table \ e.mapping.withOrigin[G]).upcast
 			}
 

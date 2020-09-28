@@ -258,14 +258,16 @@ object MappingSQL {
 		extends MappingSQL[F, GlobalScope, M[O]]
 	{
 		type Origin = O
+
+		/** The mapping type of the `SQLRelation` to which this component belongs. */
 		type Entity[A] <: MappingAt[A]
 
 		override def isGlobal = true
 		override def asGlobal :Option[GlobalSQL[F, Subject]] = Some(this)
 
-		def entity :Entity[O] = from.mapping
-		def relation :Relation[Entity] = from.relation
-		def from :JoinedRelation[O, Entity] //todo: rename it to something else, confusing due to FromClause
+		def entity :Entity[O] = origin.mapping
+		def relation :Relation[Entity] = origin.relation
+		def origin :JoinedRelation[O, Entity]
 
 		def extract :MappingExtract[Entity[O]#Subject, M[O]#Subject, O]
 
@@ -294,7 +296,7 @@ object MappingSQL {
 		}
 
 
-		override def toString :String = from.toString + "." + mapping
+		override def toString :String = origin.toString + "." + mapping
 	}
 
 
@@ -305,7 +307,7 @@ object MappingSQL {
 	{
 		override type Entity[A] = T[A]
 
-		override def from :RelationSQL[F, T, R, O]
+		override def origin :RelationSQL[F, T, R, O]
 
 		def extract :MappingExtract[R, V, O]
 
@@ -314,9 +316,9 @@ object MappingSQL {
 		              (component :K)(implicit inferer :Conforms[K, C[O], BaseMapping[X, O]])
 				:ComponentSQL[F, T, R, C, X, O] =
 			if (component == entity)
-				from.asInstanceOf[ComponentSQL[F, T, R, C, X, O]]
+				origin.asInstanceOf[ComponentSQL[F, T, R, C, X, O]]
 			else
-				ComponentSQL(from, component)
+				ComponentSQL(origin, component)
 
 		override def \[K <: Mapping, C[A] <: BaseMapping[X, A], X]
 		              (component :M[O] => K)(implicit inferer :Conforms[K, C[O], BaseMapping[X, O]])
@@ -326,7 +328,7 @@ object MappingSQL {
 		override def \[K <: ColumnMapping[_, O], C[A] <: ColumnMapping[X, A], X]
 		              (column :K)(implicit conforms :Conforms[K, C[O], ColumnMapping[X, O]])
 				:ColumnComponentSQL[F, T, R, C, X, O] =
-			ColumnComponentSQL(from, column)
+			ColumnComponentSQL(origin, column)
 
 
 		override def basedOn[U <: F, E <: FromClause](base :E)(implicit extension :U PartOf E)
@@ -351,11 +353,11 @@ object MappingSQL {
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
 			case component :ComponentSQL.* @unchecked if canEqual(component) && component.canEqual(this) =>
-				from == component.from && mapping == component.mapping //consider: should it compare extractor.export?
+				origin == component.origin && mapping == component.mapping //consider: should it compare extractor.export?
 			case _ => false
 		}
 
-		override def hashCode :Int = from.hashCode * 31 + mapping.hashCode
+		override def hashCode :Int = origin.hashCode * 31 + mapping.hashCode
 	}
 
 
@@ -383,7 +385,7 @@ object MappingSQL {
 						forSome { type T[O] <: BaseMapping[R, O]; type R; type O >: F <: FromClause }] =
 			e match {
 				case component :ComponentSQL.* @unchecked =>
-					Some((component.from, component.extract).asInstanceOf[
+					Some((component.origin, component.extract).asInstanceOf[
 						(RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F], MappingExtract[Any, X, F])
 					])
 				case _ => None
@@ -413,8 +415,8 @@ object MappingSQL {
 
 		private[MappingSQL] class ProperComponent[-F <: FromClause, T[A] <: BaseMapping[R, A], R,
 		                                          M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
-		                                         (override val from :RelationSQL[F, T, R, O],
-												  override val mapping :M[O])
+		                                         (override val origin :RelationSQL[F, T, R, O],
+		                                          override val mapping :M[O])
 			extends ComponentSQL[F, T, R, M, V, O]
 		{
 			override val extract = entity(mapping)
@@ -425,7 +427,7 @@ object MappingSQL {
 			                   (base :G)(implicit ev :U ExtendedBy G, global :GlobalScope <:< GlobalScope)
 					:ProperComponent[G, T, R, M, V, _ >: G <: FromClause] =
 				new ProperComponent[G, T, R, M, V, G](  //type G as O is incorrect, but a correct O exists and we upcast anyway
-                    from.extend(base).asInstanceOf[RelationSQL[G, T, R, G]], mapping.asInstanceOf[M[G]]
+                    origin.extend(base).asInstanceOf[RelationSQL[G, T, R, G]], mapping.asInstanceOf[M[G]]
                 )
 
 			override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
@@ -508,7 +510,7 @@ object MappingSQL {
 			SelectSQL(from, this)
 
 		override def subselectFrom[E <: F, A](from :E) :SubselectColumnMapping[from.Base, from.type, M, V, A] =
-			SelectSQL.subselect[from.Base, from.type, T, R, M, V, O, A](from, this) //todo: from.type is ugly!
+			SelectSQL.subselect[from.Base, from.type, T, R, M, V, O, A](from, this) //todo: source.type is ugly!
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnComponentSQL.* @unchecked]
@@ -534,7 +536,7 @@ object MappingSQL {
 						forSome { type T[O] <: BaseMapping[R, O]; type R; type O >: F <: FromClause }] =
 			e match {
 				case component :ColumnComponentSQL.* @unchecked =>
-					Some((component.from, component.extract).asInstanceOf[
+					Some((component.origin, component.extract).asInstanceOf[
 						(RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F], ColumnMappingExtract[Any, X, F])
 					])
 				case _ => None
@@ -576,7 +578,7 @@ object MappingSQL {
 			                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 					:ProperColumn[E, T, R, M, V, _ >: E <: FromClause] =
 				new ProperColumn[E, T, R, M, V, E](
-					from.extend(base).asInstanceOf[RelationSQL[E, T, R, E]], column.asInstanceOf[M[E]]
+					origin.extend(base).asInstanceOf[RelationSQL[E, T, R, E]], column.asInstanceOf[M[E]]
 				)
 		}
 
@@ -605,7 +607,7 @@ object MappingSQL {
 		/** Offset of this relation in the clause `F`, counting ''from right to left'' and starting with 0. */
 		def shift :Int
 
-		override def from :JoinedRelation[F, T] = this
+		override def origin :JoinedRelation[F, T] = this
 
 		def asRelationSQL :RelationSQL[F, M, T[F]#Subject, F]
 				forSome { type M[A] <: BaseMapping[T[F]#Subject, A] with T[A] }
@@ -680,7 +682,7 @@ object MappingSQL {
 		private[sql] def this(relation :Relation[T], shift :Int) = this(relation, relation[O], shift)
 
 
-		override def from :RelationSQL[O, T, R, O] = asRelationSQL
+		override def origin :RelationSQL[O, T, R, O] = asRelationSQL
 
 		override val extract = MappingExtract.ident(mapping)
 
@@ -696,9 +698,9 @@ object MappingSQL {
 		              (component :K)(implicit inferer :Conforms[K, C[O], BaseMapping[X, O]])
 				:ComponentSQL[O, T, R, C, X, O] =
 			if (component == entity)
-				from.asInstanceOf[ComponentSQL[O, T, R, C, X, O]]
+				origin.asInstanceOf[ComponentSQL[O, T, R, C, X, O]]
 			else
-				ComponentSQL(from, component)
+				ComponentSQL(origin, component)
 
 		override def \[K <: Mapping, C[A] <: BaseMapping[X, A], X] //todo: narrow down type to ColumnSQL if C is a ColumnMapping
 		              (component :T[O] => K)(implicit inferer :Conforms[K, C[O], BaseMapping[X, O]])

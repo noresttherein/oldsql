@@ -12,7 +12,8 @@ import net.noresttherein.oldsql.sql.SQLTerm.{ColumnLiteral, ColumnTerm, Composit
 
 /** A mix in trait extended by [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] in order to bring
   * into scope implicit conversions from Scala values to [[net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral SQLLiteral]]
-  * instances declared by the companion object.
+  * instances declared by the [[net.noresttherein.oldsql.sql.implicitSQLLiterals$ companion object]].
+  * @see [[net.noresttherein.oldsql.sql.SQLLiteralImplicits SQLLiteralImplicits]]
   */
 trait implicitSQLLiterals
 
@@ -30,8 +31,17 @@ sealed trait SQLMultiColumnLiteralImplicits {
 
 
 
-/**
-  * @author Marcin Mościcki
+/** A trait grouping definitions of implicit conversions from Scala literals to
+  * [[net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral SQLLiteral]] expressions as well as extension factory
+  * methods for [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameter SQLParameter]]s
+  * ([[net.noresttherein.oldsql.sql.SQLLiteralImplicits.boundParameterSQL.? _.?]]) and
+  * [[net.noresttherein.oldsql.sql.SQLTerm.CompositeNULL nulls]]
+  * ([[net.noresttherein.oldsql.sql.SQLLiteralImplicits.nullSQL.apply null]]`[T]`).
+  *
+  * It is extended by the [[net.noresttherein.oldsql.sql.implicitSQLLiterals$ implicitSQLLiterals]] object, which
+  * brings the literal conversions into the implicit scope of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]],
+  * but can also be extended by user's package objects (or other classes/objects) to bring them into the lexical scope
+  * of nested types (which will be required for the `null` and parameter factories).
   */
 trait SQLLiteralImplicits extends SQLMultiColumnLiteralImplicits {
 
@@ -45,6 +55,18 @@ trait SQLLiteralImplicits extends SQLMultiColumnLiteralImplicits {
 	  * together with its value.
 	  */
 	implicit class boundParameterSQL[T, P <: SQLParameter[T]](value :T)(implicit factory :SQLTermFactory[T, P]) {
+		/** Creates a ''bound'' parameter of an SQL statement represented as an
+		  * [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]. The value of the parameter
+		  * is set at this point to `this`, but any SQL ''selects'' using this expression will be translated
+		  * to a [[java.sql.PreparedStatement PreparedStatement]] with a parameter placeholder for this expression.
+		  * @return an expression of type `P`, being a subtype of
+		  *         [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameter SQLParameter]] defined by the available
+		  *         implicit [[net.noresttherein.oldsql.sql.SQLTerm.SQLTermFactory SQLTermFactory]] for the type `T`.
+		  *         If an implicit [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]`[T]` is available,
+		  *         the result will be a [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn SQLParameterColumn]].
+		  *         Otherwise it will be a `SQLParameter[T]` (using an implicit
+		  *         [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[T]` provided by the factory).
+		  */
 		@inline def ? :P = factory(value)
 	}
 

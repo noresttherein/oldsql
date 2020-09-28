@@ -516,7 +516,7 @@ object SelectSQL {
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val subselectTables = stretched.fullSize - base.fullSize
-					val table = header.from
+					val table = header.origin
 					val replacement =
 						if (table.shift < subselectTables) table.asInstanceOf[RelationSQL[Ext, T, R, Ext]]
 						else stretched.fullTableStack(table.shift + ev.length).asInstanceOf[RelationSQL[Ext, T, R, Ext]]
@@ -608,8 +608,8 @@ object SelectSQL {
 				val table = e.entity
 
 				def headerColumn[C](column :table.Column[C]) :Assoc[table.Component, HeaderColumn, C] = {
-					val expr = e.from \ column
-					val selected = new HeaderColumn[C](e.from \ column, nameFor(expr))
+					val expr = e.origin \ column
+					val selected = new HeaderColumn[C](e.origin \ column, nameFor(expr))
 					Assoc[table.Component, HeaderColumn, C](column, selected)
 				}
 				val mapping = e.mapping
