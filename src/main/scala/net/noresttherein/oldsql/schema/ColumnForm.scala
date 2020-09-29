@@ -7,22 +7,18 @@ import scala.reflect.ClassTag
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.schema.ColumnForm.{FlatMappedColumnForm, JDBCSQLType, MappedColumnForm}
-import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm, OptionColumnReadForm}
-import net.noresttherein.oldsql.schema.ColumnWriteForm.{LazyColumnWriteForm, OptionColumnWriteForm}
-import net.noresttherein.oldsql.schema.ScalaForms.OptionForm
+import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
+import net.noresttherein.oldsql.schema.ColumnWriteForm.LazyColumnWriteForm
 import net.noresttherein.oldsql.schema.SQLForm.{CombinedForm, FlatMappedSQLForm, LazyForm, MappedSQLForm, NullableForm, NullValue, ReifiedForm}
-import net.noresttherein.oldsql.slang
 
 
 
-//here be implicits
-import slang._
+
 
 
 trait SuperColumnForm {
 	/** The JDBC code for the underlying column type, as defined by constants in `java.sql.Types`. */
 	def sqlType :JDBCSQLType
-	
 }
 
 
@@ -75,7 +71,7 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 		as(map)(unmap)(nulls.extract(map))
 
 
-	override def toOpt :ColumnForm[Option[T]] = ColumnForm.OptionColumnForm(this)
+	override def toOpt :ColumnForm[Option[T]] = ColumnForms.OptionColumnForm(this)
 
 
 
@@ -182,20 +178,6 @@ object ColumnForm {
 	def flatMap[S, T](map :S => Option[T])(unmap :T => Option[S])
 	                 (implicit source :ColumnForm[S], nulls :NullValue[T] = null) :ColumnForm[T] =
 		source.biflatMap(map)(unmap)
-
-
-
-
-	/** Lifts the implicit `ColumnForm[T]` implementation to `ColumnForm[Option[T]]`. */
-	implicit def OptionColumnForm[T :ColumnForm] :ColumnForm[Option[T]] =
-		new OptionForm[T] with OptionColumnWriteForm[T] with OptionColumnReadForm[T] with ColumnForm[Option[T]] {
-			override val form = ColumnForm[T]
-			override def toString = super[OptionForm].toString
-		}
-
-	/** Lifts the implicit `ColumnForm[T]` implementation to `ColumnForm[Some[T]]`. */
-	implicit def SomeColumnForm[T :ColumnForm] :ColumnForm[Some[T]] =
-		ColumnForm[T].nullBimap(Some.apply)(_.get)
 
 
 

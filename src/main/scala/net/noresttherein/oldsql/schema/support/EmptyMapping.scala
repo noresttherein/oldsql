@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{ComponentValues, SQLForm, SQLReadForm, SQLWriteForm, BaseMapping}
+import net.noresttherein.oldsql.schema.{BaseMapping, ComponentValues, ScalaForms, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
@@ -47,7 +47,7 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 	override def autoInserted :Unique[Column[_]] = Unique.empty
 
 
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = SQLForm[Nothing]
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = selectForm
 //	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
@@ -55,7 +55,7 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
 		SQLWriteForm.empty
 	
-	override def selectForm :SQLReadForm[S] = SQLForm[Nothing]
+	override def selectForm :SQLReadForm[S] = ScalaForms.NothingForm
 //	override def queryForm :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def updateForm :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty

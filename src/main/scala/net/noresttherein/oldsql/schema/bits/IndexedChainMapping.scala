@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~, Item, Key}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, MappingSchema, SQLReadForm, SQLReadForms, SQLWriteForm, SQLWriteForms}
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.{@||, |-|, ||, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.bits.IndexedChainMapping.NonEmptyIndexMapping
@@ -132,10 +132,10 @@ object IndexedChainMapping {
 		   with BaseNonEmptyFlatSchema[IndexedChain, Item, |~, S, V, C, T, K :~ T, M, O]
 		   with FlatMappingSchema[S, V |~ (K :~ T), C ~ M, O]
 	{
-		override val selectForm = SQLReadForm.IndexedChainReadFrom(init.selectForm, new ValueOf(key), last.selectForm)
-		override val queryForm = SQLWriteForm.IndexedChainWriteFrom(init.queryForm, last.queryForm)
-		override val updateForm = SQLWriteForm.IndexedChainWriteFrom(init.updateForm, last.updateForm)
-		override val insertForm = SQLWriteForm.IndexedChainWriteFrom(init.insertForm, last.insertForm)
+		override val selectForm = SQLReadForms.IndexedChainReadForm(init.selectForm, new ValueOf(key), last.selectForm)
+		override val queryForm = SQLWriteForms.IndexedChainWriteForm(init.queryForm, last.queryForm)
+		override val updateForm = SQLWriteForms.IndexedChainWriteForm(init.updateForm, last.updateForm)
+		override val insertForm = SQLWriteForms.IndexedChainWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |~ (K :~ T)] = op.form(this)
 
 

@@ -2508,10 +2508,10 @@ object MappingSchema {
 		   with BaseNonEmptyFlatSchema[Chain, Any, ~, S, V, C, T, T, M, O]
 	{
 		//these shortcut implementations work because column mappings moved their buff handling to their forms.
-		override val selectForm = SQLReadForm.ChainReadForm(init.selectForm, last.selectForm)
-		override val queryForm = SQLWriteForm.ChainWriteForm(init.queryForm, last.queryForm)
-		override val updateForm = SQLWriteForm.ChainWriteForm(init.updateForm, last.updateForm)
-		override val insertForm = SQLWriteForm.ChainWriteForm(init.insertForm, last.insertForm)
+		override val selectForm = SQLReadForms.ChainReadForm(init.selectForm, last.selectForm)
+		override val queryForm = SQLWriteForms.ChainWriteForm(init.queryForm, last.queryForm)
+		override val updateForm = SQLWriteForms.ChainWriteForm(init.updateForm, last.updateForm)
+		override val insertForm = SQLWriteForms.ChainWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V ~ T] = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyFlatSchema[X, V, C, T, M, O] =

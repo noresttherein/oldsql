@@ -628,10 +628,10 @@ object IndexedMappingSchema {
 
 		//these shortcut implementations work because column mappings moved their buff handling to their forms.
 		override val selectForm =
-			SQLReadForm.IndexedChainReadFrom(init.selectForm, new ValueOf(label), component.selectForm)
-		override val queryForm = SQLWriteForm.IndexedChainWriteFrom(init.queryForm, component.queryForm)
-		override val updateForm = SQLWriteForm.IndexedChainWriteFrom(init.updateForm, component.updateForm)
-		override val insertForm = SQLWriteForm.IndexedChainWriteFrom(init.insertForm, component.insertForm)
+			SQLReadForms.IndexedChainReadForm(init.selectForm, new ValueOf(label), component.selectForm)
+		override val queryForm = SQLWriteForms.IndexedChainWriteForm(init.queryForm, component.queryForm)
+		override val updateForm = SQLWriteForms.IndexedChainWriteForm(init.updateForm, component.updateForm)
+		override val insertForm = SQLWriteForms.IndexedChainWriteForm(init.insertForm, component.insertForm)
 		override def writeForm(op :WriteOperationType) = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyFlatIndexedSchema[X, V, C, K, T, M, O] =

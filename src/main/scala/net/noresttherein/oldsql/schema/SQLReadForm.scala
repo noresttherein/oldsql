@@ -2,22 +2,15 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{ResultSet, SQLException}
 
-import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Record}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
-import net.noresttherein.oldsql.collection.Record.|#
+import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractChainIndexReadForm, BaseChainReadForm, FallbackReadForm, FlatMappedSQLReadForm, MappedSQLReadForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, FlatMappedSQLReadForm, MappedSQLReadForm}
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.collection.LabeledChain.>~
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 
-//implicits
-import net.noresttherein.oldsql.slang._
 
 
 
@@ -31,7 +24,7 @@ import net.noresttherein.oldsql.slang._
   * @see [[net.noresttherein.oldsql.schema.SQLForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnReadForm]]
   */
-trait SQLReadForm[+T] extends SQLForms {
+trait SQLReadForm[+T] extends BaseSQLForm {
 
 	/** Reads the column values from columns `<position..position + this.readColumns)` of the passed `ResultSet`
 	  * and creates an instance of `T`. The default implementation delegates to `opt` and fallbacks to `nullValue`
@@ -218,7 +211,7 @@ trait SQLReadForm[+T] extends SQLForms {
 	  * by this form) are mapped to `Some(None)`, while a returned `None` indicates that this form returned `None`.
 	  * Basically this means that the returned form uses this form's `opt` method as its `apply` implementation.
 	  */
-	def toOpt :SQLReadForm[Option[T]] = SQLReadForm.OptionReadForm(this)
+	def toOpt :SQLReadForm[Option[T]] = ScalaReadForms.OptionReadForm(this)
 
 
 
@@ -240,7 +233,7 @@ trait SQLReadForm[+T] extends SQLForms {
 	/** Combines this form with another form, which columns are expected to directly follow the columns for this
 	  * form in the result set, to create a form producing pairs of values.
 	  */
-	def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] = SQLReadForm.Tuple2ReadForm(this, other)
+	def *[O](other :SQLReadForm[O]) :SQLReadForm[(T, O)] = ScalaReadForms.Tuple2ReadForm(this, other)
 
 	/** Combines this form with a `SQLWriteForm` to create a read/write `SQLForm[O]`. */
 	def <>[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = SQLForm.combine[O](this, write)
@@ -256,33 +249,7 @@ trait SQLReadForm[+T] extends SQLForms {
 
 
 
-sealed trait SQLReadFormLevel2Implicits {
-	/** Provides an implicit form for the heterogeneous list (`Chain`) `I ~ L` as long as implicit forms for both
-	  * `I` and `L` are available. */
-	implicit def ChainReadForm[I <: Chain, L](implicit i :SQLReadForm[I], l :SQLReadForm[L]) :SQLReadForm[I ~ L] =
-		new BaseChainReadForm[I, L](i, l)
-}
-
-
-
-sealed trait SQLReadFormLevel1Implicits extends SQLReadFormLevel2Implicits {
-	/** Provides an implicit form for the heterogeneous map indexed by literal types (`ChainMap`) `I &~ L`
-	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
-	  */
-	implicit def ChainMapReadForm[I <: ChainMap :SQLReadForm, K <: Singleton :ValueOf, V :SQLReadForm]
-			:SQLReadForm[I &~ (K, V)] =
-		new AbstractChainIndexReadForm[&~, Tuple2, Singleton, I, K, V] {
-			protected[this] override def cons(init :I, value :V) = init &~ (key -> value)
-			protected override def symbol = "&~"
-		}
-}
-
-
-
-
-
-
-object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
+object SQLReadForm {
 
 	/** Summons an implicit `SQLReadForm[T].` */
 	def apply[T :SQLReadForm] :SQLReadForm[T] = implicitly[SQLReadForm[T]]
@@ -437,52 +404,13 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 
 
 
-	/** An implicit value for the empty chain `@~`, which reads zero columns and simply returns `@~`. */
-	implicit val EmptyChainReadForm :SQLReadForm[@~] = SQLForm.EmptyChainForm
-
-	/** Provides an implicit form for the heterogeneous map indexed by types (`IndexedChain`) `I |~ L`
-	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
-	  */
-	implicit def IndexedChainReadFrom[I <: IndexedChain :SQLReadForm, K <: IndexedChain.Key :ValueOf, V :SQLReadForm]
-			:SQLReadForm[I |~ (K :~ V)] =
-		new AbstractChainIndexReadForm[|~, :~, IndexedChain.Key, I, K, V] {
-			protected[this] override def cons(init :I, value :V) = init |~ key :~ value
-			protected override def symbol = "|~"
-		}
-
-
-	/** Provides an implicit form for the heterogeneous map indexed by string literal types (`LabeledChain`) `I >~ L`
-	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
-	  */
-	implicit def LabeledChainReadFrom[I <: LabeledChain :SQLReadForm, K <: Label :ValueOf, V :SQLReadForm]
-			:SQLReadForm[I >~ (K :~ V)] =
-		new AbstractChainIndexReadForm[>~, :~, Label, I, K, V] {
-			protected[this] override def cons(init :I, value :V) = init >~ key :~ value
-			protected override def symbol = ">~"
-		}
-
-	/** Provides an implicit form for the heterogeneous map indexed by string literals (`Record`) `I |# L`
-	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
-	  */
-	implicit def RecordReadForm[I <: Record :SQLReadForm, K <: String with Singleton :ValueOf, V :SQLReadForm]
-			:SQLReadForm[I |# (K, V)] =
-		new AbstractChainIndexReadForm[|#, Tuple2, Label, I, K, V] {
-			protected[this] override def cons(init :I, value :V) = init |# (key -> value)
-			protected override def symbol = "|#"
-		}
-
-
-
-
-
-
-	/** Implements `nullValue` to throw a `NoSuchElementException`. */
+	/** Implements `nullValue` as throwing a `NoSuchElementException`. */
 	trait NotNullReadForm[T] extends SQLReadForm[T] {
 		override def nulls :NullValue[T] = NullValue.NotNull
 		override def nullValue :T = throw new NoSuchElementException("No null value allowed for " + this)
 	}
 
-	/** A Convenience base `SQLReadForm[T]` class which implements `nullValue` based on an implicit `NullValue[T]`
+	/** A convenience base `SQLReadForm[T]` class which implements `nullValue` based on an implicit `NullValue[T]`
 	  * (overriding also `nulls` in the process). */
 	abstract class AbstractReadForm[+T](implicit override val nulls :NullValue[T])
 		extends SQLReadForm[T]
@@ -880,7 +808,6 @@ object SQLReadForm extends ScalaReadForms with SQLReadFormLevel1Implicits {
 	{
 		final override def key :K = keyValue.value
 	}
-
 
 
 

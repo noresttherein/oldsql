@@ -11,6 +11,9 @@ import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm,
 
 
 
+
+
+
 /** An `SQLReadForm` describing the format of a simple type `T`, mapping to a single database column.
   * Aside from fixing the `readColumns` method to return `1` and overloaded `apply` and `opt` for reading
   * the value from the column of the provided name, it enables static checks that the type `T` is a valid type
@@ -90,7 +93,7 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
 
 
 
-	override def toOpt :ColumnReadForm[Option[T]] = ColumnReadForm.OptionColumnReadForm(this)
+	override def toOpt :ColumnReadForm[Option[T]] = ColumnReadForms.OptionColumnReadForm(this)
 
 
 	override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
@@ -247,14 +250,6 @@ object ColumnReadForm {
 
 	def flatMap[S :ColumnReadForm, T](map :S => Option[T], nullValue: => T) :ColumnReadForm[T] =
 		flatMap(map)(ColumnReadForm[S], NullValue.eval(nullValue))
-
-
-
-	implicit def OptionColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Option[T]] =
-		new OptionColumnReadForm[T] { override val form = ColumnReadForm[T] }
-
-	implicit def SomeColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Some[T]] =
-		ColumnReadForm[T].nullMap(Some.apply)
 
 
 

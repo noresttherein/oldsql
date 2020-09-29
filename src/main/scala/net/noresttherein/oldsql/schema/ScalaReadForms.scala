@@ -2,88 +2,95 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.ResultSet
 
-import net.noresttherein.oldsql.schema.ScalaReadForms._
 
 
 
 
 
-trait ScalaReadForms {
+trait ScalaReadForms
+
+
+
+
+
+
+object ScalaReadForms {
+
 	@inline private[this] def f[T](implicit form :SQLReadForm[T]) = form
 
-	
-	
+
+
 	implicit def OptionReadForm[T :SQLReadForm] :SQLReadForm[Option[T]] =
 		new OptionReadForm[T] { override val form = SQLReadForm[T] }
-
-	implicit def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
+	//risks becoming preferred SQLReadForm[Option[T]] for any T
+	def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
 		SQLReadForm[T].nullMap(Some.apply)
 
-	
-	
-	implicit def Tuple2ReadForm[T1 :SQLReadForm, T2 :SQLReadForm] :SQLReadForm[(T1, T2)] =
+
+
+	implicit def tuple2ReadForm[T1 :SQLReadForm, T2 :SQLReadForm] :SQLReadForm[(T1, T2)] =
 		new Tuple2ReadForm(f[T1], f[T2])
 
-	implicit def Tuple3ReadForm[T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm] :SQLReadForm[(T1, T2, T3)] =
+	implicit def tuple3ReadForm[T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm] :SQLReadForm[(T1, T2, T3)] =
 		new Tuple3ReadForm(f[T1], f[T2], f[T3])
 
-	implicit def Tuple4ReadForm[T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm]
+	implicit def tuple4ReadForm[T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm]
 			:SQLReadForm[(T1, T2, T3, T4)] =
 		new Tuple4ReadForm(f[T1], f[T2], f[T3], f[T4])
 
-	implicit def Tuple5ReadForm[T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm]
+	implicit def tuple5ReadForm[T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm]
 			:SQLReadForm[(T1, T2, T3, T4, T5)] =
 		new Tuple5ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5])
 
-	implicit def Tuple6ReadForm[
+	implicit def tuple6ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm
 			] :SQLReadForm[(T1, T2, T3, T4, T5, T6)] =
 		new Tuple6ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5], f[T6])
 
-	implicit def Tuple7ReadForm[
+	implicit def tuple7ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm
 			] :SQLReadForm[(T1, T2, T3, T4, T5, T6, T7)] =
 		new Tuple7ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5], f[T6], f[T7])
 
-	implicit def Tuple8ReadForm[
+	implicit def tuple8ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm
 			] :SQLReadForm[(T1, T2, T3, T4, T5, T6, T7, T8)] =
 		new Tuple8ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5], f[T6], f[T7], f[T8])
 
-	implicit def Tuple9ReadForm[
+	implicit def tuple9ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm
 			] :SQLReadForm[(T1, T2, T3, T4, T5, T6, T7, T8, T9)] =
 		new Tuple9ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5], f[T6], f[T7], f[T8], f[T9])
 
-	implicit def Tuple10ReadForm[
+	implicit def tuple10ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm
 			] :SQLReadForm[(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)] =
 		new Tuple10ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5], f[T6], f[T7], f[T8], f[T9], f[T10])
 
-	implicit def Tuple11ReadForm[
+	implicit def tuple11ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm
 			] :SQLReadForm[(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)] =
 		new Tuple11ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5], f[T6], f[T7], f[T8], f[T9], f[T10], f[T11])
 
-	implicit def Tuple12ReadForm[
+	implicit def tuple12ReadForm[
 		T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 		T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm
 	] :SQLReadForm[(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12)] =
 		new Tuple12ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5], f[T6], f[T7], f[T8], f[T9], f[T10], f[T11], f[T12])
 
-	implicit def Tuple13ReadForm[
+	implicit def tuple13ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm
 			] :SQLReadForm[(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13)] =
 		new Tuple13ReadForm(f[T1], f[T2], f[T3], f[T4], f[T5], f[T6], f[T7], f[T8], f[T9], f[T10], f[T11], f[T12], f[T13])
 
-	implicit def Tuple14ReadForm[
+	implicit def tuple14ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm
@@ -92,7 +99,7 @@ trait ScalaReadForms {
 		                    f[T13], f[T14]
 		)
 
-	implicit def Tuple15ReadForm[
+	implicit def tuple15ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm, T15 :SQLReadForm
@@ -101,7 +108,7 @@ trait ScalaReadForms {
 		                    f[T13], f[T14], f[T15]
 		)
 
-	implicit def Tuple16ReadForm[
+	implicit def tuple16ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm, T15 :SQLReadForm, T16 :SQLReadForm
@@ -110,7 +117,7 @@ trait ScalaReadForms {
 		                    f[T13], f[T14], f[T15], f[T16]
 		)
 
-	implicit def Tuple17ReadForm[
+	implicit def tuple17ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm, T15 :SQLReadForm, T16 :SQLReadForm, T17 :SQLReadForm
@@ -119,7 +126,7 @@ trait ScalaReadForms {
 		                    f[T13], f[T14], f[T15], f[T16], f[T17]
 		)
 
-	implicit def Tuple18ReadForm[
+	implicit def tuple18ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm, T15 :SQLReadForm, T16 :SQLReadForm, T17 :SQLReadForm, T18 :SQLReadForm
@@ -128,7 +135,7 @@ trait ScalaReadForms {
 		                    f[T13], f[T14], f[T15], f[T16], f[T17], f[T18]
 		)
 
-	implicit def Tuple19ReadForm[
+	implicit def tuple19ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm, T15 :SQLReadForm, T16 :SQLReadForm, T17 :SQLReadForm, T18 :SQLReadForm,
@@ -138,7 +145,7 @@ trait ScalaReadForms {
 		                    f[T13], f[T14], f[T15], f[T16], f[T17], f[T18], f[T19]
 		)
 
-	implicit def Tuple20ReadForm[
+	implicit def tuple20ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm, T15 :SQLReadForm, T16 :SQLReadForm, T17 :SQLReadForm, T18 :SQLReadForm,
@@ -148,7 +155,7 @@ trait ScalaReadForms {
 		                    f[T13], f[T14], f[T15], f[T16], f[T17], f[T18], f[T19], f[T20]
 		)
 
-	implicit def Tuple21ReadForm[
+	implicit def tuple21ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm, T15 :SQLReadForm, T16 :SQLReadForm, T17 :SQLReadForm, T18 :SQLReadForm,
@@ -158,7 +165,7 @@ trait ScalaReadForms {
 		                    f[T13], f[T14], f[T15], f[T16], f[T17], f[T18], f[T19], f[T20], f[T21]
 		)
 
-	implicit def Tuple22ReadForm[
+	implicit def tuple22ReadForm[
 				T1 :SQLReadForm, T2 :SQLReadForm, T3 :SQLReadForm, T4 :SQLReadForm, T5 :SQLReadForm, T6 :SQLReadForm,
 				T7 :SQLReadForm, T8 :SQLReadForm, T9 :SQLReadForm, T10 :SQLReadForm, T11 :SQLReadForm, T12 :SQLReadForm,
 				T13 :SQLReadForm, T14 :SQLReadForm, T15 :SQLReadForm, T16 :SQLReadForm, T17 :SQLReadForm, T18 :SQLReadForm,
@@ -172,17 +179,11 @@ trait ScalaReadForms {
 
 
 
-}
 
 
 
 
-
-
-private[schema] object ScalaReadForms {
-
-
-	trait OptionReadForm[T] extends SQLReadForm[Option[T]] {
+	private[schema] trait OptionReadForm[T] extends SQLReadForm[Option[T]] {
 		protected def form :SQLReadForm[T]
 		override def readColumns :Int = form.readColumns
 
@@ -203,7 +204,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple2ReadForm[L, R] extends SQLReadForm[(L, R)] {
+	private[schema] trait AbstractTuple2ReadForm[L, R] extends SQLReadForm[(L, R)] {
 		val _1  :SQLReadForm[L]
 		val _2  :SQLReadForm[R]
 
@@ -219,7 +220,7 @@ private[schema] object ScalaReadForms {
 
 	}
 
-	case class Tuple2ReadForm[L, R](_1  :SQLReadForm[L], _2 :SQLReadForm[R])
+	private[schema] case class Tuple2ReadForm[L, R](_1  :SQLReadForm[L], _2 :SQLReadForm[R])
 		extends AbstractTuple2ReadForm[L, R]
 	{
 		override def productPrefix :String = "<"
@@ -227,7 +228,7 @@ private[schema] object ScalaReadForms {
 
 	
 	
-	trait AbstractTuple3ReadForm[A, B, C] extends SQLReadForm[(A, B, C)] {
+	private[schema] trait AbstractTuple3ReadForm[A, B, C] extends SQLReadForm[(A, B, C)] {
 		val _1 :SQLReadForm[A]
 		val _2 :SQLReadForm[B]
 		val _3 :SQLReadForm[C]
@@ -246,7 +247,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_3 + _3.readColumns
 	}
 	
-	case class Tuple3ReadForm[A, B, C](_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C])
+	private[schema] case class Tuple3ReadForm[A, B, C](_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C])
 		extends AbstractTuple3ReadForm[A, B, C]
 	{
 		override def productPrefix :String = "<"
@@ -254,7 +255,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple4ReadForm[A, B, C, D] extends SQLReadForm[(A, B, C, D)] {
+	private[schema] trait AbstractTuple4ReadForm[A, B, C, D] extends SQLReadForm[(A, B, C, D)] {
 		val _1 :SQLReadForm[A]
 		val _2 :SQLReadForm[B]
 		val _3 :SQLReadForm[C]
@@ -276,7 +277,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_4 + _4.readColumns
 	}
 
-	case class Tuple4ReadForm[A, B, C, D](_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D])
+	private[schema] case class Tuple4ReadForm[A, B, C, D](_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D])
 		extends AbstractTuple4ReadForm[A, B, C, D]
 	{
 		override def productPrefix :String = "<"
@@ -284,7 +285,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple5ReadForm[A, B, C, D, E] extends SQLReadForm[(A, B, C, D, E)] {
+	private[schema] trait AbstractTuple5ReadForm[A, B, C, D, E] extends SQLReadForm[(A, B, C, D, E)] {
 		val _1 :SQLReadForm[A]
 		val _2 :SQLReadForm[B]
 		val _3 :SQLReadForm[C]
@@ -309,7 +310,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_5 + _5.readColumns
 	}
 
-	case class Tuple5ReadForm[A, B, C, D, E]
+	private[schema] case class Tuple5ReadForm[A, B, C, D, E]
 			(_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E])
 		extends AbstractTuple5ReadForm[A, B, C, D, E]
 	{
@@ -318,7 +319,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple6ReadForm[A, B, C, D, E, F] extends SQLReadForm[(A, B, C, D, E, F)] {
+	private[schema] trait AbstractTuple6ReadForm[A, B, C, D, E, F] extends SQLReadForm[(A, B, C, D, E, F)] {
 		val _1 :SQLReadForm[A]
 		val _2 :SQLReadForm[B]
 		val _3 :SQLReadForm[C]
@@ -347,7 +348,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_6 + _6.readColumns
 	}
 
-	case class Tuple6ReadForm[A, B, C, D, E, F](
+	private[schema] case class Tuple6ReadForm[A, B, C, D, E, F](
 			_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 			_6 :SQLReadForm[F]
 		) extends AbstractTuple6ReadForm[A, B, C, D, E, F]
@@ -357,7 +358,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple7ReadForm[A, B, C, D, E, F, G] extends SQLReadForm[(A, B, C, D, E, F, G)] {
+	private[schema] trait AbstractTuple7ReadForm[A, B, C, D, E, F, G] extends SQLReadForm[(A, B, C, D, E, F, G)] {
 		val _1 :SQLReadForm[A]
 		val _2 :SQLReadForm[B]
 		val _3 :SQLReadForm[C]
@@ -389,7 +390,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_7 + _7.readColumns
 	}
 
-	case class Tuple7ReadForm[A, B, C, D, E, F, G](
+	private[schema] case class Tuple7ReadForm[A, B, C, D, E, F, G](
 			_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 			_6 :SQLReadForm[F], _7 :SQLReadForm[G]
 		) extends AbstractTuple7ReadForm[A, B, C, D, E, F, G]
@@ -399,7 +400,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple8ReadForm[A, B, C, D, E, F, G, H] extends SQLReadForm[(A, B, C, D, E, F, G, H)] {
+	private[schema] trait AbstractTuple8ReadForm[A, B, C, D, E, F, G, H] extends SQLReadForm[(A, B, C, D, E, F, G, H)] {
 		val _1 :SQLReadForm[A]
 		val _2 :SQLReadForm[B]
 		val _3 :SQLReadForm[C]
@@ -436,7 +437,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_8 + _8.readColumns
 	}
 
-	case class Tuple8ReadForm[A, B, C, D, E, F, G, H](
+	private[schema] case class Tuple8ReadForm[A, B, C, D, E, F, G, H](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H]
 		) extends AbstractTuple8ReadForm[A, B, C, D, E, F, G, H]
@@ -446,7 +447,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple9ReadForm[A, B, C, D, E, F, G, H, I] extends SQLReadForm[(A, B, C, D, E, F, G, H, I)] {
+	private[schema] trait AbstractTuple9ReadForm[A, B, C, D, E, F, G, H, I] extends SQLReadForm[(A, B, C, D, E, F, G, H, I)] {
 		val _1 :SQLReadForm[A]
 		val _2 :SQLReadForm[B]
 		val _3 :SQLReadForm[C]
@@ -486,7 +487,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_9 + _9.readColumns
 	}
 
-	case class Tuple9ReadForm[A, B, C, D, E, F, G, H, I](
+	private[schema] case class Tuple9ReadForm[A, B, C, D, E, F, G, H, I](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I]
 		) extends AbstractTuple9ReadForm[A, B, C, D, E, F, G, H, I]
@@ -496,7 +497,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple10ReadForm[A, B, C, D, E, F, G, H, I, J] extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J)] {
+	private[schema] trait AbstractTuple10ReadForm[A, B, C, D, E, F, G, H, I, J] extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J)] {
 		val _1 :SQLReadForm[A]
 		val _2 :SQLReadForm[B]
 		val _3 :SQLReadForm[C]
@@ -539,7 +540,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_10 + _10.readColumns
 	}
 
-	case class Tuple10ReadForm[A, B, C, D, E, F, G, H, I, J](
+	private[schema] case class Tuple10ReadForm[A, B, C, D, E, F, G, H, I, J](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J]
 		) extends AbstractTuple10ReadForm[A, B, C, D, E, F, G, H, I, J]
@@ -549,7 +550,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple11ReadForm[A, B, C, D, E, F, G, H, I, J, K] 
+	private[schema] trait AbstractTuple11ReadForm[A, B, C, D, E, F, G, H, I, J, K] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -597,7 +598,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_11 + _11.readColumns
 	}
 
-	case class Tuple11ReadForm[A, B, C, D, E, F, G, H, I, J, K](
+	private[schema] case class Tuple11ReadForm[A, B, C, D, E, F, G, H, I, J, K](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K]
@@ -608,7 +609,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple12ReadForm[A, B, C, D, E, F, G, H, I, J, K, L] 
+	private[schema] trait AbstractTuple12ReadForm[A, B, C, D, E, F, G, H, I, J, K, L] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -659,7 +660,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_12 + _12.readColumns
 	}
 
-	case class Tuple12ReadForm[A, B, C, D, E, F, G, H, I, J, K, L](
+	private[schema] case class Tuple12ReadForm[A, B, C, D, E, F, G, H, I, J, K, L](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L]
@@ -670,7 +671,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple13ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M] 
+	private[schema] trait AbstractTuple13ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -724,7 +725,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_13 + _13.readColumns
 	}
 
-	case class Tuple13ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M](
+	private[schema] case class Tuple13ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M]
@@ -736,7 +737,7 @@ private[schema] object ScalaReadForms {
 	
 	
 	
-	trait AbstractTuple14ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N] 
+	private[schema] trait AbstractTuple14ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -793,7 +794,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_14 + _14.readColumns
 	}
 
-	case class Tuple14ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N](
+	private[schema] case class Tuple14ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N]
@@ -804,7 +805,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple15ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O] 
+	private[schema] trait AbstractTuple15ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -865,7 +866,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_15 + _15.readColumns
 	}
 
-	case class Tuple15ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O](
+	private[schema] case class Tuple15ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N], _15 :SQLReadForm[O]
@@ -876,7 +877,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple16ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P] 
+	private[schema] trait AbstractTuple16ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -940,7 +941,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_16 + _16.readColumns
 	}
 
-	case class Tuple16ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P](
+	private[schema] case class Tuple16ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N], _15 :SQLReadForm[O],
@@ -952,7 +953,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple17ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q] 
+	private[schema] trait AbstractTuple17ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -1019,7 +1020,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_17 + _17.readColumns
 	}
 
-	case class Tuple17ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q](
+	private[schema] case class Tuple17ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N], _15 :SQLReadForm[O],
@@ -1031,7 +1032,7 @@ private[schema] object ScalaReadForms {
 
 
 
-	trait AbstractTuple18ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R] 
+	private[schema] trait AbstractTuple18ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -1101,7 +1102,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_18 + _18.readColumns
 	}
 
-	case class Tuple18ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R](
+	private[schema] case class Tuple18ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N], _15 :SQLReadForm[O],
@@ -1113,7 +1114,7 @@ private[schema] object ScalaReadForms {
 
 
 	
-	trait AbstractTuple19ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S] 
+	private[schema] trait AbstractTuple19ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -1186,7 +1187,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_19 + _19.readColumns
 	}
 
-	case class Tuple19ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S](
+	private[schema] case class Tuple19ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N], _15 :SQLReadForm[O],
@@ -1198,7 +1199,7 @@ private[schema] object ScalaReadForms {
 
 
 	
-	trait AbstractTuple20ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T] 
+	private[schema] trait AbstractTuple20ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -1274,7 +1275,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_20 + _20.readColumns
 	}
 
-	case class Tuple20ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T](
+	private[schema] case class Tuple20ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N], _15 :SQLReadForm[O],
@@ -1286,7 +1287,7 @@ private[schema] object ScalaReadForms {
 
 
 	
-	trait AbstractTuple21ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U] 
+	private[schema] trait AbstractTuple21ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -1365,7 +1366,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_21 + _21.readColumns
 	}
 
-	case class Tuple21ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U](
+	private[schema] case class Tuple21ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N], _15 :SQLReadForm[O],
@@ -1378,7 +1379,7 @@ private[schema] object ScalaReadForms {
 
 
 	
-	trait AbstractTuple22ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V] 
+	private[schema] trait AbstractTuple22ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V] 
 		extends SQLReadForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)] 
 	{
 		val _1 :SQLReadForm[A]
@@ -1461,7 +1462,7 @@ private[schema] object ScalaReadForms {
 		override def readColumns :Int = offset_22 + _22.readColumns
 	}
 
-	case class Tuple22ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V](
+	private[schema] case class Tuple22ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V](
 				_1 :SQLReadForm[A], _2 :SQLReadForm[B], _3 :SQLReadForm[C], _4 :SQLReadForm[D], _5 :SQLReadForm[E],
 				_6 :SQLReadForm[F], _7 :SQLReadForm[G], _8 :SQLReadForm[H], _9 :SQLReadForm[I], _10 :SQLReadForm[J],
 				_11 :SQLReadForm[K], _12 :SQLReadForm[L], _13 :SQLReadForm[M], _14 :SQLReadForm[N], _15 :SQLReadForm[O],
@@ -1473,25 +1474,5 @@ private[schema] object ScalaReadForms {
 	}
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	
 }

@@ -2,21 +2,16 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
-import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Record}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.{Chain, ChainMap}
+import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
-import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, CombinedWriteForm, FlatMappedSQLWriteForm, GenericChainWriteForm, MappedSQLWriteForm}
+import net.noresttherein.oldsql.schema.SQLForm.{ChainForm, ChainMapForm, NullValue}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedWriteForm, FlatMappedSQLWriteForm, MappedSQLWriteForm}
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.collection.LabeledChain.>~
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 
-//implicits
-import net.noresttherein.oldsql.slang._
+
 
 
 
@@ -35,7 +30,7 @@ import net.noresttherein.oldsql.slang._
   * @see [[net.noresttherein.oldsql.schema.SQLForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   */
-trait SQLWriteForm[-T] extends SQLForms {
+trait SQLWriteForm[-T] extends BaseSQLForm {
 
 	/** Set the values of parameters `<position..position+writtenColumns)` of the given `PreparedStatement` to
 	  * the values obtained from the given value of `T`. This method simply delegates to `set` or `setNull`, depending
@@ -172,12 +167,12 @@ trait SQLWriteForm[-T] extends SQLForms {
 	/** Lift this form to represent `Option[T]`, where `Some` values are delegated to this instance's `set` method,
 	  * while `None` results in calling this form's `setNull` instead.
 	  */
-	def toOpt :SQLWriteForm[Option[T]] = SQLWriteForm.OptionWriteForm(this)
+	def toOpt :SQLWriteForm[Option[T]] = ScalaWriteForms.OptionWriteForm(this)
 
 	/** Combine this form with another form, to create a form for the `(T, O)` pair. The parameters for the second form
 	  * are expected to immediately follow this form's statement parameters.
 	  */
-	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = SQLWriteForm.Tuple2WriteForm(this, other)
+	def *[O](other :SQLWriteForm[O]) :SQLWriteForm[(T, O)] = ScalaWriteForms.Tuple2WriteForm(this, other)
 
 	/** Creates a write form which will first write any given value with this form, and then with the argument form,
 	  * starting at statement parameter position right after the position of the last written parameter by this form.
@@ -206,24 +201,7 @@ trait SQLWriteForm[-T] extends SQLForms {
 
 
 
-sealed trait SQLWriteFormLevel2Implicits {
-	implicit def ChainWriteForm[I <: Chain, L](implicit t :SQLWriteForm[I], h :SQLWriteForm[L]) :SQLWriteForm[I ~ L] =
-		new ChainWriteForm(t, h)
-}
-
-
-
-sealed trait SQLWriteFormLevel1Implicits extends SQLWriteFormLevel2Implicits {
-	implicit def ChainMapWriteForm[I <: ChainMap :SQLWriteForm, K <: Singleton, V :SQLWriteForm] :SQLWriteForm[I &~ (K, V)] =
-		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_._2), SQLWriteForm[V], "&~")
-}
-
-
-
-
-
-
-object SQLWriteForm extends ScalaWriteForms with SQLWriteFormLevel1Implicits {
+object SQLWriteForm {
 
 	/** Summon an implicitly available `SQLWriteForm[T]`. */
 	def apply[T :SQLWriteForm] :SQLWriteForm[T] = implicitly[SQLWriteForm[T]]
@@ -351,27 +329,6 @@ object SQLWriteForm extends ScalaWriteForms with SQLWriteFormLevel1Implicits {
 		override def hashCode :Int = getClass.hashCode
 	}
 
-
-
-
-
-
-	/** An implicit write form for empty chains which writes nothing (has `writtenColumns` equal zero).
-	  * Used as the terminator of write forms for various `Chain` subclasses.
-	  */
-	implicit val EmptyChainWriteForm :SQLWriteForm[@~] = empty
-
-	implicit def IndexedChainWriteFrom[I <: IndexedChain :SQLWriteForm, K <: IndexedChain.Key, V :SQLWriteForm]
-			:SQLWriteForm[I |~ (K :~ V)] =
-		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_.value), SQLWriteForm[V], "|~")
-
-	implicit def LabeledChainWriteForm[I <: LabeledChain :SQLWriteForm, K <: Label, V :SQLWriteForm]
-			:SQLWriteForm[I >~ (K :~ V)] =
-		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_.value), SQLWriteForm[V], ">~")
-
-	implicit def RecordWriteForm[I <: Record :SQLWriteForm, K <: String with Singleton, V :SQLWriteForm]
-			:SQLWriteForm[I |# (K, V)] =
-		new GenericChainWriteForm(SQLWriteForm[I], SQLWriteForm[V].unmap(_._2), SQLWriteForm[V], "|#")
 
 
 

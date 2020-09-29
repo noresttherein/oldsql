@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 
 
 /** Trait mixed in by all forms solely to bring into the implicit search scope declarations from its companion object. */
-trait ScalaForms
+trait ScalaForms extends ScalaReadForms with ScalaWriteForms
 
 
 
@@ -35,7 +35,8 @@ object ScalaForms {
 		override def toString = "Unit"
 	}
 
-	implicit case object NothingForm extends EmptyForm[Nothing](
+	//not implicit because they would satisfy any SQLReadForm
+	case object NothingForm extends EmptyForm[Nothing](
 		throw new UnsupportedOperationException("ScalaForms.NothingForm")
 	) {
 		override def set(position :Int)(statement :PreparedStatement, value :Nothing) :Nothing =
@@ -47,15 +48,16 @@ object ScalaForms {
 		override def toString = "Nothing"
 	}
 
-	implicit case object NoneForm extends EmptyForm[Option[Nothing]](None) {
+	//not implicit because they would satisfy any SQLReadForm
+	case object NoneForm extends EmptyForm[Option[Nothing]](None) {
 		override def toString = "None"
 	}
 
 
 
 	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
-
-	implicit def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].nullBimap(Some.apply)(_.get)
+	//risks becoming preferred SQLReadForm[Option[T]] for any T
+	 def SomeForm[T :SQLForm] :SQLForm[Some[T]] = SQLForm[T].nullBimap(Some.apply)(_.get)
 
 
 

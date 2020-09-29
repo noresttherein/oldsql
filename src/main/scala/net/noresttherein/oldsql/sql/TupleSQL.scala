@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{SQLForm, SQLForms, SQLReadForm, SQLReadForms, SQLWriteForm}
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral
@@ -181,7 +181,12 @@ object TupleSQL {
 		{
 			override def size :Int = init.size + 1
 
-			override def readForm :SQLReadForm[T ~ H] = SQLReadForm.ChainReadForm[T, H](init.readForm, last.readForm)
+			override val readForm :SQLReadForm[T ~ H] = (init.readForm, last.readForm) match {
+				case (i :SQLForm[T @unchecked], l :SQLForm[H @unchecked]) =>
+					SQLForms.ChainForm(i, l)
+				case _ =>
+					SQLReadForms.ChainReadForm[T, H](init.readForm, last.readForm)
+			}
 
 //			override def get(values :RowValues[F]) :Option[T ~ H] =
 //				for (t <- tail.get(values); h <- head.get(values)) yield t ~ h
@@ -209,11 +214,9 @@ object TupleSQL {
 
 			override def toSeq :List[Nothing] = Nil
 
-			protected override def form :SQLForm[@~] = SQLForm.EmptyChainForm
-
+			protected override def form :SQLForm[@~] = SQLForm[@~]
 			override def writeForm :SQLWriteForm[Unit] = SQLWriteForm.empty
-
-			override def readForm :SQLReadForm[@~] = SQLReadForm.EmptyChainReadForm
+			override def readForm :SQLReadForm[@~] = SQLReadForm[@~]
 
 			override val freeValue :Option[@~] = Some(@~)
 
@@ -368,8 +371,12 @@ object TupleSQL {
 
 			override def size :Int = init.size + 1
 
-			override def readForm :SQLReadForm[T |~ (K :~ H)] =
-				SQLReadForm.IndexedChainReadFrom[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
+			override val readForm :SQLReadForm[T |~ (K :~ H)] = (init.readForm, last.readForm) match {
+				case (i :SQLForm[T @unchecked], l :SQLForm[H @unchecked]) =>
+					SQLForms.IndexedChainForm[T, K, H](i, implicitly[ValueOf[K]], l)
+				case _ =>
+					SQLReadForms.IndexedChainReadForm[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
+			}
 
 
 			override def freeValue :Option[T |~ (K :~ H)] =

@@ -65,7 +65,7 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with SuperColumnForm {
 	}
 
 
-	override def toOpt :ColumnWriteForm[Option[T]] = ColumnWriteForm.OptionColumnWriteForm(this)
+	override def toOpt :ColumnWriteForm[Option[T]] = ColumnWriteForms.OptionColumnWriteForm(this)
 
 
 
@@ -273,17 +273,6 @@ object ColumnWriteForm {
 
 	/** Calls [[net.noresttherein.oldsql.schema.ColumnWriteForm.unmap unmap]] on the implicit form for `S`. */
 	def map[S :ColumnWriteForm, T](map :T => S) :ColumnWriteForm[T] = ColumnWriteForm[S].unmap(map)
-
-
-
-
-	implicit def OptionColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Option[T]] =
-		new OptionColumnWriteForm[T] {
-			val form :ColumnWriteForm[T] = ColumnWriteForm[T]
-		}
-
-	implicit def SomeColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Some[T]] =
-		ColumnWriteForm[T].unmap(_.get)
 
 
 
