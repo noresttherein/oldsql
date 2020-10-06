@@ -5,20 +5,22 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnForm, ColumnMapping, GenericMappingExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, MappingSeal, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.NamedRelation
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.sql.AndFrom.AndFromLike
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, OuterFrom, OuterFromSome, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, NonEmptyFromLike, OuterFrom, OuterFromSome, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, NamedParamRelation, ParamAt, ParamRelation}
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Compound.{CompoundLike, JoinedRelationSubject}
+import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseLike
 
 
 
@@ -33,8 +35,9 @@ import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
   * (''from'' clauses without a ''group by'' clause) and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]
   * for clauses with a [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] join to the left.
   */
-sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends NonSubselect[F, P] {
-	thisClause =>
+sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]]
+	extends NonSubselect[F, P] with CompoundLike[F UnboundParam P]
+{ thisClause =>
 
 	override type Generalized >: Self <: (left.Generalized UnboundParam P) {
 		type FromLast = thisClause.FromLast
@@ -44,23 +47,6 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends NonSubse
 	}
 
 	override type Self <: (left.Self UnboundParam P) {
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+C <: FromClause, +J[+L <: C, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[C, J]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
-	}
-
-	override type This >: this.type <: (F UnboundParam P) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Self = thisClause.Self
@@ -116,7 +102,7 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]] extends NonSubse
 	/** Provides the value for the joined parameter, removing it from this clause and replacing all references to it
 	  * with bound parameters in the form of `SQLParameter` instances.
 	  */
-	def apply(value :Param) :F#This
+	def apply(value :Param) :left.This
 
 
 	/** Substitutes the joined parameter mapping for one labeled with `String` literal `name`. */
@@ -246,7 +232,7 @@ object UnboundParam {
 //	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 //	  * @return `F` [[net.noresttherein.oldsql.sql.GroupParam.ByParam ByParam]] `X`.
 //	  */
-//	def apply[F <: OuterGroupedFrom, X]
+//	def apply[F <: OuterGroupingFrom, X]
 //	         (from :F, param :ParamRelation[X], filter :SQLBoolean[F#Generalized GroupParam ParamRelation[X]#Param] = True)
 //			:F ByParam X =
 //		GroupParam[from.type, ParamRelation[X]#Param, X](from, RelationSQL(param, 0))(filter)
@@ -264,7 +250,7 @@ object UnboundParam {
 //	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _]]] `Mapping` type.
 //	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.JoinParam.?: ?:]]` X).T`.
 //	  */
-//	def apply[F <: OuterGroupedFrom, N <: Label, X]
+//	def apply[F <: OuterGroupingFrom, N <: Label, X]
 //	         (from :F, param :NamedParamRelation[N, X]) :F GroupParam (N ?: X)#T =
 //		GroupParam[F, (N ?: X)#T, X](from, RelationSQL(param, 0))(True)
 //
@@ -282,7 +268,7 @@ object UnboundParam {
 //	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 //	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.JoinParam.?: ?:]]` X).T`.
 //	  */
-//	def apply[F <: OuterGroupedFrom, N <: Label, X]
+//	def apply[F <: OuterGroupingFrom, N <: Label, X]
 //	         (from :F, param :NamedParamRelation[N, X],
 //	          filter :SQLBoolean[F#Generalized GroupParam NamedParamRelation[N, X]#Param]) :F GroupParam (N ?: X)#T =
 //		GroupParam[F, (N ?: X)#T, X](from, RelationSQL(param, 0))(filter)
@@ -302,10 +288,10 @@ object UnboundParam {
 //		def apply[F <: OuterFromSome](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
 //			JoinParam[F, ParamRelation[X]#Param, X](from, LastRelation(ParamRelation[X](name)))(True)
 //
-//		def apply[F <: OuterGroupedFrom](from :F)(implicit form :SQLForm[X]) :F ByParam X =
+//		def apply[F <: OuterGroupingFrom](from :F)(implicit form :SQLForm[X]) :F ByParam X =
 //			GroupParam[F, ParamRelation[X]#Param, X](from, RelationSQL(ParamRelation[X](), 0))(True)
 //
-//		def apply[F <: OuterGroupedFrom](from :F, name :String)(implicit form :SQLForm[X]) :F ByParam X =
+//		def apply[F <: OuterGroupingFrom](from :F, name :String)(implicit form :SQLForm[X]) :F ByParam X =
 //			GroupParam[F, ParamRelation[X]#Param, X](from, RelationSQL(ParamRelation[X](name), 0))(True)
 //	}
 
@@ -451,7 +437,7 @@ object UnboundParam {
 	  * which break the type compatibility of the subject (parameter) type.
 	  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 	  */
-	sealed trait ParamAt[O] extends Mapping { this :MappingSeal =>
+	sealed trait ParamAt[O] extends Mapping {
 		override type Origin = O
 		val form :SQLForm[Subject]
 		
@@ -586,7 +572,7 @@ object UnboundParam {
 		}
 
 
-
+		override def mappingName :String = name
 		override def toString :String = name + ":" + form
 
 
@@ -732,27 +718,12 @@ object UnboundParam {
   * @see [[net.noresttherein.oldsql.sql.JoinParam.WithParam]]
   * @see [[net.noresttherein.oldsql.sql.GroupParam]]
   */ //lets try to widen the bound to `DiscreteFrom`
-sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]] extends AndFrom[F, P] with UnboundParam[F, P] { thisClause =>
+sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
+	extends UnboundParam[F, P] with AndFrom[F, P] with AndFromLike[F, P, F JoinParam P]
+{ thisClause =>
 
 	override type Generalized = left.Generalized JoinParam P
 	override type Self = left.Self JoinParam P
-
-	override type This >: this.type <: (F JoinParam P) {
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type Base = thisClause.Base
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+S <: FromClause, +J[+L <: S, R[O] <: MappingAt[O]] <: L AndFrom R] =
-			thisClause.JoinedWith[S, J]
-	}
 
 	protected override def narrow :left.type JoinParam P
 
@@ -952,7 +923,7 @@ object JoinParam {
 
 			override def apply(value :X) :left.This = {
 				val substitute = SQLScribe.applyParam(generalized, left.generalized, value, 0)
-				left where substitute(condition)
+				left filtered substitute(condition)
 			}
 
 
@@ -1035,28 +1006,12 @@ object JoinParam {
 
 
 
-sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]] extends AndByAll[F, P] with UnboundParam[F, P] {
-	thisClause =>
+sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
+	extends UnboundParam[F, P] with AndByAll[F, P] with GroupByClauseLike[F GroupParam P] with CompoundLike[F GroupParam P]
+{ thisClause =>
 
 	override type Generalized = left.Generalized GroupParam P
 	override type Self = left.Self GroupParam P
-
-	override type This >: this.type <: (F GroupParam P) {
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type Base = thisClause.Base
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+S <: FromClause, +J[+L <: S, R[O] <: MappingAt[O]] <: L AndFrom R] =
-			thisClause.JoinedWith[S, J]
-	}
 
 	type GeneralizedLeft[+L <: GroupByClause] = L GroupParam P
 	type WithLeft[+L <: GroupByClause] = L GroupParam P
@@ -1215,7 +1170,7 @@ object GroupParam {
 
 			override def apply(value :X) :left.This = {
 				val substitute = SQLScribe.applyParam(generalized, left.generalized, value, 0)
-				left having substitute(condition)
+				left filtered substitute(condition)
 			}
 
 

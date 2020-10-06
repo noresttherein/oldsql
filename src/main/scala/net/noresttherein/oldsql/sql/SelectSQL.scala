@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf, SubselectOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, NonEmptyFrom, PartOf, SubselectOf}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SelectSQL.SelectAs
@@ -30,6 +30,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.MatchChain
 import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, IndexedChainTuple, SeqTuple}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedSQLExpression, MatchIndexedChain}
@@ -198,7 +199,7 @@ object SelectSQL {
 
 	def subselect[F <: FromClause, S <: SubselectOf[F],
 	              T[A] <: BaseMapping[R, A], R, M[A] <: ColumnMapping[V, A], V, I >: S <: FromClause, O]
-	             (from :S, column :ColumnComponentSQL[S, T, R, M, V, I], distinct :Boolean = false)
+	             (from :S, column :ColumnComponentSQL[S, T, R, M, V, I])
 			:SubselectColumnMapping[F, S, M, V, O] =
 		new SubselectColumnMappingImpl[F, S, T, R, M, V, O](from, column, false)
 
@@ -406,7 +407,7 @@ object SelectSQL {
 		override def toString :String = super[SelectSQL].toString
 	}
 
-
+	//consider: renaming all FreeSelect classes to OuterSelect
 	trait FreeSelectAs[H <: Mapping]
 		extends SelectAs[FromClause, GlobalScope, H] with FreeSelectSQL[H#Subject, H#Origin]
 	{
@@ -510,23 +511,25 @@ object SelectSQL {
 		override def extend[U <: F, E <: FromClause]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectSQL[E, V, O] =
-			from match {
-				case some :FromSome =>
+			from match { //would be safer to refactor this out as a FromClause method
+				case some :NonEmptyFrom =>
 					type Ext = SubselectOf[E] //pretend this is the actual type S after rebasing to the extension clause G
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
+					implicit val projection = header.projection
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val subselectTables = stretched.fullSize - base.fullSize
 					val table = header.origin
 					val replacement =
 						if (table.shift < subselectTables) table.asInstanceOf[RelationSQL[Ext, T, R, Ext]]
 						else stretched.fullTableStack(table.shift + ev.length).asInstanceOf[RelationSQL[Ext, T, R, Ext]]
-					val component = replacement \[H[Ext], H, V] header.mapping.withOrigin[Ext]
+					val component = replacement \[H[Ext], V] header.mapping.withOrigin[Ext]
 					new SubselectComponent[E, Ext, T, R, H, V, Ext, O](stretched, component, isDistinct)
 
 				case empty :Dual =>
 					val adaptedHeader = header.asInstanceOf[ComponentSQL[Dual, T, R, H, V, FromClause]]
 					new SubselectComponent[E, Dual, T, R, H, V, FromClause, O](empty, adaptedHeader, isDistinct)
-				case _ => //todo: cover grouped clauses and hypothetical decorators of Dual
+
+				case _ =>
 					throw new UnsupportedOperationException(s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base.")
 			}
 
@@ -576,8 +579,11 @@ object SelectSQL {
 		  */
 		class HeaderColumn[T](override val expression :ColumnSQL[S, LocalScope, T], override val name :String)
 		                     (implicit override val form :ColumnForm[T] = //implicit only so that the arg list can be omitted
-		                      expression.readForm <> ColumnWriteForm.dummy[T](expression.readForm.sqlType))
-			extends ColumnMapping[T, O] with SelectedColumn[T]
+		                      expression.readForm <>[T] ColumnWriteForm.unsupported(
+			                      s"Select clause column <$expression as $name> does not support write.",
+			                      expression.readForm.sqlType
+		                      ))
+			extends StableColumn[T, O] with SelectedColumn[T]
 
 
 
@@ -594,7 +600,9 @@ object SelectSQL {
 			override def column[C >: LocalScope <: GlobalScope, X](e :ColumnSQL[S, C, X]) :Pieces => Option[X] = {
 				implicit val form :ColumnForm[X] = e.readForm match {
 					case form :ColumnForm[X @unchecked] => form
-					case form => form <> ColumnWriteForm.dummy(form.sqlType)
+					case form => form <> ColumnWriteForm.unsupported(
+						s"Select clause column $e does not support write.", form.sqlType
+					)
 				}
 				val column = new HeaderColumn(e, nameFor(e))
 				columns = column::columns
@@ -607,9 +615,9 @@ object SelectSQL {
 			{
 				val table = e.entity
 
-				def headerColumn[C](column :table.Column[C]) :Assoc[table.Component, HeaderColumn, C] = {
+				def headerColumn[C](column :ColumnMapping[C, A]) :Assoc[table.Component, HeaderColumn, C] = {
 					val expr = e.origin \ column
-					val selected = new HeaderColumn[C](e.origin \ column, nameFor(expr))
+					val selected = new HeaderColumn[C](expr, nameFor(expr))
 					Assoc[table.Component, HeaderColumn, C](column, selected)
 				}
 				val mapping = e.mapping
@@ -814,8 +822,8 @@ object SelectSQL {
 		override def extend[U <: F, E <: FromClause]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectSQL[E, V, O] =
-			from match {
-				case some :FromSome =>
+			from match { //would be safer to refactor this out as a FromClause method
+				case some :NonEmptyFrom =>
 					type Ext = SubselectOf[E] //FromClause { type Implicit = G }
 					implicit val extension = ext.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
@@ -825,7 +833,7 @@ object SelectSQL {
 				case empty :Dual =>
 					new ArbitrarySubselect[E, Dual, V, O](empty, header.asInstanceOf[LocalSQL[Dual, V]], isDistinct)
 
-				case _ => //todo: grouped clauses and hypothetical Dual decorators
+				case _ =>
 					throw new UnsupportedOperationException(s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base.")
 			}
 
@@ -860,7 +868,9 @@ object SelectSQL {
 
 			override val form :ColumnForm[V] = header.readForm match {
 				case form :ColumnForm[V @unchecked] => form
-				case form => form <> ColumnWriteForm.dummy(form.sqlType)
+				case form => form <> ColumnWriteForm.unsupported(
+					s"Select column $this does not support write", form.sqlType
+				)
 			}
 
 			override def expression = header

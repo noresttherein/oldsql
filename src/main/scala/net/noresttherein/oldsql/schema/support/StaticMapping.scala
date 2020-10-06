@@ -1,18 +1,15 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
-import net.noresttherein.oldsql.schema.{Mapping, BaseMapping}
+import net.noresttherein.oldsql.schema.BaseMapping
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, MappingAdapter, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, AdapterFactoryMethods, MappedTo}
-import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, RefinedMapping}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, MappedTo}
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
 
 
 
@@ -85,8 +82,6 @@ object StaticMapping {
 	trait StaticMappingTemplate[+A[M <: RefinedMapping[S, O], X] <: RefinedMapping[X, O], S, O]
 		extends OptimizedMappingAssembly
 	{
-		this :MappingSeal =>
-
 		override type Subject = S
 		override type Origin = O
 

@@ -1,12 +1,11 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.BaseMapping
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DecoratedFrom.{ExtendingDecorator, FromSomeDecorator}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.NonEmptyFrom
-import net.noresttherein.oldsql.sql.GroupByAll.{AndByAll, ByAll}
+import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 
 

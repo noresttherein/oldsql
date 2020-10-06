@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.schema.SchemaMapping.{|-|, CustomizeSchema, Dele
 import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, CustomizedMapping, LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
-import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, BaseAdapter, ColumnAdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
@@ -302,7 +302,7 @@ object SchemaMapping {
 
 	//implicit 'override' from |-| which will work for SchemaMapping subclasses as normal.
 	implicit def genericSchemaMappingProjection[M[Q] <: SchemaMapping[S, _, _, Q], S, O] :ProjectionDef[M[O], M, S] =
-		OriginProjection.functor[M, S, O]
+		OriginProjection.isomorphism[M, S, O]
 
 
 
@@ -336,7 +336,7 @@ object SchemaMapping {
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.||]]
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.@||]]
 	  */
-	trait |-|[S, V <: Chain, C <: Chain] extends MappingSchemaSupport { self :MappingSeal =>
+	trait |-|[S, V <: Chain, C <: Chain] extends MappingSchemaSupport {
 
 		override type Subject = S
 		override type Packed = S
@@ -409,7 +409,7 @@ object SchemaMapping {
 	  *           can be modified into one with only ''selected'' components listed).
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.|-|]]
 	  */
-	trait |||[S, V <: Chain, C <: Chain] extends |-|[S, V, C] { self :MappingSeal => }//{ self :FlatSchemaMapping[S, V, C, _] => }
+	trait |||[S, V <: Chain, C <: Chain] extends |-|[S, V, C] //{ self :FlatSchemaMapping[S, V, C, _] => }
 
 	object ||| {
 		implicit def flatSchemaMappingProjection[S, V <: Chain, C <: Chain]
@@ -436,7 +436,7 @@ object SchemaMapping {
 	  * @tparam S the `Subject` type of this mapping.
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.|-|]]
 	  */
-	trait ||[S] extends |||[S, @~, @~] { self :MappingSeal => //self :SchemaColumn[S, _] =>
+	trait ||[S] extends |||[S, @~, @~] {
 
 		override def apply[L <: Label :ValueOf]: L @|| S = labeled(valueOf[L])
 
@@ -480,8 +480,6 @@ object SchemaMapping {
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.|-|]]
 	  */
 	trait @|-|[L <: Label, S, V <: Chain, C <: Chain] extends |-|[S, V, C] with AbstractLabeledMapping[L] {
-		self :MappingSeal =>
-
 		def label :L
 //		self :LabeledSchemaMapping[L, S, V, C, _] =>
 	}
@@ -524,10 +522,7 @@ object SchemaMapping {
 	  *           can be modified into one with only ''selected'' components listed).
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.|-|]]
 	  */
-	trait @|||[L <: Label, S, V <: Chain, C <: Chain] extends |||[S, V, C] with @|-|[L, S, V, C] {
-		self :MappingSeal =>
-//		this :LabeledFlatSchemaMapping[L, S, V, C, _] =>
-	}
+	trait @|||[L <: Label, S, V <: Chain, C <: Chain] extends |||[S, V, C] with @|-|[L, S, V, C]
 
 	object @||| {
 		implicit def labeledFlatSchemaMappingProjection[L <: Label, S, V <: Chain, C <: Chain]
@@ -555,10 +550,7 @@ object SchemaMapping {
 	  * @tparam S the `Subject` type of this mapping.
 	  * @see [[net.noresttherein.oldsql.schema.SchemaMapping.|-|]]
 	  */
-	trait @||[L <: Label, S] extends ||[S] with @|||[L, S, @~, @~] {
-		self :MappingSeal =>
-//		self :LabeledSchemaColumn[L, S, _] =>
-	}
+	trait @||[L <: Label, S] extends ||[S] with @|||[L, S, @~, @~]
 
 	object @|| {
 		implicit def labeledSchemaColumnProjection[L <: Label, S]
@@ -626,7 +618,7 @@ object SchemaMapping {
 		//implicit 'override' from ||| which will work for SchemaMapping subclasses as normal.
 		implicit def genericFlatSchemaMappingProjection[M[Q] <: FlatSchemaMapping[S, _, _, Q], S, O]
 				:ProjectionDef[M[O], M, S] =
-			OriginProjection.functor[M, S, O]
+			OriginProjection.isomorphism[M, S, O]
 
 
 		implicit def implicitCustomizeFlatSchema[A <: OperationType, S, V <: Chain, C <: Chain,
@@ -684,7 +676,7 @@ object SchemaMapping {
 
 		//implicit 'override' from || which will work for SchemaMapping subclasses as normal.
 		implicit def genericSchemaColumnProjection[M[Q] <: SchemaColumn[S, Q], S, O] :ProjectionDef[M[O], M, S] =
-			OriginProjection.functor[M, S, O]
+			OriginProjection.isomorphism[M, S, O]
 	}
 
 
@@ -708,7 +700,7 @@ object SchemaMapping {
 		//implicit 'override' from @|-| which will work for SchemaMapping subclasses as normal.
 		implicit def genericLabeledSchemaMappingProjection[M[Q] <: LabeledSchemaMapping[_, S, _, _, Q], S, O]
 				:ProjectionDef[M[O], M, S] =
-			OriginProjection.functor[M, S, O]
+			OriginProjection.isomorphism[M, S, O]
 
 
 
@@ -755,7 +747,7 @@ object SchemaMapping {
 		//implicit 'override' from @||| which will work for SchemaMapping subclasses as normal.
 		implicit def genericLabeledFlatSchemaMappingProjection[M[Q] <: LabeledFlatSchemaMapping[_, S, _, _, Q], S, O]
 				:ProjectionDef[M[O], M, S] =
-			OriginProjection.functor[M, S, O]
+			OriginProjection.isomorphism[M, S, O]
 
 	}
 
@@ -779,7 +771,7 @@ object SchemaMapping {
 				form.as(there)(back)
 			)
 
-		override def toString = "'" + label + "@||" + super[LabeledColumn].toString
+		override def toString :String = "'" + label + "@||" + super[LabeledColumn].toString
 	}
 
 
@@ -797,7 +789,7 @@ object SchemaMapping {
 		//implicit 'override' from @|| which will work for SchemaMapping subclasses as normal.
 		implicit def genericLabeledSchemaColumnProjection[M[Q] <: LabeledSchemaColumn[_, S, Q], S, O]
 				:ProjectionDef[M[O], M, S] =
-			OriginProjection.functor[M, S, O]
+			OriginProjection.isomorphism[M, S, O]
 
 	}
 

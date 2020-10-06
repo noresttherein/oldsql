@@ -117,6 +117,7 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 			case _ => EqualitySQL(lift.left(this), lift.right(that))
 		}
 
+
 	/** An SQL expression checking if the value of this expression and another expression are not equal.
 	  * @param that another expression, which value type is comparable in the database with the value type
 	  *             of this expression.

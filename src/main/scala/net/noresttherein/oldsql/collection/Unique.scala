@@ -53,7 +53,17 @@ trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with
 
 	def ++:[U >: T](elems :IterableOnce[U]) :Unique[U]
 
+
+
+	/** Verifies if the element sets of the two collections are equal.
+	  * @return value equivalent to `this.toSet == other.toSet`
+	  */
+	def contentsEqual[U](other :Unique[U]) :Boolean =
+		size == other.size && other.forall(contains)
+
+
 	override def className = "Unique"
+
 }
 
 

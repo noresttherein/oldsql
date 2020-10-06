@@ -3,19 +3,18 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm, BaseMapping}
 import net.noresttherein.oldsql.{schema, OperationType}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, AdapterSeal}
-import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
 import net.noresttherein.oldsql.collection.NaturalMap
 
 
 
-sealed trait AdapterOf[+M <: Mapping] extends Mapping { this :MappingSeal =>
+sealed trait AdapterOf[+M <: Mapping] extends Mapping {
 	val body :M
 	override type Origin = body.Origin
 }
@@ -67,8 +66,7 @@ sealed trait AdapterOf[+M <: Mapping] extends Mapping { this :MappingSeal =>
 trait MappingAdapter[+M <: Mapping, S, O]
 	extends AdapterOf[M] with BaseMapping[S, O]
 	   with AdapterFactoryMethods[({ type A[X] = MappingAdapter[M, X, O] })#A, S, O]
-{ this :AdapterSeal =>
-
+{
 	/** The adapted mapping. It is considered a valid component of this mapping. */
 	val body :M { type Origin = O }
 
@@ -82,6 +80,8 @@ trait MappingAdapter[+M <: Mapping, S, O]
 	                  (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
 		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
 
+
+	protected[oldsql] def everyConcreteMappingAdapterMustExtendBaseAdapter :Nothing
 }
 
 
@@ -108,18 +108,10 @@ object MappingAdapter {
 
 
 
-	/** A sealed trait used to enforce that each `MappingAdapter` extends `BaseAdapter`, directly or indirectly.
-	  * This is because several methods overriden by the former have only stub definitions, as proper
-	  * implementations are impossible without the constraint `M <: MappingAt[O]`.
-	  */
-	sealed trait AdapterSeal
-
-
-
 	/** Implementations of `Mapping`'s methods which create adapter to the original mapping,
 	  * such as `forSelect`, `prefixed`, `map`. All implemented methods return a specific mapping type `A[X]`.
 	  */
-	trait AdapterFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping { this :MappingSeal =>
+	trait AdapterFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping {
 		override type Subject = S
 		override type Origin = O
 
@@ -176,7 +168,7 @@ object MappingAdapter {
 		override def prefixed(prefix :String) :A[S]
 
 
-		
+
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :A[X]
 
 		override def map[X](there :S => X, back :X => S)(implicit nulls :NullValue[X]) :A[X] =
@@ -198,7 +190,6 @@ object MappingAdapter {
 	  * @tparam O the origin type of this column.
 	  */
 	trait ColumnAdapterFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends AdapterFactoryMethods[A, S, O] {
-		this :MappingSeal =>
 
 		protected def name :String
 
@@ -254,7 +245,7 @@ object MappingAdapter {
 	  * due to its use in type aliases which define the `MappingAdapter`'s `Origin` type based on the origin type
 	  * of the mapping `M`.
 	  */
-	trait BaseAdapter[+M <: MappingAt[O], S, O] extends MappingAdapter[M, S, O] with AdapterSeal {
+	trait BaseAdapter[+M <: MappingAt[O], S, O] extends MappingAdapter[M, S, O] {
 		override val body :M
 
 		protected override def customize(op :OperationType,
@@ -272,6 +263,9 @@ object MappingAdapter {
 		                  (implicit nulls :SQLForm.NullValue[X]) :MappingAdapter[M, X, O] =
 			MappedMapping.adapter(this, there, back)
 
+
+		protected[oldsql] override def everyConcreteMappingAdapterMustExtendBaseAdapter :Nothing =
+			throw new UnsupportedOperationException
 	}
 
 

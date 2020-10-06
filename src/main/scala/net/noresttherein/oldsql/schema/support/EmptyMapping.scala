@@ -25,6 +25,7 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 	override def optionally(pieces :Pieces) :Option[S] = pieces.preset(this)
 
 
+
 	override def apply[T](component :Component[T]) :Extract[T] =
 		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")
 

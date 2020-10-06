@@ -2,8 +2,9 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.FunctorProjection
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, IsomorphicProjection, ProjectionBound}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.Relation.As
 import net.noresttherein.oldsql.sql.Compound
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 
@@ -13,6 +14,7 @@ import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
   * @author Marcin Mościcki
   */
 trait Relation[+M[O] <: MappingAt[O]] {
+	//we can't have OriginProjection here as M[O] is not a BaseMapping[S, O] and it can't be because its used in Joins
 	def row[O] :M[O] = apply[O]
 
 	def apply[O] :M[O]
@@ -42,7 +44,9 @@ object Relation {
 
 
 
-
+	/** Extension methods for [[net.noresttherein.oldsql.schema.Relation Relation]], extracted due to its covariance
+	  * in the mapping parameter.
+	  */
 	implicit class RelationAliasing[M[O] <: MappingAt[O]](private val self :Relation[M]) extends AnyVal {
 		@inline def alias[A <: Label :ValueOf] :M As A = new As[M, A](self, valueOf[A])
 		@inline def as[A <: Label](alias :A) :M As A = new As[M, A](self, alias)
@@ -58,10 +62,10 @@ object Relation {
 
 	private class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
 	                                (protected[this] val template :M[Any], override val sql :String)
-	                                (implicit protected[this] val projection :FunctorProjection[M, S, Any])
+	                                (implicit projection :IsomorphicProjection[M, S, Any])
 		extends Relation[M]
 	{
-		def this(template :M[Any])(implicit projection :FunctorProjection[M, S, Any]) =
+		def this(template :M[Any])(implicit projection :IsomorphicProjection[M, S, Any]) =
 			this(template, template.sqlName getOrElse {
 				throw new IllegalArgumentException(
 					s"Can't create a Relation with template mapping $template as it has an empty sqlName."
@@ -75,6 +79,13 @@ object Relation {
 
 	trait NamedRelation[N <: String with Singleton, +M[O] <: MappingAt[O]] extends Relation[M] {
 		def name :N
+		override def sql :String = name
+	}
+
+
+
+	trait PersistentRelation[+M[O] <: MappingAt[O]] extends Relation[M] {
+		def name :String
 		override def sql :String = name
 	}
 
@@ -103,17 +114,14 @@ object Relation {
 
 
 
-	trait Table[+M[O] <: MappingAt[O]] extends Relation[M] {
-		def name :String
-		override def sql :String = name
-	}
+	trait Table[+M[O] <: MappingAt[O]] extends PersistentRelation[M]
 
 	object Table {
 
 		def apply[M <: Mapping, S](tableName :String, template :M)
-		                          (implicit projection :OriginProjection[M, S]) :Table[projection.WithOrigin] =
-			new ProjectingRelation[projection.WithOrigin, S](projection[Any](template), tableName)(projection.isomorphism)
-				with Table[projection.WithOrigin]
+		                          (implicit project :OriginProjection[M, S]) :Table[project.WithOrigin] =
+			new ProjectingRelation[project.WithOrigin, S](project[Any](template), tableName)(project.isomorphism)
+				with Table[project.WithOrigin]
 			{
 				override val sql = tableName
 				override def name = sql

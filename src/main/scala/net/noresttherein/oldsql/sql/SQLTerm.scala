@@ -443,7 +443,7 @@ object SQLTerm {
 		def apply[T :ColumnForm] = new NULL[T]
 
 		def unapply(expression :SQLExpression[Nothing, LocalScope, _]) :Boolean = expression match {
-			case null => true
+//			case null => true
 			case _ :NULL[_] => true
 			case SQLLiteral(null) => true
 			case _ => false

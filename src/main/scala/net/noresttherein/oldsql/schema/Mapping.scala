@@ -8,23 +8,23 @@ import scala.collection.immutable.ArraySeq
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, MappingSeal, MappingWriteForm, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, SelectAudit}
-import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, LabeledMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.schema.support.MappingFrame
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, FunctorProjection, ProjectionDef}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause
+import net.noresttherein.oldsql.sql.{FromClause, SQLExpression}
 import net.noresttherein.oldsql.sql.FromClause.TableCount
-import net.noresttherein.oldsql.sql.MappingSQL.FreeComponent
+import net.noresttherein.oldsql.sql.MappingSQL.LooseComponent
 import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 
 
 //implicits
@@ -130,7 +130,7 @@ import net.noresttherein.oldsql.collection.Unique.implicitUnique
   * @see [[net.noresttherein.oldsql.schema.support.MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   */
-trait Mapping { this :MappingSeal =>
+trait Mapping {
 
 	/** The mapped entity type. */
 	type Subject
@@ -347,9 +347,9 @@ trait Mapping { this :MappingSeal =>
 	  * (in their export versions), but, rather than obtaining them directly from the given subject argument,
 	  * every component on the inclusion path to the column should be given a chance to inspect the value
 	  * (in particular with the purpose of applying buffs pertinent to the query operation). This is typically done
-	  * by collecting the results of delegating to the overloaded methods of all direct components of this mapping.
+	  * by collecting the results of delegation to the overloaded methods of all direct components of this mapping.
 	  * Simple `Mapping` implementations which are aware of all their subcomponents, can create the result directly,
-	  * but in general it is the overloaded variant of this method accepting a `ComponentValuesBuilder`,
+	  * but in general it is the overloaded variant of this method accepting a `ComponentValuesBuilder`
 	  * which should be overriden if a mapping wishes to perform some validation directly (rather than automatically
 	  * through audit buffs), as it is the one being used by any mapping containing this mapping as a component.
 	  * This method should always produce results consistent with those of the sibling methods specific
@@ -378,10 +378,10 @@ trait Mapping { this :MappingSeal =>
 	  * for the bottom columns are required (in their export versions), but, rather than obtaining them directly
 	  * from the given subject argument, every component on the inclusion path to the column should be given a chance
 	  * to inspect the value (in particular with the purpose of applying buffs pertinent to the query operation).
-	  * This is typically done by collecting the results of delegating to the overloaded methods of all direct components
+	  * This is typically done by collecting the results of delegation to the overloaded methods of all direct components
 	  * of this mapping. Simple `Mapping` implementations which are aware of all their subcomponents, can create
 	  * the result directly, but in general it is the overloaded variant of this method accepting
-	  * a `ComponentValuesBuilder`, which should be overriden if a mapping wishes to perform some validation directly
+	  * a `ComponentValuesBuilder` which should be overriden if a mapping wishes to perform some validation directly
 	  * (rather than automatically through `QueryAudit` buffs), as it is the one being used by any mapping
 	  * containing this mapping as a component. This method should always produce results consistent with those
 	  * of the more generic `writtenValues`, but the direction of delegation varies between implementations.
@@ -410,9 +410,9 @@ trait Mapping { this :MappingSeal =>
 	  * (in their export versions), but, rather than obtaining them directly from the given subject argument,
 	  * every component on the inclusion path to the column should be given a chance to inspect the value
 	  * (in particular with the purpose of applying buffs pertinent to the query operation). This is typically done
-	  * by collecting the results of delegating to the overloaded methods of all direct components of this mapping.
+	  * by collecting the results of delegation to the overloaded methods of all direct components of this mapping.
 	  * Simple `Mapping` implementations which are aware of all their subcomponents, can create the result directly,
-	  * but in general it is the overloaded variant of this method accepting a `ComponentValuesBuilder`,
+	  * but in general it is the overloaded variant of this method accepting a `ComponentValuesBuilder`
 	  * which should be overriden if a mapping wishes to perform some validation directly (rather than automatically
 	  * through `UpdateAudit` buffs), as it is the one being used by any mapping containing this mapping as a component.
 	  * This method should always produce results consistent with those of the more generic `writtenValues`,
@@ -442,9 +442,9 @@ trait Mapping { this :MappingSeal =>
 	  * (in their export versions), but, rather than obtaining them directly from the given subject argument,
 	  * every component on the inclusion path to the column should be given a chance to inspect the value
 	  * (in particular with the purpose of applying buffs pertinent to the query operation). This is typically done
-	  * by collecting the results of delegating to the overloaded methods of all direct components of this mapping.
+	  * by collecting the results of delegation to the overloaded methods of all direct components of this mapping.
 	  * Simple `Mapping` implementations which are aware of all their subcomponents, can create the result directly,
-	  * but in general it is the overloaded variant of this method accepting a `ComponentValuesBuilder`,
+	  * but in general it is the overloaded variant of this method accepting a `ComponentValuesBuilder`
 	  * which should be overriden if a mapping wishes to perform some validation directly (rather than automatically
 	  * through `InsertAudit` buffs), as it is the one being used by any mapping containing this mapping as a component.
 	  * This method should always produce results consistent with those of the more generic `writtenValues`,
@@ -937,7 +937,7 @@ trait Mapping { this :MappingSeal =>
 
 
 
-	override def toString :String = sqlName getOrElse this.unqualifiedClassName
+	def mappingName :String  = sqlName getOrElse this.unqualifiedClassName
 
 	def columnString :String = columns.mkString(toString + "{", ", ", "}")
 
@@ -957,7 +957,7 @@ trait Mapping { this :MappingSeal =>
 					res ++= column.debugString
 					true
 				case _ =>
-					res ++= "\n" ++= ident ++= mapping.toString //print basic mapping info
+					res ++= "\n" ++= ident ++= mapping.mappingName //print basic mapping info
 					if (mapping.buffs.nonEmpty) { //print (buffs)
 						res ++= "("
 						mapping.buffs.foreach(res ++= _.toString ++= ", ")
@@ -982,6 +982,15 @@ trait Mapping { this :MappingSeal =>
 //		components.map(c => export(c).debugString).mkString("\n" + toString + "{\n", "; ", "\n}")
 	}
 
+
+	override def toString :String = mappingName
+
+
+	/** A seal method implemented only by [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] to enforce
+	  * that every concrete implementation extends `BaseMapping`, required by the `sql` package.
+	  */
+	protected[oldsql] def everyConcreteMappingMustExtendBaseMapping :Nothing
+
 }
 
 
@@ -989,19 +998,20 @@ trait Mapping { this :MappingSeal =>
 
 
 
-object Mapping {
+sealed abstract class LowPriorityMappingImplicits {
+	//exists for use as the right side of SQLExpression.=== and similar, which will instantiate type F before applying conversion
+	implicit def mappingSQLExpression[F <: FromClause, C <: Mapping, S, O <: FromClause]
+                                     (mapping :C) //can't use TableShift as we might be converting a component of a table
+                                     (implicit subject :C <:< BaseMapping[S, O], origin :F <:< O,
+                                               offset :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
+			:SQLExpression[F, GlobalScope, S] =
+		LooseComponent(projection[F](mapping), offset.tables)
 
-	//enforcing extension of BaseMapping is needed because of a bug in scalac where using RefinedMapping as a type parameter
-	/** Self type declared by the root `Mapping` trait used to enforce that all concrete `Mapping` implementations
-	  * extend `BaseMapping` without sealing the trait `Mapping` itself.
-	  * This restriction might disappear in the future as it is largely caused by some type system limitations,
-	  * idiosyncrasies and bugs which either prevent the use of the latter or make it quite cumbersome
-	  * in certain scenarios. See the [[net.noresttherein.oldsql.schema.Mapping Mapping]] class documentation
-	  * for more information about the subject.
-	  *///todo: replace it with a package protected method in Mapping, implemented in BaseMapping
-	sealed trait MappingSeal extends Mapping
+}
 
 
+
+object Mapping extends LowPriorityMappingImplicits {
 
 	/** Adds factory methods for `MappingPath`s from the implicitly enriched `Mapping` instance to its components. */
 	@inline implicit def mappingPathConstructor[X <: Mapping, M <: RefinedMapping[S, O], S, O]
@@ -1028,12 +1038,13 @@ object Mapping {
 
 
 
-	implicit def mappingSQLExpression[C <: Mapping, M <: BaseMapping[S, F], S, F <: FromClause]
-                                     (mapping :C) //can't use TableShift as we might be converting a component of a table
-                                     (implicit conforms :Conforms[C, M, BaseMapping[S, F]],
-                                      projection :OriginProjection[C, S], shift :TableCount[F, _ <: Numeral])
-			:FreeComponent[F, projection.WithOrigin, S] =
-		FreeComponent(mapping.withOrigin[F], shift.tables)
+	implicit def componentSQLExpression[F <: FromClause, C <: Mapping, S]
+                                       (mapping :C) //can't use TableShift as we might be converting a component of a table
+                                       (implicit subject :C <:< BaseMapping[S, F], offset :TableCount[F, _ <: Numeral],
+                                                 projection :OriginProjection[C, S])
+			:LooseComponent[F, projection.WithOrigin, S] =
+		LooseComponent(mapping)
+
 
 
 
@@ -1136,7 +1147,7 @@ object Mapping {
 	  *
 	  * Implicit values for `OriginProjection` should generally be provided in the form of an
 	  * `ExactProjection`/`ProjectionDef`. For mapping types which do not have other mapping types in their
-	  * type signature, the [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.functor functor]] method
+	  * type signature, the [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.isomorphism isomorphism]] method
 	  * of the companion object will be generally sufficient. Adapters of other mappings, such as in the earlier example,
 	  * should use one of the transformation methods defined in the `ExactProjection`, if possible, with custom
 	  * instances being created only as a last resort, as offering no type safety.
@@ -1163,9 +1174,14 @@ object Mapping {
 		@inline final def apply[O](mapping :M) :WithOrigin[O] = mapping.asInstanceOf[WithOrigin[O]]
 
 
-		/** A projection from any `WithOrigin[_]` to `WithOrigin[O]`. */
-		@inline def isomorphism[O] :FunctorProjection[WithOrigin, S, O] =
-			this.asInstanceOf[FunctorProjection[WithOrigin, S, O]]
+		/** A projection from any `WithOrigin[O]` to `WithOrigin[X]`. */
+		@inline def isomorphism[O] :IsomorphicProjection[WithOrigin, S, O] =
+			this.asInstanceOf[IsomorphicProjection[WithOrigin, S, O]]
+
+		/** A projection to an upper bound of this projection. */
+		@inline def superProjection[U[O] >: WithOrigin[O] <: BaseMapping[S, O]]
+				:OriginProjection[M, S] { type WithOrigin[O] = U[O] } =
+			this.asInstanceOf[ArbitraryProjection[M, U, S]]
 
 
 		/** Lifts a projection of a mapping type `M` to one casting from mapping `A[M, _]` to `A[WithOrigin[O], O]`.
@@ -1216,8 +1232,8 @@ object Mapping {
 		/** An subtype of `OriginProjection` invariant in the projected mapping type. It serves as the implementation
 		  * interface of `OriginProjection`: mapping classes providing their own implicit projections should
 		  * declare them as this type rather the base type. The reason behind it is that the factory methods
-		  * for derived projections of higher mapping kinds defined here require do not require
-		  * the adapter mapping type to be invariant in its adapted mapping type parameter.
+		  * for derived projections of higher mapping kinds defined here do not require
+		  * the adapter mapping type to be covariant in its adapted mapping type parameter.
 		  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef]]
 		  */
 		@implicitNotFound("Cannot project mapping ${M} to another Origin type: no (unique) implicit ExactProjection[${M}]")
@@ -1265,28 +1281,48 @@ object Mapping {
 
 
 
-		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]
+
+		/** A straightforward alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]
+		  * introducing an upper bound `WithOrigin[X] <: U[X]`.
+		  */
+		type ProjectionBound[-M <: Mapping, +U[A] <: BaseMapping[S, A], S, O] =
+			OriginProjection[M, S] { type WithOrigin[X] <: U[X] }
+
+		/** A straightforward alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]
+		  * lifting the member type `WithOrigin` to the type parameter `P`. This (the 'Aux' pattern) allows the type
+		  * to be used by other parameters of a method accepting this type, as well as shortens the notations somewhat.
+		  */
+		type ArbitraryProjection[-M <: Mapping, P[O] <: BaseMapping[S, O], S] =
+			OriginProjection[M, S] { type WithOrigin[X] = P[X] }
+
+		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection]]
 		  * of single-argument functor types, accepting their `Origin` type as their argument. This shortens
 		  * the notation considerably, especially if `M` is a natural single-argument type constructor
 		  * (and not a type lambda).
 		  */
-		type FunctorProjection[M[X] <: BaseMapping[S, X], S, O] =
+		type IsomorphicProjection[M[X] <: BaseMapping[S, X], S, O] =
 			ExactProjection[M[O]] { type WithOrigin[X] = M[X] }
 
+		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection]]
+		  * of the same kind as [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]], that is accepting
+		  * two invariant type parameters: their `Subject` and `Origin` types. This shortens the notation considerably,
+		  * especially if `M` is a natural type constructor (and not a type lambda). */
 		type TypedProjection[M[X, Y] <: BaseMapping[X, Y], S, O] =
 			ExactProjection[M[S, O]] { type WithOrigin[X] = M[S, X] }
 
-		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which accepts
-		  * its `WithOrigin` type as the second argument `P`. This shortens the notation considerably if `P`
-		  * is a natural single-argument type constructor (and not a type lambda).
+		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection]]
+		  * which accepts its `WithOrigin` type as the second argument `P`. This shortens the notation considerably
+		  * if `P` is a natural single-argument type constructor (and not a type lambda).
 		  */
 		type ProjectsAs[M <: Mapping, P[O] <: BaseMapping[M#Subject, O]] =
 			ExactProjection[M] { type WithOrigin[O] = P[O] }
 
 
-		/** A somewhat superfluous type alias explicitly combining `ExactProjection[M]` with its supertype
-		  * `OriginProjection[M, S]`. This is because implicit declarations of the former are not picked up
-		  * as values for implicit parameters of the latter.
+		/** A somewhat superfluous type alias explicitly combining
+		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection]]`[M]`
+		  * with its supertype [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]`[M, S]`.
+		  * This is because implicit declarations of the former are not picked up as values for implicit parameters
+		  * of the latter. For this reason, this is the default type of all implicit values for `OriginProjection`.
 		  */
 		type ProjectionDef[M <: Mapping, P[Q] <: BaseMapping[S, Q], S] =
 			OriginProjection[M, S] with ExactProjection[M] { type WithOrigin[X] = P[X] }
@@ -1299,8 +1335,8 @@ object Mapping {
 		  * @tparam S the subject type of the projected mapping.
 		  * @tparam O the input origin typ of the projected mapping.
 		  */
-		def functor[M[A] <: BaseMapping[S, A], S, O] :FunctorProjection[M, S, O] =
-			CastingProjection.asInstanceOf[FunctorProjection[M, S, O]]
+		def isomorphism[M[A] <: BaseMapping[S, A], S, O] :IsomorphicProjection[M, S, O] =
+			CastingProjection.asInstanceOf[IsomorphicProjection[M, S, O]]
 
 		def typed[M[X, Y] <: BaseMapping[X, Y], S, O] :TypedProjection[M, S, O] =
 			CastingProjection.asInstanceOf[TypedProjection[M, S, O]]
@@ -1435,7 +1471,7 @@ object Mapping {
 
 
 
-	private[schema] class MappingReadForm[S, O] private[schema]
+	private[schema] class MappingReadForm[S, O] private[schema] //consider: making it public and using in SQLExpression for the columns
 	                      (private val mapping :RefinedMapping[S, O], private val columns :Unique[ColumnMapping[_, O]],
 	                       private val read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S]
@@ -1722,208 +1758,3 @@ object Mapping {
 
 
 }
-
-
-
-/** The de facto base trait of all `Mapping` implementations.
-  *
-  * `Mapping` remains the main outside interface as it allows easy parameterizing with the mapping type
-  * without the extra `Origin` and `Subject` type parameters, but there are chosen places where the `BaseMapping`
-  * is explicitly required due to type system's limitation. At the same time, it allows to leave some of the methods
-  * unimplemented in the `Mapping` trait, allowing traits extending it to narrow down their result types without
-  * providing their definitions. See the [[net.noresttherein.oldsql.schema.Mapping Mapping]]'s class documentation
-  * for more detailed reasons behind its existence as well as extensive general introduction.
-  *
-  * @tparam S The subject type, that is the type of objects read and written to a particular table (or a view, query,
-  *           or table fragment).
-  * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
-  *           but coming from different sources (especially different aliases for a table occurring more then once
-  *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
-  *           included in a query can be used in the creation of SQL expressions used by that query.
-  *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
-  */
-trait BaseMapping[S, O] extends MappingSeal { self =>
-	override type Origin = O
-	override type Subject = S
-	//for nicer compiler output
-	override type Extract[T] = MappingExtract[S, T, O]
-	override type ColumnExtract[T] = ColumnMappingExtract[S, T, O]
-	override type AnyComponent = MappingAt[O]
-	override type Component[T] = RefinedMapping[T, O]
-	override type Column[T] = ColumnMapping[T, O]
-
-
-
-	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
-		if (op.prohibited.disabled(this)) {
-			val audited = op.audit.fold(this)(subject)
-			def componentValues[X](comp :Component[X]) :Unit = {
-				apply(comp).get(audited) match {
-					case Some(value) => comp.writtenValues(op, value, collector)
-					case _ =>
-				}
-			}
-			components foreach { c :Component[_] => componentValues(c) }
-		}
-
-
-	override def apply(pieces: Pieces): S =
-		optionally(pieces) getOrElse {
-			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
-		}
-
-	override def optionally(pieces: Pieces): Option[S] = pieces.assemble(this) match {
-		case res if buffs.isEmpty => res //a very common case
-		case Some(res) => Some((res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
-		case _ =>
-			val res = OptionalSelect.Value(this)
-			if (res.isDefined) res
-			else ExtraSelect.Value(this)
-	}
-
-	override def assemble(pieces :Pieces) :Option[S]
-
-	/** @inheritdoc
-	  * @return `NullValue.NotNull` by default.
-	  */
-	override def nullValue :NullValue[S] = NullValue.NotNull
-
-
-
-	def apply[M >: this.type <: RefinedMapping[S, O], X <: Mapping, C <: RefinedMapping[T, O], T]
-	         (component :M => X)(implicit hint :Conforms[X, C, RefinedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
-		ComponentPath(this :M, component(this))
-
-
-
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		MappingReadForm.select(this, components)
-
-	/** @inheritdoc
-	  * @return `writeForm(QUERY, components)` unless overriden. */
-	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		writeForm(QUERY, components)
-
-	/** @inheritdoc
-	  * @return `writeForm(UPDATE, components)` unless overriden. */
-	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		writeForm(UPDATE, components)
-
-	/** @inheritdoc
-	  * @return `writeForm(INSERT, components)` unless overriden. */
-	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		writeForm(INSERT, components)
-
-	/** @inheritdoc
-	  * @return `MappingWriteForm(op, this, components)` by default. */
-	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
-		MappingWriteForm(op, this, components)
-
-	override def selectForm :SQLReadForm[S] = MappingReadForm.defaultSelect(this)
-
-	/** Default write form (included parameters) used for the ''WHERE'' clause filters for this mapping.
-	  * @return `writeForm(QUERY)` (or a functionally equivalent instance) unless overriden. */
-	override def queryForm :SQLWriteForm[S] = writeForm(QUERY)
-
-	/** Default write form (included columns) of update statements for this mapping.
-	  * @return `writeForm(UPDATE)` (or a functionally equivalent instance) unless overriden. */
-	override def updateForm :SQLWriteForm[S] = writeForm(UPDATE)
-
-	/** Default write form (included columns) of insert statements for this mapping.
-	  * @return `writeForm(INSERT)` (or a functionally equivalent instance) unless overriden. */
-	override def insertForm :SQLWriteForm[S] = writeForm(INSERT) //MappingWriteForm.defaultInsert(this)
-
-	/** The delegate target of all properties with write forms of various statement types.
-	  * @return `MappingWriteForm(op, this)` unless overriden. */
-	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = MappingWriteForm(op, this)
-
-
-	/** @inheritdoc
-	  * @return an empty sequence, unless overriden. */
-	override def buffs :Seq[Buff[S]] = Nil
-
-
-
-	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.select[BaseMapping[S, O], S, O](this, include, exclude)
-
-	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.query[BaseMapping[S, O], S, O](this, include, exclude)
-
-	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.update[BaseMapping[S, O], S, O](this, include, exclude)
-
-	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.insert[BaseMapping[S, O], S, O](this, include, exclude)
-
-
-
-	override def qualified(prefix :String) :Component[S] =
-		if (prefix.length == 0) this else prefixed(prefix + ".")
-
-	override def prefixed(prefix :String) :Component[S] =
-		if (prefix.length == 0) this
-		else PrefixedMapping[BaseMapping[S, O], S, O](prefix, this)
-
-	override def renamed(name :String) :Component[S] =
-		if (sqlName.contains(name)) this
-		else RenamedMapping[BaseMapping[S, O], S, O](name, this)
-
-
-
-	override def inOption :Optional[this.type] = OptionMapping.singleton(this)
-
-	override def as[X](there :Subject =?> X, back :X =?> Subject)(implicit nulls :NullValue[X] = null) :Component[X] =
-		MappedMapping[BaseMapping[S, O], S, X, O](this, there, back)
-
-}
-
-
-
-
-
-
-object BaseMapping {
-	type * = M[O] forSome { type M[A] <: BaseMapping[_, A]; type O }
-
-	type From[O] = BaseMapping[_, O]
-
-	type Of[S] = BaseMapping[S, _]
-
-	type AnyAt[O] = M[O] forSome { type M[A] <: BaseMapping[_, A] }
-
-	type AnyOf[S] = M[S] forSome { type M[X] <: BaseMapping[X, _] }
-
-
-
-	@inline implicit def baseMappingOriginProjection[M[A] <: BaseMapping[S, A], S, O]
-	                                                (implicit types :Conforms[M[O], M[O], BaseMapping[S, O]])
-			:ProjectionDef[M[O], M, S] =
-		OriginProjection.functor[M, S, O]
-
-}
-
-
-
-
-
-
-/** A `Mapping` subclass which, in its `optionally` (and indirectly `apply`) method, declares aliasing
-  * of its components on the passed `Pieces`. Some mappings (and possibly their components) allow
-  * declaring a column prefix to be added to all its columns, as well as additional buffs, which should be inherited
-  * by all of its subcomponents (including columns), so a component, as defined, can be a different instance from its
-  * final representation included on the mapping's component/column lists. As it is the latter version of the component
-  * which is used by the framework to create any SQL statements, and thus also by the `Pieces`, but typically
-  * the former is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces`
-  * implementation substitutes any component passed to it with its export representation before looking for its value.
-  *
-  */
-trait RootMapping[S, O] extends BaseMapping[S, O] {
-
-	override def optionally(pieces :Pieces) :Option[S] =
-		super.optionally(pieces.aliased(this))
-
-}
-
-
-

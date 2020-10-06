@@ -12,8 +12,8 @@ import net.noresttherein.oldsql.sql.ConversionSQL.{CaseColumnConversion, ColumnC
 import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ExtendedBy, FreeFrom, PartOf}
 import net.noresttherein.oldsql.sql.LogicalSQL.{AND, CaseLogical, LogicalMatcher, NOT, OR}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
-import net.noresttherein.oldsql.sql.MappingSQL.FreeColumnComponent.CaseFreeColumn
-import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, FreeColumnComponent, MappingColumnMatcher}
+import net.noresttherein.oldsql.sql.MappingSQL.LooseColumnComponent.CaseLooseColumn
+import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, LooseColumnComponent, MappingColumnMatcher}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelectColumn, FreeSelectColumn, SelectColumn, SelectColumnMatcher, SubselectColumn}
 import net.noresttherein.oldsql.sql.ConditionSQL.{CaseCondition, ConditionMatcher, InSQL, LikeSQL}
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
@@ -205,7 +205,7 @@ object ColumnSQL {
 	/** Extension methods for [[net.noresttherein.oldsql.sql.ColumnSQL]] which apply standard SQL
 	  * [[net.noresttherein.oldsql.sql.AggregateSQL.AggregateFunction aggregate]] functions to the enriched expression.
 	  * Extracted out as it is restricted to expressions based on
-	  * [[net.noresttherein.oldsql.sql.DiscreteFrom non-empty, not grouped]] `FromClause` subtypes and uses
+	  * [[net.noresttherein.oldsql.sql.DiscreteFrom non-empty, not grouping]] `FromClause` subtypes and uses
 	  * its [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome.GeneralizedAggregate GeneralizedAggregate]] member type
 	  * as the base of the created expressions.
 	  */
@@ -373,6 +373,20 @@ object ColumnSQL {
 
 
 	object AliasedColumn {
+		def apply[F <: FromClause, S >: LocalScope <: GlobalScope, V]
+		         (column :ColumnSQL[F, S, V], alias :String) :AliasedColumn[F, S, V] =
+			new AliasedColumn[F, S, V](column, alias)
+
+		def unapply[F <: FromClause, S >: LocalScope <: GlobalScope, V]
+		           (expr :SQLExpression[F, S, V]) :Option[(ColumnSQL[F, S, V], String)] =
+			expr match {
+				case alias :AliasedColumn[F @unchecked, S @unchecked, V @unchecked] =>
+					Some((alias.column, alias.alias))
+				case _ =>
+					None
+			}
+
+
 		trait AliasedColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def alias[S >: LocalScope <: GlobalScope, V](e :AliasedColumn[F, S, V]) :Y[S, V]
 		}
@@ -451,7 +465,7 @@ object ColumnSQL {
 
 	trait MatchColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnMatcher[F, Y]
 		with CaseAggregate[F, Y] with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
-		with CaseColumnComponent[F, Y] with CaseFreeColumn[F, Y] with CaseSelectColumn[F, Y]
+		with CaseColumnComponent[F, Y] with CaseLooseColumn[F, Y] with CaseSelectColumn[F, Y]
 
 	trait CaseColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchColumn[F, Y] {
 		def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :Y[S, X]
@@ -468,8 +482,8 @@ object ColumnSQL {
 		                      (e :ColumnComponentSQL[F, T, E, M, V, O]) :Y[GlobalScope, V] =
 			column(e)
 
-		override def freeComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
-		                          (e :FreeColumnComponent[O, M, V]) :Y[GlobalScope, V] =
+		override def looseComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
+		                          (e :LooseColumnComponent[O, M, V]) :Y[GlobalScope, V] =
 			column(e)
 
 		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectColumn[F, S, V, O]) :Y[S, Rows[V]] =

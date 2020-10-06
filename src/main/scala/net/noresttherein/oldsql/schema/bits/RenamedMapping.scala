@@ -28,7 +28,7 @@ class RenamedMapping[M <: RefinedMapping[S, O], S, O](name :String, protected ov
 
 	override def hashCode :Int = backer.hashCode * 31 + name.hashCode
 
-	override def toString :String = name + "->" + backer
+	override def toString :String = "\"" + name + "\":" + backer
 }
 
 

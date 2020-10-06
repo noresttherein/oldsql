@@ -1,16 +1,18 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.{BaseMapping, Relation, SQLForm}
+import net.noresttherein.oldsql.morsels.abacus.Numeral
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
+import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Mapping, Relation, SQLForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{IsomorphicProjection, ProjectionDef}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ExtendedBy, FreeFrom, JoinedMappings, NonEmptyFrom, OuterGroupedFrom, PartOf, PrefixOf}
-import net.noresttherein.oldsql.sql.GroupByAll.ByAll
+import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FromClauseLike, GeneralizedGroupingOf, JoinedMappings, NonEmptyFrom, NonEmptyFromLike, OuterGroupingFrom, ParameterlessFrom, PartOf, PrefixOf, TableCount}
+import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseLike
 import net.noresttherein.oldsql.sql.GroupParam.ByParam
-import net.noresttherein.oldsql.sql.MappingSQL.{FreeComponent, JoinedRelation, RelationSQL}
-import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL}
+import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, ComponentSQL, JoinedRelation, LooseComponent, RelationSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
@@ -27,7 +29,7 @@ import net.noresttherein.oldsql.sql.UnboundParam.{?:, ParamRelation}
   * [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] implementation used for ''selects'' which feature
   * an aggregate function in their ''select'' clause, aggregating all rows into a single result.
   */
-sealed trait AggregateClause extends FromClause { thisClause =>
+sealed trait AggregateClause extends FromClause with FromClauseLike[AggregateClause] { thisClause =>
 //	override type FromLast >: Generalized <: AggregateClause
 	override type FromNext[E[+L <: FromSome] <: FromClause] = Nothing
 
@@ -60,27 +62,6 @@ sealed trait AggregateClause extends FromClause { thisClause =>
 		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
-	override type This <: AggregateClause {
-		type LastMapping[O] = thisClause.LastMapping[O]
-		type LastTable[F <: FromClause] = thisClause.LastTable[F]
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type Base = thisClause.Base
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
-	}
 
 
 	override type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
@@ -104,7 +85,7 @@ sealed trait AggregateClause extends FromClause { thisClause =>
 	  * This is the ''generalized'' supertype of [[net.noresttherein.oldsql.sql.AggregateClause.Discrete this.Discrete]].
 	  * For [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] it is `clause.Generalized`;
 	  * for [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is `left.Generalized`;
-	  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
+	  * [[net.noresttherein.oldsql.sql.ByAll ByAll]]
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.GeneralizedDiscrete`.
 	  */
 	type GeneralizedDiscrete >: Discrete <: FromSome
@@ -113,7 +94,7 @@ sealed trait AggregateClause extends FromClause { thisClause =>
 	  * [[net.noresttherein.oldsql.sql.FromClause.Explicit ''explicit'']] portion.
 	  * For [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] it is `clause.Self`;
 	  * for [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is `left.Self`;
-	  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
+	  * [[net.noresttherein.oldsql.sql.ByAll ByAll]]
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.Discrete`.
 	  */
 	type Discrete <: FromSome
@@ -137,6 +118,8 @@ sealed trait AggregateClause extends FromClause { thisClause =>
 	  * outer and inner sections. Equals `from.Inner`.
 	  */
 	type Grouped = from.Inner
+
+
 
 
 	protected override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.aggregateClause(this)
@@ -173,7 +156,9 @@ sealed trait AggregateClause extends FromClause { thisClause =>
   *           as arguments to aggregate functions.
   * @author Marcin Mościcki
   */
-sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateClause { thisClause =>
+sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateClause {
+	thisClause =>
+
 	override type LastMapping[O] = Nothing
 	override type LastTable[E <: FromClause] = Nothing
 	override type FromLast = FromClause
@@ -199,7 +184,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] = True
 
 	/** Throws an `UnsupportedOperationException`. */
-	override def where(condition :GlobalBoolean[Generalized]) :Nothing =
+	override def filtered[S >: GlobalScope <: GlobalScope](condition :SQLBoolean[Generalized, S]) :Nothing =
 		throw new UnsupportedOperationException(s"($this).where($condition)")
 
 
@@ -318,6 +303,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 
 
 	override def toString :String= clause.toString + " aggregated"
+
 }
 
 
@@ -350,6 +336,7 @@ object Aggregated {
 
 
 	type * = Aggregated[_ <: FromSome]
+
 }
 
 
@@ -360,10 +347,10 @@ object Aggregated {
 
 /** A base type for all clauses which contain a ''group by'' clause.
   * @see [[net.noresttherein.oldsql.sql.GroupByAll]]
-  * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
+  * @see [[net.noresttherein.oldsql.sql.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.GroupParam]]
   */
-trait GroupByClause extends NonEmptyFrom with AggregateClause { thisClause =>
+trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClauseLike[GroupByClause] { thisClause =>
 	override type FromLast >: Generalized <: GroupByClause
 	override type FromNext[E[+L <: FromSome] <: FromClause] = Nothing
 
@@ -396,27 +383,6 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause { thisClause =>
 		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
-	override type This >: this.type <: GroupByClause {
-		type LastMapping[O] = thisClause.LastMapping[O]
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type Base = thisClause.Base
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
-	}
-
 
 
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
@@ -425,85 +391,6 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause { thisClause =>
 	  * @see [[net.noresttherein.oldsql.sql.FromClause#filter]]
 	  */
 	def condition :LocalBoolean[Generalized]
-
-	/** A copy of this clause with the `condition` being replaced with the given `filter`.
-	  * This does not replace the whole ''having'' filter, as the conditions (if present) of the left clause remain
-	  * unchanged. It is the target of the `having` and other filtering methods (which add to the condition, rather
-	  * then completely replacing it).
-	  */
-	def withCondition(filter :LocalBoolean[Generalized]) :This
-
-
-	/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.GroupByClause.having having]].
-	  * This means that the applied filter condition will become the ''having'' clause of the generated select,
-	  * rather than the ''where'' clause.
-	  * @param condition a function which accepts a
-	  *                  [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]] instance
-	  *                  functioning as a facade to this clause, providing easy access to all its relations,
-	  *                  and which returns an SQL expression for the new join/filter condition.
-	  * @return a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
-	  *         instance's filter and the `SQLBoolean` returned by the function.
-	  */
-	override def where(condition :GlobalBoolean[Generalized]) :This = having(condition)
-
-	/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.GroupByClause.having having]].
-	  * This means that the applied filter condition will become the ''having'' clause of the generated select,
-	  * rather than the ''where'' clause.
-	  * @param condition a function which accepts a
-	  *                  [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]] instance
-	  *                  functioning as a facade to this clause, providing easy access to all its relations,
-	  *                  and which returns an SQL expression for the new join/filter condition.
-	  * @return a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
-	  *         instance's filter and the `SQLBoolean` returned by the function.
-	  */
-	override def where(condition :JoinedMappings[Generalized] => GlobalBoolean[Generalized]) :This =
-		having(condition)
-
-	/** Creates a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
-	  * instance's filter and the given `SQLBoolean`. The filter becomes the part of the ''having'' clause
-	  * of the SQL ''select'' based on this clause or some its extension. This works analogously to the
-	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method with the same signature on ungrouped clauses.
-	  * @see [[net.noresttherein.oldsql.sql.GroupByClause.having]]
-	  */
-	def having(condition :LocalBoolean[Generalized]) :This = withCondition(condition && filter)
-
-	/** Apply a filter condition to this clause. The condition is combined using `&&` with `this.condition`
-	  * and becomes a part of `this.filter` representing the ''having'' clause of the SQL statement.
-	  * This works analogously to the [[net.noresttherein.oldsql.sql.FromClause.where where]] method
-	  * with the same signature on ungrouped clauses.
-	  * @param condition a function which accepts a
-	  *                  [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]] instance functioning
-	  *                  as a facade to this clause, providing easy access to all its relations,
-	  *                  and which returns an SQL expression for the new join/filter condition.
-	  *                  The provided `JoinedRelations` do ''not'' include the relations from the actual ''from''
-	  *                  clause (i.e. listed by the [[net.noresttherein.oldsql.sql.GroupByClause.Discrete Discrete]]),
-	  *                  as the values for their individual rows are unavailable. They can however be accessed
-	  *                  by the implicitly injected to it
-	  *                  [[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseExtension.grouped grouped]] method.
-	  *                  The expressions for these relations will be based however on the `GeneralizedDiscrete` type
-	  *                  rather than this clause; they can be adapted for the required `this.Generalized` by
-	  *                  passing them to an
-	  *                  [[net.noresttherein.oldsql.sql.AggregateSQL.AggregateFunction aggregate function]],
-	  *                  creating an [[net.noresttherein.oldsql.sql.AggregateSQL AggregateSQL]] in the result.
-	  * @return a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
-	  *         instance's filter and the `SQLBoolean` returned by the function.
-	  */
-	def having(condition :JoinedMappings[Generalized] => LocalBoolean[Generalized]) :This = {
-		val grounded = SQLScribe.groundFreeComponents(generalized)(condition(new JoinedMappings(generalized)))
-		having(grounded)
-	}
-
-	/** Apply a filter condition to the last grouping expression in this clause. The condition is combined using `&&`
-	  * with `this.condition` and becomes a part of `this.filter` representing the ''having'' clause of the SQL statement.
-	  * It is equivalent to `this.having(mappings => condition(mappings.last))`.
-	  * @param condition a function accepting the expression for the last relation in this clause and creating
-	  *                  an additional SQL expression for the ''having'' clause.
-	  * @return an `Extended` instance of the same kind as this one, with the same left and right sides,
-	  *         but with the join condition being the conjunction of the preexisting `this.condition`
-	  *         and the `LocalBoolean` returned by the passed filter function.
-	  */
-	def havingLast(condition :JoinedRelation[FromLast, LastMapping] => LocalBoolean[FromLast]) :This =
-		having(SQLScribe.groundFreeComponents(generalized)(condition(last)))
 
 
 
@@ -518,21 +405,27 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause { thisClause =>
 
 	/** The ''from'' clause under grouping of this ''group by'' clause.
 	  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is `left.Generalized`;
-	  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
+	  * [[net.noresttherein.oldsql.sql.ByAll ByAll]]
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.GeneralizedDiscrete`.
 	  */ //overriden for docs only
-	override type GeneralizedDiscrete >: Discrete <: FromSome
+	override type GeneralizedDiscrete >: Discrete <: FromSome {
+		type Generalized <: thisClause.GeneralizedDiscrete
+	}
 
 	/** The ''from'' clause under grouping of this ''group by'' clause.
 	  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is `left.Self`;
-	  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
+	  * [[net.noresttherein.oldsql.sql.ByAll ByAll]]
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.Discrete`.
 	  */ //overriden for docs only
-	override type Discrete <: FromSome
+	override type Discrete <: FromSome {
+		type Generalized = thisClause.GeneralizedDiscrete
+		type Self = thisClause.Discrete
+	}
+
 
 	/** The ''from'' clause under grouping of this ''group by'' clause.
 	  * For [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] it is its left side;
-	  * [[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]
+	  * [[net.noresttherein.oldsql.sql.ByAll ByAll]]
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.from`.
 	  */ //todo: rename to grouped, conflicts with the from method for creating subselects
 	override val from :Discrete
@@ -554,27 +447,222 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause { thisClause =>
 
 object GroupByClause {
 
+	type Group[S] = { type T[O] = BaseMapping[S, O]; type C[O] = ColumnMapping[S, O] }
+
+
 	def unapply(f :FromClause) :Option[DiscreteFrom] = f match {
 		case group :GroupByClause => Some(group.from)
 		case _ => None
+	 }
+
+
+
+	trait GroupByClauseLike[+F <: GroupByClause with GroupByClauseLike[F]] extends NonEmptyFromLike[F] { thisClause :F =>
+
+		override type This >: this.type <: F {
+			type LastMapping[O] = thisClause.LastMapping[O]
+			type FromLast = thisClause.FromLast
+			type Generalized = thisClause.Generalized
+			type Self = thisClause.Self
+			type Params = thisClause.Params
+			type FullRow = thisClause.FullRow
+			type Explicit = thisClause.Explicit
+			type Inner = thisClause.Inner
+			type Implicit = thisClause.Implicit
+			type Outer = thisClause.Outer
+			type Base = thisClause.Base
+			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+			type InnerRow = thisClause.InnerRow
+			type OuterRow = thisClause.OuterRow
+			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
+			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+		}
+
+		/** A copy of this clause with the `condition` being replaced with the given `filter`.
+		  * This does not replace the whole ''having'' filter, as the conditions (if present) of the left clause remain
+		  * unchanged. It is the target of the `having` and other filtering methods (which add to the condition, rather
+		  * then completely replacing it).
+		  */
+		def withCondition(filter :LocalBoolean[Generalized]) :This
+
+
+		override def filtered[S >: LocalScope <: GlobalScope](filter :SQLBoolean[Generalized, S]) :This =
+			if (filter == True) this else withCondition(condition && filter)
+
+		/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseLike.having having]].
+		  * This means that the applied filter condition will become the ''having'' clause of the generated select,
+		  * rather than the ''where'' clause.
+		  * @param condition a function which accepts a
+		  *                  [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]] instance
+		  *                  functioning as a facade to this clause, providing easy access to all its relations,
+		  *                  and which returns an SQL expression for the new join/filter condition.
+		  * @return a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
+		  *         instance's filter and the `SQLBoolean` returned by the function.
+		  */
+		override def where(condition :GlobalBoolean[Generalized]) :F = having(condition)
+
+		/** A straightforward delegate to `this.`[[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseLike.having having]].
+		  * This means that the applied filter condition will become the ''having'' clause of the generated select,
+		  * rather than the ''where'' clause.
+		  * @param condition a function which accepts a
+		  *                  [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]] instance
+		  *                  functioning as a facade to this clause, providing easy access to all its relations,
+		  *                  and which returns an SQL expression for the new join/filter condition.
+		  * @return a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
+		  *         instance's filter and the `SQLBoolean` returned by the function.
+		  */
+		override def where(condition :JoinedMappings[Generalized] => GlobalBoolean[Generalized]) :F =
+			having(condition)
+
+		/** Creates a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
+		  * instance's filter and the given `SQLBoolean`. The filter becomes the part of the ''having'' clause
+		  * of the SQL ''select'' based on this clause or some its extension. This works analogously to the
+		  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method with the same signature on ungrouped clauses.
+		  * @see [[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseLike.having]]
+		  */
+		def having(condition :LocalBoolean[Generalized]) :F =
+			if (filter == True) this else withCondition(condition && filter)
+
+		/** Apply a filter condition to this clause. The condition is combined using `&&` with `this.condition`
+		  * and becomes a part of `this.filter` representing the ''having'' clause of the SQL statement.
+		  * This works analogously to the [[net.noresttherein.oldsql.sql.FromClause.where where]] method
+		  * with the same signature on ungrouped clauses.
+		  * @param condition a function which accepts a
+		  *                  [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]] instance
+		  *                  functioning as a facade to this clause, providing easy access to all its relations,
+		  *                  and which returns an SQL expression for the new join/filter condition.
+		  *                  The provided `JoinedRelations` do ''not'' include the relations from the actual ''from''
+		  *                  clause (i.e. listed by the [[net.noresttherein.oldsql.sql.GroupByClause.Discrete Discrete]]),
+		  *                  as the values for their individual rows are unavailable. They can however be accessed
+		  *                  by [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings.grouped grouped]] method.
+		  *                  The expressions for these relations will be based however on the `GeneralizedDiscrete`
+		  *                  type rather than this clause; they can be adapted for the required `this.Generalized` by
+		  *                  passing them to an
+		  *                  [[net.noresttherein.oldsql.sql.AggregateSQL.AggregateFunction aggregate function]],
+		  *                  creating an [[net.noresttherein.oldsql.sql.AggregateSQL AggregateSQL]] in the result.
+		  * @return a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
+		  *         instance's filter and the `SQLBoolean` returned by the function.
+		  */
+		def having(condition :JoinedMappings[Generalized] => LocalBoolean[Generalized]) :F = {
+			val grounded = SQLScribe.anchorLooseComponents(generalized)(condition(new JoinedMappings(generalized)))
+			having(grounded)
+		}
+
+		/** Apply a filter condition to the last grouping expression in this clause. The condition is combined
+		  * using `&&` with `this.condition` and becomes a part of `this.filter` representing the ''having'' clause
+		  * of the SQL statement. It is equivalent to `this.having(mappings => condition(mappings.last))`.
+		  * @param condition a function accepting the expression for the last relation in this clause and creating
+		  *                  an additional SQL expression for the ''having'' clause.
+		  * @return an `Extended` instance of the same kind as this one, with the same left and right sides,
+		  *         but with the join condition being the conjunction of the preexisting `this.condition`
+		  *         and the `LocalBoolean` returned by the passed filter function.
+		  */
+		def havingLast(condition :JoinedRelation[FromLast, LastMapping] => LocalBoolean[FromLast]) :F =
+			having(SQLScribe.anchorLooseComponents(generalized)(condition(last)))
+
 	}
 
 
 
-	implicit class GroupByClauseExtension[F <: GroupByClause](val thisClause :F) extends AnyVal {
-		def grouped :JoinedMappings[thisClause.Discrete] = new JoinedMappings(thisClause.from)
 
-		def byAll[E <: GlobalSQL[F, V], V, G <: GroupByClause]
-		         (expr :JoinedMappings[F] => E)(implicit grouping :GroupingExpression[F, E, V, G]) :G =
-			grouping(thisClause, expr(thisClause.mappings))
+
+
+	implicit def GeneralizedGroupByExtension
+	             [C <: GroupByClause, F <: FromSome, G <: GroupByClause { type GeneralizedDiscrete = F }]
+	             (self :C)(implicit cast :Conforms[C, G, GroupByClause { type GeneralizedDiscrete = F }])
+			:GroupByClauseExtension[F, G] =
+		new GroupByClauseExtension[F, G](self)
+
+
+	/** Extension methods for any ''group by'' clause `G` which require its static type for the appropriate return type.
+	  * @tparam F the actual ''from'' clause under grouping. All grouping expressions being the elements of
+	  *           the ''group by'' clause `G` are based on this type.
+	  * @tparam G this ''group by'' clause.
+	  */
+	class GroupByClauseExtension[F <: FromSome, G <: GroupByClause { type GeneralizedDiscrete = F }]
+	                            (val thisClause :G)
+		extends AnyVal
+	{
+
+		/** Adds another expression (column or columns) to the [[net.noresttherein.oldsql.sql.GroupByAll group by]]
+		  * clause to this ''from'' clause.
+		  * @tparam E an expression used for grouping, for which
+		  *           a [[net.noresttherein.oldsql.sql.GroupByClause.GroupingExpression GroupingExpression]]
+		  *           type class exist. The [[net.noresttherein.oldsql.sql.GroupByClause.GroupingExpression$ companion]]
+		  *           object contains definitions for:
+		  *             - `M <: `[[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`[_, O]`, for some type `O`
+		  *               being a supertype of this clause and having an implicit
+		  *               [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] (which exists
+		  *               for all subtypes of `BaseMapping` taking the `Origin` type as its last type parameter),
+		  *             - not anchored adapters of component mappings of any relation mapping present in the provided
+		  *               [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]]:
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]]
+		  *               (and [[net.noresttherein.oldsql.sql.MappingSQL.LooseColumnComponent LooseColumnComponent]]),
+		  *             - components of relations: [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]]
+		  *               and [[net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL ColumnComponentSQL]],
+		  *             - any single column expressions [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]],
+		  *             - base [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]],
+		  * @tparam V the value type of the grouping expression.
+		  * @param expr a function accepting the facade to this clause
+		  *             [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]], which provides
+		  *             accessors to the mappings for all relations in this clause, and which returns
+		  *             either a [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] with a supertype
+		  *             of this clause as its `Origin` type argument,
+		  *             or an [[net.noresttherein.oldsql.sql.SQLExpression SQL expression]] based on this clause which
+		  *             will be used as the grouping expression. The expression may be
+		  *             a [[net.noresttherein.oldsql.sql.ColumnSQL single column]], but it doesn't have to,
+		  *             in which case all columns of the expression will be inlined in the ''group by'' clause
+		  *             in the order defined by its [[net.noresttherein.oldsql.schema.SQLReadForm form]].
+		  *             If the returned value is a a mapping `M[O] <: MappingAt[O]` or a component expression
+		  *             for such a mapping - either a ready
+		  *             [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]] or unanchored
+		  *             [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent! LooseComponent]] (implicitly
+		  *             convertible from any component mapping) - then the return type of the method will be
+		  *             `G `[[net.noresttherein.oldsql.sql.ByAll ByAll]]` M`, allowing selecting of any
+		  *             of its components/columns, just as with components of tables joined using
+		  *             the [[net.noresttherein.oldsql.sql.Join Join]] classes (and through the same
+		  *             mechanisms).
+		  * @param grouping a type class responsible for creating the returned ''group by'' clause, which defines
+		  *                 the return type based on the type of the expression returned by the function passed
+		  *                 as the first argument. See the `returns` section for a listing.
+		  * @return a [[net.noresttherein.oldsql.sql.ByAll ByAll]] instance using this clause as its left side.
+		  *         The mapping type on the right side will be the mapping for the expression `E` returned
+		  *         by the passed function: if it is a
+		  *         [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]], it is used directly after anchoring
+		  *         to the relation based on its `Origin` type. In case of
+		  *         [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]] or
+		  *         [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]] (including their column
+		  *         subtypes), the mapping is the mapping type parameter of the component expression.
+		  *         Otherwise a generic [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]
+		  *         (or [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] if `E` is
+		  *         a [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]) is used. In the latter case, the return type
+		  *         is abbreviated as `F `[[net.noresttherein.oldsql.sql.ByVal ByVal]]` V`
+		  *         (or `F `[[net.noresttherein.oldsql.sql.ByOne ByOne]]` V`), where `V` is the value type
+		  *         of the expression `E`.
+		  */
+		def by[E, V](expr :JoinedMappings[F] => E)(implicit grouping :GroupingExpression[F, G, E, V]) :grouping.Result =
+			grouping(thisClause)(expr(thisClause.from.generalized.mappings))
+
+
+		/** Applies this clause to its parameters: removes all [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
+		  * parameters from this clause and substitutes all references to parameter components with SQL literals
+		  * extracted from parameter values. This method will include ''all'' parameters in their order of appearance
+		  * in `F`, including those in the grouped, 'discrete' section, which aren't available for use in SQL expressions.
+		  * @param params a chain consisting of subject types of all parameter mappings of all `UnboundParam` joins
+		  *               in this clause in order of their appearance.
+		  * @tparam U `FromClause` subtype obtained by removing all `JoinParam` instances from this clause's type.
+		  */
+		def apply[U <: ParameterlessFrom](params :thisClause.Params)
+		                                 (implicit apply :ApplyJoinParams[G, thisClause.Params, U]) :U =
+			apply(thisClause, params)
 	}
 
-	implicit def JoinedMappingsExtension[F <: GroupByClause](mappings :JoinedMappings[F]) :GroupByClauseExtension[F] =
-		new GroupByClauseExtension[F](mappings.thisClause)
 
 
-
-	implicit class OuterGroupedFromExtension[F <: OuterGroupedFrom](private val thisClause :F) extends AnyVal {
+	/** Extension methods for any ''group by'' clause `F` which is not a subselect of another select. */
+	implicit class OuterGroupingFromExtension[F <: OuterGroupingFrom](private val thisClause :F) extends AnyVal {
 
 		/** Creates a parameterized `FromClause` instance allowing the use of a statement parameter `X` in the SQL
 		  * expressions based on the created object. The parameter is represented as a synthetic `Mapping` type,
@@ -619,15 +707,188 @@ object GroupByClause {
 
 
 
-	trait GroupingExpression[F <: GroupByClause, -S <: GlobalSQL[F, V], V, G <: GroupByClause] {
-		def apply(clause :F, expr :S) :G
+
+	/** A pseudo relation used by the ''group by'' clauses [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] and
+	  * [[net.noresttherein.oldsql.sql.ByAll ByAll]].
+	  */
+	class GroupingRelation[M[O] <: BaseMapping[S, O], S, A] private
+	                      (val expr :SQLExpression[_, GlobalScope, S], template :M[A])
+	                      (implicit projection :IsomorphicProjection[M, S, A])
+		extends Relation[M]
+	{
+		override def apply[O] :M[O] = projection(template)
+
+		override def sql :String = ??? //fixme: proper default SQL
 	}
 
 
-	object GroupingExpression {
-		implicit def groupByComponent[F <: GroupByClause, M[O] <: BaseMapping[S, O], S]
-				:GroupingExpression[F, FreeComponent[F, M, S], S, F ByAll M] =
-			(clause :F, expr :FreeComponent[F, M, S]) => ByAll[F, M, S](clause, ???)(True)
+
+	object GroupingRelation {
+
+		def apply[F <: FromClause, M[A] <: BaseMapping[S, A], S, O >: F <: FromClause]
+		         (component :BaseComponentSQL[F, M, O])(implicit project :IsomorphicProjection[M, S, O])
+				:GroupingRelation[M, S, O] =
+			new GroupingRelation[M, S, O](component, component.mapping)
+
+		def apply[F <: FromClause, S](expression :SQLExpression[F, GlobalScope, S]) :GroupingRelation[Group[S]#T, S, F] =
+			new GroupingRelation[Group[S]#T, S, F](expression, ExpressionMapping(expression))(
+				OriginProjection[Group[S]#T[Any], S].isomorphism[F]
+			)
+
+		def apply[F <: FromClause, S](expression :ColumnSQL[F, GlobalScope, S]) :GroupingRelation[Group[S]#C, S, F] =
+			new GroupingRelation[Group[S]#C, S, F](expression, ExpressionColumnMapping(expression))(
+				OriginProjection[Group[S]#C[Any], S].isomorphism[F]
+			)
+	}
+
+
+
+
+
+
+	/** A type class for type `E`, allowing it to be used when creating ''group by'' clause elements
+	  * using the [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.groupBy groupBy]] and
+	  * [[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseExtension.by by]] methods.
+	  * @tparam F the actual ''from'' clause `<: `[[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]]
+	  *           in the [[net.noresttherein.oldsql.sql.FromClause.Generalized generalized]] form,
+	  *           which the grouping expression created by this type class is based on. It must be a supertype of
+	  *           `G#GeneralizedDiscrete`.
+	  * @tparam G the clause which is being expanded with a new grouping expression. It will become the left side
+	  *           of the returned `this.Result`. It may be either the type `F` when adding a first grouping expression
+	  *           using [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]], or
+	  *           a [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]], in which case it will be expanded
+	  *           with a [[net.noresttherein.oldsql.sql.ByAll ByAll]] class.
+	  * @tparam E the type of the expression which can be turned into a grouping extension. Predefined implicit values
+	  *           of this type exist in the companion
+	  *           [[net.noresttherein.oldsql.sql.GroupByClause.GroupingExpression$ object]] for:
+	  *             - [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`V, O]` subtypes,
+	  *               where `O >: F <: FromClause`,
+	  *             - [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]]
+	  *               (and [[net.noresttherein.oldsql.sql.MappingSQL.LooseColumnComponent LooseColumnComponent]]),
+	  *             - [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]] and
+	  *               [[net.noresttherein.oldsql.sql.MappingSQL.BaseColumnComponentSQL BaseColumnComponentSQL]],
+	  *             - [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, `[[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope GlobalScope]]`, V]`
+	  *               and [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, GlobalScope, V]`.
+	  * @tparam V the value type of the expression `E`: the `Subject` type of the mapping or the last type parameter of
+	  *           `SQLExpression`.
+	  */
+	trait GroupingExpression[-F <: FromClause, -G <: FromClause, -E, V] {
+		type Result <: GroupByClause
+		def apply(clause :G)(expr :E) :Result
+	}
+
+
+	sealed abstract class ArbitraryGroupingExpressionImplicits {
+
+		implicit def groupByVal[F <: FromSome, V]
+				:GroupingExpression[F, F, GlobalSQL[F, V], V] { type Result = F GroupByVal V } =
+			new GroupingExpression[F, F, GlobalSQL[F, V], V] {
+				override type Result = F GroupByVal V
+
+				override def apply(clause :F)(expr :GlobalSQL[F, V]) = GroupByVal(clause, expr)
+			}
+
+		implicit def byVal[F <: FromSome, G <: GeneralizedGroupingOf[F], V]
+				:GroupingExpression[F, G, GlobalSQL[F, V], V] { type Result = G ByVal V } =
+			new GroupingExpression[F, G, GlobalSQL[F, V], V] {
+				override type Result = G ByVal V
+
+				override def apply(clause :G)(expr :GlobalSQL[F, V]) = ByVal(clause, expr)
+			}
+	}
+
+
+	sealed abstract class GroupingColumnExpressionImplicits extends ArbitraryGroupingExpressionImplicits {
+
+		implicit def groupByOne[F <: FromSome, V]
+				:GroupingExpression[F, F, ColumnSQL[F, GlobalScope, V], V] { type Result = F GroupByOne V } =
+			new GroupingExpression[F, F, ColumnSQL[F, GlobalScope, V], V] {
+				override type Result = F GroupByOne V
+
+				override def apply(clause :F)(expr :ColumnSQL[F, GlobalScope, V]) =
+					GroupByOne(clause, expr)
+			}
+
+		implicit def byOne[F <: FromSome, G <: GeneralizedGroupingOf[F], V]
+				:GroupingExpression[F, G, ColumnSQL[F, GlobalScope, V], V] { type Result = G ByOne V } =
+			new GroupingExpression[F, G, ColumnSQL[F, GlobalScope, V], V] {
+				override type Result = G ByOne V
+
+				override def apply(clause :G)(expr :ColumnSQL[F, GlobalScope, V]) = ByOne(clause, expr)
+			}
+
+	}
+
+
+	object GroupingExpression extends GroupingColumnExpressionImplicits {
+
+		implicit def groupByMapping[F <: FromSome, U <: FromClause, C <: Mapping, S]
+		                           (implicit subject :C <:< BaseMapping[S, U], origin :F <:< U,
+		                            shift :TableCount[U, _ <: Numeral], projection :OriginProjection[C, S])
+				:GroupingExpression[F, F, C, S] { type Result = F GroupByAll projection.WithOrigin } =
+			new GroupingExpression[F, F, C, S] {
+				override type Result = F GroupByAll projection.WithOrigin
+
+				override def apply(clause :F)(expr :C) = {
+					val relation = clause.fullTableStack(shift.tables).asRelationSQL
+					                     .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
+					val component = ComponentSQL(relation, projection[F](expr))(projection.isomorphism)
+					GroupByAll[F, projection.WithOrigin, projection.WithOrigin, S](clause, component.groupingRelation)
+				}
+			}
+
+		implicit def groupByFree[F <: FromSome, U >: F <: FromClause, M[O] <: BaseMapping[S, O], S]
+				:GroupingExpression[F, F, LooseComponent[U, M, S], S] { type Result = F GroupByAll M } =
+			new GroupingExpression[F, F, LooseComponent[U, M, S], S] {
+				override type Result = F GroupByAll M
+
+				override def apply(clause :F)(expr :LooseComponent[U, M, S]) =
+					GroupByAll[F, M, S](clause, expr)
+			}
+
+		implicit def groupByComponent[F <: FromSome, M[O] <: BaseMapping[S, O], S]
+				:GroupingExpression[F, F, BaseComponentSQL[F, M, _ >: F <: FromClause], S] { type Result = F GroupByAll M } =
+			new GroupingExpression[F, F, BaseComponentSQL[F, M, _ >: F <: FromClause], S] {
+				override type Result = F GroupByAll M
+
+				override def apply(clause :F)(expr :BaseComponentSQL[F, M, _ >: F <: FromClause]) =
+					GroupByAll(clause, expr)
+			}
+
+
+
+		implicit def byMapping[F <: FromSome, G <: GeneralizedGroupingOf[F], C <: Mapping, S]
+		                      (implicit cast :C <:< BaseMapping[S, F],
+		                                shift :TableCount[F, _ <: Numeral], projection :OriginProjection[C, S])
+				:GroupingExpression[F, G, C, S] { type Result = G ByAll projection.WithOrigin } =
+			new GroupingExpression[F, G, C, S] {
+				override type Result = G ByAll projection.WithOrigin
+
+				override def apply(clause :G)(expr :C) = {
+					val relation = clause.fullTableStack(shift.tables).asRelationSQL
+						.asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
+					val component = ComponentSQL(relation, projection[F](expr))(projection.isomorphism)
+					ByAll[G, projection.WithOrigin, projection.WithOrigin, S](clause, component.groupingRelation)
+				}
+			}
+
+		implicit def byFree[F <: FromSome, G <: GeneralizedGroupingOf[F], M[O] <: BaseMapping[S, O], S]
+				:GroupingExpression[F, G, LooseComponent[F, M, S], S] { type Result = G ByAll M } =
+			new GroupingExpression[F, G, LooseComponent[F, M, S], S] {
+				override type Result = G ByAll M
+
+				override def apply(clause :G)(expr :LooseComponent[F, M, S]) =
+					ByAll[F, G, M, S](clause, expr)
+			}
+
+		implicit def byComponent[F <: FromSome, G <: GeneralizedGroupingOf[F], M[O] <: BaseMapping[S, O], S]
+				:GroupingExpression[F, G, BaseComponentSQL[F, M, _ >: F <: FromClause], S] { type Result = G ByAll M } =
+			new GroupingExpression[F, G, BaseComponentSQL[F, M, _ >: F <: FromClause], S] {
+				override type Result = G ByAll M
+
+				override def apply(clause :G)(expr :BaseComponentSQL[F, M, _ >: F <: FromClause]) =
+					ByAll(clause, expr)
+			}
 
 	}
 

@@ -3,15 +3,18 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.sql.Compound.CompoundLike
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, PartOf}
-import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, GeneralizedGroupingOf, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, ComponentSQL, LooseComponent, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
+import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseLike
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 
 
@@ -22,29 +25,13 @@ import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 /**
   * @author Marcin Mościcki
   */
-trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause with Compound[F, M] { thisClause =>
+trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]]
+	extends Compound[F, M] with GroupByClause with GroupByClauseLike[F GroupByAll M] with CompoundLike[F GroupByAll M]
+{ thisClause =>
 
 	override type FromLast = FromSome GroupByAll M
 	override type Generalized = left.Generalized GroupByAll M
 	override type Self = left.Self GroupByAll M
-
-	override type This >: this.type <: (F GroupByAll M) {
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type Base = thisClause.Base
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
-			thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-	}
 
 	protected override def narrow :left.type GroupByAll M
 
@@ -62,9 +49,6 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 
 	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] =
 		condition.basedOn(target)
-
-	override def having(filter :LocalBoolean[Generalized]) :This =
-		if (filter == True) this else withCondition(condition && filter)
 
 
 
@@ -152,6 +136,21 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]] extends GroupByClause wit
 
 
 object GroupByAll {
+
+
+	def apply[F <: FromSome, M[O] <: BaseMapping[S, O], S]
+	         (from :F, group :LooseComponent[_ >: F <: FromClause, M, S]) :F GroupByAll M =
+	{
+		val relation = from.fullTableStack(group.shift).asRelationSQL
+		                    .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
+		val component = ComponentSQL(relation, group.mapping)(group.projection.isomorphism)
+		GroupByAll[F, M, M, S](from, component.groupingRelation)
+	}
+
+	def apply[F <: FromSome, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (from :F, group :BaseComponentSQL[F, M, _ >: F <: FromClause])
+	         (implicit cast :InferSubject[F, GroupByAll, M, T, S]) :F GroupByAll M =
+		GroupByAll(from, group.groupingRelation)
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -260,19 +259,20 @@ object GroupByAll {
 
 
 
-	trait AndByAll[+F <: GroupByClause, G[A] <: MappingAt[A]] extends GroupByClause with NonSubselect[F, G] {
-		thisClause =>
+	trait AndByAll[+F <: GroupByClause, M[A] <: MappingAt[A]]
+		extends NonSubselect[F, M] with GroupByClause with CompoundLike[F AndByAll M] with GroupByClauseLike[F AndByAll M]
+	{ thisClause =>
 
-		override type FromLast = GroupByClause AndByAll G
+		override type FromLast = GroupByClause AndByAll M
 
-		override type Generalized >: Self <: (left.Generalized AndByAll G) {
+		override type Generalized >: Self <: (left.Generalized AndByAll M) {
 			type Generalized <: thisClause.Generalized
 			type Explicit <: thisClause.Explicit
 			type Implicit <: thisClause.Implicit
 			type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 		}
 
-		override type Self <: (left.Self AndByAll G) {
+		override type Self <: (left.Self AndByAll M) {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
 			type Self = thisClause.Self
@@ -292,31 +292,12 @@ object GroupByAll {
 			type FromSubselect[+P <: NonEmptyFrom] = thisClause.FromSubselect[P]
 		}
 
-		override type This >: this.type <: (F AndByAll G) {
-			type FromLast = thisClause.FromLast
-			type Generalized = thisClause.Generalized
-			type Self = thisClause.Self
-			type Params = thisClause.Params
-			type FullRow = thisClause.FullRow
-			type Explicit = thisClause.Explicit
-			type Inner = thisClause.Inner
-			type Implicit = thisClause.Implicit
-			type Outer = thisClause.Outer
-			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-			type InnerRow = thisClause.InnerRow
-			type OuterRow = thisClause.OuterRow
-			type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] =
-				thisClause.JoinedWith[P, J]
-			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+P <: NonEmptyFrom] = thisClause.FromSubselect[P]
-		}
 
 		protected override def narrow :WithLeft[left.type]
 
 
 
-		type GeneralizedLeft[+L <: GroupByClause] <: (L AndByAll G) {
+		type GeneralizedLeft[+L <: GroupByClause] <: (L AndByAll M) {
 			type GeneralizedLeft[+C <: GroupByClause] <: thisClause.GeneralizedLeft[C]
 		}
 
@@ -340,10 +321,8 @@ object GroupByAll {
 		override def filter :LocalBoolean[Generalized] = cachedFilter.get
 
 		override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] =
-			left.filter(target)(extension.extendFront[left.Generalized, G]) && condition.basedOn(target)
+			left.filter(target)(extension.extendFront[left.Generalized, M]) && condition.basedOn(target)
 
-		override def having(filter :LocalBoolean[Generalized]) :This =
-			if (filter == True) this else withCondition(condition && filter)
 
 
 		override type Grouping[+U <: FromSome] = WithLeft[left.Grouping[U]]
@@ -358,193 +337,194 @@ object GroupByAll {
 
 	}
 
+}
 
 
-	trait ByAll[+F <: GroupByClause, G[A] <: MappingAt[A]] extends AndByAll[F, G] { thisClause =>
 
-		override type Generalized = left.Generalized ByAll G
-		override type Self = left.Self ByAll G
 
-		override type This >: this.type <: (F ByAll G) {
-			type Generalized = thisClause.Generalized
-			type Self = thisClause.Self
-			type Params = thisClause.Params
-			type FullRow = thisClause.FullRow
-			type Explicit = thisClause.Explicit
-			type Inner = thisClause.Inner
-			type Implicit = thisClause.Implicit
-			type Outer = thisClause.Outer
-			type Base = thisClause.Base
-			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-			type InnerRow = thisClause.InnerRow
-			type OuterRow = thisClause.OuterRow
-			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
-				thisClause.JoinedWith[P, J]
-			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+
+
+
+trait ByAll[+F <: GroupByClause, G[A] <: MappingAt[A]]
+	extends AndByAll[F, G] with GroupByClauseLike[F ByAll G] with CompoundLike[F ByAll G]
+{ thisClause =>
+
+	override type Generalized = left.Generalized ByAll G
+	override type Self = left.Self ByAll G
+
+	override type GeneralizedLeft[+L <: GroupByClause] = L ByAll G
+	override type WithLeft[+L <: GroupByClause] = L ByAll G
+
+
+	override type Params = left.Params
+
+
+	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+		left.JoinedWith[P, J] ByAll G
+
+	override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :left.JoinedWith[P, firstJoin.LikeJoin] ByAll G =
+		withLeft(left.joinedWith(prefix, firstJoin))(condition)
+
+	override type JoinedWithSubselect[+P <: NonEmptyFrom] = left.JoinedWithSubselect[P] ByAll G
+
+	override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :left.JoinedWithSubselect[P] ByAll G =
+		withLeft(left.joinedWithSubselect(prefix))(condition)
+
+	override def appendedTo[P <: DiscreteFrom](prefix :P) :left.JoinedWith[P, AndFrom] ByAll G =
+		withLeft(left.appendedTo(prefix))(condition)
+
+
+	override type Explicit = left.Explicit ByAll G
+	override type Inner = left.Inner ByAll G
+	override type Base = left.DefineBase[left.Implicit] //a supertype of clause.Base (in theory, equal in practice)
+	override type DefineBase[+I <: FromClause] = left.DefineBase[I]
+	override def base :Base = left.base
+
+
+	override type AsSubselectOf[+P <: NonEmptyFrom] = left.AsSubselectOf[P] ByAll G
+
+	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
+			:AsSubselectOf[P] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
+	{
+		val newLeft = left.asSubselectOf(newOuter)
+		//todo: refactor joins so they take functions creating conditions and move this to the constructor
+		//  this would however introduce problem with JoinLike.as: one of the relation becoming unavailable
+		val unfiltered = withLeft[newLeft.Generalized](newLeft.generalized)(True)
+		val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized ByAll G](
+			generalized, unfiltered, extension.length, innerSize + 1
+		)
+		withLeft[newLeft.type](newLeft)(substitute(condition))
+	}
+
+
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[ByAll.*]
+
+	override def name = "by"
+
+}
+
+
+
+
+
+object ByAll {
+
+
+	def apply[F <: FromSome, G <: GeneralizedGroupingOf[F], M[O] <: BaseMapping[S, O], S]
+	         (from :G, group :LooseComponent[F, M, S]) :G ByAll M =
+	{
+		val relation = from.from.fullTableStack(group.shift).asRelationSQL
+		                   .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
+		val component = ComponentSQL(relation, group.mapping)(group.projection)
+		ByAll[G, M, M, S](from, component.groupingRelation)
+	}
+
+	def apply[F <: FromSome, G <: GeneralizedGroupingOf[F], M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (from :G, group :BaseComponentSQL[F, M, _ >: F <: FromClause])(implicit cast :InferSubject[G, ByAll, M, T, S])
+			:G ByAll M =
+		ByAll(from, group.groupingRelation)
+
+
+	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
+	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
+	  * it is generally recommended to use
+	  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
+	  * @param from a ''from'' clause containing the list of relations preceding `right`.
+	  * @param group the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *              `Mapping` type.
+	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
+	  *               clause in the generated SQL.
+	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
+	  *             and conversions of associated classes between instances parameterized with the more generic `M`
+	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @return an `G GroupByAll M`.
+	  */
+	def apply[G <: GroupByClause, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (from :G, group :Relation[M], filter :LocalBoolean[G#Generalized ByAll M] = True)
+	         (implicit cast :InferSubject[G, ByAll, M, T, S]) :G ByAll M =
+		ByAll[G, T, S](from, RelationSQL(cast(group), 0))(cast.cast(filter))
+
+
+
+	private[sql] def apply[G <: GroupByClause, T[O] <: BaseMapping[S, O], S]
+	                      (clause :G, group :RelationSQL[GroupByClause AndByAll T, T, S, GroupByClause AndByAll T])
+	                      (cond :LocalBoolean[clause.Generalized ByAll T])
+			:G ByAll T =
+		new ByAll[clause.type, T] with AbstractExtended[clause.type, T, S] {
+			override val left = clause
+			override val last = group
+			override val condition = cond
+			override val from = left.from
+			override val outer = left.outer
+			override val fullSize = left.fullSize + 1
+
+			override type This = left.type ByAll T
+
+			override def narrow :left.type ByAll T = this
+
+			override def withCondition(filter :LocalBoolean[Generalized]) =
+				ByAll[left.type, T, S](left, last)(filter)
+
+			override def withLeft[L <: GroupByClause]
+			                     (left :L)(condition :LocalBoolean[left.Generalized ByAll T]) :L ByAll T =
+				ByAll[L, T, S](left, last)(condition)
+
+
+			override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.by[G, T, S](this)
+
 		}
 
 
-		override type GeneralizedLeft[+L <: GroupByClause] = L ByAll G
-		override type WithLeft[+L <: GroupByClause] = L ByAll G
 
+	/** Matches all `ByAll` instances, splitting them into their left (preceding column groupings)
+	  * and right (the last column grouping) sides.
+	  */
+	def unapply[L <: FromClause, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
+		case _ :ByAll[_, _] => Some((from.left, from.right))
+		case _ => None
+	}
 
-		override type Params = left.Params
-
-
-		override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
-			left.JoinedWith[P, J] ByAll G
-
-		override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :left.JoinedWith[P, firstJoin.LikeJoin] ByAll G =
-			withLeft(left.joinedWith(prefix, firstJoin))(condition)
-
-		override type JoinedWithSubselect[+P <: NonEmptyFrom] = left.JoinedWithSubselect[P] ByAll G
-
-		override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :left.JoinedWithSubselect[P] ByAll G =
-			withLeft(left.joinedWithSubselect(prefix))(condition)
-
-		override def appendedTo[P <: DiscreteFrom](prefix :P) :left.JoinedWith[P, AndFrom] ByAll G =
-			withLeft(left.appendedTo(prefix))(condition)
-
-
-		override type Explicit = left.Explicit ByAll G
-		override type Inner = left.Inner ByAll G
-		override type Base = left.DefineBase[left.Implicit] //a supertype of clause.Base (in theory, equal in practice)
-		override type DefineBase[+I <: FromClause] = left.DefineBase[I]
-		override def base :Base = left.base
-
-
-		override type AsSubselectOf[+P <: NonEmptyFrom] = left.AsSubselectOf[P] ByAll G
-
-		override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
-				:AsSubselectOf[P] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
-		{
-			val newLeft = left.asSubselectOf(newOuter)
-			//todo: refactor joins so they take functions creating conditions and move this to the constructor
-			//  this would however introduce problem with JoinLike.as: one of the relation becoming unavailable
-			val unfiltered = withLeft[newLeft.Generalized](newLeft.generalized)(True)
-			val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized ByAll G](
-				generalized, unfiltered, extension.length, innerSize + 1
-			)
-			withLeft[newLeft.type](newLeft)(substitute(condition))
-		}
-
-
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ByAll.*]
-
-		override def name = "by"
-
+	/** Matches all `ByAll` subclasses, extracting their `left` and `right` sides in the process. */
+	def unapply(from :FromClause) :Option[(GroupByClause, Relation.*)] = from match {
+		case group :ByAll.* => Some((group.left, group.right))
+		case _ => None
 	}
 
 
 
+	implicit def byAllDecomposition[L <: GroupByClause, R[O] <: MappingAt[O]]
+			:ExtendedDecomposition[L ByAll R, L, R, ByAll, GroupByClause] =
+		composition.asInstanceOf[ExtendedDecomposition[L ByAll R, L, R, ByAll, GroupByClause]]
 
-
-	object ByAll {
-
-		/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
-		  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
-		  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
-		  * [[net.noresttherein.oldsql.sql.FromClause.where where]] or
-		  * [[net.noresttherein.oldsql.sql.FromClause.where where]] method. It is a lower level method;
-		  * it is generally recommended to use
-		  * `left` [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension.join join]] `right`
-		  * [[net.noresttherein.oldsql.sql.FromClause.where where]] `filter` DSL instead.
-		  * @param from a ''from'' clause containing the list of relations preceding `right`.
-		  * @param group the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-		  *              `Mapping` type.
-		  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
-		  *               clause in the generated SQL.
-		  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-		  *             and conversions of associated classes between instances parameterized with the more generic `G`
-		  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
-		  * @return an `F GroupByAll G`.
-		  */
-		def apply[F <: GroupByClause, G[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		         (from :F, group :Relation[G], filter :LocalBoolean[F#Generalized ByAll G] = True)
-		         (implicit cast :InferSubject[F, ByAll, G, T, S]) :F ByAll G =
-			ByAll[F, T, S](from, RelationSQL(cast(group), 0))(cast.cast(filter))
-
-
-
-		private[sql] def apply[F <: GroupByClause, T[O] <: BaseMapping[S, O], S]
-		                      (clause :F, group :RelationSQL[GroupByClause AndByAll T, T, S, GroupByClause AndByAll T])
-		                      (cond :LocalBoolean[clause.Generalized ByAll T])
-				:F ByAll T =
-			new ByAll[clause.type, T] with AbstractExtended[clause.type, T, S] {
-				override val left = clause
-				override val last = group
-				override val condition = cond
-				override val from = left.from
-				override val outer = left.outer
-				override val fullSize = left.fullSize + 1
-
-				override type This = left.type ByAll T
-
-				override def narrow :left.type ByAll T = this
-
-				override def withCondition(filter :LocalBoolean[Generalized]) =
-					ByAll[left.type, T, S](left, last)(filter)
-
-				override def withLeft[L <: GroupByClause]
-				                     (left :L)(condition :LocalBoolean[left.Generalized ByAll T]) :L ByAll T =
-					ByAll[L, T, S](left, last)(condition)
-
-
-				override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.by[F, T, S](this)
-
-			}
-
-
-
-		/** Matches all `ByAll` instances, splitting them into their left (preceding column groupings)
-		  * and right (the last column grouping) sides.
-		  */
-		def unapply[L <: FromClause, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
-			case _ :ByAll[_, _] => Some((from.left, from.right))
-			case _ => None
-		}
-
-		/** Matches all `ByAll` subclasses, extracting their `left` and `right` sides in the process. */
-		def unapply(from :FromClause) :Option[(GroupByClause, Relation.*)] = from match {
-			case group :ByAll.* => Some((group.left, group.right))
-			case _ => None
-		}
-
-
-
-		implicit def byAllDecomposition[L <: GroupByClause, R[O] <: MappingAt[O]]
-				:ExtendedDecomposition[L ByAll R, L, R, ByAll, GroupByClause] =
-			composition.asInstanceOf[ExtendedDecomposition[L ByAll R, L, R, ByAll, GroupByClause]]
-
-		private[this] val composition =
-			new ExtendedDecomposition[GroupByClause ByAll MappingAt, GroupByClause, MappingAt, ByAll, GroupByClause]
+	private[this] val composition =
+		new ExtendedDecomposition[GroupByClause ByAll MappingAt, GroupByClause, MappingAt, ByAll, GroupByClause]
 
 
 
 
 
 
-		/** Type alias for `ByAll` with erased type parameters, covering all instances of `ByAll`/`By`.
-		  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
-		  * be matched directly with the wildcard '_'.
-		  */
-		type * = ByAll[_ <: GroupByClause, T] forSome { type T[O] <: MappingAt[O] }
+	/** Type alias for `ByAll` with erased type parameters, covering all instances of `ByAll`/`By`.
+	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
+	  * be matched directly with the wildcard '_'.
+	  */
+	type * = ByAll[_ <: GroupByClause, T] forSome { type T[O] <: MappingAt[O] }
 
-		/** A curried type constructor for `ByAll` instances, accepting the left `GroupByClause` type parameter
-		  * and returning a type with a member type `F` accepting the type constructor for the right relation.
-		  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
-		  */
-		type WithLeft[L <: GroupByClause] = { type F[R[O] <: MappingAt[O]] = L ByAll R }
+	/** A curried type constructor for `ByAll` instances, accepting the left `GroupByClause` type parameter
+	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
+	  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
+	  */
+	type WithLeft[L <: GroupByClause] = { type F[R[O] <: MappingAt[O]] = L ByAll R }
 
-		/** A curried type constructor for `ByAll` instances, accepting the right mapping type parameter
-		  * and returning a type with a member type `F` accepting the left `GroupByClause` type.
-		  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
-		  */
-		type WithRight[R[O] <: MappingAt[O]] = { type F[L <: GroupByClause] = L ByAll R }
-
-	}
-
-
+	/** A curried type constructor for `ByAll` instances, accepting the right mapping type parameter
+	  * and returning a type with a member type `F` accepting the left `GroupByClause` type.
+	  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
+	  */
+	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: GroupByClause] = L ByAll R }
 
 }
 

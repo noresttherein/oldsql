@@ -3,10 +3,10 @@ package net.noresttherein.oldsql.sql
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Chain.~
-import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.Compound.CompoundLike
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromLike, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -37,10 +37,11 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.AndFrom]]
   * @see [[net.noresttherein.oldsql.sql.JoinLike]]
   * @see [[net.noresttherein.oldsql.sql.GroupByAll]]
-  * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
+  * @see [[net.noresttherein.oldsql.sql.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
-trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { thisClause =>
+trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom with CompoundLike[L Compound R] {
+	thisClause =>
 
 	override type LastMapping[O] = R[O]
 	override type LastTable[F <: FromClause] = JoinedRelation[F, R]
@@ -112,44 +113,11 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { th
 		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
-	override type This >: this.type <: (L Compound R) {
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
-	}
-
 
 	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
 	  * using member types of `FromClause`, as they become proper path types instead of projections.
 	  */
 	protected def narrow :left.type Compound R
-
-
-
-	/** Apply a filter condition to the last relation in this clause. The condition is combined using `&&` with
-	  * `this.condition` and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
-	  * It is equivalent to `this.where(mappings => condition(mappings.last))`.
-	  * @param condition a function accepting the expression for the last relation in this clause and creating
-	  *                  an additional SQL expression for the join condition.
-	  * @return an `Extended` instance of the same kind as this one, with the same left and right sides,
-	  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
-	  *         returned by the passed filter function.
-	  */
-	def whereLast(condition :JoinedRelation[FromLast, R] => GlobalBoolean[FromLast]) :This =
-		where(SQLScribe.groundFreeComponents(generalized)(condition(last)))
 
 
 	override def fullSize :Int = left.fullSize + 1
@@ -189,6 +157,34 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom { th
 
 
 object Compound {
+
+	trait CompoundLike[+F <: NonEmptyFrom with NonEmptyFromLike[F]] extends NonEmptyFromLike[F] { thisClause :F =>
+		implicitly[This <:< F]
+
+		override type This >: this.type <: F {
+			type LastMapping[O] = thisClause.LastMapping[O]
+			type LastTable[C <: FromClause] = thisClause.LastTable[C]
+			type FromLast = thisClause.FromLast
+			type Generalized = thisClause.Generalized
+			type Self = thisClause.Self
+			type Params = thisClause.Params
+			type FullRow = thisClause.FullRow
+			type Explicit = thisClause.Explicit
+			type Inner = thisClause.Inner
+			type Implicit = thisClause.Implicit
+			type Outer = thisClause.Outer
+			type Base = thisClause.Base
+			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+			type InnerRow = thisClause.InnerRow
+			type OuterRow = thisClause.OuterRow
+			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+				thisClause.JoinedWith[P, J]
+			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+			type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
+		}
+
+	}
 
 	/** An existential upper bound of all `Compound` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
@@ -334,11 +330,14 @@ object Compound {
   * for more specialized types.
   *
   * @see [[net.noresttherein.oldsql.sql.AndFrom]]
-  * @see [[net.noresttherein.oldsql.sql.GroupByAll.ByAll]]
+  * @see [[net.noresttherein.oldsql.sql.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
   * @author Marcin Mościcki
   */ //other words :Tack, Include, With
-trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Compound[L, R] with ExtendingClause[L] { thisClause =>
+trait Extended[+L <: FromClause, R[O] <: MappingAt[O]]
+	extends Compound[L, R] with ExtendingClause[L] with CompoundLike[L Extended R]
+{ thisClause =>
+
 	override type FromLast >: Generalized <: FromClause Extended R
 
 	override type Generalized >: Self <: (left.Generalized Extended R) {
@@ -350,25 +349,6 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]] extends Compound[L, R] wi
 	}
 
 	override type Self <: (left.Self Extended R) {
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
-	}
-
-	override type This >: this.type <: (L Extended R) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Self = thisClause.Self
@@ -466,7 +446,9 @@ object Extended {
 	  * for `Extended` subtypes, and there are other clauses, in particular
 	  * [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]], which are neither.
 	  */
-	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] { thisClause =>
+	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]]
+		extends Extended[L, R] with CompoundLike[L NonSubselect R]
+	{ thisClause =>
 
 		override type Implicit = left.Implicit
 		override type Outer = left.Outer

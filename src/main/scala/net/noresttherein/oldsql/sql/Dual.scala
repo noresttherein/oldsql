@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FromClauseLike, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
@@ -23,7 +23,9 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * As the result, it is a supertype of any ''from'' clause prepending any number of relations to this clause.
   * The drawback is that the `T => T#Generalized` type transformation is not a fixed point operation.
   */
-sealed class Dual private (override val filter :GlobalBoolean[FromClause]) extends DiscreteFrom { thisClause =>
+sealed class Dual private (override val filter :GlobalBoolean[FromClause])
+	extends DiscreteFrom with FromClauseLike[Dual]
+{ thisClause =>
 
 	override type LastMapping[O] = Nothing
 	override type LastTable[-F <: FromClause] = Nothing
@@ -38,7 +40,7 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause]) exten
 	override type Self = Dual
 	override type This = Dual
 
-	override def where(condition :GlobalBoolean[FromClause]) :Dual =
+	override def filtered[S >: GlobalScope <: GlobalScope](condition :SQLBoolean[FromClause, S]) :Dual =
 		if (filter == condition || condition == True) this
 		else new Dual(condition && filter)
 

@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator.FromSomeDecoratorComposition
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, FromClauseLike, JoinedMappings, NonEmptyFrom, NonEmptyFromLike, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -32,6 +32,15 @@ trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 
 	/** Wraps a (possibly modified) copy of the underlying clause in a new decorator instance. */
 	def withClause[C <: Bound](body :C) :DecoratedFrom[C]
+
+
+	override def where(filter :GlobalBoolean[Generalized]) :This = filtered(filter)
+
+	override def where(condition :JoinedMappings[Generalized] => GlobalBoolean[Generalized]) :This = {
+		val cond = condition(new JoinedMappings[Generalized](generalized))
+		where(SQLScribe.anchorLooseComponents(generalized)(cond))
+	}
+
 
 
 	override type Params = clause.Params
@@ -90,7 +99,8 @@ object DecoratedFrom {
 	  * for the `Generalized` and `Self` types and implements most `FromClause` methods by delegating to the
 	  * underlying clause. It requires all implementing classes to be applicable to any non empty clause `F`.
 	  */
-	trait FromSomeDecorator[+F <: FromSome] extends FromSome with ExtendingDecorator[F] { thisClause =>
+	trait FromSomeDecorator[+F <: FromSome] extends ExtendingDecorator[F] with FromSome { thisClause =>
+
 		override type LastMapping[O] = clause.LastMapping[O]
 		override type Bound = FromSome
 		override type FromLast = GeneralizedClause[clause.FromLast]
@@ -131,6 +141,9 @@ object DecoratedFrom {
 
 		def withClause[C <: FromSome](from :C) :WithClause[C]
 
+
+		override def whereLast(condition :JoinedRelation[FromLast, LastMapping] => GlobalBoolean[FromLast]) :This =
+			where(SQLScribe.anchorLooseComponents(generalized)(condition(last)))
 
 
 		override type FullRow = clause.FullRow

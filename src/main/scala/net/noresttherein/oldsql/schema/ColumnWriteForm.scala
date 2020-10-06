@@ -219,36 +219,15 @@ object ColumnWriteForm {
 			override val sqlType = columnType
 		}
 
-	/** A write form which will throw an `UnsupportedOperationException` with the given message at every write attempt. */
-	def unsupported(columnType :JDBCSQLType)(message :String) :ColumnWriteForm[Any] =
-		error(columnType)(throw new UnsupportedOperationException(message))
-
-
-
 	/** A dummy column form which throws an `UnsupportedOperationException` at each write attempt.
 	  * Used as part of `ColumnForm.combine` to convert a `ColumnReadForm` into a `ColumnForm` for situations
 	  * where its write functionality is known not to be used. Be careful!
 	  */
-	private[oldsql] def dummy[T](jdbcType :JDBCSQLType) :ColumnWriteForm[T] =
-		new NonLiteralWriteForm[Any] with ColumnWriteForm[Any] {
-			override val sqlType = jdbcType
+	def unsupported(message :String, columnType :JDBCSQLType) :ColumnWriteForm[Any] =
+		error(columnType)(throw new UnsupportedOperationException(message))
 
-			override def set(position :Int)(statement :PreparedStatement, value :Any) :Unit =
-				setNull(position)(statement)
 
-			override def setNull(position :Int)(statement :PreparedStatement) :Unit =
-				throw new UnsupportedOperationException("ColumnWriteForm.dummy.set")
 
-			override def equals(that :Any) :Boolean = that match {
-				case self :AnyRef if self eq this => true
-				case col :ColumnWriteForm[_] => col.sqlType == sqlType && col.getClass == getClass
-				case _ => false
-			}
-
-			override def hashCode :Int = sqlType.hashCode //getClass.hashCode
-
-			override def toString = "dummy".toString
-		}
 
 
 

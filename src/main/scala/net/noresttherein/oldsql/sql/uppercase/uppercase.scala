@@ -5,7 +5,6 @@ import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.implicitSQLLiterals.boundParameterSQL
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.NonEmptyFrom
-import net.noresttherein.oldsql.sql.GroupByAll.ByAll
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.{ColumnLiteral, SQLParameter, SQLTermFactory}
 

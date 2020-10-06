@@ -850,9 +850,11 @@ object ComponentValues {
 
 	trait ComponentValuesBuilder[S, O] {
 		@inline final def add[T](component :RefinedMapping[T, O], value :T) :this.type = add(component, Some(value))
+
 		def add[T](component :RefinedMapping[T, O], result :Option[T]) :this.type
 
 		@inline final def add[T](column :ColumnMapping[T, O], value :T) :this.type = add(column, Some(value))
+
 		def add[T](column :ColumnMapping[T, O], result :Option[T]) :this.type = add(column :RefinedMapping[T, O], result)
 
 		def result() :ComponentValues[S, O]

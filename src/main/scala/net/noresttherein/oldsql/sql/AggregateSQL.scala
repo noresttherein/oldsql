@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.sql.SQLNumber.SQLFraction
   * @tparam F the ungrouped ''from'' clause whose [[net.noresttherein.oldsql.sql.FromClause.Explicit ''explicit'']]
   *           section is aggregated, that is contains relations whose columns are not available individually
   *           (unless featured in
-  *           [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.GroupByAll.ByAll ByAll]]).
+  *           [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.ByAll ByAll]]).
   *           All instances of this class are always created with `F <: FromSome`, but the most abstract upper bound
   *           is required for proper implementation of all operations.
   * @tparam G the [[net.noresttherein.oldsql.sql.AggregateClause ''aggregated'']] clause for `F`. It is the
@@ -173,7 +173,7 @@ object AggregateSQL {
 	/** Implementations of the SQL `COUNT` function. It accepts expressions of any type as the argument.
 	  * When counting all the rows returned by an SQL ''select'', prefer the factory method
 	  * [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome.count count]] and its overloaded variants,
-	  * available on not grouped, non-empty ''from'' clauses.
+	  * available on not grouping, non-empty ''from'' clauses.
 	  */
 	case object Count extends AggregateFunction {
 		override val name = "count"

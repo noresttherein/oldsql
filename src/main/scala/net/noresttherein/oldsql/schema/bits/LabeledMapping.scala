@@ -3,10 +3,10 @@ package net.noresttherein.oldsql.schema.bits
 import scala.annotation.unchecked.uncheckedVariance
 
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, BaseMapping}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingSeal, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterSeal, DelegateAdapter}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapter.ColumnFormProxy
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 
@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection
   * to this interface, while preserving its type for access.
   * @tparam N a `String` literal with a name serving as an identifier for this mapping.
   */
-trait AbstractLabeledMapping[N <: Label] extends Mapping { self :MappingSeal => }
+trait AbstractLabeledMapping[N <: Label] extends Mapping
 
 
 
@@ -57,17 +57,19 @@ object LabeledMapping {
 	  * Note that this mapping's `Origin` and `Subject` types are equal to the types defined in the adapted mapping,
 	  * but are not declared in the type signature directly as parameters. For this reason instances of this type
 	  * won't be adapted automatically to `MappingOf`.
-	  * See [[net.noresttherein.oldsql.schema.bits.LabeledMapping.LabeledProjection.WithOrigin LabeledProjection]]
+	  * See [[net.noresttherein.oldsql.schema.bits.LabeledMapping.LabeledProjection LabeledProjection]]
 	  * for the appropriate type constructor.
-	  */ //todo: this unchecked variance looks very fishy, check if it doesn't break something
-	sealed trait @:[N <: Label, +M <: Mapping]
-		extends LabeledMapping[N, M#Subject @uncheckedVariance, M#Origin @uncheckedVariance]
-		   with MappingAdapter[M, M#Subject @uncheckedVariance, M#Origin @uncheckedVariance]
-	{ this :MappingSeal with AdapterSeal =>
-
+	  */
+	sealed trait @:[N <: Label, M <: Mapping]
+		extends LabeledMapping[N, M#Subject, M#Origin]
+		   with MappingAdapter[M, M#Subject, M#Origin]
+	{
 		def label :N
 
-		override def toString :String = "'" + label + "@:" + body
+		def upcast[U >: M <: Mapping { type Subject <: M#Subject; type Origin <: M#Origin }] :N @: U =
+			this.asInstanceOf[N @: U]
+
+		override def mappingName :String = "'" + label + "@:" + body.mappingName
 	}
 
 
@@ -86,7 +88,7 @@ object LabeledMapping {
 
 		implicit def projection[L <: Label, M <: Mapping](implicit body :ExactProjection[M])
 				:ProjectionDef[L @: M, ({ type P[X] = L @: body.WithOrigin[X] })#P, M#Subject] =
-			body.lift[({ type T[+X <: Mapping] = L @: X })#T]
+			body.lift[({ type T[X <: Mapping] = L @: X })#T]
 
 	}
 

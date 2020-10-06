@@ -83,6 +83,7 @@ object OptionMapping {
 
 //		override def sqlName :Option[String] = get.sqlName
 
+		override def mappingName = "Option"
 		override def toString :String = "Option[" + get + "]"
 	}
 

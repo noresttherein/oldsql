@@ -1,13 +1,13 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql
+import scala.collection.mutable
+
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, ComponentValues, GenericMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, BaseMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, ComponentValues, GenericMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
-import scala.collection.mutable
 
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.OperationType.WriteOperationType
@@ -69,7 +69,7 @@ object MappingProxy {
 
 
 
-		override def toString :String = "^" + backer
+		override def toString :String = "->" + backer
 	}
 
 
@@ -269,7 +269,7 @@ object MappingProxy {
 
 
 
-		override def toString :String = "^{" + backer + "}"
+		override def toString :String = "->>" + backer
 
 	}
 

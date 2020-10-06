@@ -7,11 +7,10 @@ import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, InsertAudit, NoInsert, NoQuery, NoUpdate, OptionalSelect, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.schema.Mapping.MappingSeal
 
 
 
-trait OptimizedMappingAssembly extends Mapping { this :MappingSeal =>
+trait OptimizedMappingAssembly extends Mapping {
 
 	override def writtenValues[T](op :WriteOperationType, subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
 		op.writtenValues(refine, subject, collector)
@@ -136,7 +135,7 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
   *
   * @see [[net.noresttherein.oldsql.schema.support.LazyMapping]]
   */
-trait StableMapping extends Mapping { this :MappingSeal =>
+trait StableMapping extends Mapping {
 	//todo: this should extend BaseMapping but currently it is extended by some traits with conflicting (narrowed)
 	// declarations of methods implemented in BaseMapping
 

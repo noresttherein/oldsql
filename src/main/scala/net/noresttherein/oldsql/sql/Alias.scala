@@ -4,6 +4,8 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator.FromSomeDecoratorComposition
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
+import net.noresttherein.oldsql.sql.FromClause.NonEmptyFromLike
+import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.SQLTerm.True
 
 
@@ -13,8 +15,8 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 
 /** Introduces an alias name to the last relation in the wrapped clause, translating to an `as` keyword
   * in the underlying SQL.
-  */
-class Alias[+F <: FromSome, N <: Label](override val clause :F, val alias :N) extends FromSome with FromSomeDecorator[F] {
+  */ //the problem with this class is that it exists in the generalized form, hence expressions are not intercompatible with other aliases.
+class Alias[+F <: FromSome, N <: Label](override val clause :F, val alias :N) extends FromSomeDecorator[F] {
 
 	override type GeneralizedClause[+G <: FromSome] = G Alias N
 	override type WithClause[+G <: FromSome] = G Alias N
@@ -22,8 +24,8 @@ class Alias[+F <: FromSome, N <: Label](override val clause :F, val alias :N) ex
 
 	override def withClause[G <: FromSome](from :G) :G Alias N = Alias(from, alias)
 
-	override def where(filter :GlobalBoolean[Generalized]) :This =
-		withClause(clause where filter.asInstanceOf[GlobalBoolean[clause.Generalized]]) //todo: eliminate the cast
+	override def filtered[S >: GlobalScope <: GlobalScope](filter :SQLBoolean[Generalized, S]) :clause.This Alias N =
+		withClause(clause filtered filter.asInstanceOf[GlobalBoolean[clause.Generalized]]) //todo: eliminate the cast
 
 
 	override val outer :Outer = clause.outer

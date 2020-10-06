@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.schema.Mapping.{MappingSeal, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport
 import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
 import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
@@ -313,7 +313,7 @@ object MappingSchema {
 
 
 
-	trait MappingSchemaSupport extends Mapping { this :MappingSeal =>
+	trait MappingSchemaSupport extends Mapping {
 
 		/** The scala type to which the schema maps. It is the `Subject` type of the outer mapping of this schema. */
 		type Packed
@@ -433,7 +433,7 @@ object MappingSchema {
 //			extract(last)
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V, C, O]
 
-		override def toString = "FlatSchema[" + members + "]"
+		override def toString :String = "FlatSchema[" + members + "]"
 	}
 
 

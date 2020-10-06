@@ -6,16 +6,16 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.As
+import net.noresttherein.oldsql.sql.AndFrom.AndFromLike
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, FromClauseLike, NonEmptyFrom, NonEmptyFromLike, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
-import net.noresttherein.oldsql.sql.SQLScribe.ReplaceRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Compound.{CompoundLike, JoinedRelationSubject}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
-import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 
 
 
@@ -44,7 +44,11 @@ import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
   * @see [[net.noresttherein.oldsql.sql.Subselect]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
-trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] with FromSome { thisClause =>
+trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]]
+	extends Extended[L, R] with FromSome with AndFromLike[L, R, L AndFrom R]
+{ thisClause =>
+
+	override val left :L
 
 	override type FromLast = FromClause AndFrom R
 
@@ -71,38 +75,9 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] wit
 		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 	}
 
-	override type This >: this.type <: (L AndFrom R) {
-		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
-		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-	}
 
 
 	protected override def narrow :left.type AndFrom R
-
-
-	/** The `Generalized` type with the left side substituted for `F`. */
-	type GeneralizedLeft[+F <: FromSome] <: (F AndFrom R) {
-		type GeneralizedLeft[+S <: FromSome] <: thisClause.GeneralizedLeft[S]
-	}
-
-	/** This `Self` type with the left side substituted for `F`. */
-	type WithLeft[+F <: FromSome] <: GeneralizedLeft[F] {
-		type WithLeft[+S <: FromSome] <: thisClause.WithLeft[S] //can't be =:= because From[T].WithLeft[L]= L AndFrom T
-	}
-
-	/** A join of the same kind as this clause, but with the left clause substituted for `left`. */
-	def withLeft[F <: FromSome](left :F)(filter :GlobalBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[F]
 
 
 
@@ -126,49 +101,6 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]] extends Extended[L, R] wit
 	private[this] val cachedFilter = Lazy { filter(generalized) }
 
 	override def filter :GlobalBoolean[Generalized] = cachedFilter.get
-
-
-
-	/** A copy of this clause with the `condition` being replaced with the given `filter`.
-	  * This does not replace the whole ''where'' filter, as the conditions (if present) of the left clause remain
-	  * unchanged. It is the target of the `where` and other filtering methods (which add to the condition, rather
-	  * then completely replacing it).
-	  */
-	def withCondition(filter :GlobalBoolean[Generalized]) :This
-
-	override def where(filter :GlobalBoolean[Generalized]) :This =
-		if (filter == True) this else withCondition(condition && filter)
-
-
-
-	/** Apply a join condition to the last two relations in this clause. The condition is combined using `&&` with
-	  * `this.condition` and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
-	  * This works exactly like 'where', but instead of a single argument representing all joined relations,
-	  * the filter function should take as its arguments the last two relations, i.e, the last relation defined
-	  * by the left side of this join, if any, and the right side of this join.
-	  * This method is only possible to call if the left side of this join can be statically determined
-	  * to be a [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]] subtype, i.e. a non-empty from clause.
-	  * Its signature then takes the form of
-	  * {{{
-	  *     def on(condition :(JoinedRelation[GeneralizedLeft[left.FromLast], left.LastMapping],
-	  *                        JoinedRelation[FromLast, R]) => SQLBoolean[Generalized]) :This
-	  * }}}
-	  * For example, for the type `From[L] InnerJoin R` it takes the form of
-	  * {{{
-	  *     def on(condition :(JoinedRelation[FromClause AndFrom L Join R, L],
-	  *                        JoinedRelation[FromClause AndFrom R, R])
-	  *                       => SQLBoolean[FromClause AndFrom L Join R]) :This
-	  * }}}
-	  * If the left type is too abstract, the type of `condition` argument will likewise be abstract, preventing
-	  * the caller from providing a value; in turn, `Dual` defines it simply as `Nothing`.
-	  * @param condition a function accepting the expressions for the last two relations in this clause and creating
-	  *                  an SQL expression for the join condition.
-	  * @return a `AndFrom` instance of the same kind as this one, with the same left and right sides,
-	  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
-	  *         returned by the passed filter function.
-	  */
-	def on(condition :left.JoinFilter[GeneralizedLeft, FromLast, Generalized, R]) :This =
-		left.bridgeFilterNext[this.type, R](this)(condition)
 
 
 
@@ -245,6 +177,98 @@ object AndFrom {
 
 	private[this] val decomposition =
 		new ExtendedDecomposition[FromClause AndFrom MappingAt, FromClause, MappingAt, AndFrom, FromClause]
+
+
+
+	trait AndFromLike[+L <: FromClause, R[O] <: MappingAt[O], +S <: (L AndFrom R) with AndFromLike[L, R, S]]
+		extends CompoundLike[S]
+	{ thisClause :S =>
+
+/*
+		override type This >: this.type <: S {
+			type LastMapping[O] = thisClause.LastMapping[O]
+			type LastTable[C <: FromClause] = thisClause.LastTable[C]
+			type FromLast = thisClause.FromLast
+			type Generalized = thisClause.Generalized
+			type Self = thisClause.Self
+			type Params = thisClause.Params
+			type FullRow = thisClause.FullRow
+			type Explicit = thisClause.Explicit
+			type Inner = thisClause.Inner
+			type Implicit = thisClause.Implicit
+			type Outer = thisClause.Outer
+			type Base = thisClause.Base
+			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+			type InnerRow = thisClause.InnerRow
+			type OuterRow = thisClause.OuterRow
+			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+				thisClause.JoinedWith[P, J]
+			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+			type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
+		}
+*/
+
+
+		val left :L
+		def condition :GlobalBoolean[Generalized]
+
+		/** The `Generalized` type with the left side substituted for `F`. */
+		type GeneralizedLeft[+F <: FromSome] <: (F AndFrom R) {
+			type GeneralizedLeft[+C <: FromSome] <: thisClause.GeneralizedLeft[C]
+		}
+
+		/** This `Self` type with the left side substituted for `F`. */
+		type WithLeft[+F <: FromSome] <: GeneralizedLeft[F] {
+			type WithLeft[+C <: FromSome] <: thisClause.WithLeft[C] //can't be =:= because From[T].WithLeft[L]= L AndFrom T
+		}
+
+		/** A join of the same kind as this clause, but with the left clause substituted for `left`. */
+		def withLeft[F <: FromSome](left :F)(filter :GlobalBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[F]
+
+
+		/** A copy of this clause with the `condition` being replaced with the given `filter`.
+		  * This does not replace the whole ''where'' filter, as the conditions (if present) of the left clause remain
+		  * unchanged. It is the target of the `where` and other filtering methods (which add to the condition, rather
+		  * then completely replacing it).
+		  */
+		def withCondition(filter :GlobalBoolean[Generalized]) :This
+
+		override def filtered[S >: GlobalScope <: GlobalScope](filter :SQLBoolean[Generalized, S]) :This =
+			if (filter == True) this else withCondition(condition && filter)
+
+
+
+		/** Apply a join condition to the last two relations in this clause. The condition is combined using `&&` with
+		  * `this.condition` and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
+		  * This works exactly like 'where', but instead of a single argument representing all joined relations,
+		  * the filter function should take as its arguments the last two relations, i.e, the last relation defined
+		  * by the left side of this join, if any, and the right side of this join.
+		  * This method is only possible to call if the left side of this join can be statically determined
+		  * to be a [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]] subtype, i.e. a non-empty from clause.
+		  * Its signature then takes the form of:
+		  * {{{
+		  *     def on(condition :(JoinedRelation[GeneralizedLeft[left.FromLast], left.LastMapping],
+		  *                        JoinedRelation[FromLast, R]) => SQLBoolean[Generalized]) :This
+		  * }}}
+		  * For example, for the type `From[L] InnerJoin R` it takes the form of
+		  * {{{
+		  *     def on(condition :(JoinedRelation[FromClause AndFrom L Join R, L],
+		  *                        JoinedRelation[FromClause AndFrom R, R])
+		  *                       => SQLBoolean[FromClause AndFrom L Join R]) :This
+		  * }}}
+		  * If the left type is too abstract, the type of `condition` argument will likewise be abstract, preventing
+		  * the caller from providing a value; in turn, `Dual` defines it simply as `Nothing`.
+		  * @param condition a function accepting the expressions for the last two relations in this clause and creating
+		  *                  an SQL expression for the join condition.
+		  * @return a `AndFrom` instance of the same kind as this one, with the same left and right sides,
+		  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
+		  *         returned by the passed filter function.
+		  */
+		def on(condition :left.JoinFilter[GeneralizedLeft, FromLast, Generalized, LastMapping]) :S =
+			left.bridgeFilterNext[this.type, LastMapping](this)(condition)
+
+	}
 
 
 
@@ -509,14 +533,13 @@ object AndFrom {
   * All non empty ''from'' clauses start with this instance unless the first 'relation' is an unbound join parameter
   * represented by a `JoinParam`.
   *///consider: making it a subclass of Subselect. The relation of being a subselect of a clause and grafting would be easier
-sealed trait From[T[O] <: MappingAt[O]] extends AndFrom[Dual, T] with NonSubselect[Dual, T] {
-	override val left :Dual = Dual
-
+sealed trait From[T[O] <: MappingAt[O]]
+	extends AndFrom[Dual, T] with NonSubselect[Dual, T] with AndFromLike[Dual, T, From[T]]
+{
 	def table :Relation[T] = last.relation
 
 	override type Generalized = FromClause AndFrom T
 	override type Self = From[T]
-	override type This >: this.type <: From[T]
 
 	override type GeneralizedLeft[+L <: FromClause] = L AndFrom T
 	override type WithLeft[+L <: FromClause] = L AndFrom T
@@ -635,15 +658,15 @@ object From {
 
 	private[sql] def narrow[T[O] <: BaseMapping[S, O], S]
 	                       (dual :Dual, relation :LastRelation[T, S], cond :GlobalBoolean[FromClause AndFrom T])
-			:From[T] with (dual.type AndFrom T) =
-		new From[T] with AndFrom[dual.type, T] with AbstractExtended[dual.type, T, S] {
+			:CustomFrom[dual.type, T] =
+		new CustomFrom[dual.type, T]  with AbstractExtended[dual.type, T, S] {
 			override val left :dual.type = dual
 			override val last = relation
 			override val condition = cond
 			override val outer = left.outer
 
 			override def narrow :dual.type AndFrom T = this
-			override type This = From[T] with (left.type AndFrom T)
+			override type This = CustomFrom[left.type, T]
 
 
 			override def withCondition(filter :GlobalBoolean[FromClause AndFrom T]) =
@@ -678,9 +701,7 @@ object From {
 				type Res = FromClause AndFrom (T As A)#T //todo: condition from a function
 				val unfiltered = From[(T As A)#T, S](aliased, True)
 				val replacement = aliased \ (unfiltered.last.mapping.body :T[FromClause AndFrom (T As A)#T])
-				val substitute = new ReplaceRelation[T, S, (T As A)#T, S, Generalized, Res](
-					generalized, unfiltered)(last, replacement
-                )
+				val substitute = SQLScribe.replaceRelation(generalized, unfiltered :Res, last, replacement)
 				From[(T As A)#T, S](aliased, substitute(condition))
 			}
 
@@ -740,6 +761,11 @@ object From {
 	  * be matched directly with the wildcard '_'.
 	  */
 	type * = From[M] forSome { type M[O] <: MappingAt[O] }
+
+
+
+	private[sql] trait CustomFrom[+L <: Dual, T[O] <: MappingAt[O]]
+		extends From[T] with AndFrom[L, T] with AndFromLike[L, T, CustomFrom[L, T]]
 
 }
 

@@ -12,10 +12,13 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, ColumnAdapterFactoryMethods}
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.FromClause
+import net.noresttherein.oldsql.sql.{ColumnSQL, FromClause}
 import net.noresttherein.oldsql.sql.FromClause.{TableCount, TableShift}
-import net.noresttherein.oldsql.sql.MappingSQL.{FreeColumnComponent, FreeComponent}
+import net.noresttherein.oldsql.sql.MappingSQL.{LooseColumnComponent, LooseComponent}
 import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ArbitraryProjection
+import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 
 
 
@@ -37,7 +40,7 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 { column =>
 
 	/** Returns `Some(this.name)`. */
-	final override def sqlName = Some(name)
+	final override def sqlName :Option[String] = Some(name)
 
 	/** The name of this column, as seen from the containing table if it is a table/view column.
 	  * If this column represents a column in the SELECT clause of a select statement, it is the column name as
@@ -239,6 +242,8 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 	override def toString :String = name + "[" + form + "]"
 
+	override def mappingName :String = name
+
 	override def debugString :String = buffs.mkString(toString + "(", ", ", ")")
 
 	override def columnString :String = toString
@@ -250,7 +255,21 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 
-object ColumnMapping {
+sealed abstract class LowPriorityColumnMappingImplicits {
+
+	implicit def columnSQL[F <: FromClause, C <: ColumnMapping[_, _], S, O <: FromClause]
+	                      (column :C)
+	                      (implicit subject :C <:< ColumnMapping[S, O], origin :F <:< O,
+	                       offset :TableCount[O, _ <: Numeral],
+	                       projection :OriginProjection[C, S] { type WithOrigin[A] <: ColumnMapping[S, A] })
+			:ColumnSQL[F, GlobalScope, S] =
+		LooseColumnComponent(projection[F](column), offset.tables)
+
+}
+
+
+
+object ColumnMapping extends LowPriorityColumnMappingImplicits {
 
 	type ColumnOf[S] = ColumnMapping[S, _]
 
@@ -269,12 +288,12 @@ object ColumnMapping {
 
 
 
-
-
-	implicit def columnSQLFormula[F <: FromClause, C <: ColumnMapping[_, _], M[A] <: ColumnMapping[S, A], S, N <: Numeral]
-	             (column :C)(implicit conforms :Conforms[C, M[F], ColumnMapping[S, F]], offset :TableShift[F, M, N])
-			:FreeColumnComponent[F, M, S] =
-		FreeColumnComponent(column, offset.tables)
+	implicit def columnComponentSQL[F <: FromClause, C <: ColumnMapping[_, _], S]
+	                               (column :C)
+	                               (implicit subject :C <:< ColumnMapping[S, F], offset :TableCount[F, _ <: Numeral],
+	                                projection :OriginProjection[C, S] { type WithOrigin[O] <: ColumnMapping[S, O] })
+			:LooseColumnComponent[F, projection.WithOrigin, S] =
+		LooseColumnComponent(column)
 
 
 
