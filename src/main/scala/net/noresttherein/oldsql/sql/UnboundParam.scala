@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.AndFromLike
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, NonEmptyFromLike, OuterFrom, OuterFromSome, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, OuterFrom, OuterFromSome, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
@@ -49,18 +49,18 @@ sealed trait UnboundParam[+F <: FromClause, P[O] <: ParamAt[O]]
 	override type Self <: (left.Self UnboundParam P) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
+//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
+//		type Outer = thisClause.Outer
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
 		type JoinedWith[+C <: FromClause, +J[+L <: C, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[C, J]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
+//		type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//		type FromSubselect[+C <: NonEmptyFrom] <: thisClause.FromSubselect[C]
 	}
 
 
@@ -723,7 +723,7 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 { thisClause =>
 
 	override type Generalized = left.Generalized JoinParam P
-	override type Self = left.Self JoinParam P
+	override type Self <: left.Self JoinParam P
 
 	protected override def narrow :left.type JoinParam P
 
@@ -1011,7 +1011,7 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
 { thisClause =>
 
 	override type Generalized = left.Generalized GroupParam P
-	override type Self = left.Self GroupParam P
+	override type Self <: left.Self GroupParam P
 
 	type GeneralizedLeft[+L <: GroupByClause] = L GroupParam P
 	type WithLeft[+L <: GroupByClause] = L GroupParam P

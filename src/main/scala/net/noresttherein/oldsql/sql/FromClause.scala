@@ -139,10 +139,6 @@ trait FromClause extends FromClauseLike[FromClause] { thisClause =>
 	  */
 	type LastTable[F <: FromClause] <: JoinedRelation[F, LastMapping]
 
-//	type Alias <: Label
-//
-//	def alias :Option[Alias]
-
 	/** The supertype of this instance containing only the last relation mapping joined with `FromClause` using
 	  * the most abstract extension ('join') kind which can still take the place of this type as a parameter in
 	  * larger clauses. For non-empty, ''discrete'' clauses it is
@@ -183,7 +179,7 @@ trait FromClause extends FromClauseLike[FromClause] { thisClause =>
 	  * It is the [[net.noresttherein.oldsql.sql.FromClause.Self Self]] type with all join kinds replaced with their
 	  * generalized forms. It abstracts over the exact joins used and focuses only on the relations available to
 	  * SQL expressions based on this clause. Every concrete subclass of `FromClause` declares its most abstract
-	  * superclasses which still provides distinction necessary to fulfill its intended role in the SQL select.
+	  * superclass which still provides distinction necessary to fulfill its intended role in an SQL select.
 	  * Its `Generalized` type is then formed recursively, with every `FromClause` subtype which accepts another
 	  * `F <: FromClause` type parameter corresponding to some member `val f :F` substituting `f.Generalized` for `F`.
 	  * The generalized form of `Dual` is simply `FromClause`, so the `Generalized` type of any clause will match also
@@ -235,13 +231,13 @@ trait FromClause extends FromClauseLike[FromClause] { thisClause =>
 	type Self <: FromClause {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
+//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
+//		type Outer = thisClause.Outer
 		type Base = thisClause.Base
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
@@ -581,7 +577,7 @@ trait FromClause extends FromClauseLike[FromClause] { thisClause =>
 	  */
 	type Outer <: Implicit {
 		type Generalized = thisClause.Implicit
-		type Self = thisClause.Outer
+//		type Self = thisClause.Outer
 		type FullRow = thisClause.OuterRow
 	}
 
@@ -599,10 +595,10 @@ trait FromClause extends FromClauseLike[FromClause] { thisClause =>
 	/** The `FromClause` type used as the type parameter of [[net.noresttherein.oldsql.sql.SelectSQL select]] SQL
 	  * expressions created from this instance. It is equal to `Implicit`, unless
 	  * an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] is present in the explicit portion of
-	  * this clause, in which case it equals `Nothing` (hence invalidating the expression).
+	  * this clause, in which case it equals `Nothing` (making the expression unusable).
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.Implicit]]
 	  */ //not defined as DefineBase[Implicit] here because of a clash with SubselectOf refinement caused by a scala bug
-	type Base <: DefineBase[Implicit]
+	type Base <: DefineBase[Implicit] //consider: renaming to Dependencies
 
 	/** A helper type used to define the type `Base`. Always parameterized with `Implicit`, all `Extended` subclasses
 	  * define it as equals to the argument `I`, except of `UnboundParam`, which defines it as `Nothing`.
@@ -862,7 +858,7 @@ trait FromClause extends FromClauseLike[FromClause] { thisClause =>
 		type FullRow = thisClause.FullRow ~ T[FromClause AndFrom T]#Subject
 		type Explicit = FromClause AndFrom T
 		type Implicit = thisClause.Generalized
-		type Outer = thisClause.Self
+//		type Outer <: thisClause.Self
 		type Base = thisClause.Generalized
 		type DefineBase[+I <: FromClause] = I
 		type InnerRow = @~ ~ T[FromClause AndFrom T]#Subject
@@ -1151,7 +1147,7 @@ object FromClause {
 			type LastTable[C <: FromClause] = thisClause.LastTable[C]
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Self = thisClause.Self
+//			type Self <: thisClause.Self
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
@@ -1165,8 +1161,8 @@ object FromClause {
 			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
 				thisClause.JoinedWith[P, J]
 			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
+//			type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//			type FromSubselect[+C <: NonEmptyFrom] <: thisClause.FromSubselect[C]
 		}
 
 		/** Adds a new filter expression for the `where`/`having` clause, joining it in logical conjunction
@@ -1181,7 +1177,7 @@ object FromClause {
 		  *   - the return type is narrower, specified by the `This` member type. This allows a precise return type,
 		  *     the same as this clause, even if this clause is an abstract type in the point of invocation.
 		  * All `where` methods delegate to this method.
-		  */
+		  */ //this method is extracted because GetTable implicits have problems with recognizing #This
 		def filtered[S >: GlobalScope <: GlobalScope](filter :SQLBoolean[Generalized, S]) :This
 
 		/** Creates a `FromClause` of the same type as this one, but with its `filter` being the conjunction of this
@@ -1303,6 +1299,11 @@ object FromClause {
 		override type LastTable[F <: FromClause] = JoinedRelation[F, LastMapping]
 		override type FromLast >: Generalized <: NonEmptyFrom
 
+//		type Alias <: Label
+//
+//		def aliasOpt :Option[Alias]
+//		def alias :String = aliasOpt getOrElse ""
+
 		override type Generalized >: Self <: NonEmptyFrom {
 			type FromLast = thisClause.FromLast
 			type Generalized <: thisClause.Generalized //all these below must be <: because of From
@@ -1315,13 +1316,13 @@ object FromClause {
 		override type Self <: NonEmptyFrom {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Self = thisClause.Self
+//			type Self <: thisClause.Self //this is not equality because As needs to override it.
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
 			type Inner = thisClause.Inner
 			type Implicit = thisClause.Implicit
-			type Outer = thisClause.Outer
+//			type Outer = thisClause.Outer
 			type Base = thisClause.Base
 			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 			type InnerRow = thisClause.InnerRow
@@ -1329,8 +1330,8 @@ object FromClause {
 			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
 				thisClause.JoinedWith[P, J]
 			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+//			type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//			type FromSubselect[+F <: NonEmptyFrom] <: thisClause.FromSubselect[F]
 		}
 
 
@@ -1355,24 +1356,45 @@ object FromClause {
 		override type FromSubselect[+F <: NonEmptyFrom] = F#AsSubselectOf[Self] {
 			//type Self <: AsSubselectOf[Outer]
 			type Implicit = thisClause.Generalized
-			type Outer = thisClause.Self
+//			type Outer <: thisClause.Self
 			type InnerRow <: F#InnerRow
 		}
 
 		override def from[F <: NonEmptyFrom with FreeFrom](subselect :F)
-				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized; type Outer = thisClause.Self } =
+				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized/*; type Outer <: thisClause.Self*/ } =
 			subselect.asSubselectOf(self)
 
 		override def fromSubselect[F <: NonEmptyFrom]
 		                          (subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
-				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized; type Outer = thisClause.Self } =
+				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized/*; type Outer <: thisClause.Self*/ } =
 			subselect.asSubselectOf(self)
 
 	}
 
 
 
-//	type As[F <: FromClause, A <: Label] = F { type Alias = A }
+//	type As[+F <: NonEmptyFrom, A <: Label] = F {
+//		type
+//	}
+//	trait As[+F <: NonEmptyFrom, A <: Label] extends FromClauseLike[F As A] { this :F =>
+//		type Alias = A //todo: type This. problem: subsequent call to as will result in an invalid type
+//
+//		def alias :A
+//
+//		def clause :F = this
+//	}
+//
+//
+//	object As {
+//		def unapply[F <: NonEmptyFrom, A <: Label](as :F As A) :(F, A) = (as.clause, as.alias)
+//
+//		def unapply(from :FromClause) :Option[(NonEmptyFrom, Label)] = from match {
+//			case as :As[_ <: NonEmptyFrom, _ <: Label] => Some((as.clause, as.alias))
+//			case _ => None
+//		}
+//	}
+
+
 
 	/** A `FromClause` refinement which is the upper bound of all ''from'' clauses with a statically known `Generalized`
 	  * type. Such clauses are referred to as ''generalized'' for short. If `F <: GeneralizedFrom`, then

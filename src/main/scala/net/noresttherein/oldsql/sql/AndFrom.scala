@@ -61,13 +61,13 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]]
 
 	override type Self <: (left.Self AndFrom R) {
 		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
+//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
+//		type Outer = thisClause.Outer
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
@@ -535,11 +535,11 @@ object AndFrom {
   *///consider: making it a subclass of Subselect. The relation of being a subselect of a clause and grafting would be easier
 sealed trait From[T[O] <: MappingAt[O]]
 	extends AndFrom[Dual, T] with NonSubselect[Dual, T] with AndFromLike[Dual, T, From[T]]
-{
+{ thisClause =>
 	def table :Relation[T] = last.relation
 
 	override type Generalized = FromClause AndFrom T
-	override type Self = From[T]
+	override type Self <: From[T]
 
 	override type GeneralizedLeft[+L <: FromClause] = L AndFrom T
 	override type WithLeft[+L <: FromClause] = L AndFrom T

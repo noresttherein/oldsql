@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.schema.Mapping.MappingOf
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.GroupByClause.{Group, GroupingRelation}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}

@@ -4,6 +4,7 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.Compound.CompoundLike
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
@@ -31,7 +32,7 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]]
 
 	override type FromLast = FromSome GroupByAll M
 	override type Generalized = left.Generalized GroupByAll M
-	override type Self = left.Self GroupByAll M
+	override type Self <: left.Self GroupByAll M
 
 	protected override def narrow :left.type GroupByAll M
 
@@ -144,7 +145,7 @@ object GroupByAll {
 		val relation = from.fullTableStack(group.shift).asRelationSQL
 		                    .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
 		val component = ComponentSQL(relation, group.mapping)(group.projection.isomorphism)
-		GroupByAll[F, M, M, S](from, component.groupingRelation)
+		GroupByAll(from, component.groupingRelation)
 	}
 
 	def apply[F <: FromSome, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -275,21 +276,21 @@ object GroupByAll {
 		override type Self <: (left.Self AndByAll M) {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Self = thisClause.Self
+//			type Self <: thisClause.Self
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
 			type Inner = thisClause.Inner
 			type Implicit = thisClause.Implicit
-			type Outer = thisClause.Outer
+//			type Outer = thisClause.Outer
 			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 			type InnerRow = thisClause.InnerRow
 			type OuterRow = thisClause.OuterRow
 			type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] =
 				thisClause.JoinedWith[P, J]
 			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+P <: NonEmptyFrom] = thisClause.FromSubselect[P]
+//			type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//			type FromSubselect[+P <: NonEmptyFrom] <: thisClause.FromSubselect[P]
 		}
 
 
@@ -350,7 +351,7 @@ trait ByAll[+F <: GroupByClause, G[A] <: MappingAt[A]]
 { thisClause =>
 
 	override type Generalized = left.Generalized ByAll G
-	override type Self = left.Self ByAll G
+	override type Self <: left.Self ByAll G
 
 	override type GeneralizedLeft[+L <: GroupByClause] = L ByAll G
 	override type WithLeft[+L <: GroupByClause] = L ByAll G

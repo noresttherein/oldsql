@@ -110,7 +110,7 @@ object DecoratedFrom {
 		override type This <: WithClause[clause.This] {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Self = thisClause.Self
+//			type Self <: thisClause.Self
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
@@ -124,8 +124,8 @@ object DecoratedFrom {
 			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
 				thisClause.JoinedWith[P, J]
 			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+S <: NonEmptyFrom] = thisClause.FromSubselect[S]
+//			type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//			type FromSubselect[+S <: NonEmptyFrom] <: thisClause.FromSubselect[S]
 		}
 
 

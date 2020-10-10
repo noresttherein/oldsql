@@ -97,20 +97,20 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom with
 	override type Self <: (left.Self Compound R) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
+//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
+//		type Outer = thisClause.Outer
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
 		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
 		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+//		type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//		type FromSubselect[+F <: NonEmptyFrom] <: thisClause.FromSubselect[F]
 	}
 
 
@@ -159,14 +159,13 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom with
 object Compound {
 
 	trait CompoundLike[+F <: NonEmptyFrom with NonEmptyFromLike[F]] extends NonEmptyFromLike[F] { thisClause :F =>
-		implicitly[This <:< F]
 
 		override type This >: this.type <: F {
 			type LastMapping[O] = thisClause.LastMapping[O]
 			type LastTable[C <: FromClause] = thisClause.LastTable[C]
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Self = thisClause.Self
+//			type Self <: thisClause.Self
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
@@ -180,8 +179,8 @@ object Compound {
 			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
 				thisClause.JoinedWith[P, J]
 			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+C <: NonEmptyFrom] = thisClause.FromSubselect[C]
+//			type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//			type FromSubselect[+C <: NonEmptyFrom] <: thisClause.FromSubselect[C]
 		}
 
 	}
@@ -351,20 +350,20 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]]
 	override type Self <: (left.Self Extended R) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
+//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
+//		type Outer = thisClause.Outer
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
 		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
 		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+//		type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//		type FromSubselect[+F <: NonEmptyFrom] <: thisClause.FromSubselect[F]
 	}
 
 

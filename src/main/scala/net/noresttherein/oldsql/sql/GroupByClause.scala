@@ -45,21 +45,21 @@ sealed trait AggregateClause extends FromClause with FromClauseLike[AggregateCla
 	override type Self <: AggregateClause {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
+//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
+//		type Outer = thisClause.Outer
 		type Base = thisClause.Base
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
 		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
 		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+//		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+//		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 	}
 
 
@@ -317,7 +317,7 @@ object Aggregated {
 		new Aggregated[discrete.type] {
 			override val clause :discrete.type = discrete
 			override val from = discrete.self
-			override val outer = from.outer
+			override val outer = clause.outer
 		}
 
 
@@ -366,21 +366,21 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	override type Self <: GroupByClause {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
+//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
+//		type Outer = thisClause.Outer
 		type Base = thisClause.Base
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
 		type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
 		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-		type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-		type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+//		type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
+//		type FromSubselect[+F <: NonEmptyFrom] <: thisClause.FromSubselect[F]
 	}
 
 
@@ -419,7 +419,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	  */ //overriden for docs only
 	override type Discrete <: FromSome {
 		type Generalized = thisClause.GeneralizedDiscrete
-		type Self = thisClause.Discrete
+//		type Self = thisClause.Discrete
 	}
 
 
@@ -463,7 +463,7 @@ object GroupByClause {
 			type LastMapping[O] = thisClause.LastMapping[O]
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Self = thisClause.Self
+//			type Self <: thisClause.Self
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
@@ -476,8 +476,8 @@ object GroupByClause {
 			type OuterRow = thisClause.OuterRow
 			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
 			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
-			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
+//			type FromRelation[T[O] <: MappingAt[O]] = thisClause.FromRelation[T]
+//			type FromSubselect[+F <: NonEmptyFrom] = thisClause.FromSubselect[F]
 		}
 
 		/** A copy of this clause with the `condition` being replaced with the given `filter`.
@@ -697,7 +697,7 @@ object GroupByClause {
 		  * @tparam X parameter type.
 		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
-		  */
+		  */ //the order of implicits is important to avoid a double definition
 		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F GroupParam (N ?: X)#T =
 			GroupParam(thisClause, form ?: (name.value :N))
 

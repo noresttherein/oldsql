@@ -45,13 +45,13 @@ sealed trait JoinLike[+L <: FromClause, R[O] <: MappingAt[O]]
 
 	override type Self <: (left.Self JoinLike R) {
 		type Generalized = thisClause.Generalized
-		type Self = thisClause.Self
+//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type Outer = thisClause.Outer
+//		type Outer = thisClause.Outer
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
@@ -259,7 +259,7 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 { thisClause =>
 
 	override type Generalized = left.Generalized Join R
-	override type Self = left.Self LikeJoin R
+	override type Self <: left.Self LikeJoin R
 
 	protected override def narrow :WithLeft[left.type]
 
@@ -1115,7 +1115,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 { thisClause =>
 
 	override type Generalized = left.Generalized Subselect T
-	override type Self = left.Self Subselect T
+	override type Self <: left.Self Subselect T
 
 	override type WithRight[R[O] <: MappingAt[O]] <: F Subselect R
 	override type GeneralizedJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L Subselect R
