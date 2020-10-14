@@ -25,7 +25,41 @@ import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedSQLExpres
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
 
 
-/**
+/** A synthetic adapter of an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, S, O]` to a
+  * [[net.noresttherein.oldsql.schema.Mapping Mapping]]. Used in ''select'' and ''group by'' clauses,
+  * so that [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.ByAll ByAll]]
+  * can be homomorphic with [[net.noresttherein.oldsql.sql.Join Join]]s and to allow
+  * [[net.noresttherein.oldsql.sql.SelectSQL SelectSQL]] expressions to be used as
+  * [[net.noresttherein.oldsql.schema.Relation Relation]]s in the ''from'' clauses of other SQL selects.
+  * This class is dedicated to non-component expressions; subclasses of
+  * [[net.noresttherein.oldsql.sql.MappingSQL MappingSQL]] should be used directly.
+  * Not all possible expressions are supported; the expression may consist of
+  *   - [[net.noresttherein.oldsql.sql.SQLTerm terms]], todo: these not, unless we the SQLForm will list column names
+  *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
+  *     in particular [[net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm terms]],
+  *   - [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL components]] (ranging from whole entities
+  *     to single columns),
+  *   - [[net.noresttherein.oldsql.sql.ConversionSQL conversion]] nodes,
+  *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
+  *   - [[net.noresttherein.oldsql.sql.TupleSQL.ChainTuple tuples]] and
+  *     [[net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple indexed tuples]].
+  *
+  * The expression is traversed recursively descending to leaf expressions:
+  *   - all column expressions are used directly;
+  *   - component expressions are treated as tuples of their columns and their columns are adapted to columns
+  *     of this expression,
+  *
+  * This mapping doesn't contain any non-column components.
+  *
+  * @tparam F the ''from'' clause serving as the basis of the adapted expression;
+  * @tparam S the scope of the expression: [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope local]] for
+  *           expressions which can occur only as part of the most nested SQL select based on `F` in its
+  *           ''group by'' or ''select'' clause, and [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope global]]
+  *           for expressions which can occur anywhere in a SQL select from `F` or its dependent selects.
+  * @tparam X the value type of this expression
+  * @tparam O the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of this mapping.
+  *
+  * @see [[net.noresttherein.oldsql.sql.ExpressionColumnMapping ExpressionColumnMapping]]
   * @author Marcin Mościcki
   */
 trait ExpressionMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O] extends BaseMapping[X, O] {
@@ -306,6 +340,13 @@ object ExpressionMapping {
 
 
 
+/** A synthetic adapter of an [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, S, O]` to a
+  * [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]. Used in ''select'' and ''group by'' clauses,
+  * so that [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.ByAll ByAll]]
+  * can be homomorphic with [[net.noresttherein.oldsql.sql.Join Join]]s and to allow
+  * [[net.noresttherein.oldsql.sql.SelectSQL SelectSQL]] expressions to be used as
+  * [[net.noresttherein.oldsql.schema.Relation Relation]]s in the ''from'' clauses of other SQL selects.
+  */
 trait ExpressionColumnMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O]
 	extends ExpressionMapping[F, S, X, O] with ColumnMapping[X, O]
 {

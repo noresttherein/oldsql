@@ -565,7 +565,7 @@ object SelectSQL {
 	  * declared by this mapping. This means that we need a bit of creative term rewriting to map the scala value
 	  * as it would be evaluated by the original header expression. In particular, in the above example, the address object
 	  * would be reassembled based on the values of individual columns included in the final select.
-	  */
+	  */ //todo: just use ExpressionMapping
 	private abstract class ArbitrarySelect[-F <: FromClause, S <: SubselectOf[F], V, O] protected
 	                                      (override val from :S, override val header :SQLExpression[S, LocalScope, V])
 		extends SelectSQL[F, GlobalScope, V, O] with LazyMapping[V, O]
@@ -703,7 +703,8 @@ object SelectSQL {
 
 
 
-		private type Extractors[-_ >: LocalScope <: GlobalScope, X] = Seq[Assoc[Column, ({ type E[T] = ColumnMappingExtract[X, T, O]})#E, _]]
+		private type Extractors[-_ >: LocalScope <: GlobalScope, X] =
+			Seq[Assoc[Column, ({ type E[T] = ColumnMappingExtract[X, T, O]})#E, _]]
 
 		private class ExtractsCollector extends ExpressionMatcher[S, Extractors]
 			with CaseExpression[S, Extractors] with CaseColumn[S, Extractors] with MatchChain[S, Extractors]

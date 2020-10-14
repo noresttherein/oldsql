@@ -29,7 +29,7 @@ object implicitSQLLiterals extends SQLLiteralImplicits
 
 
 
-sealed trait SQLMultiColumnLiteralImplicits {
+sealed trait SQLMultiColumnLiteralImplicits { //todo: exclude Boolean to avoid errors of using == instead of ===
 	implicit def implicitLiteral[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
 }
 

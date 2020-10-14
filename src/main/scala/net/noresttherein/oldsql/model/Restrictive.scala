@@ -23,7 +23,7 @@ import scala.reflect.runtime.universe
   * where `T` is some constrained entity. Instances of this type are typically tested with a predicate
   * or compared with other instances to produce Boolean conditions.
   * @see [[net.noresttherein.oldsql.model.Restraint.Restrainer Restrainer]]
-  */ //todo: awkward name, think of something better
+  */ //todo: awkward name, think of something better. Selector?
 sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable with implicits {
 //todo: def apply(whole :T) :V and self type to T => V. If only private classes implement T => V,
 // it will not count as an implicit conversion.

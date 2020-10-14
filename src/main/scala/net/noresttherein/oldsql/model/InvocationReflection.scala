@@ -157,7 +157,7 @@ private[model] object InvocationReflection {
 
 
 	private def mock(subjectType :Type) :Any = {
-		val subjectClass = classFor(subjectType) //todo: maybe it _can_ extend final classes?
+		val subjectClass = classFor(subjectType)
 		if (!subjectClass.isPrimitive && (subjectClass.getModifiers & FINAL) == 0)
 			tracer(subjectType, subjectClass)
 		else

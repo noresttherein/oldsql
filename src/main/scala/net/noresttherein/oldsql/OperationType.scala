@@ -37,7 +37,7 @@ sealed trait OperationType {
 	val nonDefault :FlagBuffType
 	
 	/** A buff marking that a column/component must be included in the operation explicitly, as it is not included
-	  * by the mapping in the standard process. Example: `ExplicitSelect` for CLOB/BLOB types. This column implies
+	  * by the mapping in the standard process. Example: `ExplicitSelect` for CLOB/BLOB types. This buff implies
 	  * [[net.noresttherein.oldsql.OperationType.optional optional]] and
 	  * [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]].
 	  */

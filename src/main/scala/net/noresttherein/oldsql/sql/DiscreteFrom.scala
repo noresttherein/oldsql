@@ -1,15 +1,18 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm, Relation, SQLForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.morsels.abacus.Numeral
+import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm, Mapping, Relation, SQLForm}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.AggregateSQL.{Avg, Count, Max, Min, StdDev, Sum, Var}
+import net.noresttherein.oldsql.sql.AndFrom.AndFromMatrix
+import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, FromClauseLike, JoinedMappings, NonEmptyFrom, NonEmptyFromLike, OuterFromSome, ParameterlessFrom, PartOf}
+import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ApplyJoinParams, As, ExtendedBy, FreeFrom, FreeFromSome, FromClauseMatrix, JoinedMappings, NonEmptyFrom, NonEmptyFromMatrix, OuterFromSome, ParameterlessFrom, PartOf, TableCount}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
-import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, LooseColumnComponent}
+import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, ComponentSQL, JoinedRelation, LooseColumnComponent, RelationSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, ParamRelation}
@@ -28,7 +31,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, Local
   * its non-empty subtype, [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome FromSome]].
   * @see [[net.noresttherein.oldsql.sql.GroupByClause]]
   */
-trait DiscreteFrom extends FromClause with FromClauseLike[DiscreteFrom] { thisClause =>
+trait DiscreteFrom extends FromClause with FromClauseMatrix[DiscreteFrom] { thisClause =>
 
 	override def filter :GlobalBoolean[Generalized] = filter(generalized)
 
@@ -54,8 +57,9 @@ trait DiscreteFrom extends FromClause with FromClauseLike[DiscreteFrom] { thisCl
 	/** Used to add any relation to any clause, creates the clause of a type depending on this clause:
 	  * empty clauses return `From[T]`, while non empty clauses create `this.type InnerJoin T`.
 	  */ //this method serves also as a seal ensuring that every discrete clause extends either EmptyFrom or FromSome
-	protected[sql] def extend[T[O] <: BaseMapping[S, O], S]
-	                   (right :LastRelation[T, S], filter :GlobalBoolean[Generalized AndFrom T]) :this.type AndFrom T
+	protected[sql] def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
+	                         (right :LastRelation[T, S], alias :Option[A],
+	                          filter :GlobalBoolean[Generalized AndFrom T]) :this.type AndFrom T As A
 
 
 
@@ -87,9 +91,6 @@ trait DiscreteFrom extends FromClause with FromClauseLike[DiscreteFrom] { thisCl
 	def joinWith[F <: FromSome](suffix :F, join :JoinLike.* = InnerJoin.template) :JoinWith[join.LikeJoin, F]
 
 
-	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] <: Generalized
-
-
 
 	protected override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.discreteFrom(this)
 
@@ -113,14 +114,13 @@ object DiscreteFrom {
 	  * clauses by adding a [[net.noresttherein.oldsql.sql.MappingSQL.JoinedRelation JoinedRelation]] to a prefix
 	  * `FromClause`.
 	  */
-	trait FromSome extends DiscreteFrom with NonEmptyFrom with NonEmptyFromLike[FromSome] { thisClause =>
+	trait FromSome extends DiscreteFrom with NonEmptyFrom with NonEmptyFromMatrix[FromSome, FromSome] { thisClause =>
 
 		override type LastTable[F <: FromClause] = JoinedRelation[F, LastMapping]
-		//override type FromLast >: this.type <: FromSome //>: this.type doesn't hold for decorators
 		override type FromLast >: Generalized <: FromSome
 		override type FromNext[E[+L <: FromSome] <: FromClause] = E[FromLast]
 
-		override type Generalized >: Self <: FromSome {
+		override type Generalized >: Dealiased <: FromSome {
 			type FromLast = thisClause.FromLast
 			type Generalized <: thisClause.Generalized
 			type Explicit <: thisClause.Explicit
@@ -129,39 +129,45 @@ object DiscreteFrom {
 			type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 		}
 
+		type Dealiased >: Self <: FromSome {
+			type FromLast = thisClause.FromLast
+			type Generalized = thisClause.Generalized
+			type Params = thisClause.Params
+			type FullRow = thisClause.FullRow
+			type Explicit = thisClause.Explicit
+			type Implicit = thisClause.Implicit
+			type Base = thisClause.Base
+			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+			type InnerRow = thisClause.InnerRow
+			type OuterRow = thisClause.OuterRow
+		}
+
 		override type Self <: FromSome {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-//			type Self <: thisClause.Self
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
 			type Inner = thisClause.Inner
 			type Implicit = thisClause.Implicit
-//			type Outer = thisClause.Outer
 			type Base = thisClause.Base
 			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 			type InnerRow = thisClause.InnerRow
 			type OuterRow = thisClause.OuterRow
-			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = thisClause.JoinedWith[P, J]
-			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-//			type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
-//			type FromSubselect[+F <: NonEmptyFrom] <: thisClause.FromSubselect[F]
 		}
 
 
 
-		override type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
+		override type FilterNext[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
 			                    (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => GlobalBoolean[G]
 
 		protected override def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
-		                       (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N])
-				:next.This =
+		                       (next :F)(filter :FilterNext[next.GeneralizedLeft, next.FromLast, next.Generalized, N])
+				:next.Copy =
 		{
 			val condition = filter(last.asIn(next.generalizedExtension[FromLast]), next.last)
 			val anchored = SQLScribe.anchorLooseComponents(next.generalized)(condition)
-			if (anchored == True) next
-			else next.filtered(anchored)
+			next.filtered(anchored)
 		}
 
 		override type Extend[+J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = Self J T
@@ -171,10 +177,10 @@ object DiscreteFrom {
 				:join.LikeJoin[Self, T] =
 			join.likeJoin[Self, T, S](self, next)(filter)
 
-		protected[sql] def extend[T[O] <: BaseMapping[S, O], S]
-		                         (right :LastRelation[T, S], filter :GlobalBoolean[Generalized AndFrom T])
-				:this.type AndFrom T =
-			InnerJoin[this.type, T, S](this, right)(filter)
+		protected[sql] def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
+		                   (right :LastRelation[T, S], alias :Option[A], filter :GlobalBoolean[Generalized AndFrom T])
+				:this.type AndFrom T As A =
+			InnerJoin[this.type, T, S, A](this, right, alias)(filter)
 
 
 
@@ -280,15 +286,17 @@ object DiscreteFrom {
 
 
 	/** Extension methods performing most generic join between any ungrouped (i.e., pure) `FromClause`,
-	  * and other relations. */
+	  * and other relations.
+	  */
 	implicit class DiscreteFromExtension[F <: DiscreteFrom](val thisClause :F) extends AnyVal {
 
 		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side. The real type of the result depends on the type of this clause:
 		  * for `Dual`, the result is `From[R]`, for non-empty clauses the result is `F InnerJoin R`.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.on on()]],
+		  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @return `From[R]` if this clause is empty or `F InnerJoin R` otherwise.
@@ -304,12 +312,12 @@ object DiscreteFrom {
 		  * type of the first join of the given clause is `From[_]`, otherwise the join type is preserved.
 		  * If either of the clauses is empty, the other is returned unchanged.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
-		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
+		  * as are all join conditions between them. The join condition between the clauses can be subsequently
+		  * specified using the [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def andFrom[R <: DiscreteFrom](other :R) :other.JoinedWith[F, AndFrom] = other.appendedTo(thisClause)
+		@inline def andFrom[R <: FromClause](other :R) :other.JoinedWith[F, AndFrom] = other.appendedTo(thisClause)
 	}
 
 
@@ -319,12 +327,14 @@ object DiscreteFrom {
 	  * invariant self type. Most notably, this includes methods for joining it with other relations.
 	  */
 	implicit class FromSomeExtension[F <: FromSome](val thisClause :F) extends AnyVal {
+		type Generalized = thisClause.Generalized
 
 		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.on on()]],
+		  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
@@ -336,21 +346,22 @@ object DiscreteFrom {
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
-		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
+		  * as are all join conditions between them. The join condition between the clauses can be subsequently
+		  * specified using the [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def join[R <: FromSome](other :R) :other.JoinedWith[F, InnerJoin] =
+		@inline def join[R <: FromClause](other :R) :other.JoinedWith[F, InnerJoin] =
 			other.joinedWith(thisClause, InnerJoin.template)
 
 
 
 		/** Performs a symmetric outer join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.on on()]],
+		  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
@@ -363,21 +374,22 @@ object DiscreteFrom {
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
-		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
+		  * as are all join conditions between them. The join condition between the clauses can be subsequently
+		  * specified using the [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def outerJoin[R <: FromSome](other :R) :other.JoinedWith[F, OuterJoin] =
+		@inline def outerJoin[R <: FromClause](other :R) :other.JoinedWith[F, OuterJoin] =
 			other.joinedWith(thisClause, OuterJoin.template)
 
 
 
 		/** Performs a left outer join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.on on()]],
+		  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
@@ -390,21 +402,22 @@ object DiscreteFrom {
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
-		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
+		  * as are all join conditions between them. The join condition between the clauses can be subsequently
+		  * specified using the [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def leftJoin[R <: FromSome](other :R) :other.JoinedWith[F, LeftJoin] =
+		@inline def leftJoin[R <: FromClause](other :R) :other.JoinedWith[F, LeftJoin] =
 			other.joinedWith(thisClause, LeftJoin.template)
 
 
 
 		/** Performs a right outer join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
-		  * The join condition can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on()]],
-		  * [[net.noresttherein.oldsql.sql.AndFrom.where where()]] or
-		  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] method.
+		  * The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.on on()]],
+		  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.whereLast whereLast()]] method.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
@@ -417,12 +430,12 @@ object DiscreteFrom {
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
 		  * Both the dynamic and static types of the joins from the parameter clause are preserved,
-		  * as are all join conditions between them. The join condition between the clauses can be
-		  * subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.where where()]] method.
+		  * as are all join conditions between them. The join condition between the clauses can be subsequently
+		  * specified using the [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]] method.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def rightJoin[R <: FromSome](other :R) :other.JoinedWith[F, RightJoin] =
+		@inline def rightJoin[R <: FromClause](other :R) :other.JoinedWith[F, RightJoin] =
 			other.joinedWith(thisClause, RightJoin.template)
 
 
@@ -524,7 +537,7 @@ object DiscreteFrom {
 
 
 
-		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using this clause.
+		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
 		  * The explicit list of relations in the clause is initialized with the relation given as a `Relation` object
 		  * and can be further expanded by joining with additional relations. The created clause is represented
 		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
@@ -532,8 +545,9 @@ object DiscreteFrom {
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
 		  * ''where'' clause filters and `select` clause headers.
 		  * The join condition and the ''where'' clause filter can be subsequently specified using one of
-		  * the [[net.noresttherein.oldsql.sql.AndFrom.on on()]], [[net.noresttherein.oldsql.sql.AndFrom.where where()]]
-		  * and [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] methods.
+		  * the [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.on on()]],
+		  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]]
+		  * and [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.whereLast whereLast()]] methods.
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
@@ -543,7 +557,7 @@ object DiscreteFrom {
 		                     (implicit cast :InferSubject[F, Subselect, R, T, S]) :F Subselect R =
 			Subselect(thisClause, table)
 
-		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using on clause.
+		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
 		  * The explicit list of relations in the clause is initialized with the relations given as a `FromClause`
 		  * and can be further expanded by joining with additional relations. The created clause is represented
 		  * as a linearization of the explicit portion - the given relations - following the `Subselect`
@@ -551,14 +565,17 @@ object DiscreteFrom {
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
 		  * ''where'' clause filters and `select` clause headers.
 		  * The join condition and the ''where'' clause filter can be subsequently specified using one of
-		  * the [[net.noresttherein.oldsql.sql.AndFrom.on on()]], [[net.noresttherein.oldsql.sql.AndFrom.where where()]]
-		  * and [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast()]] methods.
+		  * the [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.on on()]],
+		  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where where()]]
+		  * and [[net.noresttherein.oldsql.sql.FromClause.NonEmptyFromMatrix.whereLast whereLast()]] methods.
 		  * @param other a `FromClause` listing relations which should be appended to this clause (i.e. joined,
-		  *              preserving the order).
+		  *              preserving the order). The clause cannot be empty to enforce that the `Subselect` join
+		  *              is actually applied and that any relations joined later will be part of the new subselect
+		  *              rather than the currently most deeply nested select.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  * @throws UnsupportedOperationException if `other` is empty or its first join is a `JoinParam`.
 		  */
-		@inline def subselect[R <: FromSome](other :R) :other.JoinedWithSubselect[F] =
+		@inline def subselect[R <: NonEmptyFrom](other :R) :other.JoinedWithSubselect[F] =
 			other.joinedWithSubselect(thisClause)
 
 
@@ -568,19 +585,20 @@ object DiscreteFrom {
 		  *           a [[net.noresttherein.oldsql.sql.GroupByClause.GroupingExpression GroupingExpression]]
 		  *           type class exist. The [[net.noresttherein.oldsql.sql.GroupByClause.GroupingExpression$ companion]]
 		  *           object contains definitions for:
-		  *             - `M <: `[[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`[_, O]`, for some type `O`
-		  *               being a supertype of this clause and having an implicit
+		  *             - `M <: `[[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`[_, O]`, having an implicit
 		  *               [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] (which exists
 		  *               for all subtypes of `BaseMapping` taking the `Origin` type as its last type parameter),
 		  *             - not anchored adapters of component mappings of any relation mapping present in the provided
 		  *               [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]]:
-		  *               [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]]
-		  *               (and [[net.noresttherein.oldsql.sql.MappingSQL.LooseColumnComponent LooseColumnComponent]]),
-		  *             - components of relations: [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]]
-		  *               and [[net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL ColumnComponentSQL]],
-		  *             - any single column expressions [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]],
-		  *             - base [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]],
-		  * @tparam V the value type of the grouping expression.
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]]`[O, _, _]` (and
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.LooseColumnComponent LooseColumnComponent]]`[O, _, _]`),
+		  *             - components of relations:
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]]`[F, _, _, _, _, O]` and
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL ColumnComponentSQL]]`[F, _, _, _, _, O]`,
+		  *             - any single column expressions [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, _]`,
+		  *             - base [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, _]`,
+		  *           where type `F` is this clause, and `O` is its some supertype, with the origin relation
+		  *           of the component expression being the first relation following an abstract type (typically `FromSome`).
 		  * @param expr a function accepting the facade to this clause
 		  *             [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]], which provides
 		  *             accessors to the mappings for all relations in this clause, and which returns
@@ -618,8 +636,62 @@ object DiscreteFrom {
 		  *         (or `F `[[net.noresttherein.oldsql.sql.GroupByOne GroupByOne]]` V`), where `V` is the value type
 		  *         of the expression `E`.
 		  */
-		def groupBy[E, V](expr :JoinedMappings[F] => E)(implicit grouping :GroupingExpression[F, F, E, V]) :grouping.Result =
-			grouping(thisClause)(expr(thisClause.mappings))
+		def groupBy[E](expr :JoinedMappings[Generalized] => E)(implicit grouping :GroupingExpression[F, F, E]) :grouping.Result =
+			grouping(thisClause)(expr(thisClause.generalized.mappings))
+
+		/** Adds a ''group by'' clause to this ''from'' clause with all
+		  * [[net.noresttherein.oldsql.schema.Mapping.selectable selectable]] columns of the given component.
+		  * @param component a mapping for a component of one of the relations listed by this clause.
+		  *                  It must be a [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`[S, O]`, where
+		  *                  the `Origin` type `O` is a supertype of the `Generalized` type of this clause starting with
+		  *                  `FromClause AndFrom T`, where `T` is the mapping type for the relation this component
+		  *                  comes from.
+		  * @param typeParams used to instantiate the necessary `Subject` and `Origin` types `S`, `O` of the argument mapping.
+		  * @param shift implicit evidence with the number of relations listed in the `Origin` type.
+		  * @param projection a casting type class for `M` which provides its necessary type constructor accepting
+		  *                   an `Origin` type.
+		  */ //todo: this currently is not picked over the overload with BaseComponentSQL for some reason
+		def groupBy[M <: Mapping, S, O <: FromClause]
+		           (component :M)
+		           (implicit typeParams :M <:< BaseMapping[S, O], belongs :Generalized <:< O,
+		                     shift :TableCount[O, _ <: Numeral], projection :OriginProjection[M, S])
+				:F GroupByAll projection.WithOrigin =
+		{
+			val relation = thisClause.fullTableStack(shift.tables).asRelationSQL
+				.asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
+			val expr = ComponentSQL(relation, projection[F](component))(projection.isomorphism)
+			GroupByAll[F, projection.WithOrigin, projection.WithOrigin, S](thisClause, expr.groupingRelation)
+		}
+
+		/** Adds a ''group by'' clause to this ''from'' clause with all
+		  * [[net.noresttherein.oldsql.schema.Mapping.selectable selectable]] columns of the component from
+		  * the given component expression based on this clause.
+		  */
+		def groupBy[M[A] <: MappingAt[A], T[A] <: BaseMapping[S, A], S]
+		           (component :BaseComponentSQL[F, M, _ >: F <: FromClause])
+		           (implicit cast :InferSubject[F, GroupByAll, M, T, S]) :F GroupByAll M =
+			GroupByAll(thisClause, component)
+
+		/** Adds a ''group by'' clause to this ''from'' clause with the given single column expression. */
+		def groupBy[V](column :GlobalColumn[F, V]) :F GroupByOne V =
+			GroupByOne(thisClause, column)
+
+		/** Adds a ''group by'' clause to this ''from'' clause with all member columns of the given expression.
+		  * The expression is traversed structurally until a [[net.noresttherein.oldsql.sql.ColumnSQL column expression]]
+		  * is encountered, which is then added to the ''group by'' clause of the generated SQL.
+		  * Not all possible expressions are supported; the expression may consist of
+		  *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
+		  *     in particular [[net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm terms]],
+		  *   - [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL components]] (ranging from whole entities
+		  *     to single columns),
+		  *   - [[net.noresttherein.oldsql.sql.ConversionSQL conversion]] nodes,
+		  *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
+		  *   - [[net.noresttherein.oldsql.sql.TupleSQL.ChainTuple tuples]] and
+		  *     [[net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple indexed tuples]].
+		  */
+		def groupBy[V](expr :GlobalSQL[F, V]) :F GroupByVal V =
+			GroupByVal(thisClause, expr)
+
 
 		/** Wraps this clause in a special adapter allowing the use of
 		  * [[net.noresttherein.oldsql.sql.AggregateSQL.AggregateFunction aggregate functions]] in its ''select'' clause.
@@ -636,18 +708,6 @@ object DiscreteFrom {
 		  * }}}
 		  */
 		@inline def aggregate :Aggregated[F] = Aggregated(thisClause)
-
-
-
-		/** Applies this clause to its parameters: removes all `JoinParam` joins and substitutes all references
-		  * to parameter components with SQL literals extracted from parameter values.
-		  * @param params a chain consisting of subject types of all parameter mappings of all `JoinParam` joins
-		  *               in this clause in order of their appearance.
-		  * @tparam U `FromClause` subtype obtained by removing all `JoinParam` instances from this clause's type.
-		  */
-		def apply[U <: ParameterlessFrom](params :thisClause.Params)
-		                                 (implicit apply :ApplyJoinParams[F, thisClause.Params, U]) :U =
-			apply(thisClause, params)
 
 	}
 

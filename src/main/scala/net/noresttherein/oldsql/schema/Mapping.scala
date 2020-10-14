@@ -872,7 +872,7 @@ trait Mapping {
 
 	/** The SQL/DDL-related name associated with this mapping. This must be defined for all column and table
 	  * mappings, but is typically empty in all other cases.
-	  */ //consider: removing this altogether, probably once we've implemented actutal table schema
+	  */ //consider: removing this altogether, probably once we've implemented actual table schema
 	def sqlName :Option[String] = None
 
 
@@ -1730,7 +1730,7 @@ object Mapping extends LowPriorityMappingImplicits {
 					s"Can't create a $op write form for $mapping using $exports: ${op.prohibited} buff present among selection."
 				)
 
-			val columns = exports.flatMap { //fixme: adding an ExplicitXxx buff to a column with the
+			val columns = exports.flatMap { //fixme: adding an ExplicitXxx buff to excluded columns with the OptionalXxx
 				c => c.columns.toSeq.map(mapping.export(_)).filter(op.prohibited.disabled)
 			}.toUnique
 			val mandatory = mapping.columns.filter(op.nonDefault.disabled)

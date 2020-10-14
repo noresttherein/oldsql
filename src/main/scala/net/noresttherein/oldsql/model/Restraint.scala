@@ -25,7 +25,7 @@ import net.noresttherein.oldsql.slang._
   * treated as a result set of values of `T`, because then it would have to be covariant with regards to `T` -
   * a set of values of `S` is of course a set of values of `T>:S`. This becomes an issue when used inside a
   * `Kin[T]`, which is covariant with regards to `T` and care has to be taken when dealing with such cases.
-  */
+  */ //consider: renaming to Selection
 trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable with implicits {
 
 	/** Creates a restraint implementing the negated condition of this restraint (i.e. selecting a value ''iff''
@@ -130,7 +130,7 @@ object Restraint {
 		def compose[K](oldKey :P=>K, newKey :K=>P) :Restrainer[T, K] =
 			new MappedRestrainer[T, P, K](this)(oldKey, newKey)
 
-		/** Create a restrainer working on some other, larger type `X` from which values of `S<:T` can be derived. */
+		/** Create a restrainer working on some other, larger type `X` from which values of `S <: T` can be derived. */
 		def derive[X, S<:T](nest :Restrictive[X, S]) :Restrainer[X, P] = new NestedRestrainer(this, nest)
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[Restrainer[_, _]]
@@ -735,7 +735,8 @@ object Restraint {
 
 
 		/** Check if the given restriction is a membership test for a set. */
-		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, E], Restrictive[T, C], C DecomposableTo E) forSome { type E; type C }] =
+		def unapply[T](restraint :Restraint[T])
+				:Option[(Restrictive[T, E], Restrictive[T, C], C DecomposableTo E) forSome { type E; type C }] =
 			restraint match {
 				case m :MembershipTest[T, c, e] => Some((m.member, m.values, m.decomposer))
 //				case Equal(left, right) => Some((left, right, DecomposableTo.Subclass()))
@@ -771,7 +772,7 @@ object Restraint {
 					items.collect { case Literal(v) => v.asInstanceOf[K] }.toSet providing (_.size == items.size)
 
 				case Membership(Term, Literal(items), deco) =>
-					//todo: wrong! may be Iterable[Set[K]] after decomposer
+					//todo: wrong! may be Iterable[Set[K]] after decomposition
 					Some(deco.asInstanceOf[DecomposableTo[Any, Any]].apply(items).toSet.asInstanceOf[Set[K]])
 
 				case False => Some(Set.empty)

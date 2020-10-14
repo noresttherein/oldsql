@@ -378,7 +378,7 @@ object SQLExpression  {
 
 
 	/** Default scope of an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]], signifying that it can be used
-	  * solely within the ''select'' statement for the [[net.noresttherein.oldsql.sql.FromClause FromClause]]
+	  * solely within the ''select'' and ''having'' clauses for the [[net.noresttherein.oldsql.sql.FromClause FromClause]]
 	  * serving as the base for the expression. Such expressions are illegal for subselects of the mentioned ''select'',
 	  * that is it cannot be converted to another ''from'' clause `E` extending the original clause `F`. This stands
 	  * in contrast to the [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope GlobalScope]], which is a supertype
@@ -390,7 +390,9 @@ object SQLExpression  {
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalSQL]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
 	  * @see [[net.noresttherein.oldsql.sql.FromClause.PartOf]]
-	  */
+	  * @see [[net.noresttherein.oldsql.sql.AggregateSQL]]
+	  * @see [[net.noresttherein.oldsql.sql.AggregateClause]]
+	  */ //the reverse direction of inheritance is because type inference always picks the upper bound when instantiating free type variables.
 	type LocalScope <: GlobalScope
 
 	/** The type used as the ''scope'' type argument `S` of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]

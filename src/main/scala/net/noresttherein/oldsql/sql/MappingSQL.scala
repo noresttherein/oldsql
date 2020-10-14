@@ -133,7 +133,7 @@ object MappingSQL {
 					new LooseComponent[F, project.WithOrigin, V](component, shift)(project.isomorphism)
 			}
 
-		def apply[F <: FromClause, C <: Mapping, M[A] <: BaseMapping[V, A], V]
+		def apply[F <: FromClause, C <: Mapping, V]
 		         (mapping :C) //TableCount, not TableShift, because M is likely a component, not a table
 		         (implicit cast :C <:< BaseMapping[V, F], shift :TableCount[F, _ <: Numeral],
 		                   project :OriginProjection[C, V])

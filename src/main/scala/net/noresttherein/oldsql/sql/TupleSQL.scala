@@ -35,7 +35,7 @@ trait TupleSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T] extends Com
 
 	override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other.isInstanceOf[TupleSQL[_, _, _]]
 }
-//todo: conversion to MappingSQL
+
 
 
 

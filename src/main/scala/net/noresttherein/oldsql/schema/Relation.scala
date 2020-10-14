@@ -97,13 +97,14 @@ object Relation {
 	  * accepting the `Origin` type for use in `FromClause` subclasses and other types accepting such a type constructor:
 	  * `Dual Join (Humans As "humans")#T` (where `Humans[O] <: MappingAt[O]`).
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
-	  */
+	  */ //
 	class As[M[O] <: MappingAt[O], A <: Label](val relation :Relation[M], val alias :A)
 		extends NamedRelation[A, ({ type T[O] = A @: M[O] })#T]
-	{
+	{ //todo: the contract of name/sql must be specified here; is alias a part of sql?
 		type T[O] = A @: M[O]
 
 		override def name :A = alias
+		override def sql :String = relation.sql
 
 		override def apply[O] :A @: M[O] =
 			(alias @: relation[O].asInstanceOf[RefinedMapping[Any, Any]]).asInstanceOf[A @: M[O]]

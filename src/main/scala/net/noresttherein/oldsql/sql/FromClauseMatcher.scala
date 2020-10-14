@@ -55,5 +55,5 @@ class FromClauseMatcher[Y] {
 	def extendingDecorator[F <: FromClause](from :ExtendingDecorator[F]) :Option[Y] = decorator(from)
 	def fromSomeDecorator[F <: FromSome](from :FromSomeDecorator[F]) :Option[Y] = extendingDecorator(from)
 
-	def alias[F <: FromSome, N <: Label](from :F Alias N) :Option[Y] = fromSomeDecorator(from)
+//	def aliased[F <: FromSome, N <: Label](from :F Aliased N) :Option[Y] = fromSomeDecorator(from)
 }

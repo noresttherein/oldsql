@@ -11,15 +11,34 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 
 package object sql {
 
+	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of Boolean value and
+	  * with [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope scope]] `S`.
+	  */
 	type SQLBoolean[-F <: FromClause, -S >: LocalScope <: GlobalScope] = ColumnSQL[F, S, Boolean]
+
+	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of Boolean value which can be used solely
+	  * within ''select'' and ''having'' clauses of the most deeply nested select represented by the ''from'' clause `F`.
+	  * It is typically a derivative expression, containing an [[net.noresttherein.oldsql.sql.AggregateSQL aggregate]]
+	  * expression as its subexpression.
+	  * Note that [[net.noresttherein.oldsql.sql.GlobalBoolean GlobalBoolean]]`[F] <: LocalBoolean[F]`.
+	  */
 	type LocalBoolean[-F <: FromClause] = ColumnSQL[F, LocalScope, Boolean]
+
+	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of Boolean value which can occur in any place
+	  * of the SQL select represented by the ''from'' clause `F` or its enclosing selects (for subselect clauses).
+	  * Such expressions can also be extended over to subselects of the clause `F` using the
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.basedOn basedOn]] method. This is in particular the expression type
+	  * used in all ''where'' clauses.
+	  * Note that `GlobalBoolean[F] <: `[[net.noresttherein.oldsql.sql.LocalBoolean LocalBoolean]]`F`.
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope]]
+	  */
 	type GlobalBoolean[-F <: FromClause] = ColumnSQL[F, GlobalScope, Boolean]
 
 
 
 	/** The first grouping expression of a [[net.noresttherein.oldsql.sql.GroupByAll group by]] clause,
 	  * represented by a [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`[X, _]`.
-	  */
+	  */ //consider: renaming to GroupBy. Question only if this or GroupByAll
 	type GroupByVal[+F <: FromSome, X] = F GroupByAll Group[X]#T
 
 	object GroupByVal {

@@ -64,7 +64,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with
 	override type Unpacked = V
 
 	//fixme: C might omit mandatory components! schema.forSelect(...).forUpdate(...) can exclude a component necessary
-	//  for update, but not select. We need special subclasses SelectSchema
+	//  for update, but not select. We need special subclasses SelectSchema or perhaps better, a SchemaForm.
 	override type Components = C
 
 	/** The `Subject` type of the outer mapping to which this schema belongs. */

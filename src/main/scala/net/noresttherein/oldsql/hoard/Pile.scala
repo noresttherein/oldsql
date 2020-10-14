@@ -30,7 +30,9 @@ trait Pile[T] { pile =>
 			case e :Exception => try {
 				session.close()
 				throw e
-			} finally {throw e }
+			} catch {
+				case e1 :Throwable => e.addSuppressed(e1); throw e
+			}
 		}
 	}
 

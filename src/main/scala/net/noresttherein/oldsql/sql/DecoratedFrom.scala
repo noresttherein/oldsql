@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator.FromSomeDecoratorComposition
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, FromClauseLike, JoinedMappings, NonEmptyFrom, NonEmptyFromLike, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, FromClauseMatrix, JoinedMappings, NonEmptyFrom, NonEmptyFromMatrix, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -27,20 +27,13 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   */ //this could benefit from being derived from Any
 trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 	val clause :F
+
 	/** The upper bound for the decorated clause used in this clause's dynamic type. */
 	type Bound >: clause.FromLast <: FromClause
+	type LeftBound = Bound
 
 	/** Wraps a (possibly modified) copy of the underlying clause in a new decorator instance. */
 	def withClause[C <: Bound](body :C) :DecoratedFrom[C]
-
-
-	override def where(filter :GlobalBoolean[Generalized]) :This = filtered(filter)
-
-	override def where(condition :JoinedMappings[Generalized] => GlobalBoolean[Generalized]) :This = {
-		val cond = condition(new JoinedMappings[Generalized](generalized))
-		where(SQLScribe.anchorLooseComponents(generalized)(cond))
-	}
-
 
 
 	override type Params = clause.Params
@@ -102,12 +95,15 @@ object DecoratedFrom {
 	trait FromSomeDecorator[+F <: FromSome] extends ExtendingDecorator[F] with FromSome { thisClause =>
 
 		override type LastMapping[O] = clause.LastMapping[O]
+
+//		override type Alias = clause.Alias
 		override type Bound = FromSome
 		override type FromLast = GeneralizedClause[clause.FromLast]
 		override type Generalized = GeneralizedClause[clause.Generalized]
+		override type Dealiased = WithClause[clause.Dealiased]
 		override type Self = WithClause[clause.Self]
 
-		override type This <: WithClause[clause.This] {
+		override type Copy = WithClause[clause.Copy] {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
 //			type Self <: thisClause.Self
@@ -121,9 +117,9 @@ object DecoratedFrom {
 			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 			type InnerRow = thisClause.InnerRow
 			type OuterRow = thisClause.OuterRow
-			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
-				thisClause.JoinedWith[P, J]
-			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
+//			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+//				thisClause.JoinedWith[P, J]
+//			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
 //			type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
 //			type FromSubselect[+S <: NonEmptyFrom] <: thisClause.FromSubselect[S]
 		}
@@ -131,20 +127,29 @@ object DecoratedFrom {
 
 		override def last :JoinedRelation[FromLast, LastMapping] = clause.last.asIn[FromLast]
 
+//		override def aliasOpt :Option[Alias] = clause.aliasOpt
+//		override def alias :String = clause.alias
+
 		type GeneralizedClause[+G <: FromSome] <: FromSomeDecorator[G] {
 			type GeneralizedClause[+S <: FromSome] = thisClause.GeneralizedClause[S]
 		}
 
-		type WithClause[+G <: FromSome] <: GeneralizedClause[G] {
-			type WithClause[+S <: FromSome] = thisClause.WithClause[S]
+		type DealiasedLeft[+G <: FromSome] <: GeneralizedClause[G] {
+			type DealiasedLeft[+S <: FromSome] = thisClause.DealiasedLeft[S]
 		}
+
+		//the defining type because As overrides it.
+		type WithLeft[+G <: FromSome] <: DealiasedLeft[G] {
+			type WithLeft[+S <: FromSome] = thisClause.WithLeft[S]
+		}
+		type WithClause[+G <: FromSome] = WithLeft[G]
 
 		def withClause[C <: FromSome](from :C) :WithClause[C]
 
+		override type JoinFilter = clause.JoinFilter
 
-		override def whereLast(condition :JoinedRelation[FromLast, LastMapping] => GlobalBoolean[FromLast]) :This =
-			where(SQLScribe.anchorLooseComponents(generalized)(condition(last)))
-
+		override def filtered(condition :clause.JoinFilter) :Copy =
+			withClause(clause.filtered(condition))
 
 		override type FullRow = clause.FullRow
 
@@ -217,20 +222,26 @@ object DecoratedFrom {
 	object FromSomeDecorator {
 
 		@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} and the " +
-		                  "decorated clause ${C}.\nMissing implicit FromSomeDecoratorComposition[${F}, ${C}, ${D}, ${U}].")
+		                  "decorated clause ${C}.\nMissing implicit FromSomeDecoratorComposition[${F}, ${C}, ${D}].")
 		class FromSomeDecoratorComposition
 		            [F <: D[C], C <: FromSome,
-		             D[+B <: FromSome] <: FromSomeDecorator[B] { type WithClause[+P <: FromSome] <: D[P] }]
+		             D[+B <: FromSome] <: FromSomeDecorator[B] { type WithLeft[+P <: FromSome] <: D[P] }]
 			extends DecoratorComposition[F, C, D, FromSome]
 		{
+			override type G[+A >: C <: FromSome] = Generalized[A]
+			type Generalized[+A <: FromSome] >: D[A] <: FromSomeDecorator[A]
+
 			@inline final override def apply[B <: FromSome](template :F, clause :B) :D[B] = template.withClause(clause)
+
+			override def generalized[A >: C <: FromSome] :DecoratorDecomposition[Generalized[A], A, Generalized, FromSome] =
+				this.asInstanceOf[DecoratorDecomposition[Generalized[A], A, Generalized, FromSome]]
 		}
 
-		implicit def genericDecoratorComposition
+		implicit def fromSomeDecoratorComposition
 		             [F <: D[C], C <: FromSome,
-		              D[+B <: FromSome] <: FromSomeDecorator[B] { type WithClause[+P <: FromSome] <: D[P] }]
-				:FromSomeDecoratorComposition[F, C, D] =
-			composition.asInstanceOf[FromSomeDecoratorComposition[F, C, D]]
+		              D[+B <: FromSome] <: FromSomeDecorator[B] { type WithLeft[+P <: FromSome] <: D[P] }]
+				:FromSomeDecoratorComposition[F, C, D] { type G[+B >: C <: FromSome] = D[B] } =
+			composition.asInstanceOf[FromSomeDecoratorComposition[F, C, D] { type G[+B >: C <: FromSome] = D[B] }]
 
 	}
 
@@ -246,7 +257,7 @@ object DecoratedFrom {
 	  * (so, for `trait Deco[F, +C <: FromSome] extends FromSomeDecorator[C]`, `Deco[F, C]` will be correctly unified as
 	  * `D[X] =:= Deco[F, X], C =:= C`). However, if the `C` type argument is not the last one, or the type definition
 	  * is more complex, automatic partial unification will fail - as it would for
-	  * [[net.noresttherein.oldsql.sql.Alias Alias]], which takes the clause as its first argument.
+	  * [[net.noresttherein.oldsql.sql.Aliased Aliased]], which takes the clause as its first argument.
 	  * This order can be important for readability reasons, so to proof various implicit factory methods
 	  * which recursively scan `FromClause` subtypes against any future decorator extensions which would break
 	  * the type inference preventing from the materializing of the implicit value, the factory method can rely on
@@ -287,5 +298,6 @@ object DecoratedFrom {
 	private[this] val decomposition =
 		new DecoratorDecomposition[FromSomeDecorator[FromSome], FromSome, FromSomeDecorator, FromSome]
 
-	private[this] val composition = new FromSomeDecoratorComposition[Alias[FromSome, ""], FromSome, Alias.WithLabel[""]#F]
+	private[this] val composition =
+		new FromSomeDecoratorComposition[FromSomeDecorator[FromSome], FromSome, FromSomeDecorator]
 }

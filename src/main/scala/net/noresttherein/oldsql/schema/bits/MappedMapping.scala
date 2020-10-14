@@ -159,7 +159,7 @@ object MappedMapping {
 
 	def adapter[M <: MappingAt[O], T, S, O](mapping :MappingAdapter[M, T, O], mapped: T =?> S, unmapped :S =?> T)
 	                                       (implicit nulls :NullValue[S] = null) :M MappedTo S =
-		new MappedAdapter[M, T, S, O](mapping, mapped, unmapped)
+		new MappedAdapterAdapter[M, T, S, O](mapping, mapped, unmapped)
 
 	def mapAdapter[M <: MappingAt[O], T, S, O](mapping :MappingAdapter[M, T, O], mapped :T => S, unmapped :S => T)
 	                                          (implicit nulls :NullValue[S] = null) :M MappedTo S =
@@ -186,10 +186,10 @@ object MappedMapping {
 
 
 
-	private class MappedAdapter[+M <: MappingAt[O], T, S, O]
-	                           (protected override val backer :MappingAdapter[M, T, O],
-	                            protected override val map :T =?> S, protected override val unmap :S =?> T)
-	                           (implicit protected override val nulls :NullValue[S] = null)
+	private class MappedAdapterAdapter[+M <: MappingAt[O], T, S, O]
+	                                  (protected override val backer :MappingAdapter[M, T, O],
+	                                   protected override val map :T =?> S, protected override val unmap :S =?> T)
+	                                  (implicit protected override val nulls :NullValue[S] = null)
 		extends MappedMapping[T, S, O] with ComposedAdapter[M, T, S, O]
 	{
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =

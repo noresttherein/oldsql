@@ -4,9 +4,11 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql.AndFrom.AndFromMatrix
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, FromClauseLike, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, FreeFrom, FromClauseMatrix, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
@@ -24,7 +26,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * The drawback is that the `T => T#Generalized` type transformation is not a fixed point operation.
   */
 sealed class Dual private (override val filter :GlobalBoolean[FromClause])
-	extends DiscreteFrom with FromClauseLike[Dual]
+	extends DiscreteFrom with FromClauseMatrix[Dual]
 { thisClause =>
 
 	override type LastMapping[O] = Nothing
@@ -37,8 +39,9 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause])
 	override def lastAsIn[E <: FromClause](implicit extension :FromClause PrefixOf E) :Nothing = last
 
 	override type Generalized = FromClause
+	override type Dealiased = Dual
 	override type Self = Dual
-	override type This = Dual
+	override type Copy = Dual
 
 	override def filtered[S >: GlobalScope <: GlobalScope](condition :SQLBoolean[FromClause, S]) :Dual =
 		if (filter == condition || condition == True) this
@@ -51,11 +54,11 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause])
 	}
 
 
-	override type JoinFilter[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
+	override type FilterNext[E[+L <: FromSome] <: L Extended N, S <: FromClause Extended N, G <: S, N[O] <: MappingAt[O]] =
 		Nothing
 
 	override def filterNext[F <: FromClause AndFrom N, N[O] <: MappingAt[O]]
-	              (next :F)(filter :JoinFilter[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) :Nothing =
+	              (next :F)(filter :FilterNext[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) :Nothing =
 		throw new UnsupportedOperationException(s"Dual.filterNext($next)")
 
 
@@ -89,10 +92,10 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause])
 	                   (next :Relation[T], filter :GlobalBoolean[FromClause AndFrom T], join :JoinLike.*) :From[T] =
 		From[T, S](next, filter)
 
-	protected[sql] override def extend[T[O] <: BaseMapping[S, O], S]
-	                                  (right :LastRelation[T, S], filter :GlobalBoolean[FromClause AndFrom T])
-			:this.type AndFrom T =
-		From.narrow(this, right, filter)
+	protected[sql] override def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
+	                                  (right :LastRelation[T, S], alias :Option[A],
+	                                   filter :GlobalBoolean[FromClause AndFrom T]) :this.type AndFrom T As A =
+		From.custom(this, right, alias, filter)
 
 
 	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L AndFrom R, F <: FromClause] = F

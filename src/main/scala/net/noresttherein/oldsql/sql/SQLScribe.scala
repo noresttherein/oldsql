@@ -162,7 +162,7 @@ object SQLScribe {
 						self.component(comp).asInstanceOf[SQLExpression[N, GlobalScope, V]]
 					} else { //relation is in the grouped portion. All that needs to be done is to update the index
 						val adapted = RelationSQL[N, T, R, N](e.relation, e.origin.shift - oldOffset + newOffset)
-						val res = adapted \ e.mapping.withOrigin[N] //todo: why explicit type parameters are required?
+						val res = adapted \ e.mapping.withOrigin[N]
 						res
 					}
 
@@ -285,25 +285,23 @@ object SQLScribe {
 					val sub = rebaseGroupedSubselect(join.left)
 					val newExtension = sub.newExtension.extend[join.LastMapping]
 					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
-					val unfiltered = join.withLeft[sub.clause.type](sub.clause)(True)
+					val unfiltered = join.unsafeLeftSwap[sub.clause.type](sub.clause)(True)
 
 					val scribe = extended(join.generalized, unfiltered.generalized)(oldExtension, newExtension)
-					val res = join.withLeft[sub.clause.type](sub.clause)(scribe(join.condition))
+					val res = join.unsafeLeftSwap[sub.clause.type](sub.clause)(scribe(join.condition))
 					RecursiveScribeSubselectExtension(res)(newExtension)
 
 				case j :GroupByAll[_, _] =>
 					val join = j.asInstanceOf[FromSome GroupByAll MappingAt]
 					val sub = rebaseSubselect(join.left)
-					val unfiltered = join.withLeft[sub.clause.type](sub.clause)(True)
+					val unfiltered = join.unsafeLeftSwap[sub.clause.type](sub.clause)(True)
 					implicit val newExtension = unfiltered.explicitSpan //this part differs from other cases
 					implicit val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
 
 					val scribe = extended(join.generalized, unfiltered.generalized)
-					val res = join.withLeft[sub.clause.type](sub.clause)(scribe(join.condition))
+					val res = join.unsafeLeftSwap[sub.clause.type](sub.clause)(scribe(join.condition))
 					RecursiveScribeSubselectExtension(res)
 
-//					RecursiveScribeSubselectExtension(res)(newExtension)
-					???
 				case bogus =>
 					throw new IllegalArgumentException(
 						s"Unsupported clause in a subselect: $bogus.\nTransplanting a subselect of $oldClause\n onto $newClause."

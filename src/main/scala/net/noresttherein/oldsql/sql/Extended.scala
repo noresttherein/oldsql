@@ -5,8 +5,7 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.Compound.CompoundLike
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromLike, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromMatrix, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -40,7 +39,9 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.ByAll]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
-trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom with CompoundLike[L Compound R] {
+trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
+	extends NonEmptyFrom with NonEmptyFromMatrix[L Compound R, L Compound R]
+{
 	thisClause =>
 
 	override type LastMapping[O] = R[O]
@@ -86,7 +87,7 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom with
 	protected def condition :LocalBoolean[Generalized]
 
 
-	override type Generalized >: Self <: (left.Generalized Compound R) {
+	override type Generalized >: Dealiased <: (left.Generalized Compound R) {
 		type FromLast = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
@@ -94,23 +95,29 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom with
 		type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 	}
 
+	type Dealiased >: Self <: (left.Self Compound R) {
+		type FromLast = thisClause.FromLast
+		type Generalized = thisClause.Generalized
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Implicit = thisClause.Implicit
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+	}
+
 	override type Self <: (left.Self Compound R) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-//		type Outer = thisClause.Outer
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-//		type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
-//		type FromSubselect[+F <: NonEmptyFrom] <: thisClause.FromSubselect[F]
 	}
 
 
@@ -157,33 +164,6 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]] extends NonEmptyFrom with
 
 
 object Compound {
-
-	trait CompoundLike[+F <: NonEmptyFrom with NonEmptyFromLike[F]] extends NonEmptyFromLike[F] { thisClause :F =>
-
-		override type This >: this.type <: F {
-			type LastMapping[O] = thisClause.LastMapping[O]
-			type LastTable[C <: FromClause] = thisClause.LastTable[C]
-			type FromLast = thisClause.FromLast
-			type Generalized = thisClause.Generalized
-//			type Self <: thisClause.Self
-			type Params = thisClause.Params
-			type FullRow = thisClause.FullRow
-			type Explicit = thisClause.Explicit
-			type Inner = thisClause.Inner
-			type Implicit = thisClause.Implicit
-			type Outer = thisClause.Outer
-			type Base = thisClause.Base
-			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-			type InnerRow = thisClause.InnerRow
-			type OuterRow = thisClause.OuterRow
-			type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
-				thisClause.JoinedWith[P, J]
-			type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-//			type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
-//			type FromSubselect[+C <: NonEmptyFrom] <: thisClause.FromSubselect[C]
-		}
-
-	}
 
 	/** An existential upper bound of all `Compound` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
@@ -334,12 +314,12 @@ object Compound {
   * @author Marcin Mościcki
   */ //other words :Tack, Include, With
 trait Extended[+L <: FromClause, R[O] <: MappingAt[O]]
-	extends Compound[L, R] with ExtendingClause[L] with CompoundLike[L Extended R]
+	extends Compound[L, R] with ExtendingClause[L] with NonEmptyFromMatrix[L Extended R, L Extended R]
 { thisClause =>
 
 	override type FromLast >: Generalized <: FromClause Extended R
 
-	override type Generalized >: Self <: (left.Generalized Extended R) {
+	override type Generalized >: Dealiased <: (left.Generalized Extended R) {
 		type FromLast = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
@@ -347,23 +327,29 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]]
 		type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 	}
 
+	type Dealiased >: Self <: (left.Self Extended R) {
+		type FromLast = thisClause.FromLast
+		type Generalized = thisClause.Generalized
+		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
+		type Explicit = thisClause.Explicit
+		type Implicit = thisClause.Implicit
+		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
+		type InnerRow = thisClause.InnerRow
+		type OuterRow = thisClause.OuterRow
+	}
+
 	override type Self <: (left.Self Extended R) {
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-//		type Self <: thisClause.Self
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-//		type Outer = thisClause.Outer
 		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
 		type InnerRow = thisClause.InnerRow
 		type OuterRow = thisClause.OuterRow
-		type JoinedWith[+P <: FromClause, +J[+S <: P, T[O] <: MappingAt[O]] <: S AndFrom T] = thisClause.JoinedWith[P, J]
-		type JoinedWithSubselect[+P <: NonEmptyFrom] = thisClause.JoinedWithSubselect[P]
-//		type FromRelation[T[O] <: MappingAt[O]] <: thisClause.FromRelation[T]
-//		type FromSubselect[+F <: NonEmptyFrom] <: thisClause.FromSubselect[F]
 	}
 
 
@@ -371,8 +357,6 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]]
 	  * using member types of `FromClause`, as they become proper path types instead of projections.
 	  */
 	protected def narrow :left.type Extended R
-
-	//WithLeft/GeneralizedLeft
 
 
 	override type FullRow = left.FullRow ~ last.Subject
@@ -418,6 +402,10 @@ object Extended {
 
 
 
+	/** A base trait for implementations of [[net.noresttherein.oldsql.sql.Extended Extended]] which narrows
+	  * down the mapping type to the actually required `BaseMapping` (due to some scala bug preventing
+	  * the use of `RefinedMapping` in the `ComponentSQL` instead).
+	  */
 	trait AbstractExtended[+L <: FromClause, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] { thisClause =>
 
 		override val last :RelationSQL[FromLast, R, S, FromLast]
@@ -446,7 +434,7 @@ object Extended {
 	  * [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]], which are neither.
 	  */
 	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]]
-		extends Extended[L, R] with CompoundLike[L NonSubselect R]
+		extends Extended[L, R] with NonEmptyFromMatrix[L NonSubselect R, L NonSubselect R]
 	{ thisClause =>
 
 		override type Implicit = left.Implicit
@@ -495,15 +483,24 @@ object Extended {
 	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
 	                  "Missing implicit ExtendedComposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
 	abstract class ExtendedComposition[F <: L J R, L <: U, R[O] <: M[O],
-	                                   J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause, M[O] <: MappingAt[O]]
+	                                   J[+A <: U, B[O] <: M[O]] <: A Extended B, U <: FromClause, M[O] <: MappingAt[O]]
 		extends ExtendedDecomposition[F, L, R, J, U] with ClauseComposition[F, L, U]
-	{
+	{ self =>
+		override type G[+A >: L <: U] = A Generalized R
+		type Generalized[+A <: U, B[O] <: M[O]] >: A J B <: A Extended B
 
 		override def upcast[A >: L <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
 			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
 
 		override def cast[A <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
 			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
+
+		override def generalized[P <: U] :ExtendedDecomposition[P Generalized R, P, R, Generalized, U] {
+				type Generalized[+A <: U, B[O] <: M[O]] = self.Generalized[A, B]
+			} =
+			this.asInstanceOf[ExtendedDecomposition[P Generalized R, P, R, Generalized, U] {
+				type Generalized[+A <: U, B[O] <: M[O]] = self.Generalized[A, B]
+			}]
 	}
 
 

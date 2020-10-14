@@ -6,7 +6,9 @@ import net.noresttherein.oldsql.model.ComposedOf.{Arity, ComposableFrom, Decompo
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.{Collection, Custom}
 import net.noresttherein.oldsql.slang._
 
-//todo: implicits for immutable.Iterable and immutable.Map
+
+
+
 
 
 
@@ -171,7 +173,7 @@ object ComposedOf {
 
 
 	/** An implicit witness that type `C` is strictly composed of a variable or multiple number of values of type `E`.
-	  * This particularly excludes instances of `C ComposedOf E` so that operations which either make no sense or can
+	  * This particularly excludes instances of `E ComposedOf E` so that operations which either make no sense or can
 	  * be misleading when dealing with singleton values can require a `C CollectionOf E` instead of the more generic
 	  * `C ComposedOf E`.
 	  */
