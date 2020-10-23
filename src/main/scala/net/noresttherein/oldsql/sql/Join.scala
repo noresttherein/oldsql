@@ -127,17 +127,17 @@ sealed trait JoinLike[+L <: FromClause, R[O] <: MappingAt[O]]
 	def likeJoin[P <: FromSome, S <: FromSome](left :P, right :S) :right.JoinedWith[P, LikeJoin]
 
 
-	override def generalizedExtension[P <: FromSome] :P PrefixOf (P GeneralizedJoin R) =
-		PrefixOf.itself[P].extend[GeneralizedJoin, R]
-
-//	override def extension[P <: FromSome] :P PrefixOf (P LikeJoin R) = PrefixOf.itself[P].extend[LikeJoin, R]
-
-
 	override type Params = left.Params
+	override type DecoratedParamless[D <: BoundParamless] = D
 
+	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
+		decorate(bind(params))
 
 	override type DefineBase[+I <: FromClause] = I
 	override def base :Base = outer
+
+	override def generalizedExtension[P <: FromSome] :P PrefixOf (P GeneralizedJoin R) =
+		PrefixOf.itself[P].extend[GeneralizedJoin, R]
 
 
 //todo: def by(fk :R[FromLast] => ForeignKey[FromLast]) :L LikeJoin R
@@ -298,8 +298,18 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
 		left.filter(target)(extension.extendFront[left.Generalized, R]) && condition.basedOn(target)
 
-	
-	
+
+	override type Paramless = left.Paramless LikeJoin R
+
+	override def bind(params :Params) :Paramless = {
+		val l = left.bind(params)
+		val unfiltered = withLeft[l.type](l)(True)
+		val substitute = SQLScribe.applyParams(self, unfiltered.generalized)(params)
+		withLeft[l.type](l)(substitute(condition))
+	}
+
+
+
 	override type JoinedWith[+P <: FromClause, +J[+K <: P, T[O] <: MappingAt[O]] <: K AndFrom T] =
 		WithLeft[left.JoinedWith[P, J]]
 
@@ -588,10 +598,7 @@ object InnerJoin {
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L InnerJoin R As A =
-		new InnerJoin[prefix.type, R]
-			with AbstractJoin[prefix.type, R, S]
-			with NonEmptyFromMatrix[prefix.type InnerJoin R, prefix.type InnerJoin R As A]
-		{
+		new InnerJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
 			override val aliasOpt = asOpt
@@ -752,10 +759,7 @@ object OuterJoin {
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L OuterJoin R As A =
-		new OuterJoin[prefix.type, R]
-			with AbstractJoin[prefix.type, R, S]
-			with NonEmptyFromMatrix[prefix.type OuterJoin R, prefix.type OuterJoin R As A]
-		{
+		new OuterJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
 			override val aliasOpt = asOpt
@@ -917,10 +921,7 @@ object LeftJoin {
 	private[sql] def apply[L <: FromSome, R[A] <: BaseMapping[S, A], S, A <: Label]
 	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L LeftJoin R As A =
-		new LeftJoin[prefix.type, R]
-			with AbstractJoin[prefix.type, R, S]
-			with NonEmptyFromMatrix[prefix.type LeftJoin R, prefix.type LeftJoin R As A]
-		{
+		new LeftJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
 			override val aliasOpt = asOpt
@@ -1081,10 +1082,7 @@ object RightJoin {
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L RightJoin R As A =
-		new RightJoin[prefix.type, R] 
-			with AbstractJoin[prefix.type, R, S] 
-			with NonEmptyFromMatrix[prefix.type RightJoin R, prefix.type RightJoin R As A] 
-		{
+		new RightJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
 			override val aliasOpt = asOpt
@@ -1228,6 +1226,16 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 		right.joinedWithSubselect(left)
 
 
+	override type Paramless = WithLeft[left.Paramless]
+
+	override def bind(params :Params) :Paramless = {
+		val l = left.bind(params)
+		val unfiltered = withLeft[l.type](l)(True)
+		val substitute = SQLScribe.applyParams(self, unfiltered.generalized)(params)
+		withLeft[l.type](l)(substitute(condition))
+	}
+
+
 
 	override def isSubselect = true //if it will accept Dual as the left side the standard definition in FromClause must be changed.
 	override def isValidSubselect = true
@@ -1328,10 +1336,7 @@ object Subselect {
 	private[sql] def apply[L <: NonEmptyFrom, R[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Subselect R]) :L Subselect R As A =
-		new Subselect[prefix.type, R]
-			with AbstractExtended[prefix.type, R, S]
-			with NonEmptyFromMatrix[prefix.type Subselect R, prefix.type Subselect R As A]
-		{
+		new Subselect[prefix.type, R] with AbstractExtended[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
 			override val aliasOpt = asOpt

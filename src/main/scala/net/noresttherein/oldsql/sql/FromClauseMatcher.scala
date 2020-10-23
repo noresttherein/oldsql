@@ -48,7 +48,7 @@ class FromClauseMatcher[Y] {
 
 	def compound[L <: FromClause, R[O] <: BaseMapping[S, O], S](from :L Compound R) :Option[Y] = fromClause(from)
 	def extended[L <: FromClause, R[O] <: BaseMapping[S, O], S](from :L Extended R) :Option[Y] = compound[L, R, S](from)
-	def param[L <: FromClause, P[O] <: FromParam[S, O], S](param :L UnboundParam P) :Option[Y] = extended[L, P, S](param)
+	def param[L <: NonEmptyFrom, P[O] <: FromParam[S, O], S](param :L UnboundParam P) :Option[Y] = extended[L, P, S](param)
 
 
 	def decorator[F <: FromClause](from :DecoratedFrom[F]) :Option[Y] = fromClause(from)

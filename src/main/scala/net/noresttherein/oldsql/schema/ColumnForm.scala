@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.ResultSet
 
+import scala.annotation.implicitNotFound
 import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor}
@@ -26,6 +27,7 @@ trait SuperColumnForm {
 
 
 
+@implicitNotFound("I do not know how to map type ${T} into a database column: missing implicit ColumnForm[${T}].")
 trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteForm[T] {
 
 	override def bimap[X :NullValue](map :T => X)(unmap :X => T) :ColumnForm[X] =

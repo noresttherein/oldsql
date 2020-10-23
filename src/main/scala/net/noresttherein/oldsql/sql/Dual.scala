@@ -6,7 +6,6 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.AndFrom.AndFromMatrix
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, FreeFrom, FromClauseMatrix, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
@@ -47,7 +46,7 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause])
 		if (filter == condition || condition == True) this
 		else new Dual(condition && filter)
 
-	override def where(condition :JoinedMappings[FromClause] => GlobalBoolean[FromClause]) :Dual = {
+	override def where(condition :JoinedMappings[Dual] => GlobalBoolean[FromClause]) :Dual = {
 		val bool = condition(new JoinedMappings(this))
 		if (bool == True) this
 		else new Dual(filter && bool)
@@ -63,12 +62,23 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause])
 
 
 
+	override def isParameterized :Boolean = false
+
+	override type Params = @~
+	override type BoundParamless = DiscreteFrom { type Params = @~ }
+	override type Paramless = Dual
+	override type DecoratedParamless[D <: BoundParamless] = D
+
+	override def bind(params: @~) :Dual = this
+
+	protected override def decoratedBind[D <: BoundParamless](params: @~)(decorate :Dual => D) :D =
+		decorate(this)
+
+
+
 	override def isEmpty :Boolean = true
 	override def fullSize = 0
 
-	override type Params = @~
-
-	override def isParameterized :Boolean = false
 
 	override type FullRow = @~
 

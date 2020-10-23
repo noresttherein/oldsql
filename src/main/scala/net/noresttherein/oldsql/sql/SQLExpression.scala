@@ -10,11 +10,12 @@ import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, C
 import net.noresttherein.oldsql.sql.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNULL}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, NULL, SQLParameter, TermMatcher}
+import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, NULL, SQLLiteral, SQLParameter, TermMatcher}
 import net.noresttherein.oldsql.sql.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, MappingMatcher}
-import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchCompositeColumn}
+import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn, ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchCompositeColumn, MatchOnlyCompositeColumn}
+import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseSelect, FreeSelectSQL, SelectMatcher, SubselectSQL}
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
 
@@ -113,9 +114,12 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 	def ===[E <: F, O >: LocalScope <: S, X, U]
 	       (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[V, X, U]) :ColumnSQL[E, O, Boolean] =
 		that match {
-			case NULL() => NULL[Boolean]
+			case null | NULL() => NULL[Boolean]
 			case _ => EqualitySQL(lift.left(this), lift.right(that))
 		}
+
+	def ===[X, U](that :X)(implicit form :SQLForm[X], lift :SQLTypeUnification[V, X, U]) :ColumnSQL[F, S, Boolean] =
+		this === SQLLiteral(that)
 
 
 	/** An SQL expression checking if the value of this expression and another expression are not equal.
@@ -137,6 +141,9 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 			case NULL() => NULL[Boolean]
 			case _ => InequalitySQL(lift.left(this), lift.right(that))
 		}
+
+	def <>[X, U](that :X)(implicit form :SQLForm[X], lift :SQLTypeUnification[V, X, U]) :ColumnSQL[F, S, Boolean] =
+		this <> SQLLiteral(that)
 
 	/** An SQL expression comparing the value of this expression with another expression with `<=`.
 	  * @param that another expression, which value type is comparable in the database with the value type
@@ -162,6 +169,10 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 			case _ => ComparisonSQL(lift.left(this), ComparisonSQL.LTE, lift.right(that))
 		}
 
+	def <=[X, U](that :X)(implicit form :SQLForm[X], lift :SQLTypeUnification[V, X, U], ordering :SQLOrdering[U])
+			:ColumnSQL[F, S, Boolean] =
+		this <= SQLLiteral(that)
+
 	/** An SQL expression comparing the value of this expression with another expression with `<`.
 	  * @param that another expression, which value type is comparable in the database with the value type
 	  *             of this expression.
@@ -185,6 +196,10 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 			case NULL() => NULL[Boolean]
 			case _ => ComparisonSQL(lift.left(this), ComparisonSQL.LT, lift.right(that))
 		}
+
+	def <[X, U](that :X)(implicit form :SQLForm[X], lift :SQLTypeUnification[V, X, U], ordering :SQLOrdering[U])
+			:ColumnSQL[F, S, Boolean] =
+		this === SQLLiteral(that)
 
 	/** An SQL expression comparing the value of this expression with another expression with `>=`.
 	  * @param that another expression, which value type is comparable in the database with the value type
@@ -210,6 +225,10 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 			case _ => ComparisonSQL(lift.left(this), ComparisonSQL.GTE, lift.right(that))
 		}
 
+	def >=[X, U](that :X)(implicit form :SQLForm[X], lift :SQLTypeUnification[V, X, U], ordering :SQLOrdering[U])
+			:ColumnSQL[F, S, Boolean] =
+		this >= SQLLiteral(that)
+
 	/** An SQL expression comparing the value of this expression with another expression with `>`.
 	  * @param that another expression, which value type is comparable in the database with the value type
 	  *             of this expression.
@@ -233,6 +252,10 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 			case NULL() => NULL[Boolean]
 			case _ => ComparisonSQL(lift.left(this), ComparisonSQL.GT, lift.right(that))
 		}
+
+	def >[X, U](that :X)(implicit form :SQLForm[X], lift :SQLTypeUnification[V, X, U], ordering :SQLOrdering[U])
+			:ColumnSQL[F, S, Boolean] =
+		this > SQLLiteral(that)
 
 
 //todo: arithmetic
@@ -298,9 +321,9 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 	  * @throws UnsupportedOperationException if this expression cannot be used as the complete ''select'' clause,
 	  *                                       which is the default for all classes which do not override this method.
 	  */
-	def selectFrom[E <: F with FreeFrom, O](from :E) :FreeSelectSQL[V, O] =
+	def selectFrom[E <: F with FreeFrom](from :E) :FreeSelectSQL[V, _] =
 		throw new UnsupportedOperationException(
-			s"Expression $this :${this.unqualifiedClassName} can't be used as a Select header."
+			s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
 		)
 
 	/** Creates a subselect expression selecting this expression from the given `from` clause.
@@ -312,7 +335,7 @@ trait SQLExpression[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 	  * @throws UnsupportedOperationException if this expression cannot be used as the complete ''select'' clause,
 	  *                                       which is the default for all classes which do not override this method.
 	  */
-	def subselectFrom[E <: F, O](from :E) :SubselectSQL[from.Base, V, O] = //subtype E currently unused, should be removed with O
+	def subselectFrom(from :F) :SubselectSQL[from.Base, V, _] = //subtype E currently unused, should be removed with O
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
 		)
@@ -567,15 +590,28 @@ object SQLExpression  {
 		type * = CompositeSQL[_ <: FromClause, _ >: LocalScope <: GlobalScope, _]
 
 		trait CompositeMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends ConversionMatcher[F, Y] with TupleMatcher[F, Y] with CompositeColumnMatcher[F, Y]
+			extends CompositeColumnMatcher[F, Y] with ConversionMatcher[F, Y] with TupleMatcher[F, Y]
+		{
+			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeSQL[F, S, X]) :Y[S, X]
+		}
 
 		trait MatchComposite[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends CompositeMatcher[F, Y]
-			with CaseConversion[F, Y] with CaseTuple[F, Y] with MatchCompositeColumn[F, Y]
+			with CaseConversion[F, Y] with CaseTuple[F, Y] with MatchOnlyCompositeColumn[F, Y]
+		{
+			override def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X] =
+				composite(e :CompositeSQL[F, S, X])
+		}
 
+		/* There is a repetition with CaseCompositeColumn, but it can't be extended here, as mixing it in
+		 * should always rewire the column columns through the column matcher hierarchy up to composite column*/
 		trait CaseComposite[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchComposite[F, Y] {
-			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeSQL[F, S, X]) :Y[S, X]
 
 			override def alias[S >: LocalScope <: GlobalScope, V](e :AliasedColumn[F, S, V]) :Y[S, V] = composite(e)
+
+			override def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V] =
+				composite(e)
+
+			override def concat[S >: LocalScope <: GlobalScope](e :ConcatSQL[F, S]) :Y[S, String] = composite(e)
 
 			override def condition[S >: LocalScope <: GlobalScope](e :ConditionSQL[F, S]) :Y[S, Boolean] = composite(e)
 
@@ -788,6 +824,7 @@ object SQLExpression  {
 	{
 		def apply[S >: LocalScope <: GlobalScope, V](e: SQLExpression[F, S, V]): Y[S, V] = e.applyTo(this)
 
+		def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :Y[S, X]
 
 		protected def unhandled(e :SQLExpression[F, _, _]) :Nothing =
 			throw new IllegalArgumentException(s"Can't map expression $e :${e.getClass.getName} using $this")
@@ -809,7 +846,12 @@ object SQLExpression  {
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.ExpressionMatcher]]
 	  */
 	trait MatchExpression[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends CaseComposite[F, Y] with CaseMapping[F, Y] with CaseSelect[F, Y] with CaseTerm[F, Y]
+		extends ExpressionMatcher[F, Y] with CaseComposite[F, Y] with CaseMapping[F, Y] with CaseSelect[F, Y]
+		   with CaseTerm[F, Y]
+	{
+		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :Y[S, X] =
+			expression(e :SQLExpression[F, S, X])
+	}
 
 	/** A not particularly useful `ExpressionMatcher` which delegates all the cases to the single `expression` method
 	  * invoked for every subexpression (SQL AST node). Used as a base class when only few cases need special handling.
@@ -818,7 +860,11 @@ object SQLExpression  {
 	trait CaseExpression[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends ExpressionMatcher[F, Y] with MatchExpression[F, Y]
 	{
-		def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :Y[S, X]
+		override def *(e :ColumnSQL[FromClause, LocalScope, Nothing]) :Y[LocalScope, Nothing] =
+			expression[LocalScope, Nothing](e :SQLExpression[FromClause, LocalScope, Nothing])
+
+		override def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :Y[LocalScope, V] =
+			expression(e :SQLExpression[F, LocalScope, V])
 
 		override def composite[S >: LocalScope <: GlobalScope, X](e: CompositeSQL[F, S, X]): Y[S, X] =
 			expression(e)

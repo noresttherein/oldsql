@@ -3,6 +3,7 @@ package net.noresttherein.oldsql
 import net.noresttherein.oldsql.schema.Mapping.MappingOf
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
+import net.noresttherein.oldsql.sql.FromClause.{GroupingOfGeneralized, GroupingOf}
 import net.noresttherein.oldsql.sql.GroupByClause.{Group, GroupingRelation}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -43,10 +44,10 @@ package object sql {
 
 	object GroupByVal {
 
-		def apply[F <: FromSome, X]
-		         (from :F, group :SQLExpression[F, GlobalScope, X], filter :LocalBoolean[F#Generalized GroupByVal X] = True)
+		def apply[U <: FromClause, F <: FromSome { type Generalized <: U }, X] //fixme: add filter once factory methods for all joins are refactored
+		         (from :F, group :SQLExpression[U, GlobalScope, X])//, filter :LocalBoolean[F#Generalized GroupByVal X] = True)
 				:F GroupByVal X =
-			GroupByAll(from, GroupingRelation(group), filter)
+			GroupByAll(from, GroupingRelation(group))//, filter)
 
 		type * = GroupByAll.*
 
@@ -64,10 +65,10 @@ package object sql {
 
 	object ByVal {
 
-		def apply[F <: FromSome, G <: GroupByClause { type GeneralizedDiscrete <: F }, X]
-		         (from :G, group :SQLExpression[F, GlobalScope, X], filter :LocalBoolean[G#Generalized ByVal X] = True)
+		def apply[F <: FromClause, G <: GroupingOfGeneralized[F], X] //fixme: add filter once joins are refactored
+		         (from :G, group :SQLExpression[F, GlobalScope, X])//, filter :LocalBoolean[G#Generalized ByVal X] = True)
 				:G ByVal X =
-			ByAll(from, GroupingRelation(group), filter)
+			ByAll(from, GroupingRelation(group))//, filter)
 
 		type * = ByAll.*
 
@@ -85,10 +86,10 @@ package object sql {
 
 	object GroupByOne {
 
-		def apply[F <: FromSome, X]
-		         (from :F, group :ColumnSQL[F, GlobalScope, X], filter :LocalBoolean[F#Generalized GroupByOne X] = True)
+		def apply[U <: FromClause, F <: FromSome { type Generalized <: U }, X]//fixme: add filter once join factory methods are refactored
+		         (from :F, group :ColumnSQL[U, GlobalScope, X])//, filter :LocalBoolean[F#Generalized GroupByOne X] = True)
 				:F GroupByOne X =
-			GroupByAll(from, GroupingRelation(group), filter)
+			GroupByAll(from, GroupingRelation(group))//, filter)
 
 		type * = GroupByAll.*
 
@@ -106,10 +107,10 @@ package object sql {
 
 	object ByOne {
 
-		def apply[F <: FromSome, G <: GroupByClause { type GeneralizedDiscrete <: F }, X]
-		         (from :G, group :ColumnSQL[F, GlobalScope, X], filter :LocalBoolean[G#Generalized ByOne X] = True)
+		def apply[F <: FromClause, G <: GroupingOfGeneralized[F], X]//fixme: add filter once joins are refactored
+		         (from :G, group :ColumnSQL[F, GlobalScope, X])//, filter :LocalBoolean[G#Generalized ByOne X] = True)
 				:G ByOne X =
-			ByAll(from, GroupingRelation(group), filter)
+			ByAll(from, GroupingRelation(group))//, filter)
 
 		type * = ByAll.*
 

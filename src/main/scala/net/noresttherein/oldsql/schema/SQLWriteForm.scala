@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
+import scala.annotation.implicitNotFound
+
 import net.noresttherein.oldsql.collection.{Chain, ChainMap}
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.ChainMap.&~
@@ -9,6 +11,8 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, Empty
 import net.noresttherein.oldsql.schema.SQLForm.{ChainForm, ChainMapForm, NullValue}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedWriteForm, FlatMappedSQLWriteForm, MappedSQLWriteForm}
 import scala.collection.immutable.Seq
+
+import net.noresttherein.oldsql.morsels.ColumnBasedFactory
 
 
 
@@ -30,6 +34,8 @@ import scala.collection.immutable.Seq
   * @see [[net.noresttherein.oldsql.schema.SQLForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   */
+@implicitNotFound("I do not know how to set PreparedStatement parameters from type ${T}: " +
+                  "missing implicit SQLWriteForm[${T}].")
 trait SQLWriteForm[-T] extends BaseSQLForm {
 
 	/** Set the values of parameters `<position..position+writtenColumns)` of the given `PreparedStatement` to
@@ -347,6 +353,10 @@ object SQLWriteForm {
 
 		override def literal(value :T, inline :Boolean) :String = super.literal(value, inline)
 	}
+
+
+
+	type WriteFormFunction[A[_], M[_], S[X] <: M[X]] = ColumnBasedFactory[A, A, SQLWriteForm, ColumnWriteForm, M, S]
 
 
 

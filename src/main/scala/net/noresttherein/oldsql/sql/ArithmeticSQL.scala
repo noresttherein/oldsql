@@ -209,12 +209,13 @@ object ArithmeticSQL {
 
 	trait ArithmeticMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends BinaryOperationMatcher[F, Y] with UnaryOperationMatcher[F, Y]
+	{
+		def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V]
+	}
 
 	type MatchArithmetic[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = ArithmeticMatcher[F, Y]
 
 	trait CaseArithmetic[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchArithmetic[F, Y] {
-		def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V]
-
 		override def unaryArithmetic[S >: LocalScope <: GlobalScope, V](e :UnaryOperationSQL[F, S, V]) :Y[S, V] =
 			arithmetic(e)
 

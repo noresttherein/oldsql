@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, GeneralizedGroupingOf, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, GroupingOfGeneralized, GroupingOf, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, ComponentSQL, LooseComponent, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseMatrix
-import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 
 
 
@@ -97,12 +97,15 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]]
 
 	protected override def narrow :WithLeft[left.type]
 
-	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
-	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
-	  * condition, as it doesn't include any join conditions defined on the left side of this join.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
-	  */ //overriden due to a conflict between Compound and GroupByClause
-	override def condition :LocalBoolean[Generalized]
+	/** A copy of this clause with the `condition` being replaced with the given `filter`.
+	  * This does not replace the whole ''having'' filter, as the conditions (if present) of the left clause remain
+	  * unchanged. It is the target of the `having` and other filtering methods (which add to the condition, rather
+	  * then completely replacing it).
+	  */
+	def withCondition(filter :LocalBoolean[Generalized]) :Copy
+
+	override def filtered[S >: LocalScope <: GlobalScope](filter :SQLBoolean[Generalized, S]) :Copy =
+		withCondition(condition && filter)
 
 	override def filter :LocalBoolean[Generalized] = condition
 
@@ -110,10 +113,24 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]]
 		condition.basedOn(target)
 
 
+	override type Params = left.Params
+	override type Paramless = WithLeft[left.Paramless]
+	override type DecoratedParamless[D <: BoundParamless] = D
+
+	override def bind(params :Params) :Paramless = {
+		val l = left.bind(params)
+		val unfiltered = unsafeLeftSwap[l.type](l)(True)
+		val substitute = SQLScribe.applyParams(self, unfiltered.generalized)(params)
+		unsafeLeftSwap[l.type](l)(substitute(condition))
+	}
+
+	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
+		decorate(bind(params))
+
+
 
 	override def fullSize :Int = outer.fullSize + 1
 
-	override type Params = left.Params
 	override type FullRow = OuterRow ~ last.Subject
 
 	override def fullRow[E <: FromClause]
@@ -194,22 +211,23 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]]
 object GroupByAll {
 
 
-	/** Introduces a ''group by'' clause to a 'pure' ''from'' clause `F`, grouping it by the columns
-	  * of the given component.
-	  * @param from a pure ''from'' clause containing true relations for the ''from'' clause of the built SQL select,
-	  *             as well as possibly the relations from the ''from'' clauses of enclosing selects for dependent select
-	  *             statements.
-	  * @param group a shill expression resulting from an implicit conversion of a `Mapping` with
-	  *              a supertype of `F` as its `Origin` type.
-	  */
-	def apply[F <: FromSome, M[O] <: BaseMapping[S, O], S]
-	         (from :F, group :LooseComponent[_ >: F <: FromClause, M, S]) :F GroupByAll M =
-	{
-		val relation = from.fullTableStack(group.shift).asRelationSQL
-		                    .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
-		val component = ComponentSQL(relation, group.mapping)(group.projection.isomorphism)
-		GroupByAll(from, component.groupingRelation)
-	}
+//	/** Introduces a ''group by'' clause to a 'pure' ''from'' clause `F`, grouping it by the columns
+//	  * of the given component.
+//	  * @param from a pure ''from'' clause containing true relations for the ''from'' clause of the built SQL select,
+//	  *             as well as possibly the relations from the ''from'' clauses of enclosing selects for dependent select
+//	  *             statements.
+//	  * @param group a shill expression resulting from an implicit conversion of a `Mapping` with
+//	  *              a supertype of `F` as its `Origin` type.
+//	  */
+//	def apply[F <: FromSome, O <: FromClause, M[A] <: BaseMapping[S, A], S]
+//	         (from :F, group :LooseComponent[O, M, S])(implicit origin :F <:< FromSome { type Generalized <: O })
+//			:F GroupByAll M =
+//	{
+//		val relation = from.fullTableStack(group.shift).asRelationSQL
+//		                   .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
+//		val component = ComponentSQL(relation, group.mapping)(group.projection.isomorphism)
+//		GroupByAll(from, component.groupingRelation)
+//	}
 
 	/** Introduces a ''group by'' clause to a 'pure' ''from'' clause `F`, grouping it by the columns
 	  * of the given component.
@@ -218,8 +236,8 @@ object GroupByAll {
 	  *             statements.
 	  * @param group a component expression from the mapping of one of the relations from the clause `F`.
 	  */
-	def apply[F <: FromSome, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (from :F, group :BaseComponentSQL[F, M, _ >: F <: FromClause])
+	def apply[F <: FromSome { type Generalized <: U }, U <: FromClause, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (from :F, group :BaseComponentSQL[U, M, _ >: U <: FromClause])
 	         (implicit cast :InferSubject[F, GroupByAll, M, T, S]) :F GroupByAll M =
 		GroupByAll(from, group.groupingRelation)
 
@@ -241,9 +259,9 @@ object GroupByAll {
 	  *             and its narrowed down form of `M` with the required upper bound of `BaseMapping`.
 	  * @return an `F GroupByAll G`.
 	  */
-	def apply[F <: FromSome, G[O] <: MappingAt[O], M[O] <: BaseMapping[S, O], S]
-	         (from :F, group :Relation[G], filter :LocalBoolean[F#Generalized GroupByAll G] = True)
-	         (implicit cast :InferSubject[F, GroupByAll, G, M, S]) :F GroupByAll G =
+	private[sql] def apply[F <: FromSome, G[O] <: MappingAt[O], M[O] <: BaseMapping[S, O], S]
+	                      (from :F, group :Relation[G], filter :LocalBoolean[F#Generalized GroupByAll G] = True)
+	                      (implicit cast :InferSubject[F, GroupByAll, G, M, S]) :F GroupByAll G =
 	{
 		val last = RelationSQL[FromSome GroupByAll M, M, S, FromSome GroupByAll M](cast(group), 0)
 		GroupByAll[F, M, S, Nothing](from, last, None)(cast.cast(filter))
@@ -255,7 +273,7 @@ object GroupByAll {
 	                       asOpt :Option[A])
 	                      (cond :LocalBoolean[clause.Generalized GroupByAll M])
 			:F GroupByAll M As A =
-		new GroupByAll[clause.type, M] with GroupByClauseMatrix[clause.type GroupByAll M, clause.type GroupByAll M As A] {
+		new GroupByAll[clause.type, M] with GroupByClauseMatrix[clause.type GroupByAll M, clause.type GroupByAll M] {
 			override val left = clause
 			override val last = group
 			override val aliasOpt = asOpt
@@ -393,12 +411,15 @@ object GroupByAll {
 		                      (left :L)(filter :LocalBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[L]
 
 
-		/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
-		  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
-		  * condition, as it doesn't include any join conditions defined on the left side of this join.
-		  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
-		  */ //overriden due to a conflict between Compound and GroupByClause
-		override def condition :LocalBoolean[Generalized]
+		/** A copy of this clause with the `condition` being replaced with the given `filter`.
+		  * This does not replace the whole ''having'' filter, as the conditions (if present) of the left clause remain
+		  * unchanged. It is the target of the `having` and other filtering methods (which add to the condition, rather
+		  * then completely replacing it).
+		  */
+		def withCondition(filter :LocalBoolean[Generalized]) :Copy
+
+		override def filtered[S >: LocalScope <: GlobalScope](filter :SQLBoolean[Generalized, S]) :Copy =
+			withCondition(condition && filter)
 
 		private[this] val cachedFilter = Lazy { filter(generalized) }
 
@@ -495,7 +516,21 @@ trait ByAll[+F <: GroupByClause, M[A] <: MappingAt[A]]
 	override type WithLeft[+L <: GroupByClause] <: L ByAll M
 
 
+
 	override type Params = left.Params
+	override type Paramless = WithLeft[left.Paramless]
+	override type DecoratedParamless[D <: BoundParamless] = D
+
+	override def bind(params :Params) :Paramless = {
+		val l = left.bind(params)
+		val unfiltered = unsafeLeftSwap[l.type](l)(True)
+		val substitute = SQLScribe.applyParams(self, unfiltered.generalized)(params)
+		unsafeLeftSwap[l.type](l)(substitute(condition))
+	}
+
+	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
+		decorate(bind(params))
+
 
 
 	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
@@ -548,22 +583,23 @@ trait ByAll[+F <: GroupByClause, M[A] <: MappingAt[A]]
 
 object ByAll {
 
-	/** Adds a new grouping expression to the ''group by'' clause `G`, grouping it by the columns
-	  * of the given component.
-	  * @param from a [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] with `F` as its
-	  *             [[net.noresttherein.oldsql.sql.GroupByClause.GeneralizedDiscrete GeneralizedDiscrete]] type -
-	  *             the discrete, 'true' ''from'' clause grouped under this clause.
-	  * @param group a shill expression resulting from an implicit conversion of a `Mapping` with
-	  *              a supertype of `F =:= from.GeneralizedDiscrete` as its `Origin` type.
-	  */
-	def apply[F <: FromSome, G <: GeneralizedGroupingOf[F], M[O] <: BaseMapping[S, O], S]
-	         (from :G, group :LooseComponent[F, M, S]) :G ByAll M =
-	{
-		val relation = from.from.fullTableStack(group.shift).asRelationSQL
-		                   .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
-		val component = ComponentSQL(relation, group.mapping)(group.projection)
-		ByAll[G, M, M, S](from, component.groupingRelation)
-	}
+//	/** Adds a new grouping expression to the ''group by'' clause `G`, grouping it by the columns
+//	  * of the given component.
+//	  * @param from a [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] with `F` as its
+//	  *             [[net.noresttherein.oldsql.sql.GroupByClause.GeneralizedDiscrete GeneralizedDiscrete]] type -
+//	  *             the discrete, 'true' ''from'' clause grouped under this clause.
+//	  * @param group a shill expression resulting from an implicit conversion of a `Mapping` with
+//	  *              a supertype of `F =:= from.GeneralizedDiscrete` as its `Origin` type.
+//	  */
+//	def apply[F <: FromSome, O <: FromClause, G <: GroupByClause, M[A] <: BaseMapping[S, A], S]
+//	         (from :G, group :LooseComponent[O, M, S])
+//	         (implicit origin :F <:< FromSome { type Generalized <: O }, grouping :G <:< GroupingOf[F]) :G ByAll M =
+//	{
+//		val relation = from.from.fullTableStack(group.shift).asRelationSQL
+//		                   .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
+//		val component = ComponentSQL(relation, group.mapping)(group.projection)
+//		ByAll[G, M, M, S](from, component.groupingRelation)
+//	}
 
 	/** Adds a new grouping expression to the ''group by'' clause `G`, grouping it by the columns
 	  * of the given component.
@@ -573,8 +609,9 @@ object ByAll {
 	  * @param group a component expression from the mapping of one of the relations from the clause
 	  *              `F =:= from.GeneralizedDiscrete`.
 	  */
-	def apply[F <: FromSome, G <: GeneralizedGroupingOf[F], M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (from :G, group :BaseComponentSQL[F, M, _ >: F <: FromClause])(implicit cast :InferSubject[G, ByAll, M, T, S])
+	def apply[F <: FromClause, G <: GroupingOfGeneralized[F], M[A] <: MappingAt[A], T[A] <: BaseMapping[S, A], S]
+	         (from :G, group :BaseComponentSQL[F, M, _ >: F <: FromClause])
+	         (implicit  cast :InferSubject[G, ByAll, M, T, S])
 			:G ByAll M =
 		ByAll(from, group.groupingRelation)
 
@@ -597,9 +634,9 @@ object ByAll {
 	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `G GroupByAll M`.
 	  */
-	def apply[G <: GroupByClause, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (from :G, group :Relation[M], filter :LocalBoolean[G#Generalized ByAll M] = True)
-	         (implicit cast :InferSubject[G, ByAll, M, T, S]) :G ByAll M =
+	private[sql] def apply[G <: GroupByClause, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	                      (from :G, group :Relation[M], filter :LocalBoolean[G#Generalized ByAll M] = True)
+	                      (implicit cast :InferSubject[G, ByAll, M, T, S]) :G ByAll M =
 		ByAll[G, T, S, Nothing](from, RelationSQL(cast(group), 0), None)(cast.cast(filter))
 
 
@@ -609,10 +646,7 @@ object ByAll {
 	                       asOpt :Option[A])
 	                      (cond :LocalBoolean[clause.Generalized ByAll T])
 			:G ByAll T As A =
-		new ByAll[clause.type, T]
-			with AbstractExtended[clause.type, T, S]
-			with GroupByClauseMatrix[clause.type ByAll T, clause.type ByAll T As A]
-		{
+		new ByAll[clause.type, T] with AbstractExtended[clause.type, T, S] {
 			override val left = clause
 			override val last = group
 			override val aliasOpt = asOpt
@@ -659,7 +693,7 @@ object ByAll {
 	}
 
 
-
+	//todo: can it incorporate aliased clauses the same way join does?
 	implicit def byAllDecomposition[L <: GroupByClause, R[O] <: MappingAt[O]]
 			:ExtendedDecomposition[L ByAll R, L, R, ByAll, GroupByClause] =
 		composition.asInstanceOf[ExtendedDecomposition[L ByAll R, L, R, ByAll, GroupByClause]]

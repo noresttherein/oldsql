@@ -17,8 +17,8 @@ class ConcatSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope] private (prot
 	override def inOrder :Seq[ColumnSQL[F, S, String]] = parts.reverse
 
 
-	override def +[E <: F, O >: LocalScope <: S]
-	              (other :ColumnSQL[E, O, String])(implicit ev :String =:= String) :ColumnSQL[E, O, String] =
+	override def ++[E <: F, O >: LocalScope <: S]
+	               (other :ColumnSQL[E, O, String])(implicit ev :String =:= String) :ColumnSQL[E, O, String] =
 		other match {
 			case concat :ConcatSQL[E @unchecked, O @unchecked] => new ConcatSQL(concat.parts ::: parts)
 			case _ => new ConcatSQL(other :: parts)

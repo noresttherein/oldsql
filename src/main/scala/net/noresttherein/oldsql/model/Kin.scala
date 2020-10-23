@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.model.types.ValueTypes
 
 
 
-/** A value of type T or an identification of such a value. A kin can be either `Present` -
+/** A value of type `T` or an identification of such a value. A kin can be either `Present` -
   * contain a value or be able to compute it without significant cost and outside resources - or `Absent`,
   * in which case it should contain information required to locate and compute the given value. An exception
   * to this case is `Unknown`, which is both Empty and doesn't contain any information about the value, but should
@@ -26,13 +26,13 @@ import net.noresttherein.oldsql.model.types.ValueTypes
   *
   * As a kin is immutable (at least in the interface - implementations may use mutable state as long as the client
   * will never see different results for the same call on the `Kin`), it is covariant in regards to the value type -
-  * a `Kin[A]` is intuitively a `Kin[B]` for `B>:A`. Their dual nature of value-or-specification-of-a-value has
+  * a `Kin[A]` is intuitively a `Kin[B]` for `B >: A`. Their dual nature of value-or-specification-of-a-value has
   * however a hidden contravariant element to it in the latter form: in the most trivial example, a `Kin` specifying
   * 'all instances of the given type' can be interpreted differently when viewed as a `Kin` to a super type - larger
   * set of theoretically possible values. In most cases it won't matter and the set of possible values is constrained
   * externally in an explicit way, but it is something to be aware of.
   *
-  * @tparam T type of the associated value.
+  * @tparam T type of the represented value.
   * @see [[net.noresttherein.oldsql.model.Kin.Present$ Present]]
   * @see [[net.noresttherein.oldsql.model.Kin.Absent$ Absent]]
   * @see [[net.noresttherein.oldsql.model.Kin.Unknown$ Unknown]]
@@ -100,9 +100,14 @@ trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 	  * Note that importing implicit conversion [[net.noresttherein.oldsql.model.Kin.?: ?:]] will patch any type
 	  * with the same method, creating a conditional expression producing a `Kin` instance.
 	  */
-	@inline final def ?:(condition :Boolean) :Kin[T] =
-		if (condition && !isEmpty) this
-		else Unknown
+//	@inline final def ?:(condition :Boolean) :Kin[T] =
+//		if (condition && !isEmpty) this
+//		else Unknown
+	@inline final def presentIf(condition :Boolean) :Kin[T] =
+		if (condition && !isEmpty) this else Unknown
+
+	@inline final def absentIf(condition :Boolean) :Kin[T] =
+		if (condition || isEmpty) Unknown else this
 
 	@inline final def filter(p: T => Boolean): Kin[T] =
 		if (isEmpty || p(this.get)) this else Unknown
@@ -172,18 +177,35 @@ object Kin {
 
 	@inline final implicit def kinToOption[T](kin :Kin[T]) :Option[T] = kin.toOpt
 
-	/** Implicit conversion adding a conditional factory method for `Kin` instances to any value.
-	  * Importing it allows to write: `condition ?: value` to produce a `Present(value)` if `condition` is true
-	  * or a blank otherwise.
+//	/** Implicit conversion adding a conditional factory method for `Kin` instances to any value.
+//	  * Importing it allows to write: `condition ?: value` to produce a `Present(value)` if `condition` is true
+//	  * or a blank otherwise.
+//	  */
+//	@inline final implicit def ?:[T](value :T) :KinConditional[T] =
+//		new KinConditional(Kin(value))
+//
+//	class KinConditional[T](private val kin :Kin[T]) extends AnyVal {
+//		/** Returns this value as `Present(value)` if the left-hand condition evaluates to `true` or `Unknown` otherwise. */
+//		@inline def ?:(condition :Boolean) :Kin[T] =
+//			if (!condition || kin.isEmpty) Unknown
+//			else kin
+//	}
+
+	/** Implicit conversion adding a conditional factory method for `Kin` instances to `Boolean`.
+	  * Importing it allows to write: `value presentIf condition` and `value absentIf condition`
+	  * to produce a `Present(value)` if `condition` is true or `Unknown` otherwise.
 	  */
-	@inline final implicit def ?:[T](value :T) :KinConditional[T] =
+	@inline final implicit def presentIf[T](value :T) :KinConditional[T] =
 		new KinConditional(Kin(value))
 
 	class KinConditional[T](private val kin :Kin[T]) extends AnyVal {
-		/** Returns this value as `Present(value)` if the left-hand condition evaluates to `true` or `Unknown` otherwise. */
-		@inline def ?:(condition :Boolean) :Kin[T] =
-			if (!condition || kin.isEmpty) Unknown
-			else kin
+		/** Returns this value as `Present(value)` if the condition evaluates to `true` or `Unknown` otherwise. */
+		@inline def presentIf(condition :Boolean) :Kin[T] =
+			if (!condition || kin.isEmpty) Unknown else kin
+
+		/** Returns this value as `Present(value)` if the condition evaluates to `false` or `Unknown` otherwise. */
+		@inline def absentIf(condition :Boolean) :Kin[T] =
+			if (condition || kin.isEmpty) Unknown else kin
 	}
 
 
@@ -467,7 +489,7 @@ object Kin {
 
 	/** `Kin` about which values' we don't know anything or don't care.
 	  * It should be used very sparingly, as in most cases nothing sensible can be done with such an instance
-	  * and passing it will produce an error, but it can be useful to mean 'not changed' in updated values,
+	  * and passing it in a query will produce an error, but it can be useful to mean 'not changed' in updated values,
 	  * or save defining otherwise expensive to compute ''to-many'' relationships as `Option[Kin[T]]` - assuming
 	  * this practice is shared by the whole codebase.
 	  * @see [[net.noresttherein.oldsql.model.Kin Kin]]
@@ -526,7 +548,7 @@ object Kin {
 
 	/** A factory and matcher for a special type of absent `Kin`: those which specify that the value is not merely
 	  * absent in this instance, but does not exist at all.
-	  */
+	  */ //todo: rename to Naught
 	object Nonexistent {
 		def apply[T]() :OptKin[T] = instance
 

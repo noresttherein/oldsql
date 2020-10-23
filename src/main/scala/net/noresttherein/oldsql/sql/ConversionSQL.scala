@@ -33,11 +33,11 @@ trait ConversionSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, Y] ext
 	override def freeValue :Option[Y] = expr.freeValue.map(convert)
 
 
-	override def selectFrom[G <: F with FreeFrom, O](from :G) :FreeSelectSQL[Y, O] =
+	override def selectFrom[G <: F with FreeFrom](from :G) :FreeSelectSQL[Y, _] =
 		SelectSQL(from, this)
 
-	override def subselectFrom[G <: F, O](from :G) :SubselectSQL[from.Base, Y, O] =
-		SelectSQL.subselect[from.Base, from.type, X, Y, O](from, this)
+	override def subselectFrom(from :F) :SubselectSQL[from.Base, Y, _] =
+		SelectSQL.subselect[from.Base, from.type, X, Y, Any](from, this)
 
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[F, R]): R[S, Y] =
@@ -248,14 +248,21 @@ object ConversionSQL {
 
 
 
-	trait ConversionMatcher[+F <: FromClause, +R[-_ >: LocalScope <: GlobalScope, _]] extends PromotionMatcher[F, R] {
+	trait ConversionMatcher[+F <: FromClause, +R[-_ >: LocalScope <: GlobalScope, _]]
+		extends ColumnConversionMatcher[F, R] with PromotionMatcher[F, R]
+	{
 		def conversion[S >: LocalScope <: GlobalScope, X, Y](e :ConversionSQL[F, S, X, Y]) :R[S, Y]
 	}
 
-	trait MatchConversion[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ConversionMatcher[F, Y] with CasePromotion[F, Y]
+	trait MatchConversion[+F <: FromClause, +R[-_ >: LocalScope <: GlobalScope, _]]
+		extends ConversionMatcher[F, R] with CasePromotion[F, R]
+	{
+		override def conversion[S >: LocalScope <: GlobalScope, X, Y](e :ColumnConversionSQL[F, S, X, Y]) :R[S, Y] =
+			conversion(e :ConversionSQL[F, S, X, Y])
+	}
 
 	trait CaseConversion[+F <: FromClause, +R[-_ >: LocalScope <: GlobalScope, _]] extends MatchConversion[F, R] {
+
 		override def promotion[S >: LocalScope <: GlobalScope, T, U](e :PromotionConversion[F, S, T, U]) :R[S, U] =
 			conversion(e)
 	}

@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{ResultSet, Types}
 
+import scala.annotation.implicitNotFound
+
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.ColumnReadForm.{FallbackColumnReadForm, FlatMappedColumnReadForm, MappedColumnReadForm}
@@ -21,6 +23,8 @@ import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm,
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
   */
+@implicitNotFound("I do not know how to read a column of type ${T} from a ResultSet: " +
+                  "missing implicit ColumnReadForm[${T}].")
 trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
 
 	override final def readColumns = 1

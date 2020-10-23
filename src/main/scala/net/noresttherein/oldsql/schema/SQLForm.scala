@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.{PreparedStatement, ResultSet}
 
+import scala.annotation.implicitNotFound
+
 import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
@@ -15,7 +17,7 @@ import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.collection.LabeledChain.>~
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Extractor}
 import net.noresttherein.oldsql.schema.ScalaForms.Tuple2Form
 import net.noresttherein.oldsql.slang
 
@@ -35,6 +37,7 @@ import net.noresttherein.oldsql.slang
   *
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
   */ //todo: specialization! (or migration to Opt instead of Option).
+@implicitNotFound("I do not know how to map type ${T} into SQL type(s): missing implicit SQLForm[${T}].")
 trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying
@@ -400,6 +403,11 @@ object SQLForm {
 		}
 
 	}
+
+
+
+	type FormFunction[A[_], M[_], S[X] <: M[X]] = ColumnBasedFactory[A, A, SQLForm, ColumnForm, M, S]
+
 
 
 

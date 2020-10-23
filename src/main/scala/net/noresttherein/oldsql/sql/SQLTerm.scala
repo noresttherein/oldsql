@@ -1,7 +1,9 @@
 package net.noresttherein.oldsql.sql
 
 
+import net.noresttherein.oldsql.morsels.generic.{Const, Self}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.SQLForm.FormFunction
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, PartOf}
@@ -98,13 +100,15 @@ object SQLTerm {
 		trait ColumnTermMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends ColumnLiteralMatcher[F, Y] with NullMatcher[F, Y] with ParameterColumnMatcher[F, Y]
 			   with NativeColumnTermMatcher[F, Y]
+		{
+			def term[X](e :ColumnTerm[X]) :Y[GlobalScope, X]
+		}
 
 		trait MatchColumnTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnTermMatcher[F, Y]
 			with CaseColumnLiteral[F, Y] with CaseNull[F, Y] with CaseParameterColumn[F, Y]
 			with CaseNativeColumnTerm[F, Y]
 
 		trait CaseColumnTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchColumnTerm[F, Y] {
-			def term[X](e :ColumnTerm[X]) :Y[GlobalScope, X]
 			override def literal[X](e :ColumnLiteral[X]) :Y[GlobalScope, X] = term(e)
 			override def param[X](e :SQLParameterColumn[X]) :Y[GlobalScope, X] = term(e)
 			override def nullSQL[X](e :NULL[X]) :Y[GlobalScope, X] = term(e)
@@ -138,14 +142,21 @@ object SQLTerm {
 
 
 
-	object SQLLiteral {
-		def apply[T :SQLForm](value :T) :SQLLiteral[T] = new SQLLiteral(value)
+	object SQLLiteral extends FormFunction[Self, SQLLiteral, ColumnLiteral] {
+		//consider: making NULL an SQLLiteral and handle null values gracefully
+		//todo: sensible and consistent overloading of apply method so one can pass a form.
+
+// 		def apply[T :SQLForm](value :T) :SQLLiteral[T] = new SQLLiteral(value)
+
 
 		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Option[T] = e match {
 			case literal :SQLLiteral[T @unchecked] => Some(literal.value)
 			case _ => None
 		}
 
+
+		protected override def multiColumn[T :SQLForm](arg :T) :SQLLiteral[T] = new SQLLiteral(arg)
+		protected override def singleColumn[T :ColumnForm](arg :T) :ColumnLiteral[T] = new ColumnLiteral(arg)
 
 
 		trait LiteralMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnLiteralMatcher[F, Y] {
@@ -258,13 +269,30 @@ object SQLTerm {
 
 
 
-	object SQLParameter {
-		def apply[T :SQLForm](value :T) :SQLParameter[T] = new SQLParameter(value)
+	object SQLParameter extends FormFunction[Self, SQLParameter, SQLParameterColumn] {
+
+		def apply[T](form :SQLForm[T])(value :T) :SQLParameter[T] = new SQLParameter(value)(form)
 
 		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Option[(T, Option[String])] = e match {
 			case param :SQLParameter[T @unchecked] => Some((param.value, param.name))
 			case _ => None
 		}
+
+
+//		/** Provider of implicit converters `ParameterFactory[X]` from any Scala literal `X`
+//		  * with an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]/[[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]
+//		  * to an [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameter SQLParameter]]`[X]`/[[net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn SQLParameterColumn]]`[X]`
+//		  */
+
+		protected override def singleColumn[X :ColumnForm](value :X) :SQLParameterColumn[X] = SQLParameterColumn(value)
+		protected override def multiColumn[X :SQLForm](value :X) :SQLParameter[X] = SQLParameter(value)
+
+		/** A factory lifting any literal `X` into an [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameter SQLParameter]]`[X]`
+		  * or its subclass [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn SQLParameterColumn]]`[X]`,
+		  * depending on whether an implicit [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]
+		  * or [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists.
+		  */
+		type ParameterFactory[X, P <: SQLParameter[X]] = SpecificFactory[X, X] { type Res = P }
 
 
 		trait ParameterMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ParameterColumnMatcher[F, Y] {
@@ -437,23 +465,22 @@ object SQLTerm {
 
 
 
-//	def NULL[T :ColumnForm] = new NULL[T]
+	object NULL extends FormFunction[Const[Unit]#T, CompositeNULL, NULL] {
 
-	object NULL {
-		def apply[T :ColumnForm] = new NULL[T]
+		def apply[T](implicit factory :Factory[T]) :factory.Res = NULL[(), T](())
+
+		def apply[T](form :ColumnForm[T]) :NULL[T] = new NULL[T]()(form)
 
 		def unapply(expression :SQLExpression[Nothing, LocalScope, _]) :Boolean = expression match {
-//			case null => true
+			case null => true
 			case _ :NULL[_] => true
 			case SQLLiteral(null) => true
 			case _ => false
 		}
 
 
-		implicit def nullColumn[T :ColumnForm](self :NULL.type) :NULL[T] = NULL[T]
-
-		implicit def nullComposite[T :SQLForm](self :NULL.type) :CompositeNULL[T] = CompositeNULL[T]
-
+		protected override def multiColumn[T:SQLForm](arg :Unit) :CompositeNULL[T] = new CompositeNULL[T]
+		protected override def singleColumn[T:ColumnForm](arg :Unit) :NULL[T] = new NULL[T]
 
 
 		trait NullMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
@@ -467,13 +494,17 @@ object SQLTerm {
 	}
 
 
+	implicit def nullColumn[T :ColumnForm](self :NULL.type) :NULL[T] = NULL[T]
+	implicit def nullComposite[T :SQLForm](self :NULL.type) :CompositeNULL[T] = CompositeNULL[T]
+
+
 
 
 
 
 	object True extends ColumnLiteral[Boolean](true) {
 		/** This literal upcast to `GlobalBoolean[F]`, useful for better type inference in fold-like scenarios. */
-		def apply[F <: FromClause]() :GlobalBoolean[F] = this
+		def apply[F <: FromClause] :GlobalBoolean[F] = this
 
 		def unapply(expression :SQLExpression[Nothing, LocalScope, _]) :Boolean = expression match {
 			case SQLLiteral(v :Boolean) => v
@@ -558,15 +589,19 @@ object SQLTerm {
 
 
 
-	object NativeTerm {
-
-		def apply[T :SQLForm](sql :String) :NativeTerm[T] = new NativeTerm[T](sql)
+	object NativeTerm extends FormFunction[Const[String]#T, NativeTerm, NativeColumnTerm] {
 
 		def unapply(e :SQLExpression[Nothing, LocalScope, _]) :Option[String] = e match {
 			case native :NativeTerm[_] => Some(native.sql)
 			case _ => None
 		}
 
+
+		protected override def multiColumn[T :SQLForm](arg :String) :NativeTerm[T] =
+			new NativeTerm[T](arg)
+
+		protected override def singleColumn[T :ColumnForm](arg :String) :NativeColumnTerm[T] =
+			new NativeColumnTerm(arg)
 
 
 		trait NativeMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends NativeColumnTermMatcher[F, Y] {
@@ -620,38 +655,19 @@ object SQLTerm {
 
 
 
-	trait SQLTermFactory[X, +T <: SQLTerm[X]] {
-		def apply(value :X) :T
-	}
-
-	object SQLTermFactory {
-		implicit def nullFactory[T:SQLForm] :SQLTermFactory[T, CompositeNULL[T]] =
-			{ _ :T => CompositeNULL[T] }
-
-		implicit def nullColumnFactory[T:ColumnForm] :SQLTermFactory[T, NULL[T]] =
-			{ _ :T => NULL[T] }
-
-
-		implicit def boundParameterFactory[T:SQLForm] :SQLTermFactory[T, SQLParameter[T]] =
-			{ value :T => SQLParameter(value) }
-
-		implicit def boundParameterColumnFactory[T:ColumnForm] :SQLTermFactory[T, SQLParameterColumn[T]] =
-			{ value :T => SQLParameterColumn(value) }
-	}
-
-
-
 	trait TermMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnTermMatcher[F, Y]
 		with LiteralMatcher[F, Y]  with CompositeNullMatcher[F, Y] with ParameterMatcher[F, Y] with NativeMatcher[F, Y]
-
-	trait MatchTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends CaseLiteral[F, Y]  with CaseCompositeNull[F, Y] with CaseParameter[F, Y] with CaseNative[F, Y]
-
-	trait CaseTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends TermMatcher[F, Y] with MatchTerm[F, Y]
 	{
 		def term[X](e :SQLTerm[X]) :Y[GlobalScope, X]
+	}
 
+	trait MatchTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends TermMatcher[F, Y]
+		with CaseLiteral[F, Y]  with CaseCompositeNull[F, Y] with CaseParameter[F, Y] with CaseNative[F, Y]
+	{
+		override def term[X](e :ColumnTerm[X]) :Y[GlobalScope, X] = term(e :SQLTerm[X])
+	}
+
+	trait CaseTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchTerm[F, Y] {
 		def param[X](e: SQLParameter[X]): Y[GlobalScope, X] = term(e)
 
 		def literal[X](e: SQLLiteral[X]): Y[GlobalScope, X] = term(e)
@@ -659,7 +675,6 @@ object SQLTerm {
 		def nullSQL[X](e: CompositeNULL[X]): Y[GlobalScope, X] = term(e)
 
 		def native[X](e: NativeTerm[X]): Y[GlobalScope, X] = term(e)
-
 	}
 
 }

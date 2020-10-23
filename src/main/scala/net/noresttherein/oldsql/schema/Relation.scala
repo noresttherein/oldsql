@@ -136,7 +136,7 @@ object Relation {
 
 
 
-	private[oldsql] val Dummy = Relation(new ConstantMapping["Dummy", "Dummy"]("Dummy"))
+	private[oldsql] val Dummy = Relation("Dummy", new ConstantMapping["Dummy", "Dummy"]("Dummy"))
 
 }
 

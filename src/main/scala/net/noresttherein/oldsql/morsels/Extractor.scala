@@ -81,6 +81,7 @@ sealed class ExtractorImplicits private [morsels] () {
 
 
 object Extractor extends ExtractorImplicits {
+
 	/** A type alias for [[net.noresttherein.oldsql.morsels.Extractor Extractor]], allowing concise writing it
 	  * in the infix function format `X =?> Y`.
 	  */

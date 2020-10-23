@@ -1005,7 +1005,7 @@ sealed abstract class LowPriorityMappingImplicits {
                                      (implicit subject :C <:< BaseMapping[S, O], origin :F <:< O,
                                                offset :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
 			:SQLExpression[F, GlobalScope, S] =
-		LooseComponent(projection[F](mapping), offset.tables)
+		LooseComponent(projection[F](mapping), offset.offset)
 
 }
 

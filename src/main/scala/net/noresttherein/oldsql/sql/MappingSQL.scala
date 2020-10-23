@@ -3,18 +3,18 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, Relation, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, IsomorphicProjection}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf, PrefixOf, TableCount, TableShift}
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
+import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, PartOf, PrefixOf, TableCount, TableShift}
 import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.{CaseColumnComponent, ColumnComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL.{CaseComponent, ComponentMatcher, ProperComponent}
 import net.noresttherein.oldsql.sql.MappingSQL.LooseColumnComponent.LooseColumnMatcher
 import net.noresttherein.oldsql.sql.MappingSQL.LooseComponent.{CaseLooseComponent, LooseComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.{CaseRelation, RelationMatcher}
-import net.noresttherein.oldsql.sql.SelectSQL.{SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumnMapping}
+import net.noresttherein.oldsql.sql.SelectSQL.{FreeSelectAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumnMapping, SubselectMapping}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 
 
@@ -39,7 +39,7 @@ import slang._
   * If used as part of a comparison in a ''where'' or ''having'' clause, the columns of the two expressions will
   * be compared ordinally.
   * @author Marcin Mościcki
-  */
+  */ //todo: refactor it making it take type constructor after all
 trait MappingSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, M <: Mapping] extends SQLExpression[F, S, M#Subject] {
 
 	type Subject = M#Subject
@@ -138,7 +138,7 @@ object MappingSQL {
 		         (implicit cast :C <:< BaseMapping[V, F], shift :TableCount[F, _ <: Numeral],
 		                   project :OriginProjection[C, V])
 				:LooseComponent[F, project.WithOrigin, V] =
-				apply(mapping, shift.tables)
+				apply(mapping, shift.offset)
 
 
 		def unapply[F <: FromClause, X](expr :SQLExpression[F, _, X])
@@ -172,13 +172,13 @@ object MappingSQL {
 			                  (e :LooseComponent[O, M, X]) :Y[GlobalScope, X]
 		}
 
-		type MatchLooseComponent[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = LooseComponentMatcher[F, Y]
-
-		trait CaseLooseComponent[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends LooseComponentMatcher[F, Y] {
+		trait MatchLooseComponent[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends LooseComponentMatcher[F, Y] {
 			override def looseComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
 			                          (e :LooseColumnComponent[O, M, V]) :Y[GlobalScope, V] =
 				looseComponent(e :LooseComponent[O, M, V])
 		}
+
+		type CaseLooseComponent[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = MatchLooseComponent[F, Y]
 
 	}
 
@@ -231,7 +231,7 @@ object MappingSQL {
 		         (implicit cast :C <:< ColumnMapping[V, F], shift :TableCount[F, _ <: Numeral],
 		                   project :OriginProjection[C, V] { type WithOrigin[O] <: ColumnMapping[V, O] })
 				:LooseColumnComponent[F, project.WithOrigin, V] =
-			apply(column, shift.tables)
+			apply(column, shift.offset)
 
 
 		def unapply[F <: FromClause, X](expr :SQLExpression[F, _, X])
@@ -310,6 +310,15 @@ object MappingSQL {
 		     (column :K)(implicit project :OriginProjection[K, X] { type WithOrigin[A] <: ColumnMapping[X, A] })
 				:BaseColumnComponentSQL[F, project.WithOrigin, X, O]
 
+		override def subselectFrom(from :F) :SubselectAs[from.Base, M, O] =
+			throw new UnsupportedOperationException(
+				s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+			)
+
+		override def selectFrom[E <: F with FreeFrom](from :E) :FreeSelectAs[M, O] =
+			throw new UnsupportedOperationException(
+				s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+			)
 
 		override def isomorphic(expression :SQLExpression.*) :Boolean = this == expression
 
@@ -326,6 +335,21 @@ object MappingSQL {
 
 
 
+	object BaseComponentSQL {
+
+		def apply[F <: FromClause, M <: BaseMapping[S, O], S, O >: F <: FromClause]
+		         (from :F, component :M)
+		         (implicit offset :TableCount[O, _ <: Numeral], project :OriginProjection[M, S])
+				:BaseComponentSQL[F, project.WithOrigin, O] =
+		{
+			val relation = from.fullTableStack(offset.offset).asRelationSQL
+			                   .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, O]]
+			ComponentSQL(relation, component)//(project.isomorphism)
+		}
+	}
+
+
+
 	trait ComponentSQL[-F <: FromClause, T[A] <: BaseMapping[R, A], R,
 	                   M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
 		extends BaseComponentSQL[F, M, O]
@@ -333,6 +357,8 @@ object MappingSQL {
 		override type Entity[A] = T[A]
 
 		def projection :IsomorphicProjection[M, V, O]
+
+		override def groupingRelation :Relation[M] = GroupingRelation[F, M, V, O](this)(projection)
 
 		override def origin :RelationSQL[F, T, R, O]
 
@@ -366,11 +392,11 @@ object MappingSQL {
 
 
 
-		override def selectFrom[E <: F with FreeFrom, A](from :E) :SelectMapping[E, M, V, A] =
+		override def selectFrom[E <: F with FreeFrom](from :E) :SelectMapping[E, M, V, O] =
 			SelectSQL(from, this)
 
-		override def subselectFrom[E <: F, A](from :E) :SubselectAs[from.Base, M[A]] =
-			SelectSQL.subselect[from.Base, from.type, T, R, M, V, O, A](from, this)
+		override def subselectFrom(from :F) :SubselectAs[from.Base, M, O] =
+			SelectSQL.subselect[from.Base, from.type, M, V, O, O](from, this)
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentSQL.* @unchecked]
@@ -398,6 +424,8 @@ object MappingSQL {
 			component match {
 				case column :ColumnMapping[V @unchecked, O @unchecked] =>
 					ColumnComponentSQL(from, column).asInstanceOf[ComponentSQL[F, T, R, project.WithOrigin, V, O]]
+				case from.mapping =>
+					from.asInstanceOf[ComponentSQL[F, T, R, project.WithOrigin, V, O]]
 				case _ =>
 					new ProperComponent[F, T, R, project.WithOrigin, V, O](from, project(component))(project.isomorphism)
 			}
@@ -445,8 +473,6 @@ object MappingSQL {
 			extends ComponentSQL[F, T, R, M, V, O]
 		{
 			override val extract = entity(mapping)
-
-			override def groupingRelation = GroupingRelation[F, M, V, O](this)
 
 			override val readForm :SQLReadForm[V] = extract.export.selectForm
 
@@ -511,6 +537,17 @@ object MappingSQL {
 		override def extend[U <: F, E <: FromClause]
 		                   (base :E)(implicit extension :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:BaseColumnComponentSQL[E, M, V, _ >: E <: FromClause]
+
+		override def selectFrom[E <: F with FreeFrom](from :E) :SelectColumnMapping[E, M, V, O] =
+			throw new UnsupportedOperationException(
+				s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+			)
+
+		override def subselectFrom(from :F) :SubselectColumnMapping[from.Base, from.type, M, V, O] =
+			throw new UnsupportedOperationException(
+				s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+			)
+
 	}
 
 
@@ -533,11 +570,11 @@ object MappingSQL {
 			matcher.component(this)
 
 
-		override def selectFrom[E <: F with FreeFrom, A](from :E) :SelectColumnMapping[E, M, V, A] =
+		override def selectFrom[E <: F with FreeFrom](from :E) :SelectColumnMapping[E, M, V, O] =
 			SelectSQL(from, this)
 
-		override def subselectFrom[E <: F, A](from :E) :SubselectColumnMapping[from.Base, from.type, M, V, A] =
-			SelectSQL.subselect[from.Base, from.type, T, R, M, V, O, A](from, this) //todo: source.type is ugly!
+		override def subselectFrom(from :F) :SubselectColumnMapping[from.Base, from.type, M, V, O] =
+			SelectSQL.subselect[from.Base, from.type, M, V, O, O](from, this) //todo: source.type is ugly!
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnComponentSQL.* @unchecked]
@@ -601,8 +638,6 @@ object MappingSQL {
 			override val extract = entity(mapping)
 			//fixme: sort out where the buff-related modifications take place to have consistent assembly semantics
 			override val readForm = super.readForm
-
-			override def groupingRelation = GroupingRelation[F, M, V, O](this)
 
 			override def extend[U <: F, E <: FromClause]
 			                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
@@ -766,11 +801,11 @@ object MappingSQL {
 
 
 
-		override def selectFrom[E <: O with FreeFrom, A](from :E) :SelectMapping[E, T, R, A] =
+		override def selectFrom[E <: O with FreeFrom](from :E) :SelectMapping[E, T, R, O] =
 			SelectSQL(from, asRelationSQL)
 
-		override def subselectFrom[E <: O, A](from :E) :SubselectAs[from.Base, T[A]] =
-			SelectSQL.subselect[from.Base, from.type, T, R, T, R, O, A](from, asRelationSQL)
+		override def subselectFrom(from :F) :SubselectMapping[from.Base, from.type, T, R, O] =
+			SelectSQL.subselect[from.Base, from.type, T, R, O, O](from, asRelationSQL)
 
 
 	}
@@ -859,16 +894,18 @@ object MappingSQL {
 
 
 	trait MappingColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends LooseColumnMatcher[F, Y] with ColumnComponentMatcher[F, Y]
+		extends ColumnComponentMatcher[F, Y] with LooseColumnMatcher[F, Y]
 
 	trait MappingMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ComponentMatcher[F, Y] with LooseComponentMatcher[F, Y] with MappingColumnMatcher[F, Y]
+		extends MappingColumnMatcher[F, Y] with ComponentMatcher[F, Y] with LooseComponentMatcher[F, Y]
+	{
+		def mapping[S >: LocalScope <: GlobalScope, M <: Mapping](e :MappingSQL[F, S, M]) :Y[S, M#Subject]
+	}
 
-	trait MatchMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends MappingMatcher[F, Y] with CaseComponent[F, Y] with CaseLooseComponent[F, Y]
+	trait MatchMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MappingMatcher[F, Y]
+		with CaseComponent[F, Y] with CaseLooseComponent[F, Y]
 
 	trait CaseMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchMapping[F, Y] {
-		def mapping[S >: LocalScope <: GlobalScope, M <: Mapping](e :MappingSQL[F, S, M]) :Y[S, M#Subject]
 
 		override def component[T[A] <: BaseMapping[R, A], R, M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
 		                      (e :ComponentSQL[F, T, R, M, V, O]) :Y[GlobalScope, V] =

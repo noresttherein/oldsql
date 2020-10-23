@@ -147,9 +147,9 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 	def like(pattern :String)(implicit isString :V =:= String) :ColumnSQL[F, S, Boolean] =
 		LikeSQL(cast[String], pattern) //todo: why the pattern is a literal? Can't it be an arbitrary string?
 
-	def +[E <: F, O >: LocalScope <: S]
-	     (other :ColumnSQL[E, O, String])(implicit ev :V =:= String) :ColumnSQL[E, O, String] =
-		ConcatSQL(cast[String]) + other
+	def ++[E <: F, O >: LocalScope <: S]
+	      (other :ColumnSQL[E, O, String])(implicit ev :V =:= String) :ColumnSQL[E, O, String] =
+		ConcatSQL(cast[String]) ++ other
 
 //todo: arithmetic
 
@@ -187,11 +187,11 @@ trait ColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 
 
-	override def selectFrom[E <: F with FreeFrom, O](from :E) :FreeSelectColumn[V, O] =
+	override def selectFrom[E <: F with FreeFrom](from :E) :FreeSelectColumn[V, _] =
 		SelectSQL(from, this)
 
-	override def subselectFrom[E <: F, O](from :E) :SubselectColumn[from.Base, V, O] =
-		SelectSQL.subselect[from.Base, from.type, V, O](from, this)
+	override def subselectFrom(from :F) :SubselectColumn[from.Base, V, _] =
+		SelectSQL.subselect[from.Base, from.type, V, Any](from, this)
 
 }
 
@@ -211,7 +211,7 @@ object ColumnSQL {
 	  */
 	implicit class ColumnSQLAggregateMethods[F <: FromSome, V](private val self :ColumnSQL[F, LocalScope, V])
 		extends AnyVal
-	{
+	{//fixme: remove abstract type projections
 		/** Represents the SQL `COUNT(this)`.
 		  * @return a [[net.noresttherein.oldsql.sql.ColumnSQL.LocalColumn LocalColumn]]`[G, Int]` based on clause
 		  *         `G <: FromClause`, being the least upper bound of all aggregate expressions (`FromClause` subtypes
@@ -427,17 +427,22 @@ object ColumnSQL {
 		trait CompositeColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends ConditionMatcher[F, Y] with LogicalMatcher[F, Y] with ArithmeticMatcher[F, Y]
 			   with ConcatMatcher[F, Y] with ColumnConversionMatcher[F, Y] with AliasedColumnMatcher[F, Y]
+		{
+			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X]
+		}
+
+		trait MatchOnlyCompositeColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+			extends CompositeColumnMatcher[F, Y]
+			   with CaseAliasedColumn[F, Y] with CaseArithmetic[F, Y] with CaseConcat[F, Y] with CaseCondition[F, Y]
+			   with CaseLogical[F, Y]
+
 
 		trait MatchCompositeColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompositeColumnMatcher[F, Y]
-			   with CaseCondition[F, Y] with CaseLogical[F, Y] with CaseArithmetic[F, Y] with CaseColumnConversion[F, Y]
-			   with CaseConcat[F, Y] with CaseAliasedColumn[F, Y]
+			extends MatchOnlyCompositeColumn[F, Y] with CaseColumnConversion[F, Y]
 
 		trait CaseCompositeColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends MatchCompositeColumn[F, Y]
 		{
-			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X]
-
 			override def alias[S >: LocalScope <: GlobalScope, V](e :AliasedColumn[F, S, V]) :Y[S, V] = composite(e)
 
 			override def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V] =
@@ -462,19 +467,21 @@ object ColumnSQL {
 	trait ColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends AggregateMatcher[F, Y] with ColumnTermMatcher[F, Y] with CompositeColumnMatcher[F, Y]
 		   with MappingColumnMatcher[F, Y] with SelectColumnMatcher[F, Y]
+	{
+		def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :Y[S, X]
+	}
 
 	trait MatchColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnMatcher[F, Y]
 		with CaseAggregate[F, Y] with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
 		with CaseColumnComponent[F, Y] with CaseLooseColumn[F, Y] with CaseSelectColumn[F, Y]
 
 	trait CaseColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchColumn[F, Y] {
-		def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :Y[S, X]
-
-		override def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :Y[LocalScope, V] =
-			column(e)
 
 		override def *(e :ColumnSQL[FromClause, LocalScope, Nothing]) :Y[LocalScope, Nothing] =
 			column[LocalScope, Nothing](e)
+
+		override def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :Y[LocalScope, V] =
+			column(e)
 
 		override def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X] = column(e)
 

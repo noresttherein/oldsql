@@ -3,8 +3,9 @@ package net.noresttherein.oldsql.model
 import net.noresttherein.oldsql.model.PropertyPath.HackedPropertyPath
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.Suite
 
-class PropertyPathSpec extends AnyFlatSpec with Matchers {
+class PropertyPathSpec extends AnyFlatSpec with Suite with Matchers {
 
 	class Subject {
 		val intVal = 1

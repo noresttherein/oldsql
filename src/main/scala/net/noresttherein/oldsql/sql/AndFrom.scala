@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.AndFromMatrix
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{As, ClauseComposition, ClauseDecomposition, ExtendedBy, NonEmptyFrom, NonEmptyFromMatrix, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{As, ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, NonEmptyFrom, NonEmptyFromMatrix, ParamlessFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -59,7 +59,6 @@ trait AndFrom[+L <: FromClause, R[O] <: MappingAt[O]]
 	}
 
 	override type Dealiased >: Self <: (left.Self AndFrom R) {
-		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
@@ -200,7 +199,7 @@ object AndFrom {
 	  */
 	trait AndFromMatrix[+L <: FromClause, R[O] <: MappingAt[O], +U <: (L AndFrom R) with AndFromMatrix[L, R, U]]
 		extends NonEmptyFromMatrix[U, U]
-	{ thisClause :U =>
+	{ thisClause :U with AndFromMatrix[L, R, U] => //self type is the only reason why everything can't be in AndFrom
 
 		val left :L
 		def condition :GlobalBoolean[Generalized]
@@ -269,10 +268,7 @@ object AndFrom {
 
 /** A `FromClause` constituting of exactly one table or SQL relation.
   * This is a specialized subclass of `AndFrom[Dual, T]`, so that we can write the type From[T] instead, especially
-  * in larger clauses like `From[Children] Join Daemons`. For all intents and purposes it is treated
-  * as `Dual InnerJoin T` (which would be illegal due to the restriction of the left side of joins to non empty clauses).
-  * All non empty ''from'' clauses start with this instance unless the first 'relation' is an unbound join parameter
-  * represented by a `JoinParam`.
+  * in larger clauses like `From[Children] Join Daemons`.
   *///consider: making it a subclass of Subselect. The relation of being a subselect of a clause and grafting would be easier
 sealed trait From[T[O] <: MappingAt[O]]
 	extends AndFrom[Dual, T] with NonSubselect[Dual, T] with AndFromMatrix[Dual, T, From[T]]
@@ -297,12 +293,20 @@ sealed trait From[T[O] <: MappingAt[O]]
 	override def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
 		filter.basedOn(target)
 
+
+	override type Params = @~
+	override type Paramless = Self
+	override type DecoratedParamless[D <: BoundParamless] = D
+
+	override def bind(params :Params) :Self = self
+
+	protected override def decoratedBind[D <: BoundParamless](params: @~)(decorate :Self => D) :D =
+		decorate(self)
+
+
 	override def fullSize = 1
 
 	override def generalizedExtension[F <: FromSome] :F PrefixOf (F AndFrom T) = PrefixOf.itself[F].extend[AndFrom, T]
-
-
-	override type Params = @~
 
 	//overriden for clarity
 	override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] <: P J T
@@ -326,7 +330,7 @@ sealed trait From[T[O] <: MappingAt[O]]
 	override def name :String = "from"
 
 	override def toString :String =
-		if (filter == True()) "from " + last.relation
+		if (filter == True) "from " + last.relation
 		else "from " + last.relation + " where " + filter
 
 }
@@ -395,7 +399,7 @@ object From {
 			:EmptyJoin[dual.type, T] As A =
 		new EmptyJoin[dual.type, T]
 			with AbstractExtended[dual.type, T, S]
-			with NonEmptyFromMatrix[dual.type EmptyJoin T, dual.type EmptyJoin T As A]
+//			with NonEmptyFromMatrix[dual.type EmptyJoin T, dual.type EmptyJoin T As A]
 		{
 			override val left :dual.type = dual
 			override val last = relation
@@ -484,7 +488,7 @@ object From {
 		override def extension[A <: Dual] :A PrefixOf From[M] =
 			PrefixOf.itself[From[M]].asInstanceOf[A PrefixOf From[M]]
 
-		override def strip(from :From[M]) :Dual = from.left
+		override def unapply(from :From[M]) :Dual = from.left
 
 		override def apply[D <: Dual](template :From[M], dual :D) :From[M] =
 			if (template.left.filter == dual.filter) template //this assumes Dual is sealed and thus it doesn't matter
@@ -496,8 +500,11 @@ object From {
 		override def cast[A <: Dual] :ClauseDecomposition[From[M], A, Dual] =
 			this.asInstanceOf[ClauseDecomposition[From[M], A, Dual]]
 
-		override def generalized[A <: Dual] :ClauseDecomposition[A AndFrom M, A, Dual] =
-			this.asInstanceOf[ClauseDecomposition[A AndFrom M, A, Dual]]
+		override def generalized[A >: Dual <: Dual] :ClauseGeneralization[A AndFrom M, A, Dual]
+				{ type G[+B >: A <: Dual] = E[B]; type S[+B >: A <: Dual] = E[B]; type E[+B <: Dual] = B AndFrom M } =
+			this.asInstanceOf[ClauseGeneralization[A AndFrom M, A, Dual] {
+				type G[+B >: A <: Dual] = E[B]; type S[+B >: A <: Dual] = E[B]; type E[+B <: Dual] = B AndFrom M
+			}]
 	}
 
 
@@ -512,6 +519,61 @@ object From {
 
 	private[sql] trait EmptyJoin[+L <: Dual, T[O] <: MappingAt[O]]
 		extends From[T] with AndFrom[L, T] with AndFromMatrix[L, T, L EmptyJoin T]
+
+
+	private class FromTemplate[L <: Dual, T[O] <: BaseMapping[S, O], S, A <: Label]
+	              (override val left :L, override val last :LastRelation[T, S], override val aliasOpt :Option[A],
+	               override val condition :GlobalBoolean[FromClause AndFrom T])
+		extends EmptyJoin[L, T] with AbstractExtended[L, T, S]
+	{
+		override val outer = left.outer
+
+		override def narrow :left.type AndFrom T = this.asInstanceOf[left.type AndFrom T]
+
+		override type Alias = A
+		override type WithLeft[+F <: FromClause] = F AndFrom T As A
+		override type Self = Dual EmptyJoin T As A
+		override type DealiasedCopy = L EmptyJoin T
+		override type Copy = L EmptyJoin T As A
+
+		override def withCondition(filter :GlobalBoolean[FromClause AndFrom T]) =
+			From.custom(left, last, aliasOpt, filter)
+
+		override def withLeft[F <: DiscreteFrom](newLeft :F)(filter :GlobalBoolean[newLeft.Generalized AndFrom T]) =
+			newLeft.extend(last, aliasOpt, filter)
+
+		override def aliased[N <: Label](alias :N) = custom(left, last, Option(alias), condition)
+
+
+		override def extension[P <: FromSome] = PrefixOf.itself[P].extend[AndFrom, T].as[A]
+
+
+		override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = P J T As A
+		override type JoinedWithSubselect[+P <: NonEmptyFrom] = P Subselect T As A
+
+		override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) =
+			firstJoin.aliasedJoin[F, T, S, A](prefix, last, aliasOpt)(filter)
+
+		override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) =
+			Subselect[F, T, S, A](prefix, last, aliasOpt)(filter)
+
+		override def appendedTo[P <: DiscreteFrom](prefix :P) :P AndFrom T As A =
+			prefix.extend(last, aliasOpt, filter)
+
+
+		override def innerTableStack[E <: FromClause]
+		             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+			last.extend[Generalized, E](target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
+
+
+		override type AsSubselectOf[+F <: NonEmptyFrom] = F Subselect T As A
+
+		override def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit extension :Implicit ExtendedBy F) =
+			Subselect[newOuter.type, T, S, A](newOuter, last, aliasOpt)(filter)
+
+
+		override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.from[T, S](this)
+	}
 
 }
 

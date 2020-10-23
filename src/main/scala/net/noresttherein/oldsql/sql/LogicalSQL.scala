@@ -237,13 +237,14 @@ object LogicalSQL {
 
 	trait LogicalMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends NOTMatcher[F, Y] with ANDMatcher[F, Y] with ORMatcher[F, Y]
+	{
+		def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean]
+	}
 
 	trait MatchLogical[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends LogicalMatcher[F, Y] with CaseNOT[F, Y] with CaseAND[F, Y] with CaseOR[F, Y]
 
 	trait CaseLogical[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchLogical[F, Y] {
-		def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean]
-
 		override def not[S >: LocalScope <: GlobalScope](e :NOT[F, S]) :Y[S, Boolean] = logical(e)
 
 		override def and[S >: LocalScope <: GlobalScope](e :AND[F, S]) :Y[S, Boolean] = logical(e)

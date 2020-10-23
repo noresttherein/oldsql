@@ -26,11 +26,11 @@ import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedChainHead
   */
 trait TupleSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, T] extends CompositeSQL[F, S, T] {
 
-	override def selectFrom[E <: F with FreeFrom, O](from :E) :FreeSelectSQL[T, O] =
+	override def selectFrom[E <: F with FreeFrom](from :E) :FreeSelectSQL[T, _] =
 		SelectSQL(from, this)
 
-	override def subselectFrom[E <: F, O](from :E) :SubselectSQL[from.Base, T, O] =
-		SelectSQL.subselect[from.Base, from.type, T, O](from, this)
+	override def subselectFrom(from :F) :SubselectSQL[from.Base, T, _] =
+		SelectSQL.subselect[from.Base, from.type, T, Any](from, this)
 
 
 	override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other.isInstanceOf[TupleSQL[_, _, _]]

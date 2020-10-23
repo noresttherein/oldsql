@@ -11,7 +11,10 @@ import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, CaseMapping, ColumnComponentSQL, ComponentSQL, LooseColumnComponent, LooseComponent, RelationSQL}
-import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectColumn, FreeSelectColumn, FreeSelectSQL, SubselectColumn, SubselectSQL}
+import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
+import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL.CaseComponent
+import net.noresttherein.oldsql.sql.MappingSQL.LooseComponent.CaseLooseComponent
+import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectColumn, CaseSelect, CaseSelectColumn, FreeSelectColumn, FreeSelectSQL, SelectColumn, SubselectColumn, SubselectSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.SQLScribe.{ColumnResult, ExpressionResult}
@@ -77,6 +80,8 @@ object SQLScribe {
 		override def freeSelect[V, O](e :FreeSelectSQL[V, O]) :GlobalSQL[R, Rows[V]] = e
 
 		override def freeSelect[V, O](e :FreeSelectColumn[V, O]) :ColumnSQL[R, GlobalScope, Rows[V]] = e
+
+
 	}
 
 
@@ -98,9 +103,26 @@ object SQLScribe {
 	  * join condition, as the join conditions from the outer portion of subselect clauses are not used in the
 	  * generation of the SQL for the subselect.
 	  */
-	trait RecursiveScribe[+F <: FromClause, -G <: FromClause] extends AbstractSQLScribe[F, G] { self =>
+	trait RecursiveScribe[+F <: FromClause, -G <: FromClause]
+		extends AbstractSQLScribe[F, G]
+	{ self =>
 		protected[this] val oldClause :F
 		protected[this] val newClause :G
+
+		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :SQLExpression[G, S, X] =
+			unhandled(e)
+
+		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :ColumnSQL[G, S, X] =
+			unhandled(e)
+
+		override def mapping[S >: LocalScope <: GlobalScope, M <: Mapping](e :MappingSQL[F, S, M]) :SQLExpression[G, S, M#Subject] =
+			unhandled(e)
+
+		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectSQL[F, S, V, O]) :SQLExpression[G, S, Rows[V]] =
+			unhandled(e)
+
+		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectColumn[F, S, V, O]) :ColumnSQL[G, S, Rows[V]] =
+			unhandled(e)
 
 		override def looseComponent[O >: F <: FromClause, M[A] <: BaseMapping[X, A], X]
 		                          (e :LooseComponent[O, M, X]) :MappingSQL[G, GlobalScope, M[O]] =
@@ -550,7 +572,7 @@ object SQLScribe {
 			e match {
 				case UnboundParamSQL(param, _, idx) =>
 					val shift = followingParams(followingParams.length - 1 - idx)
-					SQLParameter(params(params.length - shift).asInstanceOf[E])(param.form)
+					SQLParameter(param.form)(params(params.length - shift).asInstanceOf[E])
 				case _ =>
 					val shift = followingParams(followingParams.length - 1 - e.shift)
 					RelationSQL[G, T, E, G](e.relation, e.shift - shift)
@@ -566,7 +588,7 @@ object SQLScribe {
 					val rank = params.length - shift
 					val param = params(rank)
 					extract.get(param.asInstanceOf[E]) match {
-						case Some(v) => SQLParameter(v)(extract.export.form)
+						case Some(v) => SQLParameter(extract.export.form)(v)
 						case _ => CompositeNULL[V](extract.export.form)
 					}
 				case _ =>
@@ -634,7 +656,7 @@ object SQLScribe {
 		                     (e :RelationSQL[F, T, E, O]) :GlobalSQL[G, E] =
 			e match {
 				case UnboundParamSQL(param, _, this.idx) =>
-					SQLParameter(this.param.asInstanceOf[E])(param.form)
+					SQLParameter(param.form)(this.param.asInstanceOf[E])
 				case _ if e.shift < idx =>
 					e.asInstanceOf[GlobalSQL[G, E]]
 				case _ =>
@@ -648,7 +670,7 @@ object SQLScribe {
 			e match {
 				case UnboundParamSQL(_, extract, this.idx) =>
 					extract.get(param.asInstanceOf[E]) match {
-						case Some(v) => SQLParameter(v)(extract.export.form)
+						case Some(v) => SQLParameter(extract.export.form)(v)
 						case _ => CompositeNULL[V](extract.export.form)
 					}
 				case _ if e.origin.shift < idx =>
@@ -666,7 +688,7 @@ object SQLScribe {
 				case UnboundParamSQL(_, extract, this.idx) =>
 					extract.get(param.asInstanceOf[E]) match {
 						case Some(v) => SQLParameterColumn(v)(extract.export.form)
-						case _ => NULL[V](extract.export.form)
+						case _ => NULL[V](extract.export.form) :NULL[V]
 					}
 				case _ if e.origin.shift < idx =>
 					e.asInstanceOf[ColumnSQL[G, GlobalScope, V]]
@@ -768,7 +790,10 @@ object SQLScribe {
 
 
 	private class AnchorLooseComponents[F <: FromClause](from :F)
-		extends CaseMapping[F, ExpressionResult[F]#T] with AbstractSQLScribe[F, F]
+		extends ExpressionMatcher[F, ExpressionResult[F]#T]// with CaseMapping[F, ExpressionResult[F]#T]
+		   with CaseSelect[F, ExpressionResult[F]#T] with CaseSelectColumn[F, ColumnResult[F]#T]
+		   with CaseMapping[F, ExpressionResult[F]#T] with CaseColumnComponent[F, ColumnResult[F]#T]
+		   with AbstractSQLScribe[F, F]
 	{ //todo: ugly! make anchoring a method in SQLExpression.
 
 		override def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :ColumnSQL[F, LocalScope, V] = {
@@ -799,9 +824,15 @@ object SQLScribe {
 		}
 
 		//these - and free selects - are safe as the grounding must have happened when creating the select.
-		override def subselect[V, O](e :SubselectSQL[F, V, O]) = e
+		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectSQL[F, S, V, O]) = e
 
-		override def subselect[V, O](e :SubselectColumn[F, V, O]) = e
+		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectColumn[F, S, V, O]) = e
+
+
+		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) = unhandled(e)
+
+		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) = unhandled(e)
+
 
 		override def toString = s"AnchorLooseComponents($from)"
 	}

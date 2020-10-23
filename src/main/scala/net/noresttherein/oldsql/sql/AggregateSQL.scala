@@ -67,8 +67,6 @@ trait AggregateSQL[-F <: FromClause, -G <: FromClause, X, Y] extends ColumnSQL[G
 		)
 
 
-//	def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :AggregateSQL[E, G, X, Y] =
-//		new Default
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[G, R]) :R[LocalScope, Y] =
 		matcher.aggregate(this)
@@ -115,7 +113,7 @@ object AggregateSQL {
 	  * @param arg an SQL expression based on `F` which is used as the argument for `fun`.
 	  * @param distinct a flag specifying if the argument should be preceded with the 'DISTINCT' clause.
 	  * @return an `SQLExpression` based on the ''from'' clause aggregating the rows from the clause `F`.
-	  */
+	  */ //fixme: abstract type projection
 	def apply[F <: FromSome, X, V :ColumnReadForm]
 	         (fun :AggregateFunction, arg :ColumnSQL[F, LocalScope, X], distinct :Boolean)
 			:AggregateSQL[F, F#GeneralizedAggregate, X, V] =
@@ -224,9 +222,6 @@ object AggregateSQL {
 			override def toString = "*"
 		}
 
-
-//		implicit def count_*(all : *.type) :AggregateSQL[FromSome, FromClause, Nothing, Int] = Count(*)
-
 	}
 
 
@@ -322,10 +317,10 @@ object AggregateSQL {
 
 	//the problem with the visitor pattern is that it prevents us from narrowing F to GroupByClause
 	trait AggregateMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
-		def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :Y[LocalScope, V]
-
 		/** A special pseudo expression of `*` used inside `count(*)`. The actual type is not exposed. */
 		def *(e :ColumnSQL[FromClause, LocalScope, Nothing]) :Y[LocalScope, Nothing]
+
+		def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :Y[LocalScope, V]
 	}
 
 	type MatchAggregate[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = AggregateMatcher[F, Y]

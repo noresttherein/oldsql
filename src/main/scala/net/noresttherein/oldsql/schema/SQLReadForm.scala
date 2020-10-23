@@ -7,8 +7,10 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackReadForm, FlatMappedSQLReadForm, MappedSQLReadForm}
-import scala.annotation.tailrec
+import scala.annotation.{implicitNotFound, tailrec}
 import scala.collection.immutable.Seq
+
+import net.noresttherein.oldsql.morsels.ColumnBasedFactory
 
 
 
@@ -24,6 +26,7 @@ import scala.collection.immutable.Seq
   * @see [[net.noresttherein.oldsql.schema.SQLForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnReadForm]]
   */
+@implicitNotFound("I do not know how to read values of type ${T} from a ResultSet: missing implicit SQLReadForm[${T}].")
 trait SQLReadForm[+T] extends BaseSQLForm {
 
 	/** Reads the column values from columns `<position..position + this.readColumns)` of the passed `ResultSet`
@@ -398,6 +401,10 @@ object SQLReadForm {
 
 
 	def seq[T](forms :Seq[SQLReadForm[T]]) :SQLReadForm[Seq[T]] = new SeqReadFormImpl[T](forms)
+
+
+
+	type ReadFormFunction[A[_], M[_], S[X] <: M[X]] = ColumnBasedFactory[A, A, SQLReadForm, ColumnReadForm, M, S]
 
 
 

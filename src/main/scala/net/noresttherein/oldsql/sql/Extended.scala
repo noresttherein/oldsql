@@ -2,10 +2,10 @@ package net.noresttherein.oldsql.sql
 
 import scala.annotation.implicitNotFound
 
-import net.noresttherein.oldsql.collection.Chain.~
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromMatrix, PrefixOf}
+import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromMatrix, PrefixOf}
 import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -52,26 +52,50 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
 	/** A `FromClause` constituting a pre-existing joined list of relations - may be empty (`Dual`). */
 	val left :L
 
+	//consider: making it public only in JoinLike. The problem is that it would need to be hidden in RelationSQL, too.
+	// Even with that, the Mapping is always available from JoinedMappings, so it could be in theory used to create
+	// a new relation. Some application of common sense in judgement will be needed.
 	/** The last SQL relation in this clause. This is the relation understood in the global sense, as a unique
 	  * database object, rather than an entry in the list of relations in the ''from'' clause -
-	  * for that have a look at [[net.noresttherein.oldsql.sql.FromClause.last last]].
+	  * for that have a look at [[net.noresttherein.oldsql.sql.FromClause.last last]]. Several specialized
+	  * `Compound` subclasses use dedicated implementations which are ''not'' cross-compatible and can't be
+	  * used as arguments for any 'join' methods, as it will cause an error at the time this clause is processed.
+	  * In these cases, a 'relation' can represent a query parameter
+	  * ([[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]) or a grouping expression
+	  * ([[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.ByAll ByAll]])
+	  * and is of no use to client code. Additionally, it can possibly serve as a placeholder value,
+	  * with a `FromClause` depending on a relation with `Mapping` for a component not representing any single
+	  * database object, but which can be replaced at a later date by 'rooting' it to a table containing
+	  * this type of component. For this reason care should be taken when accessing this property directly,
+	  * that this instance represents an actual join and this method returns a usable value.
 	  */
 	def right :Relation[R] = last.relation
 
-	/** The right side of the join - representation of a table/relation alias containing represented by joined mapping.
+	/** The right side of the join - representation of a table/relation alias containing the mapping of its schema.
 	  * It identifies the SQL relation (table, view or ''select'') which is being added to the clause and its index,
-	  * to distinguish between possible multiple occurrences of the same relation. It is a `SQLExpression` for the
-	  * subject of the relation's mapping, so it can be used directly as part of larger expressions.
-	  * Note that, true to its name, it is treated always as the last entry on the list and the expression
-	  * `join.left.last` is an instance representing only the last relation in the prefix clause `join.last` of `join`
-	  * and not a valid reference to the relation from the point of view of this clause. Its type parameter
-	  * makes it incompatible for direct use in SQL expressions based on this clause and casting it will result
-	  * in generating invalid SQL. You can however use the method
-	  * [[net.noresttherein.oldsql.sql.Compound.lastAsIn lastAsIn]] in the following way:
+	  * to distinguish between possible multiple occurrences of the same relation.
+	  * It is an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] for the subject of the relation's mapping,
+	  * so it can be used directly as part of larger expressions. Note that, true to its name, it is treated always
+	  * as the last entry on the list and the expression `join.left.last` is an instance representing only
+	  * the last relation in the prefix clause `join.left`. In particular, it is not a valid reference to a relation
+	  * from the point of view of this clause. Its type parameter makes it incompatible for direct use
+	  * in SQL expressions based on this clause and casting it will result in generating invalid SQL.
+	  * You can however use the method [[net.noresttherein.oldsql.sql.Compound.lastAsIn lastAsIn]] in the following way:
 	  * {{{
 	  *     def secondLast[T1[O] <: MappingAt[O], T2 <: MappingAt[O]](from :FromClause AndFrom T1 AndFrom T2) =
 	  *         from.left.lastAsIn[FromClause AndFrom T1 AndFrom T2]
 	  * }}}
+	  * The relation is usable in this way in expressions based on clauses containing this instance as a prefix
+	  * (which where created by joining/adding additional `Compound` links to it). Moreover, any two clauses
+	  * with types sharing a suffix, can freely exchange relations from that suffix and, by transitivity,
+	  * any SQL expressions based on the clause type representing that suffix, with the differing prefixes
+	  * replaced with a wildcard or abstract type.
+	  *
+	  * Note however that specialized `Compound` implementations can use dedicated implementations
+	  * of [[net.noresttherein.oldsql.schema.Relation Relation]] or its [[net.noresttherein.oldsql.schema.Mapping Mapping]],
+	  * tied not only to this particular implementation, but also to this instance: for example,
+	  * the relation of an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] cannot be reused in the same
+	  * clause, and cannot be joined the same way as relations for tables.
 	  */
 	override val last :JoinedRelation[FromLast, R]
 
@@ -470,7 +494,7 @@ object Extended {
 		@inline final override def prefix[A >: L <: U] :A PrefixOf (A J R) = PrefixOf.itself[A].extend[J, R]
 		@inline final override def extension[A <: U] :A PrefixOf (A J R) = PrefixOf.itself[A].extend[J, R]
 
-		@inline final override def strip(join :F) :L = join.left
+		@inline final override def unapply(join :F) :L = join.left
 
 		override def upcast[A >: L <: U] :ExtendedDecomposition[A J R, A, R, J, U] =
 			this.asInstanceOf[ExtendedDecomposition[A J R, A, R, J, U]]
@@ -480,14 +504,40 @@ object Extended {
 	}
 
 
+
+	@implicitNotFound("I do not know the generalized Extended type constructor of ${F}.\n" +
+	                  "Missing implicit ExtendedGeneralization[${F}, ${L}, ${R}, ${J}, ${U}].")
+	abstract class ExtendedGeneralization[F <: L J R, L <: U, R[O] <: MappingAt[O],
+	                                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause]
+		extends ExtendedDecomposition[F, L, R, J, U] with ClauseGeneralization[F, L, U]
+	{ self =>
+		override type G[+A >: L <: U] >: A J R <: A Extended R
+
+		override def upcast[A >: L <: U] :ExtendedGeneralization[A J R, A, R, J, U] =
+			this.asInstanceOf[ExtendedGeneralization[A J R, A, R, J, U]]
+
+		override def cast[A <: U] :ExtendedDecomposition[A J R, A, R, J, U] =
+			this.asInstanceOf[ExtendedGeneralization[A J R, A, R, J, U]]
+	}
+
+
+
 	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
 	                  "Missing implicit ExtendedComposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
 	abstract class ExtendedComposition[F <: L J R, L <: U, R[O] <: M[O],
 	                                   J[+A <: U, B[O] <: M[O]] <: A Extended B, U <: FromClause, M[O] <: MappingAt[O]]
-		extends ExtendedDecomposition[F, L, R, J, U] with ClauseComposition[F, L, U]
+		extends ExtendedGeneralization[F, L, R, J, U] with ClauseComposition[F, L, U]
 	{ self =>
 		override type G[+A >: L <: U] = A Generalized R
 		type Generalized[+A <: U, B[O] <: M[O]] >: A J B <: A Extended B
+
+
+		override def generalized[P <: U] :ExtendedComposition[P Generalized R, P, R, Generalized, U, M] {
+				type Generalized[+A <: U, B[O] <: M[O]] = self.Generalized[A, B]
+			} =
+			this.asInstanceOf[ExtendedComposition[P Generalized R, P, R, Generalized, U, M] {
+				type Generalized[+A <: U, B[O] <: M[O]] = self.Generalized[A, B]
+			}]
 
 		override def upcast[A >: L <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
 			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
@@ -495,12 +545,6 @@ object Extended {
 		override def cast[A <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
 			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
 
-		override def generalized[P <: U] :ExtendedDecomposition[P Generalized R, P, R, Generalized, U] {
-				type Generalized[+A <: U, B[O] <: M[O]] = self.Generalized[A, B]
-			} =
-			this.asInstanceOf[ExtendedDecomposition[P Generalized R, P, R, Generalized, U] {
-				type Generalized[+A <: U, B[O] <: M[O]] = self.Generalized[A, B]
-			}]
 	}
 
 

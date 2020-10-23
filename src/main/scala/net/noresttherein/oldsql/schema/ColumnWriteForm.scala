@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema
 
 import java.sql.PreparedStatement
 
+import scala.annotation.implicitNotFound
+
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.ScalaWriteForms.OptionWriteForm
@@ -16,6 +18,8 @@ import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstWriteForm, ErrorWriteF
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
   */
+@implicitNotFound("I do not know how to set a PreparedStatement parameter of type ${T}: " +
+                  "missing implicit ColumnWriteForm[${T}].")
 trait ColumnWriteForm[-T] extends SQLWriteForm[T] with SuperColumnForm {
 
 	final override def writtenColumns = 1

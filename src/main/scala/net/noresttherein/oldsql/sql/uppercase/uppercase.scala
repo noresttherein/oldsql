@@ -1,12 +1,16 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.ColumnForm
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.implicitSQLLiterals.boundParameterSQL
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.NonEmptyFrom
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.SQLTerm.{ColumnLiteral, SQLParameter, SQLTermFactory}
+import net.noresttherein.oldsql.sql.SQLTerm.{ColumnLiteral, SQLParameter}
+
+
+
+
+
 
 /**
   * @author Marcin Mościcki
@@ -15,20 +19,15 @@ package object uppercase {
 
 	type NULL[V] = SQLTerm.NULL[V]
 
-	def NULL[T :ColumnForm]() :SQLTerm[T] = SQLTerm.NULL[T]
-
 	val NULL = SQLTerm.NULL
-
 	val TRUE :ColumnLiteral[Boolean] = SQLTerm.True
-
 	val FALSE :ColumnLiteral[Boolean] = SQLTerm.False
 
-	def PARAM[T, P <: SQLParameter[T]](value :T)(implicit factory :SQLTermFactory[T, P]) :P =
+	def PARAM[T](value :T)(implicit factory :SQLParameter.Factory[T]) :factory.Res =
 		factory(value)
 
-	implicit def PARAM_?[T, P <: SQLParameter[T]]
-	                    (value :T)(implicit factory :SQLTermFactory[T, P]) :boundParameterSQL[T, P] =
-		boundParameterSQL(value)
+	implicit def PARAM_?[T](value :T)(implicit factory :SQLParameter.Factory[T]) :boundParameterSQL[T, factory.Res] =
+		boundParameterSQL[T, factory.Res](value)(factory :SQLParameter.Factory[T] { type Res = factory.Res })
 
 
 
@@ -50,7 +49,7 @@ package object uppercase {
 	//todo: capitalized FromSomeExtension; best to wait until we are sure is close to final
 
 
-	type NOT[-F <: FromClause, S >: LocalScope <: GlobalScope] = LogicalSQL.NOT[F, S]
+//	type NOT[-F <: FromClause, S >: LocalScope <: GlobalScope] = LogicalSQL.NOT[F, S]
 
 	val NOT = LogicalSQL.NOT
 

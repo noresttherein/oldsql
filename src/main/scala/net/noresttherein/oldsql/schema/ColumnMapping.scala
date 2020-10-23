@@ -263,7 +263,7 @@ sealed abstract class LowPriorityColumnMappingImplicits {
 	                       offset :TableCount[O, _ <: Numeral],
 	                       projection :OriginProjection[C, S] { type WithOrigin[A] <: ColumnMapping[S, A] })
 			:LooseColumnComponent[F, projection.WithOrigin, S] =
-		LooseColumnComponent(projection[F](column), offset.tables)
+		LooseColumnComponent(projection[F](column), offset.offset)
 
 }
 
