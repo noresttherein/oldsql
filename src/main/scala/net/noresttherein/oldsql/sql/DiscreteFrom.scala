@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{AggregateOf, ApplyJoinParams, As, ExtendedBy, FreeFrom, FreeFromSome, FromClauseMatrix, JoinedMappings, NonEmptyFrom, NonEmptyFromMatrix, OuterFromSome, ParamlessFrom, PartOf, TableCount}
 import net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
-import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, ComponentSQL, JoinedRelation, LooseColumnComponent, RelationSQL}
+import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, TypedComponentSQL, JoinedRelation, LooseColumnComponent, RelationSQL}
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, NamedParamRelation, ParamRelation}
@@ -259,10 +259,7 @@ object DiscreteFrom {
 
 
 
-//	implicit def FromSomeExtension[C <: FromSome, F <: FromSome { type Generalized = G }, G <: FromSome]
-//	                              (self :C)(implicit types :Conforms[C, F, FromSome { type Generalized = G }])
-//			:FromSomeExtension[F, G] =
-//		new FromSomeExtension[F, G](self)
+
 
 	/** Extension methods for `FromSome` classes (non-empty ''from'' clauses) which benefit from having a static,
 	  * invariant self type. These include methods for joining with other relations and clauses as well as
@@ -298,7 +295,6 @@ object DiscreteFrom {
 			other.joinedWith(thisClause, InnerJoin.template)
 
 
-
 		/** Performs a symmetric outer join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
 		  * The join condition can be subsequently specified using
@@ -326,7 +322,6 @@ object DiscreteFrom {
 			other.joinedWith(thisClause, OuterJoin.template)
 
 
-
 		/** Performs a left outer join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
 		  * The join condition can be subsequently specified using
@@ -352,7 +347,6 @@ object DiscreteFrom {
 		  */
 		@inline def leftJoin[R <: FromClause](other :R) :other.JoinedWith[F, LeftJoin] =
 			other.joinedWith(thisClause, LeftJoin.template)
-
 
 
 		/** Performs a right outer join between this clause on the left side, and the relation given as a `Relation`
@@ -536,8 +530,8 @@ object DiscreteFrom {
 		  *               [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]]`[O, _, _]` (and
 		  *               [[net.noresttherein.oldsql.sql.MappingSQL.LooseColumnComponent LooseColumnComponent]]`[O, _, _]`),
 		  *             - components of relations:
-		  *               [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]]`[F, _, _, _, _, O]` and
-		  *               [[net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL ColumnComponentSQL]]`[F, _, _, _, _, O]`,
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.TypedComponentSQL TypedComponentSQL]]`[F, _, _, _, _, O]` and
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.TypedColumnComponentSQL TypedColumnComponentSQL]]`[F, _, _, _, _, O]`,
 		  *             - any single column expressions [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, _]`,
 		  *             - base [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, _]`,
 		  *           where type `F` is this clause, and `O` is its some supertype, with the origin relation
@@ -554,7 +548,7 @@ object DiscreteFrom {
 		  *             in the order defined by its [[net.noresttherein.oldsql.schema.SQLReadForm form]].
 		  *             If the returned value is a a mapping `M[O] <: MappingAt[O]` or a component expression
 		  *             for such a mapping - either a ready
-		  *             [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]] or unanchored
+		  *             [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] or unanchored
 		  *             [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent! LooseComponent]] (implicitly
 		  *             convertible from any component mapping) - then the return type of the method will be
 		  *             `G `[[net.noresttherein.oldsql.sql.ByAll ByAll]]` M`, allowing selecting of any
@@ -571,7 +565,7 @@ object DiscreteFrom {
 		  *         by the passed function: if it is a
 		  *         [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]], it is used directly after anchoring
 		  *         to the relation based on its `Origin` type. In case of
-		  *         [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]] or
+		  *         [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] or
 		  *         [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]] (including their column
 		  *         subtypes), the mapping is the mapping type parameter of the component expression.
 		  *         Otherwise a generic [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]
@@ -599,8 +593,8 @@ object DiscreteFrom {
 		  *               [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]]`[O, _, _]` (and
 		  *               [[net.noresttherein.oldsql.sql.MappingSQL.LooseColumnComponent LooseColumnComponent]]`[O, _, _]`),
 		  *             - components of relations:
-		  *               [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]]`[F, _, _, _, _, O]` and
-		  *               [[net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL ColumnComponentSQL]]`[F, _, _, _, _, O]`,
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.TypedComponentSQL TypedComponentSQL]]`[F, _, _, _, _, O]` and
+		  *               [[net.noresttherein.oldsql.sql.MappingSQL.TypedColumnComponentSQL TypedColumnComponentSQL]]`[F, _, _, _, _, O]`,
 		  *             - any single column expressions [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, _]`,
 		  *             - base [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, _]`,
 		  *           where type `F` is this clause, and `O` is its some supertype, with the origin relation
@@ -615,7 +609,7 @@ object DiscreteFrom {
 		  *             in the order defined by its [[net.noresttherein.oldsql.schema.SQLReadForm form]].
 		  *             If the returned value is a a mapping `M[O] <: MappingAt[O]` or a component expression
 		  *             for such a mapping - either a ready
-		  *             [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]] or unanchored
+		  *             [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] or unanchored
 		  *             [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent! LooseComponent]] (implicitly
 		  *             convertible from any component mapping) - then the return type of the method will be
 		  *             `F `[[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]` M`, allowing selecting of any
@@ -630,7 +624,7 @@ object DiscreteFrom {
 		  *         by the passed function: if it is a
 		  *         [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]], it is used directly after anchoring
 		  *         to the relation based on its `Origin` type. In case of
-		  *         [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]] or
+		  *         [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]] or
 		  *         [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]] (including their column
 		  *         subtypes), the mapping is the mapping type parameter of the component expression.
 		  *         Otherwise a generic [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]
@@ -655,16 +649,16 @@ object DiscreteFrom {
 		  * @param shift implicit evidence with the number of relations listed in the `Origin` type.
 		  * @param projection a casting type class for `M` which provides its necessary type constructor accepting
 		  *                   an `Origin` type.
-		  */ //todo: this currently is not picked over the overload with BaseComponentSQL for some reason
+		  */ //todo: this currently is not picked over the overload with ComponentSQL for some reason
 		def groupBy[M <: Mapping, S, O <: FromClause]
 		           (component :M)
 		           (implicit typeParams :M <:< BaseMapping[S, O], belongs :Generalized <:< O,
 		                     shift :TableCount[O, _ <: Numeral], projection :OriginProjection[M, S])
 				:F GroupByAll projection.WithOrigin =
 		{
-			val relation = thisClause.fullTableStack(shift.offset).asRelationSQL
+			val relation = thisClause.fullTableStack(shift.offset).toRelationSQL
 				.asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
-			val expr = ComponentSQL(relation, projection[F](component))(projection.isomorphism)
+			val expr = TypedComponentSQL(relation, projection[F](component))(projection.isomorphism)
 			GroupByAll[F, projection.WithOrigin, projection.WithOrigin, S](thisClause, expr.groupingRelation)
 		}
 
@@ -673,7 +667,7 @@ object DiscreteFrom {
 		  * the given component expression based on this clause.
 		  */
 		def groupBy[M[A] <: MappingAt[A], T[A] <: BaseMapping[S, A], S]
-		           (component :BaseComponentSQL[Generalized, M, _ >: F <: FromClause])
+		           (component :ComponentSQL[Generalized, M])
 		           (implicit cast :InferSubject[F, GroupByAll, M, T, S]) :F GroupByAll M =
 			GroupByAll(thisClause, component.groupingRelation)
 
@@ -687,7 +681,7 @@ object DiscreteFrom {
 		  * Not all possible expressions are supported; the expression may consist of
 		  *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
 		  *     in particular [[net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm terms]],
-		  *   - [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL components]] (ranging from whole entities
+		  *   - [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL components]] (ranging from whole entities
 		  *     to single columns),
 		  *   - [[net.noresttherein.oldsql.sql.ConversionSQL conversion]] nodes,
 		  *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
@@ -714,9 +708,6 @@ object DiscreteFrom {
 		  */
 		@inline def aggregate :Aggregated[F] = Aggregated(thisClause)
 
-//		def aggregate[E](header :JoinedMappings[F] => E)(implicit select :SelectFactory[F, E]) :select.Result =
-//			select(thisClause, header(thisClause.mappings))
-
 		
 
 		/** Creates an aggregated SQL ''select'' with a single column and a single row, containing the result
@@ -730,73 +721,62 @@ object DiscreteFrom {
 		  *         or a subselect ([[net.noresttherein.oldsql.sql.SelectSQL.SubselectColumn]])
 		  */
 		def select[V](header :AggregateSQL[Generalized, Aggregated[Generalized], _, V])
-				:SelectColumn[Base, GlobalScope, V, _] =
+				:SelectColumn[Base, V] =
 			Aggregated(thisClause.self).select(header)
 
-		def selectAggregate[V](header :JoinedMappings[F] => AggregateSQL[Generalized, Aggregated[Generalized], _, V])
-				:SelectColumn[Base, GlobalScope, V, _] =
-			select(header(thisClause.mappings))
 
+		def count :SelectColumn[Base, Int] = select(Count.*)
 
-		def count :SelectColumn[Base, GlobalScope, Int, _] = select(Count.*)
-
-		def count(column :ColumnSQL[Generalized, LocalScope, _]) :SelectColumn[Base, GlobalScope, Int, _] =
+		def count(column :ColumnSQL[Generalized, LocalScope, _]) :SelectColumn[Base, Int] =
 			select(Count(column))
 
-		def count(column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, _])
-				:SelectColumn[Base, GlobalScope, Int, _] =
-			select(Count(SQLScribe.anchorLooseComponents(thisClause.generalized)(column(thisClause.mappings))))
+		def count(column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, _]) :SelectColumn[Base, Int] =
+			select(Count(column(thisClause.mappings)))
 
 
-		def min[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, GlobalScope, X, _] =
+		def min[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Min(column))
 
-		def min[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, X, _] =
-			select(Min(SQLScribe.anchorLooseComponents(thisClause.generalized)(column(thisClause.mappings))))
+		def min[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
+			select(Min(column(thisClause.mappings)))
 
 
-		def max[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, GlobalScope, X, _] =
+		def max[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Max(column))
 
-		def max[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, X, _] =
-			select(Max(SQLScribe.anchorLooseComponents(thisClause.generalized)(column(thisClause.mappings))))
+		def max[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
+			select(Max(column(thisClause.mappings)))
 
 
-		def sum[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, GlobalScope, X, _] =
+		def sum[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Sum(column))
 
-		def sum[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, X, _] =
-			select(Sum(SQLScribe.anchorLooseComponents(thisClause.generalized)(column(thisClause.mappings))))
+		def sum[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
+			select(Sum(column(thisClause.mappings)))
 
 
-		def avg[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+		def avg[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, BigDecimal] =
 			select(Avg(column))
 
 		def avg[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
-			select(Avg(SQLScribe.anchorLooseComponents(thisClause.generalized)(column(thisClause.mappings))))
+				:SelectColumn[Base, BigDecimal] =
+			select(Avg(column(thisClause.mappings)))
 
 
-		def variance[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+		def variance[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, BigDecimal] =
 			select(Var(column))
 
 		def variance[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
-			select(Var(SQLScribe.anchorLooseComponents(thisClause.generalized)(column(thisClause.mappings))))
+				:SelectColumn[Base, BigDecimal] =
+			select(Var(column(thisClause.mappings)))
 
 
-		def stddev[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
+		def stddev[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, BigDecimal] =
 			select(StdDev(column))
 
 		def stddev[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
-				:SelectColumn[Base, GlobalScope, BigDecimal, _] =
-			select(StdDev(SQLScribe.anchorLooseComponents(thisClause.generalized)(column(thisClause.mappings))))
+				:SelectColumn[Base, BigDecimal] =
+			select(StdDev(column(thisClause.mappings)))
 		
 	}
 

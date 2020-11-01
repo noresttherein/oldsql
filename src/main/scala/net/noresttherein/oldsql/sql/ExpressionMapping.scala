@@ -7,22 +7,23 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.{schema, OperationType}
 import net.noresttherein.oldsql.schema.{BaseMapping, Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnWriteForm, ComponentValues, MappingExtract, SQLReadForm}
 import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
-import net.noresttherein.oldsql.schema.Buff.{NoSelectByDefault, ReadOnly}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoInsert, NoQuery, NoSelect, NoSelectByDefault, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL
+import net.noresttherein.oldsql.sql.MappingSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, IndexedChainTuple, SeqTuple}
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.MatchChain
 import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedSQLExpression, MatchIndexedChain}
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
 
 
 /** A synthetic adapter of an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, S, O]` to a
@@ -37,7 +38,7 @@ import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
   *   - [[net.noresttherein.oldsql.sql.SQLTerm terms]], todo: these not, unless we the SQLForm will list column names
   *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
   *     in particular [[net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm terms]],
-  *   - [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL components]] (ranging from whole entities
+  *   - [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL components]] (ranging from whole entities
   *     to single columns),
   *   - [[net.noresttherein.oldsql.sql.ConversionSQL conversion]] nodes,
   *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
@@ -63,14 +64,33 @@ import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
   * @author Marcin Mościcki
   */
 trait ExpressionMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O] extends BaseMapping[X, O] {
+	
 	val expr :SQLExpression[F, S, X]
 
 	def format :String = ??? //todo:
 
-	def inlined :Seq[ExpressionColumnMapping[F, S, _, O]]
+	override def buffs :Seq[Buff[X]] = ExpressionMapping.buffList.asInstanceOf[Seq[Buff[X]]]
 
-	override def buffs :Seq[Buff[X]] = ReadOnly::Nil
+	override def columns(op :OperationType) :Unique[ExpressionColumnMapping[F, S, _, O]] = op match {
+		case SELECT => selectable
+		case QUERY => queryable
+		case INSERT => insertable
+		case UPDATE => updatable
+	}
 
+	override def columns :Unique[ExpressionColumnMapping[F, S, _, O]]
+	override def selectable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoSelect)
+	override def queryable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoQuery)
+	override def updatable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoUpdate)
+	override def autoUpdated :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWith(AutoUpdate)
+	override def insertable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoInsert)
+	override def autoInserted :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWith(AutoInsert)
+
+	override def columnsWith(buff :BuffType) :Unique[ExpressionColumnMapping[F, S, _, O]] =
+		columns.filter(buff.enabled)	
+
+	override def columnsWithout(buff :BuffType) :Unique[ExpressionColumnMapping[F, S, _, O]] =
+		columns.filter(buff.disabled)
 }
 
 
@@ -79,6 +99,7 @@ trait ExpressionMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O]
 
 
 object ExpressionMapping {
+	private val buffList = ReadOnly::Nil
 
 	def apply[F <: FromClause, S >: LocalScope <: GlobalScope, X, O]
 	         (expression :SQLExpression[F, S, X]) :ExpressionMapping[F, S, X, O] =
@@ -100,13 +121,18 @@ object ExpressionMapping {
 
 
 
+	type Expression[F <: FromClause, S >: LocalScope <: GlobalScope, X] = {
+		type Projection[O] = ExpressionMapping[F, S, X, O]
+		type ColumnProjection[O] = ExpressionColumnMapping[F, S, X, O]
+	}
+
+
 
 	class NonColumnExpressionMapping[F <: FromClause, S >: LocalScope <: GlobalScope, X, O]
 	                                (override val expr :SQLExpression[F, S, X])
 		extends ExpressionMapping[F, S, X, O] with LazyMapping[X, O]
 	{ outer =>
-		type ExpressionColumn[V] = ExpressionColumnMapping[F, S, V, O]
-
+		private type ExpressionColumn[V] = ExpressionColumnMapping[F, S, V, O]
 
 		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Option[T]
 
@@ -118,7 +144,7 @@ object ExpressionMapping {
 			with MatchIndexedChain[F, Assembler]
 		{
 			/** All columns appearing in `ExpressionMapping.this.expr`, in the reverse order. */
-			var columns :List[ExpressionColumnMapping[F, S, _, O]] = Nil
+			var columns :List[ExpressionColumn[_]] = Nil
 			private[this] var names :Set[String] = Set("") //used column names, disallowing ""
 
 			override def column[C >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, C, V]) :Pieces => Option[V] = {
@@ -128,7 +154,7 @@ object ExpressionMapping {
 			}
 
 			override def component[T[B] <: BaseMapping[E, B], E, M[B] <: BaseMapping[V, B], V, A >: F <: FromClause]
-			                      (e :ComponentSQL[F, T, E, M, V, A]) =
+			                      (e :TypedComponentSQL[F, T, E, M, V, A]) =
 			{
 				val table = e.entity
 
@@ -155,7 +181,7 @@ object ExpressionMapping {
 			}
 
 			override def conversion[C >: LocalScope <: GlobalScope, T, U](e :ConversionSQL[F, C, T, U]) = {
-				val base = e.expr.applyTo(this) //important to have this as a constant
+				val base = e.value.applyTo(this) //important to have this as a constant
 				pieces => base(pieces).map(e.convert)
 			}
 
@@ -197,7 +223,7 @@ object ExpressionMapping {
 						if (extract.isIdentity && !names(param.name)) param.name
 						else param.name + "_" + columns.size
 
-					case ComponentSQL(_, MappingExtract(_, _, component)) =>
+					case TypedComponentSQL(_, MappingExtract(_, _, component)) =>
 						val name :String = component match {
 							case column :ColumnMapping[_, _] => column.name //this is the almost sure case
 							case label @: _ => label //more as a safeguard against refactors than anything else
@@ -238,7 +264,7 @@ object ExpressionMapping {
 			}
 
 			override def component[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, G >: F <: FromClause]
-			                      (e :ComponentSQL[F, T, E, M, V, G]) :Extractors[GlobalScope, V] =
+			                      (e :TypedComponentSQL[F, T, E, M, V, G]) :Extractors[GlobalScope, V] =
 			{
 				val table = e.entity
 				val component = e.mapping
@@ -259,12 +285,12 @@ object ExpressionMapping {
 			}
 
 			override def conversion[C >: LocalScope <: GlobalScope, T, U](e :ConversionSQL[F, C, T, U]) = {
-				val extracts = apply(e.expr)
+				val extracts = apply(e.value)
 				extracts.map(schema.composeColumnExtractAssoc(outer, Extractor.none :U =?> T)(_))
 			}
 
 			override def promotion[C >: LocalScope <: GlobalScope, T, U](e :PromotionConversion[F, C, T, U]) = {
-				val extracts = apply(e.expr)
+				val extracts = apply(e.value)
 				extracts.map(schema.composeColumnExtractAssoc(outer, Extractor(e.lift.inverse))(_))
 			}
 
@@ -302,13 +328,20 @@ object ExpressionMapping {
 		override def assemble(pieces: Pieces): Option[X] = assembler(pieces)
 
 
-		val (assembler, inlined) = {
+		private val (assembler, inlined) = {
 			val ac = new AssemblerComposer
 			ac(expr) -> ac.columns.reverse
 		}
-		override val columns :Unique[Column[_]] = Unique(inlined :_*)
+
+		override val columns :Unique[ExpressionColumn[_]] = Unique(inlined :_*)
+		override def selectable :Unique[ExpressionColumn[_]] = columns
+		override def queryable :Unique[ExpressionColumn[_]] = columns
+		override def updatable :Unique[ExpressionColumn[_]] = Unique.empty
+		override def autoUpdated :Unique[ExpressionColumn[_]] = Unique.empty
+		override def insertable :Unique[ExpressionColumn[_]] = Unique.empty
+		override def autoInserted :Unique[ExpressionColumn[_]] = Unique.empty
 		override def components :Unique[Component[_]] = columns
-		override val subcomponents :Unique[Component[_]] = columns
+		override def subcomponents :Unique[Component[_]] = columns
 
 		override val columnExtracts :ColumnExtractMap =
 			NaturalMap.Lazy((new ExtractsCollector)(expr) :Seq[Assoc[Column, ColumnExtract, _]])
@@ -333,6 +366,10 @@ object ExpressionMapping {
 
 
 
+
+
+
+//	class IndexedExpressionMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O]
 }
 
 
@@ -353,6 +390,14 @@ trait ExpressionColumnMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope,
 	override val expr :ColumnSQL[F, S, X]
 
 	override def format :String = name
+
+	override def columns :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.single(this)
+	override def selectable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
+	override def queryable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
+	override def updatable :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
+	override def autoUpdated :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
+	override def insertable :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
+	override def autoInserted :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
 }
 
 
@@ -366,7 +411,14 @@ object ExpressionColumnMapping {
 	         (column :ColumnSQL[F, S, X], alias :String = null) :ExpressionColumnMapping[F, S, X, O] =
 		new ExpressionColumnMapping[F, S, X, O] with StableColumn[X, O] {
 			override val expr = column
-			override val inlined :Seq[ExpressionColumnMapping[F, S, X, O]] = this::Nil
+
+			override val columns :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.single(this)
+			override val selectable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
+			override val queryable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
+			override val updatable :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
+			override val autoUpdated :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
+			override val insertable :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
+			override val autoInserted :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
 
 			override val form = column.readForm match {
 				case rw :ColumnForm[X @unchecked] => rw
@@ -376,14 +428,27 @@ object ExpressionColumnMapping {
 				)
 			}
 
-			override val name =
-				if (alias != null) alias
-				else column match {
-					case AliasedColumn(_, alias) => alias
-					case _ => ??? //todo: should it be an alias, or sql?
-				}
+			override val name :String = expr match {
+				case _ if alias != null => alias
+
+				case AliasedColumn(_, alias) => alias
+
+				case UnboundParamSQL(param, _, _) => param.name //first as it would match the following pattern, too
+
+				case TypedComponentSQL(_, MappingExtract(_, _, component)) =>
+					component match {
+						case column :ColumnMapping[_, _] => column.name
+						case label @: _ => label
+						case _ => component.sqlName getOrElse "result"
+					}
+
+				case SQLParameter(_, Some(name)) => name //unlikely to appear in this position
+
+				case _ => "result" //todo: should it be an alias, or sql?
+			}
 
 		}
+
 
 
 	def unapply[X, O](mapping :RefinedMapping[X, O]) :Option[(ColumnSQL[_, LocalScope, X], String)] =
@@ -392,4 +457,11 @@ object ExpressionColumnMapping {
 				Some((col.expr, col.name))
 			case _ => None
 		}
+
+
+
+	type Expression[F <: FromClause, S >: LocalScope <: GlobalScope, X] = {
+		type Projection[O] = ExpressionColumnMapping[F, S, X, O]
+	}
+
 }

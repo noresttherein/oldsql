@@ -205,6 +205,12 @@ object Chain extends ChainFactory {
 		override type MapCat[+P <: ChainMap] = P
 		override type RecordCat[+P <: Record] = P
 
+		def ~[N](next :N): @~ ~ N = new link(this, next)
+		def |~[N <: IndexedChain.Item](next :N) = new IndexedChain.link(this, next)
+		def >~[N <: LabeledChain.Item](next :N) = new LabeledChain.link(this, next)
+		def &~[N <: ChainMap.Item](next :N) = new ChainMap.link(this, next)
+		def |#[N <: Record.Item](next :N) = new Record.link(this, next)
+
 		protected[collection] override def cat[P <: Chain](prefix :P) :P = prefix
 		protected[collection] override def indexedCat[P <: IndexedChain](prefix :P) :P = prefix
 		protected[collection] override def labeledCat[P <: LabeledChain](prefix :P) :P = prefix
@@ -216,12 +222,6 @@ object Chain extends ChainFactory {
 
 	/** An empty `Chain`, which is also an instance of every `Chain` variants defined here. */
 	case object @~ extends @~ {
-		def ~[N](next :N): @~ ~ N = new link(this, next)
-		def |~[N <: IndexedChain.Item](next :N) = new IndexedChain.link(this, next)
-		def >~[N <: LabeledChain.Item](next :N) = new LabeledChain.link(this, next)
-		def &~[N <: ChainMap.Item](next :N) = new ChainMap.link(this, next)
-		def |#[N <: Record.Item](next :N) = new Record.link(this, next)
-
 		def unapply(chain :Chain) :Boolean = chain.isInstanceOf[@~]
 	}
 

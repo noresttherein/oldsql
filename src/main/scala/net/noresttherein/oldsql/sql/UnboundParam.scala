@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.AndFromMatrix
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, NonEmptyFrom, NonEmptyFromMatrix, OuterFrom, OuterFromSome, ParamlessFrom, PartOf, PrefixOf}
-import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.MappingSQL.{TypedColumnComponentSQL, TypedComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
@@ -74,6 +74,7 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 
 
 	override def isParameterized :Boolean = true
+	override def isSubselectParameterized :Boolean = true
 
 	/** The type of this parameter, that is the subject type of the joined mapping. */
 	type Param = last.Subject //P[FromLast]#Subject
@@ -486,14 +487,14 @@ object UnboundParam {
 
 
 		def unapply[X](expr :ColumnSQL[_, _, X]) :Option[ParamColumn[X]] = expr match {
-			case ComponentSQL(_, MappingExtract(_, _, col :FromParam[_, _]#ParamColumn[_])) if col.root == this =>
+			case TypedComponentSQL(_, MappingExtract(_, _, col :FromParam[_, _]#ParamColumn[_])) if col.root == this =>
 				Some(col.asInstanceOf[ParamColumn[X]])
 			case _ =>
 				None
 		}
 
 		def unapply[X](expr :SQLExpression[_, _, X]) :Option[ParamMapping[P, X, O]] = expr match {
-			case ComponentSQL(_, MappingExtract(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
+			case TypedComponentSQL(_, MappingExtract(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
 				Some(comp.asInstanceOf[ParamMapping[P, X, O]])
 			case _ => None
 		}
@@ -558,7 +559,7 @@ object UnboundParam {
 	object UnboundParamSQL {
 
 		def unapply[F <: FromClause, T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
-		           (expr :ColumnComponentSQL[F, T, E, M, V, O])
+		           (expr :TypedColumnComponentSQL[F, T, E, M, V, O])
 				:Option[(FromParam[E, O], ParamColumnExtract[E, V, O], Int)] =
 			expr.extract.export match {
 				case param :FromParam[E @unchecked, O @unchecked]#ParamColumn[V @unchecked] =>
@@ -568,7 +569,7 @@ object UnboundParam {
 			}
 
 		def unapply[F <: FromClause, T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
-		           (expr :ComponentSQL[_, T, E, M, V, O]) :Option[(FromParam[E, O], ParamExtract[E, V, O], Int)] =
+		           (expr :TypedComponentSQL[_, T, E, M, V, O]) :Option[(FromParam[E, O], ParamExtract[E, V, O], Int)] =
 			expr.extract.export match {
 				case param :ParamMapping[E @unchecked, V @unchecked, O @unchecked] =>
 					Some((param.root, param.extract, expr.origin.shift))
@@ -579,7 +580,7 @@ object UnboundParam {
 		def unapply[X](expr :SQLExpression[_, _, X])
 				:Option[(FromParam[P, O], ParamExtract[P, X, O], Int)] forSome { type P; type O } =
 			expr match {
-				case ComponentSQL(table, extractor) if extractor.export.isInstanceOf[ParamMapping[_, _, _]] =>
+				case TypedComponentSQL(table, extractor) if extractor.export.isInstanceOf[ParamMapping[_, _, _]] =>
 					val param = extractor.export.asInstanceOf[ParamMapping[Any, X, Any]]
 					Some((param.root, param.extract, table.shift))
 				case _ => None
@@ -1112,7 +1113,7 @@ object GroupParam {
 			override val last = param
 			override val aliasOpt = asOpt
 			override val condition = cond
-			override val from :Discrete = left.from
+			override val fromClause :Discrete = left.fromClause
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
 

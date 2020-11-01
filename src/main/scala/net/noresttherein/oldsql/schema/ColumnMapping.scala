@@ -256,13 +256,13 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 sealed abstract class LowPriorityColumnMappingImplicits {
-
+	//exists for use as the right side of SQLExpression.=== and similar, which will instantiate type F before applying conversion
 	implicit def columnSQL[F <: FromClause, C <: ColumnMapping[_, _], S, O <: FromClause]
 	                      (column :C)
 	                      (implicit subject :C <:< ColumnMapping[S, O], origin :F <:< O,
-	                       offset :TableCount[O, _ <: Numeral],
-	                       projection :OriginProjection[C, S] { type WithOrigin[A] <: ColumnMapping[S, A] })
-			:LooseColumnComponent[F, projection.WithOrigin, S] =
+	                                offset :TableCount[O, _ <: Numeral],
+	                                projection :OriginProjection[C, S] { type WithOrigin[A] <: ColumnMapping[S, A] })
+			:ColumnSQL[F, GlobalScope, S] =
 		LooseColumnComponent(projection[F](column), offset.offset)
 
 }
@@ -444,14 +444,14 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 			extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
 
 
-		final override val columns :Unique[Column[S]] = Unique.single(this)
+		override val columns :Unique[Column[S]] = Unique.single(this)
 
-		final override val selectable :Unique[Column[S]] = selfUnless(NoSelect)
-		final override val queryable :Unique[Column[S]] = selfUnless(NoQuery)
-		final override val updatable :Unique[Column[S]] = selfUnless(NoUpdate)
-		final override val autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
-		final override val insertable :Unique[Column[S]] = selfUnless(NoInsert)
-		final override val autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
+		override val selectable :Unique[Column[S]] = selfUnless(NoSelect)
+		override val queryable :Unique[Column[S]] = selfUnless(NoQuery)
+		override val updatable :Unique[Column[S]] = selfUnless(NoUpdate)
+		override val autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
+		override val insertable :Unique[Column[S]] = selfUnless(NoInsert)
+		override val autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
 
 		final override val selectForm :SQLReadForm[S] = super.selectForm
 		final override val queryForm :SQLWriteForm[S] = super.queryForm

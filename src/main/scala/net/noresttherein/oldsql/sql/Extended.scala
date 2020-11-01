@@ -428,7 +428,7 @@ object Extended {
 
 	/** A base trait for implementations of [[net.noresttherein.oldsql.sql.Extended Extended]] which narrows
 	  * down the mapping type to the actually required `BaseMapping` (due to some scala bug preventing
-	  * the use of `RefinedMapping` in the `ComponentSQL` instead).
+	  * the use of `RefinedMapping` in the `TypedComponentSQL` instead).
 	  */
 	trait AbstractExtended[+L <: FromClause, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] { thisClause =>
 
@@ -460,6 +460,7 @@ object Extended {
 	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]]
 		extends Extended[L, R] with NonEmptyFromMatrix[L NonSubselect R, L NonSubselect R]
 	{ thisClause =>
+		override def isSubselectParameterized :Boolean = left.isSubselectParameterized
 
 		override type Implicit = left.Implicit
 		override type Outer = left.Outer

@@ -5,10 +5,12 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.UnaryColumnOperator
 import net.noresttherein.oldsql.sql.ConversionSQL.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionMatcher}
 import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion.{CasePromotion, PromotionMatcher}
-import net.noresttherein.oldsql.sql.FromClause.FreeFrom
+import net.noresttherein.oldsql.sql.FromClause.{ExactSubselectOf, FreeFrom, NonEmptyFrom, SubselectFrom}
 import net.noresttherein.oldsql.sql.SelectSQL.{FreeSelectSQL, SubselectSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.UnaryOperatorSQL
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -22,22 +24,20 @@ import net.noresttherein.oldsql.slang._
   * @author Marcin Mościcki
   */
 trait ConversionSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, Y] extends CompositeSQL[F, S, Y] {
-	def expr :SQLExpression[F, S, X]
+	def value :SQLExpression[F, S, X]
 
 	def convert(x :X) :Y
 
-	override def parts :Seq[SQLExpression[F, S, X]] = expr::Nil
+	override def parts :Seq[SQLExpression[F, S, X]] = value::Nil
 
-	override def readForm :SQLReadForm[Y] = expr.readForm.nullMap(convert) //consider: NullValue?
-
-	override def freeValue :Option[Y] = expr.freeValue.map(convert)
+	override def readForm :SQLReadForm[Y] = value.readForm.nullMap(convert) //consider: NullValue?
 
 
-	override def selectFrom[G <: F with FreeFrom](from :G) :FreeSelectSQL[Y, _] =
+	override def freeSelectFrom[E <: F with FreeFrom](from :E) :FreeSelectSQL[Y] =
 		SelectSQL(from, this)
 
-	override def subselectFrom(from :F) :SubselectSQL[from.Base, Y, _] =
-		SelectSQL.subselect[from.Base, from.type, X, Y, Any](from, this)
+	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectSQL[B, Y] =
+		SelectSQL.subselect[B, from.type, X, Y](from, this)
 
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[F, R]): R[S, Y] =
@@ -46,7 +46,7 @@ trait ConversionSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, Y] ext
 
 	protected def name :String = this.unqualifiedClassName
 
-	override def toString = s"$name($expr)"
+	override def toString = s"$name($value)"
 
 }
 
@@ -70,11 +70,11 @@ object ConversionSQL {
 	trait ColumnConversionSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, Y]
 		extends ConversionSQL[F, S, X, Y] with CompositeColumnSQL[F, S, Y]
 	{
-		override def expr :ColumnSQL[F, S, X]
+		override def value :ColumnSQL[F, S, X]
 
-		override def parts :Seq[ColumnSQL[F, S, X]] = expr::Nil
+		override def parts :Seq[ColumnSQL[F, S, X]] = value::Nil
 
-		override def readForm :ColumnReadForm[Y] = expr.readForm.nullMap(convert)
+		override def readForm :ColumnReadForm[Y] = value.readForm.nullMap(convert)
 
 		override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, R]) :R[S, Y] =
 			matcher.conversion(this)
@@ -83,27 +83,24 @@ object ConversionSQL {
 
 
 	private[sql] class MappedSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, Y] protected[sql]
-	                            (override val expr :SQLExpression[F, S, X])(val conversion :X => Y)
-		extends ConversionSQL[F, S, X, Y]
+	                            (override val value :SQLExpression[F, S, X])(val conversion :X => Y)
+		extends UnaryOperatorSQL[F, S, X, Y] with ConversionSQL[F, S, X, Y]
 	{
 		override def convert(s :X) :Y = conversion(s)
 
-		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :SQLExpression[E, S, Y] =
-			new MappedSQL(mapper(expr))(conversion)
+		protected override def reapply[E <: FromClause, C >: LocalScope <: GlobalScope]
+		                              (e :SQLExpression[E, C, X]) :SQLExpression[E, C, Y] =
+			new MappedSQL(e)(conversion)
 
-		override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other match {
+		override def sameAs(other :CompositeSQL.*) :Boolean = other.isInstanceOf[MappedSQL[_, _, _, _]]
+
+		override def canEqual(other :Any) :Boolean = other match {
 			case conversion :MappedSQL[_, _, _, _] if conversion canEqual this =>
 				this.conversion == conversion.conversion
 			case _ => false
 		}
 
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case conv :MappedSQL[_, _, _, _] if conv canEqual this =>
-				conv.expr == expr && conv.conversion == conversion
-		}
-
-		override def hashCode :Int = expr.hashCode * 31 + conversion.hashCode
+		override def hashCode :Int = value.hashCode * 31 + conversion.hashCode
 
 		override def name = "~"
 	}
@@ -111,11 +108,12 @@ object ConversionSQL {
 
 
 	private[sql] class MappedColumnSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, Y] protected[sql]
-	                                  (override val expr :ColumnSQL[F, S, X])(fun :X => Y)
-		extends MappedSQL[F, S, X, Y](expr)(fun) with ColumnConversionSQL[F, S, X, Y]
+	                                  (override val value :ColumnSQL[F, S, X])(fun :X => Y)
+		extends MappedSQL[F, S, X, Y](value)(fun) with UnaryColumnOperator[F, S, X, Y]
+		   with ColumnConversionSQL[F, S, X, Y]
 	{
-		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnConversionSQL[E, S, X, Y] =
-			new MappedColumnSQL(mapper(expr))(conversion)
+		protected override def reapply[E <: FromClause, C >: LocalScope <: GlobalScope](e :ColumnSQL[E, C, X]) =
+			new MappedColumnSQL(e)(fun)
 	}
 
 
@@ -123,32 +121,28 @@ object ConversionSQL {
 
 
 	class PromotionConversion[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, Y] protected[ConversionSQL]
-	                         (override val expr :SQLExpression[F, S, X])(implicit val lift :Lift[X, Y])
-		extends ConversionSQL[F, S, X, Y]
+	                         (override val value :SQLExpression[F, S, X])(implicit val lift :Lift[X, Y])
+		extends UnaryOperatorSQL[F, S, X, Y] with ConversionSQL[F, S, X, Y]
 	{
 		override def convert(s :X) :Y = lift(s)
 
-		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :SQLExpression[E, S, Y] =
-			new PromotionConversion(mapper(expr))
+		protected override def reapply[E <: FromClause, C >: LocalScope <: GlobalScope]
+		                              (e :SQLExpression[E, C, X]) :SQLExpression[E, C, Y] =
+			new PromotionConversion(e)
 
 
 		override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, R]) :R[S, Y] =
 			matcher.promotion(this)
 
 
-		override def sameAs(that :CompositeSQL[_, _, _]) :Boolean = that match {
+		override def sameAs(that :CompositeSQL.*) :Boolean = that.isInstanceOf[PromotionConversion[_, _, _, _]]
+
+		override def canEqual(that :Any) :Boolean = that match {
 			case promo :PromotionConversion[_, _, _, _] => lift == promo.lift
 			case _ => false
 		}
 
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case other :PromotionConversion[_, _, _, _] if other canEqual this =>
-				other.expr == expr && other.lift == lift
-			case _ => false
-		}
-
-		override def hashCode :Int = expr.hashCode * lift.hashCode
+		override def hashCode :Int = value.hashCode * lift.hashCode
 
 		override def name :String = lift.toString
 	}
@@ -165,7 +159,7 @@ object ConversionSQL {
 				:Option[(SQLExpression[F, S, X], Lift[X, Y])] forSome { type X } =
 			expr match {
 				case promo :PromotionConversion[_, _, _, _] =>
-					Some(promo.expr.asInstanceOf[SQLExpression[F, S, Any]] -> promo.lift.asInstanceOf[Lift[Any, Y]])
+					Some(promo.value.asInstanceOf[SQLExpression[F, S, Any]] -> promo.lift.asInstanceOf[Lift[Any, Y]])
 				case _ => None
 			}
 
@@ -184,17 +178,18 @@ object ConversionSQL {
 				promotion(e :PromotionConversion[F, S, X, Y])
 		}
 
-
 	}
 
 
 
 	class ColumnPromotionConversion[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, Y] private[ConversionSQL]
-	                               (override val expr :ColumnSQL[F, S, X])(implicit lift :Lift[X, Y])
-		extends PromotionConversion[F, S, X, Y](expr) with ColumnConversionSQL[F, S, X, Y]
+	                               (override val value :ColumnSQL[F, S, X])(implicit lift :Lift[X, Y])
+		extends PromotionConversion[F, S, X, Y](value) with UnaryColumnOperator[F, S, X, Y]
+		   with ColumnConversionSQL[F, S, X, Y]
 	{
-		override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, Y] =
-			new ColumnPromotionConversion(mapper(expr))
+		protected override def reapply[E <: FromClause, C >: LocalScope <: GlobalScope]
+		                              (e :ColumnSQL[E, C, X]) :ColumnSQL[E, C, Y] =
+			new ColumnPromotionConversion(e)
 
 		override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, R]) :R[S, Y] =
 			matcher.promotion[S, X, Y](this)
@@ -212,7 +207,7 @@ object ConversionSQL {
 				:Option[(ColumnSQL[F, S, X], Lift[X, Y])] forSome { type X } =
 			expr match {
 				case promo :ColumnPromotionConversion[_, _, _, _] =>
-					Some(promo.expr.asInstanceOf[ColumnSQL[F, S, Any]] -> promo.lift.asInstanceOf[Lift[Any, Y]])
+					Some(promo.value.asInstanceOf[ColumnSQL[F, S, Any]] -> promo.lift.asInstanceOf[Lift[Any, Y]])
 				case _ => None
 			}
 

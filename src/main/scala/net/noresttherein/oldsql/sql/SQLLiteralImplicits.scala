@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import scala.annotation.implicitAmbiguous
 
 import net.noresttherein.oldsql.sql.SQLLiteralImplicits.nullSQL
-import net.noresttherein.oldsql.sql.SQLTerm.{False, NULL, SQLLiteral, SQLParameter, True}
+import net.noresttherein.oldsql.sql.SQLTerm.{False, SQLNull, SQLLiteral, SQLParameter, True}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter.ParameterFactory
 
 
@@ -33,7 +33,7 @@ object implicitSQLLiterals extends SQLLiteralImplicits
   * [[net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral SQLLiteral]] expressions as well as extension factory
   * methods for [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameter SQLParameter]]s
   * ([[net.noresttherein.oldsql.sql.SQLLiteralImplicits.boundParameterSQL.? _.?]]) and
-  * [[net.noresttherein.oldsql.sql.SQLTerm.CompositeNULL nulls]]
+  * [[net.noresttherein.oldsql.sql.SQLTerm.CompositeNull nulls]]
   * ([[net.noresttherein.oldsql.sql.SQLLiteralImplicits.nullSQL.apply null]]`[T]`).
   *
   * It is extended by the [[net.noresttherein.oldsql.sql.implicitSQLLiterals$ implicitSQLLiterals]] object, which
@@ -92,15 +92,15 @@ object SQLLiteralImplicits {
 
 	/** Extension method for `null` literals which creates SQL NULL expressions. Used in conjunction with the implicit
 	  * conversion [[net.noresttherein.oldsql.sql.SQLLiteralImplicits.nullSQL nullSQL]], it allows the syntax of
-	  * `null[Int]` to create the expression [[net.noresttherein.oldsql.sql.SQLTerm.NULL NULL]]`[Int]`.
+	  * `null[Int]` to create the expression [[net.noresttherein.oldsql.sql.SQLTerm.SQLNull SQLNull]]`[Int]`.
 	  */
 	trait nullSQL extends Any {
-		/** Returns [[net.noresttherein.oldsql.sql.SQLTerm.NULL NULL]]`[T]` or
-		  * [[net.noresttherein.oldsql.sql.SQLTerm.CompositeNULL CompositeNULL]]`[T]`, depending on whether
+		/** Returns [[net.noresttherein.oldsql.sql.SQLTerm.SQLNull SQLNull]]`[T]` or
+		  * [[net.noresttherein.oldsql.sql.SQLTerm.CompositeNull CompositeNull]]`[T]`, depending on whether
 		  * a [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]] or
 		  * [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists for type `T`.
 		  */
-		@inline def apply[T](implicit factory :NULL.Factory[T]) :factory.Res = factory(())
+		@inline def apply[T](implicit factory :SQLNull.Factory[T]) :factory.Res = factory(())
 	}
 
 }

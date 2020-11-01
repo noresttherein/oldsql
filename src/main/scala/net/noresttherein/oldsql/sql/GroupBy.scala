@@ -3,12 +3,12 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, GroupingOfGeneralized, GroupingOf, NonEmptyFrom, PartOf}
-import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, ComponentSQL, LooseComponent, RelationSQL}
+import net.noresttherein.oldsql.sql.FromClause.{As, ExtendedBy, GroupingOfGeneralized, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.MappingSQL.{ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.SQLTerm.True
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.EmptyChain
@@ -67,7 +67,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
   *
   * Factory methods are available in the [[net.noresttherein.oldsql.sql.GroupByAll$ companion]] object, accepting
   * either a [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]] or
-  * a [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]]. Similar methods
+  * a [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]]. Similar methods
   * accepting a [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] and
   * [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] exist in the 'companion' objects to the type aliases:
   * [[net.noresttherein.oldsql.sql.GroupByVal$ GroupByVal]] and [[net.noresttherein.oldsql.sql.GroupByOne$ GroupByOne]].
@@ -127,6 +127,7 @@ trait GroupByAll[+F <: FromSome, M[A] <: MappingAt[A]]
 	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
 		decorate(bind(params))
 
+	override def isSubselectParameterized :Boolean = left.isSubselectParameterized
 
 
 	override def fullSize :Int = outer.fullSize + 1
@@ -223,9 +224,9 @@ object GroupByAll {
 //	         (from :F, group :LooseComponent[O, M, S])(implicit origin :F <:< FromSome { type Generalized <: O })
 //			:F GroupByAll M =
 //	{
-//		val relation = from.fullTableStack(group.shift).asRelationSQL
+//		val relation = from.fullTableStack(group.shift).toRelationSQL
 //		                   .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
-//		val component = ComponentSQL(relation, group.mapping)(group.projection.isomorphism)
+//		val component = TypedComponentSQL(relation, group.mapping)(group.projection.isomorphism)
 //		GroupByAll(from, component.groupingRelation)
 //	}
 
@@ -237,8 +238,7 @@ object GroupByAll {
 	  * @param group a component expression from the mapping of one of the relations from the clause `F`.
 	  */
 	def apply[F <: FromSome { type Generalized <: U }, U <: FromClause, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (from :F, group :BaseComponentSQL[U, M, _ >: U <: FromClause])
-	         (implicit cast :InferSubject[F, GroupByAll, M, T, S]) :F GroupByAll M =
+	         (from :F, group :ComponentSQL[U, M])(implicit cast :InferSubject[F, GroupByAll, M, T, S]) :F GroupByAll M =
 		GroupByAll(from, group.groupingRelation)
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
@@ -278,7 +278,7 @@ object GroupByAll {
 			override val last = group
 			override val aliasOpt = asOpt
 			override val condition = cond
-			override val from = left.self
+			override val fromClause = left.self
 			override val outer = left.outer
 			override val fullSize = outer.fullSize + 1
 
@@ -495,7 +495,7 @@ object GroupByAll {
   *
   * Factory methods are available in the [[net.noresttherein.oldsql.sql.ByAll$ companion]] object, accepting
   * either a [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]] or
-  * a [[net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL BaseComponentSQL]]. Similar methods
+  * a [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]]. Similar methods
   * accepting a [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] and
   * [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] exist in the 'companion' objects to the type aliases:
   * [[net.noresttherein.oldsql.sql.ByVal$ ByVal]] and [[net.noresttherein.oldsql.sql.ByOne$ ByOne]].
@@ -595,9 +595,9 @@ object ByAll {
 //	         (from :G, group :LooseComponent[O, M, S])
 //	         (implicit origin :F <:< FromSome { type Generalized <: O }, grouping :G <:< GroupingOf[F]) :G ByAll M =
 //	{
-//		val relation = from.from.fullTableStack(group.shift).asRelationSQL
+//		val relation = from.from.fullTableStack(group.shift).toRelationSQL
 //		                   .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
-//		val component = ComponentSQL(relation, group.mapping)(group.projection)
+//		val component = TypedComponentSQL(relation, group.mapping)(group.projection)
 //		ByAll[G, M, M, S](from, component.groupingRelation)
 //	}
 
@@ -610,7 +610,7 @@ object ByAll {
 	  *              `F =:= from.GeneralizedDiscrete`.
 	  */
 	def apply[F <: FromClause, G <: GroupingOfGeneralized[F], M[A] <: MappingAt[A], T[A] <: BaseMapping[S, A], S]
-	         (from :G, group :BaseComponentSQL[F, M, _ >: F <: FromClause])
+	         (from :G, group :ComponentSQL[F, M])
 	         (implicit  cast :InferSubject[G, ByAll, M, T, S])
 			:G ByAll M =
 		ByAll(from, group.groupingRelation)
@@ -651,7 +651,7 @@ object ByAll {
 			override val last = group
 			override val aliasOpt = asOpt
 			override val condition = cond
-			override val from = left.from
+			override val fromClause = left.fromClause
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
 

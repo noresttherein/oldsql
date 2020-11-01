@@ -24,6 +24,8 @@ class ConcatSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope] private (prot
 			case _ => new ConcatSQL(other :: parts)
 		}
 
+	override def anchor(from :F) :ColumnSQL[F, S, String] = new ConcatSQL(parts.map(_.anchor(from)))
+
 	override def rephrase[E <: FromClause](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, String] =
 		new ConcatSQL(parts.map(mapper.apply))
 

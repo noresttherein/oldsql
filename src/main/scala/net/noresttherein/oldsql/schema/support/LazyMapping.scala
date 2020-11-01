@@ -10,6 +10,9 @@ import net.noresttherein.oldsql.OperationType.WriteOperationType
 
 
 
+/** A `Mapping` mixin trait which caches buff information in member fields and overrides the methods for assembly
+  * and disassembly taking advantage of these flags.
+  */
 trait OptimizedMappingAssembly extends Mapping {
 
 	override def writtenValues[T](op :WriteOperationType, subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
@@ -73,7 +76,7 @@ trait OptimizedMappingAssembly extends Mapping {
 
 
 /** A convenience base trait for simple mappings which overrides a selection of `Mapping` methods for efficiency,
-  * precomputing and storing often used values in member fields. The fields are declared as
+  * storing often used values in member fields. The fields are declared as
   * [[net.noresttherein.oldsql.morsels.Lazy Lazy]] values, which are evaluated at most once, when first used,
   * (because they depend on several abstract methods to be implemented by subclasses) and are thread safe, but incur
   * no synchronization penalties once initialized.
@@ -132,7 +135,6 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
   * in [[net.noresttherein.oldsql.schema.support.LazyMapping LazyMapping]], the difference between the two being
   * that this trait is not really considered a base trait for extension by custom `Mapping` classes,
   * as the precomputed values are not lazy and would be referenced before the initialization of the extending class.
-  *
   * @see [[net.noresttherein.oldsql.schema.support.LazyMapping]]
   */
 trait StableMapping extends Mapping {

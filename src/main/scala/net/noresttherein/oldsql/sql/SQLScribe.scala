@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping}
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
@@ -10,15 +10,14 @@ import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
 import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
-import net.noresttherein.oldsql.sql.MappingSQL.{BaseComponentSQL, CaseMapping, ColumnComponentSQL, ComponentSQL, LooseColumnComponent, LooseComponent, RelationSQL}
-import net.noresttherein.oldsql.sql.MappingSQL.ColumnComponentSQL.CaseColumnComponent
-import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL.CaseComponent
-import net.noresttherein.oldsql.sql.MappingSQL.LooseComponent.CaseLooseComponent
+import net.noresttherein.oldsql.sql.MappingSQL.{CaseMapping, ComponentSQL, LooseColumnComponent, LooseComponent, RelationSQL, TypedColumnComponentSQL, TypedComponentSQL}
+import net.noresttherein.oldsql.sql.MappingSQL.TypedColumnComponentSQL.CaseColumnComponent
+import net.noresttherein.oldsql.sql.QuerySQL.{CaseColumnQuery, CaseQuery, ColumnQuery}
 import net.noresttherein.oldsql.sql.SelectSQL.{CaseFreeSelect, CaseFreeSelectColumn, CaseSelect, CaseSelectColumn, FreeSelectColumn, FreeSelectSQL, SelectColumn, SubselectColumn, SubselectSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.SQLScribe.{ColumnResult, ExpressionResult}
-import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnTerm, CompositeNULL, NULL, SQLParameter, SQLParameterColumn, True}
+import net.noresttherein.oldsql.sql.SQLTerm.{CaseTerm, ColumnTerm, CompositeNull, SQLNull, SQLParameter, SQLParameterColumn, True}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.CaseColumnTerm
 
 
@@ -77,9 +76,9 @@ object SQLScribe {
 
 		override def term[X](e :ColumnTerm[X]) :ColumnSQL[R, GlobalScope, X] = e
 
-		override def freeSelect[V, O](e :FreeSelectSQL[V, O]) :GlobalSQL[R, Rows[V]] = e
+		override def freeSelect[V](e :FreeSelectSQL[V]) :GlobalSQL[R, Rows[V]] = e
 
-		override def freeSelect[V, O](e :FreeSelectColumn[V, O]) :ColumnSQL[R, GlobalScope, Rows[V]] = e
+		override def freeSelect[V](e :FreeSelectColumn[V]) :ColumnSQL[R, GlobalScope, Rows[V]] = e
 
 
 	}
@@ -104,7 +103,8 @@ object SQLScribe {
 	  * generation of the SQL for the subselect.
 	  */
 	trait RecursiveScribe[+F <: FromClause, -G <: FromClause]
-		extends AbstractSQLScribe[F, G]
+		extends CaseQuery[F, ExpressionResult[G]#T] with CaseColumnQuery[F, ColumnResult[G]#T]
+		   with AbstractSQLScribe[F, G]
 	{ self =>
 		protected[this] val oldClause :F
 		protected[this] val newClause :G
@@ -115,17 +115,16 @@ object SQLScribe {
 		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :ColumnSQL[G, S, X] =
 			unhandled(e)
 
-		override def mapping[S >: LocalScope <: GlobalScope, M <: Mapping](e :MappingSQL[F, S, M]) :SQLExpression[G, S, M#Subject] =
+		override def mapping[S >: LocalScope <: GlobalScope, M[O] <: MappingAt[O]]
+		                    (e :MappingSQL[F, S, M]) :SQLExpression[G, S, M[Any]#Subject] =
 			unhandled(e)
 
-		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectSQL[F, S, V, O]) :SQLExpression[G, S, Rows[V]] =
-			unhandled(e)
+		override def query[V](e :QuerySQL[F, V]) :SQLExpression[G, GlobalScope, Rows[V]] = unhandled(e)
 
-		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectColumn[F, S, V, O]) :ColumnSQL[G, S, Rows[V]] =
-			unhandled(e)
+		override def query[V](e :ColumnQuery[F, V]) :ColumnSQL[G, GlobalScope, Rows[V]] = unhandled(e)
 
 		override def looseComponent[O >: F <: FromClause, M[A] <: BaseMapping[X, A], X]
-		                          (e :LooseComponent[O, M, X]) :MappingSQL[G, GlobalScope, M[O]] =
+		                          (e :LooseComponent[O, M, X]) :MappingSQL[G, GlobalScope, M] =
 			unhandled(e)
 
 		override def looseComponent[O >: F <: FromClause, M[A] <: ColumnMapping[V, A], V]
@@ -139,7 +138,7 @@ object SQLScribe {
 				case oldAggr :AggregateClause => newClause match {
 					case newAggr :AggregateClause =>
 						val groupings = oldAggr.innerSize
-						val scribe = group(oldAggr.from, newAggr.from, groupings, newAggr.innerSize, groupings)
+						val scribe = group(oldAggr.fromClause, newAggr.fromClause, groupings, newAggr.innerSize, groupings)
 						val arg = scribe(e.arg.asInstanceOf[ColumnSQL[oldAggr.Discrete, LocalScope, Y]])
 						val res = AggregateSQL(e.function, arg, e.isDistinct)(e.readForm)
 						res.asInstanceOf[ColumnSQL[G, LocalScope, Y]]
@@ -177,7 +176,7 @@ object SQLScribe {
 				override val newClause = newGrouped
 
 				override def component[T[A] <: BaseMapping[R, A], R, M[A] <: BaseMapping[V, A], V, U >: O <: FromClause]
-				                      (e :ComponentSQL[O, T, R, M, V, U]) =
+				                      (e :TypedComponentSQL[O, T, R, M, V, U]) =
 					if (e.origin.shift >= oldOffset) { //relation is from an enclosing select of oldAggr, not the grouped portion
 						val adapted = RelationSQL[F, T, R, F](e.relation, e.origin.shift - oldOffset + groupings)
 						val comp = adapted \ e.mapping.withOrigin[F]
@@ -189,7 +188,7 @@ object SQLScribe {
 					}
 
 				override def component[T[A] <: BaseMapping[R, A], R, M[A] <: ColumnMapping[V, A], V, U >: O <: FromClause]
-				                      (e :ColumnComponentSQL[O, T, R, M, V, U]) =
+				                      (e :TypedColumnComponentSQL[O, T, R, M, V, U]) =
 					if (e.origin.shift >= oldOffset) { //relation is from an enclosing select of oldAggr, not the grouped portion
 						val adapted = RelationSQL[F, T, R, F](e.relation, e.origin.shift - oldOffset + groupings)
 						val comp = adapted \ e.mapping.withOrigin[F]
@@ -218,10 +217,10 @@ object SQLScribe {
 
 
 
-		override def subselect[V, O](e :SubselectColumn[F, V, O]) :ColumnSQL[G, GlobalScope, Rows[V]] =
-			subselect(e :SubselectSQL[F, V, O]).asInstanceOf[ColumnSQL[G, GlobalScope, Rows[V]]]
+		override def subselect[V](e :SubselectColumn[F, V]) :ColumnSQL[G, GlobalScope, Rows[V]] =
+			subselect(e :SubselectSQL[F, V]).asInstanceOf[ColumnSQL[G, GlobalScope, Rows[V]]]
 
-		override def subselect[V, O](e :SubselectSQL[F, V, O]) :GlobalSQL[G, Rows[V]] = {
+		override def subselect[V](e :SubselectSQL[F, V]) :GlobalSQL[G, Rows[V]] = {
 			val replacement = e.from match {
 				case discrete :FromSome => rebaseSubselect(discrete)//(e.from.outer)
 				case grouped :GroupByClause => rebaseGroupedSubselect(grouped)
@@ -230,11 +229,13 @@ object SQLScribe {
 					val res = Aggregated[discrete.clause.type](discrete.clause)
 					implicit val newExtension = res.explicitSpan
 					RecursiveScribeSubselectExtension[FromClause, newClause.Generalized](res)
+				case _ =>
+					throw new IllegalArgumentException(s"Unexpected FROM clause type of a subselect: ${e.from}.")
 			}
 			val newSubselect = replacement.clause.generalized
 			val oldExtension = replacement.newExtension.asInstanceOf[oldClause.Generalized ExtendedBy e.From]
 			val scribe = extended(e.from, newSubselect)(oldExtension, replacement.newExtension)
-			scribe(e.header).subselectFrom(newSubselect).asInstanceOf[GlobalSQL[G, Rows[V]]]
+			scribe(e.header).selectFrom(newSubselect).asInstanceOf[GlobalSQL[G, Rows[V]]]
 		}
 
 
@@ -343,7 +344,7 @@ object SQLScribe {
 		protected def extended[S <: FromClause, E <: FromClause]
 		                      (subselectClause :S, replacementClause :E)
 		                      (implicit oldExt :oldClause.Generalized ExtendedBy S,
-		                                newExt :newClause.Generalized ExtendedBy E) :SQLScribe[S, E] = ???
+		                                newExt :newClause.Generalized ExtendedBy E) :SQLScribe[S, E]
 //			new RecursiveScribe[S, E] {
 //				override val oldClause = subselectClause
 //				override val newClause = replacementClause
@@ -377,25 +378,25 @@ object SQLScribe {
 	/** Base `SQLScribe` trait for implementations substituting one or more of the relations in the input clause
 	  * with mappings containing the replaced mappings as their components. The only remaining method left to implement
 	  * by subclasses is [[net.noresttherein.oldsql.sql.SQLScribe.SubstituteComponents.relation relation]], return type
-	  * of which has been narrowed down to a `BaseComponentSQL`. The handler methods for `ComponentSQL` and
-	  * `ColumnComponentSQL` in this trait assume that the substitute relation also contains the original component
+	  * of which has been narrowed down to a `ComponentSQL`. The handler methods for `TypedComponentSQL` and
+	  * `TypedColumnComponentSQL` in this trait assume that the substitute relation also contains the original component
 	  * and simply graft it onto the new relation.
 	  */
 	trait SubstituteComponents[+F <: FromClause, -G <: FromClause] extends RecursiveScribe[F, G] { self =>
 
 		override def component[T[A] <: BaseMapping[R, A], R, M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ComponentSQL[F, T, R, M, V, O]) :GlobalSQL[G, V] =
+		                      (e :TypedComponentSQL[F, T, R, M, V, O]) :GlobalSQL[G, V] =
 		{
 			val table = relation(e.origin).origin.asInstanceOf[RelationSQL[G, T, R, G]]
 			if (table eq e.origin)
-				e.asInstanceOf[ComponentSQL[G, T, R, M, V, G]]
+				e.asInstanceOf[TypedComponentSQL[G, T, R, M, V, G]]
 			else
 				(table \ e.mapping.withOrigin[G]).upcast
 		}
 
 
 		override def component[T[A] <: BaseMapping[R, A], R, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ColumnComponentSQL[F, T, R, M, V, O]) :ColumnSQL[G, GlobalScope, V] =
+		                      (e :TypedColumnComponentSQL[F, T, R, M, V, O]) :ColumnSQL[G, GlobalScope, V] =
 		{
 			val table = relation(e.origin).origin.asInstanceOf[RelationSQL[G, T, R, G]]
 			if (table eq e.origin)
@@ -407,7 +408,7 @@ object SQLScribe {
 
 
 		override def relation[T[A] <: BaseMapping[R, A], R, O >: F <: FromClause](e :RelationSQL[F, T, R, O])
-				:BaseComponentSQL[G, T, _ >: G <: FromClause]
+				:ComponentSQL[G, T]
 
 	}
 
@@ -419,18 +420,18 @@ object SQLScribe {
 	def replaceRelation[T[X] <: BaseMapping[E, X], E, N[X] <: BaseMapping[V, X], V, F <: FromClause, G <: FromClause]
 	                   (oldClause :F, newClause :G,
 	                    relation :RelationSQL[F, T, E, _ >: F <: FromClause],
-	                    replacement :ComponentSQL[G, N, V, T, E, _ >: G <: FromClause]) :SQLScribe[F, G] =
+	                    replacement :TypedComponentSQL[G, N, V, T, E, _ >: G <: FromClause]) :SQLScribe[F, G] =
 		new ReplaceRelation[T, E, N, V, F, G](oldClause, newClause)(relation, replacement)
 
 
 	class ReplaceRelation[T[X] <: BaseMapping[E, X], E, N[X] <: BaseMapping[V, X], V, F <: FromClause, G <: FromClause]
 	                     (override val oldClause :F, override val newClause :G)
 	                     (relation :RelationSQL[F, T, E, _ >: F <: FromClause],
-	                      replacement :ComponentSQL[G, N, V, T, E, _ >: G <: FromClause])
+	                      replacement :TypedComponentSQL[G, N, V, T, E, _ >: G <: FromClause])
 		extends SubstituteComponents[F, G]
 	{
 		override def relation[M[X] <: BaseMapping[S, X], S, J >: F <: FromClause](e :RelationSQL[F, M, S, J]) =
-			(if (e.shift == relation.shift) replacement else e).asInstanceOf[BaseComponentSQL[G, M, G]]
+			(if (e.shift == relation.shift) replacement else e).asInstanceOf[ComponentSQL[G, M]]
 
 
 		protected override def extended[S <: FromClause, H <: FromClause]
@@ -484,7 +485,7 @@ object SQLScribe {
 
 
 		override def component[T[A] <: BaseMapping[R, A], R, C[A] <: ColumnMapping[V, A], V, U >: F <: FromClause]
-		                      (e :ColumnComponentSQL[F, T, R, C, V, U]) :ColumnSQL[G, GlobalScope, V] =
+		                      (e :TypedColumnComponentSQL[F, T, R, C, V, U]) :ColumnSQL[G, GlobalScope, V] =
 			e match {
 				case oldParam.mapping(old) if e.origin.shift == oldParam.shift =>
 					val column = newParam.mapping.col(extractor andThen old.extract.asInstanceOf[P =?> V])(old.form)
@@ -495,7 +496,7 @@ object SQLScribe {
 
 
 		override def component[T[A] <: BaseMapping[R, A], R, C[A] <: BaseMapping[V, A], V, U >: F <: FromClause]
-		                      (e :ComponentSQL[F, T, R, C, V, U]) :GlobalSQL[G, V] =
+		                      (e :TypedComponentSQL[F, T, R, C, V, U]) :GlobalSQL[G, V] =
 			e match {
 				case oldParam.mapping(old) if e.origin.shift == oldParam.shift =>
 					val component = newParam.mapping(extractor andThen old.extract.asInstanceOf[P =?> V])(old.form)
@@ -581,7 +582,7 @@ object SQLScribe {
 
 
 		override def component[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ComponentSQL[F, T, E, M, V, O]) :GlobalSQL[G, V] =
+		                      (e :TypedComponentSQL[F, T, E, M, V, O]) :GlobalSQL[G, V] =
 			e match {
 				case UnboundParamSQL(_, extract, idx) =>
 					val shift = followingParams(followingParams.length - 1 - idx)
@@ -589,7 +590,7 @@ object SQLScribe {
 					val param = params(rank)
 					extract.get(param.asInstanceOf[E]) match {
 						case Some(v) => SQLParameter(extract.export.form)(v)
-						case _ => CompositeNULL[V](extract.export.form)
+						case _ => CompositeNull[V](extract.export.form)
 					}
 				case _ =>
 					val shift = followingParams(followingParams.length - 1 - e.origin.shift)
@@ -604,13 +605,13 @@ object SQLScribe {
 
 
 		override def component[T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[G, GlobalScope, V] =
+		                      (e :TypedColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[G, GlobalScope, V] =
 			e match {
 				case UnboundParamSQL(_, extract, idx) =>
 					val shift = followingParams(followingParams.length - 1 - idx)
 					extract.get(params(params.length - shift).asInstanceOf[E]) match {
 						case Some(v) => SQLParameterColumn(v)(extract.export.form)
-						case _ => NULL[V](extract.export.form)
+						case _ => SQLNull[V](extract.export.form)
 					}
 				case _ =>
 					val shift = followingParams(followingParams.length - 1 - e.origin.shift)
@@ -666,12 +667,12 @@ object SQLScribe {
 
 
 		override def component[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ComponentSQL[F, T, E, M, V, O]) :GlobalSQL[G, V] =
+		                      (e :TypedComponentSQL[F, T, E, M, V, O]) :GlobalSQL[G, V] =
 			e match {
 				case UnboundParamSQL(_, extract, this.idx) =>
 					extract.get(param.asInstanceOf[E]) match {
 						case Some(v) => SQLParameter(extract.export.form)(v)
-						case _ => CompositeNULL[V](extract.export.form)
+						case _ => CompositeNull[V](extract.export.form)
 					}
 				case _ if e.origin.shift < idx =>
 					e.asInstanceOf[GlobalSQL[G, V]]
@@ -683,12 +684,12 @@ object SQLScribe {
 
 
 		override def component[T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[G, GlobalScope, V] =
+		                      (e :TypedColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[G, GlobalScope, V] =
 			e match {
 				case UnboundParamSQL(_, extract, this.idx) =>
 					extract.get(param.asInstanceOf[E]) match {
 						case Some(v) => SQLParameterColumn(v)(extract.export.form)
-						case _ => NULL[V](extract.export.form) :NULL[V]
+						case _ => SQLNull[V](extract.export.form) :SQLNull[V]
 					}
 				case _ if e.origin.shift < idx =>
 					e.asInstanceOf[ColumnSQL[G, GlobalScope, V]]
@@ -783,7 +784,7 @@ object SQLScribe {
 
 
 	/** Replaces all occurrences of [[net.noresttherein.oldsql.sql.MappingSQL.LooseComponent LooseComponent]] class
-	  * in the expression with a appropriate [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL ComponentSQL]]
+	  * in the expression with a appropriate [[net.noresttherein.oldsql.sql.MappingSQL.TypedComponentSQL TypedComponentSQL]]
 	  * counterpart using the relation from `F` at the offset specified by the free component.
 	  */
 	def anchorLooseComponents[F <: FromClause](from :F) :SQLScribe[F, F] = new AnchorLooseComponents(from)
@@ -791,7 +792,7 @@ object SQLScribe {
 
 	private class AnchorLooseComponents[F <: FromClause](from :F)
 		extends ExpressionMatcher[F, ExpressionResult[F]#T]// with CaseMapping[F, ExpressionResult[F]#T]
-		   with CaseSelect[F, ExpressionResult[F]#T] with CaseSelectColumn[F, ColumnResult[F]#T]
+		   with CaseQuery[F, ExpressionResult[F]#T] with CaseColumnQuery[F, ColumnResult[F]#T]
 		   with CaseMapping[F, ExpressionResult[F]#T] with CaseColumnComponent[F, ColumnResult[F]#T]
 		   with AbstractSQLScribe[F, F]
 	{ //todo: ugly! make anchoring a method in SQLExpression.
@@ -799,15 +800,15 @@ object SQLScribe {
 		override def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :ColumnSQL[F, LocalScope, V] = {
 			val aggregate = from.asInstanceOf[AggregateClause]
 			val arg = e.arg.asInstanceOf[ColumnSQL[aggregate.Discrete, LocalScope, V]]
-			val grounded = anchorLooseComponents[aggregate.Discrete](aggregate.from)(arg)
+			val grounded = anchorLooseComponents[aggregate.Discrete](aggregate.fromClause)(arg)
 			AggregateSQL(e.function, grounded, e.isDistinct)(e.readForm).asInstanceOf[ColumnSQL[F, LocalScope, V]]
 		}
 
-		override def mapping[S >: LocalScope <: GlobalScope, M <: Mapping]
-		                    (e :MappingSQL[F, S, M]) :SQLExpression[F, S, M#Subject] = e
+		override def mapping[S >: LocalScope <: GlobalScope, M[O] <: MappingAt[O]]
+		                    (e :MappingSQL[F, S, M]) :SQLExpression[F, S, M[Any]#Subject] = e
 
 		override def component[T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: FromClause]
-		                      (e :ColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[F, GlobalScope, V] = e
+		                      (e :TypedColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[F, GlobalScope, V] = e
 
 		override def looseComponent[J >: F <: FromClause, M[A] <: BaseMapping[X, A], X]
 		                          (e :LooseComponent[J, M, X]) :GlobalSQL[F, X] =
@@ -824,9 +825,9 @@ object SQLScribe {
 		}
 
 		//these - and free selects - are safe as the grounding must have happened when creating the select.
-		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectSQL[F, S, V, O]) = e
+		override def query[V](e :QuerySQL[F, V]) = e
 
-		override def select[S >: LocalScope <: GlobalScope, V, O](e :SelectColumn[F, S, V, O]) = e
+		override def query[V](e :ColumnQuery[F, V]) = e
 
 
 		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) = unhandled(e)
@@ -860,7 +861,7 @@ object SQLScribe {
 			private[this] val relations = extending.fullTableStack.to(Array)
 
 			override def relation[T[A] <: BaseMapping[E, A], E, O >: F <: FromClause](e :RelationSQL[F, T, E, O])
-					:BaseComponentSQL[G, T, _ >: G <: FromClause] =
+					:ComponentSQL[G, T] =
 				if (e.shift < subselectSize) e.asInstanceOf[RelationSQL[G, T, E, G]]
 				else relations(e.shift + extension).asInstanceOf[RelationSQL[G, T, E, G]]
 

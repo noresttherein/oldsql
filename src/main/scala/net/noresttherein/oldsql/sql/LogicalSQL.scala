@@ -3,6 +3,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.UnaryColumnOperator
 import net.noresttherein.oldsql.sql.LogicalSQL.AND.{ANDMatcher, CaseAND}
 import net.noresttherein.oldsql.sql.LogicalSQL.NOT.{CaseNOT, NOTMatcher}
 import net.noresttherein.oldsql.sql.LogicalSQL.OR.{CaseOR, ORMatcher}
@@ -15,6 +16,8 @@ import net.noresttherein.oldsql.sql.SQLTerm.{False, True}
 trait LogicalSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope] extends CompositeColumnSQL[F, S, Boolean] {
 	override def readForm :ColumnReadForm[Boolean] = ColumnForm[Boolean]
 
+//	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
+//		matcher.logical(this)
 }
 
 
@@ -24,27 +27,19 @@ trait LogicalSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope] extends Comp
 
 object LogicalSQL {
 
-	case class NOT[-F <: FromClause, -S >: LocalScope <: GlobalScope](expression :ColumnSQL[F, S, Boolean])
-		extends LogicalSQL[F, S]
+	case class NOT[-F <: FromClause, -S >: LocalScope <: GlobalScope](value :ColumnSQL[F, S, Boolean])
+		extends UnaryColumnOperator[F, S, Boolean, Boolean] with LogicalSQL[F, S]
 	{
-
-		override def parts: Seq[SQLExpression[F, S, _]] = expression::Nil
-
-//		override def get(values: RowValues[F]): Option[Boolean] = expression.get(values).map(!_)
-
-		override def freeValue: Option[Boolean] = expression.freeValue.map(!_)
-
-
 		override def unary_![E <: F, O >: LocalScope <: S](implicit ev :Boolean =:= Boolean) :ColumnSQL[E, O, Boolean] =
-			expression
+			value
 
+		protected override def reapply[E <: FromClause, C >: LocalScope <: GlobalScope](e :SQLBoolean[E, C]) :SQLBoolean[E, C] =
+			NOT(e)
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.not(this)
 
-		override def rephrase[E <: FromClause](mapper: SQLScribe[F, E]) :NOT[E, S] = NOT(mapper(expression))
-
-		override def toString :String = "NOT " + expression
+		override def toString :String = "NOT " + value
 	}
 
 
@@ -73,14 +68,6 @@ object LogicalSQL {
 
 		override def inOrder :Seq[ColumnSQL[F, S, Boolean]] = parts.reverse
 
-//		override def get(values: RowValues[F]): Option[Boolean] = (Option(true) /: parts) {
-//			case (acc, e) => for (v1 <- acc; v2 <- e.get(values)) yield v1 && v2
-//		}
-
-		override def freeValue :Option[Boolean] = (Option(true) /: parts) {
-			case (acc, e) => for (v1 <- acc; v2 <- e.freeValue) yield v1 && v2
-		}
-
 		override def and[E <: F, O >: LocalScope <: S]
 		             (other: ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean): AND[E, O] =
 			other match {
@@ -99,6 +86,8 @@ object LogicalSQL {
 				case _ => new AND(other :: parts)
 			}
 
+
+		override def anchor(from :F) :SQLBoolean[F, S] = new AND(parts.map(_.anchor(from)))
 
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
@@ -159,15 +148,6 @@ object LogicalSQL {
 		override def inOrder :Seq[ColumnSQL[F, S, Boolean]] = parts.reverse
 
 
-//		override def get(values: RowValues[F]): Option[Boolean] = (Option(false) /: parts) {
-//			case (acc, e) => for (v1 <- acc; v2 <- e.get(values)) yield v1 || v2
-//		}
-
-		override def freeValue :Option[Boolean] = (Option(false) /: parts) {
-			case (acc, e) => for (v1 <- acc; v2 <- e.freeValue) yield v1 || v2
-		}
-
-
 		override def or[E <: F, O >: LocalScope <: S]
 		               (other: ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean): OR[E, O] =
 			other match {
@@ -184,6 +164,9 @@ object LogicalSQL {
 				case _ if parts contains other => this
 				case _ => new OR(other :: parts)
 			}
+
+
+		override def anchor(from :F) :SQLBoolean[F, S] = new OR(parts.map(_.anchor(from)))
 
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =

@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.ColumnReadForm
+import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.AggregateSQL.{AggregateFunction, DefaultAggregateSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
@@ -67,10 +68,23 @@ trait AggregateSQL[-F <: FromClause, -G <: FromClause, X, Y] extends ColumnSQL[G
 		)
 
 
+	override def isAnchored :Boolean = arg.isAnchored
+
+	override def anchor(from :G) :ColumnSQL[G, LocalScope, Y]  = from match {
+		case aggregate :AggregateClause =>
+			val arg = this.arg.asInstanceOf[ColumnSQL[aggregate.Discrete, LocalScope, X]]
+			arg.anchor(aggregate.fromClause) match {
+				case same if same eq arg => this
+				case grounded =>
+					AggregateSQL(function, grounded, isDistinct)(readForm).asInstanceOf[ColumnSQL[G, LocalScope, Y]]
+			}
+		case _ =>
+			throw new IllegalArgumentException(s"Can't anchor an AggregateSQL $this in a non AggregateClause $from")
+	}
+
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[G, R]) :R[LocalScope, Y] =
 		matcher.aggregate(this)
-
 
 
 	override def isomorphic(that: SQLExpression.*) :Boolean = that match {
@@ -182,6 +196,9 @@ object AggregateSQL {
 		def apply() :AggregateSQL[FromSome, AggregateClause, Nothing, Int] = *
 //			AggregateSQL[FromSome, Nothing, Int](this, *, false)
 
+		/** Represents the `COUNT(*)` SQL expression. */
+		def apply(all :sql.*) :AggregateSQL[FromSome, AggregateClause, Nothing, Int] = *
+
 		/** Represents the `COUNT(arg)` SQL expression. */
 		def apply[F <: FromSome, V](arg :ColumnSQL[F, LocalScope, V]) :AggregateSQL[F, F#GeneralizedAggregate, V, Int] =
 			AggregateSQL(this, arg, false)
@@ -216,6 +233,9 @@ object AggregateSQL {
 			                    (matcher :ColumnMatcher[FromClause, Y]) :Y[LocalScope, Nothing] =
 				matcher.*(this)
 
+
+			override def isAnchored = true
+			override def anchor(from :FromClause) = this
 
 			override def isomorphic(expression: SQLExpression.*) :Boolean = this == expression
 

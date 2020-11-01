@@ -12,6 +12,19 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
 
 package object sql {
 
+	/** Represents the multipurpose 'everything' wildcard `*` in SQL. Can be used as the argument to
+	  * [[net.noresttherein.oldsql.sql.AggregateSQL.Count Count]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseExtension.select select]].
+	  */
+	final class * private[sql] ()
+
+	/** Represents the multipurpose 'everything' wildcard `*` in SQL. Can be used as the argument to
+	  * [[net.noresttherein.oldsql.sql.AggregateSQL.Count Count]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseExtension.select select]].
+	  */
+	final val * = new *
+
+
 	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of Boolean value and
 	  * with [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope scope]] `S`.
 	  */

@@ -8,7 +8,7 @@ import scala.collection.immutable.ArraySeq
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingBound, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
@@ -169,7 +169,15 @@ trait Mapping {
 	  */
 	type Projection[O] = RefinedMapping[Subject, O]
 
+	/** A reference to this instance as a `RefinedMapping` with its own `Origin` and `Subject` types. */
 	@inline final def refine :RefinedMapping[Subject, Origin] = this
+
+	/** A type alias for the [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]] with the provided
+	  * `Origin` type and `Subject` type bound from above by the subject of  this mapping. Used primarily
+	  * in the expression `MappingOf[S]#BoundProjection` as a sort of a curried type constructor.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Projection]]
+	  */
+	type BoundProjection[O] = MappingBound[Subject, O]
 
 	/** A type alias for the [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] trait with the provided
 	  * `Origin` type and the same `Subject` type as this mapping. Used primarily in the expression
@@ -1000,10 +1008,9 @@ trait Mapping {
 
 sealed abstract class LowPriorityMappingImplicits {
 	//exists for use as the right side of SQLExpression.=== and similar, which will instantiate type F before applying conversion
-	implicit def mappingSQLExpression[F <: FromClause, C <: Mapping, S, O <: FromClause]
-                                     (mapping :C) //can't use TableShift as we might be converting a component of a table
-                                     (implicit subject :C <:< BaseMapping[S, O], origin :F <:< O,
-                                               offset :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
+	implicit def mappingSQL[F <: FromClause, C <: Mapping, S, O <: FromClause] //can't use TableShift as we might be converting a component of a table
+                           (mapping :C)(implicit origin :C <:< MappingAt[O], base :F <:< O,
+                                                 offset :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
 			:SQLExpression[F, GlobalScope, S] =
 		LooseComponent(projection[F](mapping), offset.offset)
 
@@ -1038,10 +1045,9 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-	implicit def componentSQLExpression[F <: FromClause, C <: Mapping, S]
-                                       (mapping :C) //can't use TableShift as we might be converting a component of a table
-                                       (implicit subject :C <:< BaseMapping[S, F], offset :TableCount[F, _ <: Numeral],
-                                                 projection :OriginProjection[C, S])
+	implicit def componentSQL[F <: FromClause, C <: Mapping, S]//can't use TableShift as we might be converting a component of a table
+                             (mapping :C)(implicit origin :C <:< MappingAt[F], offset :TableCount[F, _ <: Numeral],
+                                                   projection :OriginProjection[C, S])
 			:LooseComponent[F, projection.WithOrigin, S] =
 		LooseComponent(mapping)
 
@@ -1375,6 +1381,11 @@ object Mapping extends LowPriorityMappingImplicits {
 
 	/** Narrowing of the `Mapping` trait to subtypes which define the `Subject` type as `S` and `Origin` as `O`. */
 	type RefinedMapping[S, O] = Mapping { type Subject = S; type Origin = O }
+
+	/** Narrowing of the `Mapping` trait to subtypes of the given `Origin` type `O` and where the `Subject` type
+	  * is bound from above by `S`.
+	  */
+	type MappingBound[S, O] = Mapping { type Subject <: S; type Origin = O }
 
 	type RefinedOf[O] = RefinedMapping[_, O]
 

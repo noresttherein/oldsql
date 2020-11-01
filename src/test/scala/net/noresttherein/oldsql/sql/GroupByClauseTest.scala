@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.BaseMapping
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingExpression
-import net.noresttherein.oldsql.sql.MappingSQL.BaseComponentSQL
+import net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 
 
@@ -35,12 +35,12 @@ class GroupByClauseTest {
 			group
 
 		expectGrouping[T, S, E[T], S GroupByAll E]
-		expectGrouping[T, S, BaseComponentSQL[T, E, T], S GroupByAll E]
+		expectGrouping[T, S, ComponentSQL[T, E], S GroupByAll E]
 		expectGrouping[T, S, ColumnSQL[T, GlobalScope, Int], S GroupByOne Int]
 		expectGrouping[T, S, SQLExpression[T, GlobalScope, Int], S GroupByVal Int]
 
 		expectGrouping[T, G, E[T], G ByAll E]
-		expectGrouping[T, G, BaseComponentSQL[T, E, T], G ByAll E]
+		expectGrouping[T, G, ComponentSQL[T, E], G ByAll E]
 		expectGrouping[T, G, ColumnSQL[T, GlobalScope, Int], G ByOne Int]
 		expectGrouping[T, G, SQLExpression[T, GlobalScope, Int], G ByVal Int]
 	}}

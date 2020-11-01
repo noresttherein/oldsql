@@ -17,9 +17,9 @@ import net.noresttherein.oldsql.sql.SQLTerm.{ColumnLiteral, SQLParameter}
   */
 package object uppercase {
 
-	type NULL[V] = SQLTerm.NULL[V]
+	type NULL[V] = SQLTerm.SQLNull[V]
 
-	val NULL = SQLTerm.NULL
+	val NULL = SQLTerm.SQLNull
 	val TRUE :ColumnLiteral[Boolean] = SQLTerm.True
 	val FALSE :ColumnLiteral[Boolean] = SQLTerm.False
 
@@ -49,21 +49,7 @@ package object uppercase {
 	//todo: capitalized FromSomeExtension; best to wait until we are sure is close to final
 
 
-//	type NOT[-F <: FromClause, S >: LocalScope <: GlobalScope] = LogicalSQL.NOT[F, S]
-
 	val NOT = LogicalSQL.NOT
-
-//	type AND[-F <: FromClause, S >: LocalScope <: GlobalScope] = LogicalSQL.AND[F, S]
-//
-//	val AND = LogicalSQL.AND
-//
-//	type OR[-F <: FromClause, S >: LocalScope <: GlobalScope] = LogicalSQL.OR[F, S]
-//
-//	val OR = LogicalSQL.OR
-
-
-
-	type EXISTS[-F <: FromClause, S >: LocalScope <: GlobalScope, V] = ConditionSQL.ExistsSQL[F, S, V]
 
 	val EXISTS = ConditionSQL.ExistsSQL
 

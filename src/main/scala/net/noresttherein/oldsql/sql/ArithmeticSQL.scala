@@ -4,6 +4,7 @@ import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql.ArithmeticSQL.BinaryOperationSQL.{BinaryOperation, BinaryOperationMatcher}
 import net.noresttherein.oldsql.sql.ArithmeticSQL.UnaryOperationSQL.{UnaryOperation, UnaryOperationMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{BinaryColumnOperator, UnaryColumnOperator}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, GlobalScope, LocalScope}
 
 
@@ -11,7 +12,10 @@ import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, GlobalScope, Lo
 /**
   * @author Marcin Mościcki
   */
-trait ArithmeticSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends CompositeColumnSQL[F, S, V]
+trait ArithmeticSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extends CompositeColumnSQL[F, S, V] {
+	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
+		matcher.arithmetic(this)
+}
 
 
 
@@ -19,29 +23,21 @@ trait ArithmeticSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V] extend
 object ArithmeticSQL {
 
 	class UnaryOperationSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
-	                       (val operation :UnaryOperation, val value :ColumnSQL[F, S, V])
+	                       (val operation :UnaryOperation, override val value :ColumnSQL[F, S, V])
 	                       (implicit val arithmetic :SQLNumber[V])
-		extends ArithmeticSQL[F, S, V]
+		extends UnaryColumnOperator[F, S, V, V] with ArithmeticSQL[F, S, V]
 	{
 		override def readForm :ColumnReadForm[V] = value.readForm
 
-		protected override def parts :Seq[ColumnSQL[F, S, V]] = value::Nil
-
-		override def rephrase[E <: FromClause](scribe :SQLScribe[F, E]) :UnaryOperationSQL[E, S, V] =
-			new UnaryOperationSQL(operation, scribe(value))
+		protected override def reapply[E <: FromClause, C >: LocalScope <: GlobalScope]
+		                              (e :ColumnSQL[E, C, V]) :ColumnSQL[E, C, V] =
+			new UnaryOperationSQL[E, C, V](operation, e)
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
 			matcher.unaryArithmetic(this)
 
-		override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other match {
+		override def canEqual(that :Any) :Boolean = that match {
 			case op :UnaryOperationSQL[_, _, _] => op.operation == operation
-			case _ => false
-		}
-
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case other :UnaryOperationSQL[_, _, _] if other canEqual this =>
-				other.operation == operation && other.value == value && other.arithmetic == arithmetic
 			case _ => false
 		}
 
@@ -101,30 +97,23 @@ object ArithmeticSQL {
 
 
 	class BinaryOperationSQL[-F <: FromClause, -S >: LocalScope <: GlobalScope, V]
-	                  (val left :ColumnSQL[F, S, V], val operation :BinaryOperation, val right :ColumnSQL[F, S, V])
-	                  (implicit val arithmetic :SQLNumber[V])
-		extends ArithmeticSQL[F, S, V]
+	      (override val left :ColumnSQL[F, S, V], val operation :BinaryOperation, override val right :ColumnSQL[F, S, V])
+	      (implicit val arithmetic :SQLNumber[V])
+		extends BinaryColumnOperator[F, S, V, V] with ArithmeticSQL[F, S, V]
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
 
-		protected override def parts :Seq[ColumnSQL[F, S, V]] = left::right::Nil
+		protected override def reapply[E <: FromClause, C >: LocalScope <: GlobalScope]
+		                              (left :ColumnSQL[E, C, V], right :ColumnSQL[E, C, V]) :BinaryOperationSQL[E, C, V] =
+			new BinaryOperationSQL(left, operation, right)
 
-		override def rephrase[E <: FromClause](scribe :SQLScribe[F, E]) :BinaryOperationSQL[E, S, V] =
-			new BinaryOperationSQL(scribe(left), operation, scribe(right))
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
 			matcher.binaryArithmetic(this)
 
 
-		override def sameAs(other :CompositeSQL[_, _, _]) :Boolean = other match {
+		override def canEqual(that :Any) :Boolean = that match {
 			case op :BinaryOperationSQL[_, _, _] => op.operation == operation
-			case _ => false
-		}
-
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case op :BinaryOperationSQL[_, _, _] if op canEqual this =>
-				op.operation == operation && op.left == left && op.right == right && op.arithmetic == arithmetic
 			case _ => false
 		}
 

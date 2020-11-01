@@ -344,6 +344,11 @@ object SchemaMapping {
 		override type Components = C
 		override type Schema = MappingSchema[S, V, C, Origin]
 
+		/** Type constructor accepting the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type for
+		  * a [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] version of this mapping.
+		  */
+		type SchemaProjection[O] = MappingSchema[S, V, C, O]
+
 		/** The container of components of this mapping, itself being a mapping for the chain of values of said components. */
 		override val schema :MappingSchema[S, V, C, Origin]
 

@@ -35,6 +35,7 @@ trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 
 
 	override def isParameterized :Boolean = clause.isParameterized
+	override def isSubselectParameterized :Boolean = clause.isSubselectParameterized
 
 	override type Params = clause.Params
 

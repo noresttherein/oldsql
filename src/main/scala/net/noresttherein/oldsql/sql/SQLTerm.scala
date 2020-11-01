@@ -12,11 +12,11 @@ import net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn.{CaseParameterCol
 import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter.{CaseParameter, ParameterMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnLiteral.{CaseColumnLiteral, ColumnLiteralMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm.ColumnTermMatcher
-import net.noresttherein.oldsql.sql.SQLTerm.CompositeNULL.{CaseCompositeNull, CompositeNullMatcher}
+import net.noresttherein.oldsql.sql.SQLTerm.CompositeNull.{CaseCompositeNull, CompositeNullMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.NativeColumnTerm.{CaseNativeColumnTerm, NativeColumnTermMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.SQLLiteral.{CaseLiteral, LiteralMatcher}
 import net.noresttherein.oldsql.sql.SQLTerm.NativeTerm.{CaseNative, NativeMatcher}
-import net.noresttherein.oldsql.sql.SQLTerm.NULL.{CaseNull, NullMatcher}
+import net.noresttherein.oldsql.sql.SQLTerm.SQLNull.{CaseNull, NullMatcher}
 
 
 
@@ -30,10 +30,10 @@ import net.noresttherein.oldsql.sql.SQLTerm.NULL.{CaseNull, NullMatcher}
   */
 trait SQLTerm[T] extends SQLExpression[FromClause, GlobalScope, T] {
 	protected def form :SQLForm[T]
-
 	override def readForm :SQLReadForm[T] = form
-
 	def writeForm :SQLWriteForm[Unit]
+
+	protected def freeValue :Option[T]
 
 	override def isGlobal = true
 	override def asGlobal :Option[GlobalSQL[FromClause, T]] = Some(this)
@@ -45,6 +45,13 @@ trait SQLTerm[T] extends SQLExpression[FromClause, GlobalScope, T] {
 		this
 
 
+	override def isAnchored = true
+	override def anchor(from :FromClause) :SQLTerm[T] = this
+
+
+//	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+//	                    (matcher :ExpressionMatcher[FromClause, Y]) :Y[GlobalScope, T] =
+//		matcher.term(this)
 
 	def sameAs(that :Any) :Boolean = canEqual(that)
 
@@ -91,6 +98,12 @@ object SQLTerm {
 		override def extend[U <: FromClause, E <: FromClause]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :ColumnTerm[T] =
 			this
+
+		override def anchor(from :FromClause) :ColumnTerm[T] = this
+
+//		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+//		                    (matcher :ColumnMatcher[FromClause, Y]) :Y[GlobalScope, T] =
+//			matcher.term(this)
 	}
 
 
@@ -111,7 +124,7 @@ object SQLTerm {
 		trait CaseColumnTerm[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchColumnTerm[F, Y] {
 			override def literal[X](e :ColumnLiteral[X]) :Y[GlobalScope, X] = term(e)
 			override def param[X](e :SQLParameterColumn[X]) :Y[GlobalScope, X] = term(e)
-			override def nullSQL[X](e :NULL[X]) :Y[GlobalScope, X] = term(e)
+			override def sqlNull[X](e :SQLNull[X]) :Y[GlobalScope, X] = term(e)
 			override def native[X](e :NativeColumnTerm[X]) :Y[GlobalScope, X] = term(e)
 		}
 	}
@@ -122,14 +135,9 @@ object SQLTerm {
 
 
 	class SQLLiteral[T](val value :T)(implicit override val form :SQLForm[T]) extends SQLTerm[T] {
-
-//		override def to[X](implicit lift :Lift[T, X]) :SQLExpression[FromClause, X] =
-//			new SQLLiteral[X](lift(value))(form.nullBimap(lift.apply)(lift.lower))
-
 		override val writeForm :SQLWriteForm[Unit] = SQLWriteForm.const(value)
 
 		override def freeValue :Option[T] = Some(value)
-
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[FromClause, Y]): Y[GlobalScope, T] =
 			matcher.literal(this)
@@ -137,13 +145,12 @@ object SQLTerm {
 		override def sameAs(that :Any) :Boolean = that.isInstanceOf[SQLLiteral[_]]
 
 		override def toString :String = String.valueOf(value)
-
 	}
 
 
 
 	object SQLLiteral extends FormFunction[Self, SQLLiteral, ColumnLiteral] {
-		//consider: making NULL an SQLLiteral and handle null values gracefully
+		//consider: making SQLNull an SQLLiteral and handle null values gracefully
 		//todo: sensible and consistent overloading of apply method so one can pass a form.
 
 // 		def apply[T :SQLForm](value :T) :SQLLiteral[T] = new SQLLiteral(value)
@@ -242,7 +249,6 @@ object SQLTerm {
 	{
 		override def readForm :SQLReadForm[T] = form
 		override val writeForm :SQLWriteForm[Unit] = SQLWriteForm.const[T](value)
-
 		override def freeValue :Option[T] = Some(value)
 
 
@@ -350,56 +356,55 @@ object SQLTerm {
 
 
 
-	class CompositeNULL[T] private[SQLTerm] (implicit override val form :SQLForm[T]) extends SQLTerm[T] {
-
+	class CompositeNull[T] private[SQLTerm](implicit override val form :SQLForm[T]) extends SQLTerm[T] {
 		override def writeForm :SQLWriteForm[Unit] = SQLWriteForm.none[T]
 
-		override def freeValue :Option[T] = readForm.nulls.toOption
+		override def freeValue :Option[T] = form.nulls.toOption
 
 		override def isNull :GlobalBoolean[FromClause] = True
 
 		//consider: overriding and simplifying comparisons
 
 //		override def to[X](implicit lift :Lift[T, X]) :ColumnSQL[FromClause, X] =
-//		    NULL[X](ColumnForm[T].nullBimap(lift.apply)(lift.lower))
+//		    SQLNull[X](ColumnForm[T].nullBimap(lift.apply)(lift.lower))
 
-		override def opt: GlobalSQL[FromClause, Option[T]] = CompositeNULL[Option[T]]
+		override def opt: GlobalSQL[FromClause, Option[T]] = CompositeNull[Option[T]]
 
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[FromClause, Y]) :Y[GlobalScope, T] =
-			matcher.nullSQL(this)
+			matcher.sqlNull(this)
 
 
-		override def sameAs(that :Any) :Boolean = that.isInstanceOf[CompositeNULL[_]]
+		override def sameAs(that :Any) :Boolean = that.isInstanceOf[CompositeNull[_]]
 
 		override def toString :String =
-			freeValue.filter(_ != null).map(v => form.literal(v) + ":NULL") getOrElse form.nullLiteral
+			freeValue.filter(_ != null).map(v => form.literal(v) + ":SQLNull") getOrElse form.nullLiteral
 	}
 
 
 
-	object CompositeNULL {
-		def apply[T :SQLForm] = new CompositeNULL[T]
+	object CompositeNull {
+		def apply[T :SQLForm] = new CompositeNull[T]
 
 		def unapply(expression :SQLExpression[Nothing, LocalScope, _]) :Boolean = expression match {
 			case null => true
-			case _ :CompositeNULL[_] => true
+			case _ :CompositeNull[_] => true
 			case SQLLiteral(null) => true
 			case _ => false
 		}
 
 
-		implicit def nullComposite[T :SQLForm](self :CompositeNULL.type) :CompositeNULL[T] = CompositeNULL[T]
+		implicit def nullComposite[T :SQLForm](self :CompositeNull.type) :CompositeNull[T] = CompositeNull[T]
 
 
 		trait CompositeNullMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends NullMatcher[F, Y] {
-			def nullSQL[X](e :CompositeNULL[X]) :Y[GlobalScope, X]
+			def sqlNull[X](e :CompositeNull[X]) :Y[GlobalScope, X]
 		}
 
 		type MatchCompositeNull[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = CaseCompositeNull[F, Y]
 
 		trait CaseCompositeNull[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends CompositeNullMatcher[F, Y] {
-			override def nullSQL[X](e :NULL[X]) :Y[GlobalScope, X] = nullSQL(e :CompositeNULL[X])
+			override def sqlNull[X](e :SQLNull[X]) :Y[GlobalScope, X] = sqlNull(e :CompositeNull[X])
 		}
 
 	}
@@ -409,8 +414,8 @@ object SQLTerm {
 
 
 
-	class NULL[T] private[SQLTerm] (implicit override val form :ColumnForm[T])
-		extends CompositeNULL[T] with ColumnTerm[T]
+	class SQLNull[T] private[SQLTerm](implicit override val form :ColumnForm[T])
+		extends CompositeNull[T] with ColumnTerm[T]
 	{
 		override def writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.none[T]
 
@@ -418,27 +423,27 @@ object SQLTerm {
 		override def <>[E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
 		               (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U])
 				:ColumnSQL[E, O, Boolean] =
-			NULL[Boolean]
+			SQLNull[Boolean]
 
 		override def <=[E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
 		               (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U], ordering :SQLOrdering[U])
 				:ColumnSQL[E, O, Boolean] =
-			NULL[Boolean]
+			SQLNull[Boolean]
 
 		override def < [E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
 		              (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U], ordering :SQLOrdering[U])
 				:ColumnSQL[E, O, Boolean] =
-			NULL[Boolean]
+			SQLNull[Boolean]
 
 		override def >=[E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
 		               (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U], ordering :SQLOrdering[U])
 				:ColumnSQL[E, O, Boolean] =
-			NULL[Boolean]
+			SQLNull[Boolean]
 
 		override def > [E <: FromClause, O >: LocalScope <: GlobalScope, X, U]
 		              (that :SQLExpression[E, O, X])(implicit lift :SQLTypeUnification[T, X, U], ordering :SQLOrdering[U])
 				:ColumnSQL[E, O, Boolean] =
-			NULL[Boolean]
+			SQLNull[Boolean]
 
 
 		override def &&[E <: FromClause, O >: LocalScope <: GlobalScope]
@@ -453,38 +458,38 @@ object SQLTerm {
 		                    (implicit ev :T =:= Boolean) :ColumnSQL[E, O, Boolean] =
 			cast
 
-		override def opt: ColumnSQL[FromClause, GlobalScope, Option[T]] = NULL[Option[T]]
+		override def opt: ColumnSQL[FromClause, GlobalScope, Option[T]] = SQLNull[Option[T]]
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[FromClause, Y]) :Y[GlobalScope, T] =
-			matcher.nullSQL(this)
+			matcher.sqlNull(this)
 
 
 		override def toString :String =
-			freeValue.filter(_ != null).map(_.toString + ":NULL") getOrElse "NULL"
+			freeValue.filter(_ != null).map(_.toString + ":SQLNull") getOrElse "SQLNull"
 	}
 
 
 
-	object NULL extends FormFunction[Const[Unit]#T, CompositeNULL, NULL] {
+	object SQLNull extends FormFunction[Const[Unit]#T, CompositeNull, SQLNull] {
 
-		def apply[T](implicit factory :Factory[T]) :factory.Res = NULL[(), T](())
+		def apply[T](implicit factory :Factory[T]) :factory.Res = SQLNull[(), T](())
 
-		def apply[T](form :ColumnForm[T]) :NULL[T] = new NULL[T]()(form)
+		def apply[T](form :ColumnForm[T]) :SQLNull[T] = new SQLNull[T]()(form)
 
 		def unapply(expression :SQLExpression[Nothing, LocalScope, _]) :Boolean = expression match {
 			case null => true
-			case _ :NULL[_] => true
+			case _ :SQLNull[_] => true
 			case SQLLiteral(null) => true
 			case _ => false
 		}
 
 
-		protected override def multiColumn[T:SQLForm](arg :Unit) :CompositeNULL[T] = new CompositeNULL[T]
-		protected override def singleColumn[T:ColumnForm](arg :Unit) :NULL[T] = new NULL[T]
+		protected override def multiColumn[T:SQLForm](arg :Unit) :CompositeNull[T] = new CompositeNull[T]
+		protected override def singleColumn[T:ColumnForm](arg :Unit) :SQLNull[T] = new SQLNull[T]
 
 
 		trait NullMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
-			def nullSQL[X](e :NULL[X]) :Y[GlobalScope, X]
+			def sqlNull[X](e :SQLNull[X]) :Y[GlobalScope, X]
 		}
 
 		type MatchNull[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = NullMatcher[F, Y]
@@ -494,8 +499,8 @@ object SQLTerm {
 	}
 
 
-	implicit def nullColumn[T :ColumnForm](self :NULL.type) :NULL[T] = NULL[T]
-	implicit def nullComposite[T :SQLForm](self :NULL.type) :CompositeNULL[T] = CompositeNULL[T]
+	implicit def nullColumn[T :ColumnForm](self :SQLNull.type) :SQLNull[T] = SQLNull[T]
+	implicit def nullComposite[T :SQLForm](self :SQLNull.type) :CompositeNull[T] = CompositeNull[T]
 
 
 
@@ -564,6 +569,8 @@ object SQLTerm {
 			override def inlineNullLiteral = SQLForm[T].inlineNullLiteral
 			override def toString = NativeTerm.this.sql
 		}
+
+		override def freeValue :Option[T] = None
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[FromClause, Y]): Y[GlobalScope, T] =
 			matcher.native(this)
@@ -672,7 +679,7 @@ object SQLTerm {
 
 		def literal[X](e: SQLLiteral[X]): Y[GlobalScope, X] = term(e)
 
-		def nullSQL[X](e: CompositeNULL[X]): Y[GlobalScope, X] = term(e)
+		def sqlNull[X](e: CompositeNull[X]): Y[GlobalScope, X] = term(e)
 
 		def native[X](e: NativeTerm[X]): Y[GlobalScope, X] = term(e)
 	}

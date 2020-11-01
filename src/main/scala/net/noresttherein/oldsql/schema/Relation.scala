@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
   * @author Marcin Mościcki
   */
 trait Relation[+M[O] <: MappingAt[O]] {
-	//we can't have OriginProjection here as M[O] is not a BaseMapping[S, O] and it can't be because its used in Joins
+	//we can't have OriginProjection here as M[O] is not a BaseMapping[S, O] and it can't be because it's used in Joins
 	def row[O] :M[O] = apply[O]
 
 	def apply[O] :M[O]

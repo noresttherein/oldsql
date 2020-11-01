@@ -63,6 +63,7 @@ sealed class Dual private (override val filter :GlobalBoolean[FromClause])
 
 
 	override def isParameterized :Boolean = false
+	override def isSubselectParameterized :Boolean = false
 
 	override type Params = @~
 	override type BoundParamless = DiscreteFrom { type Params = @~ }

@@ -1236,7 +1236,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	}
 
 
-
+	override def isSubselectParameterized = false
 	override def isSubselect = true //if it will accept Dual as the left side the standard definition in FromClause must be changed.
 	override def isValidSubselect = true
 

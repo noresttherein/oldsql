@@ -10,10 +10,11 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProj
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
+import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.AndFrom.AndFromMatrix
 import net.noresttherein.oldsql.sql.FromClause.GetTable.{ByAlias, ByIndex, ByLabel, ByParamIndex, ByParamName, ByParamType, BySubject, ByType, Delegate, EvidenceTemplate, GetTableByPredicate, RelationEvidence, SpecificOf}
 import net.noresttherein.oldsql.sql.FromClause.{ApplyJoinParams, ExtendedBy, FreeFrom, FreeFromSome, FromClauseMatrix, JoinedMappings, NonEmptyFrom, NonEmptyFromMatrix, ParamlessFrom, PartOf, PrefixOf, TableCount, TableShift}
-import net.noresttherein.oldsql.sql.MappingSQL.{BaseColumnComponentSQL, BaseComponentSQL, ColumnComponentSQL, ComponentSQL, JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, JoinedRelation, RelationSQL, TypedColumnComponentSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, LabeledFromParam, ParamAt}
 import net.noresttherein.oldsql.sql.SQLTerm.True
@@ -23,10 +24,11 @@ import net.noresttherein.oldsql.sql.Extended.{ExtendedComposition, ExtendedDecom
 import net.noresttherein.oldsql.sql.GroupByAll.AndByAll
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.MappingSQL.RelationSQL.LastRelation
-import net.noresttherein.oldsql.sql.SelectSQL.{FreeSelectColumn, FreeSelectSQL, SelectAs, SelectColumn, SelectColumnMapping, SelectMapping, SubselectColumn, SubselectColumnMapping, SubselectMapping, SubselectSQL}
+import net.noresttherein.oldsql.sql.SelectSQL.{FreeSelectColumn, FreeSelectSQL, SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectColumn, SubselectColumnMapping, SubselectMapping, SubselectSQL}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
 import net.noresttherein.oldsql.sql.lowercase.implicitColumnLiteral
+import net.noresttherein.oldsql.sql.mechanics.SelectFactory
 
 //implicits
 import net.noresttherein.oldsql.slang._
@@ -292,6 +294,20 @@ trait FromClause extends FromClauseMatrix[FromClause] { thisClause =>
 
 
 
+	/** The ''where'' clause of this subselect clause representing the explicit filter condition as an SQL AST.
+	  * It is the conjunction of join conditions for all joins in this clause since the last `Subselect` or `GroupByAll`
+	  * join.
+	  */
+	def filter :LocalBoolean[Generalized] = filter(generalized)
+
+	/** The combined join conditions of all joins since the last `Subselect` or `GroupByAll` join as a expression based
+	  * on an extending clause. Used by zero-argument `filter` to request the individual join conditions
+	  * as expressions based on the clause it was called for.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
+	  */
+	def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E]
+
+
 	/** A boolean function of two relations - the `last` relation of this clause and another one for mapping `N` -.
 	  * Used by the [[net.noresttherein.oldsql.sql.AndFrom.on on]] method to provide a join condition between this
 	  * clause and another relation. It is always parameterized with the same set of type members of the filtered
@@ -391,6 +407,13 @@ trait FromClause extends FromClauseMatrix[FromClause] { thisClause =>
 	  */
 	def isParameterized :Boolean
 
+	/** Does this clause contain any [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] 'joins'
+	  * (or its subtypes) in its [[net.noresttherein.oldsql.sql.FromClause.Explicit explicit]] section?
+	  * Such clauses cannot be used to create SQL ''select'' statements.
+	  * @return true ''iff'' `this.Base =:= Nothing`.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.Base]]
+	  */
+	def isSubselectParameterized :Boolean
 
 
 	/** Does this clause contain no relations, being a base for a select without a ''from'' clause? */
@@ -550,11 +573,15 @@ trait FromClause extends FromClauseMatrix[FromClause] { thisClause =>
 
 
 
-	/** A property specifying if this ''from'' clause is has a `Subselect` join somewhere in its dynamic type. */
+	/** Does this ''from'' clause have a [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'join' somewhere
+	  * in its dynamic type?
+	  */
 	def isSubselect :Boolean = outer.nonEmpty
 
-	/** A property specifying if this ''from'' clause is a legal subselect ''from'' clause, that is it has a `Subselect`
-	  * join somewhere in its complete (dynamic) type and no unbound parameters in the most nested subselect clause.
+	/** Is this ''from'' clause a legal subselect ''from'' clause, that is does it have a
+	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'join' somewhere in its complete (dynamic) type
+	  * and no [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in the most nested subselect clause?
+	  * @return `isSubselect && !isSubselectParameterized`
 	  */
 	def isValidSubselect :Boolean
 
@@ -705,20 +732,6 @@ trait FromClause extends FromClauseMatrix[FromClause] { thisClause =>
 	  *                                       join after the last `Subselect` in this clause.
 	  */
 	def base :Base
-
-
-	/** The ''where'' clause of this subselect clause representing the explicit filter condition as an SQL AST.
-	  * It is the conjunction of join conditions for all joins in this clause since the last `Subselect` or `GroupByAll`
-	  * join.
-	  */
-	def filter :LocalBoolean[Generalized] = filter(generalized)
-
-	/** The combined join conditions of all joins since the last `Subselect` or `GroupByAll` join as a expression based
-	  * on an extending clause. Used by zero-argument `filter` to request the individual join conditions
-	  * as expressions based on the clause it was called for.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
-	  */
-	def filter[E <: FromClause](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E]
 
 
 
@@ -942,12 +955,12 @@ trait FromClause extends FromClauseMatrix[FromClause] { thisClause =>
 	/** A ''from'' clause for a subselect of this clause with the single relation `T`, conforming to `SubselectOf[Self]`. */
 	type FromRelation[T[O] <: MappingAt[O]] <: (Self AndFrom T) {
 		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow ~ T[FromClause AndFrom T]#Subject
+		type FullRow = thisClause.FullRow ~ T[Any]#Subject
 		type Explicit = FromClause AndFrom T
 		type Implicit = thisClause.Generalized
 		type Base = thisClause.Generalized
 		type DefineBase[+I <: FromClause] = I
-		type InnerRow = @~ ~ T[FromClause AndFrom T]#Subject
+		type InnerRow = @~ ~ T[Any]#Subject
 		type OuterRow = thisClause.FullRow
 	}
 
@@ -1134,7 +1147,7 @@ object FromClause {
 		  * [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]].
 		  * @see [[net.noresttherein.oldsql.sql.FromClause.FromClauseMatrix.where]]
 		  */ //consider: maybe anchor this after all? it is not anchored as it hopes to reuse the same instance.
-		def where(filter :GlobalBoolean[Generalized]) :F = filtered(filter)
+		def where(filter :GlobalBoolean[Generalized]) :F = filtered(filter.anchor(generalized))
 
 		/** Apply a filter condition to this clause. The condition is combined using `&&` with `this.condition`
 		  * and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
@@ -1149,7 +1162,7 @@ object FromClause {
 		  *         instance's filter and the `SQLBoolean` returned by the function.
 		  */ //todo: these should probably be extension methods to parameterize Joined
 		def where(condition :JoinedMappings[F] => GlobalBoolean[Generalized]) :F =
-			where(SQLScribe.anchorLooseComponents(generalized)(condition(this.mappings)))
+			where(condition(this.mappings))
 
 		//these are here so that in GlobalClauseMatrix[U, U] with FromClauseMatrix[U, F] they are both public
 		// and returning F. This scenario occurs in U As A, where F =:= U As A
@@ -1157,168 +1170,10 @@ object FromClause {
 			throw new UnsupportedOperationException(s"($this :${this.unqualifiedClassName}).having")
 
 		protected def having(condition :JoinedMappings[F] => LocalBoolean[Generalized]) :F =
-			having(SQLScribe.anchorLooseComponents(generalized)(condition(this.mappings)))
+			having(condition(this.mappings))
 
 		protected def havingLast(condition :JoinedRelation[FromLast, LastMapping] => LocalBoolean[FromLast]) :F =
-			having(SQLScribe.anchorLooseComponents(generalized)(condition(last)))
-
-
-
-//		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses
-//		  * and the ''select'' clause consisting of all selectable columns of the mapping returned by the passed function.
-//		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-//		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-//		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-//		  * the `Outer` clause).
-//		  * @param component a function returning any component (including columns and the whole relation mappings)
-//		  *         of any of the relations available in this clause.
-//		  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
-//		  *         'outer' type (the ''from'' clause serving as the basis for the expression).
-//		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-//		  */
-//		def selectAs[C <: Mapping, S, O >: Generalized <: FromClause]
-//		            (component :JoinedMappings[F] => C)
-//		            (implicit cast :C <:< BaseMapping[S, O], project :OriginProjection[C, S],
-//		                      shift :TableCount[O, _ <: Numeral])
-//				:SelectAs[Base, GlobalScope, project.WithOrigin[Any]] =
-//		{
-//			type Mock = RelationSQL[Generalized, MappingOf[Any]#TypedProjection, Any, O]
-//			val table = fullTableStack(shift.offset).asInstanceOf[Mock]
-//			val comp = table \ component(this.mappings)
-//			selectAs(comp)
-//		}
-//
-//
-//		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses
-//		  * and the ''select'' clause consisting of all selectable columns of the passed mapping.
-//		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-//		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-//		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-//		  * the `Outer` clause).
-//		  * @param component any component (including columns and whole relation mappings) of any of the relations
-//		  *        available in this clause.
-//		  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
-//		  *         'outer' type (the ''from'' clause serving as the basis for the expression).
-//		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-//		  */
-//		def selectAs[M[A] <: MappingAt[A], O >: Generalized <: FromClause]
-//		            (component :BaseComponentSQL[Generalized, M, O]) :SelectAs[Base, GlobalScope, M[Any]] =
-//			if (isParameterized)
-//				throw new UnsupportedOperationException (
-//					s"Cannot use a parameterized clause as a basis for select $component: $this."
-//				)
-//			else if (isSubselect) {
-//				component.subselectFrom[Self, Any](self)
-//			} else
-//				component.asInstanceOf[BaseComponentSQL[FromClause, M, FromClause]]
-//				         .selectFrom(this.asInstanceOf[FreeFrom])
-//
-//
-//		def selectLast :SelectAs[Base, GlobalScope, LastMapping[Any]] =
-//			selectAs(last)
-//
-//		def selectLast[C <: Mapping, S, O >: Generalized <: FromClause]
-//		              (component :LastTable[FromLast] => C)
-//		              (implicit cast :C <:< BaseMapping[S, O], project :OriginProjection[C, S],
-//		                        shift :TableCount[O, _ <: Numeral])
-//				:SelectAs[Base, GlobalScope, project.WithOrigin[Any]] =
-//			selectAs(component(last))
-//
-//		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses
-//		  * and the expression returned by the passed function as its ''select'' clause.
-//		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-//		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-//		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-//		  * the `Outer` clause).
-//		  * @param header a function returning any kind of SQL expression (including, in particular, tuples, which will be
-//		  *               inlined in the ''select'' clause), constructable from the expressions for the joined relations
-//		  *               of this clause.
-//		  * @return a `SelectSQL` based on this instance's `Implicit` type (that is, embeddable only as an expression
-//		  *         in instances of this `this.Implicit`), using the given arbitrary expression as the ''select'' clause.
-//		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-//		  */
-//		@inline def select[V](header :JoinedMappings[F] => LocalSQL[Generalized, V])
-//				:SelectSQL[Base, GlobalScope, V, _] =
-//			select(SQLScribe.anchorLooseComponents(generalized)(header(this.mappings)))
-//
-//
-//		/** Creates an SQL ''select'' expression selecting a single column, as defined by the result of the passed function,
-//		  * and this instance as the source of its ''from'' and ''where'' clauses.
-//		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-//		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-//		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-//		  * the `Outer` clause).
-//		  * @param header a function returning an expression for a single column, constructable from the expressions
-//		  *               for the joined relations of this clause.
-//		  * @return a single column select, based on this instance's `Implicit` type (that is, embeddable only as an expression
-//		  *         in instances of this `this.Implicit`), which is a valid `ColumnExpression` (that is, an atomic SQL value).
-//		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-//		  */
-//		@inline def selectColumn[V](header :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, V])
-//				:SelectColumn[Base, LocalScope, V, _] = //todo: join it with normal select for LocalSQL
-//			select(SQLScribe.anchorLooseComponents(generalized)(header(this.mappings)))
-//
-//
-//		/** Creates an SQL ''select'' expression selecting an arbitrary `SQLExpression`. The ''from'' and ''where'' clauses
-//		  * are defined by this instance, while the ''select'' clause consists of all column sub-expressions constituting
-//		  * the `header` subexpressions.
-//		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-//		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-//		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-//		  * the `Outer` clause).
-//		  * @param header an arbitrary type of SQL expression (including, in particular, tuples, which will be
-//		  *               inlined in the ''select'' clause), constructable from the expressions for the joined relations
-//		  *               of this clause.
-//		  * @return a `SelectSQL` based on this instance's `Implicit` type (that is, embeddable only as an expression
-//		  *         in instances of this `this.Implicit`), using the given arbitrary expression as the ''select'' clause.
-//		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-//		  */
-//		def select[V](header :LocalSQL[Generalized, V]) :SelectSQL[Base, GlobalScope, V, _] =
-//			if (isParameterized)
-//				throw new UnsupportedOperationException(
-//					s"Cannot use a parameterized clause as a basis for select $header: $this."
-//				)
-//			else if (isSubselect) {
-//				SQLScribe.anchorLooseComponents(self)(header).subselectFrom(self)
-//			} else
-//				SQLScribe.anchorLooseComponents(self)(header)
-//				         .asInstanceOf[SQLExpression[FromClause, LocalScope, V]].selectFrom(this.asInstanceOf[FreeFrom])
-//
-//
-//		/** Creates an SQL ''select'' expression selecting a single column, as defined by the passed `header` `ColumnSQL`,
-//		  * and this instance as the source of its ''from'' and ''where'' clauses.
-//		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-//		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-//		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-//		  * the `Outer` clause).
-//		  * @param header a single column SQL expression, constructable from the expressions for the joined relations
-//		  *               of this clause.
-//		  * @return a single column select, based on this instance's `Implicit` type (that is, embeddable only as an expression
-//		  *         in instances of this `this.Implicit`), which is a valid `ColumnExpression` (that is, an atomic SQL value).
-//		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-//		  */
-//		def select[V](header :ColumnSQL[Generalized, LocalScope, V]) :SelectColumn[Base, GlobalScope, V, _] =
-//			if (isParameterized)
-//				throw new UnsupportedOperationException(
-//					s"Cannot use a parameterized clause as a basis for select $header: $this."
-//				)
-//			else if (thisClause.isSubselect) {
-//				SQLScribe.anchorLooseComponents(self)(header).subselectFrom(self)
-//			} else
-//				SQLScribe.anchorLooseComponents(self)(header)
-//				         .asInstanceOf[ColumnSQL[FromClause, LocalScope, V]].selectFrom(this.asInstanceOf[FreeFrom])
-//
-//
-//
-//		/** Creates an SQL ''select'' expression selecting all columns from all relations of the explicit (subselect)
-//		  * portion of this clause as a `Chain` of relation subjects. This is equivalent to `select(this.fullRow)`.
-//		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-//		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-//		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-//		  * the `Outer` clause).
-//		  * @see [[net.noresttherein.oldsql.sql.FromClause.InnerRow InnerRow]]
-//		  */
-//		def select_* :SelectSQL[Base, GlobalScope, InnerRow, _] = select(innerRow)
+			having(condition(last))
 
 	}
 
@@ -1449,7 +1304,7 @@ object FromClause {
 		  *         returned by the passed filter function.
 		  */
 		def whereLast(condition :JoinedRelation[FromLast, LastMapping] => GlobalBoolean[FromLast]) :F =
-			where(SQLScribe.anchorLooseComponents(generalized)(condition(last)))
+			where(condition(last))
 
 
 		/** Specify an alias for the last relation in this clause to use in the ''as'' clause following
@@ -1473,6 +1328,9 @@ object FromClause {
 		  */
 		def aliased[A <: Label](alias :A) :DealiasedCopy As A
 
+
+//		protected[sql] def transplantToExtension[O >: F, E <: FromClause, M[A] <: MappingAt[A]]
+//		                                        (table :JoinedRelation[O, M])(implicit extension :F ExtendedBy E)
 	}
 
 
@@ -1803,7 +1661,7 @@ object FromClause {
 	  * [[net.noresttherein.oldsql.sql.FromClause.FreeDiscreteFrom FreeDiscreteFrom]],
 	  * [[net.noresttherein.oldsql.sql.FromClause.FreeFromSome FreeFromSome]] and
 	  * [[net.noresttherein.oldsql.sql.FromClause.FreeGroupingFrom FreeGroupingFrom]].
-	  */ //todo: rename to ground
+	  */
 	type FreeFrom = FromClause {
 		type Implicit = FromClause
 		type Base = FromClause
@@ -1925,6 +1783,17 @@ object FromClause {
 	  */
 	type SubselectOf[-F <: FromClause] = FromClause {
 		type Base >: F <: FromClause //F may still have an abstract prefix
+		type DefineBase[+I <: FromClause] = I //it would be nice to conform to SubselectFrom, but the signatures of implicits
+	}
+
+	/** A version of the [[net.noresttherein.oldsql.sql.FromClause.SubselectOf SubselectOf]] which uses
+	  * type parameter `B` as the definition for [[net.noresttherein.oldsql.sql.FromClause.Implicit Implicit]] and
+	  * [[net.noresttherein.oldsql.sql.FromClause.Base Base]] types of the refined clause `F`, rather than its upper bound.
+	  */
+	type ExactSubselectOf[+F <: FromClause, B <: FromClause] = F {
+		type Implicit = B
+		type Base = B
+		type DefineBase[+I <: FromClause] = I
 	}
 
 	/** An upper bound for all ''from'' clauses of subselect clauses, that is `FromClause` subtypes with a
@@ -2112,63 +1981,14 @@ object FromClause {
 			if (thisClause.isSubselect && isParameterized)
 				Some(map(thisClause.asInstanceOf[F { type Params = @~ }]))
 			else None
+		
 
-
-
-		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses,
-		  * and the ''select'' clause consisting of all selectable columns of the passed mapping.
-		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-		  * the `Outer` clause).
-		  * @param component any component (including columns and whole relation mappings) of any of the relations
-		  *        available in this clause.
-		  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
-		  *         'outer' type (the ''from'' clause serving as the basis for the expression).
-		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-		  */
-		def selectAs[M[A] <: MappingAt[A], O >: thisClause.Generalized <: FromClause]
-		            (component :BaseComponentSQL[thisClause.Generalized, M, O]) :SelectAs[Base, GlobalScope, M, O] =
-			if (isParameterized)
-				throw new UnsupportedOperationException (
-					s"Cannot use a parameterized clause as a basis for select $component: $this."
-				)
-			else if (thisClause.isSubselect) {
-				component.subselectFrom(self)
-			} else
-				  component.asInstanceOf[BaseComponentSQL[FromClause, M, FromClause]]
-					  .selectFrom(this.asInstanceOf[FreeFrom]).asInstanceOf[SelectAs[Base, GlobalScope, M, O]]
-
-		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses,
-		  * and the ''select'' clause consisting of all selectable columns of the mapping returned by the passed function.
-		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
-		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
-		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
-		  * the `Outer` clause).
-		  * @param component a function returning any component (including columns and the whole relation mappings)
-		  *         of any of the relations available in this clause.
-		  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
-		  *         'outer' type (the ''from'' clause serving as the basis for the expression).
-		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-		  */
-		def selectAs[C <: Mapping, S, O >: Generalized <: FromClause]
-		            (component :JoinedMappings[F] => C)
-		            (implicit cast :C <:< BaseMapping[S, O], project :OriginProjection[C, S],
-		                      shift :TableCount[O, _ <: Numeral])
-				:SelectAs[Base, GlobalScope, project.WithOrigin, O] =
-		{
-			implicitly[Generalized <:< O]
-		 	type Mock = RelationSQL[Generalized, MappingOf[Any]#TypedProjection, Any, O]
-			val table = thisClause.fullTableStack(shift.offset).asInstanceOf[Mock]
-			val comp = table \ component(thisClause.mappings)
-			selectAs(comp)
-		}
 
 		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses,
 		  * and the ''select'' clause consisting of all selectable columns the last relation in this clause.
 		  */
-		def selectLast :SelectAs[Base, GlobalScope, LastMapping, FromLast] =
-			selectAs(thisClause.last)
+		def selectLast :SelectAs[Base, LastMapping] =
+			select(thisClause.last)
 
 		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses,
 		  * and the ''select'' clause consisting of all selectable columns of the mapping returned by the passed function.
@@ -2176,18 +1996,22 @@ object FromClause {
 		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
 		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
 		  * the `Outer` clause).
-		  * @param component a function returning any component (including columns and the whole relation mappings)
+		  * @param header a function returning any component (including columns and the whole relation mappings)
 		  *         of any of the last relations of this clause.
 		  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
 		  *         'outer' type (the ''from'' clause serving as the basis for the expression).
 		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
+		  * @throws IllegalArgumentException
 		  */
-		def selectLast[C <: Mapping, S, O >: Generalized <: FromClause]
-		              (component :LastTable[FromLast] => C)
-		              (implicit cast :C <:< BaseMapping[S, O], project :OriginProjection[C, S],
-		                        shift :TableCount[O, _ <: Numeral])
-				:SelectAs[Base, GlobalScope, project.WithOrigin, FromLast] =
-			selectAs(thisClause.last \ component(thisClause.last))
+		def selectLast[E](header :LastTable[FromLast] => E)(implicit factory :SelectFactory[Self, E]) :factory.Select =
+			if (thisClause.isSubselectParameterized)
+				throw new UnsupportedOperationException(s"Cannot create a SelectSQL with a parameterized FromClause $this")
+			else
+				try {
+					factory(self, header(thisClause.last))
+				} catch {
+					case e :UnsupportedOperationException => throw new IllegalArgumentException(e)
+				}
 
 		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses
 		  * and the expression returned by the passed function as its ''select'' clause.
@@ -2202,27 +2026,47 @@ object FromClause {
 		  *         in instances of this `this.Implicit`), using the given arbitrary expression as the ''select'' clause.
 		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 		  */
-		@inline def select[V](header :JoinedMappings[F] => LocalSQL[Generalized, V])
-				:SelectSQL[Base, GlobalScope, V, _] =
-			select(SQLScribe.anchorLooseComponents(generalized)(header(thisClause.mappings)))
+		@inline def select[E](header :JoinedMappings[F] => E)(implicit factory :SelectFactory[Self, E]) :factory.Select =
+			if (thisClause.isSubselectParameterized)
+				throw new UnsupportedOperationException(s"Cannot create a SelectSQL with a parameterized FromClause $this")
+			else
+				try {
+					factory(self, header(thisClause.mappings))
+				} catch {
+					case e :UnsupportedOperationException => throw new IllegalArgumentException(e)
+				}
 
-
-		/** Creates an SQL ''select'' expression selecting a single column, as defined by the result of the passed function,
-		  * and this instance as the source of its ''from'' and ''where'' clauses.
+		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses,
+		  * and the ''select'' clause consisting of all selectable columns of the passed mapping.
 		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
 		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
 		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
 		  * the `Outer` clause).
-		  * @param header a function returning an expression for a single column, constructable from the expressions
-		  *               for the joined relations of this clause.
-		  * @return a single column select, based on this instance's `Implicit` type (that is, embeddable only as an expression
-		  *         in instances of this `this.Implicit`), which is a valid `ColumnExpression` (that is, an atomic SQL value).
+		  * @param component any component (including columns and whole relation mappings) of any of the relations
+		  *        available in this clause.
+		  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
+		  *         'outer' type (the ''from'' clause serving as the basis for the expression).
 		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 		  */
-		@inline def selectColumn[V](header :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, V])
-				:SelectColumn[Base, LocalScope, V, _] = //todo: join it with normal select for LocalSQL
-			select(SQLScribe.anchorLooseComponents(generalized)(header(thisClause.mappings)))
+		def select[M[A] <: MappingAt[A]]
+		          (component :ComponentSQL[thisClause.Generalized, M]) :SelectAs[Base, M] =
+			component.selectFrom(self)
 
+		/** Creates an SQL ''select'' expression with this instance used for the ''from'' and ''where'' clauses,
+		  * and the ''select'' clause consisting of all selectable columns of the passed mapping.
+		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+		  * the `Outer` clause).
+		  * @param component any component (including columns and whole relation mappings) of any of the relations
+		  *        available in this clause.
+		  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
+		  *         'outer' type (the ''from'' clause serving as the basis for the expression).
+		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
+		  */
+		def select[M[A] <: ColumnMapping[S, A], S]
+		          (component :ColumnComponentSQL[thisClause.Generalized, M, S]) :SelectColumnAs[Base, M, S] =
+			component.selectFrom(self)
 
 		/** Creates an SQL ''select'' expression selecting an arbitrary `SQLExpression`. The ''from'' and ''where'' clauses
 		  * are defined by this instance, while the ''select'' clause consists of all column sub-expressions constituting
@@ -2238,17 +2082,8 @@ object FromClause {
 		  *         in instances of this `this.Implicit`), using the given arbitrary expression as the ''select'' clause.
 		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 		  */
-		def select[V](header :LocalSQL[Generalized, V]) :SelectSQL[Base, GlobalScope, V, _] =
-			if (isParameterized)
-				throw new UnsupportedOperationException(
-					s"Cannot use a parameterized clause as a basis for select $header: $this."
-				)
-			else if (thisClause.isSubselect) {
-				SQLScribe.anchorLooseComponents(self)(header).subselectFrom(self)
-			} else
-				SQLScribe.anchorLooseComponents(self)(header)
-				         .asInstanceOf[SQLExpression[FromClause, LocalScope, V]].selectFrom(this.asInstanceOf[FreeFrom])
-
+		def select[V](header :LocalSQL[Generalized, V]) :SelectSQL[Base, V] =
+			header.selectFrom(self)
 
 		/** Creates an SQL ''select'' expression selecting a single column, as defined by the passed `header` `ColumnSQL`,
 		  * and this instance as the source of its ''from'' and ''where'' clauses.
@@ -2262,28 +2097,32 @@ object FromClause {
 		  *         in instances of this `this.Implicit`), which is a valid `ColumnExpression` (that is, an atomic SQL value).
 		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 		  */
-		def select[V](header :ColumnSQL[Generalized, LocalScope, V]) :SelectColumn[Base, GlobalScope, V, _] =
-			if (isParameterized)
-				throw new UnsupportedOperationException(
-					s"Cannot use a parameterized clause as a basis for select $header: $this."
-				)
-			else if (thisClause.isSubselect) {
-				SQLScribe.anchorLooseComponents(self)(header).subselectFrom(self)
-			} else
-				SQLScribe.anchorLooseComponents(self)(header)
-				         .asInstanceOf[ColumnSQL[FromClause, LocalScope, V]].selectFrom(this.asInstanceOf[FreeFrom])
-
+		def select[V](header :ColumnSQL[Generalized, LocalScope, V]) :SelectColumn[Base, V] =
+			header.selectFrom(self)
 
 
 		/** Creates an SQL ''select'' expression selecting all columns from all relations of the explicit (subselect)
-		  * portion of this clause as a `Chain` of relation subjects. This is equivalent to `select(this.fullRow)`.
+		  * portion of this clause as a `Chain` of relation subjects. This is equivalent to `select(this.innerRow)`.
 		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
 		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
 		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
 		  * the `Outer` clause).
+		  * @param all the SQL wildcard pseudo expression [[net.noresttherein.oldsql.sql.*$ *]]
+		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
 		  * @see [[net.noresttherein.oldsql.sql.FromClause.InnerRow InnerRow]]
 		  */
-		def select_* :SelectSQL[Base, GlobalScope, InnerRow, _] = select(innerRow)
+		def select(all :sql.*) :SelectSQL[Base, InnerRow] = select(innerRow)
+		
+		/** Creates an SQL ''select'' expression selecting all columns from all relations of the explicit (subselect)
+		  * portion of this clause as a `Chain` of relation subjects. This is equivalent to `select(this.innerRow)`.
+		  * If there are any unbound parameters inside the explicit portion of this clause, the resulting ''select''
+		  * will be based on the type `Nothing` (rather than `Implicit`), making it statically impossible to use as a part
+		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
+		  * the `Outer` clause).
+		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
+		  * @see [[net.noresttherein.oldsql.sql.FromClause.InnerRow InnerRow]]
+		  */
+		def select() :SelectSQL[Base, InnerRow] = select(innerRow)
 
 	}
 
@@ -4308,7 +4147,7 @@ object FromClause {
 		implicit def aggregated[F <: FromSome] :F GroupedUnder Aggregated[F] =
 			instance.asInstanceOf[F GroupedUnder Aggregated[F]]
 
-		private[this] val instance :GroupedUnder[FromSome, AggregateClause] = _.from
+		private[this] val instance :GroupedUnder[FromSome, AggregateClause] = _.fromClause
 	}
 	
 	
