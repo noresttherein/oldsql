@@ -58,7 +58,7 @@ import net.noresttherein.oldsql.slang._
   * the ''shapeless'' `HList` and [[net.noresttherein.oldsql.collection.Chain Chain]], replacing its wider functionality
   * with specific application to this task. Just as a `HList` - and all other two-argument type constructors -
   * it can be and is better written using the infix notation: `Dual Join Rangers Join Familiars Join Monsters`.
-  * Note that the whole `JoinLike` class hierarchy is left-associative for a more natural left to right reading and writing.
+  * Note that the whole `Compound` class hierarchy is left-associative for a more natural left to right reading and writing.
   * Specialized classes for all join kinds exist, as well as special variants for ''from'' clauses of subselects
   * of some outer clause and unbound query parameters. A ''group by'' clause is also represented under this type,
   * with all subtypes having to extend either [[net.noresttherein.oldsql.sql.DiscreteFrom DiscreteFrom]] or
@@ -81,19 +81,27 @@ import net.noresttherein.oldsql.slang._
   * the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join, which linearizes the `FromClause`
   * of the outer select and the ''from'' clause of the subselect by joining them together. Hence, from the point of view
   * of an SQL select expression created from such a clause, only the relations to the right of the last
-  * `Subselect` join are a part of the ''from'' clause. Similarly, a presence of
-  * the [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] clause 'hides' all preceding relations down to
-  * the most recent `Subselect` or the start of clause, which are under grouping and thus unavailable as individual
-  * rows.
+  * `Subselect` join are a part of the ''from'' clause. Each subtype is thus divided into
+  * an [[net.noresttherein.oldsql.sql.FromClause.Explicit explicit]] section, which contains all relations which
+  * will be listed in the actual ''from'' clause of an SQL [[net.noresttherein.oldsql.sql.SelectSQL select]]
+  * based on it, and an [[net.noresttherein.oldsql.sql.FromClause.Implicit implicit]] section, which contains
+  * all relations from the enclosing ''selects''(s), available to SQL expressions based on this clause
+  * (assuming the database engine supports ''dependent'' subselects). The divide is the rightmost `Subselect`
+  * pseudo join, with the explicit section spanning the type in its entirety if none such is present.
+  * The implicit section is thus the type of the ''from'' clause of the SQL select directly enclosing
+  * the actual ''from'' clause. On the other hand, a [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] clause
+  * 'hides' all preceding relations down to the most recent `Subselect` or the start of clause, which are under grouping
+  * and thus unavailable as individual rows.
   * {{{}}}
-  * A `FromClause` subtype from the above category is said to be ''complete'' if its definition starts with
-  * the [[net.noresttherein.oldsql.sql.Dual Dual]] or [[net.noresttherein.oldsql.sql.From From]] type,
-  * that is the number of all mappings participating in the join/clause is known (although their types may be abstract).
-  * Note that the mapping types may still be abstract and the joins may be some generic base type like
+  * A `FromClause` subtype is said to be ''complete'' if its definition starts with
+  * the [[net.noresttherein.oldsql.sql.Dual Dual]] or [[net.noresttherein.oldsql.sql.From From]] type, rather than
+  * a wildcard type such as the root `FromClause`, and the number of all mappings participating in the join/clause
+  * is known. Note that the mapping types may still be abstract and the joins may be some generic base type like
   * [[net.noresttherein.oldsql.sql.AndFrom AndFrom]]. The opposite is an ''incomplete'' clause, the definition of which
-  * starts with the base `FromClause`, one of its wildcard subclasses which do not expose their prefix clause type,
-  * or an abstract type `F <: FromClause`: `FromClause Join Deaths Join Instruments`, which specifies any sequence
-  * of relations ending with the `Deaths` and `Instruments`. A ''complete'' clause is called ''concrete'' if
+  * starts with the base `FromClause` or one of its wildcard subclasses, which do not expose their prefix clause type,
+  * or an abstract type `F <: FromClause`: `FromClause Join Deaths Join Instruments`. In all these cases,
+  * the wildcard/abstract type stands for any sequence of relations, and the type from the example describes any
+  * ''from'' clause ending with tables `Deaths` and `Instruments`. A ''complete'' clause is called ''concrete'' if
   * all join types in its signature are concrete classes (concrete here meaning any public trait having a dedicated
   * factory in its companion object). Additionally, each `FromClause` subtype defines a `Generalized` member type
   * as its supertype which still allows external functions to correctly discern its role in the whole clause.
@@ -105,7 +113,7 @@ import net.noresttherein.oldsql.slang._
   * is defined in the `Extended` and `AndFrom` subclasses, representing actual non-empty clauses. Some additional
   * generic methods however are made available through implicit conversions in order to benefit from the static self type:
   *   - from any `F <: FromClause` to
-  *     [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]]`[`[[net.noresttherein.oldsql.sql.FromClause.Generalized Generalized]]`]`,
+  *     [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]]`[`F`]`,
   *     which define accessor methods returning [[net.noresttherein.oldsql.schema.Mapping mappings]] for the relations
   *     in the clause, which are in turn implicitly convertible to
   *     SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] usable in the ''select'' and ''where''
@@ -114,7 +122,8 @@ import net.noresttherein.oldsql.slang._
   *     to [[net.noresttherein.oldsql.sql.FromClause.FromClauseExtension FromClauseExtension]], which declares
   *     some accessors, in particular
   *     `relations` to [[net.noresttherein.oldsql.sql.FromClause.JoinedRelations JoinedRelations]] and
-  *     `mappings` to [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]].
+  *     `mappings` to [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]],
+  *     and `select` methods creating SQL [[net.noresttherein.oldsql.sql.SelectSQL selects]] based on this ''from'' clause;
   *   - from non-empty discrete clauses `F <: FromSome` (those without a ''group by'' clause)
   *     to [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSomeExtension FromSomeExtension]], which define
   *     factory methods for other join types;
@@ -125,7 +134,8 @@ import net.noresttherein.oldsql.slang._
   * Aside from the above extensions, associated implicits and other helper classes, the companion object
   * defines some base types serving as common upper bounds and several useful type aliases which enforce
   * certain features on `FromClause` instances, such as [[net.noresttherein.oldsql.sql.FromClause.OuterFrom OuterFrom]],
-  * [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]] and others.
+  * [[net.noresttherein.oldsql.sql.FromClause.SubselectFrom SubselectFrom]],
+  * [[net.noresttherein.oldsql.sql.FromClause.As As]] and others.
   *
   * @see [[net.noresttherein.oldsql.sql.DiscreteFrom.FromSome]] the base trait for all non-empty clauses
   *      (without a ''group by'' clause).
@@ -137,8 +147,10 @@ import net.noresttherein.oldsql.slang._
   * @see [[net.noresttherein.oldsql.sql.From From]] The factory for clauses with a single relation which
   *      is the most common starting point for building larger clauses.
   * @see [[net.noresttherein.oldsql.sql.JoinLike JoinLike]] The supertype for all join kinds as well as subselect clauses.
+  * @see [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] the supertype of all ''from'' clauses
+  *      with a ''group by'' clause.
   * @see [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]] a ''group by'' clause under the interface
-  *      of a ''from'' clause
+  *      of a ''from'' clause, introducing the first grouping expression.
   *
   * @author Marcin Mościcki
   */ //consider: renaming to FromWhere or RowProduct? TableProduct/RelationProduct JoinedRelations (ouch, already used)
@@ -1378,7 +1390,7 @@ object FromClause {
 			type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
 		}
 
-		type Dealiased >: Self <: NonEmptyFrom {
+		override type Dealiased >: Self <: NonEmptyFrom {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
 			type Params = thisClause.Params
@@ -2000,8 +2012,10 @@ object FromClause {
 		  *         of any of the last relations of this clause.
 		  * @return a `SelectSQL` with the specified component as the ''select'' clause and `this.Base` as its
 		  *         'outer' type (the ''from'' clause serving as the basis for the expression).
-		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
-		  * @throws IllegalArgumentException
+		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins
+		  *                                       in its [[net.noresttherein.oldsql.sql.FromClause.Explicit explicit]]
+		  *                                       section).
+		  * @throws IllegalArgumentException if the return expression contains a subexpression of a not supported type.
 		  */
 		def selectLast[E](header :LastTable[FromLast] => E)(implicit factory :SelectFactory[Self, E]) :factory.Select =
 			if (thisClause.isSubselectParameterized)
@@ -2024,7 +2038,10 @@ object FromClause {
 		  *               of this clause.
 		  * @return a `SelectSQL` based on this instance's `Implicit` type (that is, embeddable only as an expression
 		  *         in instances of this `this.Implicit`), using the given arbitrary expression as the ''select'' clause.
-		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins).
+		  * @throws UnsupportedOperationException if this clause is parameterized (contains any `UnboundParam` joins
+		  *                                       in its [[net.noresttherein.oldsql.sql.FromClause.Explicit explicit]]
+		  *                                       section).
+		  * @throws IllegalArgumentException if the return expression contains a subexpression of a not supported type.
 		  */
 		@inline def select[E](header :JoinedMappings[F] => E)(implicit factory :SelectFactory[Self, E]) :factory.Select =
 			if (thisClause.isSubselectParameterized)
@@ -2557,12 +2574,32 @@ object FromClause {
 		  */
 		type S[+A >: P <: U] >: F <: FromClause
 
+		/** a `PrefixOf` instance representing the application of the type constructor
+		  * [[net.noresttherein.oldsql.sql.FromClause.ClauseDecomposition.S S]] to some supertype of the decomposed
+		  * prefix `P` of the clause `F`, which this instance is the type class of. It has the length of `1` for
+		  * [[net.noresttherein.oldsql.sql.Extended Extended]] subtypes and `0` for
+		  * [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] subtypes.
+		  */
 		def prefix[A >: P <: U] :A PrefixOf S[A]
+
+		/** a `PrefixOf` instance representing the application of the type constructor
+		  * [[net.noresttherein.oldsql.sql.FromClause.ClauseDecomposition.S S]] to some arbitrary ''from'' clause `A`.
+		  * It has the length of `1` for [[net.noresttherein.oldsql.sql.Extended Extended]] subtypes and `0` for
+		  * [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] subtypes.
+		  */
 		def extension[A <: U] :A PrefixOf E[A]
 
+		/** Extracts the prefix clause `P` extended by the associated ''from'' clause `F`. */
 		def unapply(clause :F) :P
 
+		/** A type class for a supertype of the represented ''from'' clause, resulting from the application
+		  * of the type constructor specific to this clause to some supertype `A` of `P`.
+		  */
 		def upcast[A >: P <: U] :ClauseDecomposition[S[A], A, U]
+
+		/** A type class for a ''from'' clause sharing the top type constructor
+		  *  [[net.noresttherein.oldsql.sql.FromClause.ClauseDecomposition.E E]] with this clause `F`.
+		  */
 		def cast[A <: U] :ClauseDecomposition[E[A], A, U]
 
 	}
@@ -2758,7 +2795,12 @@ object FromClause {
 	                  "Note that witness TableCount[F, N] is invariant in type F, but requires that it starts " +
 	                  "with one of FromClause, GroupByClause, DiscreteFrom, FromSome, or Dual/From[_].")
 	class TableCount[F <: FromClause, N <: Numeral] private[FromClause] (private val n :Int) extends AnyVal {
+		/** The number of relations listed in the type `F` (not including any relations hidden by a wildcard/abstract prefix). */
 		@inline def tables :N = n.asInstanceOf[N] //val tables :N crashes scalac
+
+		/** The zero-based index of the first relation in the clause when counting from the right.
+		  * @return `tables - 1`.
+		  */
 		@inline def offset :Int = n - 1
 	}
 
@@ -2933,8 +2975,15 @@ object FromClause {
 
 
 	/** A framework base class for companion objects of implicit evidence classes extending
-	  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.RelationEvidence RelationEvidence]].
-	  * It provides the [[net.noresttherein.oldsql.sql.FromClause.GetTable.Found Found]] intermediate implicit class
+	  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.RelationEvidence RelationEvidence]]. Each instance
+	  * implements type safe access to relations/mappings of any `FromClause` based on some specific criteria, such as
+	  * the alias given to the relation or its relative position. The returned
+	  * [[net.noresttherein.oldsql.sql.MappingSQL.JoinedRelation JoinedRelation]]
+	  * (or [[net.noresttherein.oldsql.schema.Mapping Mapping]]) will not only be of the correct type,
+	  * but also use an `Origin` type uniquely identifying the relation within the clause, which distinguishes
+	  * between its potential multiple occurrences and provides its positional index.
+	  *
+	  * It defines the [[net.noresttherein.oldsql.sql.FromClause.GetTable.Found Found]] intermediate implicit class
 	  * and implicit conversions of least precedence: Those converting an implicit of the (final) companion class
 	  * into `Found` as well as definitions propagating a `Found` instance through the joins under a ''group by''
 	  * clause (and thus not considered in the implicit search). Most implementations extend
@@ -3157,8 +3206,15 @@ object FromClause {
 			/** The accessed `Mapping` type, matching the key `X`. */
 			type T[A] <: MappingAt[A]
 
-			/** The supertype of the ''from'' clause `F`, in which the search takes place, resulting from replacing
-			  * the join having the found relation as its right side with `S` - the `FromLast` type of that join.
+			/** The supertype of the generalized supertype `G` of the input 'from'' clause `F`, in which the search
+			  * takes place, resulting from replacing the [[net.noresttherein.oldsql.sql.Compound Compound]] link
+			  * having the found relation as its right side with `S` - the `FromLast` type of that type.
+			  * The returned relation is thus the first relation in this type, and the number of relations listed
+			  * defines its right-based index in `F`. This type is used as
+			  * the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of the returned mapping
+			  * and the (invariant) base type for the returned
+			  * [[net.noresttherein.oldsql.sql.MappingSQL.JoinedRelation JoinedRelation]], which allows to trace back
+			  * any component of their components back to their source.
 			  */
 			type O >: G <: FromClause
 
@@ -3333,15 +3389,20 @@ object FromClause {
 
 		/** Implicit resolution of the `N`-th relation in the ''from'' clause `F`. This works both for positive numbers,
 		  * indexed from zero and going from left to right (in which case `F` must be complete), and negative -
-		  * indexed from `-1` and going from right to left (which is available always, but which index changes with
+		  * indexed from `-1` and going from right to left (which is available always, but whose index changes with
 		  * joining new tables). If `0 <= N` and an implicit `ByIndex[A, B, M]` for some `0 <= M` is present
-		  * in the ''lexical'' scope, it will be used as the initial evidence for any `N >= M`, without backtracking
-		  * all the way to `Dual/From`, providing that all joins and their generalized form since `A`/`B`
+		  * in the ''lexical'' scope (where `A` is a prefix type of `F` and `B` is its generalized form),
+		  * it will be used as the initial evidence for any `N >= M`, without backtracking
+		  * all the way to `Dual/From`, providing that all joins and their generalized forms since `A`/`B`
 		  * are statically known. Similarly, if `X < 0`, than an implicit `ByIndex[A, B, X]` can be converted under
 		  * these circumstances to `ByIndex[F, G, N]`. In both cases, `abs(N) - abs(X)` must equal the number
 		  * of relations joined in `F` since `A`, i.e.
 		  * (`A `[[net.noresttherein.oldsql.sql.FromClause.ExtendedBy ExtendedBy]]` F).length`.
-		  * @tparam F the input `FromClause`.
+		  * Note that all relations joined between
+		  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
+		  * and a following [[net.noresttherein.oldsql.sql.GroupByAll]] (including its type aliases) are ignored:
+		  * the positive/negative indices of B and G in `From[A] Join B Subselect C Join D GroupByAll G ByAll E`
+		  * are `1/-3` and `2/-2`, respectively, with no indices associated with relations `C` and `D`.
 		  * @tparam G the [[net.noresttherein.oldsql.sql.FromClause.Generalized Generalized]] type of `F`.
 		  * @tparam N index of the desired relation as a literal `Int` type.
 		  */
@@ -3519,6 +3580,7 @@ object FromClause {
 		  * only against type `F`, and not it generalization `G`.
 		  * For the purpose of this implicit, all relations joined between
 		  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
+		  * and a following [[net.noresttherein.oldsql.sql.GroupByAll]] (including its type aliases) are ignored.
 		  * Note that an implicit `ByAlias[K, L, A]` can be converted to a `ByAlias[F, G, A]`
 		  * if `K `[[net.noresttherein.oldsql.sql.FromClause.ExtendedBy ExtendedBy]]` F`, `L ExtendedBy G`,
 		  * and the join types in `F` and `G` since `K` and `L` are known at least to their generalized super type.
@@ -3554,6 +3616,7 @@ object FromClause {
 		  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`.
 		  * For the purpose of this implicit, all relations joined between
 		  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
+		  * and a following [[net.noresttherein.oldsql.sql.GroupByAll]] (including its type aliases) are ignored.
 		  * Note that an implicit `BySubject[A, B, S]` can be converted to a `BySubject[F, G, S]`
 		  * if `A `[[net.noresttherein.oldsql.sql.FromClause.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
 		  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
@@ -3596,6 +3659,7 @@ object FromClause {
 		  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`.
 		  * For the purpose of this implicit, all relations joined between
 		  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
+		  * and a following [[net.noresttherein.oldsql.sql.GroupByAll]] (including its type aliases) are ignored.
 		  * Note that an implicit `ByType[A, B, N]` can be converted to a `ByType[F, G, N]`
 		  * if `A `[[net.noresttherein.oldsql.sql.FromClause.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
 		  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
@@ -3639,11 +3703,14 @@ object FromClause {
 		/** Accessor for the right-most relation in `F` with a mapping conforming to
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.LabeledFromParam LabeledFromParam]]`[N, _, _]`, providing
 		  * it is joined using either [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] or
-		  * [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]. Note that such a parameter could be accessed
-		  * also using [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByLabel ByLabel]], however this evidence
+		  * [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]. The parameter name in the sense of this class
+		  * is thus not the same as any [[net.noresttherein.oldsql.sql.FromClause.As alias]] given to this relation.
+		  * Note that such a parameter could be accessed also using
+		  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByLabel ByLabel]], however this evidence
 		  * is more restrictive and has statically narrowed return type to the dedicated parameter `Mapping`.
 		  * For the purpose of this implicit, all relations joined between
 		  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
+		  * and a following [[net.noresttherein.oldsql.sql.GroupByAll]] (including its type aliases) are ignored.
 		  * An implicit `ByParamName[A, B, N]` can be converted to a `ByParamName[F, G, N]`
 		  * if `A `[[net.noresttherein.oldsql.sql.FromClause.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
 		  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
@@ -3693,8 +3760,10 @@ object FromClause {
 		  * [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]. This is similar to
 		  * [[net.noresttherein.oldsql.sql.FromClause.GetTable.BySubject BySubject]], but this evidence
 		  * takes into account only synthetic parameter relations and has a statically narrowed return type
-		  * to the dedicated parameter `Mapping`. For the purpose of this implicit, all relations joined between
+		  * to the dedicated parameter `Mapping` subtype [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]].
+		  * For the purpose of this implicit, all relations joined between
 		  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
+		  * and a following [[net.noresttherein.oldsql.sql.GroupByAll]] (including its type aliases) are ignored.
 		  * An implicit `ByParamType[A, B, X]` can be converted to a `ByParamType[F, G, X]`
 		  * if `A `[[net.noresttherein.oldsql.sql.FromClause.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
 		  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
@@ -3742,11 +3811,16 @@ object FromClause {
 		  * with a [[net.noresttherein.oldsql.sql.FromClause.ParamlessFrom ParamlessFrom]]), and negative -
 		  * indexed from `-1` and going from right to left (which is available always, but whose index changes
 		  * with joining of new tables). Note that the index is relative only to other parameters, not all joined
-		  * relations, which simplifies access. While the mapping could be also returned based on any other criteria
-		  * (for example, its absolute index), its type as provided by this class is statically narrowed down to
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.ParamAt ParamAt]].
-		  * For the purpose of this implicit, all relations joined between
+		  * relations, which simplifies access and has two consequences: it is the index of the corresponding parameter
+		  * in the [[net.noresttherein.oldsql.sql.FromClause.Params Params]] list of the clause and, unlike
+		  * with [[net.noresttherein.oldsql.sql.FromClause.GetTable.ByIndex ByIndex]], all relations joined between
 		  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
+		  * and a following [[net.noresttherein.oldsql.sql.GroupByAll]] are still included in the counting
+		  * (but remain unaccessible due to the lack of an implicit value of this evidence for the particular index).
+		  *
+		  * While the mapping could be also returned based on any other criteria (for example, its absolute index),
+		  * its type as provided by this class is statically narrowed down to
+		  * [[net.noresttherein.oldsql.sql.UnboundParam.ParamAt ParamAt]].
 		  * An implicit `ByParamIndex[A, B, N]` can be converted to a `ByParamIndex[F, G, N]`
 		  * if `A `[[net.noresttherein.oldsql.sql.FromClause.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
 		  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
@@ -3862,7 +3936,7 @@ object FromClause {
 	  * from the clause `F` and `F#Params >: P`. It implements the application of the input clause `F` to the
 	  * argument chain `P` with values for all `UnboundParam` joins in `F` by substituting every reference to
 	  * a `ParamMapping` in the filter with a `BoundParameterSQL` wrapping the corresponding value from `P`.
-	  */
+	  */ //todo: delete it
 	@implicitNotFound("Cannot apply the FROM clause ${F}\nto parameters ${P}. I cannot prove that the parameter chain P " +
 	                  "is a subtype of F#Params - most likely F is incomplete or its Generalized type is unknown.\n"+
 	                  "Missing implicit value ApplyJoinParams[${F}, ${P}].")

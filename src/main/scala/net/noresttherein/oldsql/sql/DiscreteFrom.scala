@@ -705,10 +705,13 @@ object DiscreteFrom {
 		  *         Max(weapon.damage) ~ Min(weapon.damage) ~ Avg(weapon.damage)
 		  *     }
 		  * }}}
+		  * Note that the general purpose [[net.noresttherein.oldsql.sql.FromClause.FromClauseExtension.select select]]
+		  * method, which accepts a function of [[net.noresttherein.oldsql.sql.FromClause.JoinedMappings JoinedMappings]],
+		  * supports directly aggregate expressions based on the aggregation of this ''from'' clause.
 		  */
 		@inline def aggregate :Aggregated[F] = Aggregated(thisClause)
 
-		
+
 
 		/** Creates an aggregated SQL ''select'' with a single column and a single row, containing the result
 		  * of applying the aggregate function of the argument to all rows from the ''from'' clause.
@@ -725,66 +728,247 @@ object DiscreteFrom {
 			Aggregated(thisClause.self).select(header)
 
 
+		/** Creates a single column SQL `select count(*) from` with this instance as the from clause.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Count]]
+		  */
 		def count :SelectColumn[Base, Int] = select(Count.*)
 
+		/** Creates a single column SQL ''select'' counting all rows with non-null values in the given column.
+		  * This translates to `select count(column) from this`.
+		  * @param column a column of any of the joined relations, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Count]]
+		  */
 		def count(column :ColumnSQL[Generalized, LocalScope, _]) :SelectColumn[Base, Int] =
 			select(Count(column))
 
+
+		/** Creates a single column SQL ''select'' counting all rows with non-null values in the given column.
+		  * This translates to `select count(column) from this`.
+		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
+		  *               returning any of their columns, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Count]]
+		  */
 		def count(column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, _]) :SelectColumn[Base, Int] =
 			select(Count(column(thisClause.mappings)))
 
-
+		/** Creates a single column SQL ''select'' returning the smallest value of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]].
+		  * @param column a column of any of the joined relations, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a type with [[net.noresttherein.oldsql.sql.SQLOrdering SQLOrdering]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
+		  *               and the actual ordering is not influenced by the type class.
+		  * @return an SQL expression representing `select min(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Min]]
+		  */
 		def min[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Min(column))
 
+		/** Creates a single column SQL ''select'' returning the smallest value of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]].
+		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
+		  *               returning any of their columns, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a type with [[net.noresttherein.oldsql.sql.SQLOrdering SQLOrdering]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general
+		  *               and the actual ordering is not influenced by the type class.
+		  * @return SQL expression representing `select min(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Min]]
+		  */
 		def min[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Min(column(thisClause.mappings)))
 
 
+		/** Creates a single column SQL ''select'' returning the largest value of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]].
+		  * @param column a column of any of the joined relations, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a type with [[net.noresttherein.oldsql.sql.SQLOrdering SQLOrdering]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
+		  * @return an SQL expression representing `select max(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Max]]
+		  */
 		def max[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Max(column))
 
-		def max[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
+		/** Creates a single column SQL ''select'' returning the largest value of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]].
+		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
+		  *               returning any of their columns, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a type with [[net.noresttherein.oldsql.sql.SQLOrdering SQLOrdering]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  * @return an SQL expression representing `select max(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Max]]
+		  */
+		def max[X :SQLOrdering](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Max(column(thisClause.mappings)))
 
 
+		/** Creates a single column SQL ''select'' returning the sum of values of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] for all rows returned by this ''from'' clause.
+		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.SelectSQL select]] can be modified
+		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.SelectSQL.distinct distinct]] method.
+		  * @param column a column of any of the joined relations, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
+		  *               It cannot be used to provide custom arithmetic.
+		  * @return an SQL expression representing `select sum(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Sum]]
+		  */
 		def sum[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Sum(column))
 
+		/** Creates a single column SQL ''select'' returning the sum of values of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] for all rows returned by this ''from'' clause.
+		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.SelectSQL select]] can be modified
+		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.SelectSQL.distinct distinct]] method.
+		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
+		  *               returning any of their columns, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               It cannot be used to provide custom arithmetic.
+		  * @return an SQL expression representing `select sum(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Sum]]
+		  */
 		def sum[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, X] =
 			select(Sum(column(thisClause.mappings)))
 
 
+		/** Creates a single column SQL ''select'' returning the average of values of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] for all rows returned by this ''from'' clause.
+		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.SelectSQL select]] can be modified
+		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.SelectSQL.distinct distinct]] method.
+		  * @param column a column of any of the joined relations, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
+		  *               It cannot be used to provide custom arithmetic.
+		  * @return an SQL expression representing `select avg(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Avg]]
+		  */
 		def avg[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, BigDecimal] =
 			select(Avg(column))
 
+		/** Creates a single column SQL ''select'' returning the average of values of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] for all rows returned by this ''from'' clause.
+		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.SelectSQL select]] can be modified
+		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.SelectSQL.distinct distinct]] method.
+		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
+		  *               returning any of their columns, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               It cannot be used to provide custom arithmetic.
+		  * @return an SQL expression representing `select avg(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Var]]
+		  */
 		def avg[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
 				:SelectColumn[Base, BigDecimal] =
 			select(Avg(column(thisClause.mappings)))
 
 
+		/** Creates a single column SQL ''select'' returning the variance of values of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] for all rows returned by this ''from'' clause.
+		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.SelectSQL select]] can be modified
+		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.SelectSQL.distinct distinct]] method.
+		  * @param column a column of any of the joined relations, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
+		  *               It cannot be used to provide custom arithmetic.
+		  * @return an SQL expression representing `select var(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.Var]]
+		  */
 		def variance[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, BigDecimal] =
 			select(Var(column))
 
+		/** Creates a single column SQL ''select'' returning the variance of values of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] for all rows returned by this ''from'' clause.
+		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.SelectSQL select]] can be modified
+		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.SelectSQL.distinct distinct]] method.
+		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
+		  *               returning any of their columns, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               It cannot be used to provide custom arithmetic.
+		  * @return a SQL expression representing `select var(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.StdDev]]
+		  */
 		def variance[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
 				:SelectColumn[Base, BigDecimal] =
 			select(Var(column(thisClause.mappings)))
 
 
+		/** Creates a single column SQL ''select'' returning the standard deviation of the gaussian approximation
+		  * of the value distribution of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] for all rows returned by this ''from'' clause.
+		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.SelectSQL select]] can be modified
+		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.SelectSQL.distinct distinct]] method.
+		  * @param column a column of any of the joined relations, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
+		  *               It cannot be used to provide custom arithmetic.
+		  * @return an SQL expression representing `select stddev(column) from this`.
+		  * @see [[net.noresttherein.oldsql.sql.AggregateSQL.StdDev]]
+		  */
 		def stddev[X :SQLNumber](column :ColumnSQL[Generalized, LocalScope, X]) :SelectColumn[Base, BigDecimal] =
 			select(StdDev(column))
 
+		/** Creates a single column SQL ''select'' returning the standard deviation of the gaussian approximation
+		  * of the value distribution of some column or a single column
+		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] for all rows returned by this ''from'' clause.
+		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.SelectSQL select]] can be modified
+		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.SelectSQL.distinct distinct]] method.
+		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
+		  *               returning any of their columns, or a single column
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
+		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               type class. Note that the type class serves here solely to artificially restrict
+		  *               allowed column types based on their scala counterparts and is not used in implementation.
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               It cannot be used to provide custom arithmetic.
+		  * @return an SQL expression representing `select stddev(column) from this`.
+		  */
 		def stddev[X :SQLNumber](column :JoinedMappings[F] => ColumnSQL[Generalized, LocalScope, X])
 				:SelectColumn[Base, BigDecimal] =
 			select(StdDev(column(thisClause.mappings)))
-		
+
 	}
 
 
 
-	
-	
-	
+
+
+
 	/** Extension methods for `OuterFrom` objects (''from'' clauses without any `Subselect`s which can serve
 	  * as the basis for independent selects). It provides methods for introducing unbound parameters
 	  * to the clause in the form of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins',
