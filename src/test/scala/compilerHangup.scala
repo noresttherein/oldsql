@@ -1,7 +1,7 @@
 import net.noresttherein.oldsql.schema.{BaseMapping, Mapping, Relation}
 import net.noresttherein.oldsql.schema.bits.FormMapping
-import net.noresttherein.oldsql.sql.{AndFrom, From, FromClause, InnerJoin, Join, SQLExpression}
-import net.noresttherein.oldsql.sql.FromClause.ClauseDecomposition
+import net.noresttherein.oldsql.sql.{AndFrom, From, RowProduct, InnerJoin, Join, SQLExpression}
+import net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition
 
 /**
   * @author Marcin Mościcki
@@ -12,8 +12,8 @@ object compilerHangup extends App {
 	val A = Relation("A", new A[Any])
 	val B = Relation("B", new B[Any])
 
-//	val a :A[FromClause AndFrom A Join B] = ???
-//	val b :B[FromClause AndFrom B] = ???
+//	val a :A[RowProduct AndFrom A Join B] = ???
+//	val b :B[RowProduct AndFrom B] = ???
 	val f = From(A) join B
 	val a = f[A]
 	val b = f[B]
@@ -30,7 +30,7 @@ object compilerHangup extends App {
 //	val from = From(A)
 //	(new Invariant[from.Self] {}) :Invariant[From[A]]
 
-//	def decompose[F <: FromClause, P <: U, U <: FromClause](f :F)(implicit deco :ClauseDecomposition[F, P, U]) = ???
+//	def decompose[F <: RowProduct, P <: U, U <: RowProduct](f :F)(implicit deco :ClauseDecomposition[F, P, U]) = ???
 //
 //	decompose(from.self :from.Self)
 

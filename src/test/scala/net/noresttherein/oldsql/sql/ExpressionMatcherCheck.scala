@@ -8,6 +8,6 @@ import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScop
 /** Assert that SelectiveMatcher implements all methods in ExpressionMatcher, and thus all CaseXxx cases are covered by redirecting
   * to the case for their superclass.
   */
-object ExpressionMatcherTest
-	extends ExpressionMatcher[FromClause, ({ type T[-S >: LocalScope <: GlobalScope, V] = () })#T]
-	   with SelectiveMatcher[FromClause, ({ type T[-S >: LocalScope <: GlobalScope, V] = () })#T]
+class ExpressionMatcherCheck
+	extends ExpressionMatcher[RowProduct, ({ type T[-S >: LocalScope <: GlobalScope, V] = () })#T]
+	   with SelectiveMatcher[RowProduct, ({ type T[-S >: LocalScope <: GlobalScope, V] = () })#T]

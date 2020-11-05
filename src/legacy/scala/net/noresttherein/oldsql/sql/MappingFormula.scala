@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, MappingPath, SQL
 import net.noresttherein.oldsql.schema.Buff.{NoQuery, NoSelect}
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, SelfPath}
 import net.noresttherein.oldsql.slang.InferTypeParams.IsBoth
-import net.noresttherein.oldsql.sql.FromClause.{RowValues, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{RowValues, TableFormula}
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula.{CaseComponent, ComponentMatcher}
 import net.noresttherein.oldsql.sql.MappingFormula.PathFormula.{CasePath, MatchPath, PathMatcher}
 import net.noresttherein.oldsql.sql.SQLFormula.{Formula, FormulaMatcher, SQLTypePromotion}
@@ -17,7 +17,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.{BoundParameter, SQLLiteral, SQLNull
 /** An `SQLFormula` which SQL form is described by a `Mapping` of type `M`, with its subject being the scala expression
   * type of the formula.
   */
-trait MappingFormula[-F <: FromClause, M <: Mapping] extends SQLFormula[F, M#Subject] {
+trait MappingFormula[-F <: RowProduct, M <: Mapping] extends SQLFormula[F, M#Subject] {
 	def mapping :M
 
 	override def readForm :SQLReadForm[M#Subject] = mapping.selectForm
@@ -34,11 +34,11 @@ object MappingFormula {
 	  * joins between tables. To refer to a component of a last from the ''from'' clause, use ComponentFormula.
 	  * This class exists to facilitate creating filters on a higher level of abstraction, which can be adapted
 	  * for different queries, depending on a chosen loading strategy.
-	  * @tparam F type of FromClause this instance is compatible with (i.e, which contains the source last)
+	  * @tparam F type of RowProduct this instance is compatible with (i.e, which contains the source last)
 	  * @tparam T mapping type of the source last.
 	  * @tparam M target mapping type
 	  */
-	abstract class PathFormula[-F <: FromClause, T <: Component[R, E], M <: Component[O, V], R, O, E, V] private[sql]
+	abstract class PathFormula[-F <: RowProduct, T <: Component[R, E], M <: Component[O, V], R, O, E, V] private[sql]
 		extends MappingFormula[F, M] with SQLTuple[F, V]
 	{
 		/** Table in the source at which the path starts. */
@@ -62,10 +62,10 @@ object MappingFormula {
 
 		override def get(values: RowValues[F]): Option[M#Subject] = values.get(table).flatMap(path.extractor.optional)
 
-		def queryLiteral(value :T#Subject) :SQLFormula[FromClause, M#Subject] =
+		def queryLiteral(value :T#Subject) :SQLFormula[RowProduct, M#Subject] =
 			throw new UnsupportedOperationException(s"Can't translate an abstract path expression $this into a literal (of value $value)")
 
-		def queryParameter(value :T#Subject) :SQLFormula[FromClause, M#Subject] =
+		def queryParameter(value :T#Subject) :SQLFormula[RowProduct, M#Subject] =
 			throw new UnsupportedOperationException(s"Can't translate an abstract path expression $this into a parameter (of value $value)")
 
 
@@ -73,7 +73,7 @@ object MappingFormula {
 		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[M#Subject] = matcher.path(this)
 
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]): SQLFormula[S, V] = mapper(this)
+		override def map[S <: RowProduct](mapper: SQLRewriter[F, S]): SQLFormula[S, V] = mapper(this)
 
 		override def equals(other :Any) :Boolean = other match {
 			case self :AnyRef if self eq this => true
@@ -120,7 +120,7 @@ object MappingFormula {
 		  * @param table source mapping (not necessarily a last - might be a component) from which the path starts
 		  * @param path a path pointing to a mapping which value is will be the value of this expression.
 		  */
-		def apply[F <: FromClause, T <: Component[R, E], M <: Component[O, V], R, O, E, V]
+		def apply[F <: RowProduct, T <: Component[R, E], M <: Component[O, V], R, O, E, V]
 		         (table :TableFormula[F, T, R, E], path :MappingPath[T, M, O, E, V]) :PathFormula[F, T, M, R, O, E, V] =
 			path match {
 //				case _  if path.start != last.mapping =>
@@ -137,7 +137,7 @@ object MappingFormula {
 
 
 
-		def unapply[F <: FromClause, V](expression :SQLFormula[F, V])
+		def unapply[F <: RowProduct, V](expression :SQLFormula[F, V])
 				:Option[(TableFormula[F, T, R, E], MappingPath[T, C, O, E, V])] forSome
 					{ type T <: Component[R, E]; type C <: Component[O, V]; type R; type O; type E } =
 			expression match {
@@ -148,20 +148,20 @@ object MappingFormula {
 			}
 
 
-		trait PathMatcher[+F <: FromClause, +Y[X]] extends ComponentMatcher[F, Y] {
+		trait PathMatcher[+F <: RowProduct, +Y[X]] extends ComponentMatcher[F, Y] {
 			def path[T <: Component[R, E], C <: Component[O, V], R, O, E, V](f :PathFormula[F, T, C, R, O, E, V]) :Y[V]
 		}
 
-		trait MatchPath[+F <: FromClause, +Y[X]] extends PathMatcher[F, Y] with CaseComponent[F, Y]
+		trait MatchPath[+F <: RowProduct, +Y[X]] extends PathMatcher[F, Y] with CaseComponent[F, Y]
 
 
-		trait CasePath[+F <: FromClause, +Y[X]] extends MatchPath[F, Y] {
+		trait CasePath[+F <: RowProduct, +Y[X]] extends MatchPath[F, Y] {
 			def component[T <: Component[O, E], C <: Component[O, V], O, E, V](f :ComponentFormula[F, T, C, O, E, V]) :Y[V] =
 				path(f)
 		}
 
 
-		private class ForeignPathFormula[-F <: FromClause, T <: Component[R, E], M <: Component[O, V], R, O, E, V]
+		private class ForeignPathFormula[-F <: RowProduct, T <: Component[R, E], M <: Component[O, V], R, O, E, V]
 		                                (val table :TableFormula[F, T, R, E], val path :MappingPath[T, M, O, E, V])
 			extends PathFormula[F, T, M, R, O, E, V]
 
@@ -173,7 +173,7 @@ object MappingFormula {
 
 
 
-	abstract class ComponentFormula[-F <: FromClause, T <: Component[O, E], C <: Component[O, V], O, E, V] private[sql]
+	abstract class ComponentFormula[-F <: RowProduct, T <: Component[O, E], C <: Component[O, V], O, E, V] private[sql]
 		extends PathFormula[F, T, C, O, O, E, V]
 	{
 		override def path  :ComponentPath[T, C, O, E, V] //ComponentPath[T, C]
@@ -218,13 +218,13 @@ object MappingFormula {
 			ComponentFormula(table, this.path \ path)
 
 
-//		def :=[S <: FromClause, R, U](expr :SQLFormula[S, R])(implicit lift :SQLTypeUnification[V, R, U]) :SetComponent[S, T, C, R, U] =
+//		def :=[S <: RowProduct, R, U](expr :SQLFormula[S, R])(implicit lift :SQLTypeUnification[V, R, U]) :SetComponent[S, T, C, R, U] =
 //			SetComponent(path, expr)
 
-		override def queryLiteral(value :E) :SQLFormula[FromClause, V] =
+		override def queryLiteral(value :E) :SQLFormula[RowProduct, V] =
 			path.extractor.get(value).map(v => SQLLiteral(v)) getOrElse SQLNull[V]
 
-		override def queryParameter(value :E) :SQLFormula[FromClause, V] =
+		override def queryParameter(value :E) :SQLFormula[RowProduct, V] =
 			path.extractor.get(value).map(v => BoundParameter(v)) getOrElse SQLNull[V]
 
 
@@ -251,7 +251,7 @@ object MappingFormula {
 
 	object ComponentFormula {
 
-		def apply[F <: FromClause, T <: Component[O, E], M <: Component[O, V], O, E, V]
+		def apply[F <: RowProduct, T <: Component[O, E], M <: Component[O, V], O, E, V]
 		         (table :TableFormula[F, T, O, E], path :ComponentPath[T, M, O, E, V]) :ComponentFormula[F, T, M, O, E, V] =
 			path match {
 //				case _  if path.start!=last.mapping =>
@@ -262,7 +262,7 @@ object MappingFormula {
 					new TableComponent(table, path)
 			}
 
-		def unapply[F <: FromClause, X](expression :SQLFormula[F, X])
+		def unapply[F <: RowProduct, X](expression :SQLFormula[F, X])
 				:Option[(TableFormula[F, T, O, E], ComponentPath[T, C, O, E, X])] forSome
 					{ type T <: Component[O, E]; type C <: Component[O, X]; type O; type E } =
 			expression match {
@@ -274,19 +274,19 @@ object MappingFormula {
 
 
 
-		private class TableComponent[-F <: FromClause, T <: Component[O, E], C <: Component[O, V], O, E, V]
+		private class TableComponent[-F <: RowProduct, T <: Component[O, E], C <: Component[O, V], O, E, V]
 		                            (val table :TableFormula[F, T, O, E], val path :ComponentPath[T, C, O, E, V])
 		extends ComponentFormula[F, T, C, O, E, V]
 
 
 
-		trait ComponentMatcher[+F <: FromClause, +Y[X]] {
+		trait ComponentMatcher[+F <: RowProduct, +Y[X]] {
 			def component[T <: Component[O, W], C <: Component[O, V], O, W, V](f: ComponentFormula[F, T, C, O, W, V]): Y[V]
 		}
 
-		type MatchComponent[+F <: FromClause, +Y[X]] = ComponentMatcher[F, Y]
+		type MatchComponent[+F <: RowProduct, +Y[X]] = ComponentMatcher[F, Y]
 
-		type CaseComponent[+F <: FromClause, +Y[X]] = ComponentMatcher[F, Y]
+		type CaseComponent[+F <: RowProduct, +Y[X]] = ComponentMatcher[F, Y]
 	}
 
 
@@ -294,11 +294,11 @@ object MappingFormula {
 
 
 
-	type MappingMatcher[+F <: FromClause, +Y[X]] = PathMatcher[F, Y]
+	type MappingMatcher[+F <: RowProduct, +Y[X]] = PathMatcher[F, Y]
 
-	type MatchMapping[+F <: FromClause, +Y[X]] = MatchPath[F, Y]
+	type MatchMapping[+F <: RowProduct, +Y[X]] = MatchPath[F, Y]
 
-	trait CaseMapping[+F <: FromClause, +Y[X]] extends CasePath[F, Y] {
+	trait CaseMapping[+F <: RowProduct, +Y[X]] extends CasePath[F, Y] {
 		def mapping[M <: Mapping](f :MappingFormula[F, M]) :Y[M#Subject]
 
 		override def path[T <: Component[R, E], M <: Component[O, V], R, O, E, V](f: PathFormula[F, T, M, R, O, E, V]): Y[V] =

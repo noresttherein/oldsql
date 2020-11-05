@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.sql.FromClause.{SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{SubselectFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 
 /** A special join type serving as a source for subselects (selects occurring inside of another select, either
@@ -11,7 +12,7 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   * its own additional tables in its ''from'' clause. It is represented as an explicit synthetic join between
   * the outer source (left side), and the first table of the subselect from list.
   * This allows any expressions grounded in the outer select to be used as expressions grounded in this select,
-  * as it doesn't differ from any other FromClause extension by joins. Note that it is possible to recursively nest
+  * as it doesn't differ from any other RowProduct extension by joins. Note that it is possible to recursively nest
   * subselects to an arbitrary depth and it is modelled by a repeated use of this join type. In that case all
   * tables/mappings to the left of the first occurrence of `SubselectJoin` in the type definition of a nested subselect,
   * while tables/mappings in between subsequent `SubselectJoin`s form the ''from'' clauses of subsequent nested
@@ -24,9 +25,9 @@ import net.noresttherein.oldsql.sql.SQLTerm.True
   *             when additional tables are added to this subselect join (i.e. this source is expanded).
   * @tparam F static type of outer select's source.
   * @tparam S Right side of this join - the first table of the ''from'' clause of the represented subselect.
-  * @see [[net.noresttherein.oldsql.sql.FromClause.AsSubselectOf AsSubselectOf]]
+  * @see [[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]]
   */
-class SubselectJoin[F <: FromClause, S <: Mapping] private
+class SubselectJoin[F <: RowProduct, S <: Mapping] private
 		(val source :F, table :TableFormula[F JoinLike S, S], cond :BooleanFormula[F JoinLike S])
 	extends JoinLike[F, S](source, table, cond) //with AsSubselectOf[F]
 { subsource =>
@@ -35,7 +36,7 @@ class SubselectJoin[F <: FromClause, S <: Mapping] private
 	type Outer = F
 
 
-	def this(source :F, table :S) = this(source, new TableFormula[FromClause JoinLike S, S](table, source.size), True())
+	def this(source :F, table :S) = this(source, new TableFormula[RowProduct JoinLike S, S](table, source.size), True())
 
 
 	override def filteredBy: BooleanFormula[this.type] = condition
@@ -45,18 +46,18 @@ class SubselectJoin[F <: FromClause, S <: Mapping] private
 	override def subselectTables: Seq[TableFormula[this.type, _ <: Mapping]] = Seq(lastTable)
 
 
-	override def transplant[O <: FromClause](target: O, rewriter: SQLScribe[Outer, O]): AsSubselectOf[O] = {
+	override def transplant[O <: RowProduct](target: O, rewriter: SQLScribe[Outer, O]): AsSubselectOf[O] = {
 		val transplanted = target from right
 		transplanted filterBy SQLScribe.subselect[Outer, this.type, O, AsSubselectOf[O], Boolean](condition, this, transplanted, rewriter)
 	}
 
-	//	override def copyJoin[L <: FromClause, M <: Mapping](left: L, right: M): L SubselectJoin M =
+	//	override def copyJoin[L <: RowProduct, M <: Mapping](left: L, right: M): L SubselectJoin M =
 	//		new SubselectJoin[L, M](left, right)
 	//
 	//	override protected def copyJoin(replacement: TableFormula[F JoinLike S, S], condition: BooleanFormula[F JoinLike S]=True()): F SubselectJoin S =
 	//		new SubselectJoin[F, S](source, replacement, condition)
 
-	override def copyJoin[L <: FromClause, R <: Mapping](left: L, right: R): L JoinLike R =
+	override def copyJoin[L <: RowProduct, R <: Mapping](left: L, right: R): L JoinLike R =
 		new SubselectJoin[L, R](left, right)
 
 	override protected def copyJoin(replacement: TableFormula[F JoinLike S, S], condition: BooleanFormula[F JoinLike S]=True()): F JoinLike S =

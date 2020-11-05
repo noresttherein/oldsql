@@ -4,30 +4,30 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator.FromSomeDecoratorComposition
-import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, FromClauseMatrix, JoinedMappings, NonEmptyFrom, NonEmptyFromMatrix, ParamlessFrom, PartOf, PrefixOf}
-import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.RowProduct.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
 
 
 
-/** Base trait for all `FromClause` implementations which serve as wrappers to other clauses. Decorators introduce
+/** Base trait for all `RowProduct` implementations which serve as wrappers to other clauses. Decorators introduce
   * no new relations or ''where'' clause fragments and in most cases simply delegate to the corresponding method
   * of the wrapped clause `F`. Currently no implementations are used by the library and it exists largely
   * to future proof the design and allow an extension point for custom classes. One such usage could be, for example,
   * providing custom annotations which, in conjunction with a custom `SQLWriter`, could be used to modify the generated
   * SQL statements. For this reason this type is recognized and handled by all built-in types processing
-  * `FromClause` or `SQLExpression` types. This is a bare bones root type designed for flexibility and convenience
+  * `RowProduct` or `SQLExpression` types. This is a bare bones root type designed for flexibility and convenience
   * due to no upper bound on the wrapped clause type. Most practical implementations will likely prefer to extend
   * the more fleshed out [[net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator FromSomeDecorator]].
   * @author Marcin Mościcki
   */ //this could benefit from being derived from Any
-trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
+trait DecoratedFrom[+F <: RowProduct] extends RowProduct { thisClause =>
 	val clause :F
 
 	/** The upper bound for the decorated clause used in this clause's dynamic type. */
-	type Bound >: clause.FromLast <: FromClause
+	type Bound >: clause.FromLast <: RowProduct
 	type LeftBound = Bound
 
 	/** Wraps a (possibly modified) copy of the underlying clause in a new decorator instance. */
@@ -49,7 +49,7 @@ trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 
 
 
-	protected override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] = matcher.decorator(this)
+	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.decorator(this)
 
 }
 
@@ -61,23 +61,23 @@ trait DecoratedFrom[+F <: FromClause] extends FromClause { thisClause =>
 object DecoratedFrom {
 
 
-	/** A marker trait for [[net.noresttherein.oldsql.sql.FromClause FromClause]] decorators which include
+	/** A marker trait for [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] decorators which include
 	  * all relations from the decorated clause. This is the de facto real root of the decorator type hierarchy,
 	  * with only the special [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] adapter not being its subtype.
 	  * It is analogous to the [[net.noresttherein.oldsql.sql.Extended Extended]] base trait for joins and join-like
 	  * classes.
 	  */
-	trait ExtendingDecorator[+F <: FromClause] extends DecoratedFrom[F] with ExtendingClause[F] {
+	trait ExtendingDecorator[+F <: RowProduct] extends DecoratedFrom[F] with ExtendingClause[F] {
 		override def isEmpty :Boolean = clause.isEmpty
 		override def fullSize :Int = clause.fullSize
 
 		override type LastMapping[O] = clause.LastMapping[O]
 		override type FullRow = clause.FullRow
-		override type InnerRow = clause.InnerRow
+		override type Row = clause.Row
 		override type OuterRow = clause.OuterRow
 
 
-		protected override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] =
+		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] =
 			matcher.extendingDecorator(this)
 
 		private[sql] override def concrete_ExtendingClause_subclass_must_extend_Extended_or_ExtendingDecorator :Nothing =
@@ -87,7 +87,7 @@ object DecoratedFrom {
 
 
 	/** Default base trait for non empty `DecoratedFrom` implementations. Introduces the type constructors
-	  * for the `Generalized` and `Self` types and implements most `FromClause` methods by delegating to the
+	  * for the `Generalized` and `Self` types and implements most `RowProduct` methods by delegating to the
 	  * underlying clause. It requires all implementing classes to be applicable to any non empty clause `F`.
 	  */
 	trait FromSomeDecorator[+F <: FromSome] extends ExtendingDecorator[F] with FromSome { thisClause =>
@@ -110,8 +110,8 @@ object DecoratedFrom {
 			type Implicit = thisClause.Implicit
 			type Outer = thisClause.Outer
 			type Base = thisClause.Base
-			type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-			type InnerRow = thisClause.InnerRow
+			type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
+			type Row = thisClause.Row
 			type OuterRow = thisClause.OuterRow
 		}
 
@@ -159,16 +159,16 @@ object DecoratedFrom {
 
 		override type FullRow = clause.FullRow
 
-		override def fullRow[E <: FromClause]
+		override def fullRow[E <: RowProduct]
 		             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
 			clause.fullRow(target)(extension.unwrapFront)
 
-		override def fullTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def fullTableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
 			clause.fullTableStack(target)(extension.unwrapFront)
 
 
-		override type JoinedWith[+P <: FromClause, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+		override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
 			WithClause[clause.JoinedWith[P, J]]
 
 		override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
@@ -179,7 +179,7 @@ object DecoratedFrom {
 		override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :JoinedWithSubselect[P] =
 			withClause(clause.joinedWithSubselect(prefix))
 
-		override def appendedTo[P <: DiscreteFrom](prefix :P) :WithClause[clause.JoinedWith[P, AndFrom]] =
+		override def appendedTo[P <: FromClause](prefix :P) :WithClause[clause.JoinedWith[P, AndFrom]] =
 			withClause(clause.appendedTo(prefix))
 
 
@@ -187,27 +187,27 @@ object DecoratedFrom {
 		override type Explicit = GeneralizedClause[clause.Explicit]
 		override type Inner = WithClause[clause.Inner]
 		override type Base = clause.DefineBase[clause.Implicit] //a supertype of clause.Base (in theory, equal in practice)
-		override type DefineBase[+I <: FromClause] = clause.DefineBase[I]
+		override type DefineBase[+I <: RowProduct] = clause.DefineBase[I]
 
 		override def base :Base = clause.base
 
-		override def filter[E <: FromClause]
+		override def filter[E <: RowProduct]
 		                   (target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
 			clause.filter(target)(extension.unwrapFront)
 
-		override type InnerRow = clause.InnerRow
+		override type Row = clause.Row
 
-		override def innerRow[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
-				:ChainTuple[E, GlobalScope, clause.InnerRow] =
-			clause.innerRow(target)(extension.unwrapFront)
+		override def row[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+				:ChainTuple[E, GlobalScope, clause.Row] =
+			clause.row(target)(extension.unwrapFront)
 
-		override def innerTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def tableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			clause.innerTableStack(target)(extension.unwrapFront)
+			clause.tableStack(target)(extension.unwrapFront)
 
 		override type OuterRow = clause.OuterRow
 
-		override def outerRow[E <: FromClause](target :E)(implicit extension :Implicit ExtendedBy E)
+		override def outerRow[E <: RowProduct](target :E)(implicit extension :Implicit ExtendedBy E)
 				:ChainTuple[E, GlobalScope, clause.OuterRow] =
 			clause.outerRow(target)
 
@@ -218,7 +218,7 @@ object DecoratedFrom {
 			withClause(clause.asSubselectOf(newOuter))
 
 
-		protected override def matchWith[Y](matcher :FromClauseMatcher[Y]) :Option[Y] =
+		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] =
 			matcher.fromSomeDecorator(this)
 
 	}
@@ -268,14 +268,14 @@ object DecoratedFrom {
 	  * is more complex, automatic partial unification will fail - as it would for
 	  * [[net.noresttherein.oldsql.sql.Aliased Aliased]], which takes the clause as its first argument.
 	  * This order can be important for readability reasons, so to proof various implicit factory methods
-	  * which recursively scan `FromClause` subtypes against any future decorator extensions which would break
+	  * which recursively scan `RowProduct` subtypes against any future decorator extensions which would break
 	  * the type inference preventing from the materializing of the implicit value, the factory method can rely on
 	  * this type class. Any decorator implementations for which default resolution would fail can provide an implicit
 	  * of this type with the proper deconstruction in its companion object.
 	  */
 	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
 	                  "and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
-	class DecoratorDecomposition[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: FromClause]
+	class DecoratorDecomposition[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
 		extends ClauseDecomposition[F, C, U]
 	{
 		override type E[+A <: U] = D[A]
@@ -296,7 +296,7 @@ object DecoratedFrom {
 
 	@implicitNotFound("I do not know how the generalized DecoratedFrom type constructor of ${F}.\n" +
 	                  "Missing implicit DecoratorGeneralization[${F}, ${C}, ${D}, ${U}]." )
-	class DecoratorGeneralization[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: FromClause]
+	class DecoratorGeneralization[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
 		extends DecoratorDecomposition[F, C, D, U] with ClauseGeneralization[F, C, U]
 	{ self =>
 		override type G[+A >: C <: U] = Generalized[A]
@@ -312,7 +312,7 @@ object DecoratedFrom {
 
 	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} and " +
 	                  "the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
-	abstract class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: FromClause]
+	abstract class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
 		extends DecoratorGeneralization[F, C, D, U] with ClauseComposition[F, C, U]
 
 

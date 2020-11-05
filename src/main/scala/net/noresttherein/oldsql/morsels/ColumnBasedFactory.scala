@@ -4,6 +4,8 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.morsels.ColumnBasedFactory.MultiColumnFactory
 import net.noresttherein.oldsql.morsels.generic.Self
+import net.noresttherein.oldsql.sql.ast
+import net.noresttherein.oldsql.sql.ast.SQLTerm
 
 
 
@@ -79,12 +81,12 @@ object ColumnBasedFactory {
 		  * useful in the common case when the more specific argument `B[T]` is the same type as the more generic
 		  * argument `A[T]`.
 		  *
-		  * As an example, [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameter SQLParameter]] is one of many
+		  * As an example, [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] is one of many
 		  * SQL expressions which extend the enclosing trait specifying `A[T] =:= B[T] = T`,
 		  * `F[T] =:= `[[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[T]`
 		  * and `C[T] =:= `[[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]`[T]`.
 		  * Thus, two implementations exist: one for `SQLParameter[T]` itself, and one for its subtype
-		  * [[net.noresttherein.oldsql.sql.SQLTerm.SQLParameterColumn SQLParameterColumn]]`[T]`,
+		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameterColumn SQLParameterColumn]]`[T]`,
 		  * which will always have precedence if an implicit `ColumnForm[T]` exists, falling back to the more generic
 		  * instance if only an `SQLForm[T]` is available.
 		  * @see [[net.noresttherein.oldsql.morsels.ColumnBasedFactory ColumnBasedFactory]]

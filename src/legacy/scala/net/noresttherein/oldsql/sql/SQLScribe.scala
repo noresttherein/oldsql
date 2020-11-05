@@ -2,16 +2,17 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.sql.FromClause.{SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{SubselectFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SelectFormula.MatchSelect
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.CaseComposite
-import net.noresttherein.oldsql.sql.SQLFormula.{CompositeFormula}
+import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula
 import net.noresttherein.oldsql.sql.SQLMapper.{SQLMatcher, FormulaResult => Res}
 import net.noresttherein.oldsql.sql.SQLTerm.CaseTerm
+import net.noresttherein.oldsql.sql.ast.SQLTerm
 
 
 /** Visitor pattern transforming an `SQLFormula` over source `F` into an `SQLFormula` over source `T`. */
-abstract class SQLScribe[F <: FromClause, T <: FromClause](protected val from :F, protected val to :T)
+abstract class SQLScribe[F <: RowProduct, T <: RowProduct](protected val from :F, protected val to :T)
 //	extends GenericSQLVisitor[F, ({ type R[X] = SQLFormula[T, X] })#R]
 	extends SQLMatcher[F, Res[T]#T] with CaseComposite[F, Res[T]#T] with CaseTerm[F, Res[T]#T] with MatchSelect[F, Res[T]#T]
 { scribe =>
@@ -73,7 +74,7 @@ abstract class SQLScribe[F <: FromClause, T <: FromClause](protected val from :F
 
 	private def subselect[R<:SubselectFrom[F], H](e :SubselectFormula[F, R, H]) :SelectFormula[T, H] = {
 		val sf = e.asInstanceOf[SubselectFormula[F, SubselectFrom[F], H]]
-		val transplanted = sf.source.transplant(to, this.asInstanceOf[SQLScribe[sf.source.Parent, T]])
+		val transplanted = sf.source.transplant(to, this.asInstanceOf[mechanics.SQLScribe[sf.source.Parent, T]])
 		val header = SQLScribe.subselect[F, SubselectFrom[F], T, transplanted.type, H](sf.header, sf.source, transplanted, this)
 		SelectFormula.subselect[T, transplanted.type, H](to, transplanted :transplanted.type, header)
 	}
@@ -98,27 +99,27 @@ object SQLScribe {
 	  * @tparam F source source type
 	  * @tparam T target source type
 	  */
-	//	def apply[F<:FromClause, T<:FromClause](expression :BooleanFormula[F], from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>SQLFormula[T, _]) :BooleanFormula[T] =
+	//	def apply[F<:RowProduct, T<:RowProduct](expression :BooleanFormula[F], from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>SQLFormula[T, _]) :BooleanFormula[T] =
 	//		translate[F, T, Boolean](expression, from, to)(mapper)
 
 
-	//	def apply[F<:FromClause, T<:FromClause](from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>PathFormula[T, _<:Mapping, _<:Mapping]) :SQLFormula[T, Boolean] =
+	//	def apply[F<:RowProduct, T<:RowProduct](from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>PathFormula[T, _<:Mapping, _<:Mapping]) :SQLFormula[T, Boolean] =
 	//		translate(from)
 
-	def apply[F<:FromClause, T<:FromClause, X](expression :SQLFormula[F, X], from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>SQLFormula[T, _]) :SQLFormula[T, X] =
+	def apply[F<:RowProduct, T<:RowProduct, X](expression :SQLFormula[F, X], from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>SQLFormula[T, _]) :SQLFormula[T, X] =
 		translate[F, T, X](expression, from, to)(mapper)
 
 	/** Rewrite the given expression grounded in source from into an expression grounded in source to substituting
 	  * all source-dependent expressions (PathExpression instances) for values returned by the provided function.
 	  */
-	def apply[T](from :FromClause, to :FromClause)(expression :SQLFormula[from.type, T])(mapper :PathFormula[from.type, _<:Mapping, _<:Mapping]=>SQLFormula[to.type, _]) :SQLFormula[to.type, T] =
+	def apply[T](from :RowProduct, to :RowProduct)(expression :SQLFormula[from.type, T])(mapper :PathFormula[from.type, _<:Mapping, _<:Mapping]=>SQLFormula[to.type, _]) :SQLFormula[to.type, T] =
 		translate[from.type, to.type, T](expression, from, to)(mapper)
 
 
 
 
 
-	def translate[F<:FromClause, T<:FromClause, X](expression :SQLFormula[F, X], from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>SQLFormula[T, _]) :SQLFormula[T, X] =
+	def translate[F<:RowProduct, T<:RowProduct, X](expression :SQLFormula[F, X], from :F, to :T)(mapper :PathFormula[F, _<:Mapping, _<:Mapping]=>SQLFormula[T, _]) :SQLFormula[T, X] =
 		expression.applyTo[Res[T]#T](new AbstractSQLScribe[F, T](from, to) {
 			override def path[M <: Mapping, C <: Mapping](e: PathFormula[F, M, C]): SQLFormula[T, C#Subject] =
 				mapper(e).asInstanceOf[SQLFormula[T, C#Subject]]
@@ -134,7 +135,7 @@ object SQLScribe {
 	  * @param mapper function returning a last that should take the part of the argument last in the result expression.
 	  *               The mapping of the argument and return value have to be equal, or an exception will be thrown.
 	  */
-	def replant[F<:FromClause, T<:FromClause, X](expression :SQLFormula[F, X], from :F, to :T)(mapper :TableFormula[F, _<:Mapping]=>TableFormula[T, _<:Mapping]) :SQLFormula[T, X] =
+	def replant[F<:RowProduct, T<:RowProduct, X](expression :SQLFormula[F, X], from :F, to :T)(mapper :TableFormula[F, _<:Mapping]=>TableFormula[T, _<:Mapping]) :SQLFormula[T, X] =
 		expression.applyTo[Res[T]#T](new Replanter[F, T](from, to) {
 			override def map[M <: Mapping](table: TableFormula[F, M]): TableFormula[T, M] = mapper(table).asInstanceOf[TableFormula[T, M]]
 		})
@@ -155,8 +156,8 @@ object SQLScribe {
 	  * @return a formula isomorphic with argument formula, where all references to tables from S are replaced
 	  *         to references to a last in R at the corresponding index.
 	  */
-	def subselect[F<:FromClause, S<:SubselectFrom[F], T<:FromClause, R<:SubselectFrom[T], X](
-		                                                                                  expr :SQLFormula[S, X], from :S, to :R, scribe :SQLScribe[F, T]) :SQLFormula[R, X] =
+	def subselect[F<:RowProduct, S<:SubselectFrom[F], T<:RowProduct, R<:SubselectFrom[T], X](
+		                                                                                  expr :SQLFormula[S, X], from :S, to :R, scribe :mechanics.SQLScribe[F, T]) :SQLFormula[R, X] =
 	{
 		val tables = to.all.toIndexedSeq
 		translate(expr, from, to) {
@@ -170,16 +171,16 @@ object SQLScribe {
 		}
 	}
 
-	//	trait ActualSQLScribe[F<:FromClause, T<:FromClause] extends SQLScribe[F, T] with GenericActualSQLVisitor[F, ({ type R[X] = SQLFormula[T, X] })#R]
-	abstract class AbstractSQLScribe[F<:FromClause, T<:FromClause](from :F, to :T) extends SQLScribe[F, T](from, to) with CasePath[F, Res[T]#T]
+	//	trait ActualSQLScribe[F<:RowProduct, T<:RowProduct] extends SQLScribe[F, T] with GenericActualSQLVisitor[F, ({ type R[X] = SQLFormula[T, X] })#R]
+	abstract class AbstractSQLScribe[F<:RowProduct, T<:RowProduct](from :F, to :T) extends mechanics.SQLScribe[F, T](from, to) with CasePath[F, Res[T]#T]
 
-	abstract class ConcreteSQLScribe[F<:FromClause, T<:FromClause](from :F, to :T) extends SQLScribe[F, T](from, to) with MatchPath[F, Res[T]#T] {
+	abstract class ConcreteSQLScribe[F<:RowProduct, T<:RowProduct](from :F, to :T) extends mechanics.SQLScribe[F, T](from, to) with MatchPath[F, Res[T]#T] {
 
 		override def path[M <: Mapping, C <: Mapping](f: PathFormula[F, M, C]): SQLFormula[T, C#Subject] =
 			throw new IllegalArgumentException(s"can't rewrite expression containing abstract path $f :${f.getClass.getName} with $this")
 	}
 
-	abstract class Replanter[F<:FromClause, T<:FromClause](from :F, to :T) extends AbstractSQLScribe[F, T](from, to) {
+	abstract class Replanter[F<:RowProduct, T<:RowProduct](from :F, to :T) extends AbstractSQLScribe[F, T](from, to) {
 		override def path[M <: Mapping, C <: Mapping](e: PathFormula[F, M, C]): SQLFormula[T, C#Subject] = {
 			val mapped = map(e.table)
 			if (mapped.mapping!=e.table.mapping)

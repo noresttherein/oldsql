@@ -15,35 +15,36 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
-import net.noresttherein.oldsql.sql.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.MappingSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMatcher, GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.SQLTerm.SQLParameter
-import net.noresttherein.oldsql.sql.TupleSQL.{ChainTuple, IndexedChainTuple, SeqTuple}
-import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple.MatchChain
-import net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple.{IndexedSQLExpression, MatchIndexedChain}
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
 import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
+import net.noresttherein.oldsql.sql.ast.{ConversionSQL, MappingSQL, SelectSQL, SQLTerm, TupleSQL}
+import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
+import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL
+import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, IndexedChainTuple, SeqTuple}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChain
+import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedSQLExpression, MatchIndexedChain}
 
 
 /** A synthetic adapter of an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, S, O]` to a
   * [[net.noresttherein.oldsql.schema.Mapping Mapping]]. Used in ''select'' and ''group by'' clauses,
-  * so that [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.ByAll ByAll]]
+  * so that [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]/[[net.noresttherein.oldsql.sql.By By]]
   * can be homomorphic with [[net.noresttherein.oldsql.sql.Join Join]]s and to allow
-  * [[net.noresttherein.oldsql.sql.SelectSQL SelectSQL]] expressions to be used as
+  * [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] expressions to be used as
   * [[net.noresttherein.oldsql.schema.Relation Relation]]s in the ''from'' clauses of other SQL selects.
   * This class is dedicated to non-component expressions; subclasses of
-  * [[net.noresttherein.oldsql.sql.MappingSQL MappingSQL]] should be used directly.
+  * [[net.noresttherein.oldsql.sql.ast.MappingSQL MappingSQL]] should be used directly.
   * Not all possible expressions are supported; the expression may consist of
-  *   - [[net.noresttherein.oldsql.sql.SQLTerm terms]], todo: these not, unless we the SQLForm will list column names
+  *   - [[net.noresttherein.oldsql.sql.ast.SQLTerm terms]], todo: these not, unless we the SQLForm will list column names
   *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
-  *     in particular [[net.noresttherein.oldsql.sql.SQLTerm.ColumnTerm terms]],
-  *   - [[net.noresttherein.oldsql.sql.MappingSQL.ComponentSQL components]] (ranging from whole entities
+  *     in particular [[net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm terms]],
+  *   - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]] (ranging from whole entities
   *     to single columns),
-  *   - [[net.noresttherein.oldsql.sql.ConversionSQL conversion]] nodes,
+  *   - [[ConversionSQL conversion]] nodes,
   *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
-  *   - [[net.noresttherein.oldsql.sql.TupleSQL.ChainTuple tuples]] and
-  *     [[net.noresttherein.oldsql.sql.TupleSQL.IndexedChainTuple indexed tuples]].
+  *   - [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuples]] and
+  *     [[ast.TupleSQL.IndexedChainTuple indexed tuples]].
   *
   * The expression is traversed recursively descending to leaf expressions:
   *   - all column expressions are used directly;
@@ -63,7 +64,7 @@ import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
   * @see [[net.noresttherein.oldsql.sql.ExpressionColumnMapping ExpressionColumnMapping]]
   * @author Marcin Mościcki
   */
-trait ExpressionMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O] extends BaseMapping[X, O] {
+trait ExpressionMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O] extends BaseMapping[X, O] {
 	
 	val expr :SQLExpression[F, S, X]
 
@@ -101,7 +102,7 @@ trait ExpressionMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O]
 object ExpressionMapping {
 	private val buffList = ReadOnly::Nil
 
-	def apply[F <: FromClause, S >: LocalScope <: GlobalScope, X, O]
+	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X, O]
 	         (expression :SQLExpression[F, S, X]) :ExpressionMapping[F, S, X, O] =
 		expression match {
 			case column :ColumnSQL[F @unchecked, S @unchecked, X @unchecked] =>
@@ -121,14 +122,14 @@ object ExpressionMapping {
 
 
 
-	type Expression[F <: FromClause, S >: LocalScope <: GlobalScope, X] = {
+	type Expression[F <: RowProduct, S >: LocalScope <: GlobalScope, X] = {
 		type Projection[O] = ExpressionMapping[F, S, X, O]
 		type ColumnProjection[O] = ExpressionColumnMapping[F, S, X, O]
 	}
 
 
 
-	class NonColumnExpressionMapping[F <: FromClause, S >: LocalScope <: GlobalScope, X, O]
+	class NonColumnExpressionMapping[F <: RowProduct, S >: LocalScope <: GlobalScope, X, O]
 	                                (override val expr :SQLExpression[F, S, X])
 		extends ExpressionMapping[F, S, X, O] with LazyMapping[X, O]
 	{ outer =>
@@ -153,7 +154,7 @@ object ExpressionMapping {
 				pieces => pieces.get(column)
 			}
 
-			override def component[T[B] <: BaseMapping[E, B], E, M[B] <: BaseMapping[V, B], V, A >: F <: FromClause]
+			override def component[T[B] <: BaseMapping[E, B], E, M[B] <: BaseMapping[V, B], V, A >: F <: RowProduct]
 			                      (e :TypedComponentSQL[F, T, E, M, V, A]) =
 			{
 				val table = e.entity
@@ -263,7 +264,7 @@ object ExpressionMapping {
 				Assoc[Column, ColumnEx, V](column, ColumnExtract.ident(column))::Nil
 			}
 
-			override def component[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, G >: F <: FromClause]
+			override def component[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, G >: F <: RowProduct]
 			                      (e :TypedComponentSQL[F, T, E, M, V, G]) :Extractors[GlobalScope, V] =
 			{
 				val table = e.entity
@@ -369,7 +370,7 @@ object ExpressionMapping {
 
 
 
-//	class IndexedExpressionMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O]
+//	class IndexedExpressionMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 }
 
 
@@ -379,12 +380,12 @@ object ExpressionMapping {
 
 /** A synthetic adapter of an [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, S, O]` to a
   * [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]. Used in ''select'' and ''group by'' clauses,
-  * so that [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.ByAll ByAll]]
+  * so that [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]/[[net.noresttherein.oldsql.sql.By By]]
   * can be homomorphic with [[net.noresttherein.oldsql.sql.Join Join]]s and to allow
-  * [[net.noresttherein.oldsql.sql.SelectSQL SelectSQL]] expressions to be used as
+  * [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] expressions to be used as
   * [[net.noresttherein.oldsql.schema.Relation Relation]]s in the ''from'' clauses of other SQL selects.
   */
-trait ExpressionColumnMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope, X, O]
+trait ExpressionColumnMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 	extends ExpressionMapping[F, S, X, O] with ColumnMapping[X, O]
 {
 	override val expr :ColumnSQL[F, S, X]
@@ -407,7 +408,7 @@ trait ExpressionColumnMapping[-F <: FromClause, -S >: LocalScope <: GlobalScope,
 
 object ExpressionColumnMapping {
 
-	def apply[F <: FromClause, S >: LocalScope <: GlobalScope, X, O]
+	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X, O]
 	         (column :ColumnSQL[F, S, X], alias :String = null) :ExpressionColumnMapping[F, S, X, O] =
 		new ExpressionColumnMapping[F, S, X, O] with StableColumn[X, O] {
 			override val expr = column
@@ -460,7 +461,7 @@ object ExpressionColumnMapping {
 
 
 
-	type Expression[F <: FromClause, S >: LocalScope <: GlobalScope, X] = {
+	type Expression[F <: RowProduct, S >: LocalScope <: GlobalScope, X] = {
 		type Projection[O] = ExpressionColumnMapping[F, S, X, O]
 	}
 

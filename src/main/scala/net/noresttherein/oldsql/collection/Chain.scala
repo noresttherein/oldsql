@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.morsels.LUB
 /** A list-like collection of fixed length, with the types of all its elements encoded in its type.
   * This is a very limited variant of ''shapeless'' `HList`, but which is extended from the end, rather than the front,
   * in opposition to traditional immutable lists. This stems from the intent of using it in conjunction with
-  * `FromClause`, with `AndFrom` being likewise left-associative, which makes the elements of both appear in the exact same
+  * `RowProduct`, with `AndFrom` being likewise left-associative, which makes the elements of both appear in the exact same
   * order, rather than reversed as an ease-of-life feature.
   *
   * Chain instances are, like lists, typically built by extending the empty chain `@~`:

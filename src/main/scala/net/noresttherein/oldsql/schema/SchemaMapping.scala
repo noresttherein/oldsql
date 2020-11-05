@@ -301,7 +301,8 @@ object SchemaMapping {
 
 
 	//implicit 'override' from |-| which will work for SchemaMapping subclasses as normal.
-	implicit def genericSchemaMappingProjection[M[Q] <: SchemaMapping[S, _, _, Q], S, O] :ProjectionDef[M[O], M, S] =
+	implicit def genericSchemaMappingProjection[M[Q] <: SchemaMapping[S, _, _, Q], S, O]
+	             (implicit types :M[O] <:< SchemaMapping[S, _, _, O]) :ProjectionDef[M[O], M, S] =
 		OriginProjection.isomorphism[M, S, O]
 
 
@@ -315,7 +316,7 @@ object SchemaMapping {
 	  * the origins of individual components.
 	  *
 	  * Every instance of this must be also an instance of `SchemaMapping` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector.withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `SchemaMapping[S, V, C, O]`. Subtypes exist for various specialized `Mapping` types
 	  * which may occur as components in a `MappingSchema`.
 	  * @tparam S the `Subject` type of this mapping.
@@ -381,7 +382,7 @@ object SchemaMapping {
 
 	object |-| {
 		implicit def schemaMappingProjection[S, V <: Chain, C <: Chain]
-				:OriginProjection[|-|[S, V, C], S] { type WithOrigin[O] = SchemaMapping[S, V, C, O] } =
+				:ExactProjection[|-|[S, V, C]] { type WithOrigin[O] = SchemaMapping[S, V, C, O] } =
 			OriginProjection.projectAs[|-|[S, V, C], ({ type M[O] = SchemaMapping[S, V, C, O] })#M]
 	}
 
@@ -398,7 +399,7 @@ object SchemaMapping {
 	  * the origins of individual components.
 	  *
 	  * Every instance of this must be also an instance of `FlatSchemaMapping` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector.withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `FlatSchemaMapping[S, V, C, O]`.
 	  * @tparam S the `Subject` type of this mapping.
 	  * @tparam V the value chain, listing the value types of all components. In the default implementation,
@@ -418,7 +419,7 @@ object SchemaMapping {
 
 	object ||| {
 		implicit def flatSchemaMappingProjection[S, V <: Chain, C <: Chain]
-				:ExactProjection[|||[S, V, C]] { type  WithOrigin[O] = FlatSchemaMapping[S, V, C, O] } =
+				:ExactProjection[|||[S, V, C]] { type WithOrigin[O] = FlatSchemaMapping[S, V, C, O] } =
 			OriginProjection.projectAs[|||[S, V, C], ({ type M[O] = FlatSchemaMapping[S, V, C, O] })#M]
 	}
 
@@ -435,7 +436,7 @@ object SchemaMapping {
 	  * the origins of individual components.
 	  *
 	  * Every instance of this type must be also an instance of `SchemaColumn` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector.withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `SchemaColumn[S, O]`. Subtypes exist for various specialized `Mapping` types
 	  * which may occur as components in a `MappingSchema`.
 	  * @tparam S the `Subject` type of this mapping.
@@ -467,7 +468,7 @@ object SchemaMapping {
 	  * by providing the label `L`.
 	  *
 	  * Every instance of this must be also an instance of `FlatSchemaMapping` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector.withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `FlatSchemaMapping[S, V, C, O]`.
 	  * @tparam L a unique string literal identifying this component within the containing schema.
 	  * @tparam S the `Subject` type of this mapping.
@@ -510,7 +511,7 @@ object SchemaMapping {
 	  *
 	  * Every instance of this must be also an instance of `LabeledFlatSchemaMapping` and, as an exception,
 	  * origin projection of this type
-	  * (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]]`[O]`
+	  * (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector#withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `LabeledFlatSchemaMapping[S, V, C, O]`.
 	  * @tparam L a unique string literal identifying this component within the containing schema.
 	  * @tparam S the `Subject` type of this mapping.
@@ -549,7 +550,7 @@ object SchemaMapping {
 	  * by providing the label `L`.
 	  *
 	  * Every instance of this must be also an instance of `FlatSchemaMapping` and, as an exception, origin projection
-	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection#withOrigin withOrigin]]`[O]`
+	  * of this type (with the [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector#withOrigin withOrigin]]`[O]`
 	  * extension method) returns a `FlatSchemaMapping[S, V, C, O]`.
 	  * @tparam L a unique string literal identifying this component within the containing schema.
 	  * @tparam S the `Subject` type of this mapping.
@@ -622,7 +623,7 @@ object SchemaMapping {
 	object FlatSchemaMapping {
 		//implicit 'override' from ||| which will work for SchemaMapping subclasses as normal.
 		implicit def genericFlatSchemaMappingProjection[M[Q] <: FlatSchemaMapping[S, _, _, Q], S, O]
-				:ProjectionDef[M[O], M, S] =
+		             (implicit types :M[O] <:< FlatSchemaMapping[S, _, _, O]) :ProjectionDef[M[O], M, S] =
 			OriginProjection.isomorphism[M, S, O]
 
 
@@ -680,7 +681,8 @@ object SchemaMapping {
 			new ColumnSupport[S, O](name, buffs) with SchemaColumn[S, O] with StableColumn[S, O]
 
 		//implicit 'override' from || which will work for SchemaMapping subclasses as normal.
-		implicit def genericSchemaColumnProjection[M[Q] <: SchemaColumn[S, Q], S, O] :ProjectionDef[M[O], M, S] =
+		implicit def genericSchemaColumnProjection[M[Q] <: SchemaColumn[S, Q], S, O]
+		             (implicit types :M[O] <:< SchemaColumn[S, O]) :ProjectionDef[M[O], M, S] =
 			OriginProjection.isomorphism[M, S, O]
 	}
 
@@ -704,7 +706,7 @@ object SchemaMapping {
 
 		//implicit 'override' from @|-| which will work for SchemaMapping subclasses as normal.
 		implicit def genericLabeledSchemaMappingProjection[M[Q] <: LabeledSchemaMapping[_, S, _, _, Q], S, O]
-				:ProjectionDef[M[O], M, S] =
+		             (implicit types :M[O] <:< LabeledSchemaMapping[_, S, _, _, O]) :ProjectionDef[M[O], M, S] =
 			OriginProjection.isomorphism[M, S, O]
 
 
@@ -751,7 +753,7 @@ object SchemaMapping {
 
 		//implicit 'override' from @||| which will work for SchemaMapping subclasses as normal.
 		implicit def genericLabeledFlatSchemaMappingProjection[M[Q] <: LabeledFlatSchemaMapping[_, S, _, _, Q], S, O]
-				:ProjectionDef[M[O], M, S] =
+		             (implicit types :M[O] <:< LabeledFlatSchemaMapping[_, S, _, _, O]) :ProjectionDef[M[O], M, S] =
 			OriginProjection.isomorphism[M, S, O]
 
 	}
@@ -793,7 +795,7 @@ object SchemaMapping {
 
 		//implicit 'override' from @|| which will work for SchemaMapping subclasses as normal.
 		implicit def genericLabeledSchemaColumnProjection[M[Q] <: LabeledSchemaColumn[_, S, Q], S, O]
-				:ProjectionDef[M[O], M, S] =
+		             (implicit types :M[O] <:< LabeledSchemaColumn[_, S, O]) :ProjectionDef[M[O], M, S] =
 			OriginProjection.isomorphism[M, S, O]
 
 	}

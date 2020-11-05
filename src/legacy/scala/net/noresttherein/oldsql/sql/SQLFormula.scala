@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.{ColumnReadForm, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.Component
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, RowValues, SelectFrom, SubselectOf, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, RowValues, SelectFrom, SubselectOf, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.sql.AutoConversionFormula.{CaseConversion, ConversionMatcher, OrNull}
@@ -17,8 +17,9 @@ import net.noresttherein.oldsql.sql.SQLMapper.{FormulaResult, SQLRewriter}
 import net.noresttherein.oldsql.sql.SQLTerm.{BoundParameter, CaseTerm, False, SQLLiteral, SQLParameter, TermMatcher, True}
 import net.noresttherein.oldsql.sql.SQLTuple.{CaseTuple, SeqFormula, TupleMatcher}
 import net.noresttherein.oldsql.slang._
-
 import scala.reflect.ClassTag
+
+import net.noresttherein.oldsql.sql.ast.SQLTerm
 
 
 
@@ -29,7 +30,7 @@ import scala.reflect.ClassTag
   * @tparam F row source - list of tables which provide columns used in this expression
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
   */
-trait SQLFormula[-F <: FromClause, +V] { //todo: add a type parameter which is Bound || Unbound (flag if it contains any abstract/unbound parts)
+trait SQLFormula[-F <: RowProduct, +V] { //todo: add a type parameter which is Bound || Unbound (flag if it contains any abstract/unbound parts)
 	import SQLTerm.TermFormulas
 
 	def readForm :SQLReadForm[V]
@@ -81,9 +82,9 @@ trait SQLFormula[-F <: FromClause, +V] { //todo: add a type parameter which is B
 
 
 
-	def collect[X](fun :PartialFunction[SQLFormula[_ <: FromClause, _], X]) :Seq[X] = reverseCollect(fun, Nil).reverse
+	def collect[X](fun :PartialFunction[SQLFormula[_ <: RowProduct, _], X]) :Seq[X] = reverseCollect(fun, Nil).reverse
 
-	protected def reverseCollect[X](fun :PartialFunction[SQLFormula[_ <: FromClause, _], X], acc :List[X]) :List[X] =
+	protected def reverseCollect[X](fun :PartialFunction[SQLFormula[_ <: RowProduct, _], X], acc :List[X]) :List[X] =
 		(fun andThen Some.apply).applyOrElse(this, (_:Any) => None) ++: acc
 
 
@@ -98,11 +99,11 @@ trait SQLFormula[-F <: FromClause, +V] { //todo: add a type parameter which is B
 
 	/** Treat this expression as an expression of a source extending (i.e. containing additional tables) the source `F`
 	  * this expression is grounded in. */
-	def asPartOf[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :SQLFormula[S, V] = ev(this)
+	def asPartOf[U <: F, S <: RowProduct](implicit ev :U ExtendedBy S) :SQLFormula[S, V] = ev(this)
 
 	/** Treat this expression as an expression of a source extending (i.e. containing additional tables) the source `F`
 	  * this expression is grounded in */
-	def asPartOf[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] = ev(this)
+	def asPartOf[U <: F, S <: RowProduct](target :S)(implicit ev :U ExtendedBy S) :SQLFormula[S, V] = ev(this)
 
 	/** If this expression is a ground formula - not dependent on `F` or free parameters -
 	  * which value can be determined at this point, return its value. */
@@ -150,29 +151,29 @@ object SQLFormula {
 	type Formula[T] = SQLFormula[Nothing, T]
 
 	/** Any SQL expression of `Boolean` value. */
-	type BooleanFormula[-F <: FromClause] = SQLFormula[F, Boolean]
+	type BooleanFormula[-F <: RowProduct] = SQLFormula[F, Boolean]
 
 
 
 
 
 
-	trait ColumnFormula[-F <: FromClause, +V] extends SQLFormula[F, V] {
+	trait ColumnFormula[-F <: RowProduct, +V] extends SQLFormula[F, V] {
 		override def readForm :ColumnReadForm[V]
 
 		override def opt :ColumnFormula[F, Option[V]] = OrNull(this)
 
-		override def asPartOf[U <: F, S <: FromClause](implicit ev :U ExtendedBy S) :ColumnFormula[S, V] =
+		override def asPartOf[U <: F, S <: RowProduct](implicit ev :U ExtendedBy S) :ColumnFormula[S, V] =
 			ev(this)
 
-		override def asPartOf[U <: F, S <: FromClause](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V] =
+		override def asPartOf[U <: F, S <: RowProduct](target :S)(implicit ev :U ExtendedBy S) :ColumnFormula[S, V] =
 			ev(this)
 	}
 
 
 
 
-	trait CompositeFormula[-F <: FromClause, +T] extends SQLFormula[F, T] {
+	trait CompositeFormula[-F <: RowProduct, +T] extends SQLFormula[F, T] {
 		protected def inOrder :Seq[SQLFormula[F, _]] = parts
 		protected def parts :Seq[SQLFormula[F, _]]
 
@@ -180,12 +181,12 @@ object SQLFormula {
 		override def isGroundedIn(tables: Iterable[TableFormula[_, _, _, _]]): Boolean =
 			parts.forall(_.isGroundedIn(tables))
 
-		override protected def reverseCollect[X](fun: PartialFunction[SQLFormula[_ <: FromClause, _], X], acc: List[X]): List[X] =
+		override protected def reverseCollect[X](fun: PartialFunction[SQLFormula[_ <: RowProduct, _], X], acc: List[X]): List[X] =
 			(super.reverseCollect(fun, acc) /: inOrder)((collected, member) => member.reverseCollect(fun, collected))
 
 
 
-		def map[S <: FromClause](mapper :SQLRewriter[F, S]) :SQLFormula[S, T]
+		def map[S <: RowProduct](mapper :SQLRewriter[F, S]) :SQLFormula[S, T]
 
 
 		private[oldsql] override def equivalent(expression: Formula[_]): Boolean = expression match {
@@ -201,12 +202,12 @@ object SQLFormula {
 		}
 
 
-		def contentsEquivalent(other :CompositeFormula[_ <: FromClause, _]) :Boolean =
+		def contentsEquivalent(other :CompositeFormula[_ <: RowProduct, _]) :Boolean =
 			parts.size == other.parts.size &&
 				parts.forall(e => other.parts.exists(_ equivalent e)) &&
 				other.parts.forall(e => parts.exists(_ equivalent e))
 
-		def contentsIsomorphic(other :CompositeFormula[_ <: FromClause, _]) :Boolean =
+		def contentsIsomorphic(other :CompositeFormula[_ <: RowProduct, _]) :Boolean =
 			parts.size == other.parts.size &&
 				((parts zip other.parts) forall { case (left, right) => left isomorphic right })
 
@@ -215,13 +216,13 @@ object SQLFormula {
 
 
 	object CompositeFormula {
-		trait CompositeMatcher[+F <: FromClause, +Y[X]]
+		trait CompositeMatcher[+F <: RowProduct, +Y[X]]
 			extends ConversionMatcher[F, Y] with TupleMatcher[F, Y] with ConditionMatcher[F, Y] with LogicalMatcher[F, Y]
 
-		trait MatchComposite[+F <: FromClause, +Y[X]]
+		trait MatchComposite[+F <: RowProduct, +Y[X]]
 			extends CaseConversion[F, Y] with CaseTuple[F, Y] with CaseCondition[F, Y] with CaseLogical[F, Y]
 
-		trait CaseComposite[+F <: FromClause, +Y[X]] extends CompositeMatcher[F, Y] with MatchComposite[F, Y] {
+		trait CaseComposite[+F <: RowProduct, +Y[X]] extends CompositeMatcher[F, Y] with MatchComposite[F, Y] {
 			def composite[X](f :CompositeFormula[F, X]) :Y[X]
 
 			def conversion[Z, X](f :AutoConversionFormula[F, Z, X]) :Y[X] = composite(f)
@@ -242,7 +243,7 @@ object SQLFormula {
 
 	implicit def implicitTerm[T :SQLForm](value :T) :SQLTerm[T] = SQLLiteral(value)
 
-	implicit def asPartOfExtendingSource[F <: FromClause, FF <: FromClause, T]
+	implicit def asPartOfExtendingSource[F <: RowProduct, FF <: RowProduct, T]
 	(expression :SQLFormula[F, T])(implicit ev :F ExtendedBy FF) :SQLFormula[FF, T] =
 		ev(expression)
 
@@ -304,7 +305,7 @@ object SQLFormula {
 		abstract class Lift[X, Y] {
 			def apply(value :X) :Y
 			def inverse(value :Y) :Option[X] //todo: we need it for SetComponent, but it may fail or lose precision
-			def apply[F <: FromClause](expr :SQLFormula[F, X]) :SQLFormula[F, Y]
+			def apply[F <: RowProduct](expr :SQLFormula[F, X]) :SQLFormula[F, Y]
 		}
 
 
@@ -322,14 +323,14 @@ object SQLFormula {
 
 				override def inverse(value: Z): Option[X] = next.inverse(value).flatMap(prev.inverse)
 
-				override def apply[S <: FromClause](expr: SQLFormula[S, X]): SQLFormula[S, Z] =
+				override def apply[S <: RowProduct](expr: SQLFormula[S, X]): SQLFormula[S, Z] =
 					next(prev(expr))
 			}
 
 			private[this] val ident = new Lift[Any, Any] {
 				override def apply(value: Any): Any = value
 				override def inverse(value: Any): Option[Any] = Some(value)
-				override def apply[S <: FromClause](expr: SQLFormula[S, Any]): SQLFormula[S, Any] = expr
+				override def apply[S <: RowProduct](expr: SQLFormula[S, Any]): SQLFormula[S, Any] = expr
 				override def toString = "_"
 			}
 
@@ -339,7 +340,7 @@ object SQLFormula {
 
 				override def inverse(value: Option[Any]): Option[Any] = value
 
-				override def apply[S <: FromClause](expr: SQLFormula[S, Any]): SQLFormula[S, Option[Any]] = expr.opt
+				override def apply[S <: RowProduct](expr: SQLFormula[S, Any]): SQLFormula[S, Option[Any]] = expr.opt
 				override def toString = "Option[_]"
 			}
 
@@ -349,7 +350,7 @@ object SQLFormula {
 
 				override def inverse(value: Y): Option[X] = value.asSubclassOf[X]
 
-				override def apply[S <: FromClause](expr: SQLFormula[S, X]): SQLFormula[S, Y] = expr.as[Y]
+				override def apply[S <: RowProduct](expr: SQLFormula[S, X]): SQLFormula[S, Y] = expr.as[Y]
 				override def toString = "_<:X"
 			}
 */
@@ -358,7 +359,7 @@ object SQLFormula {
 				override def apply(value: Rows[Any]): Any = value.head
 				override def inverse(value: Any): Option[Rows[Any]] = Some(Rows(value))
 
-				override def apply[S <: FromClause](expr: SQLFormula[S, Rows[Any]]): SQLFormula[S, Any] =
+				override def apply[S <: RowProduct](expr: SQLFormula[S, Rows[Any]]): SQLFormula[S, Any] =
 					expr.asSubclassOf[SelectFormula[S, _, Any]].map(_.single) getOrElse {
 						throw new IllegalArgumentException(s"Can't lift a non-select expression $expr to a single row select formula")
 					}
@@ -373,7 +374,7 @@ object SQLFormula {
 					case _ => None
 				}
 
-				override def apply[S <: FromClause](expr: SQLFormula[S, Rows[Any]]): SQLFormula[S, Seq[Any]] =
+				override def apply[S <: RowProduct](expr: SQLFormula[S, Rows[Any]]): SQLFormula[S, Seq[Any]] =
 					expr.asSubclassOf[SelectFormula[S, _, Any]].map(_.rows) getOrElse {
 						throw new IllegalArgumentException(s"Can't lift a non-select expression $expr to a row seq formula")
 					}
@@ -411,7 +412,7 @@ object SQLFormula {
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.MatchFormula]]
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.CaseFormula]]
  	  */
-	trait FormulaMatcher[+F <: FromClause, +Y[X]] extends SQLMapper[F, Y]
+	trait FormulaMatcher[+F <: RowProduct, +Y[X]] extends SQLMapper[F, Y]
 		with TermMatcher[F, Y] with CompositeMatcher[F, Y] with SelectMatcher[F, Y] with MappingMatcher[F, Y]
 	{
 		override def apply[X](f: SQLFormula[F, X]): Y[X] = f.applyTo(this) //f.extract(this) getOrElse unhandled(f)
@@ -422,14 +423,14 @@ object SQLFormula {
 	  * subclasses: `term`, `composite`, `select`, `mapping`.
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.FormulaMatcher]]
 	  */
-	trait MatchFormula[+F <: FromClause, +Y[X]] //extends FormulaMatcher[F, Y]
+	trait MatchFormula[+F <: RowProduct, +Y[X]] //extends FormulaMatcher[F, Y]
 		extends CaseTerm[F, Y] with CaseComposite[F, Y] with CaseSelect[F, Y] with CaseMapping[F, Y]
 
 	/** A not particularly useful `FormulaMatcher` which delegates all the cases to the single `formula` method
 	  * invoked for every subformula (SQL AST node).
 	  * @see [[net.noresttherein.oldsql.sql.SQLFormula.FormulaMatcher]]
 	  */
-	trait CaseFormula[+F <: FromClause, +Y[X]] extends FormulaMatcher[F, Y] with MatchFormula[F, Y] {
+	trait CaseFormula[+F <: RowProduct, +Y[X]] extends FormulaMatcher[F, Y] with MatchFormula[F, Y] {
 		def formula[X](f :SQLFormula[F, X]) :Y[X]
 
 		override def term[X](f: SQLTerm[X]): Y[X] = formula(f)
@@ -442,7 +443,7 @@ object SQLFormula {
 
 	}
 
-	trait MatchSuper[+F <: FromClause, +Y[X]] extends CaseFormula[F, Y] {
+	trait MatchSuper[+F <: RowProduct, +Y[X]] extends CaseFormula[F, Y] {
 		override def formula[X](f: SQLFormula[F, X]): Y[X] = unhandled(f)
 	}
 

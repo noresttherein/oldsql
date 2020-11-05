@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.sql.FromClause.{RowTables, SelectFrom, SubselectOf}
+import net.noresttherein.oldsql.sql.RowProduct.{RowTables, SelectFrom, SubselectOf}
 
 
 
@@ -8,19 +8,19 @@ import net.noresttherein.oldsql.sql.FromClause.{RowTables, SelectFrom, Subselect
 /** An intermediate representation of an sql select, capturing selected columns together with originating source,
   * which can be used to create an SQLFormula or a statement.
   */
-trait FromSelect[F <: FromClause, H] {
+trait FromSelect[F <: RowProduct, H] {
 	def header :SQLFormula[F, H]
 
 	def from :F
 
-	def asSQL[P <: FromClause, O](implicit subsourceOf :F <:< SubselectOf[P]) :SelectFormula[P, O, H] =
+	def asSQL[P <: RowProduct, O](implicit subsourceOf :F <:< SubselectOf[P]) :SelectFormula[P, O, H] =
 		SelectFormula.subselect[P, SubselectOf[P], O, H](subsourceOf(from), header.asInstanceOf[SQLFormula[SubselectOf[P], H]])
 
-	def asSubselectOf[P <: FromClause, O](source :P, alias :O)(implicit subsourceOf :F <:< SubselectOf[P]) :SelectFormula[P, O, H] =
+	def asSubselectOf[P <: RowProduct, O](source :P, alias :O)(implicit subsourceOf :F <:< SubselectOf[P]) :SelectFormula[P, O, H] =
 		asSQL[P, O]
 
-	def asSelect[O](implicit ev :F <:< SelectFrom) :SelectFormula[FromClause, O, H] =
-		asSQL[FromClause, O](ev)
+	def asSelect[O](implicit ev :F <:< SelectFrom) :SelectFormula[RowProduct, O, H] =
+		asSQL[RowProduct, O](ev)
 
 
 	override def toString = s"select $header from $from"
@@ -31,17 +31,17 @@ trait FromSelect[F <: FromClause, H] {
 
 
 object FromSelect {
-	def apply[F <: FromClause, H](source :F, header :SQLFormula[F, H]) :FromSelect[F, H] =
+	def apply[F <: RowProduct, H](source :F, header :SQLFormula[F, H]) :FromSelect[F, H] =
 		new SimpleSelect[F, H](source, header)
 
-	def apply[F <: FromClause, H](source :F)(header :RowTables[F]=>SQLFormula[F, H]) :FromSelect[F, H] =
+	def apply[F <: RowProduct, H](source :F)(header :RowTables[F]=>SQLFormula[F, H]) :FromSelect[F, H] =
 		new SimpleSelect[F, H](source, header(source.tables))
 
 
-	implicit def asSQL[F <: SubselectOf[P], P <: FromClause, O, H](select :FromSelect[F, H]) :SelectFormula[P, O, H] =
+	implicit def asSQL[F <: SubselectOf[P], P <: RowProduct, O, H](select :FromSelect[F, H]) :SelectFormula[P, O, H] =
 		select.asSQL[P, O]
 
 
 
-	private class SimpleSelect[F <: FromClause, H](val from :F, val header :SQLFormula[F, H]) extends FromSelect[F, H]
+	private class SimpleSelect[F <: RowProduct, H](val from :F, val header :SQLFormula[F, H]) extends FromSelect[F, H]
 }

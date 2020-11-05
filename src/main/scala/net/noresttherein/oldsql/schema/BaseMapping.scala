@@ -6,12 +6,12 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, MappingOriginProjector, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
 
 
 
@@ -191,9 +191,9 @@ object BaseMapping {
 	type AnyOf[S] = M[S] forSome { type M[X] <: BaseMapping[X, _] }
 
 
-
+	//note for the future: there is some problem with projections from mappings with Nothing as the origin type.
 	@inline implicit def baseMappingOriginProjection[M[A] <: BaseMapping[S, A], S, O]
-	                                                (implicit types :Conforms[M[O], M[O], BaseMapping[S, O]])
+	                                                (implicit types :M[O] <:< BaseMapping[S, O])
 			:ProjectionDef[M[O], M, S] =
 		OriginProjection.isomorphism[M, S, O]
 

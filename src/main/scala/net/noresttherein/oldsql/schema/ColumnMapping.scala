@@ -1,24 +1,22 @@
 package net.noresttherein.oldsql.schema
 
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.{schema, OperationType}
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraSelect, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, QueryAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, ColumnAdapterFactoryMethods}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapterFactoryMethods
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.{ColumnSQL, FromClause}
-import net.noresttherein.oldsql.sql.FromClause.{TableCount, TableShift}
-import net.noresttherein.oldsql.sql.MappingSQL.{LooseColumnComponent, LooseComponent}
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ArbitraryProjection
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
+import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn
+import net.noresttherein.oldsql.sql.mechanics.TableCount
 
 
 
@@ -257,15 +255,18 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 sealed abstract class LowPriorityColumnMappingImplicits {
 	//exists for use as the right side of SQLExpression.=== and similar, which will instantiate type F before applying conversion
-	implicit def columnSQL[F <: FromClause, C <: ColumnMapping[_, _], S, O <: FromClause]
+	implicit def columnSQL[F <: RowProduct, C <: ColumnMapping[_, _], S, O <: RowProduct]
 	                      (column :C)
 	                      (implicit subject :C <:< ColumnMapping[S, O], origin :F <:< O,
 	                                offset :TableCount[O, _ <: Numeral],
 	                                projection :OriginProjection[C, S] { type WithOrigin[A] <: ColumnMapping[S, A] })
 			:ColumnSQL[F, GlobalScope, S] =
-		LooseColumnComponent(projection[F](column), offset.offset)
+		LooseColumn(projection[F](column), offset.offset)
 
 }
+
+
+
 
 
 
@@ -288,12 +289,12 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 
 
 
-	implicit def columnComponentSQL[F <: FromClause, C <: ColumnMapping[_, _], S]
+	implicit def columnComponentSQL[F <: RowProduct, C <: ColumnMapping[_, _], S]
 	                               (column :C)
 	                               (implicit subject :C <:< ColumnMapping[S, F], offset :TableCount[F, _ <: Numeral],
 	                                projection :OriginProjection[C, S] { type WithOrigin[O] <: ColumnMapping[S, O] })
-			:LooseColumnComponent[F, projection.WithOrigin, S] =
-		LooseColumnComponent(column)
+			:LooseColumn[F, projection.WithOrigin, S] =
+		LooseColumn(column)
 
 
 

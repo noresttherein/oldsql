@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.AllColumns
 import net.noresttherein.oldsql.schema.Mapping.{Component[_], Component}
-import net.noresttherein.oldsql.sql.FromClause.{ParamSource, RowValues, SelectFrom, SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{ParamSource, RowValues, SelectFrom, SubselectFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CaseFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.sql.SQLTuple.CaseTuple
@@ -18,9 +18,9 @@ import net.noresttherein.oldsql.sql.SelectFormula.{SelectAsRow, SelectAsRows}
 
 
 /** Representation of an SQL select as an SQL formula used in the context of source `F`. If the source is
-  * the abstract `FromClause`, this will be a `FreeSelectFormula` instance - a select independent of any external
+  * the abstract `RowProduct`, this will be a `FreeSelectFormula` instance - a select independent of any external
   * tables or parameters, in which all formulas (''select'' clause, ''where'' clause, etc) can be evaluated
-  * based on the values of the tables in its ''from'' clause. If `F` is not `FromClause`, but contains tables, this is
+  * based on the values of the tables in its ''from'' clause. If `F` is not `RowProduct`, but contains tables, this is
   * a subselect nested inside a select for source `F` - in its header, ''from'' or ''where'' clause. The source for
   * this formula, given by the member type `Source`, is always an extension of `F`, and in fact
   * `Source <: AsSubselectOf[F]`, where `F` is the actual source type parameter given at this instance's creation -
@@ -31,8 +31,8 @@ import net.noresttherein.oldsql.sql.SelectFormula.{SelectAsRow, SelectAsRows}
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the mapped header type representing a single row.
   */
-trait SelectFormula[-F <: FromClause, O, V] extends SQLFormula[F, Rows[V]] with BaseMapping[O, V] {
-	type From <: FromClause
+trait SelectFormula[-F <: RowProduct, O, V] extends SQLFormula[F, Rows[V]] with BaseMapping[O, V] {
+	type From <: RowProduct
 
 	trait SelectedColumn[X] {
 		def name :String
@@ -75,7 +75,7 @@ trait SelectFormula[-F <: FromClause, O, V] extends SQLFormula[F, Rows[V]] with 
 	override def isFree :Boolean = header.isFree
 
 
-	override protected def reverseCollect[X](fun: PartialFunction[SQLFormula[_<:FromClause, _], X], acc: List[X]): List[X] =
+	override protected def reverseCollect[X](fun: PartialFunction[SQLFormula[_<:RowProduct, _], X], acc: List[X]): List[X] =
 		filter.reverseCollect(fun, header.reverseCollect(fun, super.reverseCollect(fun, acc)))
 
 	override def isomorphic(expression: Formula[_]): Boolean = expression match {
@@ -114,45 +114,45 @@ object SelectFormula {
 
 	def apply[F <: SelectFrom, T <: Component[O, E], M <: Component[O, V], O, E, V]
 	         (from :F, header :ComponentFormula[F, T, M, O, E, V]) :SelectMapping[F, M, O, V] =
-		new SelectComponentFormula[FromClause, F, T, M, O, E, V](from, header) with SelectMapping[F, M]
+		new SelectComponentFormula[RowProduct, F, T, M, O, E, V](from, header) with SelectMapping[F, M]
 
 	def apply[F <: SelectFrom, V](from :F, header :SQLFormula[F, V]) :FreeSelectFormula[V] =
 		header match {
 			case comp :ComponentFormula[_, _, _, _, _, _] =>
 				apply(from, comp.asInstanceOf[ComponentFormula[F, Component[Any, Any], Component[Any, V], Any, Any, V]])
 			case _ =>
-				new ArbitrarySelectFormula[FromClause, F, V](from, header) with FreeSelectFormula[V]
+				new ArbitrarySelectFormula[RowProduct, F, V](from, header) with FreeSelectFormula[V]
 		}
 
 
 
-	def subselect[F <: FromClause, S <: SubselectFrom[F], V](parent :F, from :S, header :SQLFormula[S, V]) :SubselectFormula[F, S, V] =
+	def subselect[F <: RowProduct, S <: SubselectFrom[F], V](parent :F, from :S, header :SQLFormula[S, V]) :SubselectFormula[F, S, V] =
 		subselect[F, S, V](from, header)
 
-	def subselect[F <: FromClause, S <: SubselectFrom[F], V](from :S, header :SQLFormula[S, V]) :SubselectFormula[F, S, V] =
+	def subselect[F <: RowProduct, S <: SubselectFrom[F], V](from :S, header :SQLFormula[S, V]) :SubselectFormula[F, S, V] =
 		header.ifSubclass[ComponentFormula[S, Mapping, Mapping[V]]] {
 			comp => subselect[F, S, Mapping[V]](from, comp)
 		} getOrElse
 			new ArbitrarySelectFormula[F, S, V](from, header)
 
-	def subselect[F <: FromClause, S <: SubselectFrom[F], H <: Mapping]
+	def subselect[F <: RowProduct, S <: SubselectFrom[F], H <: Mapping]
 	             (from :S, header :ComponentFormula[S, _ <: Mapping, H]) :SubselectMapping[F, S, H] =
 		new SelectComponentFormula[F, S, H](from, header) with SubselectMapping[F, S, H]
 
-	def subselect[F <: FromClause, S <: SubselectFrom[F], H <: Mapping]
+	def subselect[F <: RowProduct, S <: SubselectFrom[F], H <: Mapping]
 	             (parent :F, from :S, header :ComponentFormula[S, _ <: Mapping, H]) :SubselectMapping[F, S, H] =
 		subselect[F, S, H](from, header)
 
 
 
-	def exists[F <: FromClause, O, H](select :SelectFormula[F, O, H]) :BooleanFormula[F] = select.exists
+	def exists[F <: RowProduct, O, H](select :SelectFormula[F, O, H]) :BooleanFormula[F] = select.exists
 
 
 
 
 
 
-	trait SelectAs[-F <: FromClause, H <: Mapping]
+	trait SelectAs[-F <: RowProduct, H <: Mapping]
 		extends SelectFormula[F, H#Owner, H#Subject] with ShallowProxy[H#Owner, H#Subject]
 	{
 		val schema :H
@@ -174,7 +174,7 @@ object SelectFormula {
 	  * @tparam O marker trait serving as a unique alias for different members of a FROM clause.
 	  * @tparam V the type of the scala value selected by this subselect.
 	  */
-	trait SubselectFormula[-F <: FromClause, S <: SubselectFrom[F], O, V] extends SelectFormula[F, O, V] {
+	trait SubselectFormula[-F <: RowProduct, S <: SubselectFrom[F], O, V] extends SelectFormula[F, O, V] {
 		type From = S
 
 		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Rows[V]] = matcher.subselect(this)
@@ -184,19 +184,19 @@ object SelectFormula {
 	  * i.e. it is not dependent on any outside rows. Such an expression is a valid select statement in opposition to
 	  * subselect expressions.
 	  */
-	trait FreeSelectFormula[O, V] extends SelectFormula[FromClause, O, V] {
-		override def applyTo[Y[+X]](matcher: FormulaMatcher[FromClause, Y]): Y[Rows[V]] = matcher.select(this)
+	trait FreeSelectFormula[O, V] extends SelectFormula[RowProduct, O, V] {
+		override def applyTo[Y[+X]](matcher: FormulaMatcher[RowProduct, Y]): Y[Rows[V]] = matcher.select(this)
 	}
 
-	trait SubselectMapping[-F <: FromClause, S <: SubselectFrom[F], H <: Mapping]
+	trait SubselectMapping[-F <: RowProduct, S <: SubselectFrom[F], H <: Mapping]
 		extends SelectAs[F, H] with SubselectFormula[F, S, H#Owner, H#Subject]
 
 	trait SelectMapping[F <: SelectFrom, H <: Mapping]
-		extends SubselectMapping[FromClause, F, H] with FreeSelectFormula[H#Owner, H#Subject]
+		extends SubselectMapping[RowProduct, F, H] with FreeSelectFormula[H#Owner, H#Subject]
 
 
 
-	private class SelectComponentFormula[-F <: FromClause, S <: SubselectFrom[F], T <: Component[O, E], H <: Component[O, V], O, E, V]
+	private class SelectComponentFormula[-F <: RowProduct, S <: SubselectFrom[F], T <: Component[O, E], H <: Component[O, V], O, E, V]
 	                                    (val from :S, val  header :ComponentFormula[S, T, H, O, E, V])
 		extends SelectAs[F, H] with SubselectFormula[F, S, H#Owner, H#Subject]
 	{
@@ -236,7 +236,7 @@ object SelectFormula {
 	  * of the tables of the underlying source, but values for the whole column formulas. For example, a header formula
 	  * in the form of `(current_date - birth_date, address, (first_name, family_name)) from users` could translate
 	  * into a select formula declaring columns: `('col1', street, zip, city, country, first_name, family_name)`.
-	  * Such columns would be available for any formulas using this mapping in their FromClause and are considered
+	  * Such columns would be available for any formulas using this mapping in their RowProduct and are considered
 	  * 'available header columns'. However, when using this instance as a mapping for assembling the header value,
 	  * we don't have values for individual columns of the users last in the above example, but values for the columns
 	  * declared by this mapping. This means that we need a bit of creative term rewriting to assemble the scala value
@@ -249,7 +249,7 @@ object SelectFormula {
 	  * @tparam S
 	  * @tparam H
 	  */
-	private class ArbitrarySelectFormula[-F <: FromClause, S <: SubselectFrom[F], O, H]
+	private class ArbitrarySelectFormula[-F <: RowProduct, S <: SubselectFrom[F], O, H]
 	                                    (val from :S, val header :SQLFormula[S, H])
 		extends SubselectFormula[F, S, O, H] with LazyMapping[O, H]
 	{ select =>
@@ -364,7 +364,7 @@ object SelectFormula {
 
 
 
-	case class SelectAsRow[-F <: FromClause, H](select :SelectFormula[F, H]) extends AutoConversionFormula[F, Rows[H], H] {
+	case class SelectAsRow[-F <: RowProduct, H](select :SelectFormula[F, H]) extends AutoConversionFormula[F, Rows[H], H] {
 		def expr = select
 
 		override def convert(s: Rows[H]): H = s.head
@@ -374,14 +374,14 @@ object SelectFormula {
 
 		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[H] = matcher.row(this)
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]): AutoConversionFormula[S, Rows[H], H] =
+		override def map[S <: RowProduct](mapper: SQLRewriter[F, S]): AutoConversionFormula[S, Rows[H], H] =
 			mapper(select) match {
 				case sel :SelectFormula[_, _] => SelectAsRow(sel.asInstanceOf[SelectFormula[S, H]])
 				case f => AutoConversionFormula(f)(_.head)
 			}
 	}
 
-	case class SelectAsRows[-F <: FromClause, H](select :SelectFormula[F, H]) extends AutoConversionFormula[F, Rows[H], Seq[H]] {
+	case class SelectAsRows[-F <: RowProduct, H](select :SelectFormula[F, H]) extends AutoConversionFormula[F, Rows[H], Seq[H]] {
 		def expr = select
 
 		override def convert(s: Rows[H]): Seq[H] = s.seq
@@ -392,7 +392,7 @@ object SelectFormula {
 		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Seq[H]] = matcher.rows(this)
 
 
-		override def map[S <: FromClause](mapper: SQLRewriter[F, S]): AutoConversionFormula[S, Rows[H], Seq[H]] =
+		override def map[S <: RowProduct](mapper: SQLRewriter[F, S]): AutoConversionFormula[S, Rows[H], Seq[H]] =
 			mapper(select) match {
 				case sel :SelectFormula[_, _] => SelectAsRows(sel.asInstanceOf[SelectFormula[S, H]])
 				case f => AutoConversionFormula(f)(_.seq)
@@ -405,19 +405,19 @@ object SelectFormula {
 
 
 
-	trait GroundedSelectMatcher[+F <: FromClause, +Y[X]] {
+	trait GroundedSelectMatcher[+F <: RowProduct, +Y[X]] {
 		def select[X](f :FreeSelectFormula[X]) :Y[Rows[X]]
 	}
 
-	trait SubselectMatcher[+F <: FromClause, +Y[X]] {
+	trait SubselectMatcher[+F <: RowProduct, +Y[X]] {
 		def subselect[X](f :SelectFormula[F, X]) :Y[Rows[X]]
 	}
 
-	trait SelectMatcher[+F <: FromClause, +Y[X]] extends GroundedSelectMatcher[F, Y] with SubselectMatcher[F, Y]
+	trait SelectMatcher[+F <: RowProduct, +Y[X]] extends GroundedSelectMatcher[F, Y] with SubselectMatcher[F, Y]
 
-	type MatchSelect[+F <: FromClause, +Y[X]] = SelectMatcher[F, Y]
+	type MatchSelect[+F <: RowProduct, +Y[X]] = SelectMatcher[F, Y]
 
-	trait CaseSelect[+F <: FromClause, +Y[X]] extends MatchSelect[F, Y] {
+	trait CaseSelect[+F <: RowProduct, +Y[X]] extends MatchSelect[F, Y] {
 		def select[X](f :SelectFormula[F, X]) :Y[Rows[X]]
 
 		def subselect[X](f: SelectFormula[F, X]): Y[Rows[X]] = select(f)
@@ -426,21 +426,21 @@ object SelectFormula {
 	}
 
 
-	trait SingleRowMatcher[+F <: FromClause, +Y[X]] {
+	trait SingleRowMatcher[+F <: RowProduct, +Y[X]] {
 		def row[X](f :SelectAsRow[F, X]) :Y[X]
 	}
 
-	trait MultipleRowsMatcher[+F <: FromClause, +Y[X]] {
+	trait MultipleRowsMatcher[+F <: RowProduct, +Y[X]] {
 		def rows[X](f :SelectAsRows[F, X]) :Y[Seq[X]]
 	}
 
-	type MatchRow[+F <: FromClause, +Y[X]] = SingleRowMatcher[F, Y]
+	type MatchRow[+F <: RowProduct, +Y[X]] = SingleRowMatcher[F, Y]
 
-	type CaseRow[+F <: FromClause, +Y[X]] = SingleRowMatcher[F, Y]
+	type CaseRow[+F <: RowProduct, +Y[X]] = SingleRowMatcher[F, Y]
 
-	type MatchRows[+F <: FromClause, +Y[X]] = MultipleRowsMatcher[F, Y]
+	type MatchRows[+F <: RowProduct, +Y[X]] = MultipleRowsMatcher[F, Y]
 
-	type CaseRows[+F <: FromClause, +Y[X]] = MultipleRowsMatcher[F, Y]
+	type CaseRows[+F <: RowProduct, +Y[X]] = MultipleRowsMatcher[F, Y]
 
 
 

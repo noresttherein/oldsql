@@ -1,7 +1,8 @@
-import net.noresttherein.oldsql.schema.Relation
+import net.noresttherein.oldsql.schema.{ColumnMapping, Relation}
 import net.noresttherein.oldsql.schema.bits.FormMapping
-import net.noresttherein.oldsql.sql.{AndFrom, From, FromClause, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, Subselect}
-import net.noresttherein.oldsql.sql.FromClause.As
+import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
+import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, Subselect}
+import net.noresttherein.oldsql.sql.RowProduct.As
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 
 
@@ -13,6 +14,19 @@ import net.noresttherein.oldsql.sql.UnboundParam.FromParam
   * @author Marcin Mościcki
   */
 object playground extends App {
+	def test[T](col :ColumnMapping[T, Any]) =
+		scala.reflect.runtime.universe.reify {
+			val res = col.withOrigin[()]
+			res :ColumnMapping[T, ()]
+			res
+		}.tree
+	val res = col.withOrigin[()]
+	val col = new StandardColumn[Int, Any]("col", Seq())
+	println(test(col))
+	res :ColumnMapping[Int, ()]
+	println(scala.reflect.runtime.universe.reify { col.withOrigin[()]
+	}.tree)
+/*
 	class A[O] extends FormMapping[Int, O]
 	class B[O] extends FormMapping[Int, O]
 	class C[O] extends FormMapping[Int, O]
@@ -30,11 +44,11 @@ object playground extends App {
 	val a = f(-5); val b = f(-4); val c = f(-3); val d = f(-2); val e = f(-1)
 //	val a = f("A"); val b = f("B"); val c = f("C"); val d = f("D"); val e = f("E")
 //	val e = f.of[Int]
-	a :A[FromClause AndFrom A Join B Join C Subselect D Join E]
-	b :B[FromClause AndFrom B Join C Subselect D Join E]
-	c :C[FromClause AndFrom C Subselect D Join E]
-	d :D[FromClause AndFrom D Join E]
-	e :E[FromClause AndFrom E]
+	a :A[RowProduct AndFrom A Join B Join C Subselect D Join E]
+	b :B[RowProduct AndFrom B Join C Subselect D Join E]
+	c :C[RowProduct AndFrom C Subselect D Join E]
+	d :D[RowProduct AndFrom D Join E]
+	e :E[RowProduct AndFrom E]
 
 	//todo: make a method which creates a JoinParam _ As _ in one go.
 	val params = From(A) as "A" param[Int] "p1" as "P1" join B as "B" param[Long] "p2" as "P2" join C as "C" param[String] "p3" as "P3"
@@ -54,12 +68,13 @@ object playground extends App {
 //	val p1 = params ? 0; val p2 = params ? 1; val p3 = params ? 2
 //	val p1 = params ? -3; val p2 = params ? -2; val p3 = params ? -1
 
-	p1 :FromParam[Int, FromClause AndFrom FromParam.Of[Int]#P Join B JoinParam FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
-	p2 :FromParam[Long, FromClause AndFrom FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
-	p3 :FromParam[String, FromClause AndFrom FromParam.Of[String]#P]
+	p1 :FromParam[Int, RowProduct AndFrom FromParam.Of[Int]#P Join B JoinParam FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
+	p2 :FromParam[Long, RowProduct AndFrom FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
+	p3 :FromParam[String, RowProduct AndFrom FromParam.Of[String]#P]
 
 
 	println(scala.reflect.runtime.universe.reify {
 		params.of[Int]
 	}.tree)
+*/
 }

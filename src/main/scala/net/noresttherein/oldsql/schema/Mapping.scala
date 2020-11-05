@@ -5,6 +5,8 @@ import java.sql.{PreparedStatement, ResultSet}
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.ArraySeq
 
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
@@ -17,19 +19,17 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.sql.{FromClause, SQLExpression}
-import net.noresttherein.oldsql.sql.FromClause.TableCount
-import net.noresttherein.oldsql.sql.MappingSQL.LooseComponent
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
+import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent
+import net.noresttherein.oldsql.sql.mechanics.TableCount
 
 
 //implicits
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
-
+import slang._
 
 
 
@@ -148,7 +148,7 @@ trait Mapping {
 	  *
 	  * Casting a `Mapping` to a different `Origin` should be safe. In order to abbreviate the code and provide
 	  * better type safety, direct casting to that effect should be avoided, and instead the implicitly available
-	  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]] method
+	  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector.withOrigin withOrigin]] method
 	  * should be used. It relies on the existence of an implicit
 	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which defines the result type
 	  * of such a cast. If the type inferer can unify a mapping type `X` with some
@@ -252,7 +252,7 @@ trait Mapping {
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin type as this mapping
 	  * and unknown (but determined) `Subject` type.
 	  * as this instance and thus a valid subcomponent type of this mapping.
-	  * @see [[[net.noresttherein.oldsql.schema.Mapping.Column]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Column]]
 	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
 	  */
 	type AnyColumn = Column[_]
@@ -1008,7 +1008,7 @@ trait Mapping {
 
 sealed abstract class LowPriorityMappingImplicits {
 	//exists for use as the right side of SQLExpression.=== and similar, which will instantiate type F before applying conversion
-	implicit def mappingSQL[F <: FromClause, C <: Mapping, S, O <: FromClause] //can't use TableShift as we might be converting a component of a table
+	implicit def mappingSQL[F <: RowProduct, C <: Mapping, S, O <: RowProduct] //can't use TableShift as we might be converting a component of a table
                            (mapping :C)(implicit origin :C <:< MappingAt[O], base :F <:< O,
                                                  offset :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
 			:SQLExpression[F, GlobalScope, S] =
@@ -1045,7 +1045,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-	implicit def componentSQL[F <: FromClause, C <: Mapping, S]//can't use TableShift as we might be converting a component of a table
+	implicit def componentSQL[F <: RowProduct, C <: Mapping, S]//can't use TableShift as we might be converting a component of a table
                              (mapping :C)(implicit origin :C <:< MappingAt[F], offset :TableCount[F, _ <: Numeral],
                                                    projection :OriginProjection[C, S])
 			:LooseComponent[F, projection.WithOrigin, S] =
@@ -1075,14 +1075,14 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-	@inline implicit def MappingOriginProjection[M <: Mapping, S](mapping :M)(implicit types :Conforms[M, _, MappingOf[S]])
-			:MappingOriginProjection[M, S] =
-		new MappingOriginProjection[M, S](mapping)
+	@inline implicit def MappingOriginProjector[M <: Mapping, S](mapping :M)(implicit subject :M <:< MappingOf[S])
+			:MappingOriginProjector[M, S] =
+		new MappingOriginProjector[M, S](mapping)
 
-	/** Adds a `withOrigin[O]()` method to any `Mapping` subtype, which substitutes its `Origin` type to type `O`.
+	/** Adds a `withOrigin[O]` method to any `Mapping` subtype, which substitutes its `Origin` type to type `O`.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.OriginProjection]]
 	  */
-	class MappingOriginProjection[M <: Mapping, S](private val self :M) extends AnyVal {
+	class MappingOriginProjector[M <: Mapping, S](private val self :M) extends AnyVal {
 
 		/** Converts this mapping to one where `type Origin = O`. The result type is determined by the implicit
 		  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]].
@@ -1099,7 +1099,7 @@ object Mapping extends LowPriorityMappingImplicits {
 		/** Upcasts this instance to a type `P[M#Origin] <: RefinedMapping[M#Subject, M#Origin]` such that
 		  * the type constructor `P` substitutes all occurrences of the `Origin` type in `M`'s type signature
 		  * with its type parameter. This is equivalent to simply calling
-		  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjection.withOrigin withOrigin]]`[O]` -
+		  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector.withOrigin withOrigin]]`[O]` -
 		  * a useful alternative when the projection invariant mapping type is required without changing its origin,
 		  * as concrete `Origin` types are typically long.
 		  */
@@ -1351,6 +1351,9 @@ object Mapping extends LowPriorityMappingImplicits {
 				:ExactProjection[M] { type WithOrigin[O] = P[O] } =
 			CastingProjection.asInstanceOf[ExactProjection[M] { type WithOrigin[O] = P[O] }]
 
+		private[oldsql] def define[M <: Mapping, P[O] <: BaseMapping[S, O], S] :ProjectionDef[M, P, S] =
+			CastingProjection.asInstanceOf[ProjectionDef[M, P, S]]
+
 
 		private[this] final val CastingProjection = new ExactProjection[MappingOf[Any]] {
 			override type WithOrigin[O] = BaseMapping[Any, O]
@@ -1361,9 +1364,9 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 	//this is here to have a clear precedence hierarchy with Mapping subtypes declaring their own projections
-	@inline implicit def refinedMappingOriginProjection[S, A]
-			:ExactProjection[RefinedMapping[S, A]] { type WithOrigin[O] = BaseMapping[S, O] } =
-		OriginProjection.projectAs[RefinedMapping[S, A], MappingOf[S]#TypedProjection]
+	@inline implicit def mappingOriginProjection[S]
+			:OriginProjection[MappingOf[S], S] with ExactProjection[MappingOf[S]] { type WithOrigin[O] = BaseMapping[S, O] } =
+		OriginProjection.projectAs[MappingOf[S], MappingOf[S]#TypedProjection]
 
 
 

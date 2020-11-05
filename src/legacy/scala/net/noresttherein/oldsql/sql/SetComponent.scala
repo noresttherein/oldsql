@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.{ComponentValues, Mapping, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.{ForInsert, ForSelect, ForUpdate}
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.SQLWriteForm.ProxyWriteForm
-import net.noresttherein.oldsql.sql.FromClause.{RowSourceParam, TableFormula, WithParam}
+import net.noresttherein.oldsql.sql.RowProduct.{RowSourceParam, TableFormula, WithParam}
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion
 import net.noresttherein.oldsql.sql.SQLFormula.SQLTypePromotion.Lift
@@ -29,14 +29,14 @@ import net.noresttherein.oldsql.sql.SQLTerm.BoundParameter
   * @param lift proof that types of the left and right side are SQL-compatible (like `Option[X]` and `X` or `Long` and `Int`)
   *             providing conversions between them.
   */
-case class SetComponent[-F <: FromClause, T <: Component[O, E], C <: Component[O, L], O, E, L, R, X]
+case class SetComponent[-F <: RowProduct, T <: Component[O, E], C <: Component[O, L], O, E, L, R, X]
 	(path :ComponentPath[T, C, O, E, L], value :SQLFormula[F, R])
 	(implicit val lift :SQLTypePromotion[L, R, X])
 {
 	/** Left side of assignment as an sql formula working on the given last.
 	  * @param table last being updated/inserted to, which contains the component specified by this.path
 	  */
-	def left[S <: FromClause](table :TableFormula[S, T, O, E]) :ComponentFormula[S, T, C, O, E, L] = table \\ path
+	def left[S <: RowProduct](table :TableFormula[S, T, O, E]) :ComponentFormula[S, T, C, O, E, L] = table \\ path
 
 	override def toString = s"$path:=$value"
 }
@@ -54,36 +54,36 @@ case class SetComponent[-F <: FromClause, T <: Component[O, E], C <: Component[O
   * All types and methods declared by this object are considered part of implementation and are subject to change.
   */
 object SetComponent {
-	type InsertComponent[-F <: FromClause, T <: Component[O, E], C <: Component[O, L], O, E, L, R, X] =
+	type InsertComponent[-F <: RowProduct, T <: Component[O, E], C <: Component[O, L], O, E, L, R, X] =
 		SetComponent[F, T, C, O, E, L, R, X]
 
-	type UpdateComponent[-F <: FromClause, T <: Component[O, E], C <: Component[O, L], O, E, L, R, X] =
+	type UpdateComponent[-F <: RowProduct, T <: Component[O, E], C <: Component[O, L], O, E, L, R, X] =
 		SetComponent[F, T, C, O, E, L, R, X]
 
-	type InsertForm[-F <: FromClause, T <: Mapping, P] = SetForm[From[T], F, T, _<:Mapping, P]
+	type InsertForm[-F <: RowProduct, T <: Mapping, P] = SetForm[From[T], F, T, _<:Mapping, P]
 
-	type UpdateForm[-S<:FromClause, T<:Mapping, P] = SetForm[S, S, T, _<:Mapping, P]
+	type UpdateForm[-S<:RowProduct, T<:Mapping, P] = SetForm[S, S, T, _<:Mapping, P]
 
 
-	def apply[F <: FromClause, T <: Component[O, E], C <: Component[O, L], O, E, L, R, U]
+	def apply[F <: RowProduct, T <: Component[O, E], C <: Component[O, L], O, E, L, R, U]
 	         (path :ComponentPath[T, C, O, E, L], value :SQLFormula[F, R])(implicit lift :SQLTypePromotion[L, R, U])
 			:SetComponent[F, T, C, O, E, L, R, U] =
 		new SetComponent(path, value)
 
 /*
 	def apply[T <: Component[O, W], C <: Component[O, V], O, W, V](path :ComponentPath[T, C, O, W, V], value :V)
-			:SetComponent[FromClause, T, C, Option[V], Option[V]] =
+			:SetComponent[RowProduct, T, C, Option[V], Option[V]] =
 		path =: BoundParameter(path(value))((path.end.selectForm && path.end.updateForm.asInstanceOf[SQLWriteForm[C#Subject]]).asOpt)
 
-	def apply[T <: Mapping, C <: Mapping](path :ComponentPath[T, C], values :ComponentValues[T]) :SetComponent[FromClause, T, C, Option[C#Subject], Option[C#Subject]] =
+	def apply[T <: Mapping, C <: Mapping](path :ComponentPath[T, C], values :ComponentValues[T]) :SetComponent[RowProduct, T, C, Option[C#Subject], Option[C#Subject]] =
 		path =: BoundParameter(values.get(path))((path.end.selectForm && path.end.updateForm.asInstanceOf[SQLWriteForm[C#Subject]]).asOpt)
 */
 
 
-	def InsertForms[T<:Mapping, C<:Mapping, RV, V](setter :InsertComponent[FromClause, T, C, RV, V]) :Seq[InsertForm[FromClause, T, Any]] =
+	def InsertForms[T<:Mapping, C<:Mapping, RV, V](setter :InsertComponent[RowProduct, T, C, RV, V]) :Seq[InsertForm[RowProduct, T, Any]] =
 		InsertForms(From(setter.path.start).last, setter, RowSourceParam.NoParams)
 
-	def InsertForms[S<:FromClause, T<:Mapping, C<:Mapping, RV, V, P](
+	def InsertForms[S<:RowProduct, T<:Mapping, C<:Mapping, RV, V, P](
 			table :TableFormula[From[T], T], setter :InsertComponent[S, T, C, RV, V], param :RowSourceParam[S, P]) :Seq[InsertForm[S, T, P]] =
 
 		if (param.grounded(setter.value))
@@ -141,7 +141,7 @@ object SetComponent {
 	  * @tparam P statement parameter which the assigned value may depend on
 	  * @return sequence of setter forms to be used in the set clause, each representing a single assignment (but not necessarily to a single column).
 	  */
-	def UpdateForms[S<:FromClause, T<:Mapping, C<:Mapping, RV, V, P]
+	def UpdateForms[S<:RowProduct, T<:Mapping, C<:Mapping, RV, V, P]
 			(table :TableFormula[S, T], setter :UpdateComponent[S, T, C, RV, V], param :RowSourceParam[S, P]) :Seq[UpdateForm[S, T, P]] =
 
 		if (param.grounded(setter.value))
@@ -164,8 +164,8 @@ object SetComponent {
 
 
 
-	def SetColumnsToValues[L<:FromClause, T<:Mapping, C<:Mapping, V, E](
-		                                                                   table :TableFormula[L, T], setter :SetComponent[FromClause, T, C, V, E], mode :ColumnFilter) :Seq[SetForm[L, FromClause, T, _<:Mapping, Any]] =
+	def SetColumnsToValues[L<:RowProduct, T<:Mapping, C<:Mapping, V, E](
+		                                                                   table :TableFormula[L, T], setter :SetComponent[RowProduct, T, C, V, E], mode :ColumnFilter) :Seq[SetForm[L, RowProduct, T, _<:Mapping, Any]] =
 		SetColumnsToParams(table, setter, RowSourceParam.NoParams, mode)
 
 
@@ -187,7 +187,7 @@ object SetComponent {
 	  * @tparam P parameter type of the statement, most probably present as a ParamMapping[P] in R
 	  * @return a sequence of setter forms, one for each column specified by the mode filter and the component on the left side.
 	  */
-	def SetColumnsToParams[L<:FromClause, R<:FromClause, T<:Mapping, C<:Mapping, V, E, P](
+	def SetColumnsToParams[L<:RowProduct, R<:RowProduct, T<:Mapping, C<:Mapping, V, E, P](
 		                                                                                         table :TableFormula[L, T], setter :SetComponent[R, T, C, V, E], param :RowSourceParam[R, P], mode :ColumnFilter) :Seq[SetForm[L, R, T, _<:Mapping, P]] =
 	{
 		val path = setter.path
@@ -222,7 +222,7 @@ object SetComponent {
 	  * in such cases and thus whenever possible it is better to have a SetForm instance for every column of updated/inserted component.
 	  *
 	  * As the right side will often depend on some kind of a parameter P, present as
-	  * ParamMapping[P] in the FromClause of the right side formula, this form is parameterized with that parameter type.
+	  * ParamMapping[P] in the RowProduct of the right side formula, this form is parameterized with that parameter type.
 	  * Whenever this form is used to set parameters for a statement containing this setter, it evaluates the formula on it's right side
 	  * (which is probably derived from from a right side formula of an originating SetComponent instance)
 	  * based on the value of the parameter P, performing any needed type conversions so that actual write form provided by the component
@@ -234,7 +234,7 @@ object SetComponent {
 	  * @tparam C mapping type of a subcomponent of last T which is being set
 	  * @tparam P parameter type of the statement, most probably present as a ParamMapping[P] in R
 	  */
-	trait SetForm[-L <: FromClause, -R <: FromClause, T <:Mapping, C<:Mapping, -P] extends ProxyWriteForm[P] {
+	trait SetForm[-L <: RowProduct, -R <: RowProduct, T <:Mapping, C<:Mapping, -P] extends ProxyWriteForm[P] {
 
 		/** Left side of the assignment, representing a column/component which value is set.
 		  * Used by update statements to print the left side of an assignment in their set clause.
@@ -288,7 +288,7 @@ object SetComponent {
 	  * @tparam V value type of the sql formula on the right side
 	  * @tparam P parameter type of the statement, most probably present as a ParamMapping[P] in R
 	  */
-	class SetToFormulaForm[-L<:FromClause, -R<:FromClause, T<:Mapping, C<:Mapping, V, -P](
+	class SetToFormulaForm[-L<:RowProduct, -R<:RowProduct, T<:Mapping, C<:Mapping, V, -P](
 			table :TableFormula[L, T], setter :SetComponent[R, T, C, V, _], ParamForm :Unapply[SQLFormula[R, _], SQLWriteForm[P]])
 		extends SetForm[L, R, T, C, P]
 	{
@@ -306,7 +306,7 @@ object SetComponent {
 	}
 
 	object SetToFormulaForm {
-		def apply[L<:FromClause, R<:FromClause, T<:Mapping, C<:Mapping, V, P]
+		def apply[L<:RowProduct, R<:RowProduct, T<:Mapping, C<:Mapping, V, P]
 		(table :TableFormula[L, T], setter :SetComponent[R, T, C, V, _], paramForm :Unapply[SQLFormula[R, _], SQLWriteForm[P]])
 		:SetToFormulaForm[L, R, T, C, V, P] =
 			new SetToFormulaForm(table, setter, paramForm)
@@ -326,7 +326,7 @@ object SetComponent {
 	  * @tparam C mapping type of a column of last T which is being set
 	  * @tparam P parameter type of the statement, most probably present as a ParamMapping[P] in R
 	  */
-	case class SetColumnForm[-L<:FromClause, -R<:FromClause, T<:Mapping, C<:Mapping, P]
+	case class SetColumnForm[-L<:RowProduct, -R<:RowProduct, T<:Mapping, C<:Mapping, P]
 			(left :ComponentFormula[L, T, C], placeholders :RowSourceParam[R, P], pick :P=>Option[C#Subject], mode :ColumnFilter)
 		extends SetForm[L, R, T, C, P]
 	{

@@ -1,20 +1,20 @@
-package net.noresttherein.oldsql.sql
+package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.ChainApplication
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.slang
+import net.noresttherein.oldsql.sql.{ColumnSQL, Dual, ExpressionColumnMapping, ExpressionMapping, FromSome, GroupByClause, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.FromClause.{ExtendedBy, FreeFrom, NonEmptyFrom, PartOf, SubselectOf}
-import net.noresttherein.oldsql.sql.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
-import net.noresttherein.oldsql.sql.ConditionSQL.ExistsSQL
+import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, SubselectOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, LocalScope, LocalSQL}
-import net.noresttherein.oldsql.sql.DiscreteFrom.FromSome
-import net.noresttherein.oldsql.sql.QuerySQL.{ColumnMappingQuery, ColumnQuery, MappingQuery}
+import net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, MappingQuery, Rows}
+import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 //here be implicits
-import slang._
+import net.noresttherein.oldsql.slang._
 
 
 
@@ -22,19 +22,19 @@ import slang._
 
 
 /** Representation of an SQL select as an SQL expression used in the context of source `F`. If the first type argument
-  * is the wildcard `FromClause`, this will be a `FreeSelectSQL` instance - a select independent of any external
+  * is the wildcard `RowProduct`, this will be a `TopSelectSQL` instance - a select independent of any external
   * tables or parameters, in which all formulas (''select'' clause, ''where'' clause, etc) can be evaluated
-  * based on the values of the tables in its ''from'' clause. If `F` is not `FromClause`, but contains tables, this is
+  * based on the values of the tables in its ''from'' clause. If `F` is not `RowProduct`, but contains tables, this is
   * a subselect nested inside a select for source `F` - in its header, ''from'' or ''where'' clause. The source for
   * this expression, given by the member type `From`, is always an extension of `F`. Subclasses should extend the trait
-  * for one of the above cases: [[net.noresttherein.oldsql.sql.SelectSQL.FreeSelectSQL FreeSelectSQL]] or
-  * [[net.noresttherein.oldsql.sql.SelectSQL.SubselectSQL SubselectSQL]], instead of being derived directly
+  * for one of the above cases: [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL TopSelectSQL]] or
+  * [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]], instead of being derived directly
   * from this trait.
   *
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the mapped header type representing a single row.
   */
-sealed trait SelectSQL[-F <: FromClause, V] extends QuerySQL[F, V] {
+sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 
 	override def readForm :SQLReadForm[Rows[V]] = header.readForm.map(Rows(_))
 
@@ -52,7 +52,8 @@ sealed trait SelectSQL[-F <: FromClause, V] extends QuerySQL[F, V] {
 
 	val from :From
 
-	def tables :Seq[RelationSQL.AnyIn[from.Generalized]] = from.innerTableStack
+	//caution: in group by queries this returns the elements of the group by clause, not the actual from clause
+	def tables :Seq[RelationSQL.AnyIn[from.Generalized]] = from.tableStack
 
 	def isSubselect :Boolean = from.isSubselect
 
@@ -68,34 +69,21 @@ sealed trait SelectSQL[-F <: FromClause, V] extends QuerySQL[F, V] {
 
 	def distinct :SelectSQL[F, V]
 
-	def exists :ColumnSQL[F, GlobalScope, Boolean] = ExistsSQL(this)
 
-	def notExists :ColumnSQL[F, GlobalScope, Boolean] = !ExistsSQL(this)
+	override def map[X](f :V => X) :SelectSQL[F, X]
 
-	def single :SQLExpression[F, GlobalScope, V] = to[V]
-
-	def rows :SQLExpression[F, GlobalScope, Seq[V]] = to[Seq[V]]
-
-
-
-	def map[X](f :V => X) :SelectSQL[F, X]
-
-	def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
+	override def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 			:SelectSQL[F, X] =
 		map(applyFun(f))
-
-	protected def applyFun[Fun, C <: Chain, X]
-	                      (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :V => X =
-		{ v => application(f, isChain(v)) }
 
 
 	override def isGlobal = true
 	override def asGlobal :Option[SelectSQL[F, V]] = Some(this)
 
 
-	override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :SelectSQL[E, V]
+	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SelectSQL[E, V]
 
-	override def extend[U <: F, E <: FromClause]
+	override def extend[U <: F, E <: RowProduct]
 	                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :SelectSQL[E, V]
 
 
@@ -157,21 +145,21 @@ object SelectSQL {
 	//todo: parameterized selects
 	//todo: mapping indexed headers
 
-	def apply[F <: FreeFrom, M[A] <: BaseMapping[V, A], V](from :F, header :ComponentSQL[F, M]) :SelectMapping[F, M, V] =
+	def apply[F <: GroundFrom, M[A] <: BaseMapping[V, A], V](from :F, header :ComponentSQL[F, M]) :SelectMapping[F, M, V] =
 		new SelectComponent[F, M, V](from, header, false)
 
-	def apply[F <: FreeFrom, M[A] <: ColumnMapping[V, A], V]
+	def apply[F <: GroundFrom, M[A] <: ColumnMapping[V, A], V]
 	         (from :F, column :ColumnComponentSQL[F, M, V]) :SelectColumnMapping[F, M, V] =
 		new SelectColumnMappingImpl[F, M, V](from, column, false)
 
-	def apply[F <: FreeFrom, V](from :F, header :TupleSQL[F, LocalScope, V]) :FreeSelectSQL[V] =
-		new ArbitraryFreeSelect[F, V](from, header.anchor(from), false)
+	def apply[F <: GroundFrom, V](from :F, header :TupleSQL[F, LocalScope, V]) :TopSelectSQL[V] =
+		new ArbitraryTopSelect[F, V](from, header.anchor(from), false)
 
-	def apply[F <: FreeFrom, X, Y](from :F, header :ConversionSQL[F, LocalScope, X, Y]) :FreeSelectSQL[Y] =
-		new ArbitraryFreeSelect[F, Y](from, header.anchor(from), false)
+	def apply[F <: GroundFrom, X, Y](from :F, header :ConversionSQL[F, LocalScope, X, Y]) :TopSelectSQL[Y] =
+		new ArbitraryTopSelect[F, Y](from, header.anchor(from), false)
 
-	def apply[F <: FreeFrom, V](from :F, header :ColumnSQL[F, LocalScope, V]) :FreeSelectColumn[V] =
-		new ArbitraryFreeSelectColumn(from, header.anchor(from), false)
+	def apply[F <: GroundFrom, V](from :F, header :ColumnSQL[F, LocalScope, V]) :TopSelectColumn[V] =
+		new ArbitraryTopSelectColumn(from, header.anchor(from), false)
 
 
 
@@ -198,11 +186,11 @@ object SelectSQL {
 
 
 
-	type * = SelectSQL[_ <: FromClause, _]
+	type * = SelectSQL[_ <: RowProduct, _]
 
 
 
-	trait SelectColumn[-F <: FromClause, V] extends ColumnQuery[F, V] with SelectSQL[F, V] {
+	trait SelectColumn[-F <: RowProduct, V] extends ColumnQuery[F, V] with SelectSQL[F, V] {
 		override def readForm :ColumnReadForm[Rows[V]] = header.readForm.map(Rows(_))
 
 		override val header :ColumnSQL[From, LocalScope, V]
@@ -223,9 +211,9 @@ object SelectSQL {
 		override def anchor(from :F) :SelectColumn[F, V] = this
 
 
-		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :PartOf[U, E]) :SelectColumn[E, V]
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :PartOf[U, E]) :SelectColumn[E, V]
 
-		override def extend[U <: F, E <: FromClause]
+		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :SelectColumn[E, V]
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
@@ -235,60 +223,60 @@ object SelectSQL {
 
 
 	/** Base trait for SQL select expressions whose header depends solely on the explicit FROM clause of the select,
-	  * i.e. it is not dependent on any outside rows. Such an expression is a valid select statement in opposition to
-	  * subselect expressions.
+	  * i.e. it is not dependent on any outside rows. Such an expression is a valid independent select statement
+	  * in opposition to subselect expressions.
 	  */
-	trait FreeSelectSQL[V] extends SelectSQL[FromClause, V] {
-		override type From <: FreeFrom
+	trait TopSelectSQL[V] extends SelectSQL[RowProduct, V] {
+		override type From <: GroundFrom
 
-		override def distinct :FreeSelectSQL[V]
+		override def distinct :TopSelectSQL[V]
 
-		override def map[X](f :V => X) :FreeSelectSQL[X] =
-			new ArbitraryFreeSelect[From, X](from, header.map(f), isDistinct)
+		override def map[X](f :V => X) :TopSelectSQL[X] =
+			new ArbitraryTopSelect[From, X](from, header.map(f), isDistinct)
 
 		override def map[Fun, C <: Chain, X]
-		                (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :FreeSelectSQL[X] =
+		                (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :TopSelectSQL[X] =
 			map(applyFun(f))
 
 
-		override def basedOn[U <: FromClause, E <: FromClause](base :E)(implicit ext :U PartOf E) :FreeSelectSQL[V] =
+		override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit ext :U PartOf E) :TopSelectSQL[V] =
 			this
 
-		override def extend[U <: FromClause, S <: FromClause]
-		             (base :S)(implicit ev :U ExtendedBy S, global :GlobalScope <:< GlobalScope) :FreeSelectSQL[V] =
+		override def extend[U <: RowProduct, S <: RowProduct]
+		             (base :S)(implicit ev :U ExtendedBy S, global :GlobalScope <:< GlobalScope) :TopSelectSQL[V] =
 			this
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ExpressionMatcher[FromClause, Y]) :Y[GlobalScope, Rows[V]] =
-			matcher.freeSelect(this)
+		                    (matcher :ExpressionMatcher[RowProduct, Y]) :Y[GlobalScope, Rows[V]] =
+			matcher.topSelect(this)
 
 	}
 
 
 
-	trait FreeSelectColumn[V] extends FreeSelectSQL[V] with SelectColumn[FromClause, V] {
-		override def distinct :FreeSelectColumn[V]
+	trait TopSelectColumn[V] extends TopSelectSQL[V] with SelectColumn[RowProduct, V] {
+		override def distinct :TopSelectColumn[V]
 
-		override def map[X](f :V => X) :FreeSelectColumn[X] =
-			new ArbitraryFreeSelectColumn[From, X](from, header.map(f), isDistinct)
+		override def map[X](f :V => X) :TopSelectColumn[X] =
+			new ArbitraryTopSelectColumn[From, X](from, header.map(f), isDistinct)
 
 		override def map[Fun, C <: Chain, X]
 		                (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
-			:FreeSelectColumn[X] =
+			:TopSelectColumn[X] =
 			map(applyFun(f))
 
 
-		override def basedOn[U <: FromClause, E <: FromClause]
-		                    (base :E)(implicit ext :U PartOf E) :FreeSelectColumn[V] = this
+		override def basedOn[U <: RowProduct, E <: RowProduct]
+		                    (base :E)(implicit ext :U PartOf E) :TopSelectColumn[V] = this
 
-		override def extend[U <: FromClause, E <: FromClause]
+		override def extend[U <: RowProduct, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
-				:FreeSelectColumn[V] =
+				:TopSelectColumn[V] =
 			this
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ColumnMatcher[FromClause, Y]) :Y[GlobalScope, Rows[V]] =
-			matcher.freeSelect(this)
+		                    (matcher :ColumnMatcher[RowProduct, Y]) :Y[GlobalScope, Rows[V]] =
+			matcher.topSelect(this)
 	}
 
 
@@ -298,7 +286,7 @@ object SelectSQL {
 	  *           of a `Subselect` join kind.
 	  * @tparam V the type of the scala value selected by this subselect.
 	  */ //consider: relations for subselects
-	trait SubselectSQL[-F <: FromClause, V] extends SelectSQL[F, V] {
+	trait SubselectSQL[-F <: RowProduct, V] extends SelectSQL[F, V] {
 
 		override def distinct :SubselectSQL[F, V]
 
@@ -311,10 +299,10 @@ object SelectSQL {
 			map(applyFun(f))
 
 
-		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :SubselectSQL[E, V] =
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SubselectSQL[E, V] =
 			extend(base)(ext.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
 
-		override def extend[U <: F, E <: FromClause]
+		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit extension :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectSQL[E, V]
 
@@ -326,7 +314,7 @@ object SelectSQL {
 
 
 
-	trait SubselectColumn[-F <: FromClause, V] extends SubselectSQL[F, V] with SelectColumn[F, V] {
+	trait SubselectColumn[-F <: RowProduct, V] extends SubselectSQL[F, V] with SelectColumn[F, V] {
 
 		override def distinct :SubselectColumn[F, V]
 
@@ -341,10 +329,10 @@ object SelectSQL {
 		override def asGlobal :Option[SubselectColumn[F, V]] = Some(this)
 
 
-		override def basedOn[U <: F, E <: FromClause](base :E)(implicit ext :U PartOf E) :SubselectColumn[E, V] =
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SubselectColumn[E, V] =
 			extend(base)(ext.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
 
-		override def extend[U <: F, E <: FromClause]
+		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit extension :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectColumn[E, V]
 
@@ -356,8 +344,8 @@ object SelectSQL {
 
 
 	/** A `SelectSQL` interface exposing the mapping type `H` used as the header. */
-	trait SelectAs[-F <: FromClause, H[A] <: MappingAt[A]]
-		extends MappingQuery[F, H] with SelectSQL[F, H[Any]#Subject]
+	trait SelectAs[-F <: RowProduct, H[A] <: MappingAt[A]]
+		extends MappingQuery[F, H] with SelectSQL[F, H[()]#Subject]
 	{
 		override def distinct :SelectAs[F, H]
 
@@ -369,7 +357,7 @@ object SelectSQL {
 	}
 
 
-	trait SelectColumnAs[-F <: FromClause, H[A] <: ColumnMapping[V, A], V]
+	trait SelectColumnAs[-F <: RowProduct, H[A] <: ColumnMapping[V, A], V]
 		extends ColumnMappingQuery[F, H, V] with SelectAs[F, H] with SelectColumn[F, V]
 	{
 		override def distinct :SelectColumnAs[F, H, V]
@@ -379,47 +367,47 @@ object SelectSQL {
 		override def canEqual(that :Any) :Boolean =
 			that.isInstanceOf[SelectColumnAs[_, M, _] forSome { type M[O] <: ColumnMapping[_, O] }]
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
-			matcher.selectMapping(this)
+//		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+//		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
+//			matcher.selectMapping(this)
 	}
 
 
 
 	//consider: renaming all FreeSelect classes to OuterSelect
-	trait FreeSelectAs[H[A] <: MappingAt[A]] extends FreeSelectSQL[H[Any]#Subject] with SelectAs[FromClause, H] {
-		override def distinct :FreeSelectAs[H]
-		override def asGlobal :Option[FreeSelectAs[H]] = Some(this)
+	trait TopSelectAs[H[A] <: MappingAt[A]] extends TopSelectSQL[H[()]#Subject] with SelectAs[RowProduct, H] {
+		override def distinct :TopSelectAs[H]
+		override def asGlobal :Option[TopSelectAs[H]] = Some(this)
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ExpressionMatcher[FromClause, Y]) :Y[GlobalScope, Rows[H[Any]#Subject]] =
-			matcher.freeSelectMapping(this)
+		                    (matcher :ExpressionMatcher[RowProduct, Y]) :Y[GlobalScope, Rows[H[()]#Subject]] =
+			matcher.topSelectMapping(this)
 	}
 
-	trait FreeSelectColumnAs[H[A] <: ColumnMapping[V, A], V]
-		extends FreeSelectColumn[V] with FreeSelectAs[H] with SelectColumnAs[FromClause, H, V]
+	trait TopSelectColumnAs[H[A] <: ColumnMapping[V, A], V]
+		extends TopSelectColumn[V] with TopSelectAs[H] with SelectColumnAs[RowProduct, H, V]
 	{
-		override def distinct :FreeSelectColumnAs[H, V]
-		override def asGlobal :Option[FreeSelectColumnAs[H, V]] = Some(this)
+		override def distinct :TopSelectColumnAs[H, V]
+		override def asGlobal :Option[TopSelectColumnAs[H, V]] = Some(this)
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ColumnMatcher[FromClause, Y]) :Y[GlobalScope, Rows[V]] =
-			matcher.freeSelectMapping(this)
+		                    (matcher :ColumnMatcher[RowProduct, Y]) :Y[GlobalScope, Rows[V]] =
+			matcher.topSelectMapping(this)
 	}
 
 
-	trait SubselectAs[-F <: FromClause, H[A] <: MappingAt[A]]
-		extends SelectAs[F, H] with SubselectSQL[F, H[Any]#Subject]
+	trait SubselectAs[-F <: RowProduct, H[A] <: MappingAt[A]]
+		extends SelectAs[F, H] with SubselectSQL[F, H[()]#Subject]
 	{
 		override def distinct :SubselectAs[F, H]
 		override def asGlobal :Option[SubselectAs[F, H]] = Some(this)
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[H[Any]#Subject]] =
+		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[H[()]#Subject]] =
 			matcher.subselectMapping(this)
 	}
 
-	trait SubselectColumnAs[-F <: FromClause, H[A] <: ColumnMapping[V, A], V]
+	trait SubselectColumnAs[-F <: RowProduct, H[A] <: ColumnMapping[V, A], V]
 		extends SubselectColumn[F, V] with SubselectAs[F, H] with SelectColumnAs[F, H, V]
 	{
 		override def distinct :SubselectColumnAs[F, H, V]
@@ -433,20 +421,20 @@ object SelectSQL {
 
 
 
-	trait SelectMapping[F <: FreeFrom, H[A] <: BaseMapping[V, A], V] extends FreeSelectAs[H] {
+	trait SelectMapping[F <: GroundFrom, H[A] <: BaseMapping[V, A], V] extends TopSelectAs[H] {
 		override type From = F
 		override def distinct :SelectMapping[F, H, V]
 	}
 
-	trait SelectColumnMapping[F <: FreeFrom, H[A] <: ColumnMapping[V, A], V]
-		extends FreeSelectColumnAs[H, V] with SelectMapping[F, H, V]
+	trait SelectColumnMapping[F <: GroundFrom, H[A] <: ColumnMapping[V, A], V]
+		extends TopSelectColumnAs[H, V] with SelectMapping[F, H, V]
 	{
 		override def distinct :SelectColumnMapping[F, H, V]
 		override def asGlobal :Option[SelectColumnMapping[F, H, V]] = Some(this)
 	}
 
 
-	trait SubselectMapping[-F <: FromClause, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V]
+	trait SubselectMapping[-F <: RowProduct, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V]
 		extends SubselectAs[F, H]
 	{
 		override type From = S
@@ -454,7 +442,7 @@ object SelectSQL {
 		override def asGlobal :Option[SubselectMapping[F, S, H, V]] = Some(this)
 	}
 
-	trait SubselectColumnMapping[-F <: FromClause, S <: SubselectOf[F], H[A] <: ColumnMapping[V, A], V]
+	trait SubselectColumnMapping[-F <: RowProduct, S <: SubselectOf[F], H[A] <: ColumnMapping[V, A], V]
 		extends SubselectColumnAs[F, H, V] with SubselectMapping[F, S, H, V]
 	{
 		override def distinct :SubselectColumnMapping[F, S, H, V]
@@ -466,7 +454,7 @@ object SelectSQL {
 
 
 
-	private abstract class SelectComponentSQL[-F <: FromClause, S <: SubselectOf[F],
+	private abstract class SelectComponentSQL[-F <: RowProduct, S <: SubselectOf[F],
 	                                          H[A] <: BaseMapping[V, A], V]
 	                                         (override val from :S, override val header :ComponentSQL[S, H])
 		extends SelectSQL[F, V] with SelectAs[F, H]
@@ -487,10 +475,10 @@ object SelectSQL {
 
 
 
-	private class SelectComponent[F <: FreeFrom, H[A] <: BaseMapping[V, A], V]
+	private class SelectComponent[F <: GroundFrom, H[A] <: BaseMapping[V, A], V]
 	                             (override val from :F, override val header :ComponentSQL[F, H],
 	                              override val isDistinct :Boolean)
-		extends SelectComponentSQL[FromClause, F, H, V](from, header) with SelectMapping[F, H, V]
+		extends SelectComponentSQL[RowProduct, F, H, V](from, header) with SelectMapping[F, H, V]
 	{
 
 		override def distinct :SelectMapping[F, H, V] =
@@ -499,7 +487,7 @@ object SelectSQL {
 
 
 
-	private class SubselectComponent[-F <: FromClause, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V]
+	private class SubselectComponent[-F <: RowProduct, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V]
 	                                (subselect :S, component :ComponentSQL[S, H], override val isDistinct :Boolean)
 		extends SelectComponentSQL[F, S, H, V](subselect, component)
 		   with SubselectMapping[F, S, H, V]
@@ -507,10 +495,10 @@ object SelectSQL {
 		override def distinct :SubselectMapping[F, S, H, V] =
 			if (isDistinct) this else new SubselectComponent(from, header, true)
 
-		override def extend[U <: F, E <: FromClause]
+		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectSQL[E, V] =
-			from match { //would be safer to refactor this out as a FromClause method
+			from match { //would be safer to refactor this out as a RowProduct method
 				case some :NonEmptyFrom =>
 					type Ext = SubselectOf[E] //pretend this is the actual type S after rebasing to the extension clause G
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
@@ -539,7 +527,7 @@ object SelectSQL {
 
 
 
-	private class SelectColumnMappingImpl[F <: FreeFrom, H[A] <: ColumnMapping[V, A], V]
+	private class SelectColumnMappingImpl[F <: GroundFrom, H[A] <: ColumnMapping[V, A], V]
 	              (clause :F, override val header :ColumnComponentSQL[F, H, V], override val isDistinct :Boolean)
 		extends SelectComponent[F, H, V](clause, header, isDistinct) with SelectColumnMapping[F, H, V]
 	{
@@ -550,7 +538,7 @@ object SelectSQL {
 
 
 	private class SubselectColumnMappingImpl
-	              [-F <: FromClause, S <: SubselectOf[F], H[A] <: ColumnMapping[V, A], V]
+	              [-F <: RowProduct, S <: SubselectOf[F], H[A] <: ColumnMapping[V, A], V]
 	              (override val from :S, override val header :ColumnComponentSQL[S, H, V],
 	               override val isDistinct :Boolean)
 		extends SubselectComponent[F, S, H, V](from, header, isDistinct)
@@ -559,10 +547,10 @@ object SelectSQL {
 		override def distinct :SubselectColumnMapping[F, S, H, V] =
 			if (isDistinct) this else new SubselectColumnMappingImpl(from, header, true)
 
-		override def extend[U <: F, E <: FromClause]
+		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectColumn[E, V] =
-			from match { //would be safer to refactor this out as a FromClause method
+			from match { //would be safer to refactor this out as a RowProduct method
 				case some :NonEmptyFrom => //todo: refactor this together with SubselectComponent; if S <: NonEmptyFrom, than the casting could conceivably by omitted
 					type Ext = SubselectOf[E] //pretend this is the actual type S after rebasing to the extension clause G
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
@@ -583,7 +571,9 @@ object SelectSQL {
 					new SubselectColumnMappingImpl[E, Dual, H, V](empty, adaptedHeader, isDistinct)
 
 				case _ =>
-					throw new UnsupportedOperationException(s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base.")
+					throw new UnsupportedOperationException(
+						s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base."
+					)
 			}
 	}
 
@@ -611,14 +601,14 @@ object SelectSQL {
 	  * of the tables of the underlying source, but values for the whole column formulas. For example, a header expression
 	  * in the form of `(current_date - birth_date, address, (first_name, family_name)) from users` could translate
 	  * into a select expression declaring columns: `('col1', street, zip, city, country, first_name, family_name)`.
-	  * Such columns would be available for any formulas using this mapping in their FromClause and are considered
+	  * Such columns would be available for any formulas using this mapping in their RowProduct and are considered
 	  * 'available header columns'. However, when using this instance as a mapping for assembling the header value,
 	  * we don't have values for individual columns of the users table in the above example, but values for the columns
 	  * declared by this mapping. This means that we need a bit of creative term rewriting to map the scala value
 	  * as it would be evaluated by the original header expression. In particular, in the above example, the address object
 	  * would be reassembled based on the values of individual columns included in the final select.
 	  */
-	private abstract class ArbitrarySelect[-F <: FromClause, S <: SubselectOf[F], V] protected
+	private abstract class ArbitrarySelect[-F <: RowProduct, S <: SubselectOf[F], V] protected
 	                       (override val from :S, protected val mapping :ExpressionMapping[S, LocalScope, V, Any])
 		extends SelectSQL[F, V]
 	{
@@ -646,21 +636,21 @@ object SelectSQL {
 
 
 
-	private class ArbitraryFreeSelect[S <: FreeFrom, V]
+	private class ArbitraryTopSelect[S <: GroundFrom, V]
 	              (override val from :S, override val header :LocalSQL[S, V], override val isDistinct :Boolean)
-		extends ArbitrarySelect[FromClause, S, V](from, header) with FreeSelectSQL[V]
+		extends ArbitrarySelect[RowProduct, S, V](from, header) with TopSelectSQL[V]
 	{
 		override type HeaderMapping[O] = ExpressionMapping[S, LocalScope, V, O]
 
 		protected override def component[O] :HeaderMapping[O] = mapping.withOrigin[O]
 
-		override def distinct :FreeSelectSQL[V] =
-			if (isDistinct) this else new ArbitraryFreeSelect(from, header, true)
+		override def distinct :TopSelectSQL[V] =
+			if (isDistinct) this else new ArbitraryTopSelect(from, header, true)
 	}
 
 
 
-	private class ArbitrarySubselect[-F <: FromClause, S <: SubselectOf[F], V]
+	private class ArbitrarySubselect[-F <: RowProduct, S <: SubselectOf[F], V]
 	                                (subclause :S, select :LocalSQL[S, V], override val isDistinct :Boolean)
 		extends ArbitrarySelect[F, S, V](subclause, select) with SubselectSQL[F, V]
 	{
@@ -671,22 +661,24 @@ object SelectSQL {
 		override def distinct :SubselectSQL[F, V] =
 			if (isDistinct) this else new ArbitrarySubselect(from, header, true)
 
-		override def extend[U <: F, E <: FromClause]
+		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectSQL[E, V] =
-			from match { //would be safer to refactor this out as a FromClause method
+			from match { //would be safer to refactor this out as a RowProduct method
 				case some :NonEmptyFrom =>
-					type Ext = SubselectOf[E] //FromClause { type Implicit = G }
+					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
 					implicit val extension = ext.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
-					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.innerSize)
+					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
 					new ArbitrarySubselect[E, Ext, V](stretched, substitute(header), isDistinct)
 
 				case empty :Dual =>
 					new ArbitrarySubselect[E, Dual, V](empty, header.asInstanceOf[LocalSQL[Dual, V]], isDistinct)
 
 				case _ =>
-					throw new UnsupportedOperationException(s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base.")
+					throw new UnsupportedOperationException(
+						s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base."
+					)
 			}
 
 	}
@@ -696,7 +688,7 @@ object SelectSQL {
 
 
 
-	private abstract class ArbitrarySelectColumn[-F <: FromClause, S <: SubselectOf[F], V]
+	private abstract class ArbitrarySelectColumn[-F <: RowProduct, S <: SubselectOf[F], V]
 	                       (override val from :S, override val mapping :ExpressionColumnMapping[S, LocalScope, V, Any])
 		extends ArbitrarySelect[F, S, V](from, mapping) with SelectColumn[F, V]
 	{
@@ -712,32 +704,32 @@ object SelectSQL {
 
 
 
-	private class ArbitraryFreeSelectColumn[S <: FreeFrom, V]
+	private class ArbitraryTopSelectColumn[S <: GroundFrom, V]
 	              (override val from :S, override val header :ColumnSQL[S, LocalScope, V], override val isDistinct :Boolean)
-		extends ArbitrarySelectColumn[FromClause, S, V](from, header) with FreeSelectColumn[V]
+		extends ArbitrarySelectColumn[RowProduct, S, V](from, header) with TopSelectColumn[V]
 	{
-		override def distinct :FreeSelectColumn[V] =
-			if (isDistinct) this else new ArbitraryFreeSelectColumn(from, header, true)
+		override def distinct :TopSelectColumn[V] =
+			if (isDistinct) this else new ArbitraryTopSelectColumn(from, header, true)
 	}
 
 
 
-	private class ArbitrarySubselectColumn[-F <: FromClause, S <: SubselectOf[F], V]
+	private class ArbitrarySubselectColumn[-F <: RowProduct, S <: SubselectOf[F], V]
 	              (clause :S, override val header :ColumnSQL[S, LocalScope, V], override val isDistinct :Boolean)
 		extends ArbitrarySelectColumn[F, S, V](clause, header) with SubselectColumn[F, V]
 	{
 		override def distinct :SubselectColumn[F, V] =
 			if (isDistinct) this else new ArbitrarySubselectColumn(from, header, true)
 
-		override def extend[U <: F, E <: FromClause]
+		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectColumn[E, V] =
 			from match {
 				case some :FromSome =>
-					type Ext = SubselectOf[E] //FromClause { type Implicit = G }
+					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
 					implicit val extension = ext.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
-					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.innerSize)
+					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
 					new ArbitrarySubselectColumn[E, Ext, V](stretched, substitute(header), isDistinct)
 
 				case empty :Dual =>
@@ -750,55 +742,55 @@ object SelectSQL {
 
 
 
-	trait FreeSelectColumnMappingMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
-		def freeSelectMapping[H[O] <: ColumnMapping[V, O], V](e :FreeSelectColumnAs[H, V]) :Y[GlobalScope, Rows[V]]
+	trait TopSelectColumnMappingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		def topSelectMapping[H[O] <: ColumnMapping[V, O], V](e :TopSelectColumnAs[H, V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	type MatchFreeSelectColumnMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] =
-		FreeSelectColumnMappingMatcher[F, Y]
+	type MatchTopSelectColumnMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
+		TopSelectColumnMappingMatcher[F, Y]
 
-	type CaseFreeSelectColumnMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] =
-		FreeSelectColumnMappingMatcher[F, Y]
+	type CaseTopSelectColumnMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
+		TopSelectColumnMappingMatcher[F, Y]
 
 
 
-	trait FreeSelectMappingMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends FreeSelectColumnMappingMatcher[F, Y]
+	trait TopSelectMappingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends TopSelectColumnMappingMatcher[F, Y]
 	{
-		def freeSelectMapping[M[O] <: MappingAt[O]](e :FreeSelectAs[M]) :Y[GlobalScope, Rows[M[Any]#Subject]]
+		def topSelectMapping[M[O] <: MappingAt[O]](e :TopSelectAs[M]) :Y[GlobalScope, Rows[M[()]#Subject]]
 	}
 
-	trait MatchFreeSelectMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends FreeSelectMappingMatcher[F, Y]
+	trait MatchTopSelectMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends TopSelectMappingMatcher[F, Y]
 	{
-		override def freeSelectMapping[H[O] <: ColumnMapping[V, O], V]
-		                              (e :FreeSelectColumnAs[H, V]) :Y[GlobalScope, Rows[V]] =
-			{ val res = freeSelectMapping(e :FreeSelectAs[H]); res }
+		override def topSelectMapping[H[O] <: ColumnMapping[V, O], V]
+		                             (e :TopSelectColumnAs[H, V]) :Y[GlobalScope, Rows[V]] =
+			{ val res = topSelectMapping(e :TopSelectAs[H]); res }
 	}
 
-	type CaseFreeSelectMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = MatchFreeSelectMapping[F, Y]
+	type CaseTopSelectMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = MatchTopSelectMapping[F, Y]
 
 
 
-	trait SubselectColumnMappingMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+	trait SubselectColumnMappingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 		def subselectMapping[H[O] <: ColumnMapping[V, O], V](e :SubselectColumnAs[F, H, V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	type MatchSubselectColumnMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] =
+	type MatchSubselectColumnMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
 		SubselectColumnMappingMatcher[F, Y]
 
-	type CaseSubselectColumnMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] =
+	type CaseSubselectColumnMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
 		SubselectColumnMappingMatcher[F, Y]
 
 
 
-	trait SubselectMappingMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+	trait SubselectMappingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends SubselectColumnMappingMatcher[F, Y]
 	{
-		def subselectMapping[M[O] <: MappingAt[O]](e :SubselectAs[F, M]) :Y[GlobalScope, Rows[M[Any]#Subject]]
+		def subselectMapping[M[O] <: MappingAt[O]](e :SubselectAs[F, M]) :Y[GlobalScope, Rows[M[()]#Subject]]
 	}
 
-	trait MatchSubselectMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+	trait MatchSubselectMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends SubselectMappingMatcher[F, Y]
 	{
 		override def subselectMapping[H[O] <: ColumnMapping[V, O], V]
@@ -806,24 +798,24 @@ object SelectSQL {
 			{ val res = subselectMapping(e :SubselectAs[F, H]); res }
 	}
 
-	type CaseSubselectMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = MatchSubselectMapping[F, Y]
+	type CaseSubselectMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = MatchSubselectMapping[F, Y]
 
 
 
-	trait SelectColumnMappingMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends FreeSelectColumnMappingMatcher[F, Y] with SubselectColumnMappingMatcher[F, Y]
+	trait SelectColumnMappingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends TopSelectColumnMappingMatcher[F, Y] with SubselectColumnMappingMatcher[F, Y]
 	{
 		def selectMapping[H[O] <: ColumnMapping[V, O], V](e :SelectColumnAs[F, H, V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	type MatchSelectColumnMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] =
+	type MatchSelectColumnMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
 		SelectColumnMappingMatcher[F, Y]
 
-	trait CaseSelectColumnMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+	trait CaseSelectColumnMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends SelectColumnMappingMatcher[F, Y]
 	{
-		override def freeSelectMapping[H[O] <: ColumnMapping[V, O], V]
-		                              (e :FreeSelectColumnAs[H, V]) :Y[GlobalScope, Rows[V]] =
+		override def topSelectMapping[H[O] <: ColumnMapping[V, O], V]
+		                              (e :TopSelectColumnAs[H, V]) :Y[GlobalScope, Rows[V]] =
 			selectMapping(e)
 
 		override def subselectMapping[H[O] <: ColumnMapping[V, O], V]
@@ -833,78 +825,78 @@ object SelectSQL {
 
 
 
-	trait SelectMappingMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends SelectColumnMappingMatcher[F, Y] with FreeSelectMappingMatcher[F, Y] with SubselectMappingMatcher[F, Y]
+	trait SelectMappingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends SelectColumnMappingMatcher[F, Y] with TopSelectMappingMatcher[F, Y] with SubselectMappingMatcher[F, Y]
 	{
-		def selectMapping[H[O] <: MappingAt[O]](e :SelectAs[F, H]) :Y[GlobalScope, Rows[H[Any]#Subject]]
+		def selectMapping[H[O] <: MappingAt[O]](e :SelectAs[F, H]) :Y[GlobalScope, Rows[H[()]#Subject]]
 	}
 
-	trait MatchSelectMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends SelectMappingMatcher[F, Y] with CaseFreeSelectMapping[F, Y] with CaseSubselectMapping[F, Y]
+	trait MatchSelectMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends SelectMappingMatcher[F, Y] with CaseTopSelectMapping[F, Y] with CaseSubselectMapping[F, Y]
 	{
 		override def selectMapping[H[O] <: ColumnMapping[V, O], V](e :SelectColumnAs[F, H, V]) :Y[GlobalScope, Rows[V]] =
 			{ val res = selectMapping(e :SelectAs[F, H]); res }
 	}
 
-	trait CaseSelectMapping[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+	trait CaseSelectMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends MatchSelectMapping[F, Y]
 	{
-		override def subselectMapping[M[O] <: MappingAt[O]](e :SubselectAs[F, M]) :Y[GlobalScope, Rows[M[Any]#Subject]] =
+		override def subselectMapping[M[O] <: MappingAt[O]](e :SubselectAs[F, M]) :Y[GlobalScope, Rows[M[()]#Subject]] =
 			selectMapping(e)
 
-		override def freeSelectMapping[M[O] <: MappingAt[O]](e :FreeSelectAs[M]) :Y[GlobalScope, Rows[M[Any]#Subject]] =
+		override def topSelectMapping[M[O] <: MappingAt[O]](e :TopSelectAs[M]) :Y[GlobalScope, Rows[M[()]#Subject]] =
 			selectMapping(e)
 	}
 
 
 
-	trait FreeSelectColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends FreeSelectColumnMappingMatcher[F, Y]
+	trait TopSelectColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends TopSelectColumnMappingMatcher[F, Y]
 	{
-		def freeSelect[V](e :FreeSelectColumn[V]) :Y[GlobalScope, Rows[V]]
+		def topSelect[V](e :TopSelectColumn[V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	type MatchFreeSelectColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = FreeSelectColumnMatcher[F, Y]
+	type MatchTopSelectColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = TopSelectColumnMatcher[F, Y]
 
-	trait CaseFreeSelectColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends MatchFreeSelectColumn[F, Y]
+	trait CaseTopSelectColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends MatchTopSelectColumn[F, Y]
 	{
-		override def freeSelectMapping[H[O] <: ColumnMapping[V, O], V]
-		                              (e :FreeSelectColumnAs[H, V]) :Y[GlobalScope, Rows[V]] =
-			freeSelect(e)
+		override def topSelectMapping[H[O] <: ColumnMapping[V, O], V]
+		                             (e :TopSelectColumnAs[H, V]) :Y[GlobalScope, Rows[V]] =
+			topSelect(e)
 	}
 
 
 
-	trait FreeSelectMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends FreeSelectMappingMatcher[F, Y] with FreeSelectColumnMatcher[F, Y]
+	trait TopSelectMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends TopSelectMappingMatcher[F, Y] with TopSelectColumnMatcher[F, Y]
 	{
-		def freeSelect[V](e :FreeSelectSQL[V]) :Y[GlobalScope, Rows[V]]
+		def topSelect[V](e :TopSelectSQL[V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	trait MatchFreeSelect[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends FreeSelectMatcher[F, Y] with CaseFreeSelectMapping[F, Y]
+	trait MatchTopSelect[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends TopSelectMatcher[F, Y] with CaseTopSelectMapping[F, Y]
 	{
-		override def freeSelect[V](e :FreeSelectColumn[V]) :Y[GlobalScope, Rows[V]] =
-			freeSelect(e :FreeSelectSQL[V])
+		override def topSelect[V](e :TopSelectColumn[V]) :Y[GlobalScope, Rows[V]] =
+			topSelect(e :TopSelectSQL[V])
 	}
 
-	trait CaseFreeSelect[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchFreeSelect[F, Y] {
-		override def freeSelectMapping[M[O] <: MappingAt[O]](e :FreeSelectAs[M]) :Y[GlobalScope, Rows[M[Any]#Subject]] =
-			freeSelect(e)
+	trait CaseTopSelect[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchTopSelect[F, Y] {
+		override def topSelectMapping[M[O] <: MappingAt[O]](e :TopSelectAs[M]) :Y[GlobalScope, Rows[M[()]#Subject]] =
+			topSelect(e)
 	}
 
 
 
-	trait SubselectColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+	trait SubselectColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends SubselectColumnMappingMatcher[F, Y]
 	{
 		def subselect[V](e :SubselectColumn[F, V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	type MatchSubselectColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] = SubselectColumnMatcher[F, Y]
+	type MatchSubselectColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = SubselectColumnMatcher[F, Y]
 
-	trait CaseSubselectColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+	trait CaseSubselectColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends MatchSubselectColumn[F, Y]
 	{
 		override def subselectMapping[H[O] <: ColumnMapping[V, O], V]
@@ -913,22 +905,22 @@ object SelectSQL {
 	}
 
 
-	trait SelectColumnMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends FreeSelectColumnMatcher[F, Y] with SubselectColumnMatcher[F, Y] with SelectColumnMappingMatcher[F, Y]
+	trait SelectColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends TopSelectColumnMatcher[F, Y] with SubselectColumnMatcher[F, Y] with SelectColumnMappingMatcher[F, Y]
 	{
 		def select[V](e :SelectColumn[F, V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	trait MatchSelectColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends SelectColumnMatcher[F, Y] with CaseFreeSelectColumn[F, Y] with CaseSubselectColumn[F, Y]
+	trait MatchSelectColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends SelectColumnMatcher[F, Y] with CaseTopSelectColumn[F, Y] with CaseSubselectColumn[F, Y]
 	{
 		override def selectMapping[H[O] <: ColumnMapping[V, O], V](e :SelectColumnAs[F, H, V]) :Y[GlobalScope, Rows[V]] =
 			select(e)
 	}
 
-	trait CaseSelectColumn[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchSelectColumn[F, Y] {
+	trait CaseSelectColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchSelectColumn[F, Y] {
 
-		override def freeSelect[V](e :FreeSelectColumn[V]) :Y[GlobalScope, Rows[V]] =
+		override def topSelect[V](e :TopSelectColumn[V]) :Y[GlobalScope, Rows[V]] =
 			select(e :SelectColumn[F, V])
 
 		override def subselect[V](e :SubselectColumn[F, V]) :Y[GlobalScope, Rows[V]] =
@@ -937,46 +929,46 @@ object SelectSQL {
 
 
 
-	trait SubselectMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+	trait SubselectMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends SubselectMappingMatcher[F, Y] with SubselectColumnMatcher[F, Y]
 	{
 		def subselect[V](e :SubselectSQL[F, V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	trait MatchSubselect[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]]
+	trait MatchSubselect[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends SubselectMatcher[F, Y] with CaseSubselectMapping[F, Y]
 	{
 		override def subselect[V](e :SubselectColumn[F, V]) :Y[GlobalScope, Rows[V]] =
 			subselect(e :SubselectSQL[F, V])
 	}
 
-	trait CaseSubselect[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchSubselect[F, Y] {
-		override def subselectMapping[M[O] <: MappingAt[O]](e :SubselectAs[F, M]) :Y[GlobalScope, Rows[M[Any]#Subject]] =
+	trait CaseSubselect[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchSubselect[F, Y] {
+		override def subselectMapping[M[O] <: MappingAt[O]](e :SubselectAs[F, M]) :Y[GlobalScope, Rows[M[()]#Subject]] =
 			subselect(e)
 	}
 
 
 
-	trait SelectMatcher[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends SelectColumnMatcher[F, Y]
-		with FreeSelectMatcher[F, Y] with SubselectMatcher[F, Y] with SelectMappingMatcher[F, Y]
+	trait SelectMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends SelectColumnMatcher[F, Y]
+		with TopSelectMatcher[F, Y] with SubselectMatcher[F, Y] with SelectMappingMatcher[F, Y]
 	{
 		def select[V](e :SelectSQL[F, V]) :Y[GlobalScope, Rows[V]]
 	}
 
-	trait MatchSelect[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends SelectMatcher[F, Y]
-		with MatchSelectMapping[F, Y] with CaseFreeSelect[F, Y] with CaseSubselect[F, Y]
+	trait MatchSelect[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends SelectMatcher[F, Y]
+		with MatchSelectMapping[F, Y] with CaseTopSelect[F, Y] with CaseSubselect[F, Y]
 	{
 		override def select[V](e :SelectColumn[F, V]) :Y[GlobalScope, Rows[V]] =
 			select(e :SelectSQL[F, V])
 
-		override def selectMapping[H[O] <: MappingAt[O]](e :SelectAs[F, H]) :Y[GlobalScope, Rows[H[Any]#Subject]] =
+		override def selectMapping[H[O] <: MappingAt[O]](e :SelectAs[F, H]) :Y[GlobalScope, Rows[H[()]#Subject]] =
 			select(e)
 	}
 
-	trait CaseSelect[+F <: FromClause, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchSelect[F, Y] {
+	trait CaseSelect[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchSelect[F, Y] {
 		def subselect[V](e: SubselectSQL[F, V]): Y[GlobalScope, Rows[V]] = select(e)
 
-		def freeSelect[V](e: FreeSelectSQL[V]): Y[GlobalScope, Rows[V]] = select(e)
+		def topSelect[V](e: TopSelectSQL[V]): Y[GlobalScope, Rows[V]] = select(e)
 	}
 
 

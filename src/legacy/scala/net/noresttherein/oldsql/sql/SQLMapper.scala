@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.sql.SQLFormula.FormulaMatcher
 import scala.reflect.ClassTag
 
 
-trait SQLMapper[+F <: FromClause, +Y[X]] {
+trait SQLMapper[+F <: RowProduct, +Y[X]] {
 	def apply[X](f :SQLFormula[F, X]) :Y[X]
 
 	def unhandled(f :SQLFormula[F, _]) :Nothing =
@@ -18,9 +18,9 @@ trait SQLMapper[+F <: FromClause, +Y[X]] {
 		throw new IllegalArgumentException(s"Can't map expression $f :${f.getClass.getName} using $this - unexpected subclass of ${implicitly[ClassTag[F]].runtimeClass.getName}")
 }
 
-//trait SQLMatcher[+S<:FromClause, +Y[X]] extends SQLMapper[S, Y] with FormulaMatcher[S, Y]
+//trait SQLMatcher[+S<:RowProduct, +Y[X]] extends SQLMapper[S, Y] with FormulaMatcher[S, Y]
 
-//trait SQLMatcher[+S<:FromClause, +Y[X]] extends SQLMapper[S, Y] {
+//trait SQLMatcher[+S<:RowProduct, +Y[X]] extends SQLMapper[S, Y] {
 //	override def apply[X](f: SQLFormula[S, X]): Y[X] = f.map(this)
 //
 //	protected[sql] def matchFormula[X](f: SQLFormula[S, X]): Y[X] //= unhandled(f)
@@ -101,12 +101,12 @@ trait SQLMapper[+F <: FromClause, +Y[X]] {
 
 
 object SQLMapper {
-	type SQLMatcher[+S <: FromClause, +Y[X]] = FormulaMatcher[S, Y]
+	type SQLMatcher[+S <: RowProduct, +Y[X]] = FormulaMatcher[S, Y]
 
 
 	type FixedResult[+Y] = { type T[X] = Y }
 
-	trait SQLReducer[+S <: FromClause, +Y] extends SQLMatcher[S, SQLMapper.FixedResult[Y]#T] {
+	trait SQLReducer[+S <: RowProduct, +Y] extends SQLMatcher[S, SQLMapper.FixedResult[Y]#T] {
 		def apply[X](f :SQLFormula[S, X]) :Y
 	}
 
@@ -115,12 +115,12 @@ object SQLMapper {
 
 	type OptionResult[Y[X]] = { type T[X] = Option[Y[X]] }
 
-	type SQLExtractor[+S <: FromClause, Y[X]] = SQLMatcher[S, OptionResult[Y]#T]
+	type SQLExtractor[+S <: RowProduct, Y[X]] = SQLMatcher[S, OptionResult[Y]#T]
 
 
-	type FormulaResult[S <: FromClause] = { type T[+X] = SQLFormula[S, X] }
+	type FormulaResult[S <: RowProduct] = { type T[+X] = SQLFormula[S, X] }
 
-	type SQLRewriter[+F <: FromClause, T <: FromClause] = SQLMapper[F, FormulaResult[T]#T]
+	type SQLRewriter[+F <: RowProduct, T <: RowProduct] = SQLMapper[F, FormulaResult[T]#T]
 
 
 }

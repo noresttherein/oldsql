@@ -5,18 +5,18 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
-import net.noresttherein.oldsql.sql.FromClause.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromMatrix, PrefixOf}
-import net.noresttherein.oldsql.sql.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.RowProduct.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.SQLTerm.True
-import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 
 
 
 
 
 
-/** A [[net.noresttherein.oldsql.sql.FromClause FromClause]] implementation combining another ''from'' clause `L`
+/** A [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] implementation combining another ''from'' clause `L`
   * and an additional relation with mapping `R`. The relationship between the constituent clause and this clause
   * is undefined; in particular, the relations from the clause `L` may not be a part of this clause.
   * It is a root of a class hierarchy of various SQL joins, subselect clauses and other implementations sharing the same
@@ -29,27 +29,27 @@ import net.noresttherein.oldsql.sql.TupleSQL.ChainTuple
   * The given mapping doesn't have to represent a table at this point - it might be for example a table component
   * to be 'planted' in a particular table at a later point.
   *
-  * @tparam L the left side of this join: a `FromClause` listing all preceding relations.
+  * @tparam L the left side of this join: a `RowProduct` listing all preceding relations.
   * @tparam R the right side of this join: a mapping type constructor for the last relation in this clause, accepting
   *           the `Origin` type as the unspecified parameter.
   * @see [[net.noresttherein.oldsql.sql.Extended]]
   * @see [[net.noresttherein.oldsql.sql.AndFrom]]
   * @see [[net.noresttherein.oldsql.sql.JoinLike]]
-  * @see [[net.noresttherein.oldsql.sql.GroupByAll]]
-  * @see [[net.noresttherein.oldsql.sql.ByAll]]
+  * @see [[net.noresttherein.oldsql.sql.GroupBy]]
+  * @see [[net.noresttherein.oldsql.sql.By]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
   */
-trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
-	extends NonEmptyFrom with NonEmptyFromMatrix[L Compound R, L Compound R]
+trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
+	extends NonEmptyFrom with NonEmptyFromTemplate[L Compound R, L Compound R]
 {
 	thisClause =>
 
 	override type LastMapping[O] = R[O]
-	override type LastTable[F <: FromClause] = JoinedRelation[F, R]
-	override type FromLast >: Generalized <: FromClause Compound R
+	override type LastTable[F <: RowProduct] = JoinedRelation[F, R]
+	override type FromLast >: Generalized <: RowProduct Compound R
 
 
-	/** A `FromClause` constituting a pre-existing joined list of relations - may be empty (`Dual`). */
+	/** A `RowProduct` constituting a pre-existing joined list of relations - may be empty (`Dual`). */
 	val left :L
 
 	//consider: making it public only in JoinLike. The problem is that it would need to be hidden in RelationSQL, too.
@@ -57,14 +57,14 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
 	// a new relation. Some application of common sense in judgement will be needed.
 	/** The last SQL relation in this clause. This is the relation understood in the global sense, as a unique
 	  * database object, rather than an entry in the list of relations in the ''from'' clause -
-	  * for that have a look at [[net.noresttherein.oldsql.sql.FromClause.last last]]. Several specialized
+	  * for that have a look at [[net.noresttherein.oldsql.sql.RowProduct.last last]]. Several specialized
 	  * `Compound` subclasses use dedicated implementations which are ''not'' cross-compatible and can't be
 	  * used as arguments for any 'join' methods, as it will cause an error at the time this clause is processed.
 	  * In these cases, a 'relation' can represent a query parameter
 	  * ([[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]) or a grouping expression
-	  * ([[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]]/[[net.noresttherein.oldsql.sql.ByAll ByAll]])
+	  * ([[net.noresttherein.oldsql.sql.GroupBy GroupBy]]/[[net.noresttherein.oldsql.sql.By By]])
 	  * and is of no use to client code. Additionally, it can possibly serve as a placeholder value,
-	  * with a `FromClause` depending on a relation with `Mapping` for a component not representing any single
+	  * with a `RowProduct` depending on a relation with `Mapping` for a component not representing any single
 	  * database object, but which can be replaced at a later date by 'rooting' it to a table containing
 	  * this type of component. For this reason care should be taken when accessing this property directly,
 	  * that this instance represents an actual join and this method returns a usable value.
@@ -82,8 +82,8 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
 	  * in SQL expressions based on this clause and casting it will result in generating invalid SQL.
 	  * You can however use the method [[net.noresttherein.oldsql.sql.Compound.lastAsIn lastAsIn]] in the following way:
 	  * {{{
-	  *     def secondLast[T1[O] <: MappingAt[O], T2 <: MappingAt[O]](from :FromClause AndFrom T1 AndFrom T2) =
-	  *         from.left.lastAsIn[FromClause AndFrom T1 AndFrom T2]
+	  *     def secondLast[T1[O] <: MappingAt[O], T2 <: MappingAt[O]](from :RowProduct AndFrom T1 AndFrom T2) =
+	  *         from.left.lastAsIn[RowProduct AndFrom T1 AndFrom T2]
 	  * }}}
 	  * The relation is usable in this way in expressions based on clauses containing this instance as a prefix
 	  * (which where created by joining/adding additional `Compound` links to it). Moreover, any two clauses
@@ -100,13 +100,13 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
 	override val last :JoinedRelation[FromLast, R]
 
 
-	override def lastAsIn[E <: FromClause](implicit extension :FromLast PrefixOf E) :JoinedRelation[E, R] =
+	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :JoinedRelation[E, R] =
 		last.asIn[E]
 
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
 	  * condition, as it doesn't include any join conditions defined on the left side of this join.
-	  * @see [[net.noresttherein.oldsql.sql.FromClause.filter]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.filter]]
 	  */ //declared here to have a single equals/hashCode implementation
 	protected def condition :LocalBoolean[Generalized]
 
@@ -116,7 +116,7 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
 		type Implicit <: thisClause.Implicit
-		type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
+		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 	}
 
 	type Dealiased >: Self <: (left.Self Compound R) {
@@ -126,8 +126,8 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Implicit = thisClause.Implicit
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
+		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
+		type Row = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
@@ -139,14 +139,14 @@ trait Compound[+L <: FromClause, R[O] <: MappingAt[O]]
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
+		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
+		type Row = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
 
 	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
-	  * using member types of `FromClause`, as they become proper path types instead of projections.
+	  * using member types of `RowProduct`, as they become proper path types instead of projections.
 	  */
 	protected def narrow :left.type Compound R
 
@@ -192,19 +192,19 @@ object Compound {
 	/** An existential upper bound of all `Compound` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
 	  */
-	type * = Compound[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
+	type * = Compound[_ <: RowProduct, M] forSome { type M[O] <: MappingAt[O] }
 
-	/** A curried type constructor for `Compound` instances, accepting the left `FromClause` type parameter
+	/** A curried type constructor for `Compound` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
-	  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
+	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
 	  */
-	type WithLeft[L <: FromClause] = { type F[R[O] <: MappingAt[O]] = L Compound R }
+	type WithLeft[L <: RowProduct] = { type F[R[O] <: MappingAt[O]] = L Compound R }
 
 	/** A curried type constructor for `Compound` instances, accepting the right mapping type parameter
-	  * and returning a type with a member type `F` accepting the left `FromClause` type.
-	  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
+	  * and returning a type with a member type `F` accepting the left `RowProduct` type.
+	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
 	  */
-	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: FromClause] = L Compound R }
+	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: RowProduct] = L Compound R }
 
 
 
@@ -235,7 +235,7 @@ object Compound {
 	                  "${R}[O] <: ${T}[O] with ${U}. This may be caused by the inferred type ${T} or its subject type S " +
 	                  "occurring before the implicit parameter JoinedRelationSubject[${F}, ${R}, ${T}, ${U}] " +
 	                  "(alias InferSubject[?, ?, ${R}, ${T}, ?]) or in the method's result type.")
-	sealed abstract class JoinedRelationSubject[F[M[O] <: MappingAt[O]] <: FromClause,
+	sealed abstract class JoinedRelationSubject[F[M[O] <: MappingAt[O]] <: RowProduct,
 	                                            R[O] <: MappingAt[O], T[O] <: U[O], +U[O] <: BaseMapping[_, O]]
 		extends (F[T] => F[R])
 	{
@@ -243,16 +243,16 @@ object Compound {
 
 		def apply(join :F[T]) :F[R]
 
-		def cast[E[M[O] <: MappingAt[O]] <: FromClause, S >: LocalScope <: GlobalScope, X]
+		def cast[E[M[O] <: MappingAt[O]] <: RowProduct, S >: LocalScope <: GlobalScope, X]
 		        (e :SQLExpression[E[R], S, X]) :SQLExpression[E[T], S, X]
 
-		def cast[E[M[O] <: MappingAt[O]] <: FromClause, S >: LocalScope <: GlobalScope, X]
+		def cast[E[M[O] <: MappingAt[O]] <: RowProduct, S >: LocalScope <: GlobalScope, X]
 		        (e :ColumnSQL[E[R], S, X]) :ColumnSQL[E[T], S, X]
 
-		def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B, S >: LocalScope <: GlobalScope, X]
+		def apply[L <: RowProduct, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B, S >: LocalScope <: GlobalScope, X]
                  (e :ColumnSQL[L J R, S, X]) :ColumnSQL[L J T, S, X]
 
-		def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B, S >: LocalScope <: GlobalScope, X]
+		def apply[L <: RowProduct, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B, S >: LocalScope <: GlobalScope, X]
 		         (e :SQLExpression[L J R, S, X]) :SQLExpression[L J T, S, X]
 
 		def self :JoinedRelationSubject[F, T, T, U]
@@ -264,22 +264,22 @@ object Compound {
 		import BaseMapping.AnyAt
 
 		private[this] val instance =
-			new JoinedRelationSubject[Compound.WithLeft[FromClause]#F, AnyAt, AnyAt, AnyAt] {
+			new JoinedRelationSubject[Compound.WithLeft[RowProduct]#F, AnyAt, AnyAt, AnyAt] {
 				override def apply(rows :Relation[AnyAt]) = rows
 
-				override def apply(join :FromClause Compound AnyAt) = join
+				override def apply(join :RowProduct Compound AnyAt) = join
 
-				override def cast[F[M[O] <: MappingAt[O]] <: FromClause, S >: LocalScope <: GlobalScope, X]
+				override def cast[F[M[O] <: MappingAt[O]] <: RowProduct, S >: LocalScope <: GlobalScope, X]
 				                 (e :ColumnSQL[F[AnyAt], S, X]) = e
 
-				override def cast[F[M[O] <: MappingAt[O]] <: FromClause, S >: LocalScope <: GlobalScope, X]
+				override def cast[F[M[O] <: MappingAt[O]] <: RowProduct, S >: LocalScope <: GlobalScope, X]
 				                 (e :SQLExpression[F[AnyAt], S, X]) = e
 
-				override def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B,
+				override def apply[L <: RowProduct, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B,
 				                   S >: LocalScope <: GlobalScope, X]
 				                  (e :ColumnSQL[J[L, AnyAt], S, X]) = e
 
-				override def apply[L <: FromClause, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B,
+				override def apply[L <: RowProduct, J[A <: L, B[O] <: MappingAt[O]] <: A Compound B,
 				                   S >: LocalScope <: GlobalScope, X]
 				                  (e :SQLExpression[J[L, AnyAt], S, X]) = e
 
@@ -308,7 +308,7 @@ object Compound {
 		  * used in the construction on the join, and then converted back to a type expressed in terms of the input
 		  * parameters.
 		  */
-		type InferSubject[L <: FromClause, J[+F <: L, M[O] <: MappingAt[O]] <: F Compound M,
+		type InferSubject[L <: RowProduct, J[+F <: L, M[O] <: MappingAt[O]] <: F Compound M,
 		                  R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S] =
 			JoinedRelationSubject[({ type F[M[O] <: MappingAt[O]] = L J M })#F, R, T, MappingOf[S]#TypedProjection]
 
@@ -321,34 +321,34 @@ object Compound {
 
 
 
-/** A [[net.noresttherein.oldsql.sql.FromClause FromClause]] implementation which extends an existing ''from'' clause `L`
+/** A [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] implementation which extends an existing ''from'' clause `L`
   * with a new relation (an SQL table, view, select, or some synthetic placeholder) `R`. All relations
   * from the left side are considered a part of this clause, witnessed by an implicit value of
-  * of `L` [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy ExtendedBy]] `R`.
+  * of `L` [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]] `R`.
   * Thus, all [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]s based on the left side (parameterized
   * with `L`) are convertible to expressions based on this clause.
   *
-  * It is an implementation oriented trait, grouping most common definitions of methods declared in `FromClause`,
+  * It is an implementation oriented trait, grouping most common definitions of methods declared in `RowProduct`,
   * useful only when operating on the most abstract level, as most domain specific functions are available only
   * for more specialized types.
   *
   * @see [[net.noresttherein.oldsql.sql.AndFrom]]
-  * @see [[net.noresttherein.oldsql.sql.ByAll]]
-  * @see [[net.noresttherein.oldsql.sql.FromClause.ExtendedBy]]
+  * @see [[net.noresttherein.oldsql.sql.By]]
+  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
   * @author Marcin Mościcki
   */ //other words :Tack, Include, With
-trait Extended[+L <: FromClause, R[O] <: MappingAt[O]]
-	extends Compound[L, R] with ExtendingClause[L] with NonEmptyFromMatrix[L Extended R, L Extended R]
+trait Extended[+L <: RowProduct, R[O] <: MappingAt[O]]
+	extends Compound[L, R] with ExtendingClause[L] with NonEmptyFromTemplate[L Extended R, L Extended R]
 { thisClause =>
 
-	override type FromLast >: Generalized <: FromClause Extended R
+	override type FromLast >: Generalized <: RowProduct Extended R
 
 	override type Generalized >: Dealiased <: (left.Generalized Extended R) {
 		type FromLast = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
 		type Implicit <: thisClause.Implicit
-		type DefineBase[+I <: FromClause] <: thisClause.DefineBase[I]
+		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 	}
 
 	type Dealiased >: Self <: (left.Self Extended R) {
@@ -358,8 +358,8 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]]
 		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Implicit = thisClause.Implicit
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
+		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
+		type Row = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
@@ -371,21 +371,21 @@ trait Extended[+L <: FromClause, R[O] <: MappingAt[O]]
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
-		type DefineBase[+I <: FromClause] = thisClause.DefineBase[I]
-		type InnerRow = thisClause.InnerRow
+		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
+		type Row = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
 
 	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
-	  * using member types of `FromClause`, as they become proper path types instead of projections.
+	  * using member types of `RowProduct`, as they become proper path types instead of projections.
 	  */
 	protected def narrow :left.type Extended R
 
 
 	override type FullRow = left.FullRow ~ last.Subject
 
-	override def fullRow[E <: FromClause]
+	override def fullRow[E <: RowProduct]
 	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
 		left.fullRow(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
 
@@ -410,19 +410,19 @@ object Extended {
 	/** An existential upper bound of all `Extended` instances that can be used in casting or pattern matching
 	  * without generating compiler warnings about erasure.
 	  */
-	type * = Extended[_ <: FromClause, M] forSome { type M[O] <: MappingAt[O] }
+	type * = Extended[_ <: RowProduct, M] forSome { type M[O] <: MappingAt[O] }
 
-	/** A curried type constructor for `Extended` instances, accepting the left `FromClause` type parameter
+	/** A curried type constructor for `Extended` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
-	  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
+	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
 	  */
-	type WithLeft[L <: FromClause] = { type F[R[O] <: MappingAt[O]] = L Extended R }
+	type WithLeft[L <: RowProduct] = { type F[R[O] <: MappingAt[O]] = L Extended R }
 
 	/** A curried type constructor for `Extended` instances, accepting the right mapping type parameter
-	  * and returning a type with a member type `F` accepting the left `FromClause` type.
-	  * A convenience alias for use wherever a single-argument type constructor for a `FromClause` is required.
+	  * and returning a type with a member type `F` accepting the left `RowProduct` type.
+	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
 	  */
-	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: FromClause] = L Extended R }
+	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: RowProduct] = L Extended R }
 
 
 
@@ -430,18 +430,18 @@ object Extended {
 	  * down the mapping type to the actually required `BaseMapping` (due to some scala bug preventing
 	  * the use of `RefinedMapping` in the `TypedComponentSQL` instead).
 	  */
-	trait AbstractExtended[+L <: FromClause, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] { thisClause =>
+	trait AbstractExtended[+L <: RowProduct, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] { thisClause =>
 
 		override val last :RelationSQL[FromLast, R, S, FromLast]
 
-		override def fullTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def fullTableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
 			last.extend(target) #:: left.fullTableStack(target)(extension.extendFront[left.Generalized, R])
 
 
-		override def innerTableStack[E <: FromClause](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def tableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			last.extend(target) #:: left.innerTableStack(target)(extension.extendFront[left.Generalized, R])
+			last.extend(target) #:: left.tableStack(target)(extension.extendFront[left.Generalized, R])
 	}
 
 
@@ -455,25 +455,25 @@ object Extended {
 	  * composite ''from'' clauses, in particular accessors for the joined relations, depend on any `Extended` type
 	  * to conform to either it, or the `Subselect`, with no provision for other cases. Note that this holds only
 	  * for `Extended` subtypes, and there are other clauses, in particular
-	  * [[net.noresttherein.oldsql.sql.GroupByAll GroupByAll]], which are neither.
+	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]], which are neither.
 	  */
-	trait NonSubselect[+L <: FromClause, R[O] <: MappingAt[O]]
-		extends Extended[L, R] with NonEmptyFromMatrix[L NonSubselect R, L NonSubselect R]
+	trait NonSubselect[+L <: RowProduct, R[O] <: MappingAt[O]]
+		extends Extended[L, R] with NonEmptyFromTemplate[L NonSubselect R, L NonSubselect R]
 	{ thisClause =>
 		override def isSubselectParameterized :Boolean = left.isSubselectParameterized
 
 		override type Implicit = left.Implicit
 		override type Outer = left.Outer
 
-		override type InnerRow = left.InnerRow ~ last.Subject
+		override type Row = left.Row ~ last.Subject
 
-		override def innerRow[E <: FromClause]
-		             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, InnerRow] =
-			left.innerRow(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
+		override def row[E <: RowProduct]
+		             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
+			left.row(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
 
 		override type OuterRow = left.OuterRow
 
-		override def outerRow[E <: FromClause]
+		override def outerRow[E <: RowProduct]
 		             (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, GlobalScope, OuterRow] =
 			left.outerRow(target)
 	}
@@ -486,7 +486,7 @@ object Extended {
 	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
 	                  "Missing implicit ExtendedDecomposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
 	class ExtendedDecomposition[F <: L J R, L <: U, R[O] <: MappingAt[O],
-	                            J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause]
+	                            J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct]
 		extends ClauseDecomposition[F, L, U]
 	{
 		override type E[+A <: U] = A J R
@@ -509,7 +509,7 @@ object Extended {
 	@implicitNotFound("I do not know the generalized Extended type constructor of ${F}.\n" +
 	                  "Missing implicit ExtendedGeneralization[${F}, ${L}, ${R}, ${J}, ${U}].")
 	abstract class ExtendedGeneralization[F <: L J R, L <: U, R[O] <: MappingAt[O],
-	                                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: FromClause]
+	                                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct]
 		extends ExtendedDecomposition[F, L, R, J, U] with ClauseGeneralization[F, L, U]
 	{ self =>
 		override type G[+A >: L <: U] >: A J R <: A Extended R
@@ -526,7 +526,7 @@ object Extended {
 	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
 	                  "Missing implicit ExtendedComposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
 	abstract class ExtendedComposition[F <: L J R, L <: U, R[O] <: M[O],
-	                                   J[+A <: U, B[O] <: M[O]] <: A Extended B, U <: FromClause, M[O] <: MappingAt[O]]
+	                                   J[+A <: U, B[O] <: M[O]] <: A Extended B, U <: RowProduct, M[O] <: MappingAt[O]]
 		extends ExtendedGeneralization[F, L, R, J, U] with ClauseComposition[F, L, U]
 	{ self =>
 		override type G[+A >: L <: U] = A Generalized R
@@ -549,11 +549,11 @@ object Extended {
 	}
 
 
-	implicit def extendedDecomposition[L <: FromClause, R[O] <: MappingAt[O]]
-			:ExtendedDecomposition[L Extended R, L, R, Extended, FromClause] =
-		decomposition.asInstanceOf[ExtendedDecomposition[L Extended R, L, R, Extended, FromClause]]
+	implicit def extendedDecomposition[L <: RowProduct, R[O] <: MappingAt[O]]
+			:ExtendedDecomposition[L Extended R, L, R, Extended, RowProduct] =
+		decomposition.asInstanceOf[ExtendedDecomposition[L Extended R, L, R, Extended, RowProduct]]
 
 	private[this] val decomposition =
-		new ExtendedDecomposition[FromClause Extended MappingAt, FromClause, MappingAt, Extended, FromClause]
+		new ExtendedDecomposition[RowProduct Extended MappingAt, RowProduct, MappingAt, Extended, RowProduct]
 
 }
