@@ -17,7 +17,7 @@ import net.noresttherein.oldsql.sql.ast.AggregateSQL.DefaultAggregateSQL
   * @see [[net.noresttherein.oldsql.sql.AggregateFunction.RepresentativeAggregateFunction]]
   * @see [[net.noresttherein.oldsql.sql.AggregateFunction.FractionalAggregateFunction]]
   */
-trait AggregateFunction {
+trait AggregateFunction extends Serializable {
 	val name :String
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[AggregateFunction]

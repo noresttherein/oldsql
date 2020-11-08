@@ -4,6 +4,7 @@ import scala.annotation.implicitNotFound
 import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.slang
@@ -16,9 +17,10 @@ import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, QueryMatcher, Rows,
 import net.noresttherein.oldsql.sql.ast.QuerySQL.SetOperationSQL.{CaseSetOperation, SetOperationMatcher}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
-import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, ConversionSQL, LogicalSQL, MappingSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
+import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, ConversionSQL, FunctionSQL, LogicalSQL, MappingSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNull}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
+import net.noresttherein.oldsql.sql.ast.FunctionSQL.{CaseFunction, FunctionMatcher}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, MappingMatcher}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, SQLLiteral, SQLNull, SQLParameter, TermMatcher}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
@@ -560,6 +562,9 @@ object SQLExpression  {
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V] =
 			rephrase(SQLScribe.extend(base))
 
+
+		override def isAnchored :Boolean = parts.forall(_.isAnchored)
+
 		/** Method used in the implementation of
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.basedOn basedOn]] and
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.extend extend]].
@@ -568,11 +573,9 @@ object SQLExpression  {
 		  */
 		def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :SQLExpression[E, S, V]
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V] =
-			matcher.composite(this)
+//		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V] =
+//			matcher.composite(this)
 
-
-		override def isAnchored :Boolean = parts.forall(_.isAnchored)
 
 
 		protected override def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] =
@@ -728,14 +731,14 @@ object SQLExpression  {
 		type * = CompositeSQL[_ <: RowProduct, _ >: LocalScope <: GlobalScope, _]
 
 		trait CompositeMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompositeColumnMatcher[F, Y] with ConversionMatcher[F, Y] with SetOperationMatcher[F, Y]
-			   with TupleMatcher[F, Y]
+			extends CompositeColumnMatcher[F, Y] with ConversionMatcher[F, Y] with FunctionMatcher[F, Y]
+			   with SetOperationMatcher[F, Y] with TupleMatcher[F, Y]
 		{
 			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeSQL[F, S, X]) :Y[S, X]
 		}
 
 		trait MatchComposite[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends CompositeMatcher[F, Y]
-			with CaseConversion[F, Y] with CaseSetOperation[F, Y] with CaseTuple[F, Y]
+			with CaseConversion[F, Y] with CaseFunction[F, Y] with CaseSetOperation[F, Y] with CaseTuple[F, Y]
 			with MatchOnlyCompositeColumn[F, Y]
 		{
 			override def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X] =
@@ -756,6 +759,9 @@ object SQLExpression  {
 			override def condition[S >: LocalScope <: GlobalScope](e :ConditionSQL[F, S]) :Y[S, Boolean] = composite(e)
 
 			override def conversion[S >: LocalScope <: GlobalScope, Z, X](e :ConversionSQL[F, S, Z, X]) :Y[S, X] =
+				composite(e)
+
+			override def function[S >: LocalScope <: GlobalScope, X <: Chain, Z](e :FunctionSQL[F, S, X, Z]) :Y[S, Z] =
 				composite(e)
 
 			override def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean] = composite(e)

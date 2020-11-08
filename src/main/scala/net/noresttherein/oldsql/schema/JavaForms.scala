@@ -26,7 +26,7 @@ trait JavaForms
   * scope for all form classes, so, prefer to rely on implicit resolution by using `SQLForm[Xxx]` to access a form
   * for the type `Xxx` instead of explicit references to declarations in this object and others.
   * @author Marcin Mościcki
-  */
+  */ //todo: date time forms
 object JavaForms {
 
 	private[this] implicit val NotNull = NullValue.NotNull

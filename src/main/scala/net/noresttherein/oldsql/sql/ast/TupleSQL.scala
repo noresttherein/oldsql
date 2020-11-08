@@ -153,23 +153,10 @@ object TupleSQL {
 
 	object ChainTuple {
 
-		trait ChainMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
-			def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X]
-		}
+		def apply() :ChainTuple[RowProduct, GlobalScope, @~] = EmptyChain
 
-		type CaseChain[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ChainMatcher[F, Y]
-
-		trait MatchChain[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ChainMatcher[F, Y] {
-			def emptyChain :Y[GlobalScope, @~]
-
-			def chainHead[S >: LocalScope <: GlobalScope, I <: Chain, L]
-			             (init :ChainTuple[F, S, I], last :SQLExpression[F, S, L]) :Y[S, I ~ L]
-
-			override def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X] = (e match {
-				case ChainHead(tail, head) => chainHead(tail, head)
-				case _ => emptyChain
-			}).asInstanceOf[Y[S, X]]
-		}
+		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, T](e :SQLExpression[F, S, T]) :ChainTuple[F, S, @~ ~ T] =
+			new ChainHead(EmptyChain, e)
 
 
 
@@ -231,7 +218,30 @@ object TupleSQL {
 
 			override def rephrase[E <: RowProduct](mapper :SQLScribe[RowProduct, E]) :this.type = this
 		}
+
+
+
+		trait ChainMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X]
+		}
+
+		type CaseChain[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ChainMatcher[F, Y]
+
+		trait MatchChain[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ChainMatcher[F, Y] {
+			def emptyChain :Y[GlobalScope, @~]
+
+			def chainHead[S >: LocalScope <: GlobalScope, I <: Chain, L]
+			             (init :ChainTuple[F, S, I], last :SQLExpression[F, S, L]) :Y[S, I ~ L]
+
+			override def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X] = (e match {
+				case ChainHead(tail, head) => chainHead(tail, head)
+				case _ => emptyChain
+			}).asInstanceOf[Y[S, X]]
+		}
+
 	}
+
+
 
 
 
@@ -324,6 +334,22 @@ object TupleSQL {
 
 	object IndexedChainTuple {
 		final val EmptyIndexedChain = ChainTuple.EmptyChain
+
+		def apply() :IndexedChainTuple[RowProduct, GlobalScope, @~] = EmptyIndexedChain
+
+		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label, T]
+		         (e :IndexedColumn[F, S, N, T]) :IndexedChainTuple[F, S, @~ |~ (N :~ T)] =
+			new IndexedChainHead(EmptyChain, e)(new ValueOf(e.alias))
+
+		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label :ValueOf, T]
+		         (e :N :~ ColumnSQL[F, S, T]) :IndexedChainTuple[F, S, @~ |~ (N :~ T)] =
+			new IndexedChainHead(EmptyChain, new IndexedColumn(e.value, valueOf[N]))
+
+		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label, T]
+		         (key :N, value :ColumnSQL[F, S, T]) :IndexedChainTuple[F, S, @~ |~ (N :~ T)] =
+			new IndexedChainHead(EmptyChain, key @: value)(new ValueOf(key))
+
+
 
 		sealed trait IndexedSQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T]
 			extends SQLExpression[F, S, T]

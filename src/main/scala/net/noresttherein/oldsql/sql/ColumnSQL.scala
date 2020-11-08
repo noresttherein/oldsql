@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.sql
 
+import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm}
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
@@ -7,12 +8,14 @@ import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, LogicalSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
+import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, FunctionSQL, LogicalSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateMatcher, CaseAggregate}
 import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.{ArithmeticMatcher, CaseArithmetic}
 import net.noresttherein.oldsql.sql.ast.ConcatSQL.{CaseConcat, ConcatMatcher}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.{CaseCondition, ConditionMatcher, InSQL, LikeSQL}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{CaseColumnConversion, ColumnConversionMatcher, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
+import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumn.{CaseFunctionColumn, FunctionColumnMatcher}
+import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumn
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.{AndSQL, CaseLogical, LogicalMatcher, NotSQL, OrSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{LooseColumn, MappingColumnMatcher, TypedColumnComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn.CaseLooseColumn
@@ -640,8 +643,8 @@ object ColumnSQL {
 
 		trait CompositeColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends AliasedColumnMatcher[F, Y] with ArithmeticMatcher[F, Y] with ConcatMatcher[F, Y]
-			   with ConditionMatcher[F, Y] with ColumnConversionMatcher[F, Y] with LogicalMatcher[F, Y]
-			   with SetColumnOperationMatcher[F, Y]
+			   with ConditionMatcher[F, Y] with ColumnConversionMatcher[F, Y] with FunctionColumnMatcher[F, Y]
+			   with LogicalMatcher[F, Y] with SetColumnOperationMatcher[F, Y]
 		{
 			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X]
 		}
@@ -653,7 +656,8 @@ object ColumnSQL {
 
 
 		trait MatchCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends MatchOnlyCompositeColumn[F, Y] with CaseColumnConversion[F, Y] with CaseSetColumnOperation[F, Y]
+			extends MatchOnlyCompositeColumn[F, Y] with CaseColumnConversion[F, Y] with CaseFunctionColumn[F, Y]
+			   with CaseSetColumnOperation[F, Y]
 
 		trait CaseCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends MatchCompositeColumn[F, Y]
@@ -668,6 +672,9 @@ object ColumnSQL {
 			override def condition[S >: LocalScope <: GlobalScope](e :ConditionSQL[F, S]) :Y[S, Boolean] = composite(e)
 
 			override def conversion[S >: LocalScope <: GlobalScope, Z, X](e :ColumnConversionSQL[F, S, Z, X]) :Y[S, X] =
+				composite(e)
+
+			override def function[S >: LocalScope <: GlobalScope, X <: Chain, Z](e :FunctionColumn[F, S, X, Z]) :Y[S, Z] =
 				composite(e)
 
 			override def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean] = composite(e)
