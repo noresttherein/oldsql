@@ -275,7 +275,7 @@ object DecoratedFrom {
 	  */
 	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
 	                  "and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
-	class DecoratorDecomposition[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
+	class DecoratorDecomposition[-F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
 		extends ClauseDecomposition[F, C, U]
 	{
 		override type E[+A <: U] = D[A]

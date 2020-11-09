@@ -739,7 +739,7 @@ object FromSome {
 
 
 		/** Wraps this clause in a special adapter allowing the use of
-		  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL.AggregateFunction aggregate functions]] in its ''select'' clause.
+		  * [[net.noresttherein.oldsql.sql.AggregateFunction aggregate functions]] in its ''select'' clause.
 		  * While available methods such as `count`, `sum`, `avg` etc. allow selecting of a single statistic
 		  * directly from this instance, if results of more than one aggregate functions are required,
 		  * they must be passed using the standard `select` methods defined in
@@ -775,7 +775,7 @@ object FromSome {
 
 
 		/** Creates a single column SQL `select count(*) from` with this instance as the from clause.
-		  * @see [[net.noresttherein.oldsql.sql.ast.AggregateSQL.Count]]
+		  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.Count]]
 		  */
 		def count :SelectColumn[Base, Int] = select(Count.*)
 
@@ -783,7 +783,7 @@ object FromSome {
 		  * This translates to `select count(column) from this`.
 		  * @param column a column of any of the joined relations, or a single column
 		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  * @see [[net.noresttherein.oldsql.sql.ast.AggregateSQL.Count]]
+		  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.Count]]
 		  */
 		def count(column :ColumnSQL[Generalized, LocalScope, _]) :SelectColumn[Base, Int] =
 			select(Count(column))

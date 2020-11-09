@@ -678,7 +678,7 @@ object By {
 
 
 	//todo: can it incorporate aliased clauses the same way join does?
-	implicit def byAllDecomposition[L <: GroupByClause, R[O] <: MappingAt[O]]
+	implicit def byDecomposition[L <: GroupByClause, R[O] <: MappingAt[O]]
 			:ExtendedDecomposition[L By R, L, R, By, GroupByClause] =
 		composition.asInstanceOf[ExtendedDecomposition[L By R, L, R, By, GroupByClause]]
 

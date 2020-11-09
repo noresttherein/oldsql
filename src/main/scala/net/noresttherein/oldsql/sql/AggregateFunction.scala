@@ -52,7 +52,6 @@ object AggregateFunction {
 
 		/** Represents the `COUNT(*)` SQL expression. */
 		def apply() :AggregateSQL[FromSome, AggregateClause, Nothing, Int] = *
-//			AggregateSQL[FromSome, Nothing, Int](this, *, false)
 
 		/** Represents the `COUNT(*)` SQL expression. */
 		def apply(all :sql.*) :AggregateSQL[FromSome, AggregateClause, Nothing, Int] = *

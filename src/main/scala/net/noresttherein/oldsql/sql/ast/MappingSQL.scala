@@ -390,7 +390,8 @@ object MappingSQL {
 
 
 	object ComponentSQL {
-
+		//fixme: again, buggy overload resolution picks this instead of the following one even when given a relation
+		//  and the order of method declaration doesn't seem to have any effect in this case.
 		def apply[F <: RowProduct, M <: BaseMapping[S, O], S, O >: F <: RowProduct]
 		         (from :F, component :M)
 		         (implicit offset :TableCount[O, _ <: Numeral], project :OriginProjection[M, S])
@@ -858,6 +859,8 @@ object MappingSQL {
 
 
 
+	//consider: a subclass for 'real' relations - tables, selects - to differentiate from GroupingRelation,
+	// ParamRelation, etc.. This would solve the issue of accidental use of the latter with 'real' joins.
 	sealed trait JoinedRelation[F <: RowProduct, T[A] <: MappingAt[A]] extends ComponentSQL[F, T] {
 		override type Origin = F
 		override type Entity[A] = T[A]

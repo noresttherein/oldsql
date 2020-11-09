@@ -2120,6 +2120,14 @@ object RowProduct {
 		def labeled[A <: Label](label :A)(implicit get :ByLabel[F, thisClause.Generalized, A]) :get.T[get.O] =
 			get(thisClause.generalized).mapping
 
+		/** Returns the `Mapping` instance for the last relation using a `LabeledMapping` with label type `A`.
+		  * Same as `this `[[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.labeled labeled]]` label`.
+		  * @param label a `String` literal used as the label of the accessed mapping.
+		  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping]]
+		  */
+		def :@[A <: Label](label :A)(implicit get :ByLabel[F, thisClause.Generalized, A]) :get.T[get.O] =
+			get(thisClause.generalized).mapping
+
 		/** Returns the `Mapping` instance for the last relation using the provided mapping type.
 		  * @tparam M a `Mapping` type constructor accepting the `Origin` type.
 		  */
@@ -2309,11 +2317,20 @@ object RowProduct {
 		def of[E](implicit get :BySubject[F, thisClause.Generalized, E]) :JoinedRelation[get.O, get.T] =
 			get(thisClause.generalized)
 
-		/** Returns the `Mapping` instance for the last relation using a `LabeledMapping` with label type `A`.
+		/** Returns the `JoinedRelation` instance for the last relation using a `LabeledMapping` with label type `A`.
 		  * @param label a `String` literal used as the label of the accessed mapping.
 		  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping]]
 		  */
 		def labeled[A <: Label](label :A)(implicit get :ByLabel[F, thisClause.Generalized, A])
+				:JoinedRelation[get.O, get.T] =
+			get(thisClause.generalized)
+
+		/** Returns the `JoinedRelation` instance for the last relation using a `LabeledMapping` with label type `A`.
+		  * Same as `this `[[net.noresttherein.oldsql.sql.RowProduct.JoinedRelations.labeled labeled]]` label`.
+		  * @param label a `String` literal used as the label of the accessed mapping.
+		  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping]]
+		  */
+		def :@[A <: Label](label :A)(implicit get :ByLabel[F, thisClause.Generalized, A])
 				:JoinedRelation[get.O, get.T] =
 			get(thisClause.generalized)
 
@@ -2507,7 +2524,7 @@ object RowProduct {
 	  */
 	@implicitNotFound("I don't know how to extract a prefix clause ${P} (with an upper bound ${U}) from ${F}.\n" +
 	                  "Missing implicit ClauseDecomposition[${F}, ${P}, ${U}].")
-	trait ClauseDecomposition[F <: RowProduct, P <: U, U <: RowProduct] {
+	trait ClauseDecomposition[-F <: RowProduct, P <: U, U <: RowProduct] {
 
 		/** The type constructor of `F`, accepting a prefix clause. This is the generic version of `S[A]`,
 		  * accepting any type conforming to `U`, but without the lower bound of `F` in the result.

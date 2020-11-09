@@ -485,7 +485,7 @@ object Extended {
 
 	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
 	                  "Missing implicit ExtendedDecomposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
-	class ExtendedDecomposition[F <: L J R, L <: U, R[O] <: MappingAt[O],
+	class ExtendedDecomposition[-F <: L J R, L <: U, R[O] <: MappingAt[O],
 	                            J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct]
 		extends ClauseDecomposition[F, L, U]
 	{
@@ -549,9 +549,9 @@ object Extended {
 	}
 
 
-	implicit def extendedDecomposition[L <: RowProduct, R[O] <: MappingAt[O]]
-			:ExtendedDecomposition[L Extended R, L, R, Extended, RowProduct] =
-		decomposition.asInstanceOf[ExtendedDecomposition[L Extended R, L, R, Extended, RowProduct]]
+//	implicit def extendedDecomposition[L <: RowProduct, R[O] <: MappingAt[O]]
+//			:ExtendedDecomposition[L Extended R, L, R, Extended, RowProduct] =
+//		decomposition.asInstanceOf[ExtendedDecomposition[L Extended R, L, R, Extended, RowProduct]]
 
 	private[this] val decomposition =
 		new ExtendedDecomposition[RowProduct Extended MappingAt, RowProduct, MappingAt, Extended, RowProduct]

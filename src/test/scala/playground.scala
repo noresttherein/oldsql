@@ -14,19 +14,7 @@ import net.noresttherein.oldsql.sql.UnboundParam.FromParam
   * @author Marcin Mościcki
   */
 object playground extends App {
-	def test[T](col :ColumnMapping[T, Any]) =
-		scala.reflect.runtime.universe.reify {
-			val res = col.withOrigin[()]
-			res :ColumnMapping[T, ()]
-			res
-		}.tree
-	val res = col.withOrigin[()]
-	val col = new StandardColumn[Int, Any]("col", Seq())
-	println(test(col))
-	res :ColumnMapping[Int, ()]
-	println(scala.reflect.runtime.universe.reify { col.withOrigin[()]
-	}.tree)
-/*
+
 	class A[O] extends FormMapping[Int, O]
 	class B[O] extends FormMapping[Int, O]
 	class C[O] extends FormMapping[Int, O]
@@ -76,5 +64,4 @@ object playground extends App {
 	println(scala.reflect.runtime.universe.reify {
 		params.of[Int]
 	}.tree)
-*/
 }

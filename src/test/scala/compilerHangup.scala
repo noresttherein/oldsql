@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition
 /**
   * @author Marcin Mościcki
   */
-object compilerHangup extends App {
+object compilerHangup extends App {{
 	class A[O] extends FormMapping[Int, O]
 	class B[O] extends FormMapping[Int, O]
 	val A = Relation("A", new A[Any])
@@ -21,9 +21,9 @@ object compilerHangup extends App {
 	//	val from = From(A) join B groupBy a as "a" by b as "b" //this compiles
 //	val from = From(A) join B groupBy (_[A]) by (_[B]) //takes forever for some reason, but compiles
 //	val from = From(A) join B groupBy (t => a) by (t => b)
-//	val from = From(A) join B groupBy (_[A]) as "A" by (_[B])//StackOverflowError in compile server
+	val from = From(A) join B groupBy (_[A]) as "A" by (_[B]) as "B"//StackOverflowError in compile server
 
-//	val from = f.self groupBy (_[A]) by (_[B])
+	val from2 = f.self groupBy (_[A]) by (_[B])
 //
 //
 //	trait Invariant[B]
@@ -38,4 +38,4 @@ object compilerHangup extends App {
 //	}.tree)
 
 
-}
+}}

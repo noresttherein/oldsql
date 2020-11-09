@@ -45,14 +45,10 @@ object GroupedUnder {
 			:F GroupedUnder G =
 		instance.asInstanceOf[F GroupedUnder G]
 
-	implicit def adapted[F <: RowProduct, G <: D[C], D[+B <: U] <: ExtendingDecorator[B], C <: U, U <: RowProduct]
-	                    (implicit decompose :DecoratorDecomposition[G, C, D, U], from :F GroupedUnder C)
+	implicit def decorated[F <: RowProduct, G <: D[C], D[+B <: U] <: ExtendingDecorator[B], C <: U, U <: RowProduct]
+	                      (implicit decompose :DecoratorDecomposition[G, C, D, U], from :F GroupedUnder C)
 			:F GroupedUnder G =
 		instance.asInstanceOf[F GroupedUnder G]
-
-	implicit def aliased[F <: RowProduct, G <: GroupByClause, A <: Label](implicit from :F GroupedUnder G)
-			:F GroupedUnder (G As A) =
-		instance.asInstanceOf[F GroupedUnder (G As A)]
 
 	implicit def groupedBy[F <: FromSome, M[O] <: MappingAt[O]] :F GroupedUnder (F GroupBy M) =
 		instance.asInstanceOf[F GroupedUnder (F GroupBy M)]

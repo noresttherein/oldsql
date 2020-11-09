@@ -26,33 +26,33 @@ import net.noresttherein.oldsql.sql.UnboundParam.ParamAt
   * (or `From`).
   */
 @implicitNotFound("Can't calculate the size of the FROM clause ${F}.\nEither the clause is incomplete " +
-                  "or the expected number ${N} is incorrect. Missing implicit: FromClauseSize[${F}, ${N}].")
-class FromClauseSize[-F <: RowProduct, N <: Numeral] private(private val n :Int) extends AnyVal {
+                  "or the expected number ${N} is incorrect. Missing implicit: RowProductSize[${F}, ${N}].")
+class RowProductSize[-F <: RowProduct, N <: Numeral] private (private val n :Int) extends AnyVal {
 	/** The number of tables in the clause `F`. */
 	@inline def size :N = n.asInstanceOf[N] //val size :N crashes scalac
 }
 
 
 
-object FromClauseSize {
-	implicit val DualCount :FromClauseSize[Dual, 0] = new FromClauseSize[Dual, 0](0)
+object RowProductSize {
+	implicit val DualCount :RowProductSize[Dual, 0] = new RowProductSize[Dual, 0](0)
 
 	implicit def extended[L <: RowProduct, R[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
-	                     (implicit count :FromClauseSize[L, M], plus :Inc[M, N]) :FromClauseSize[L Extended R, N] =
-		new FromClauseSize[L Extended R, N](plus.n)
+	                     (implicit count :RowProductSize[L, M], plus :Inc[M, N]) :RowProductSize[L Extended R, N] =
+		new RowProductSize[L Extended R, N](plus.n)
 
-	implicit def decorated[F <: RowProduct, N <: Numeral](implicit count :FromClauseSize[F, N])
-			:FromClauseSize[ExtendingDecorator[F], N] =
-		new FromClauseSize(count.size)
+	implicit def decorated[F <: RowProduct, N <: Numeral](implicit count :RowProductSize[F, N])
+			:RowProductSize[ExtendingDecorator[F], N] =
+		new RowProductSize(count.size)
 
 	implicit def grouped[F <: FromSome, G[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
-	                    (implicit count :FromClauseSize[F#Outer, M], plus :Inc[M, N])
-			:FromClauseSize[F GroupBy G, N] =
-		new FromClauseSize(plus.n)
+	                    (implicit count :RowProductSize[F#Outer, M], plus :Inc[M, N])
+			:RowProductSize[F GroupBy G, N] =
+		new RowProductSize(plus.n)
 
-	implicit def aggregated[F <: FromSome, N <: Numeral](implicit count :FromClauseSize[F#Outer, N])
-			:FromClauseSize[Aggregated[F], N] =
-		new FromClauseSize(count.size)
+	implicit def aggregated[F <: FromSome, N <: Numeral](implicit count :RowProductSize[F#Outer, N])
+			:RowProductSize[Aggregated[F], N] =
+		new RowProductSize(count.size)
 
 }
 
@@ -73,7 +73,7 @@ object FromClauseSize {
 @implicitNotFound("Can't count the number of relations in the most nested Subselect in ${F}.\n"+
                   "Most likely the type's Generalized form is not known. " +
                   "Missing implicit: SubselectClauseSize[${F}, ${N}].")
-class SubselectClauseSize[-F <: RowProduct, N <: Numeral] private(private val n :Int) extends AnyVal {
+class SubselectClauseSize[-F <: RowProduct, N <: Numeral] private (private val n :Int) extends AnyVal {
 	@inline def size :N = n.asInstanceOf[N]
 }
 
@@ -104,9 +104,6 @@ object SubselectClauseSize {
 			:SubselectClauseSize[D, N] =
 		new SubselectClauseSize[D, N](prev.n)
 
-	implicit def aliased[F <: NonEmptyFrom, A <: Label, N <: Numeral]
-	                    (implicit size :SubselectClauseSize[F, N]) :SubselectClauseSize[F As A, N] =
-		new SubselectClauseSize[F As A, N](size.size)
 }
 
 
@@ -127,7 +124,7 @@ object SubselectClauseSize {
 @implicitNotFound("Failed to count the tables in ${F}. Is ${N} the number of mappings listed in its definition?\n" +
                   "Note that witness TableCount[F, N] is invariant in type F, but requires that it starts " +
                   "with one of RowProduct, GroupByClause, FromClause, FromSome, or Dual/From[_].")
-class TableCount[F <: RowProduct, N <: Numeral] private[mechanics](private val n :Int) extends AnyVal {
+class TableCount[F <: RowProduct, N <: Numeral] private[mechanics] (private val n :Int) extends AnyVal {
 	/** The number of relations listed in the type `F` (not including any relations hidden by a wildcard/abstract prefix). */
 	@inline def tables :N = n.asInstanceOf[N] //val tables :N crashes scalac
 
@@ -190,7 +187,7 @@ object TableCount {
                   "Most likely the type contains joins with unknown Generalized form or it starts with" +
                   "an undefined prefix other than RowProduct, GroupByClause, FromClause, FromSome, Dual, From. " +
                   "Missing implicit SubselectTableCount[${F}, ${N}]")
-class SubselectTableCount[F <: RowProduct, N <: Numeral] private(private val n :Int) extends AnyVal {
+class SubselectTableCount[F <: RowProduct, N <: Numeral] private (private val n :Int) extends AnyVal {
 	@inline def tables :N = n.asInstanceOf[N]
 }
 
@@ -235,8 +232,8 @@ object SubselectTableCount {
 
 
 /** Implicit witness that `M` is the mapping for the first known relation in the clause `F`
-  * and `N` is the number of relations to its right. Any relations under the scope of a `GroupedByAll`
-  * (between the last `Subselect` or the first relation and `GroupedByAll`) are excluded from the count
+  * and `N` is the number of relations to its right. Any relations under the scope of a `GroupBy`
+  * (between the last `Subselect` or the first relation and `GroupBy`) are excluded from the count
   * and `M` must not be such a relation. The clause `F` must be in the form
   * `L E M G1 T1 ... Gn Tn`, where `L` is the upper bound of the left side of the extension `E` and all `Gi`
   * are extension with a definite `Generalized` form. `From[M]` can replace `L E M` in the above definition.

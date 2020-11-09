@@ -35,12 +35,12 @@ object Relation {
 
 	def apply[M <: Mapping, S](name :String, template :M)
 	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
-		new ProjectingRelation[projection.WithOrigin, S](projection[Any](template), name)(projection.isomorphism)
+		new ProjectingRelation[projection.WithOrigin, S](projection[()](template), name)(projection.isomorphism)
 
 
 	def apply[M <: Mapping, S](template :M)
 	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
-		new ProjectingRelation[projection.WithOrigin, S](projection[Any](template))(projection.isomorphism)
+		new ProjectingRelation[projection.WithOrigin, S](projection[()](template))(projection.isomorphism)
 
 
 
@@ -61,11 +61,11 @@ object Relation {
 
 
 	private class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
-	                                (protected[this] val template :M[Any], override val sql :String)
-	                                (implicit projection :IsomorphicProjection[M, S, Any])
+	                                (protected[this] val template :M[()], override val sql :String)
+	                                (implicit projection :IsomorphicProjection[M, S, ()])
 		extends Relation[M]
 	{
-		def this(template :M[Any])(implicit projection :IsomorphicProjection[M, S, Any]) =
+		def this(template :M[()])(implicit projection :IsomorphicProjection[M, S, ()]) =
 			this(template, template.sqlName getOrElse {
 				throw new IllegalArgumentException(
 					s"Can't create a Relation with template mapping $template as it has an empty sqlName."
@@ -121,7 +121,7 @@ object Relation {
 
 		def apply[M <: Mapping, S](tableName :String, template :M)
 		                          (implicit project :OriginProjection[M, S]) :Table[project.WithOrigin] =
-			new ProjectingRelation[project.WithOrigin, S](project[Any](template), tableName)(project.isomorphism)
+			new ProjectingRelation[project.WithOrigin, S](project[()](template), tableName)(project.isomorphism)
 				with Table[project.WithOrigin]
 			{
 				override val sql = tableName

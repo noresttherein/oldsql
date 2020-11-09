@@ -21,14 +21,14 @@ class GroupingExpressionCheck {{
 
 
 	def groupingExpression[F <: RowProduct, G <: RowProduct, E]
-	(implicit group :GroupingExpression[F, G, E]) :group.type = group
+	                      (implicit group :GroupingExpression[F, G, E]) :group.type = group
 
 	@implicitNotFound("${R} is not the grouping of ${F} under ${G} by ${E} (or grouping is impossible).")
 	class ExpectGrouping[F <: RowProduct, G <: RowProduct, E, R]
 
 	implicit def ExpectGrouping[F <: RowProduct, G <: RowProduct, E, Y, R]
-	(implicit group :GroupingExpression[F, G, E] { type Result = Y }, same :Y =:= R)
-	:ExpectGrouping[F, G, E, R] = new ExpectGrouping
+	                           (implicit group :GroupingExpression[F, G, E] { type Result = Y }, same :Y =:= R)
+			:ExpectGrouping[F, G, E, R] = new ExpectGrouping
 
 	def expectGrouping[F <: RowProduct, G <: RowProduct, E, R](implicit group :ExpectGrouping[F, G, E, R]) :group.type =
 		group

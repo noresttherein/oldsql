@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql.mechanics
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
-import net.noresttherein.oldsql.sql.{mechanics, AggregateClause, Aggregated, By, ColumnSQL, From, FromSome, GlobalBoolean, GroupBy, GroupByClause, Join, RowProduct, SQLExpression, Subselect}
+import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, By, ColumnSQL, From, FromSome, GlobalBoolean, GroupBy, GroupByClause, Join, RowProduct, SQLExpression, Subselect}
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.CaseColumnTerm
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe.{ColumnResult, ExpressionResult}
 
 
-//here be implicits
+
 
 
 

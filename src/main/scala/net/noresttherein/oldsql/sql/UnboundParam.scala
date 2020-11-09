@@ -36,7 +36,7 @@ import net.noresttherein.oldsql.sql.FromSome.TopFromSome
   * Two concrete subclasses exist: [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] for ''discrete'' clauses
   * (''from'' clauses without a ''group by'' clause) and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]
   * for clauses with a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] join to the left.
-  */
+  */ //consider: make the right side simply X and fix the mapping type to ParamRelation[X]#Param
 sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSubselect[F, P] { thisClause =>
 
 	/** A synthetic relation for this parameter. It is never shared with over instances,
@@ -101,7 +101,7 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 
 
 
-	override def isValidSubselect = false //either we are an outer clause and truly not a subselect, or we are illegal for subselect
+	override def isValidSubselect = false //either we are a top clause and truly not a subselect, or we are illegal for subselect
 
 	override type Base = Nothing
 	override type DefineBase[+I <: RowProduct] = Nothing
@@ -204,6 +204,7 @@ object UnboundParam {
 	  * be matched directly with the wildcard '_'.
 	  */
 	type * = UnboundParam[_ <: NonEmptyFrom, M] forSome { type M[O] <: FromParam[_, O] }
+	type ** = UnboundParam[_ <: NonEmptyFrom, M] forSome { type M[O] <: FromParam[_, O] }
 
 	/** A curried type constructor for `UnboundParam` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
@@ -698,14 +699,14 @@ object JoinParam {
 
 	/** An alias for `JoinParam` accepting the parameter type as the second (right) argument, hiding the
 	  * `FromParam[X, _]` from the type signature.
-	  */
-	type WithParam[+F <: TopFromSome, X] = JoinParam[F, FromParam.Of[X]#P]
+	  */ //not F <: TopFromSome so it can be used in Generalized types
+	type WithParam[+F <: FromSome, X] = JoinParam[F, FromParam.Of[X]#P]
 
 	/** A type alias for `JoinParam` accepting parameter type `X`. As a `RowProduct` containing a `JoinParam` join
 	  * in its type is a preliminary from clause which will be translated to a parameterized statement, it uses
 	  * an a 'inverse function symbol' as a mnemonic: `From[Users] <=? String`. This is equivalent to `WithParam[F, X]`.
 	  */
-	type <=?[+F <: TopFromSome, X] = WithParam[F, X]
+	type <=?[+F <: FromSome, X] = WithParam[F, X]
 
 	
 	
@@ -885,7 +886,7 @@ object JoinParam {
 
 	implicit def joinParamComposition[L <: FromSome, R[O] <: ParamAt[O]]
 			:ExtendedComposition[L JoinParam R, L, R, JoinParam, FromSome, ParamAt]
-				{ type Generalized[+A <: FromSome, B[O] <: ParamAt[O]] = A JoinParam B }=
+				{ type Generalized[+A <: FromSome, B[O] <: ParamAt[O]] = A JoinParam B } =
 		composition.asInstanceOf[ExtendedComposition[L JoinParam R, L, R, JoinParam, FromSome, ParamAt] {
 			type Generalized[+A <: FromSome, B[O] <: ParamAt[O]] = JoinParam[A, B]
 		}]

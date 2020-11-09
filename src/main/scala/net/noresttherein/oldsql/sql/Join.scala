@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.Join.AbstractJoin
+import net.noresttherein.oldsql.sql.Join.{AbstractJoin, JoinComposition}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
@@ -443,11 +443,8 @@ object Join {
 	}
 
 
-	implicit def joinComposition[L <: FromSome, R[O] <: MappingAt[O],
-	                             J[+A <: FromSome, B[O] <: MappingAt[O]] <:
-	                                (A Join B) { type LikeJoin[+X <: FromSome, Y[O] <: MappingAt[O]] <: X J Y }]
-			:JoinComposition[L, R, J] =
-		composition.asInstanceOf[JoinComposition[L, R, J]]
+	implicit def joinComposition[L <: FromSome, R[O] <: MappingAt[O]] :JoinComposition[L, R, Join] =
+		composition.asInstanceOf[JoinComposition[L, R, Join]]
 
 	private[this] val composition = new JoinComposition[FromSome, MappingAt, Join]
 
@@ -642,6 +639,9 @@ object InnerJoin {
 
 
 
+	implicit def innerJoinComposition[L <: FromSome, R[O] <: MappingAt[O]] :JoinComposition[L, R, InnerJoin] =
+		Join.joinComposition.asInstanceOf[JoinComposition[L, R, InnerJoin]]
+
 	/** Type alias for `InnerJoin` with erased type parameters, covering all instances of `InnerJoin`.
 	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
 	  * be matched directly with the wildcard '_'.
@@ -801,6 +801,11 @@ object OuterJoin {
 		case join :OuterJoin.* => Some((join.left, join.right))
 		case _ => None
 	}
+
+
+
+	implicit def outerJoinComposition[L <: FromSome, R[O] <: MappingAt[O]] :JoinComposition[L, R, OuterJoin] =
+		Join.joinComposition.asInstanceOf[JoinComposition[L, R, OuterJoin]]
 
 
 
@@ -964,6 +969,11 @@ object LeftJoin {
 
 
 
+	implicit def leftJoinComposition[L <: FromSome, R[O] <: MappingAt[O]] :JoinComposition[L, R, LeftJoin] =
+		Join.joinComposition.asInstanceOf[JoinComposition[L, R, LeftJoin]]
+
+
+
 	/** Type alias for `LeftJoin` with erased type parameters, covering all instances of `LeftJoin`.
 	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
 	  * be matched directly with the wildcard '_'.
@@ -1122,6 +1132,11 @@ object RightJoin {
 		case join :RightJoin.* => Some((join.left, join.right))
 		case _ => None
 	}
+
+
+
+	implicit def rightJoinComposition[L <: FromSome, R[O] <: MappingAt[O]] :JoinComposition[L, R, RightJoin] =
+		Join.joinComposition.asInstanceOf[JoinComposition[L, R, RightJoin]]
 
 
 

@@ -4,8 +4,9 @@ import scala.annotation.implicitAmbiguous
 
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, SQLLiteral, SQLNull, SQLParameter, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter.ParameterFactory
-import net.noresttherein.oldsql.sql.{mechanics, GlobalBoolean, RowProduct}
+import net.noresttherein.oldsql.sql.{GlobalBoolean, RowProduct}
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL
+
 
 
 

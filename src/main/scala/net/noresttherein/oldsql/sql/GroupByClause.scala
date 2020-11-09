@@ -595,8 +595,6 @@ object GroupByClause {
 
 
 	/** Extension methods for any ''group by'' clause `G` which require its static type for the appropriate return type.
-	  * @tparam F the actual ''from'' clause under grouping. All grouping expressions being the elements of
-	  *           the ''group by'' clause `G` are based on this type.
 	  * @tparam G this ''group by'' clause.
 	  */  //Can't be AnyVal for now as it uses PDTs
 	implicit class GroupByClauseExtension[G <: GroupByClause](val thisClause :G) extends AnyVal {
@@ -660,7 +658,7 @@ object GroupByClause {
 		  *         (or `F `[[net.noresttherein.oldsql.sql.ByOne ByOne]]` V`), where `V` is the value type
 		  *         of the expression `E`.
 		  */
-		def by[E](expr :JoinedMappings[F] => E)(implicit grouping :GroupingExpression[F, G, E]) :grouping.Result =
+		def by[E](expr :JoinedMappings[F] => E)(implicit grouping :GroupingExpression[U, G, E]) :grouping.Result =
 			grouping(thisClause, expr(thisClause.fromClause.mappings))
 
 		/** Adds another expression (column or columns) to the [[net.noresttherein.oldsql.sql.GroupBy group by]]
@@ -714,7 +712,7 @@ object GroupByClause {
 		  *         of the expression `E`.
 		  */
 		def byLast[E](expr :JoinedRelation[FromLast, LastMapping] => E)
-		             (implicit grouping :GroupingExpression[F, G, E]) :grouping.Result =
+		             (implicit grouping :GroupingExpression[U, G, E]) :grouping.Result =
 			grouping(thisClause, expr(thisClause.fromClause.last))
 
 		/** Expands this ''group by'' clause with all [[net.noresttherein.oldsql.schema.Mapping.selectable selectable]]
@@ -754,8 +752,7 @@ object GroupByClause {
 		  * as the mappings of the joined tables.
 		  */
 		def by[M[A] <: MappingAt[A], T[A] <: BaseMapping[S, A], S]
-		      (component :ComponentSQL[U, M])
-		      (implicit cast :InferSubject[G, By, M, T, S]) :G By M =
+		      (component :ComponentSQL[U, M])(implicit cast :InferSubject[G, By, M, T, S]) :G By M =
 			By(thisClause, component.groupingRelation)
 
 		/** Expands this ''group by'' clause with the given single column expression. */

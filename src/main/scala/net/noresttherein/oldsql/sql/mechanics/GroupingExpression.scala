@@ -11,13 +11,17 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL, TypedComponentSQL}
 
 
+
+
+
+
 /** A type class for type `E`, allowing it to be used when creating ''group by'' clause elements
   * using the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.groupBy groupBy]] and
   * [[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseExtension.by by]] methods.
-  * @tparam F                 the actual ''from'' clause `<: `[[net.noresttherein.oldsql.sql.FromSome FromSome]]
-  *                           in the [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form,
-  *                           which the grouping expression created by this type class is based on. It must be a supertype of
-  *                           `G#GeneralizedDiscrete`.
+  * @tparam F the actual ''from'' clause `<: `[[net.noresttherein.oldsql.sql.FromSome FromSome]]
+  *           in the [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form,
+  *           which the grouping expression created by this type class is based on. It must be a supertype of
+  *           `G#GeneralizedDiscrete`.
   * @tparam G the clause which is being expanded with a new grouping expression. It will become the left side
   *           of the returned `this.Result`. It may be either the type `F` when adding a first grouping expression
   *           using [[net.noresttherein.oldsql.sql.GroupBy GroupBy]], or
@@ -89,12 +93,11 @@ sealed abstract class GroupingColumnExpressionImplicits extends ArbitraryGroupin
 
 object GroupingExpression extends GroupingColumnExpressionImplicits {
 
-
-	implicit def groupByMapping[O <: RowProduct, F <: FromSome { type Generalized <: O }, C <: Mapping, S]
-	                           (implicit subject :C <:< MappingAt[O],
+	implicit def groupByMapping[U <: FromSome, F <: FromSome { type Generalized = U }, O <: RowProduct, C <: Mapping, S]
+	                           (implicit origin :C <:< MappingAt[O], belongs :U <:< O,
 	                                     shift :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
-			:GroupingExpression[O, F, C] { type Result = F GroupBy projection.WithOrigin } =
-		new GroupingExpression[O, F, C] {
+			:GroupingExpression[U, F, C] { type Result = F GroupBy projection.WithOrigin } =
+		new GroupingExpression[U, F, C] {
 			override type Result = F GroupBy projection.WithOrigin
 
 			override def apply(clause :F, expr :C) = { //todo: clause groupBy expr <- requires Generalized <: O
@@ -118,15 +121,15 @@ object GroupingExpression extends GroupingColumnExpressionImplicits {
 
 
 
-	implicit def byMapping[F <: RowProduct, G <: GroupingOfGeneralized[F], C <: Mapping, S]
-	                      (implicit typeParams :C <:< MappingAt[F],
-	                                shift :TableCount[F, _ <: Numeral], projection :OriginProjection[C, S])
+	implicit def byMapping[F <: RowProduct, G <: GroupingOfGeneralized[F], O <: RowProduct, C <: Mapping, S]
+	                      (implicit origin :C <:< MappingAt[O], belongs :F <:< O,
+	                                shift :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
 			:GroupingExpression[F, G, C] { type Result = G By projection.WithOrigin } =
 		new GroupingExpression[F, G, C] {
 			override type Result = G By projection.WithOrigin
 
 			override def apply(clause :G, expr :C) =
-				clause by[C, S, F] expr //(origin, shift, projection)
+				clause by[C, S, O] expr //(origin, shift, projection)
 		}
 
 	implicit def byComponent[F <: RowProduct, G <: GroupingOfGeneralized[F], M[O] <: BaseMapping[S, O], S]
