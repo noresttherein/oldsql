@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.schema.support.{DelegateMapping, StableMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnSupport, StableColumn}
 import net.noresttherein.oldsql.schema.MappingSchema.{CustomizedFlatSchema, CustomizedSchema, EmptySchema, ExtensibleFlatMappingSchema, ExtensibleMappingSchema, FlatMappingSchema, GetLabeledComponent, MappingSchemaSupport, SchemaFlattening, SubjectConstructor}
 import net.noresttherein.oldsql.schema.SchemaMapping.{|-|, CustomizeSchema, DelegateSchemaMapping, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaMapping, MappedFlatSchemaMapping, MappedSchemaMapping, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
-import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, CustomizedMapping, LabeledMapping, MappedMapping, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, CustomizedMapping, LabeledMapping, MappedMapping, PrefixedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethod
 import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.{slang, OperationType}
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, SELECT, UPDATE}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.IndexedMappingSchema.{ExtensibleFlatIndexedSchema, ExtensibleIndexedSchema, FlatIndexedMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
@@ -148,19 +148,19 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 		forSelect[E](Nil)
 
 
-	def forQuery[E <: Chain](include :Iterable[Component[_]], exclude :E)
-	                        (implicit result :CustomizeSchema[QUERY, this.type, S, O, E]) :result.Result =
-		forQuery[E](include)
+	def forFilter[E <: Chain](include :Iterable[Component[_]], exclude :E)
+	                         (implicit result :CustomizeSchema[FILTER, this.type, S, O, E]) :result.Result =
+		forFilter[E](include)
 
-	def forQuery[E <: Chain](include :Iterable[Component[_]])
-	                        (implicit result :CustomizeSchema[QUERY, this.type, S, O, E]) :result.Result =
-		customize[QUERY, E](include)
+	def forFilter[E <: Chain](include :Iterable[Component[_]])
+	                         (implicit result :CustomizeSchema[FILTER, this.type, S, O, E]) :result.Result =
+		customize[FILTER, E](include)
 
-	def forQuery(implicit result :CustomizeSchema[QUERY, this.type, S, O, @~]) :result.Result =
-		forQuery[@~](Nil)
+	def forFilter(implicit result :CustomizeSchema[FILTER, this.type, S, O, @~]) :result.Result =
+		forFilter[@~](Nil)
 
-	def forQueryExclude[E <: Chain](implicit result :CustomizeSchema[QUERY, this.type, S, O, E]) :result.Result =
-		forQuery[E](Nil)
+	def forFilterExclude[E <: Chain](implicit result :CustomizeSchema[FILTER, this.type, S, O, E]) :result.Result =
+		forFilter[E](Nil)
 
 
 	def forUpdate[E <: Chain](include :Iterable[Component[_]], exclude :E)
@@ -213,15 +213,12 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 		else
 	        new PrefixedMapping[this.type, S, O](prefix, this) with DelegateSchemaMapping[S, V, C, O]
 
-	override def renamed(name :String) :SchemaMapping[S, V, C, O] =
-		new RenamedMapping[this.type, S, O](name, this) with DelegateSchemaMapping[S, V, C, O]
-
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :SchemaMapping[X, V, C, O] =
 		new MappedSchemaMapping(this, there, back)
 
 
-	override def toString :String = sqlName getOrElse schema.members.toSeq.mkString("|-|[", ",", "]")
+	override def toString :String = schema.members.toSeq.mkString("|-|[", ",", "]")
 }
 
 
@@ -607,15 +604,12 @@ object SchemaMapping {
 			else
 				new PrefixedMapping[this.type, S, O](prefix, this) with DelegateFlatSchemaMapping[S, V, C, O]
 
-		override def renamed(name :String) :FlatSchemaMapping[S, V, C, O] =
-			new RenamedMapping[this.type, S, O](name, this) with DelegateFlatSchemaMapping[S, V, C, O]
-
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :FlatSchemaMapping[X, V, C, O] =
 			new MappedFlatSchemaMapping(this, there, back)
 
 
-		override def toString :String = sqlName getOrElse schema.members.toSeq.mkString("|||[", ",", "]")
+		override def toString :String = schema.members.toSeq.mkString("|||[", ",", "]")
 	}
 
 
@@ -720,7 +714,7 @@ object SchemaMapping {
 				new LabeledSchemaComponent[L, S, V, C, M, O](label, body)
 
 			override def toString :String =
-				sqlName getOrElse schema.members.toSeq.mkString("'" + label + "@|-|[", ",", "]")
+				schema.members.toSeq.mkString("'" + label + "@|-|[", ",", "]")
 		}
 
 
@@ -733,8 +727,7 @@ object SchemaMapping {
 			override def labeled[L <: Label](label :L) :LabeledFlatSchemaMapping[L, S, V, C, O] =
 				new LabeledFlatSchemaComponent[L, S, V, C, M, O](label, body)
 
-			override def toString :String =
-				sqlName getOrElse schema.members.toSeq.mkString("'" + label + "@|||[", ",", "]")
+			override def toString :String = schema.members.toSeq.mkString("'" + label + "@|||[", ",", "]")
 		}
 
 	}
@@ -809,7 +802,7 @@ object SchemaMapping {
 	/** A `Mapping` implementation dedicated to a single database operation type `A`.
 	  * It lists the components which should be included in the operation on the type level as the components chain `C`,
 	  * and their values as the chain `V`.  Dedicated instances are obtained from a `SchemaMapping` via the customizing
-	  * methods which include and exclude components: `forSelect`, `forQuery`, `forUpdate`, `forInsert`.
+	  * methods which include and exclude components: `forSelect`, `forFilter`, `forUpdate`, `forInsert`.
 	  * The purpose of this separation is to prevent an instance dedicated to one operation type to be adapted
 	  * to a second operation type, as mandatory components for the second operation type can be omitted
 	  * by the first customization.
@@ -937,7 +930,7 @@ object SchemaMapping {
 			new SchemaComponentLabel[N, S, V, C, O](label)
 
 
-		override def toString :String = sqlName getOrElse this.unqualifiedClassName
+		override def toString :String = mappingName
 	}
 
 
@@ -962,11 +955,6 @@ object SchemaMapping {
                 new PrefixedMapping[SchemaMappingAdapter[M, T, S, V, C, O], S, O](prefix, this)
 	                with ComposedAdapter[M, S, S, O] with DelegateSchemaMapping[S, V, C, O]
 					with SchemaMappingAdapter[M, T, S, V, C, O]
-
-		override def renamed(name :String) :SchemaMappingAdapter[M, T, S, V, C, O] =
-			new RenamedMapping[SchemaMappingAdapter[M, T, S, V, C, O], S, O](name, this)
-				with ComposedAdapter[M, S, S, O] with DelegateSchemaMapping[S, V, C, O]
-				with SchemaMappingAdapter[M, T, S, V, C, O]
 
 
 
@@ -1010,11 +998,6 @@ object SchemaMapping {
 				new PrefixedMapping[FlatSchemaMappingAdapter[M, T, S, V, C, O], S, O](prefix, this)
 					with ComposedAdapter[M, S, S, O] with DelegateFlatSchemaMapping[S, V, C, O]
 					with FlatSchemaMappingAdapter[M, T, S, V, C, O]
-
-		override def renamed(name :String) :FlatSchemaMappingAdapter[M, T, S, V, C, O] =
-			new RenamedMapping[FlatSchemaMappingAdapter[M, T, S, V, C, O], S, O](name, this)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatSchemaMapping[S, V, C, O]
-				with FlatSchemaMappingAdapter[M, T, S, V, C, O]
 
 
 
@@ -1400,10 +1383,6 @@ abstract class AbstractSchemaMapping[S, V <: Chain, C <: Chain, O]
 		new PrefixedMapping[this.type, S, O](prefix, this)
 			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
 
-	override def renamed(name :String) :SchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new RenamedMapping[this.type, S, O](name, this)
-			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
-
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 			:SchemaMappingAdapter[this.type, S, X, V, C, O] =
 		new MappedSchemaMapping[this.type, S, X, V, C, O](this, there, back)
@@ -1434,10 +1413,6 @@ abstract class AbstractFlatSchemaMapping[S, V <: Chain, C <: Chain, O]
 
 	override def prefixed(prefix :String) :FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
 		new PrefixedMapping[this.type, S, O](prefix, this)
-			with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
-
-	override def renamed(name :String) :FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new RenamedMapping[this.type, S, O](name, this)
 			with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
 
 

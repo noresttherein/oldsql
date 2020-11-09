@@ -6,12 +6,12 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
-import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, OptionMapping, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
+import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, OptionMapping, PrefixedMapping}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, MappingOriginProjector, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
 
 
 
@@ -93,9 +93,9 @@ trait BaseMapping[S, O] extends Mapping { self =>
 		MappingReadForm.select(this, components)
 
 	/** @inheritdoc
-	  * @return `writeForm(QUERY, components)` unless overriden. */
-	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		writeForm(QUERY, components)
+	  * @return `writeForm(FILTER, components)` unless overriden. */
+	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		writeForm(FILTER, components)
 
 	/** @inheritdoc
 	  * @return `writeForm(UPDATE, components)` unless overriden. */
@@ -115,8 +115,8 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	override def selectForm :SQLReadForm[S] = MappingReadForm.defaultSelect(this)
 
 	/** Default write form (included parameters) used for the ''WHERE'' clause filters for this mapping.
-	  * @return `writeForm(QUERY)` (or a functionally equivalent instance) unless overriden. */
-	override def queryForm :SQLWriteForm[S] = writeForm(QUERY)
+	  * @return `writeForm(FILTER)` (or a functionally equivalent instance) unless overriden. */
+	override def filterForm :SQLWriteForm[S] = writeForm(FILTER)
 
 	/** Default write form (included columns) of update statements for this mapping.
 	  * @return `writeForm(UPDATE)` (or a functionally equivalent instance) unless overriden. */
@@ -140,8 +140,8 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		CustomizedMapping.select[BaseMapping[S, O], S, O](this, include, exclude)
 
-	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.query[BaseMapping[S, O], S, O](this, include, exclude)
+	override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
+		CustomizedMapping.filter[BaseMapping[S, O], S, O](this, include, exclude)
 
 	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		CustomizedMapping.update[BaseMapping[S, O], S, O](this, include, exclude)
@@ -157,10 +157,6 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	override def prefixed(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
 		else PrefixedMapping[BaseMapping[S, O], S, O](prefix, this)
-
-	override def renamed(name :String) :Component[S] =
-		if (sqlName.contains(name)) this
-		else RenamedMapping[BaseMapping[S, O], S, O](name, this)
 
 
 

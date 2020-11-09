@@ -75,8 +75,8 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 		if (nulls == null) form.nullTo(map) else form.to(map)
 	}
 
-//	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = {
-//		val form = backer.queryForm(if (components.contains(backer)) backer.queryable else components)
+//	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] = {
+//		val form = backer.filterForm(if (components.contains(backer)) backer.filterable else components)
 //		if (unmapFun == null) form.flatUnmap(unmap.optional) else form.unmap(unmapFun)
 //	}
 //
@@ -100,7 +100,7 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 		if (nulls == null) backer.selectForm.nullTo(map)
 		else backer.selectForm.to(map)
 
-	override val queryForm :SQLWriteForm[S] = backer.queryForm.from(unmap)
+	override val filterForm :SQLWriteForm[S] = backer.filterForm.from(unmap)
 	override val updateForm :SQLWriteForm[S] = backer.updateForm.from(unmap)
 	override val insertForm :SQLWriteForm[S] = backer.insertForm.from(unmap)
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)

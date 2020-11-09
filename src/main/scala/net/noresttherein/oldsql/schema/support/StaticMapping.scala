@@ -2,14 +2,14 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.BaseMapping
-import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, MappingAdapter, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, MappingAdapter, PrefixedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, MappedTo}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, SELECT, UPDATE}
 
 
 
@@ -35,9 +35,6 @@ trait StaticMapping[S, O] extends BaseMapping[S, O]
 
 	override def prefixed(prefix :String) :Adapted[this.type] =
 		PrefixedMapping[this.type, S, O](prefix, this :this.type)
-
-	override def renamed(name :String) :Adapted[this.type] =
-		RenamedMapping[this.type, S, O](name, this :this.type)
 
 
 
@@ -161,8 +158,8 @@ object StaticMapping {
 		override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
 			customize(SELECT, include, exclude)
 
-		override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(QUERY, include, exclude)
+		override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
+			customize(FILTER, include, exclude)
 
 		override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
 			customize(UPDATE, include, exclude)

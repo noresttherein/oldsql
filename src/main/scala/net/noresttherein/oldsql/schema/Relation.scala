@@ -38,9 +38,9 @@ object Relation {
 		new ProjectingRelation[projection.WithOrigin, S](projection[()](template), name)(projection.isomorphism)
 
 
-	def apply[M <: Mapping, S](template :M)
-	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
-		new ProjectingRelation[projection.WithOrigin, S](projection[()](template))(projection.isomorphism)
+//	def apply[M <: Mapping, S](template :M)
+//	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
+//		new ProjectingRelation[projection.WithOrigin, S](projection[()](template))(projection.isomorphism)
 
 
 
@@ -65,13 +65,6 @@ object Relation {
 	                                (implicit projection :IsomorphicProjection[M, S, ()])
 		extends Relation[M]
 	{
-		def this(template :M[()])(implicit projection :IsomorphicProjection[M, S, ()]) =
-			this(template, template.sqlName getOrElse {
-				throw new IllegalArgumentException(
-					s"Can't create a Relation with template mapping $template as it has an empty sqlName."
-				)
-			})
-
 		override def apply[O] :M[O] = projection(template)
 	}
 

@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.{-#>, Assoc}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
-import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate}
+import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitFilter, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoFilter, NoFilterByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalFilter, OptionalSelect, OptionalUpdate}
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping
 import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
@@ -13,7 +13,7 @@ import scala.collection.mutable.Builder
 import net.noresttherein.oldsql.schema.bits.CustomizedMapping.{exclude, include}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, DelegateAdapter}
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, SELECT, UPDATE}
 
 
 
@@ -54,8 +54,8 @@ class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] protected
 	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
 		customize(include, NoSelect, ExplicitSelect, exclude, OptionalSelect, NoSelectByDefault)
 
-	override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
-		customize(include, NoQuery, ExplicitQuery, exclude, OptionalQuery, NoQueryByDefault)
+	override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		customize(include, NoFilter, ExplicitFilter, exclude, OptionalFilter, NoFilterByDefault)
 
 	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
 		customize(include, NoUpdate, ExplicitUpdate, exclude, OptionalUpdate, NoUpdateByDefault)
@@ -97,10 +97,10 @@ object CustomizedMapping {
               (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
 		apply[M, S, O](source, SELECT, include, exclude)
 
-	def query[M <: RefinedMapping[S, O], S, O]
-	         (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-	         (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](source, QUERY, include, exclude)
+	def filter[M <: RefinedMapping[S, O], S, O]
+	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
+	          (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+		apply[M, S, O](source, FILTER, include, exclude)
 
 	def update[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)

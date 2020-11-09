@@ -133,7 +133,7 @@ object IndexedChainMapping {
 		   with FlatMappingSchema[S, V |~ (K :~ T), C ~ M, O]
 	{
 		override val selectForm = SQLReadForms.IndexedChainReadForm(init.selectForm, new ValueOf(key), last.selectForm)
-		override val queryForm = SQLWriteForms.IndexedChainWriteForm(init.queryForm, last.queryForm)
+		override val filterForm = SQLWriteForms.IndexedChainWriteForm(init.filterForm, last.filterForm)
 		override val updateForm = SQLWriteForms.IndexedChainWriteForm(init.updateForm, last.updateForm)
 		override val insertForm = SQLWriteForms.IndexedChainWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |~ (K :~ T)] = op.form(this)

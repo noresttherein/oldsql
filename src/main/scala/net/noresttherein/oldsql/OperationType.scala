@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Buff.{AuditBuffType, BuffType, ExplicitInsert, ExplicitQuery, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraQuery, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoQuery, NoQueryByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalQuery, OptionalSelect, OptionalUpdate, QueryAudit, SelectAudit, UpdateAudit, ValueBuffType}
+import net.noresttherein.oldsql.schema.Buff.{AuditBuffType, BuffType, ExplicitInsert, ExplicitFilter, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraFilter, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoFilter, NoFilterByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalFilter, OptionalSelect, OptionalUpdate, FilterAudit, SelectAudit, UpdateAudit, ValueBuffType}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ComponentValues, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
@@ -23,7 +23,7 @@ sealed trait OperationType {
 	val prohibited :FlagBuffType
 	
 	/** A buff marking a column/component as not used as part of the owning mapping, but forcibly always included
-	  * by the framework, with the value specified by the buff instance. For example, `ExtraQuery` will apply
+	  * by the framework, with the value specified by the buff instance. For example, `ExtraFilter` will apply
 	  * an additional filter on the queried table or view. It always implies 
 	  * [[net.noresttherein.oldsql.OperationType.prohibited prohibited]].
 	  */
@@ -119,35 +119,35 @@ object OperationType {
 	implicit case object SELECT extends SELECT
 
 
-	sealed abstract class QUERY extends WriteOperationType {
-		override val prohibited = NoQuery
-		override val extra = ExtraQuery
-		override val nonDefault = NoQueryByDefault
-		override val explicit = ExplicitQuery
-		override val optional = OptionalQuery
-		override val audit = QueryAudit
+	sealed abstract class FILTER extends WriteOperationType {
+		override val prohibited = NoFilter
+		override val extra = ExtraFilter
+		override val nonDefault = NoFilterByDefault
+		override val explicit = ExplicitFilter
+		override val optional = OptionalFilter
+		override val audit = FilterAudit
 
-		override def columns[S, O](mapping :RefinedMapping[S, O]) :Unique[ColumnMapping[_, O]] = mapping.queryable
+		override def columns[S, O](mapping :RefinedMapping[S, O]) :Unique[ColumnMapping[_, O]] = mapping.filterable
 
 		override def customize[S, O](mapping :RefinedMapping[S, O],
 		                             include :Iterable[RefinedMapping[_, O]],
 		                             exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
-			mapping.forQuery(include, exclude)
+			mapping.forFilter(include, exclude)
 
 		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O],
 		                                    subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
-			mapping.queryValues(subject, collector)
+			mapping.filterValues(subject, collector)
 
 		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O], subject :S) :ComponentValues[S, O] =
-			mapping.queryValues(subject)
+			mapping.filterValues(subject)
 
-		override def form[S](mapping :MappingOf[S]) :SQLWriteForm[S] = mapping.queryForm
+		override def form[S](mapping :MappingOf[S]) :SQLWriteForm[S] = mapping.filterForm
 
 		override def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S] =
-			mapping.queryForm(components)
+			mapping.filterForm(components)
 	}
 
-	implicit case object QUERY extends QUERY
+	implicit case object FILTER extends FILTER
 
 
 	sealed abstract class UPDATE extends WriteOperationType {

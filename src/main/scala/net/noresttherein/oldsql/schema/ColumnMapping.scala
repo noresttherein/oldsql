@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraSelect, InsertAudit, NoInsert, NoQuery, NoSelect, NoUpdate, Nullable, OptionalSelect, QueryAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraSelect, InsertAudit, NoInsert, NoFilter, NoSelect, NoUpdate, Nullable, OptionalSelect, FilterAudit, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -37,9 +37,6 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	with ColumnAdapterFactoryMethods[({ type A[X] = ColumnMapping[X, O] })#A, S, O]
 { column =>
 
-	/** Returns `Some(this.name)`. */
-	final override def sqlName :Option[String] = Some(name)
-
 	/** The name of this column, as seen from the containing table if it is a table/view column.
 	  * If this column represents a column in the SELECT clause of a select statement, it is the column name as
 	  * returned by the result set for that statement. The names of columns selected in a subselect query are qualified
@@ -63,7 +60,7 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 		} else
 			ColumnValues.preset(this, op.extra.Value(this))
 
-	override def queryValues(subject :S) :ComponentValues[S, O] = writtenValues(QUERY, subject)
+	override def filterValues(subject :S) :ComponentValues[S, O] = writtenValues(FILTER, subject)
 	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UPDATE, subject)
 	override def insertValues(subject :S) :ComponentValues[S, O] = writtenValues(INSERT, subject)
 
@@ -148,7 +145,7 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	override def columns :Unique[Column[S]] = Unique.single(this)
 
 	override def selectable :Unique[Column[S]] = selfUnless(NoSelect)
-	override def queryable :Unique[Column[S]] = selfUnless(NoQuery)
+	override def filterable :Unique[Column[S]] = selfUnless(NoFilter)
 	override def updatable :Unique[Column[S]] = selfUnless(NoUpdate)
 	override def autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
  	override def insertable :Unique[Column[S]] = selfUnless(NoInsert)
@@ -165,7 +162,7 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 	/** A read-write form for this column's type which does not take into account any buffs attached to this column.
-	  * Serves as the basis for `selectForm`, `queryForm`, `insertForm` and `updateForm` which, in most cases,
+	  * Serves as the basis for `selectForm`, `filterForm`, `insertForm` and `updateForm` which, in most cases,
 	  * should be used instead.
 	  */
 	def form :ColumnForm[S]
@@ -381,18 +378,18 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 	trait StableColumn[S, O] extends ColumnMapping[S, O] {
 		final override val isNullable :Boolean = super.isNullable
 
-		private[this] val isQueryable = NoQuery.disabled(this)
+		private[this] val isQueryable = NoFilter.disabled(this)
 		private[this] val isUpdatable = NoUpdate.disabled(this)
 		private[this] val isInsertable = NoInsert.disabled(this)
 
-		private[this] val queryAudit = QueryAudit.fold(this)
+		private[this] val queryAudit = FilterAudit.fold(this)
 		private[this] val updateAudit = UpdateAudit.fold(this)
 		private[this] val insertAudit = InsertAudit.fold(this)
 
 		override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
 			op.writtenValues(this, subject)
 
-		override def queryValues(subject :S) :ComponentValues[S, O] =
+		override def filterValues(subject :S) :ComponentValues[S, O] =
 			if (isQueryable) ColumnValues.preset(this, queryAudit(subject))
 			else ColumnValues.empty
 
@@ -408,7 +405,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			op.writtenValues(this, subject, collector)
 
-		override def queryValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		override def filterValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			if (isQueryable) collector.add(this, queryAudit(subject))
 
 		override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
@@ -448,14 +445,14 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		override val columns :Unique[Column[S]] = Unique.single(this)
 
 		override val selectable :Unique[Column[S]] = selfUnless(NoSelect)
-		override val queryable :Unique[Column[S]] = selfUnless(NoQuery)
+		override val filterable :Unique[Column[S]] = selfUnless(NoFilter)
 		override val updatable :Unique[Column[S]] = selfUnless(NoUpdate)
 		override val autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
 		override val insertable :Unique[Column[S]] = selfUnless(NoInsert)
 		override val autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
 
 		final override val selectForm :SQLReadForm[S] = super.selectForm
-		final override val queryForm :SQLWriteForm[S] = super.queryForm
+		final override val filterForm :SQLWriteForm[S] = super.filterForm
 		final override val updateForm :SQLWriteForm[S] = super.updateForm
 		final override val insertForm :SQLWriteForm[S] = super.insertForm
 		final override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)

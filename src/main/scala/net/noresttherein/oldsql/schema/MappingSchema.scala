@@ -2509,7 +2509,7 @@ object MappingSchema {
 	{
 		//these shortcut implementations work because column mappings moved their buff handling to their forms.
 		override val selectForm = SQLReadForms.ChainReadForm(init.selectForm, last.selectForm)
-		override val queryForm = SQLWriteForms.ChainWriteForm(init.queryForm, last.queryForm)
+		override val filterForm = SQLWriteForms.ChainWriteForm(init.filterForm, last.filterForm)
 		override val updateForm = SQLWriteForms.ChainWriteForm(init.updateForm, last.updateForm)
 		override val insertForm = SQLWriteForms.ChainWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V ~ T] = op.form(this)
@@ -2600,7 +2600,7 @@ object MappingSchema {
 
 		override val columns :Unique[Column[_]] = original.columns
 		override val selectable :Unique[Column[_]] = original.selectable
-		override val queryable :Unique[Column[_]] = original.queryable
+		override val filterable :Unique[Column[_]] = original.filterable
 		override val updatable :Unique[Column[_]] = original.updatable
 		override val insertable :Unique[Column[_]] = original.insertable
 		override val autoUpdated :Unique[Column[_]] = original.autoUpdated

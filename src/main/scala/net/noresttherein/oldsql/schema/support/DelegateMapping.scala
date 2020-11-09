@@ -27,8 +27,6 @@ import net.noresttherein.oldsql.OperationType
   */
 trait DelegateMapping[+M <: Mapping, S, O] extends BaseMapping[S, O] {
 	protected val backer :M
-
-	override def sqlName :Option[String] = backer.sqlName
 }
 
 
@@ -66,7 +64,7 @@ object DelegateMapping {
 
 		override def columns :Unique[Column[_]] = backer.columns
 		override def selectable :Unique[Column[_]] = backer.selectable
-		override def queryable :Unique[Column[_]] = backer.queryable
+		override def filterable :Unique[Column[_]] = backer.filterable
 		override def updatable :Unique[Column[_]] = backer.updatable
 		override def autoUpdated :Unique[Column[_]] = backer.autoUpdated
 		override def insertable :Unique[Column[_]] = backer.insertable

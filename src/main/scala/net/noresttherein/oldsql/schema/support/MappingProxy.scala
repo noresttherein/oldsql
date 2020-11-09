@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, ComponentValues, GenericMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoQuery, NoSelect, NoUpdate}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoFilter, NoSelect, NoUpdate}
 
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.OperationType.WriteOperationType
@@ -88,15 +88,15 @@ object MappingProxy {
 		override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
 			backer.writtenValues(op, subject)
 
-		override def queryValues(subject :S) :ComponentValues[S, O] = backer.queryValues(subject)
+		override def filterValues(subject :S) :ComponentValues[S, O] = backer.filterValues(subject)
 		override def updateValues(subject :S) :ComponentValues[S, O] = backer.updateValues(subject)
 		override def insertValues(subject :S) :ComponentValues[S, O] = backer.insertValues(subject)
 
 		override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			backer.writtenValues(op, subject, collector)
 
-		override def queryValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
-			backer.queryValues(subject, collector)
+		override def filterValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			backer.filterValues(subject, collector)
 
 		override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			backer.updateValues(subject, collector)
@@ -117,9 +117,9 @@ object MappingProxy {
 			if (components.contains(backer)) backer.selectForm(backer.selectable)
 			else backer.selectForm(components)
 
-		override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.contains(backer)) backer.queryForm(backer.queryable)
-			else backer.queryForm(components)
+		override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components.contains(backer)) backer.filterForm(backer.filterable)
+			else backer.filterForm(components)
 
 		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
 			if (components.contains(backer)) backer.updateForm(backer.updatable)
@@ -134,7 +134,7 @@ object MappingProxy {
 			else backer.writeForm(op, components)
 
 		override def selectForm :SQLReadForm[S] = backer.selectForm
-		override def queryForm :SQLWriteForm[S] = backer.queryForm
+		override def filterForm :SQLWriteForm[S] = backer.filterForm
 		override def updateForm :SQLWriteForm[S] = backer.updateForm
 		override def insertForm :SQLWriteForm[S] = backer.insertForm
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = backer.writeForm(op)
@@ -261,7 +261,7 @@ object MappingProxy {
 
 		override def columns :Unique[Column[_]] = backer.columns.map(alias(_))
 		override def selectable :Unique[Column[_]] = backer.selectable.map(alias(_))
-		override def queryable :Unique[Column[_]] = backer.queryable.map(alias(_))
+		override def filterable :Unique[Column[_]] = backer.filterable.map(alias(_))
 		override def updatable :Unique[Column[_]] = backer.updatable.map(alias(_))
 		override def autoUpdated :Unique[Column[_]] = backer.autoUpdated.map(alias(_))
 		override def insertable :Unique[Column[_]] = backer.insertable.map(alias(_))
@@ -309,7 +309,7 @@ object MappingProxy {
 
 		override val columns :Unique[Column[_]] = backer.columns.map(alias(exports, originals, _))
 		override val selectable :Unique[Column[_]] = columnsWithout(NoSelect)
-		override val queryable :Unique[Column[_]] = columnsWithout(NoQuery)
+		override val filterable :Unique[Column[_]] = columnsWithout(NoFilter)
 		override val updatable :Unique[Column[_]] = columnsWithout(NoUpdate)
 		override val autoUpdated :Unique[Column[_]] = columnsWith(AutoUpdate)
 		override val autoInserted :Unique[Column[_]] = columnsWith(AutoInsert)

@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.IndexedMappingSchema.{CustomizedFlatIndex
 import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, CustomizedSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
 import net.noresttherein.oldsql.schema.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchema, MappedIndexedSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
-import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, PrefixedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.DelegateMapping
@@ -629,7 +629,7 @@ object IndexedMappingSchema {
 		//these shortcut implementations work because column mappings moved their buff handling to their forms.
 		override val selectForm =
 			SQLReadForms.IndexedChainReadForm(init.selectForm, new ValueOf(label), component.selectForm)
-		override val queryForm = SQLWriteForms.IndexedChainWriteForm(init.queryForm, component.queryForm)
+		override val filterForm = SQLWriteForms.IndexedChainWriteForm(init.filterForm, component.filterForm)
 		override val updateForm = SQLWriteForms.IndexedChainWriteForm(init.updateForm, component.updateForm)
 		override val insertForm = SQLWriteForms.IndexedChainWriteForm(init.insertForm, component.insertForm)
 		override def writeForm(op :WriteOperationType) = op.form(this)
@@ -742,9 +742,6 @@ trait IndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
 			this
 		else
 			new PrefixedMapping[this.type, S, O](prefix, this) with DelegateIndexedSchemaMapping[S, V, C, O]
-
-	override def renamed(name :String) :IndexedSchemaMapping[S, V, C, O] =
-		new RenamedMapping[this.type, S, O](name, this) with DelegateIndexedSchemaMapping[S, V, C, O]
 
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :IndexedSchemaMapping[X, V, C, O] =
@@ -864,9 +861,6 @@ object IndexedSchemaMapping {
 			else
 				new PrefixedMapping[this.type, S, O](prefix, this) with DelegateFlatIndexedSchemaMapping[S, V, C, O]
 
-		override def renamed(name :String) :FlatIndexedSchemaMapping[S, V, C, O] =
-			new RenamedMapping[this.type, S, O](name, this) with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 				:FlatIndexedSchemaMapping[X, V, C, O] =
@@ -925,11 +919,6 @@ object IndexedSchemaMapping {
 					with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
 					with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
-		override def renamed(name :String) :IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new RenamedMapping[this.type, S, O](name, this)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
-
 
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
@@ -972,11 +961,6 @@ object IndexedSchemaMapping {
 				new PrefixedMapping[this.type, S, O](prefix, this)
 					with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
 					with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
-
-		override def renamed(name :String) :FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new RenamedMapping[this.type, S, O](name, this)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
@@ -1152,10 +1136,6 @@ abstract class AbstractIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
 		new PrefixedMapping[this.type, S, O](prefix, this)
 			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
 
-	override def renamed(name :String) :IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new RenamedMapping[this.type, S, O](name, this)
-			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
-
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 			:IndexedSchemaMappingAdapter[this.type, S, X, V, C, O] =
 		new MappedIndexedSchemaMapping[this.type, S, X, V, C, O](this, there, back)
@@ -1183,10 +1163,6 @@ abstract class AbstractFlatIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain
 
 	override def prefixed(prefix :String) :FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
 		new PrefixedMapping[this.type, S, O](prefix, this)
-			with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
-
-	override def renamed(name :String) :FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new RenamedMapping[this.type, S, O](name, this)
 			with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])

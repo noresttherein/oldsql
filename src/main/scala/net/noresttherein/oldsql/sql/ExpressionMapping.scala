@@ -10,14 +10,14 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.{schema, OperationType}
 import net.noresttherein.oldsql.schema.{BaseMapping, Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ColumnWriteForm, ComponentValues, MappingExtract, SQLReadForm}
 import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoInsert, NoQuery, NoSelect, NoSelectByDefault, NoUpdate, ReadOnly}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoInsert, NoFilter, NoSelect, NoSelectByDefault, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, SELECT, UPDATE}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, MappingSQL, SelectSQL, SQLTerm, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL
@@ -74,14 +74,14 @@ trait ExpressionMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 
 	override def columns(op :OperationType) :Unique[ExpressionColumnMapping[F, S, _, O]] = op match {
 		case SELECT => selectable
-		case QUERY => queryable
+		case FILTER => filterable
 		case INSERT => insertable
 		case UPDATE => updatable
 	}
 
 	override def columns :Unique[ExpressionColumnMapping[F, S, _, O]]
 	override def selectable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoSelect)
-	override def queryable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoQuery)
+	override def filterable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoFilter)
 	override def updatable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoUpdate)
 	override def autoUpdated :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWith(AutoUpdate)
 	override def insertable :Unique[ExpressionColumnMapping[F, S, _, O]] = columnsWithout(NoInsert)
@@ -228,7 +228,7 @@ object ExpressionMapping {
 						val name :String = component match {
 							case column :ColumnMapping[_, _] => column.name //this is the almost sure case
 							case label @: _ => label //more as a safeguard against refactors than anything else
-							case _ => component.sqlName getOrElse ""
+							case _ => ""
 						}
 						if (!names(name)) name else name + "_" + columns.size
 
@@ -336,7 +336,7 @@ object ExpressionMapping {
 
 		override val columns :Unique[ExpressionColumn[_]] = Unique(inlined :_*)
 		override def selectable :Unique[ExpressionColumn[_]] = columns
-		override def queryable :Unique[ExpressionColumn[_]] = columns
+		override def filterable :Unique[ExpressionColumn[_]] = columns
 		override def updatable :Unique[ExpressionColumn[_]] = Unique.empty
 		override def autoUpdated :Unique[ExpressionColumn[_]] = Unique.empty
 		override def insertable :Unique[ExpressionColumn[_]] = Unique.empty
@@ -394,7 +394,7 @@ trait ExpressionColumnMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope,
 
 	override def columns :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.single(this)
 	override def selectable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
-	override def queryable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
+	override def filterable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
 	override def updatable :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
 	override def autoUpdated :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
 	override def insertable :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
@@ -415,7 +415,7 @@ object ExpressionColumnMapping {
 
 			override val columns :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.single(this)
 			override val selectable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
-			override val queryable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
+			override val filterable :Unique[ExpressionColumnMapping[F, S, X, O]] = columns
 			override val updatable :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
 			override val autoUpdated :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
 			override val insertable :Unique[ExpressionColumnMapping[F, S, X, O]] = Unique.empty
@@ -440,7 +440,7 @@ object ExpressionColumnMapping {
 					component match {
 						case column :ColumnMapping[_, _] => column.name
 						case label @: _ => label
-						case _ => component.sqlName getOrElse "result"
+						case _ => "result"
 					}
 
 				case SQLParameter(_, Some(name)) => name //unlikely to appear in this position

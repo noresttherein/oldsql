@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm, BaseMapping}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoInsert, NoQuery, NoSelect, NoUpdate, ReadOnly}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoInsert, NoFilter, NoSelect, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -24,7 +24,7 @@ import scala.reflect.runtime.universe.TypeTag
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.schema.ComponentValues.ColumnValues.GlobalColumnValues
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, UPDATE, WriteOperationType}
 
 
 
@@ -1046,7 +1046,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		val export = current.export
 		val extractor = Extractor(current.optional, current.requisite) //don't retain the reference to export
 
-		val lists = initComponents::initSubcomponents::initColumns::initSelectable::initQueryable::
+		val lists = initComponents::initSubcomponents::initColumns::initSelectable::initFilterable::
 			initUpdatable::initInsertable::initAutoInsert::initAutoUpdate::Nil
 
 		val replacement = new ColumnComponent[T](extractor, name, export.buffs)(column.form) {
@@ -1215,7 +1215,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		initColumns += column
 		initColumnIndex += column
 		if (NoSelect.disabled(column)) initSelectable += column
-		if (NoQuery.disabled(column)) initQueryable += column
+		if (NoFilter.disabled(column)) initFilterable += column
 		if (NoUpdate.disabled(column)) initUpdatable += column
 		if (NoInsert.disabled(column)) initInsertable += column
 		if (AutoInsert.enabled(column)) initAutoInsert += column
@@ -1322,7 +1322,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 				initComponents.initialize()
 				initColumns.initialize()
 				initSelectable.initialize()
-				initQueryable.initialize()
+				initFilterable.initialize()
 				initUpdatable.initialize()
 				initInsertable.initialize()
 				initAutoInsert.initialize()
@@ -1467,7 +1467,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	private[this] final val initSubcomponents = new LateInitComponents[FrameComponent[_]]
 	private[this] final val initColumns = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initSelectable = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initQueryable = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initFilterable = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initUpdatable = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initAutoUpdate = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initInsertable = new LateInitComponents[FrameColumn[_]]
@@ -1477,7 +1477,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	final override def subcomponents :Unique[Component[_]] = initSubcomponents.items
 	final override def columns :Unique[Column[_]] = initColumns.items
 	final override def selectable :Unique[Column[_]] = initSelectable.items
-	final override def queryable :Unique[Column[_]] = initQueryable.items
+	final override def filterable :Unique[Column[_]] = initFilterable.items
 	final override def updatable :Unique[Column[_]] = initUpdatable.items
 	final override def autoUpdated :Unique[Column[_]] = initAutoUpdate.items
 	final override def insertable :Unique[Column[_]] = initInsertable.items
@@ -1504,7 +1504,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 
 
-	override def queryValues(subject :S) :ComponentValues[S, O] = writtenValues(QUERY, subject)
+	override def filterValues(subject :S) :ComponentValues[S, O] = writtenValues(FILTER, subject)
 	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UPDATE, subject)
 	override def insertValues(subject :S) :ComponentValues[S, O] = writtenValues(INSERT, subject)
 
@@ -1596,7 +1596,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	}
 
 	override val selectForm :SQLReadForm[S] = SQLReadForm.Lazy(new ReadForm(selectable))
-	override val queryForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.queryForm)
+	override val filterForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.filterForm)
 	override val insertForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.insertForm)
 	override val updateForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.updateForm)
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)

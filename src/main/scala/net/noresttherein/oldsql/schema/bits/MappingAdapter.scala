@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, SELECT, UPDATE}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, SELECT, UPDATE}
 import net.noresttherein.oldsql.collection.NaturalMap
 
 
@@ -73,9 +73,6 @@ trait MappingAdapter[+M <: Mapping, S, O]
 	override def prefixed(prefix :String) :MappingAdapter[M, S, O] =
 		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
 
-	override def renamed(name :String) :MappingAdapter[M, S, O] =
-		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
-
 	override def as[X](there: S =?> X, back: X =?> S)
 	                  (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
 		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
@@ -123,10 +120,10 @@ object MappingAdapter {
 			customize(SELECT, include, exclude)
 
 		/** @inheritdoc
-		  * @return `customize(QUERY, include, exclude)`.
+		  * @return `customize(FILTER, include, exclude)`.
 		  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods.customize customize]] */
-		override def forQuery(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-			customize(QUERY, include, exclude)
+		override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
+			customize(FILTER, include, exclude)
 
 		/** @inheritdoc
 		  * @return `customize(UPDATE, include, exclude)`.
@@ -140,7 +137,7 @@ object MappingAdapter {
 		override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
 			customize(INSERT, include, exclude)
 
-		/** Target method for `forSelect`, `forQuery`, `forUpdate` and `forInsert`. Responsible for creating an
+		/** Target method for `forSelect`, `forFilter`, `forUpdate` and `forInsert`. Responsible for creating an
 		  * adapter (typically a [[net.noresttherein.oldsql.schema.bits.CustomizedMapping CustomizedMapping]] subclass)
 		  * with modified buffs on certain components so as to include or exclude them ''by default''.
 		  * All components/columns which are not covered by either the `include` or the `exclude` list are left
@@ -225,10 +222,12 @@ object MappingAdapter {
 				thisColumn
 
 
-		override def renamed(name :String) :A[S] = copy(name, buffs)
+
+		/** A column with exactly the same components, buffs and implementation as this one, but the new `name`. */
+		def rename(name :String) :A[S] = copy(name, buffs)
 
 		override def prefixed(prefix :String) :A[S] =
-			if (prefix.length == 0) thisColumn else renamed(prefix + name)
+			if (prefix.length == 0) thisColumn else rename(prefix + name)
 
 		def prefixed(prefix :Option[String]) :A[S] =
 			if (prefix.isEmpty) thisColumn else prefixed(prefix.get)
@@ -255,8 +254,6 @@ object MappingAdapter {
 
 
 		override def prefixed(prefix :String) :MappingAdapter[M, S, O] = PrefixedMapping(prefix, this)
-
-		override def renamed(name :String) :MappingAdapter[M, S, O] = RenamedMapping(name, this)
 
 
 		override def as[X](there: S =?> X, back: X =?> S)
@@ -416,7 +413,7 @@ object MappingAdapter {
 		{
 			override val body :ColumnMapping[S, O] = this
 
-//			override def renamed(name :String) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =
+//			override def rename(name :String) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =
 //				new PseudoColumnProxy(name, buffs)(form)
 
 			override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =

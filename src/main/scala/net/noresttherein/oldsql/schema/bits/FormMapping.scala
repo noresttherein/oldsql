@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.support.EmptyMapping
 import net.noresttherein.oldsql.schema.{Buff, ComponentValues, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.{INSERT, QUERY, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 
 
@@ -24,7 +24,7 @@ class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O
 	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
 		ComponentValues(this, subject)
 
-	override def queryValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
+	override def filterValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
 	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
 	override def insertValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
 
@@ -39,7 +39,7 @@ class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O
 		else if (components.size == 1 && components.head == this) form
 		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
 
-//	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(QUERY, components)
+//	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(FILTER, components)
 //	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(UPDATE, components)
 //	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(INSERT, components)
 
@@ -48,7 +48,7 @@ class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O
 	override def selectForm :SQLReadForm[S] = form
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = form
 //	override def insertForm :SQLWriteForm[S] = form
-//	override def queryForm :SQLWriteForm[S] = form
+//	override def filterForm :SQLWriteForm[S] = form
 //	override def updateForm :SQLWriteForm[S] = form
 
 }

@@ -139,7 +139,7 @@ object RecordMapping {
 		   with FlatMappingSchema[S, V |# (K #> T), C ~ M, O]
 	{
 		override val selectForm = SQLReadForms.RecordReadForm(init.selectForm, new ValueOf(key), last.selectForm)
-		override val queryForm = SQLWriteForms.RecordWriteForm(init.queryForm, last.queryForm)
+		override val filterForm = SQLWriteForms.RecordWriteForm(init.filterForm, last.filterForm)
 		override val updateForm = SQLWriteForms.RecordWriteForm(init.updateForm, last.updateForm)
 		override val insertForm = SQLWriteForms.RecordWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |# (K, T)] = op.form(this)

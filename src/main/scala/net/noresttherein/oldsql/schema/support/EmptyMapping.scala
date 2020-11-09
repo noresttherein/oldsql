@@ -17,7 +17,7 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 
 	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] = ComponentValues.empty
 
-	override def queryValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
+	override def filterValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
 	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
 	override def insertValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
 
@@ -41,7 +41,7 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 
 	override def columns :Unique[Column[_]] = Unique.empty
 	override def selectable :Unique[Column[_]] = Unique.empty
-	override def queryable :Unique[Column[_]] = Unique.empty
+	override def filterable :Unique[Column[_]] = Unique.empty
 	override def updatable :Unique[Column[_]] = Unique.empty
 	override def autoUpdated :Unique[Column[_]] = Unique.empty
 	override def insertable :Unique[Column[_]] = Unique.empty
@@ -49,7 +49,7 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = selectForm
-//	override def queryForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
+//	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty
 
@@ -57,7 +57,7 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 		SQLWriteForm.empty
 	
 	override def selectForm :SQLReadForm[S] = ScalaForms.NothingForm
-//	override def queryForm :SQLWriteForm[S] = SQLWriteForm.empty
+//	override def filterForm :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def updateForm :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = SQLWriteForm.empty

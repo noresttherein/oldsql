@@ -94,9 +94,9 @@ object Buff {
 	  * if at all possible. */
 	case object NoUpdateByDefault extends AbstractBuffType
 
-	/** This column/component is not included as the parameter of the default query statement searching for
-	  * an equal entity and must be specified explicitly, if at all possible. */
-	case object NoQueryByDefault extends AbstractBuffType
+	/** This column/component is not included in the default filter condition when comparing the enclosing
+	  * component/entity and must be specified explicitly, if at all possible. */
+	case object NoFilterByDefault extends AbstractBuffType
 
 
 
@@ -107,7 +107,7 @@ object Buff {
 	/** This column/component can't be included in an update statement (as the updated column). */
 	case object NoUpdate extends ComboFlag(NoUpdateByDefault)
 	/** This column/component can't be included as part of the ''where'' clause of a select or update statement. */
-	case object NoQuery extends ComboFlag(NoQueryByDefault)
+	case object NoFilter extends ComboFlag(NoFilterByDefault)
 
 	/** This column/component is never written to the database by the application. */
 	case object ReadOnly extends ComboFlag(NoInsert, NoUpdate)
@@ -151,28 +151,28 @@ object Buff {
 	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,
 	  * the provided expression is used as its value. This can be useful during schema migrations, when a mapping
 	  * might need to cover several versions of the schema, or if it is reused for several similar tables. */
-	case object Virtual extends ComboValueBuffType(ExtraSelect, ReadOnly, NoQuery)
+	case object Virtual extends ComboValueBuffType(ExtraSelect, ReadOnly, NoFilter)
 
 
 
-	/** A buff marking that a given column or component can be omitted from the the parameter list of the ''where'' 
+	/** A buff marking that a given column or component can be omitted from the the parameter list of the ''where''
 	  * clause of an SQL statement. This covers the case when a comparison in an SQL expression happens between
 	  * whole subjects of a multi column mapping, rather than listing the columns individually. The annotated component
 	  * is still included by default when comparing the owning mapping's subjects and needs to be excluded explicitly.
 	  */
-	case object OptionalQuery extends FlagBuffType
+	case object OptionalFilter extends FlagBuffType
 
 	/** A buff marking that a given column or component can be omitted from the parameter list of the ''where'' clause
 	  * of an SQL statement and needs to be included explicitly. This applies when the comparison expression
 	  * happens on the level of the subject of a multi column mapping enclosing the buffed component without listing
-	  * its columns individually. It implies `OptionalQuery` and `NoQueryByDefault`. */
-	case object ExplicitQuery extends ComboFlag(OptionalQuery, NoQueryByDefault)
+	  * its columns individually. It implies `OptionalFilter` and `NoFilterByDefault`. */
+	case object ExplicitFilter extends ComboFlag(OptionalFilter, NoFilterByDefault)
 
 	/** A buff type marking that a given column/component must be included in every query against the table, using
-	  * the value provided by the buff. It implies `NoSelect` and `NoQuery` and is used to artificially limit the number
+	  * the value provided by the buff. It implies `NoSelect` and `NoFilter` and is used to artificially limit the number
 	  * of mapped entities.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped$]] */
-	case object ExtraQuery extends ComboValueBuffType(NoSelect, NoQuery)
+	case object ExtraFilter extends ComboValueBuffType(NoSelect, NoFilter)
 
 
 
@@ -215,22 +215,22 @@ object Buff {
 
 
 	/** Signifies that a column/component can be excluded from all types of database operations.
-	  * It is a shortcut for marking it with `OptionalSelect`, `OptionalQuery`, `OptionalWrite`. */
-	case object Optional extends ComboValueBuffType(OptionalSelect, OptionalQuery, OptionalWrite)
+	  * It is a shortcut for marking it with `OptionalSelect`, `OptionalFilter`, `OptionalWrite`. */
+	case object Optional extends ComboValueBuffType(OptionalSelect, OptionalFilter, OptionalWrite)
 
 	/** Signifies that a column/component must be listed explicitly in order to be included in any database operation
 	  * (it is not included by default).
-	  * It is a shortcut for marking it with `Optional`, `ExplicitSelect`, `ExplicitQuery` and `ExplicitWrite`. */
-	case object Explicit extends ComboValueBuffType(Optional, ExplicitSelect, ExplicitQuery, ExplicitWrite)
+	  * It is a shortcut for marking it with `Optional`, `ExplicitSelect`, `ExplicitFilter` and `ExplicitWrite`. */
+	case object Explicit extends ComboValueBuffType(Optional, ExplicitSelect, ExplicitFilter, ExplicitWrite)
 
 
 	/** Marks a column or component which is not part of the mapped scala class, but is still part of the mapped
 	  * entity from the relational point of view. All rows which are subject to mapping by the application have
 	  * the value returned by the buff, essentially partitioning the table and limiting the application to a subset
-	  * of its rows. It implies both `ExtraQuery` and `ExtraWrite`, meaning that all queries against the table will
+	  * of its rows. It implies both `ExtraFilter` and `ExtraWrite`, meaning that all queries against the table will
 	  * include the annotated column in the filter and all inserts and updates will set its value based on this buff.
 	  */
-	case object Unmapped extends ComboValueBuffType(ExtraQuery, ExtraWrite)
+	case object Unmapped extends ComboValueBuffType(ExtraFilter, ExtraWrite)
 
 
 
@@ -239,7 +239,10 @@ object Buff {
 	  * from buffs specifying whether and when a component can be included in a select header. */
 	case object SelectAudit extends ComboBuffType(Audit) with AuditBuffType
 
-	case object QueryAudit extends ComboBuffType(Audit) with AuditBuffType
+	/** Any value compared in SQL with the value of the annotated column/component is first mapped with the function
+	  * included in the buff. This is independent of whether the component can be included in the filter condition
+	  * at all.*/
+	case object FilterAudit extends ComboBuffType(Audit) with AuditBuffType
 
 	/** All values of columns/components annotated with this buff type must be mapped with the function
 	  * included in the buff before inserting the entity declaring it. This does not include update statements
@@ -266,7 +269,7 @@ object Buff {
 	  * the [[net.noresttherein.oldsql.schema.Buff.WriteAudit$ WriteAudit]] buff instead (or those specifically dedicated
 	  * to a single database operation type0.
 	  */
-	case object Audit extends ComboBuffType(SelectAudit, QueryAudit, WriteAudit) with AuditBuffType
+	case object Audit extends ComboBuffType(SelectAudit, FilterAudit, WriteAudit) with AuditBuffType
 
 
 
@@ -594,7 +597,7 @@ object Buff {
 	  * of the `ValueBuffType` instances are implied by the implementing class:
 	  *   - implying `ExtraSelect` means the annotated component is never included in the select header and the
 	  *     value provided by the buff is used instead;
-	  *   - implying `ExtraQuery` means that every select and update statement must include the annotated component
+	  *   - implying `ExtraFilter` means that every select and update statement must include the annotated component
 	  *     in the 'where' clause to additionally filter the set of rows mapped by the application;
 	  *   - implying `ExtraInsert` means that buff's value is used instead of any value carried by the entity
 	  *     when inserting a new row into the database;
@@ -603,7 +606,7 @@ object Buff {
 	  *  As always, extending classes can imply several of the above at the same time.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraSelect$ ExtraSelect]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraQuery$ ExtraQuery]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraFilter$ ExtraFilter]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraInsert$ ExtraInsert]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraUpdate$ ExtraUpdate]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExtraWrite$ ExtraWrite]]
@@ -674,7 +677,7 @@ object Buff {
 
 
 	/** A base trait for factories of `Buff[T]` instances wrapping values of `T`.
-	  * By implying one of the predefined `ExtraSelect`, `ExtraQuery`, `ExtraInsert`, `ExtraUpdate` buff types,
+	  * By implying one of the predefined `ExtraSelect`, `ExtraFilter`, `ExtraInsert`, `ExtraUpdate` buff types,
 	  * extending classes specify when (with which statement types) these values should be used.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  */
@@ -726,7 +729,7 @@ object Buff {
 
 	/** A column/component `Buff` type which carries a by-name value. This value is used instead of the value
 	  * present in the entity or the database in SQL statements. Which statements are affected depends on which
-	  * of the predefined `ExtraSelect`, `ExtraQuery`, `ExtraInsert`, `ExtraUpdate` buffs is implied by the
+	  * of the predefined `ExtraSelect`, `ExtraFilter`, `ExtraInsert`, `ExtraUpdate` buffs is implied by the
 	  * extending class. It is similar to `ConstantBuffType`, but the value provided by the buff is re-evaluated
 	  * at each access.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.GeneratedBuff]]
@@ -783,9 +786,9 @@ object Buff {
 
 	/** A buff type which inspects and possibly modifies the value of the annotated column/component during
 	  * a database operation. Exactly which operation(s) is/are affected is determined declaratively by
-	  * implying one of the 'audit' types: `SelectAudit`, `QueryAudit`, `InsertAudit`, `UpdateAudit`.
+	  * implying one of the 'audit' types: `SelectAudit`, `FilterAudit`, `InsertAudit`, `UpdateAudit`.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.SelectAudit$ SelectAudit]]
-	  * @see [[net.noresttherein.oldsql.schema.Buff.QueryAudit$ QueryAudit]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.FilterAudit$ FilterAudit]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.InsertAudit$ InsertAudit]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.UpdateAudit$ UpdateAudit]]
 	  */
@@ -826,7 +829,7 @@ object Buff {
 
 	/** A `ManagedBuff` is a combination of a `ValueBuff` and `AuditBuff`, carrying both a by-name value
 	  * and inspection/scanning function. When each of these is used depends, as always, on the associated buff type.
-	  * This choice is made by implying one of the predefined 'audit' buff types: `SelectAudit`, `QueryAudit`,
+	  * This choice is made by implying one of the predefined 'audit' buff types: `SelectAudit`, `FilterAudit`,
 	  * `InsertAudit` and `UpdateAudit`.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuffType]]
 	  */
@@ -860,8 +863,8 @@ object Buff {
 	  * of using one for some types of SQL statements and the other for other types. Most typically this means
 	  * using a generated value for insert and a modified value for update statements, but any combination
 	  * is possible as long as the sets of affected statements are disjoint. This selection is made, as with
-	  * the base types, by implying some subset of `ExtraSelect`, `ExtraQuery`, `ExtraInsert`, `ExtraUpdate`,
-	  * `SelectAudit`, `QueryAudit`, `InsertAudit`, `UpdateAudit`.
+	  * the base types, by implying some subset of `ExtraSelect`, `ExtraFilter`, `ExtraInsert`, `ExtraUpdate`,
+	  * `SelectAudit`, `FilterAudit`, `InsertAudit`, `UpdateAudit`.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuff]]
 	  */
 	trait ManagedBuffType extends ValueBuffType with AuditBuffType with DedicatedBuffType[ManagedBuff] {
