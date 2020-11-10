@@ -114,7 +114,7 @@ object MappingProxy {
 
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-			if (components.contains(backer)) backer.selectForm(backer.selectable)
+			if (components.contains(backer)) backer.selectForm(backer.selectable) //fixme: default select list unless top level buff
 			else backer.selectForm(components)
 
 		override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] =

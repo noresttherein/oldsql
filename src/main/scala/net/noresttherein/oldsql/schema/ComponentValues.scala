@@ -1,14 +1,12 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.morsels.generic.{=#>, Const, GenericFun}
-import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.ComponentValues.{empty, AliasedComponentValues, DedicatedComponentValues, EmptyValues, FallbackValues}
+import net.noresttherein.oldsql.morsels.generic.{=#>, GenericFun}
+import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, DedicatedComponentValues, EmptyValues, FallbackValues}
 import net.noresttherein.oldsql.schema.ComponentValues.ColumnValues.{AliasedColumnValues, ColumnValue, DedicatedColumnValues, FallbackColumnValues, GlobalColumnValues}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.OperationType.WriteOperationType
 import slang._
 
 

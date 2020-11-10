@@ -60,6 +60,7 @@ object OptionMapping {
 
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[Option[S]] =
+			//fixme: not selectable, but default select list
 			get.selectForm(if (components.contains(get)) get.selectable else components).toOpt
 
 //		override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =

@@ -8,11 +8,11 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLForms, SQLReadForm, SQLReadForms, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.{ast, ColumnSQL, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedColumnSQLMapping, IndexedSQLMapping, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{TopSelectSQL, SubselectSQL}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumnAs, SubselectColumn, SubselectSQL, TopSelectColumn, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChain, ChainHead, ChainMatcher, EmptyChain}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedChainHead, IndexedChainMatcher, IndexedColumn, IndexedSQLExpression}
@@ -273,6 +273,8 @@ object TupleSQL {
 	{
 		def size :Int
 
+		override def mapping[O] :IndexedSQLMapping[F, S, T, O] = IndexedSQLMapping(this)
+
 		protected override def parts :Seq[SQLExpression[F, S, _]] = {
 			@tailrec def rec(e :IndexedChainTuple[F, S, _], acc :List[SQLExpression[F, S, _]] = Nil) :Seq[SQLExpression[F, S, _]] =
 				e match {
@@ -305,6 +307,13 @@ object TupleSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
 			matcher.indexedChain(this)
+
+
+		override def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectSQL[T] =
+			SelectSQL[E, T](from, this)
+
+		override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectSQL[B, T] =
+			SelectSQL.subselect[B, ExactSubselectOf[F, B], T](from, this)
 
 
 		def |~[E <: F, O >: LocalScope <: S, K <: Label :ValueOf, H]
@@ -354,6 +363,8 @@ object TupleSQL {
 		sealed trait IndexedSQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T]
 			extends SQLExpression[F, S, T]
 		{
+			def mapping[O] :IndexedSQLMapping[F, S, T, O]
+
 			override def asGlobal :Option[IndexedSQLExpression[F, GlobalScope, T]]
 
 			override def anchor(from :F) :IndexedSQLExpression[F, S, T]
@@ -372,6 +383,9 @@ object TupleSQL {
 		                   (override val column :ColumnSQL[F, S, V], override val alias :N)
 			extends AliasedColumn[F, S, V](column, alias) with IndexedSQLExpression[F, S, V]
 		{
+			override def mapping[O] :IndexedColumnSQLMapping[F, S, N, V, O] =
+				IndexedColumnSQLMapping(this)
+
 			override def asGlobal :Option[IndexedColumn[F, GlobalScope, N, V]] =
 				if (column.isGlobal) Some(this.asInstanceOf[IndexedColumn[F, GlobalScope, N, V]])
 				else None
@@ -391,6 +405,13 @@ object TupleSQL {
 			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :IndexedColumn[E, S, N, V] =
 				new IndexedColumn(mapper(column), alias)
 
+
+			//todo: proper return types after new indexed Select types
+			override def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectColumn[V] =
+				SelectSQL(from, this)
+
+			override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectColumn[B, V] =
+				SelectSQL.subselect[B, ExactSubselectOf[F, B], N, V](from, this)
 		}
 
 

@@ -90,10 +90,14 @@ package object schema {
 	                                      (map :S => Option[X], unmap :X => Option[S]) :Seq[Buff[X]] =
 		mapping.buffs.map { buff => buff.bimap(
 			s => map(s) getOrElse {
-				throw new BuffMappingFailureException(s"Failed mapping buff $buff of mapping $mapping: no value returned for $s by $map.")
+				throw new BuffMappingFailureException(
+					s"Failed mapping buff $buff of mapping $mapping: no value returned for $s by $map."
+				)
 			},
 			x => unmap(x) getOrElse {
-				throw new BuffMappingFailureException(s"Failed reverse mapping buff $buff of mapping $mapping: no value returned for $x by $unmap")
+				throw new BuffMappingFailureException(
+					s"Failed reverse mapping buff $buff of mapping $mapping: no value returned for $x by $unmap"
+				)
 			}
 		)}
 
@@ -105,7 +109,8 @@ package object schema {
 		buffs.flatMap(buff => buff.cascade(map.requisite getOrElse {
 			s :S => map.get(s) getOrElse {
 				throw new BuffMappingFailureException(
-					s"Failed cascading buff $buff from $owner: no value returned for $s by $map")
+					s"Failed cascading buff $buff from $owner: no value returned for $s by $map"
+				)
 			}
 		}))
 
@@ -189,13 +194,13 @@ package object schema {
 	@inline private[oldsql] def composeColumnExtractAssoc[S, X, T, O]
 	                            (mapping :MappingAt[O], extractor : S =?> X)
 	                            (entry :Assoc[RefinedMapping[X, O]#Column, RefinedMapping[X, O]#ColumnExtract, T])
-	:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
+			:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
 		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose extractor)
 
 	@inline private[oldsql] def composeColumnExtractAssoc[S, X, T, O]
 	                            (mapping :MappingAt[O], f : S => X)
 	                            (entry :Assoc[RefinedMapping[X, O]#Column, RefinedMapping[X, O]#ColumnExtract, T])
-	:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
+			:Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T] =
 		Assoc[RefinedMapping[S, O]#Column, RefinedMapping[S, O]#ColumnExtract, T](entry._1, entry._2 compose f)
 
 

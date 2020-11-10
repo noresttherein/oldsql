@@ -1006,12 +1006,12 @@ object GroupByClause {
 			new GroupingRelation[M, S, O](component, component.mapping)
 
 		def apply[F <: RowProduct, S](expression :SQLExpression[F, GlobalScope, S]) :GroupingRelation[Group[S]#T, S, F] =
-			new GroupingRelation[Group[S]#T, S, F](expression, ExpressionMapping(expression))(
+			new GroupingRelation[Group[S]#T, S, F](expression, SQLMapping(expression))(
 				OriginProjection[Group[S]#T[Any], S].isomorphism[F]
 			)
 
 		def apply[F <: RowProduct, S](expression :ColumnSQL[F, GlobalScope, S]) :GroupingRelation[Group[S]#C, S, F] =
-			new GroupingRelation[Group[S]#C, S, F](expression, ExpressionColumnMapping(expression))(
+			new GroupingRelation[Group[S]#C, S, F](expression, ColumnSQLMapping(expression))(
 				OriginProjection[Group[S]#C[Any], S].isomorphism[F]
 			)
 	}

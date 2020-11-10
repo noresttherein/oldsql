@@ -588,7 +588,7 @@ trait Mapping {
 	  * exactly one equal to its export version on the `columns` list. This process can change the name and buffs
 	  * of the column, reflecting additional information present in this mapping.
 	  * By default this is an identity operation as no adaptation of subcomponents takes place.
-	  */
+	  */ //consider: renaming it to operative perhaps? it can easily conflict with an `export` column in client apps
 	def export[T](column :Column[T]) :Column[T] = apply(column).export
 
 
@@ -599,7 +599,7 @@ trait Mapping {
 	  * this list will cover all columns defined directly by the mapping. The components on the list are always
 	  * the ''export'' versions, but their subcomponents are not, generally, the ''export'' versions from the point
 	  * of view of this mapping.
-	  */
+	  */ //todo: subcomponents of these should have 'export' names, just not buffs
 	def components :Unique[Component[_]]
 
 	/** All transitive components of this mapping (i.e. components/columns declared by it's components or
@@ -611,7 +611,7 @@ trait Mapping {
 	  * this list will cover all columns defined by the mapping. The components on the list are always
 	  * the ''export'' versions, but their subcomponents are not, generally, the ''export'' versions from the point
 	  * of view of this mapping.
-	  */
+	  *///todo: subcomponents of these should have 'export' names, just not buffs
 	def subcomponents :Unique[Component[_]]
 
 
@@ -758,7 +758,7 @@ trait Mapping {
 	  * @throws IllegalArgumentException if the column set covered by the given components (in their operative versions)
 	  *        includes a column with the `NoSelect` buff (or one which implies it), or if a column of this mapping
 	  *        exists which does not belong to this set and does not have the `NoSelectByDefault` buff.
-	  */
+	  */ //fixme: proper inclusion semantics, using only default, not all selectable columns of the component
 	def selectForm(components :Unique[Component[_]]) :SQLReadForm[Subject]
 
 	/** Default read form (included columns) of a select statement for this mapping. */
@@ -784,7 +784,7 @@ trait Mapping {
 	  * @throws IllegalArgumentException if the column set covered by the given components (in their operative versions)
 	  *        includes a column with the `NoFilter` buff (or one which implies it), or if a column of this mapping
 	  *        exists which does not belong to this set and does not have the `NoFilterByDefault` buff.
-	  */
+	  */ //fixme: proper inclusion semantics, using only default, not all filterable columns of the component
 	def filterForm(components :Unique[Component[_]]) :SQLWriteForm[Subject]
 
 	/** Default write form (included parameters) of a filter for a particular subject value. */ //todo: PK? all?
@@ -808,7 +808,7 @@ trait Mapping {
 	  * @throws IllegalArgumentException if the column set covered by the given components (in their operative versions)
 	  *        includes a column with the `NoUpdate` buff (or one which implies it), or if a column of this mapping
 	  *        exists which does not belong to this set and does not have the `NoUpdateByDefault` buff.
-	  */
+	  */ //fixme: proper inclusion semantics, using only default, not all updatable columns of the component
 	def updateForm(components :Unique[Component[_]]) :SQLWriteForm[Subject]
 
 	/** Default write form (included columns) used for update statements of this mapping. */
@@ -832,7 +832,7 @@ trait Mapping {
 	  * @throws IllegalArgumentException if the column set covered by the given components (in their operative versions)
 	  *        includes a column with the `NoInsert` buff (or one which implies it), or if a column of this mapping
 	  *        exists which does not belong to this set and does not have the `NoInsertByDefault` buff.
-	  */
+	  */ //fixme: proper inclusion semantics, using only default, not all insertable columns of the component
 	def insertForm(components :Unique[Component[_]]) :SQLWriteForm[Subject]
 
 	/** Default write form (included columns) used for insert statements of this mapping. */
@@ -844,7 +844,7 @@ trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.filterForm]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.updateForm]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.insertForm]]
-	  */
+	  */ //fixme: proper inclusion semantics, using only default, not all pertinent columns of the component
 	def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[Subject]
 
 	/** Default write form (included columns) of this mapping used for the given SQL statement type.
@@ -1757,7 +1757,6 @@ object Mapping extends LowPriorityMappingImplicits {
 			                                        op.columns[S, mapping.Origin](mapping) ++ op.extra.Enabled(mapping))
 
 	}
-
 
 
 }

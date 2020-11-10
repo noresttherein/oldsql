@@ -19,8 +19,8 @@ trait OptimizedMappingAssembly extends Mapping {
 		op.writtenValues(refine, subject, collector)
 
 	override def filterValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
-		if (isQueryable) {
-			val audited = queryAudit(subject)
+		if (isFilterable) {
+			val audited = filterAudit(subject)
 			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
 				case Some(value) => comp.filterValues(value, collector)
 				case _ =>
@@ -48,10 +48,10 @@ trait OptimizedMappingAssembly extends Mapping {
 			components foreach { c :Component[_] => componentValues(c) }
 		}
 
-	private val isQueryable = Lazy(NoFilter.disabled(this))
+	private val isFilterable = Lazy(NoFilter.disabled(this))
 	private val isUpdatable = Lazy(NoUpdate.disabled(this))
 	private val isInsertable = Lazy(NoInsert.disabled(this))
-	private val queryAudit = Lazy(FilterAudit.fold(refine))
+	private val filterAudit = Lazy(FilterAudit.fold(refine))
 	private val updateAudit = Lazy(UpdateAudit.fold(refine))
 	private val insertAudit = Lazy(InsertAudit.fold(refine))
 
@@ -95,7 +95,7 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 	private val lazySubcomponents :Unique[Component[_]] = Lazy(components.flatMap { c => c +: c.components })
 	private val lazyColumns = Lazy(components.flatMap(_.columns)) //columns of a column is the column itself, so works for direct columns, too
 	private val lazySelectable = Lazy(super.selectable)
-	private val lazyQueryable = Lazy(super.filterable)
+	private val lazyFilterable = Lazy(super.filterable)
 	private val lazyUpdatable = Lazy(super.updatable)
 	private val lazyAutoUpdated = Lazy(super.autoUpdated)
 	private val lazyInsertable = Lazy(super.insertable)
@@ -104,7 +104,7 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 	override def subcomponents :Unique[Component[_]] = lazySubcomponents
 	override def columns :Unique[Column[_]] = lazyColumns
 	override def selectable :Unique[Column[_]] = lazySelectable
-	override def filterable :Unique[Column[_]] = lazyQueryable
+	override def filterable :Unique[Column[_]] = lazyFilterable
 	override def updatable :Unique[Column[_]] = lazyUpdatable
 	override def autoUpdated :Unique[Column[_]] = lazyAutoUpdated
 	override def insertable :Unique[Column[_]] = lazyInsertable
@@ -130,9 +130,10 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 
 /** A stackable mixin trait which defines all column and component lists as `val`s initialized by the call to super.
   * It caches also extracts and some buff information required by `optionally` to provide a faster implementation.
-  * It must come in linearization order after the final definitions of all standard `Mapping` properties, which are
-  * in most cases overriden here as `abstract override` methods. The implementations are very similar to those
-  * in [[net.noresttherein.oldsql.schema.support.LazyMapping LazyMapping]], the difference between the two being
+  * It must come in linearization order after the final definitions of all standard `Mapping` properties,
+  * in particular buffs, all column, component and extract lists, which are in most cases overriden here
+  * as `abstract override` methods. The implementations are very similar to those in
+  * [[net.noresttherein.oldsql.schema.support.LazyMapping LazyMapping]], the difference between the two being
   * that this trait is not really considered a base trait for extension by custom `Mapping` classes,
   * as the precomputed values are not lazy and would be referenced before the initialization of the extending class.
   * @see [[net.noresttherein.oldsql.schema.support.LazyMapping]]
@@ -145,8 +146,8 @@ trait StableMapping extends Mapping {
 		op.writtenValues(refine, subject, collector)
 
 	override def filterValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
-		if (isQueryable) {
-			val audited = queryAudit(subject)
+		if (isFilterable) {
+			val audited = filterAudit(subject)
 			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
 				case Some(value) => comp.filterValues(value, collector)
 				case _ =>
@@ -174,10 +175,10 @@ trait StableMapping extends Mapping {
 			components foreach { c :Component[_] => componentValues(c) }
 		}
 
-	private val isQueryable = NoFilter.disabled(this)
+	private val isFilterable = NoFilter.disabled(this)
 	private val isUpdatable = NoUpdate.disabled(this)
 	private val isInsertable = NoInsert.disabled(this)
-	private val queryAudit = FilterAudit.fold(refine)
+	private val filterAudit = FilterAudit.fold(refine)
 	private val updateAudit = UpdateAudit.fold(refine)
 	private val insertAudit = InsertAudit.fold(refine)
 

@@ -1585,6 +1585,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
+		//fixme: not selectable, default select list
+		//_.selectable aren't export components, but should have correct column names
 		val columns = components.map(frame.export(_)).flatMap(_.selectable)
 
 		if (columns.exists(NoSelect.enabled))

@@ -61,7 +61,7 @@ object StaticMapping {
 	  * of the subject entity.
 	  *
 	  * It is very similar to
-	  * [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdapterFactoryMethods MappingAdapter.AdapterFactoryMethods]],
+	  * [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods MappingAdapter.MappingFactoryMethods]],
 	  * but the adapter type parameter takes an additional parameter which value is always given as `this.type`.
 	  * Unfortunately this duplication can't be avoided by a common implementation, as `this.type` cannot appear
 	  * in a type signature making it necessary to accept an additional parameter, but, due to a scalac bug,

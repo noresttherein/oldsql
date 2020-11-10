@@ -1,18 +1,18 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraSelect, InsertAudit, NoInsert, NoFilter, NoSelect, NoUpdate, Nullable, OptionalSelect, FilterAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraSelect, FilterAudit, InsertAudit, NoFilter, NoInsert, NoSelect, NoUpdate, Nullable, OptionalSelect, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapterFactoryMethods
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
+import net.noresttherein.oldsql.schema.support.ColumnMappingFactoryMethods
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn
@@ -34,7 +34,7 @@ import net.noresttherein.oldsql.sql.mechanics.TableCount
   * return a new instance, using the form (and, where suitable, the name and buffs) of the original as their basis.
   */
 trait ColumnMapping[S, O] extends BaseMapping[S, O]
-	with ColumnAdapterFactoryMethods[({ type A[X] = ColumnMapping[X, O] })#A, S, O]
+	with ColumnMappingFactoryMethods[({ type A[X] = ColumnMapping[X, O] })#A, S, O]
 { column =>
 
 	/** The name of this column, as seen from the containing table if it is a table/view column.
@@ -137,9 +137,9 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 	/** Returns `Unique.empty`. */
-	final override def components :Unique[Component[_]] = Unique.empty
+	final override def components :Unique[Nothing] = Unique.empty
 	/** Returns `Unique.empty`. */
-	final override def subcomponents :Unique[Component[_]] = Unique.empty
+	final override def subcomponents :Unique[Nothing] = Unique.empty
 
 	/** Returns `Unique(this)`. */
 	override def columns :Unique[Column[S]] = Unique.single(this)
@@ -378,7 +378,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 	trait StableColumn[S, O] extends ColumnMapping[S, O] {
 		final override val isNullable :Boolean = super.isNullable
 
-		private[this] val isQueryable = NoFilter.disabled(this)
+		private[this] val isFilterable = NoFilter.disabled(this)
 		private[this] val isUpdatable = NoUpdate.disabled(this)
 		private[this] val isInsertable = NoInsert.disabled(this)
 
@@ -390,7 +390,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 			op.writtenValues(this, subject)
 
 		override def filterValues(subject :S) :ComponentValues[S, O] =
-			if (isQueryable) ColumnValues.preset(this, queryAudit(subject))
+			if (isFilterable) ColumnValues.preset(this, queryAudit(subject))
 			else ColumnValues.empty
 
 		override def updateValues(subject :S) :ComponentValues[S, O] =
@@ -406,7 +406,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 			op.writtenValues(this, subject, collector)
 
 		override def filterValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
-			if (isQueryable) collector.add(this, queryAudit(subject))
+			if (isFilterable) collector.add(this, queryAudit(subject))
 
 		override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			if (isUpdatable) collector.add(this, updateAudit(subject))
@@ -451,11 +451,11 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		override val insertable :Unique[Column[S]] = selfUnless(NoInsert)
 		override val autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
 
-		final override val selectForm :SQLReadForm[S] = super.selectForm
-		final override val filterForm :SQLWriteForm[S] = super.filterForm
-		final override val updateForm :SQLWriteForm[S] = super.updateForm
-		final override val insertForm :SQLWriteForm[S] = super.insertForm
-		final override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
+		override val selectForm :SQLReadForm[S] = super.selectForm
+		override val filterForm :SQLWriteForm[S] = super.filterForm
+		override val updateForm :SQLWriteForm[S] = super.updateForm
+		override val insertForm :SQLWriteForm[S] = super.insertForm
+		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 	}
 

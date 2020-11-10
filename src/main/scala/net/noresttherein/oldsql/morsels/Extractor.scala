@@ -74,7 +74,7 @@ trait Extractor[-X, +Y] {
 
 
 
-sealed class ExtractorImplicits private [morsels] () {
+sealed abstract class ExtractorImplicits {
 	implicit def requisiteExtractor[X, Y](f :X => Y) :RequisiteExtractor[X, Y] = Extractor.req(f)
 }
 

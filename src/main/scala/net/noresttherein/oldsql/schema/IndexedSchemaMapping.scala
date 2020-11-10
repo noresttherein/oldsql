@@ -10,11 +10,11 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.IndexedMappingSchema.{CustomizedFlatIndexedSchema, CustomizedIndexedSchema, ExtensibleFlatIndexedSchema, FlatIndexedMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, CustomizedSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
 import net.noresttherein.oldsql.schema.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchema, MappedIndexedSchemaMapping}
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, PrefixedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.DelegateMapping
+import net.noresttherein.oldsql.schema.support.{DelegateMapping, MappingFactoryMethods}
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
@@ -726,7 +726,7 @@ object IndexedMappingSchema {
   */
 trait IndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
 	extends SchemaMapping[S, V, C, O]
-	   with AdapterFactoryMethods[({ type A[X] = IndexedSchemaMapping[X, V, C, O] })#A, S, O]
+	   with MappingFactoryMethods[({ type A[X] = IndexedSchemaMapping[X, V, C, O] })#A, S, O]
 {
 	override val schema :IndexedMappingSchema[S, V, C, O]
 
@@ -844,7 +844,7 @@ object IndexedSchemaMapping {
 	  */
 	trait FlatIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
 		extends IndexedSchemaMapping[S, V, C, O] with FlatSchemaMapping[S, V, C, O]
-		   with AdapterFactoryMethods[({ type A[X] = FlatIndexedSchemaMapping[X, V, C, O] })#A, S, O]
+		   with MappingFactoryMethods[({ type A[X] = FlatIndexedSchemaMapping[X, V, C, O] })#A, S, O]
 	{
 		override val schema :FlatIndexedMappingSchema[S, V, C, O]
 
@@ -902,7 +902,7 @@ object IndexedSchemaMapping {
 
 	trait IndexedSchemaMappingAdapter[+M <: RefinedMapping[T, O], T, S, V <: IndexedChain, C <: Chain, O]
 		extends IndexedSchemaMapping[S, V, C, O] with SchemaMappingAdapter[M, T, S, V, C, O]
-		   with AdapterFactoryMethods[({ type A[X] = IndexedSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
+		   with MappingFactoryMethods[({ type A[X] = IndexedSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
 		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
@@ -945,7 +945,7 @@ object IndexedSchemaMapping {
 	trait FlatIndexedSchemaMappingAdapter[M <: RefinedMapping[T, O], T, S, V <: IndexedChain, C <: Chain, O]
 		extends FlatIndexedSchemaMapping[S, V, C, O] with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
 		   with FlatSchemaMappingAdapter[M, T, S, V, C, O]
-		   with AdapterFactoryMethods[({ type A[X] = FlatIndexedSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
+		   with MappingFactoryMethods[({ type A[X] = FlatIndexedSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
 		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =

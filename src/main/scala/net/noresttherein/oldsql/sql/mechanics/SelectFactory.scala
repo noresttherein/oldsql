@@ -344,7 +344,7 @@ sealed abstract class SecondChoiceSelectFactories extends SingleColumnSelectFact
 
 
 
-object SelectFactory extends SecondChoiceSelectFactories {
+object SelectFactory extends SecondChoiceSelectFactories { //todo: IndexedColumn, IndexedTuple select
 
 	implicit def freeSelectColumnMapping[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
 	                                     E <: ColumnMapping[_, G], T]

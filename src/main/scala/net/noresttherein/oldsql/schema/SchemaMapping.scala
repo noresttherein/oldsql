@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn, MappingLabel}
-import net.noresttherein.oldsql.schema.support.{DelegateMapping, StableMapping}
+import net.noresttherein.oldsql.schema.support.{ColumnMappingFactoryMethods, DelegateMapping, MappingFactoryMethods, StableMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnSupport, StableColumn}
 import net.noresttherein.oldsql.schema.MappingSchema.{CustomizedFlatSchema, CustomizedSchema, EmptySchema, ExtensibleFlatMappingSchema, ExtensibleMappingSchema, FlatMappingSchema, GetLabeledComponent, MappingSchemaSupport, SchemaFlattening, SubjectConstructor}
 import net.noresttherein.oldsql.schema.SchemaMapping.{|-|, CustomizeSchema, DelegateSchemaMapping, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaMapping, MappedFlatSchemaMapping, MappedSchemaMapping, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
@@ -17,11 +17,11 @@ import net.noresttherein.oldsql.schema.bits.{AbstractLabeledMapping, CustomizedM
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{AdapterFactoryMethods, BaseAdapter, ColumnAdapterFactoryMethods, ComposedAdapter, DelegateAdapter}
+import net.noresttherein.oldsql.schema.bits.MappingAdapter.{BaseAdapter, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.support.StaticMapping.StaticMappingTemplate
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.{slang, OperationType}
-import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, SELECT, UPDATE}
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.IndexedMappingSchema.{ExtensibleFlatIndexedSchema, ExtensibleIndexedSchema, FlatIndexedMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
@@ -90,7 +90,7 @@ import slang._
   */
 trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 	extends BaseMapping[S, O] with |-|[S, V, C]
-	   with AdapterFactoryMethods[({ type T[X] = SchemaMapping[X, V, C, O] })#T, S, O]
+	   with MappingFactoryMethods[({ type T[X] = SchemaMapping[X, V, C, O] })#T, S, O]
 { outer =>
 
 	//todo: this really reads better as a right-associative method
@@ -577,7 +577,7 @@ object SchemaMapping {
 	  */
 	trait FlatSchemaMapping[S, V <: Chain, C <: Chain, O]
 		extends SchemaMapping[S, V, C, O] with |||[S, V, C]
-		   with AdapterFactoryMethods[({ type T[X] = FlatSchemaMapping[X, V, C, O] })#T, S, O]
+		   with MappingFactoryMethods[({ type T[X] = FlatSchemaMapping[X, V, C, O] })#T, S, O]
 	{
 		override val schema :FlatMappingSchema[S, V, C, O]
 
@@ -647,7 +647,7 @@ object SchemaMapping {
 
 	/** A single-column schema mapping and a column of a schema mapping at the same time. */
 	trait SchemaColumn[S, O] extends FlatSchemaMapping[S, @~, @~, O] with ||[S] with ColumnMapping[S, O]
-		with ColumnAdapterFactoryMethods[({ type A[X] = SchemaColumn[X, O] })#A, S, O]
+		with ColumnMappingFactoryMethods[({ type A[X] = SchemaColumn[X, O] })#A, S, O]
 	{
 		override val schema :FlatMappingSchema[S, @~, @~, O] = MappingSchema[S, O]
 
@@ -756,7 +756,7 @@ object SchemaMapping {
 	trait LabeledSchemaColumn[N <: Label, S, O]
 		extends SchemaColumn[S, O] with LabeledFlatSchemaMapping[N, S, @~, @~, O] with @||[N, S]
 		   with LabeledColumn[N, S, O]
-		   with ColumnAdapterFactoryMethods[({ type A[X] = LabeledSchemaColumn[N, X, O] })#A, S, O]
+		   with ColumnMappingFactoryMethods[({ type A[X] = LabeledSchemaColumn[N, X, O] })#A, S, O]
 	{
 //		def label :N
 
@@ -939,7 +939,7 @@ object SchemaMapping {
 
 	trait SchemaMappingAdapter[+M <: RefinedMapping[T, O], T, S, V <: Chain, C <: Chain, O]
 		extends SchemaMapping[S, V, C, O] with BaseAdapter[M, S, O]
-		   with AdapterFactoryMethods[({ type A[X] = SchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
+		   with MappingFactoryMethods[({ type A[X] = SchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
 		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:SchemaMappingAdapter[M, T, S, V, C, O] =
@@ -981,7 +981,7 @@ object SchemaMapping {
 
 	trait FlatSchemaMappingAdapter[M <: RefinedMapping[T, O], T, S, V <: Chain, C <: Chain, O]
 		extends FlatSchemaMapping[S, V, C, O] with SchemaMappingAdapter[M, T, S, V, C, O]
-		   with AdapterFactoryMethods[({ type A[X] = FlatSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
+		   with MappingFactoryMethods[({ type A[X] = FlatSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
 		protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatSchemaMappingAdapter[M, T, S, V, C, O] =

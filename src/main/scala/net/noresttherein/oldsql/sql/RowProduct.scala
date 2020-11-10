@@ -912,7 +912,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 
 //	def toRelation :Relation[MappingOf[Row]#Projection] =
-//		new ProductRelation[ExpressionMapping.Expression[Generalized, GlobalScope, Row]#Projection, Row](this)
+//		new ProductRelation[SQLMapping.Expression[Generalized, GlobalScope, Row]#Projection, Row](this)
 
 
 
@@ -2491,11 +2491,11 @@ object RowProduct {
 	  */
 	class ProductRelation[F <: RowProduct { type Row = R }, R]
 	                     (val product :GroundFrom { type Self = F; type Row = R })
-		extends Relation[ExpressionMapping.Expression[F, GlobalScope, R]#Projection]
+		extends Relation[SQLMapping.Expression[F, GlobalScope, R]#Projection]
 	{
-		val mapping :ExpressionMapping[F, GlobalScope, R, ()] = ExpressionMapping(product.row)
+		val mapping :SQLMapping[F, GlobalScope, R, ()] = SQLMapping(product.row)
 
-		override def apply[O] :ExpressionMapping[F, GlobalScope, R, O] = mapping.withOrigin[O]
+		override def apply[O] :SQLMapping[F, GlobalScope, R, O] = mapping.withOrigin[O]
 
 		override def sql :String = ??? //todo: default sql
 	}

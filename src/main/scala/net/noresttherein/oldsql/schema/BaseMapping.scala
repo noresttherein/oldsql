@@ -124,7 +124,7 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 	/** Default write form (included columns) of insert statements for this mapping.
 	  * @return `writeForm(INSERT)` (or a functionally equivalent instance) unless overriden. */
-	override def insertForm :SQLWriteForm[S] = writeForm(INSERT) //MappingWriteForm.defaultInsert(this)
+	override def insertForm :SQLWriteForm[S] = writeForm(INSERT)
 
 	/** The delegate target of all properties with write forms of various statement types.
 	  * @return `MappingWriteForm(op, this)` unless overriden. */
