@@ -125,7 +125,7 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 		else if (exclude.size > 1)
 			throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this)
 		else if (exclude.headOption.contains(this) && op.optional.enabled(this))
-			withBuffs(op.nonDefault[S] +: buffs)
+			withBuffs(op.exclude[S] +: buffs)
 		else if (include.headOption.contains(this) && op.explicit.enabled(this))
 			withBuffs(buffs.filter(op.explicit.disabled))
 		else

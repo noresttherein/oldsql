@@ -26,17 +26,17 @@ class BuffedMapping[+M <: RefinedMapping[S, O], S, O](protected override val bac
 
 object BuffedMapping {
 
-	def cascade[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
+	def cascading[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
 		new BuffedMapping[M, S, O](mapping, buffs) with DelegateAdapter[M, S, O]
 
-	def cascade[M <: MappingAt[O], S, O](mapping :MappingAdapter[M, S, O], buffs :Buff[S]*) :MappingAdapter[M, S, O] =
+	def cascading[M <: MappingAt[O], S, O](mapping :MappingAdapter[M, S, O], buffs :Buff[S]*) :MappingAdapter[M, S, O] =
 		new BuffedMapping[MappingAdapter[M, S, O], S, O](mapping, buffs) with ComposedAdapter[M, S, S, O]
 
 
-	def nonCascade[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
+	def nonCascading[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
 		new NonCascadingBuffedMapping[M, S, O](mapping, buffs) with DelegateAdapter[M, S, O]
 
-	def nonCascade[M <: MappingAt[O], S, O](mapping :MappingAdapter[M, S, O], buffs :Buff[S]*) :MappingAdapter[M, S, O] =
+	def nonCascading[M <: MappingAt[O], S, O](mapping :MappingAdapter[M, S, O], buffs :Buff[S]*) :MappingAdapter[M, S, O] =
 		new NonCascadingBuffedMapping[mapping.type, S, O](mapping, buffs) with ComposedAdapter[M, S, S, O]
 
 

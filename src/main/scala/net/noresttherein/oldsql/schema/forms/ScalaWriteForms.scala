@@ -1,8 +1,8 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.forms
 
 import java.sql.PreparedStatement
 
-import net.noresttherein.oldsql.schema.ScalaWriteForms._
+import net.noresttherein.oldsql.schema.SQLWriteForm
 
 
 

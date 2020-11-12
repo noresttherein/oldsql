@@ -3,22 +3,22 @@ package net.noresttherein.oldsql.schema
 import java.sql.{PreparedStatement, ResultSet}
 
 import scala.annotation.implicitNotFound
+import scala.collection.immutable.Seq
+import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.collection.LabeledChain.>~
 import net.noresttherein.oldsql.collection.Record.|#
+import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Extractor}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.{FlatMappedSQLForm, MappedSQLForm, NullValue}
 import net.noresttherein.oldsql.schema.SQLReadForm.{ChainIndexReadForm, ChainReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, SeqReadForm}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, EmptyWriteForm, EvalOrNullWriteForm, FlatMappedSQLWriteForm, GenericChainWriteForm, LazyWriteForm, MappedSQLWriteForm, NonLiteralWriteForm, SeqWriteForm}
-import scala.collection.immutable.Seq
-import scala.reflect.ClassTag
-
-import net.noresttherein.oldsql.collection.LabeledChain.>~
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Extractor}
-import net.noresttherein.oldsql.schema.ScalaForms.Tuple2Form
+import net.noresttherein.oldsql.schema.forms.ScalaForms
+import net.noresttherein.oldsql.schema.forms.ScalaForms.Tuple2Form
 import net.noresttherein.oldsql.slang
 
 

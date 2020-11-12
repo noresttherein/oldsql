@@ -3,16 +3,15 @@ package net.noresttherein.oldsql.schema
 import java.sql.PreparedStatement
 
 import scala.annotation.implicitNotFound
-
-import net.noresttherein.oldsql.collection.{Chain, ChainMap}
-import net.noresttherein.oldsql.collection.Chain.~
-import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.SQLForm.{ChainForm, ChainMapForm, NullValue}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedWriteForm, FlatMappedSQLWriteForm, MappedSQLWriteForm}
 import scala.collection.immutable.Seq
 
+import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.morsels.ColumnBasedFactory
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedWriteForm, FlatMappedSQLWriteForm, MappedSQLWriteForm}
+import net.noresttherein.oldsql.schema.forms.{BaseSQLForm, ScalaWriteForms}
 
 
 

@@ -18,6 +18,7 @@ import net.noresttherein.oldsql.schema.support.{DelegateMapping, MappingFactoryM
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
+import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
 
 
 

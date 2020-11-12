@@ -1,18 +1,20 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.forms
 
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+
 import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Record}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.collection.LabeledChain.>~
 import net.noresttherein.oldsql.collection.Record.|#
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.SQLReadForm.{AbstractChainIndexReadForm, BaseChainReadForm}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.ColumnReadForm.OptionColumnReadForm
 import net.noresttherein.oldsql.schema.ColumnWriteForm.OptionColumnWriteForm
-import net.noresttherein.oldsql.schema.ScalaForms.OptionForm
 import net.noresttherein.oldsql.schema.SQLForm.{ChainForm, ChainMapForm, EmptyForm, IndexedChainForm, LabeledChainForm, RecordForm}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{ChainWriteForm, GenericChainWriteForm}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.forms.ScalaForms.OptionForm
 import net.noresttherein.oldsql.slang
 
 //implicits

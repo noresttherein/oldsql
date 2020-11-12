@@ -11,6 +11,7 @@ import scala.annotation.{implicitNotFound, tailrec}
 import scala.collection.immutable.Seq
 
 import net.noresttherein.oldsql.morsels.ColumnBasedFactory
+import net.noresttherein.oldsql.schema.forms.{BaseSQLForm, ScalaReadForms}
 
 
 

@@ -1,10 +1,11 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.bits.ConstantMapping
+import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, IsomorphicProjection, ProjectionBound}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.schema.Relation.As
+import net.noresttherein.oldsql.schema.Relation.{As, CustomizedRelation}
 import net.noresttherein.oldsql.sql.Compound
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 
@@ -18,6 +19,17 @@ trait Relation[+M[O] <: MappingAt[O]] {
 	def row[O] :M[O] = apply[O]
 
 	def apply[O] :M[O]
+
+	def export[T, O](component :RefinedMapping[T, O]) :RefinedMapping[T, O] = apply[O].export(component)
+
+	def export[T, O](column :ColumnMapping[T, O]) :ColumnMapping[T, O] = apply[O].export(column)
+
+	def include(components :M[this.type] => RefinedMapping[_, this.type]*) :Relation[M] =
+		new CustomizedRelation[M](this, Unique(components.map(_(apply[this.type])):_*), Unique.empty)
+
+	def exclude(components :M[this.type] => RefinedMapping[_, this.type]*) :Relation[M] =
+		new CustomizedRelation[M](this, Unique.empty, Unique(components.map(_(apply[this.type])):_*))
+
 
 	def sql :String
 
@@ -36,11 +48,6 @@ object Relation {
 	def apply[M <: Mapping, S](name :String, template :M)
 	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
 		new ProjectingRelation[projection.WithOrigin, S](projection[()](template), name)(projection.isomorphism)
-
-
-//	def apply[M <: Mapping, S](template :M)
-//	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
-//		new ProjectingRelation[projection.WithOrigin, S](projection[()](template))(projection.isomorphism)
 
 
 
@@ -101,6 +108,42 @@ object Relation {
 
 		override def apply[O] :A @: M[O] =
 			(alias @: relation[O].asInstanceOf[RefinedMapping[Any, Any]]).asInstanceOf[A @: M[O]]
+	}
+
+
+
+	private class CustomizedRelation[M[O] <: MappingAt[O]]
+	              (val source :Relation[M], includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+		extends Relation[M]
+	{
+		private val customized = {
+			val mapping = source[this.type]
+			CustomizedMapping[RefinedMapping[mapping.Subject, this.type], mapping.Subject, this.type](
+				mapping.refine,
+				includes.asInstanceOf[Unique[RefinedMapping[_, this.type]]],
+				excludes.asInstanceOf[Unique[RefinedMapping[_, this.type]]]
+			)
+		}
+
+		override def apply[O] :M[O] = source[O]
+
+		override def export[T, O](component :RefinedMapping[T, O]) = customized.withOrigin[O].export(component)
+
+		override def export[T, O](column :ColumnMapping[T, O]) = customized.withOrigin[O].export(column)
+
+
+		override def exclude(components :M[this.type] => RefinedMapping[_, this.type]*) :Relation[M] =
+			new CustomizedRelation[M](source, includes ++ components.map(_(apply[this.type])), excludes)
+
+		override def include(components :M[this.type] => RefinedMapping[_, this.type]*) :Relation[M] =
+			new CustomizedRelation[M](source, includes, excludes ++ components.map(_(apply[this.type])))
+
+
+		override def sql :String = source.sql
+
+		override lazy val toString :String =
+			(includes.view.map("+" + _) ++ excludes.view.map("-" + _)).mkString(s"($sql){", ", ", "}")
+
 	}
 
 

@@ -6,9 +6,13 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
-import net.noresttherein.oldsql.schema.ScalaWriteForms.OptionWriteForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstWriteForm, ErrorWriteForm, EvalOrNullWriteForm, EvalWriteForm, FlatMappedSQLWriteForm, LazyWriteForm, MappedSQLWriteForm, NonLiteralWriteForm, NullWriteForm, ProxyWriteForm}
+import net.noresttherein.oldsql.schema.forms.ColumnWriteForms
+import net.noresttherein.oldsql.schema.forms.ScalaWriteForms.OptionWriteForm
+
+
+
 
 
 

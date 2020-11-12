@@ -1,4 +1,4 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.forms
 
 import java.lang.{Boolean => JBoolean, Byte => JByte, Character => JChar, Double => JDouble, Float => JFloat, Integer => JInt, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal}
@@ -8,8 +8,12 @@ import java.sql.Types.{BIGINT, BOOLEAN, CHAR, DECIMAL, DOUBLE, FLOAT, INTEGER, S
 import java.time.Instant
 import java.util.Optional
 
+import net.noresttherein.oldsql.schema.{ColumnForm, SQLForm}
 import net.noresttherein.oldsql.schema.ColumnForm.{DerivedColumnForm, NullableJDBCForm}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+
+
+
 
 
 

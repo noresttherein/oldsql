@@ -7,9 +7,10 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCSQLType
 import net.noresttherein.oldsql.schema.ColumnReadForm.{FallbackColumnReadForm, FlatMappedColumnReadForm, MappedColumnReadForm}
-import net.noresttherein.oldsql.schema.ScalaReadForms.OptionReadForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{ConstReadForm, EvalReadForm, FallbackReadForm, FlatMappedSQLReadForm, LazyReadForm, MappedSQLReadForm, NullReadForm, ProxyReadForm}
+import net.noresttherein.oldsql.schema.forms.ColumnReadForms
+import net.noresttherein.oldsql.schema.forms.ScalaReadForms.OptionReadForm
 
 
 

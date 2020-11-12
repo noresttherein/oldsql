@@ -1,10 +1,10 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.forms
 
-import java.sql.{PreparedStatement, ResultSet}
+import java.sql.PreparedStatement
 
-import net.noresttherein.oldsql.schema.ScalaForms._
-import net.noresttherein.oldsql.schema.ScalaReadForms._
-import net.noresttherein.oldsql.schema.ScalaWriteForms._
+import net.noresttherein.oldsql.schema.forms.ScalaReadForms._
+import net.noresttherein.oldsql.schema.forms.ScalaWriteForms._
+import net.noresttherein.oldsql.schema.SQLForm
 import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 
 

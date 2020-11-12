@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.sql.ast
 
+import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, Relation, SQLReadForm}
@@ -96,11 +97,28 @@ object MappingSQL {
 	  * resolved by the `Origin` type of the component before the expression can be used.
 	  */
 	class LooseComponent[F <: RowProduct, M[A] <: BaseMapping[V, A], V] private[MappingSQL]
-	                    (override val mapping :M[F], val shift :Int)(implicit val projection :IsomorphicProjection[M, V, F])
+	                    (override val mapping :M[F], val shift :Int, 
+	                     includes :Unique[RefinedMapping[_, F]], excludes :Unique[RefinedMapping[_, F]])
+	                    (implicit val projection :IsomorphicProjection[M, V, F])
 		extends MappingSQL[F, GlobalScope, M]
 	{
+		def this(mapping :M[F], shift :Int)(implicit projection :IsomorphicProjection[M, V, F]) =
+			this(mapping, shift, Unique.empty, Unique.empty)
+		
 		type Origin = F
 
+
+		def include(components :M[F] => RefinedMapping[_, F]*) :LooseComponent[F, M, V] = {
+			val newIncludes = components.map(_(mapping)).to(Unique)
+			new LooseComponent(mapping, shift, includes ++ newIncludes, excludes.filterNot(newIncludes.toSet))
+		}
+
+		def exclude(components :M[F] => RefinedMapping[_, F]*) :LooseComponent[F, M, V] = {
+			val newExcludes = components.map(_(mapping)).to(Unique)
+			new LooseComponent(mapping, shift, includes.filterNot(newExcludes.toSet), excludes ++ newExcludes)
+		}
+		
+		
 		override def readForm :SQLReadForm[V] = mapping.selectForm
 
 		override def isGlobal = true
@@ -150,7 +168,9 @@ object MappingSQL {
 		override def hashCode :Int = mapping.hashCode * 31 + shift.hashCode
 
 
-		override def toString :String = mapping.toString + "#" + shift
+		override lazy val toString :String =
+			if (includes.isEmpty && excludes.isEmpty) mapping.toString + "#" + shift
+			else (includes.view.map("+" + _) ++ excludes.view.map("-" + _)).mkString(s"$mapping#$shift{", ", ", "}")
 	}
 
 
@@ -349,18 +369,17 @@ object MappingSQL {
 		  */
 		def groupingRelation :Relation[M]
 
-		override def isGlobal = true
-		override def asGlobal :Option[GlobalSQL[F, Subject]] = Some(this)
-
-		override def isAnchored = true
-		override def anchor(from :F) :ComponentSQL[F, M] = this
-
 		def entity :Entity[Origin] = origin.mapping
 		def relation :Relation[Entity] = origin.relation
 		def origin :JoinedRelation[Origin, Entity]
 
 		def extract :MappingExtract[Entity[Origin]#Subject, M[Origin]#Subject, Origin]
+		
+		def include(components :M[Origin] => RefinedMapping[_, Origin]*) :ComponentSQL[F, M]
+		def exclude(components :M[Origin] => RefinedMapping[_, Origin]*) :ComponentSQL[F, M]
 
+		def include(components :Iterable[RefinedMapping[_, Origin]]) :ComponentSQL[F, M]
+		def exclude(components :Iterable[RefinedMapping[_, Origin]]) :ComponentSQL[F, M]
 
 		def \[K <: MappingAt[Origin], X](component :K)(implicit project :OriginProjection[K, X])
 				:ComponentSQL[F, project.WithOrigin]
@@ -371,6 +390,13 @@ object MappingSQL {
 		def \[K <: ColumnMapping[_, Origin], X]
 		     (column :K)(implicit project :OriginProjection[K, X] { type WithOrigin[A] <: ColumnMapping[X, A] })
 				:ColumnComponentSQL[F, project.WithOrigin, X]
+
+
+		override def isGlobal = true
+		override def asGlobal :Option[GlobalSQL[F, Subject]] = Some(this)
+
+		override def isAnchored = true
+		override def anchor(from :F) :ComponentSQL[F, M] = this
 
 
 		override def isomorphic(expression :SQLExpression.*) :Boolean = this == expression
@@ -503,6 +529,20 @@ object MappingSQL {
 		override def readForm :SQLReadForm[V] = extract.export.selectForm
 
 
+		override def include(components :M[O] => RefinedMapping[_, O]*) :TypedComponentSQL[F, T, R, M, V, O] =
+			include(components.map(_(mapping)))
+
+		override def exclude(components :M[O] => RefinedMapping[_, O]*) :TypedComponentSQL[F, T, R, M, V, O] =
+			exclude(components.map(_(mapping)))
+
+		override def include(components :Iterable[RefinedMapping[_, O]]) :TypedComponentSQL[F, T, R, M, V, O] =
+			new ProperComponent[F, T, R, M, V, O](origin.include(components), mapping)(projection)
+
+		override def exclude(components :Iterable[RefinedMapping[_, O]]) :TypedComponentSQL[F, T, R, M, V, O] =
+			new ProperComponent[F, T, R, M, V, O](origin.exclude(components), mapping)	(projection)
+
+
+
 		override def \[K <: MappingAt[O], X](component :K)(implicit project :OriginProjection[K, X])
 				:TypedComponentSQL[F, T, R, project.WithOrigin, X, O] =
 			if (component == entity)
@@ -564,7 +604,7 @@ object MappingSQL {
 			component match {
 				case column :ColumnMapping[V @unchecked, O @unchecked] =>
 					TypedColumnComponentSQL(from, column).asInstanceOf[TypedComponentSQL[F, T, R, project.WithOrigin, V, O]]
-				case from.mapping =>
+				case _ if component == from.mapping =>
 					from.asInstanceOf[TypedComponentSQL[F, T, R, project.WithOrigin, V, O]]
 				case _ =>
 					new ProperComponent[F, T, R, project.WithOrigin, V, O](from, project(component))(project.isomorphism)
@@ -871,6 +911,12 @@ object MappingSQL {
 
 		override def origin :JoinedRelation[F, T] = this
 
+		override def include(components :T[F] => RefinedMapping[_, F]*) :JoinedRelation[F, T]
+		override def exclude(components :T[F] => RefinedMapping[_, F]*) :JoinedRelation[F, T]
+
+		override def include(components :Iterable[RefinedMapping[_, F]]) :JoinedRelation[F, T]
+		override def exclude(components :Iterable[RefinedMapping[_, F]]) :JoinedRelation[F, T]
+
 		def toRelationSQL :RelationSQL[F, M, T[F]#Subject, F]
 				forSome { type M[A] <: BaseMapping[T[F]#Subject, A] with T[A] }
 
@@ -937,12 +983,13 @@ object MappingSQL {
 
 
 
-	class RelationSQL[-F <: RowProduct, T[A] <: BaseMapping[R, A], R, O >: F <: RowProduct] private[sql]
-	                 (override val relation :Relation[T], override val mapping :T[O], override val shift :Int)
+	class RelationSQL[-F <: RowProduct, T[A] <: BaseMapping[R, A], R, O >: F <: RowProduct] private
+	                 (override val relation :Relation[T], override val shift :Int)
 		extends JoinedRelation[O, T] with TypedComponentSQL[F, T, R, T, R, O]
 	{
-		private[sql] def this(relation :Relation[T], shift :Int) = this(relation, relation[O], shift)
+//		private[sql] def this(relation :Relation[T], shift :Int) = this(relation, shift, Unique.empty, Unique.empty)
 
+		override def mapping :T[O] = relation[O]
 
 		override def projection :IsomorphicProjection[T, R, O] = OriginProjection.isomorphism
 
@@ -957,6 +1004,31 @@ object MappingSQL {
 		override def asRelationSQL :Some[RelationSQL[O, T, R, O]] = Some(toRelationSQL)
 
 		override def upcast :ComponentSQL[O, T] = this
+
+
+		override def include(components :T[O] => RefinedMapping[_, O]*) :RelationSQL[O, T, R, O] = {
+			val cast = components.asInstanceOf[Seq[T[relation.type] => RefinedMapping[_, relation.type]]]
+			new RelationSQL(relation.include(cast :_*), shift)
+		}
+
+		override def exclude(components :T[O] => RefinedMapping[_, O]*) :RelationSQL[O, T, R, O] = {
+			val cast = components.asInstanceOf[Seq[T[relation.type] => RefinedMapping[_, relation.type]]]
+			new RelationSQL(relation.exclude(cast :_*), shift)
+		}
+
+		override def include(components :Iterable[RefinedMapping[_, O]]) :RelationSQL[O, T, R, O] = {
+			val funs = components.view.map {
+				c => (t :T[relation.type]) => c.asInstanceOf[RefinedMapping[_, relation.type]]
+			}.toList
+			new RelationSQL(relation.include(funs :_*), shift)
+		}
+
+		override def exclude(components :Iterable[RefinedMapping[_, O]]) :RelationSQL[O, T, R, O] = {
+			val funs = components.view.map {
+				c => (t :T[relation.type]) => c.asInstanceOf[RefinedMapping[_, relation.type]]
+			}.toList
+			new RelationSQL(relation.exclude(funs :_*), shift)
+		}
 
 
 		//these need to be overriden due to JoinedRelation's having wider bounds than the inherited implementations
@@ -1026,10 +1098,7 @@ object MappingSQL {
 			         (relation :Relation[M])
 			         (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]],
 			                   shift :TableShift[F, T, _ <: Numeral]) :RelationSQL[F, T, S, F] =
-			{
-				val table = cast(relation)
-				new RelationSQL[F, T, S, F](table, table[F], shift.tables)
-			}
+				new RelationSQL[F, T, S, F](cast(relation), shift.tables)
 		}
 
 		private[sql] def apply[F <: RowProduct, T[A] <: BaseMapping[S, A], S, O >: F <: RowProduct]

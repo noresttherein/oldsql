@@ -1,4 +1,4 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.forms
 
 import java.lang.{Boolean => JBoolean, Byte => JByte, Character => JChar, Double => JDouble, Float => JFloat, Integer => JInt, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal}
@@ -9,9 +9,13 @@ import java.sql.{Blob, Clob, Date, NClob, PreparedStatement, Ref, ResultSet, Row
 import java.sql.Types._
 import java.time.format.DateTimeFormatter
 
+import net.noresttherein.oldsql.schema.SQLForm
 import net.noresttherein.oldsql.schema.ColumnForm.{JDBCForm, JDBCSQLType, NullableJDBCForm}
-import net.noresttherein.oldsql.schema.JavaForms.JavaBigDecimalForm
 import net.noresttherein.oldsql.schema.SQLForm.{NonLiteralForm, NullValue}
+import net.noresttherein.oldsql.schema.forms.JavaForms.JavaBigDecimalForm
+
+
+
 
 
 
@@ -28,7 +32,7 @@ trait JDBCTypes
   * implementations using the default classes associated by JDBC with the a given SQL type, except where
   * a scala counterpart to the type exists (for example `BigDecimalForm` is a form of `scala.BigDecimal`, not
   * `java.math.BigDecimal`. Forms for competing Java classes, including all Java boxed primitives, can be
-  * found in [[net.noresttherein.oldsql.schema.JavaForms JavaForms]]. All these forms are in the implicit search scope
+  * found in [[net.noresttherein.oldsql.schema.forms.JavaForms JavaForms]]. All these forms are in the implicit search scope
   * for all form classes, so, prefer to rely on implicit resolution by using `SQLForm[Xxx]` to access a form
   * for the type `Xxx` instead of explicit references to declarations in this object and others.
   */

@@ -1,6 +1,8 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.forms
 
 import java.sql.ResultSet
+
+import net.noresttherein.oldsql.schema.SQLReadForm
 
 
 

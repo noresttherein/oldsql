@@ -6,8 +6,9 @@ import scala.collection.immutable.Seq
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
-import net.noresttherein.oldsql.schema.{SQLForm, SQLForms, SQLReadForm, SQLReadForms, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.forms.{SQLForms, SQLReadForms}
 import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedColumnSQLMapping, IndexedSQLMapping, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf}

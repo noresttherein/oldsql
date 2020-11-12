@@ -21,6 +21,7 @@ import net.noresttherein.oldsql.schema.support.{DelegateMapping, LazyMapping}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.bits.LabelPath./
+import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
 

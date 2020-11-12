@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 
 /** A `DelegateMapping` subtype which preserves the subject type of the adapted mapping.
   * @see [[net.noresttherein.oldsql.schema.support.DelegateMapping]]
-  */
+  */ //consider: require RefinedMapping[S, O] - is there any circumstance when we can't project?
 trait MappingProxy[S, O] extends DelegateMapping[MappingOf[S], S, O] {
 
 	override def buffs :Seq[Buff[S]] = backer.buffs
@@ -232,14 +232,20 @@ object MappingProxy {
 
 
 		/** A hook method left for subclasses to implement adapting of a component of the adapted mapping
-		  * to its 'export' form under this mapping. All column and component lists  of this instance contain
+		  * to its 'export' form under this mapping. All component lists of this instance contain
 		  * components of `backer` (and `backer` itself) mapped with this method.
-		  * @param component a 'export' component of `backer`.
+		  * @param component an 'export', non-column component of `backer`.
 		  */
 		protected def adapt[T](component :backer.Component[T]) :Component[T]
 
+		/** A hook method left for subclasses to implement adapting of a column of the adapted mapping
+		  * to its 'export' form under this mapping. All column lists of this instance contain
+		  * columns mapped with this method.
+		  * @param column an 'export' column of `backer`.
+		  */
 		protected def adapt[T](column :backer.Column[T]) :Column[T] //= adapt(component)
 
+		/** The 'export' version of the adapted `backer` itself. Defaults to `this`. */
 		protected def adaptBacker :Component[S] = this
 
 
@@ -247,12 +253,20 @@ object MappingProxy {
 		/** A hook method left for subclasses to implement the mapping of the adapted components back to their
 		  * originating components of the adapted mapping. Used in implementing `apply(component)` returning
 		  * the extract for the component.
-		  * @param export a subcomponent of this instance; may be a component adapted from `backer` or a (sub)component
-		  *               of `backer` unchanged, or even `backer` itself.
+		  * @param component a subcomponent of this instance; may be a component adapted from `backer`
+		  *                  or a (sub)component of `backer` unchanged, or even `backer` itself.
+		  * @return the 'export' version of the given component as exposed by the backing mapping.
 		  */
-		protected def dealias[T](export :Component[T]) :backer.Component[T]
+		protected def dealias[T](component :Component[T]) :backer.Component[T]
 
-		protected def dealias[T](export :Column[T]) :backer.Column[T]
+		/** A hook method left for subclasses to implement the mapping of the adapted columns back to their
+		  * originating columns of the adapted mapping. Used in implementing `apply(column)` returning
+		  * the extract for the component.
+		  * @param column a column of this instance; may be a column adapted from `backer` or a (sub)column
+		  *               of `backer` unchanged.
+		  * @return the 'export' version of the given column as exposed by the backing mapping.
+		  */
+		protected def dealias[T](column :Column[T]) :backer.Column[T]
 
 
 

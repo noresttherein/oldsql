@@ -8,6 +8,9 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
 
 
 
+
+
+
 /** A marker identifying a single SQL operation type (or rather, its aspect/usage). It is used to generalize
   * the code for ''select'', ''update'' and ''insert'', as well as the use of a mapping in a ''where'' clause
   * of an SQL query. It lists the buff types specific to the given operation and provides methods delegating
@@ -15,27 +18,35 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
   * @author Marcin Mościcki
   */
 sealed trait OperationType {
-	
-	/** A buff marking a column/component as not allowed in a given operation type or, more specifically, 
+
+	/** A buff marking a column/component as not allowed in a given operation type or, more specifically,
 	  * that the column is not used in this statement type as part of the mapping - it can still be used by the
 	  * framework explicitly (see [[net.noresttherein.oldsql.OperationType.extra extra]]. Example: `NoSelect`.
 	  */
 	val prohibited :FlagBuffType
-	
+
 	/** A buff marking a column/component as not used as part of the owning mapping, but forcibly always included
 	  * by the framework, with the value specified by the buff instance. For example, `ExtraFilter` will apply
-	  * an additional filter on the queried table or view. It always implies 
+	  * an additional filter on the queried table or view. It always implies
 	  * [[net.noresttherein.oldsql.OperationType.prohibited prohibited]].
 	  */
 	val extra :ValueBuffType
-	
+
 	/** A buff marking a column/component as not included by default in the operation, but possibly still allowed
 	  * if included explicitly. Example: `NoSelectByDefault`. It is implied by both
 	  * [[net.noresttherein.oldsql.OperationType.prohibited prohibited]] and
 	  * [[net.noresttherein.oldsql.OperationType.explicit explicit]].
 	  */
-	val nonDefault :FlagBuffType
-	
+	val nonDefault :BuffType
+
+	/** A buff implying [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]], used internally
+	  * in order to flag an
+	  * [[net.noresttherein.oldsql.OperationType.optional optional]]/[[net.noresttherein.oldsql.OperationType.explicit explicit]]
+	  * component for being excluded from the operation. Should not be used in the application code in order
+	  * to statically mark optional components - use one of the former buff types instead.
+	  */
+	val exclude :FlagBuffType
+
 	/** A buff marking that a column/component must be included in the operation explicitly, as it is not included
 	  * by the mapping in the standard process. Example: `ExplicitSelect` for CLOB/BLOB types. This buff implies
 	  * [[net.noresttherein.oldsql.OperationType.optional optional]] and
@@ -99,6 +110,7 @@ object OperationType {
 		override val prohibited = NoSelect
 		override val extra = ExtraSelect
 		override val nonDefault = NoSelectByDefault
+		override val exclude = FlagBuffType("ExcludeFromSelect")
 		override val explicit = ExplicitSelect
 		override val optional = OptionalSelect
 		override val audit = SelectAudit
@@ -123,6 +135,7 @@ object OperationType {
 		override val prohibited = NoFilter
 		override val extra = ExtraFilter
 		override val nonDefault = NoFilterByDefault
+		override val exclude = FlagBuffType("ExcludeFromFilter")
 		override val explicit = ExplicitFilter
 		override val optional = OptionalFilter
 		override val audit = FilterAudit
@@ -154,6 +167,7 @@ object OperationType {
 		override val prohibited = NoUpdate
 		override val extra = ExtraUpdate
 		override val nonDefault = NoUpdateByDefault
+		override val exclude = FlagBuffType("ExcludeFromUpdate")
 		override val explicit = ExplicitUpdate
 		override val optional = OptionalUpdate
 		override val audit = UpdateAudit
@@ -185,6 +199,7 @@ object OperationType {
 		override val prohibited = NoInsert
 		override val extra = ExtraInsert
 		override val nonDefault = NoInsertByDefault
+		override val exclude = FlagBuffType("ExcludeFromInsert")
 		override val explicit = ExplicitInsert
 		override val optional = OptionalInsert
 		override val audit = InsertAudit
@@ -210,6 +225,10 @@ object OperationType {
 	}
 
 	implicit case object INSERT extends INSERT
+
+
+
+	final val operations = Seq[OperationType](SELECT, FILTER, UPDATE, INSERT)
 
 }
 

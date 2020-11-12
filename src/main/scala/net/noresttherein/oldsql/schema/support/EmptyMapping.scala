@@ -1,10 +1,14 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{BaseMapping, ComponentValues, ScalaForms, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.schema.{BaseMapping, ComponentValues, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.forms.ScalaForms
+
+
+
+
 
 
 /** A `Mapping` with no columns or other components. It follows that its write and read forms are empty

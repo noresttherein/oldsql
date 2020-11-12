@@ -2,11 +2,12 @@ package net.noresttherein.oldsql.schema
 
 import java.sql
 
+import scala.collection.immutable.ArraySeq
+
 import net.noresttherein.oldsql.schema.Buff.BuffType
 import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, MappingOf}
 import net.noresttherein.oldsql.schema.bits.Temporal
 import net.noresttherein.oldsql.slang._
-
 import scala.reflect.ClassTag
 
 
@@ -103,10 +104,13 @@ object Buff {
 
 	/** This column/component can't be included in a select statement (as part of its header). */
 	case object NoSelect extends ComboFlag(NoSelectByDefault)
+
 	/** This column/component can't be included in an insert statement (as the inserted column). */
 	case object NoInsert extends ComboFlag(NoInsertByDefault)
+
 	/** This column/component can't be included in an update statement (as the updated column). */
 	case object NoUpdate extends ComboFlag(NoUpdateByDefault)
+
 	/** This column/component can't be included as part of the ''where'' clause of a select or update statement. */
 	case object NoFilter extends ComboFlag(NoFilterByDefault)
 
@@ -147,12 +151,6 @@ object Buff {
 	  * aren't present in the database at all.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual$]] */
 	case object ExtraSelect extends ComboValueBuffType(NoSelect)
-
-	/** A buff marking a component or column which does not exist in the database and will not be used as part
-	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,
-	  * the provided expression is used as its value. This can be useful during schema migrations, when a mapping
-	  * might need to cover several versions of the schema, or if it is reused for several similar tables. */
-	case object Virtual extends ComboValueBuffType(ExtraSelect, ReadOnly, NoFilter)
 
 
 
@@ -232,6 +230,12 @@ object Buff {
 	  * include the annotated column in the filter and all inserts and updates will set its value based on this buff.
 	  */
 	case object Unmapped extends ComboValueBuffType(ExtraFilter, ExtraWrite)
+
+	/** A buff marking a component or column which does not exist in the database and will not be used as part
+	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,
+	  * the provided expression is used as its value. This can be useful during schema migrations, when a mapping
+	  * might need to cover several versions of the schema, or if it is reused for several similar tables. */
+	case object Virtual extends ComboValueBuffType(ExtraSelect, ReadOnly, NoFilter)
 
 
 
@@ -380,11 +384,14 @@ object Buff {
 		/** If `true`, export versions of subcomponents of the annotated component should inherit this buff.
 		  * Note that this flag applies only to buffs created by this instance, not any other buffs which
 		  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies imply]] this buff.
+		  * Note that other buff types implying this buff can be cascading, and ultimately it is
+		  * a [[net.noresttherein.oldsql.schema.Buff Buff]] property which is in effect.
 		  */
 		def cascades :Boolean
 
 		/** Checks if this buff type ''implies'' another buff type. If it does, tests for presence of `other`
-		  * on a mapping will give positive results also if this buff is present. For this to work however,
+		  * on a mapping will give positive results also if this buff is present. This makes this buff type
+		  * a specialization of the more generic `other` in a way similar to class inheritance. For this to work however,
 		  * the implied buff type must use the same `Buff` class as this instance, or a more generic one.
 		  * For example, a `FlagBuffType` implying a `ValueBuffType` will not be taken into account, as the latter
 		  * specifically checks only for `ValueBuff` subclasses. Implication in the other direction will work
@@ -417,9 +424,22 @@ object Buff {
 			buffs.collectFirst { case buff if buff is this => buff }
 		def test[T](column :MappingOf[T]) :Option[Buff[T]] = test(column.buffs)
 
+//		/** A buff type which implies both of these buff types. This is different from
+//		  * a [[net.noresttherein.oldsql.schema.Buff.ComboBuffType]] in that the latter is considered enabled only
+//		  * by buffs created by itself or buff types implying it. Buff type conjunction, on the other hand,
+//		  * ''iff'' all individual buff types are enabled - the buff could be made by an unrelated factory.
+//		  */
+//		def &&(other :BuffType) :BuffType = other match {
+//			case combo :BuffTypeConjunction => new BuffTypeConjunction(this +: combo.buffs)
+//			case _ => new BuffTypeConjunction(ArraySeq(this, other))
+//		}
+
+		/** A buff type implied by both of these buffs. Note that this is the reversal of implication direction
+		  * from [[net.noresttherein.oldsql.schema.Buff.ComboBuffType ComboBuffType]].
+		  */
 		def ||(other :BuffType) :BuffType = other match {
-			case combo :ComboBuffType => new DisjunctionBuffType(this +: combo.implied)
-			case _ => new DisjunctionBuffType(Seq(this, other))
+			case or :BuffTypeDisjunction => new BuffTypeDisjunction(this +: or.buffs)
+			case _ => new BuffTypeDisjunction(ArraySeq(this, other))
 		}
 
 		override val toString :String = this.innerClassName
@@ -457,8 +477,14 @@ object Buff {
 
 
 	/** A `Buff` type which doesn't have any direct `Buff` instances, but is instead implied by other buff types. */
-	class AbstractBuffType extends FlagBuffType with NonCascading {
-		override def apply[T] :Nothing = throw new UnsupportedOperationException("Cannot create Buff " + this)
+	trait AbstractBuffType extends BuffType {
+		/** Returns `false`, although concrete buff types implying this type (and, by extension, their buffs) may
+		  * be cascading. */
+		override def cascades :Boolean = false
+
+		@inline final def unapply[T](buff :Buff[T]) :Boolean = enabled(buff)
+		@inline final def unapply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
+		@inline final def unapply(component :Mapping) :Boolean = enabled(component)
 	}
 
 	/** A `Buff` type which doesn't have any `Buff` instances and won't match any of them.
@@ -477,26 +503,45 @@ object Buff {
 
 	/** A `Buff` type which implies other, more general buffs (has strictly more specific implications).
 	  * Attaching a `Buff` of this type to a component is roughly equivalent to attaching buffs of the types
-	  * listed in the constructor.
-	  * Note that this can seem a reversal of the order of class extension: the implied buffs are ''more''
-	  * specific than this buff. The difference from inheritance is that every buff instance of this type implies
-	  * all the listed buffs, not just one of them. A more proper way of viewing it is multi generalization/inheritance.
+	  * listed in the constructor. It is analogous to multi-inheritance with the implied buff types as super types.
 	  */
 	class ComboBuffType(override val cascades :Boolean, val implied :BuffType*) extends BuffType {
 		def this(implied :BuffType*) = this(true, implied :_*)
 
 		override def implies(other :BuffType) :Boolean =
 			other == this || implied.exists(_.implies(other))
+	}
+
+	private class BuffTypeDisjunction(val buffs :Seq[BuffType]) extends AbstractBuffType {
+		override def implies(other :BuffType) :Boolean =
+			buffs.exists(other.implies)
 
 		override def ||(other :BuffType) :BuffType = other match {
-			case combo :ComboBuffType => new DisjunctionBuffType(implied ++: combo.implied)
-			case _ => new DisjunctionBuffType(implied :+ other)
+			case or :BuffTypeDisjunction => new BuffTypeDisjunction(buffs ++: or.buffs)
+			case _ => new BuffTypeDisjunction(buffs :+ other)
 		}
+
+		override val toString = buffs.mkString("(", " || ", ")")
 	}
 
-	private class DisjunctionBuffType(buffs :Seq[BuffType]) extends ComboBuffType(buffs :_*) {
-		override val toString = buffs.mkString(" || ")
-	}
+	//this would break unwritten contract of BuffType as it would not match each buff individually, but a whole collection.
+//	private class BuffTypeConjunction(val buffs :Seq[BuffType]) extends AbstractBuffType {
+//		override def implies(other :BuffType) :Boolean = buffs.forall(_.implies(other))
+//
+//		override def &&(other :BuffType) :BuffType = other match {
+//			case and :BuffTypeConjunction => new BuffTypeConjunction(buffs ++: and.buffs)
+//			case _ => new BuffTypeConjunction(buffs :+ other)
+//		}
+//
+//
+//		override def enabled(buffs :Seq[Buff[_]]) = this.buffs.forall(_.enabled(buffs))
+//
+//		override def disabled(buffs :Seq[Buff[_]]) = this.buffs.exists(_.disabled(buffs))
+//
+////		override def test[T](buffs :Seq[Buff[T]]) = super.test(buffs)
+//
+//		override val toString = buffs.mkString(" && ")
+//	}
 
 
 
@@ -554,6 +599,10 @@ object Buff {
 		  */
 		@inline def flag[T] :Buff[T] = apply[T]
 
+		@inline final def apply[T](buff :Buff[T]) :Boolean = enabled(buff)
+		@inline final def apply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
+		@inline final def apply(component :Mapping) :Boolean = enabled(component)
+
 		@inline final def unapply[T](buff :Buff[T]) :Boolean = enabled(buff)
 		@inline final def unapply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
 		@inline final def unapply(component :Mapping) :Boolean = enabled(component)
@@ -576,8 +625,10 @@ object Buff {
 	  * specific than this buff. The difference from inheritance is that every buff instance of this type implies
 	  * all the listed buffs, not just one of them. A more proper way of viewing it is multi generalization/inheritance.
 	  */
-	class ComboFlag(implied :FlagBuffType*) extends ComboBuffType(implied:_*) with FlagBuffType {
-		override def implies(other :BuffType) :Boolean = super[ComboBuffType].implies(other)
+	class ComboFlag(cascades :Boolean, implied :BuffType*)
+		extends ComboBuffType(cascades, implied:_*) with FlagBuffType
+	{
+		def this(implied :BuffType*) = this(true, implied:_*)
 	}
 
 
@@ -808,6 +859,9 @@ object Buff {
 			override val toString :String = outer.toString + ".const"
 		}
 	}
+
+
+
 
 
 

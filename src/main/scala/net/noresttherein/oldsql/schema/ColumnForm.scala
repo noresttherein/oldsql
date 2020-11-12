@@ -11,6 +11,7 @@ import net.noresttherein.oldsql.schema.ColumnForm.{FlatMappedColumnForm, JDBCSQL
 import net.noresttherein.oldsql.schema.ColumnReadForm.{FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.LazyColumnWriteForm
 import net.noresttherein.oldsql.schema.SQLForm.{CombinedForm, FlatMappedSQLForm, LazyForm, MappedSQLForm, NullableForm, NullValue, ReifiedForm}
+import net.noresttherein.oldsql.schema.forms.ColumnForms
 
 
 
