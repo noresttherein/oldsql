@@ -88,7 +88,7 @@ trait OptimizedMappingAssembly extends Mapping {
   */
 trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly {
 
-	private val lazyColumnExtracts = Lazy(schema.selectColumnExtracts(this)(extracts))
+	private val lazyColumnExtracts = Lazy(schema.filterColumnExtracts(this)(extracts))
 
 	override def columnExtracts :NaturalMap[Column, ColumnExtract] = lazyColumnExtracts
 

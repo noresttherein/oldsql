@@ -866,6 +866,14 @@ object SQLExpression  {
 		implicit def singleRow[T] :Lift[Rows[T], T] = selectRow.asInstanceOf[Lift[Rows[T], T]]
 		implicit def rowSeq[T] :Lift[Rows[T], Seq[T]] = selectRows.asInstanceOf[Lift[Rows[T], Seq[T]]]
 
+		def apply[X, Y](suffix :String, lift :X => Y, unlift :Y => X) :Lift[X, Y] = new Lift[X, Y] {
+			override def apply(value :X) = lift(value)
+			override def inverse(value :Y) = Some(unlift(value))
+			override def lower(value :Y) = unlift(value)
+			protected override def applyString(arg :String) = arg + suffix
+		}
+
+
 		class ComposedLift[X, Y, Z](prev :Lift[X, Y], next :Lift[Y, Z]) extends Lift[X, Z] {
 
 			override def apply(value: X): Z = next(prev(value))
@@ -928,6 +936,7 @@ object SQLExpression  {
 
 			override def applyString(arg :String) = arg + ".toSeq"
 		}
+
 
 	}
 
@@ -1029,7 +1038,7 @@ object SQLExpression  {
 		override def term[X](e: SQLTerm[X]): Y[GlobalScope, X] = expression(e)
 	}
 
-	trait SelectiveMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends CaseExpression[F, Y] {
+	trait BaseExpressionMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends CaseExpression[F, Y] {
 		override def expression[S >: LocalScope <: GlobalScope, X](e: SQLExpression[F, S, X]): Y[S, X] = unhandled(e)
 	}
 

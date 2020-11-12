@@ -3,9 +3,9 @@ package net.noresttherein.oldsql.sql.mechanics
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
+import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndFrom, By, Dual, Extended, From, FromClause, FromSome, GroupBy, GroupByClause, GroupParam, Join, JoinParam, RowProduct, Subselect}
 import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExtendingDecorator}
 import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
@@ -100,7 +100,7 @@ object SubselectClauseSize {
 		new SubselectClauseSize[F, N](plus.n)
 
 	implicit def decorated[D <: ExtendingDecorator[F], F <: RowProduct, N <: Numeral]
-	                      (implicit decompose :Conforms[D, D, ExtendingDecorator[F]], prev :SubselectClauseSize[F, N])
+	             (implicit decompose :InferTypeParams[D, D, ExtendingDecorator[F]], prev :SubselectClauseSize[F, N])
 			:SubselectClauseSize[D, N] =
 		new SubselectClauseSize[D, N](prev.n)
 

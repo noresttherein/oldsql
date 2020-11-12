@@ -1,19 +1,19 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.NaturalMap.{-#>, Assoc}
+import net.noresttherein.oldsql.collection.NaturalMap
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
-import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitInsert, ExplicitFilter, ExplicitSelect, ExplicitUpdate, ExtraSelect, FlagBuffType, NoInsert, NoInsertByDefault, NoFilter, NoFilterByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalFilter, OptionalSelect, OptionalUpdate}
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping}
+import net.noresttherein.oldsql.schema.Buff.{BuffType, ExplicitFilter, ExplicitInsert, ExplicitSelect, ExplicitUpdate, FlagBuffType, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalFilter, OptionalInsert, OptionalSelect, OptionalUpdate}
+import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.support.DelegateMapping
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import scala.collection.mutable.Builder
 
 import net.noresttherein.oldsql.schema.bits.CustomizedMapping.{exclude, include}
 import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, DelegateAdapter}
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, SELECT, UPDATE}
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
+import net.noresttherein.oldsql.morsels.InferTypeParams
 
 
 
@@ -94,22 +94,22 @@ object CustomizedMapping {
 
 	def select[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+              (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
 		apply[M, S, O](source, SELECT, include, exclude)
 
 	def filter[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-	          (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+	          (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
 		apply[M, S, O](source, FILTER, include, exclude)
 
 	def update[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+              (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
 		apply[M, S, O](source, UPDATE, include, exclude)
 
 	def insert[M <: RefinedMapping[S, O], S, O]
 	          (source :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
-              (implicit inferS :Conforms[M, M, RefinedMapping[S, O]]) :Adapted[M] =
+              (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
 		apply[M, S, O](source, INSERT, include, exclude)
 
 
@@ -217,10 +217,5 @@ object CustomizedMapping {
 				}
 
 		}
-
-
-
-//	private class CustomizedMappingAdapter[M <: RefinedMapping[S, O], S, O](mapping :M, substitutions :Overrides[O])
-//		extends CustomizedMapping[M, S, O](mapping, substitutions) with DelegateAdapter[M, S, O]
 
 }

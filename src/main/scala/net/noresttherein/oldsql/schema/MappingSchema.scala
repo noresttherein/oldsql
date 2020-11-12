@@ -8,19 +8,19 @@ import net.noresttherein.oldsql.collection.{Chain, IndexedChain, NaturalMap, Uni
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.model.PropertyPath
-import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport
 import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
-import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
+import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping, LabelPath}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.{DelegateMapping, LazyMapping}
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.schema.bits.LabelPath./
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
 
@@ -365,6 +365,26 @@ object MappingSchema {
 				:MappingExtract[Packed, T, Origin] =
 			get.extract(schema, label)
 
+		/** Returns the `MappingExtract` for the component laying at the end of the specified label path.
+		  * Each element of the path must be a label identifying a labeled component listed in the `Components` chain
+		  * of the previous `SchemaMapping`. The first label in the path is the label of a component of this instance,
+		  * while the last one is the actual label of the returned mapping.
+		  * If, for any label, more than one component exist, the last occurrence in the `Components` chain is selected.
+		  * The return type is a projection from the base `@|-|` (or its related subclass) of unknown `Origin` to a full
+		  * `SchemaMapping` with the same `Origin` type as this instance.
+		  * @param path a sequence of `String` literals separated with [[net.noresttherein.oldsql.schema.bits.LabelPath./ /]].
+		  * @param get an implicit witness to the existence of a subtype of `@|-|[_, T, _, _]` as a (sub)component
+		  *            on the `Components` list of this schema.
+		  * @return a `MappingExtract` for the found component, wrapping the getter function from the `Subject` type.
+		  * @tparam P a label path: either a string singleton type of the label key or a sequence of string literals
+		  *           separated with [[net.noresttherein.oldsql.schema.bits.LabelPath./ /]].
+		  * @tparam T the subject type of the returned component.
+		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N) MappingSchema.apply(label)]]
+		  */
+		def apply[P, T](path :LabelPath[P])(implicit get :GetLabeledComponent[P, Unpacked, Components, T, |-|[T, _, _]])
+				:MappingExtract[Packed, T, Origin] =
+			get.extract(schema, path.path)
+
 		/** Returns the component labeled with the given string literal in the schema. If more than one component with
 		  * the same label exist, the last occurrence in the component chain `C` is selected. The return type
 		  * is a projection from the base `|-|` (or its related subclass) of unknown `Origin` to a full
@@ -385,6 +405,30 @@ object MappingSchema {
 				:project.WithOrigin[Origin] =
 			project(get(schema, label))
 
+		/** Returns the component laying at the end of the specified label path. Each element of the path must
+		  * be a label identifying a labeled component listed in the `Components` chain of the previous `SchemaMapping`.
+		  * The first label in the path is the label of a component of this instance, while the last one
+		  * is the actual label of the returned mapping.
+		  * If, for any label, more than one component exist, the last occurrence in the `Components` chain is selected.
+		  * The return type is a projection from the base `@|-|` (or its related subclass) of unknown `Origin` to a full
+		  * `SchemaMapping` with the same `Origin` type as this instance.
+		  * @param path a sequence of `String` literals separated with [[net.noresttherein.oldsql.schema.bits.LabelPath./ /]].
+		  * @param get an implicit witness to the existence of a subtype of `@|-|[_, T, _, _]` as a (sub)component
+		  *            on the `Components` list of this schema.
+		  * @param project an implicit specifying the appropriate `LabeledSchemaMapping[N, T, _, _, _]` subclass
+		  *                for the accessed type `M`.
+		  * @return a `LabeledSchemaMapping[N, T, _, _, Origin]` or its subclass.
+		  * @tparam P a label path: either a string singleton type of the label key or a sequence of string literals
+		  *           separated with [[net.noresttherein.oldsql.schema.bits.LabelPath./ /]].
+		  * @tparam T the subject type of the returned component.
+		  * @tparam M the full type of the returned component, as present on the component list `C`.
+		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.apply[N,T](label:N) MappingSchema.apply(label)]]
+		  */
+		def /[P, T, M <: |-|[T, _, _]]
+		     (path :LabelPath[P])
+		     (implicit get :GetLabeledComponent[P, Unpacked, Components, T, M], project :OriginProjection[M, T])
+				:project.WithOrigin[Origin] =
+			project(get(schema, path.path))
 
 		/** Returns the `MappingExtract` for the component at the given position in the schema.
 		  * @param idx a zero-based `Int` literal, or the value returned by `valueOf[I]` in generic code.
@@ -938,37 +982,6 @@ object MappingSchema {
 		def map[F](constructor :F)(implicit apply :SubjectConstructor[S, V, C, O, F]) :SchemaMapping[S, V, C, O] =
 			new MappedSchema(this, constructor, packedBuffs)
 
-//		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
-//		  * provided with component and column definitions when building this schema for disassembly of its subject
-//		  * before writing to the database, and the function specified here for assembling its subject from the
-//		  * chain of subjects of all top-level components of this schema. Note that if, during the assembly,
-//		  * any of the optional components defined in this schema fails to produce a value, the whole chain `V`
-//		  * with the unpacked values will be impossible to assemble, and the whole assembly of the packed subject `S`
-//		  * will yield no value.
-//		  * @param constructor a function accepting a chain with the values of all components as they appear in the
-//		  *                    components chain `C`.
-//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-//		  */
-//		def map(constructor :V => S) : SchemaMapping[S, V, C, O] =
-//			map[V => S](constructor)(SubjectConstructor.map())
-//
-//		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extractor functions
-//		  * provided with component and column definitions when building this schema for disassembly of its subject
-//		  * before writing to the database, and the function specified here for assembling its subject from the
-//		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may not produce
-//		  * the subject value for all input rows; this will also be the case if any of the optional components
-//		  * in the schema fail to produce a value, as the intermediate value chain `V` will be impossible to assemble.
-//		  * This method is preferable to the standard `Mapping` method it overloads because the values for the
-//		  * components will be extracted directly from the subject value `S`, without building an intermediate
-//		  * 'unpacked' value chain during disassembly.
-//		  * @param constructor a function accepting a chain with the values of all components as they appear in the
-//		  *                    components chain `C`.
-//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-//		  */
-//		def optMap(constructor :V => Option[S]) :SchemaMapping[S, V, C, O] =
-//			map[V => Option[S]](constructor)(SubjectConstructor.optMap())
-
-
 	}
 
 
@@ -1041,7 +1054,8 @@ object MappingSchema {
 
 
 
-		override def map[F](constructor :F)(implicit apply :SubjectConstructor[S, V, C, O, F]) :FlatSchemaMapping[S, V, C, O] =
+		override def map[F](constructor :F)(implicit apply :SubjectConstructor[S, V, C, O, F])
+				:FlatSchemaMapping[S, V, C, O] =
 			new MappedFlatSchema(this, constructor, packedBuffs)
 
 //		override def map(constructor :V => S) :FlatSchemaMapping[S, V, C, O] =
@@ -1146,7 +1160,7 @@ object MappingSchema {
 			                                  T, MV <: Chain, MC <: Chain, M <: |-|[T, MV, MC],
 			                                  SV <: Chain, SC <: Chain,  FV <: Chain, FC <: Chain]
 		                                     (implicit prefix :SchemaFlattening[V, C, PV, PC],
-		                                      hint :Conforms[M, M, |-|[T, MV, MC]],
+		                                      hint :InferTypeParams[M, M, |-|[T, MV, MC]],
 		                                      flatten :SchemaFlattening[MV, MC, SV, SC],
 		                                      concat :ColumnSchemaConcat[PV, PC, SV, SC, FV, FC])
 				:SchemaFlattening[V ~ T, C ~ M, FV, FC] =
@@ -1159,7 +1173,7 @@ object MappingSchema {
 		                                             K <: IndexedChain.Key, T, MV <: Chain, MC <: Chain, M <: |-|[T, MV, MC],
 		                                             SV <: Chain,  SC <: Chain, FV <: Chain, FC <: Chain]
 		                                            (implicit prefix :SchemaFlattening[V, C, PV, PC],
-		                                             hint :Conforms[M, M, |-|[T, MV, MC]],
+		                                             hint :InferTypeParams[M, M, |-|[T, MV, MC]],
 		                                             flatten :SchemaFlattening[MV, MC, SV, SC],
 		                                             concat :ColumnSchemaConcat[PV, PC, SV, SC, FV, FC])
 				:SchemaFlattening[V |~ (K :~ T), C ~ M, FV, FC] =
@@ -1191,9 +1205,9 @@ object MappingSchema {
 
 
 	@implicitNotFound("No ${M} <: @|-|[${N}, ${T}, _, _] present in the schema ${C}\n(with values ${V}).")
-	sealed abstract class GetLabeledComponent[N <: Label, V <: Chain, C <: Chain, T, +M <: @|-|[N, T, _, _]] {
-		def apply[S, O](schema :MappingSchema[S, V, C, O], label :N) :M
-		def extract[S, O](schema :MappingSchema[S, V, C, O], label :N) :MappingExtract[S, T, O]
+	sealed abstract class GetLabeledComponent[P, V <: Chain, C <: Chain, T, +M <: |-|[T, _, _]] {
+		def apply[S, O](schema :MappingSchema[S, V, C, O], path :P) :M
+		def extract[S, O](schema :MappingSchema[S, V, C, O], path :P) :MappingExtract[S, T, O]
 	}
 
 
@@ -1230,6 +1244,20 @@ object MappingSchema {
 		                            (implicit get :GetLabeledComponent[N, V, C, T, M])
 				:GetLabeledComponent[N, V |~ X, C ~ L, T, M] =
 			previous[N, V, C, X, T, M, L].asInstanceOf[GetLabeledComponent[N, V |~ X, C ~ L, T, M]]
+
+
+		implicit def nested[P, V <: Chain, C <: Chain, S, K <: |-|[S, W, D],
+		                    N <: Label, W <: Chain, D <: Chain, T, M <: @|-|[N, T, _, _]]
+		                   (implicit prefix :GetLabeledComponent[P, V, C, S, K], last :GetLabeledComponent[N, W, D, T, M])
+		        :GetLabeledComponent[P / N, V, C, T, M] =
+			new GetLabeledComponent[P / N, V, C, T, M] {
+				override def apply[X, O](schema :MappingSchema[X, V, C, O], path :P / N) =
+					last(prefix(schema, path.prefix).schema, path.label)
+
+				override def extract[X, O](schema :MappingSchema[X, V, C, O], path :P / N) =
+					prefix.extract(schema, path.prefix) andThen
+						last.extract(prefix(schema, path.prefix).schema.withOrigin[O], path.label)
+			}
 	}
 
 
@@ -1324,7 +1352,8 @@ object MappingSchema {
 		  * all its elements as separate parameters, or a tuple consisting of the same elements as the chain `V`.
 		  */
 		implicit def optMapValueChain[S, V <: Chain, C <: Chain, O, F]
-		                             (implicit apply :ChainApplication[V, F, Option[S]]) :SubjectConstructor[S, V, C, O, F] =
+		                             (implicit apply :ChainApplication[V, F, Option[S]])
+		       :SubjectConstructor[S, V, C, O, F] =
 			(schema :MappingSchema[S, V, C, O], f :F) =>
 				(pieces :ComponentValues[S, O]) => pieces.get(schema).flatMap(apply(f, _))
 	}
@@ -1615,7 +1644,8 @@ object MappingSchema {
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
-							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev
+							val c14 = c13.prev
 							f(get(c14), get(c13), get(c12), get(c11), get(c10),
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
@@ -1637,8 +1667,8 @@ object MappingSchema {
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
-							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
-							val c15 = c14.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev
+							val c14 = c13.prev; val c15 = c14.prev
 							f(get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
@@ -1660,8 +1690,8 @@ object MappingSchema {
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
-							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
-							val c15 = c14.prev; val c16 = c15.prev
+							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev
+							val c14 = c13.prev; val c15 = c14.prev; val c16 = c15.prev
 							f(get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
@@ -2428,13 +2458,13 @@ object MappingSchema {
 			).updated(init, initExtract).updated(component.withOrigin[O], componentExtract)
 
 		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
-			NaturalMap.delayed(selectColumnExtracts(this)(extracts))
+			NaturalMap.delayed(filterColumnExtracts(this)(extracts))
 
 		override val packedExtracts :NaturalMap[Component, PackedExtract] =
 			init.packedExtracts ++ component.extracts.map(composeExtractAssoc(extractor)(_))
 				.updated[PackedExtract, T](component, extractor).updated[PackedExtract, V L E](this, unpackSelf)
 
-		override val packedColumnExtracts = NaturalMap.delayed(selectColumnExtracts(toString)(packedExtracts))
+		override val packedColumnExtracts = NaturalMap.delayed(filterColumnExtracts(toString)(packedExtracts))
 
 
 
@@ -2593,7 +2623,7 @@ object MappingSchema {
 					if (acc.contains(component)) acc
 					else acc.updated[Extract, component.Subject](component, MappingExtract.none(component))
 			}.updated[Extract, V](backer, MappingExtract.ident(backer))
-		override val columnExtracts = oldsql.schema.selectColumnExtracts(this)(extracts)
+		override val columnExtracts = oldsql.schema.filterColumnExtracts(this)(extracts)
 
 		override val components :Unique[Component[_]] = original.components ++ backer.components
 		override val subcomponents :Unique[Component[_]] = original.subcomponents ++ backer.subcomponents
@@ -2613,8 +2643,11 @@ object MappingSchema {
 
 
 	private[schema] class CustomizedSchema[S, V <: Chain, C <: Chain, O]
-	                      (original :MappingSchema[S, _ <: Chain, _ <: Chain, O], filtered: MappingSchema[S, V, C, O],
-	                       op :OperationType, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]])
+	                                      (original :MappingSchema[S, _ <: Chain, _ <: Chain, O],
+	                                       filtered: MappingSchema[S, V, C, O],
+	                                       op :OperationType,
+	                                       include :Iterable[RefinedMapping[_, O]],
+	                                       exclude :Iterable[RefinedMapping[_, O]])
 		extends CustomizedMapping[MappingSchema[S, V, C, O], V, O](
 		                          new FilteredSchema[S, V, C, O](original, filtered), op, include, exclude)
 		   with MappingSchemaProxy[S, V, C, O]

@@ -21,6 +21,9 @@ import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 
 
+
+
+
 /** `TupleSQL` represents an SQL expression consisting of several individual column values.
   * In its literal form it is written as `(col1, col2, ..., colN)`. The member expressions of this tuple
   * may not be all instances of `ColumnSQL`, but any multi-column expressions are inlined in the resulting `SQL`.

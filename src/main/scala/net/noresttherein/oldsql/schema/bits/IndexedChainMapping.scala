@@ -7,15 +7,20 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, MappingSchema, SQLReadForm, SQLReadForms, SQLWriteForm, SQLWriteForms}
 import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@||, |-|, ||, LabeledSchemaColumn}
+import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.bits.IndexedChainMapping.NonEmptyIndexMapping
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 
 
-/** A mapping for `IndexedChain` maps indexed on type level by arbitrary types.
-  * It is a `SchemaMapping` and its own `MappingSchema` at the same time, with the values individual components
-  * in the schema being the values in the index at the corresponding positions.
+
+
+
+
+/** A mapping for [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]] dictionaries indexed on type level
+  * by arbitrary types. It is a [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]] and its own
+  * [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] at the same time, with the values
+  * of individual components in the schema being the values in the index at the corresponding positions.
   * @author Marcin Mościcki
   */
 trait IndexedChainMapping[V <: IndexedChain, C <: Chain, O] extends BaseChainMapping[V, C, O] {
@@ -32,10 +37,16 @@ trait IndexedChainMapping[V <: IndexedChain, C <: Chain, O] extends BaseChainMap
 	/** Appends the given component to this schema.
 	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
 	  */
+	def comp[K <: Label, T, MV <: Chain, MC <: Chain](component: @|-|[K, T, MV, MC])
+			:IndexedChainMapping[V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
+		new NonEmptyIndexMapping[V, C, K, T, @|-|[K, T, MV, MC], O](this, component.label, component)
+
+	/** Appends the given component to this schema.
+	  * @param component a `SchemaMapping`  with the same origin type `O` to add as the component.
+	  */
 	def comp[K <: Key, T, MV <: Chain, MC <: Chain](key :K, component: |-|[T, MV, MC])
 			:IndexedChainMapping[V |~ (K :~ T), C ~ |-|[T, MV, MC], O] =
 		new NonEmptyIndexMapping[V, C, K, T, |-|[T, MV, MC], O](this, key, component)
-
 
 	/** Appends a new column Labeled with its name to this schema.
 	  * @param name a string literal with the name of the column.

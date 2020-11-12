@@ -61,10 +61,10 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 
 
 //	def as[X <: FlatSchemaMapping[_, _, _, _], M <: FlatSchemaMapping[T, R, C, A], T, R <: Chain, C <: Chain, A]
-//	      (mapping :X)(implicit typer :Conforms[X, M, FlatSchemaMapping[T, R, C, A]], tuple :V =:= R) :SelectAs[F, S, M, O] = ???
+//	      (mapping :X)(implicit typer :InferTypeParams[X, M, FlatSchemaMapping[T, R, C, A]], tuple :V =:= R) :SelectAs[F, S, M, O] = ???
 //
 //	def as[FC <: Chain, FR <: Chain, X <: SchemaMapping[_, _, _, _], M <: SchemaMapping[T, R, C, A], T, R <: Chain, C <: Chain, A]
-//	      (mapping :X)(implicit typer :Conforms[X, M, SchemaMapping[T, R, C, A]],
+//	      (mapping :X)(implicit typer :InferTypeParams[X, M, SchemaMapping[T, R, C, A]],
 //	                   flat :SchemaFlattening[R, C, FR, FC], tuple :V =:= R) :SelectAs[F, S, M, O] = ???
 //
 	def isDistinct :Boolean
@@ -158,7 +158,7 @@ object SelectSQL {
 		new ArbitraryTopSelect[F, V](from, header.anchor(from), false)
 
 	def apply[F <: GroundFrom, V <: IndexedChain](from :F, header :IndexedChainTuple[F, LocalScope, V])
-			:TopSelectAs[SQLMapping.Expression[F, LocalScope, V]#IndexedProjection] =
+			:TopSelectAs[SQLMapping.Project[F, LocalScope, V]#IndexedExpression] =
 		new TopIndexedSelect(from, header, false)
 
 	def apply[F <: GroundFrom, A <: Label, V](from :F, header :IndexedColumn[F, LocalScope, A, V])
@@ -188,7 +188,7 @@ object SelectSQL {
 
 	def subselect[F <: NonEmptyFrom, S <: SubselectOf[F], V <: IndexedChain]
 	             (from :S, header :IndexedChainTuple[S, LocalScope, V])
-			:SubselectAs[F, SQLMapping.Expression[S, LocalScope, V]#IndexedProjection] =
+			:SubselectAs[F, SQLMapping.Project[S, LocalScope, V]#IndexedExpression] =
 		new IndexedSubselect(from, header, false)
 
 	def subselect[F <: NonEmptyFrom, S <: SubselectOf[F], A <: Label, V]
@@ -654,7 +654,7 @@ object SelectSQL {
 	private class ArbitraryTopSelect[F <: GroundFrom, V]
 	              (override val from :F, override val header :LocalSQL[F, V], override val isDistinct :Boolean)
 		extends ArbitrarySelect[RowProduct, F, V](from, header)
-		   with ArbitrarySelectTemplate[RowProduct, F, SQLMapping.Expression[F, LocalScope, V]#Projection, V]
+		   with ArbitrarySelectTemplate[RowProduct, F, SQLMapping.Project[F, LocalScope, V]#Expression, V]
 		   with TopSelectSQL[V]
 	{
 		override def distinct :TopSelectSQL[V] =
@@ -666,7 +666,7 @@ object SelectSQL {
 	private class ArbitrarySubselect[-F <: RowProduct, S <: SubselectOf[F], V]
 	              (subclause :S, select :LocalSQL[S, V], override val isDistinct :Boolean)
 		extends ArbitrarySelect[F, S, V](subclause, select)
-		   with ArbitrarySelectTemplate[F, S, SQLMapping.Expression[S, LocalScope, V]#Projection, V]
+		   with ArbitrarySelectTemplate[F, S, SQLMapping.Project[S, LocalScope, V]#Expression, V]
 		   with SubselectSQL[F, V]
 	{
 		override def distinct :SubselectSQL[F, V] =
@@ -701,7 +701,7 @@ object SelectSQL {
 	private abstract class ArbitrarySelectColumn[-F <: RowProduct, S <: SubselectOf[F], V]
 	                       (override val from :S, override val mapping :ColumnSQLMapping[S, LocalScope, V, ()])
 		extends ArbitrarySelect[F, S, V](from, mapping)
-		   with ArbitrarySelectTemplate[F, S, SQLMapping.Expression[S, LocalScope, V]#ColumnProjection, V]
+		   with ArbitrarySelectTemplate[F, S, SQLMapping.Project[S, LocalScope, V]#Column, V]
 		   with SelectColumn[F, V]
 	{
 		def this(from :S, expression :ColumnSQL[S, LocalScope, V]) =
@@ -754,7 +754,7 @@ object SelectSQL {
 	private abstract class IndexedSelect[-F <: RowProduct, S <: SubselectOf[F], V]
 	                       (from :S, override val mapping :IndexedSQLMapping[S, LocalScope, V, ()])
 		extends ArbitrarySelect[F, S, V](from, mapping)
-		   with ArbitrarySelectTemplate[F, S, SQLMapping.Expression[S, LocalScope, V]#IndexedProjection, V]
+		   with ArbitrarySelectTemplate[F, S, SQLMapping.Project[S, LocalScope, V]#IndexedExpression, V]
 	{
 		def this(from :S, expression :IndexedSQLExpression[S, LocalScope, V]) =
 			this(from, expression.mapping[()])
@@ -767,9 +767,9 @@ object SelectSQL {
 	private class TopIndexedSelect[F <: GroundFrom, V]
 	              (clause :F, select :IndexedSQLExpression[F, LocalScope, V], override val isDistinct :Boolean)
 		extends IndexedSelect[RowProduct, F, V](clause, select)
-		   with TopSelectAs[SQLMapping.Expression[F, LocalScope, V]#IndexedProjection]
+		   with TopSelectAs[SQLMapping.Project[F, LocalScope, V]#IndexedExpression]
 	{
-		override def distinct :TopSelectAs[SQLMapping.Expression[F, LocalScope, V]#IndexedProjection] =
+		override def distinct :TopSelectAs[SQLMapping.Project[F, LocalScope, V]#IndexedExpression] =
 			if (isDistinct) this else new TopIndexedSelect(from, header, true)
 	}
 
@@ -778,9 +778,9 @@ object SelectSQL {
 	private class IndexedSubselect[-F <: RowProduct, S <: SubselectOf[F], V]
 	              (subclause :S, select :IndexedSQLExpression[S, LocalScope, V], override val isDistinct :Boolean)
 		extends IndexedSelect[F, S, V](subclause, select)
-		   with SubselectAs[F, SQLMapping.Expression[S, LocalScope, V]#IndexedProjection]
+		   with SubselectAs[F, SQLMapping.Project[S, LocalScope, V]#IndexedExpression]
 	{
-		override def distinct :SubselectAs[F, SQLMapping.Expression[S, LocalScope, V]#IndexedProjection] =
+		override def distinct :SubselectAs[F, SQLMapping.Project[S, LocalScope, V]#IndexedExpression] =
 			if (isDistinct) this else new IndexedSubselect(from, header, true)
 
 		override def extend[U <: F, E <: RowProduct]

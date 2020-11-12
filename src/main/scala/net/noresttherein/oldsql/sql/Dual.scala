@@ -2,10 +2,10 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.collection.Chain.@~
+import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
@@ -14,6 +14,9 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
+
+
+
 
 
 
@@ -190,7 +193,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	                 (next :Relation[M])
 //	                 (implicit cast :InferSubject[this.type, Subselect, M, T, S])
-	                 (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+	                 (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 			:From[T] =
 		From(cast(next))
 

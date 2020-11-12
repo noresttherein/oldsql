@@ -1,23 +1,19 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.schema.Buff.ExplicitSelect
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, BaseMapping}
-import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
+import net.noresttherein.oldsql.schema.{BaseMapping, Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 
-//implicits
-import net.noresttherein.oldsql.slang._
 
 
-//todo: uncheckedVariance
+
+
+
 sealed trait OptionMapping[+M <: Mapping, S, O] extends BaseMapping[Option[S], O] {
 	val get :M
 }
@@ -32,7 +28,7 @@ object OptionMapping {
 
 
 	def apply[X <: Mapping, M <: RefinedMapping[S, O], S, O]
-	         (mapping :X)(implicit types :Conforms[X, M, RefinedMapping[S, O]]) :Optional[M] =
+	         (mapping :X)(implicit types :InferTypeParams[X, M, RefinedMapping[S, O]]) :Optional[M] =
 		new DirectOptionMapping[M, S, O](mapping)
 
 	def singleton[S, O](mapping :RefinedMapping[S, O]) :Optional[mapping.type] =

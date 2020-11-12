@@ -8,14 +8,13 @@ import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.schema.{BaseMapping, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, ComponentValues, GenericMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
+import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, BaseMapping, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, ComponentValues, GenericMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoFilter, NoInsert, NoSelect, NoSelectByDefault, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
-import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMatcher, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{BaseExpressionMatcher, CaseExpression, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
@@ -148,10 +147,10 @@ object SQLMapping {
 
 
 
-	type Expression[F <: RowProduct, S >: LocalScope <: GlobalScope, X] = {
-		type Projection[O] = SQLMapping[F, S, X, O]
-		type ColumnProjection[O] = ColumnSQLMapping[F, S, X, O]
-		type IndexedProjection[O] = IndexedSQLMapping[F, S, X, O]
+	type Project[F <: RowProduct, S >: LocalScope <: GlobalScope, X] = {
+		type Expression[O] = SQLMapping[F, S, X, O]
+		type Column[O] = ColumnSQLMapping[F, S, X, O]
+		type IndexedExpression[O] = IndexedSQLMapping[F, S, X, O]
 	}
 
 
@@ -492,8 +491,17 @@ object ColumnSQLMapping {
 
 
 
+sealed trait IndexedMapping[S, O] extends BaseMapping[S, O] {
+	override def components :Unique[IndexedMapping[_, O]]
+	override def subcomponents :Unique[IndexedMapping[_, O]]
+}
+
+
+
+
+
 trait IndexedSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
-	extends SQLMapping[F, S, X, O]
+	extends SQLMapping[F, S, X, O] with IndexedMapping[X, O]
 {
 	override val expr :IndexedSQLExpression[F, S, X]
 
@@ -504,28 +512,26 @@ trait IndexedSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 	override def components :Unique[IndexedSQLMapping[F, S, _, O]]
 	override def subcomponents :Unique[IndexedSQLMapping[F, S, _, O]]
 
-/*
-	override def columns(op :OperationType) :Unique[IndexedColumnSQLMapping[F, S, _ <: Label_, O]] = op match {
+	override def columns(op :OperationType) :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = op match {
 		case SELECT => selectable
 		case FILTER => filterable
 		case INSERT => insertable
 		case UPDATE => updatable
 	}
 
-	override def columns :Unique[IndexedColumnSQLMapping[F, S, _ <: Label_, O]]
-	override def selectable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label_, O]] = columnsWithout(NoSelect)
-	override def filterable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label_, O]] = columnsWithout(NoFilter)
-	override def updatable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label_, O]] = columnsWithout(NoUpdate)
-	override def autoUpdated :Unique[IndexedColumnSQLMapping[F, S, _ <: Label_, O]] = columnsWith(AutoUpdate)
-	override def insertable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label_, O]] = columnsWithout(NoInsert)
-	override def autoInserted :Unique[IndexedColumnSQLMapping[F, S, _ <: Label_, O]] = columnsWith(AutoInsert)
+	override def columns :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]]
+	override def selectable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoSelect)
+	override def filterable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoFilter)
+	override def updatable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoUpdate)
+	override def autoUpdated :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoUpdate)
+	override def insertable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoInsert)
+	override def autoInserted :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoInsert)
 
-	override def columnsWith(buff :BuffType) :Unique[ColumnSQLMapping[F, S, _, O]] =
+	override def columnsWith(buff :BuffType) :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columns.filter(buff.enabled)
 
-	override def columnsWithout(buff :BuffType) :Unique[ColumnSQLMapping[F, S, _, O]] =
+	override def columnsWithout(buff :BuffType) :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columns.filter(buff.disabled)
-*/
 }
 
 
@@ -534,10 +540,13 @@ trait IndexedSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 
 
 object IndexedSQLMapping {
+	type IndexedSQLExtract[-F <: RowProduct, -S >: LocalScope <: GlobalScope, -X, Y, O] =
+		GenericMappingExtract[IndexedSQLMapping[F, S, Y, O], X, Y, O]
 
 	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: IndexedChain, O](expr :IndexedChainTuple[F, S, X])
 			:IndexedSQLMapping[F, S, X, O] =
-		new NonColumnIndexedSQLMapping(expr)
+		new IndexedTupleMapping(expr)
+
 
 
 	trait GetIndexedExpressionComponent[+F <: RowProduct, +S >: LocalScope <: GlobalScope, X, N <: Label] {
@@ -547,87 +556,63 @@ object IndexedSQLMapping {
 
 
 
-	//todo: a better implementation would recursively reuse components, as now each subcomponent is recreated by every
-	//  owning component
-	class NonColumnIndexedSQLMapping[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: IndexedChain, O]
-	                                (override val expr :IndexedSQLExpression[F, S, X])
-		extends NonColumnSQLMapping[F, S, X, O](expr) with IndexedSQLMapping[F, S, X, O]
+	private class IndexedTupleMapping[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: IndexedChain, O]
+	                                 (override val expr :IndexedChainTuple[F, S, X])
+		extends IndexedSQLMapping[F, S, X, O]
 	{ outer =>
+
 		private type Expression[V] = IndexedSQLMapping[F, S, V, O]
+		private type ColumnExpression[N <: Label, V] = IndexedColumnSQLMapping[F, S, N, V, O]
+		private type IndexedExtract[W, P] = GenericMappingExtract[IndexedSQLMapping[F, S, P, O], W, P, O]
+		private type MyExtract[V] = IndexedExtract[X, V]
 
-		private type ExpressionExtract[V] = {
-			type E[T] = GenericMappingExtract[IndexedSQLMapping[F, S, T, O], V, T, O]
-		}
-		private type Extractors[-_ >: LocalScope <: GlobalScope, V] =
-			Seq[Assoc[Expression, ExpressionExtract[V]#E, _]]
-
-
-		/** Traverses again the `expr` AST in the steps of `AssemblerComposer`, creating `Extract`s for every component. */
-		private class ExtractsCollector extends ExpressionMatcher[F, Extractors]
-			with CaseExpression[F, Extractors] with CaseColumn[F, Extractors] with MatchIndexedChain[F, Extractors]
-		{
-			/** The stack is in the exact order of individual column appearance, as returned by `ExtractsCollector`. */
-			private[this] var columnStack = columns.toList
-			var components :List[Expression[_]] = Nil
-
-			@inline private def composeExtractAssoc[W, P, T]
-			                    (extractor : W =?> P)(entry :Assoc[Expression, ExpressionExtract[P]#E, T])
-					:Assoc[Expression, ExpressionExtract[W]#E, T] =
-				Assoc[Expression, ExpressionExtract[W]#E, T](entry._1, entry._2 compose extractor)
+		private type Extracts[-C >: LocalScope <: GlobalScope, V] = List[IndexedSQLExtract[F, C, V, _, O]]
 
 
-			override def alias[C >: LocalScope <: GlobalScope, V](e :AliasedColumn[F, C, V]) :Extractors[C, V] = {
-				val column = columnStack.head.asInstanceOf[IndexedColumnSQLMapping[F, S, Label, V, O]]
-				columnStack = columnStack.tail
-				components = column::components
-				Assoc[Expression, ExpressionExtract[V]#E, V](column, GenericMappingExtract.ident(column))::Nil
-			}
-
-			override def column[C >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, C, V]) :Extractors[C, V] =
-				unhandled(e)
-
-
-			override def indexedChain[C >: LocalScope <: GlobalScope, V <: IndexedChain](e :IndexedChainTuple[F, C, V]) =
-				if (e eq expr)
-					super.indexedChain(e)
-				else {
-					val tuple = IndexedSQLMapping[F, S, V, O](e.asInstanceOf[IndexedChainTuple[F, S, V]])
-					val extract = GenericMappingExtract.ident(tuple)
-					Assoc[Expression, ExpressionExtract[V]#E, V](tuple, extract) +: super.indexedChain(e)
-				}
+		private class ComponentsCollector extends BaseExpressionMatcher[F, Extracts] with MatchIndexedChain[F, Extracts] {
 
 			override def indexedChainHead[C >: LocalScope <: GlobalScope, I <: IndexedChain, K <: Label :ValueOf, L]
-			                             (init :IndexedChainTuple[F, C, I], last :IndexedSQLExpression[F, C, L]) = {
-				val tailExs = apply(init).map(composeExtractAssoc(Chain.init[I] _)(_))
-				val comps = components //rollback point to remove any deeper subcomponents added by the recursion
-				val get = (_:(I |~ (K :~ L))).last.value
-				val headExs = apply(last).map(composeExtractAssoc(get)(_))
-				if (!(comps eq components)) //comps eq components possible if last == EmptyChain
-					components = components.head::comps //retain the top-level component
-				headExs ++: tailExs
+			                             (init :IndexedChainTuple[F, C, I], last :IndexedSQLExpression[F, C, L]) =
+			{
+				val extracts = apply(init).map(_ compose Chain.init[I] _) :Extracts[C, I |~ (K :~ L)]
+				val extract = GenericMappingExtract.req(last.mapping[O])((_:(I |~ (K :~ L))).last.value)
+				extract::extracts
 			}
 
 			override def emptyChain = Nil
-
-			override def expression[C >: LocalScope <: GlobalScope, V](e :SQLExpression[F, C, V]) = unhandled(e)
-
-			override def unhandled(e :SQLExpression[F, _, _]) :Nothing =
-				throw new IllegalArgumentException(
-					s"Unexpected expression inside an IndexedSQLExpression: $e. " +
-					s"Expression $outer cannot be used in a SelectSQL header."
-				)
-
 		}
 
+		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Option[T]
+
+		private class AssemblerComposer extends BaseExpressionMatcher[F, Assembler] with MatchIndexedChain[F, Assembler] {
+			override def emptyChain = { val res = Some(@~); _ => res }
+
+			override def indexedChainHead[C >: LocalScope <: GlobalScope, I <: IndexedChain, K <: Label :ValueOf, L]
+			             (init :IndexedChainTuple[F, C, I], last :IndexedSQLExpression[F, C, L]) =
+			{
+				val tl = apply(init)
+				val hd = apply(last)
+				pieces => for (t <- tl(pieces); h <- hd(pieces)) yield t |~ :~[K](h)
+			}
+		}
 
 		override val (components, subcomponents, extracts) = {
-			val collector = new ExtractsCollector
-			val collected = collector(expr)
-			(Unique(collector.components.reverse :_*),
-				Unique(collected.map(_._1) :_*),
-				NaturalMap((collected :Seq[Assoc[Component, Extract, _]]) :_*))
+			val collected = (new ComponentsCollector)(expr)
+			def assoc[V](extract :IndexedSQLExtract[F, S, X, V, O]) =
+				Assoc[Component, Extract, V](extract.export, extract)
+			val all = collected.flatMap { composeExtracts(_) } ++ collected.map(assoc(_))
+			val map = NaturalMap((all :Seq[Assoc[Component, Extract, _]]) :_*)
+			val comps = Unique(collected.map(_.export):_*)
+			val subs = Unique(collected.flatMap { e => e.export +: e.export.subcomponents } :_*)
+			(comps, subs, map)
 		}
 
+		override val columns = components.flatMap(_.columns)
+		override val columnExtracts = filterColumnExtracts(this)(extracts)
+
+		private[this] val assembler = (new AssemblerComposer)(expr)
+
+		override def assemble(pieces :Pieces) = assembler(pieces)
 	}
 
 }
@@ -649,7 +634,6 @@ trait IndexedColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope,
 	override def autoUpdated :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
 	override def insertable :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
 	override def autoInserted :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
-
 }
 
 

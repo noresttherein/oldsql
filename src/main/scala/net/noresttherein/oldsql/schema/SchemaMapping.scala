@@ -23,9 +23,9 @@ import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection
 import net.noresttherein.oldsql.{slang, OperationType}
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.IndexedMappingSchema.{ExtensibleFlatIndexedSchema, ExtensibleIndexedSchema, FlatIndexedMappingSchema}
 import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 //implicits:
 import slang._
@@ -1103,8 +1103,8 @@ object SchemaMapping {
 			instance.asInstanceOf[ExcludeComponent[M, N, E]]
 
 		implicit def excludeByLabel[M <: LabeledMapping[L, _, _], N <: Numeral, L <: Label, E <: Chain]
-		                           (implicit inferLabel :Conforms[M, M, @|-|[L, _, _, _]], included :ChainContains[E, L])
-					:ExcludeComponent[M, N, E] =
+		             (implicit inferLabel :InferTypeParams[M, M, @|-|[L, _, _, _]], included :ChainContains[E, L])
+				:ExcludeComponent[M, N, E] =
 			instance.asInstanceOf[ExcludeComponent[M, N, E]]
 
 

@@ -276,7 +276,7 @@ object ComposedOf {
 	  * @see [[net.noresttherein.oldsql.model.ComposedOf.DecomposableTo DecomposableTo]]
 	  * @see [[net.noresttherein.oldsql.model.ComposedOf ComposedOf]]
 	  */
-	trait ComposableFrom[+C, -E]  { composition =>
+	trait ComposableFrom[+C, -E] { composition =>
 		def arity :Arity
 
 		def empty :C = apply(Seq())

@@ -6,13 +6,14 @@ import scala.annotation.implicitNotFound
 import scala.collection.immutable.ArraySeq
 
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, SELECT, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingBound, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoInsert, NoInsertByDefault, NoFilter, NoFilterByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
@@ -20,7 +21,6 @@ import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjec
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent
@@ -1011,7 +1011,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 	/** Adds factory methods for `MappingPath`s from the implicitly enriched `Mapping` instance to its components. */
 	@inline implicit def mappingPathConstructor[X <: Mapping, M <: RefinedMapping[S, O], S, O]
-	                                           (self :X)(implicit hint :Conforms[X, M, RefinedMapping[S, O]])
+	                                           (self :X)(implicit hint :InferTypeParams[X, M, RefinedMapping[S, O]])
 			:MappingPathConstructor[M, S, O] =
 		new MappingPathConstructor[M, S, O](self)
 
@@ -1020,15 +1020,17 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		/** Creates a `ComponentPath` leading from this (wrapped) mapping to its specified component. */
 		def \[X <: Mapping, C <: RefinedMapping[T, O], T]
-		     (component :X)(implicit hint :Conforms[X, C, RefinedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
+		     (component :X)(implicit hint :InferTypeParams[X, C, RefinedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
 			ComponentPath(self, component)
 
 		def \[X <: Mapping, C <: RefinedMapping[T, O], T]
-		     (component :M => X)(implicit hint :Conforms[X, C, RefinedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
+		     (component :M => X)(implicit hint :InferTypeParams[X, C, RefinedMapping[T, O]])
+				:ComponentPath[M, C, S, T, O] =
 			ComponentPath(self, component(self))
 
 		def apply[X <: Mapping, C <: RefinedMapping[T, O], T]
-		         (component :M => X)(implicit hint :Conforms[X, C, RefinedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
+		         (component :M => X)(implicit hint :InferTypeParams[X, C, RefinedMapping[T, O]])
+				:ComponentPath[M, C, S, T, O] =
 			ComponentPath(self, component(self))
 	}
 
@@ -1753,8 +1755,9 @@ object Mapping extends LowPriorityMappingImplicits {
 		}
 
 		private def full[S](op :WriteOperationType, mapping :MappingOf[S]) :SQLWriteForm[S] =
-			new MappingWriteForm[S, mapping.Origin](op, mapping,
-			                                        op.columns[S, mapping.Origin](mapping) ++ op.extra.Enabled(mapping))
+			new MappingWriteForm[S, mapping.Origin](
+				op, mapping, op.columns[S, mapping.Origin](mapping) ++ op.extra.Enabled(mapping)
+			)
 
 	}
 

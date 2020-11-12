@@ -1,10 +1,9 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.GenericMappingExtract.{ConstantExtract, EmptyExtract, IdentityExtract, OptionalExtract, RequisiteExtract}
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 
 
 
@@ -178,8 +177,8 @@ trait GenericMappingExtract[+M <: RefinedMapping[T, O], -S, T, O] extends Extrac
 object GenericMappingExtract {
 
 	def apply[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
-	      (component :X)(extractor :Extractor[S, T])(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
-			:GenericMappingExtract[M, S, T, O] =
+	         (component :X)(extractor :Extractor[S, T])
+	         (implicit InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]]) :GenericMappingExtract[M, S, T, O] =
 		extractor match {
 			case _ :IdentityExtractor[_] => identity(component).asInstanceOf[GenericMappingExtract[M, S, T, O]]
 			case c :ConstantExtractor[_, T @unchecked] => const(component)(c.constant)
@@ -191,27 +190,27 @@ object GenericMappingExtract {
 
 
 	def opt[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
-	       (component :X)(extractor :S => Option[T])(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
-			:GenericMappingExtract[M, S, T, O] =
+	       (component :X)(extractor :S => Option[T])
+	       (implicit InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]]) :GenericMappingExtract[M, S, T, O] =
 		new OptionalExtract[M, S, T, O](component, extractor)
 
 	def req[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
-	       (component :X)(extractor :S => T)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
+	       (component :X)(extractor :S => T)(implicit InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, S, T, O] =
 		new RequisiteExtract(component, extractor)
 
 	def ident[X <: Mapping, M <: RefinedMapping[T, O], T, O]
-	         (component :X)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
+	         (component :X)(implicit InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, T, T, O] =
 		new IdentityExtract(component)
 
 	def const[X <: Mapping, M <: RefinedMapping[T, O], T, O]
-	         (component :X)(constant :T)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
+	         (component :X)(constant :T)(implicit InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, Any, T, O] =
 		new ConstantExtract[M, T, O](component, constant)
 
 	def none[X <: Mapping, M <: RefinedMapping[T, O], T, O]
-	        (component :X)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
+	        (component :X)(implicit InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericMappingExtract[M, Any, T, O] =
 		new EmptyExtract[M, T, O](component)
 

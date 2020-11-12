@@ -5,11 +5,11 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
 import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, OptionMapping, PrefixedMapping}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
 
@@ -84,7 +84,8 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 
 	def apply[M >: this.type <: RefinedMapping[S, O], X <: Mapping, C <: RefinedMapping[T, O], T]
-	         (component :M => X)(implicit hint :Conforms[X, C, RefinedMapping[T, O]]) :ComponentPath[M, C, S, T, O] =
+	         (component :M => X)(implicit hint :InferTypeParams[X, C, RefinedMapping[T, O]])
+			:ComponentPath[M, C, S, T, O] =
 		ComponentPath(this :M, component(this))
 
 

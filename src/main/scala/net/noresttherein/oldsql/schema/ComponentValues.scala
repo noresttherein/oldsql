@@ -7,6 +7,8 @@ import net.noresttherein.oldsql.schema.ComponentValues.ColumnValues.{AliasedColu
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
 import net.noresttherein.oldsql.slang
+
+//here be implicits
 import slang._
 
 
@@ -57,8 +59,8 @@ import slang._
   * In fact, implementing this behaviour is only possible
   * when the values are accessed in the descending order, with the mapping only requesting the values either for its
   * direct components, or via a path to the subcomponent. There's no generic way of discovering the path to a given
-  * (export) subcomponent of the associated mapping when asked directly. For example, when a mapping for class Person
-  * containing an address component asks directly for the value of the 'street' column, instead of either specifying
+  * (export) subcomponent of the associated mapping when asked directly. For example, when a mapping for class `Person`
+  * containing an `address` component asks directly for the value of the 'street' column, instead of either specifying
   * the path `address \ street` or just the value of `address`, leaving the assembly to the address component,
   * there's no way of checking if there is a preset value for address that should be used as a source of data for
   * the street. For this reason (as well as proper encapsulation and reusability), proper mapping implementations
@@ -69,8 +71,6 @@ import slang._
   * The interface methods can be grouped roughly into three sets: those which return a value for the given component,
   * those that return `ComponentValues` to pass for the assembly to the given component, and modification methods
   * allowing either changing the values, or combining it with another instance.
-  *
-  *
   *
   * @tparam S the subject type of the target mapping defining the components for which this instance contains values.
   * @tparam O the origin type of the target mapping and all components with values in this instance.
@@ -118,7 +118,7 @@ trait ComponentValues[S, O] extends Cloneable {
 
 	/** Return the value for the given component. This method should always first adapt itself to the given component
 	  * by creating `ComponentValues[T, O]` and passing it to `component.apply()` so it can inspect the
-	  * returned value. Equivalent to `component(this \ component)`. If this instance is aliased, either explicitly,
+	  * returned value. Equivalent to `component(this / component)`. If this instance is aliased, either explicitly,
 	  * by a previous call to one of the `aliased` methods, or as an inherent feature, the component will be substituted
 	  * with its operative version before checking for preset values or calling its methods. This is generally done
 	  * by some ancestor mapping's `export` method in order to both use the proper, possibly changed version
@@ -134,8 +134,8 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * subcomponent directly, the preset value would in most cases not be picked up. This is not an issue in
 	  * the default use case of assembling SQL query results as the values are preset only for the bottom-most column
 	  * components, but in order to be fully compatible, a mapping should either extract manually the required value
-	  * from the subject of its direct component containing it, chain `\` calls for all components on the path to
-	  * the subcomponent as in `(this \ party.leader \ party.leader.familiar)(party.leader.familiar.name)`,
+	  * from the subject of its direct component containing it, chain `/` calls for all components on the path to
+	  * the subcomponent as in `(this / party.leader / party.leader.familiar)(party.leader.familiar.name)`,
 	  * or use the overloaded variant of this method accepting a `MappingPath` which would do it automatically.
 	  * @param extract the extract for the required component of the associated mapping.
 	  * @throws NoSuchElementException if no value could be provided, be it preset, assembled or default.
@@ -147,7 +147,7 @@ trait ComponentValues[S, O] extends Cloneable {
 
 	/** Return the value for the given component. This method should always first adapt itself to the given component
 	  * by creating `ComponentValues[T, O]` and passing it to `component.apply()` so it can inspect the
-	  * returned value. Equivalent to `component(this \ component)`. If this instance is aliased, either explicitly,
+	  * returned value. Equivalent to `component(this / component)`. If this instance is aliased, either explicitly,
 	  * by a previous call to one of the `aliased` methods, or as an inherent feature, the component will be substituted
 	  * with its operative version before checking for preset values or calling its methods. This is generally done
 	  * by some ancestor mapping's `export` method in order to both use the proper, possibly changed version
@@ -163,8 +163,8 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * subcomponent directly, the preset value would in most cases not be picked up. This is not an issue in
 	  * the default use case of assembling SQL query results as the values are preset only for the bottom-most column
 	  * components, but in order to be fully compatible, a mapping should either extract manually the required value
-	  * from the subject of its direct component containing it, chain `\` calls for all components on the path to
-	  * the subcomponent as in `(this \ party.leader \ party.leader.familiar)(party.leader.familiar.name)`,
+	  * from the subject of its direct component containing it, chain `/` calls for all components on the path to
+	  * the subcomponent as in `(this / party.leader / party.leader.familiar)(party.leader.familiar.name)`,
 	  * or use the overloaded variant of this method accepting a `MappingPath` which would do it automatically.
 	  * @param component a component of the associated mapping.
 	  * @throws NoSuchElementException if no value could be provided, be it preset, assembled or default.
@@ -176,8 +176,8 @@ trait ComponentValues[S, O] extends Cloneable {
 
 	/** Return the value for the component at the end of the given path. This method will adapt itself in sequence
 	  * to all components on the path, eventually creating a `ComponentValues[T, O]` and passing it to
-	  * `component.apply()` so it can inspect the returned value. Equivalent to `component(this \ path)` and
-	  * `component(this \ c1 \ ... \ cn \ path.end)`, where `c1 ... cn` are components on the path from the current
+	  * `component.apply()` so it can inspect the returned value. Equivalent to `component(this / path)` and
+	  * `component(this / c1 / ... / cn / path.end)`, where `c1 ... cn` are components on the path from the current
 	  * mapping to the target component, that is a sequence of directly nested components ending with
 	  * the desired component. If this instance is aliased, either explicitly, by a previous call to one
 	  * of the `aliased` methods, or as an inherent feature, all components will be substituted with their operative
@@ -199,7 +199,7 @@ trait ComponentValues[S, O] extends Cloneable {
 
 
 	/** Return the value for the given component or `None` if it can't be obtained in any way (preset, assembly or
-	  * default). Should be equivalent to `component.optionally(this \ extract)`, rather than return a value directly
+	  * default). Should be equivalent to `component.optionally(this / extract)`, rather than return a value directly
 	  * without inspection by the component. If this instance is aliased, either explicitly by a previous call
 	  * to one of the `aliased` methods, or as an inherent feature, the component will be substituted with its
 	  * operative version before checking for preset values or calling its methods. This is generally done
@@ -216,16 +216,16 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * subcomponent directly, the preset value would in most cases not be picked up. This is not an issue in
 	  * the default use case of assembling SQL query results as the values are preset only for the bottom-most column
 	  * components, but in order to be fully compatible, a mapping should either extract manually the required value
-	  * from the subject of its direct component containing it, chain `\` calls for all components on the path to
-	  * the subcomponent as in `(this \ party.leader \ party.leader.familiar) get party.leader.familiar.name`,
+	  * from the subject of its direct component containing it, chain `/` calls for all components on the path to
+	  * the subcomponent as in `(this / party.leader / party.leader.familiar) get party.leader.familiar.name`,
 	  * or use the overloaded variant of this method accepting a `MappingPath` which would do it automatically.
 	  * @param extract the extract for the required component of the associated mapping.
 	  */
 	def get[T](extract :Extract[T]) :Option[T] =
-		extract.export.optionally(this \ extract)
+		extract.export.optionally(this / extract)
 
 	/** Return the value for the given component or `None` if it can't be obtained in any way (preset, assembly or
-	  * default). Should be equivalent to `component.optionally(this \ component)`, rather than return a value directly
+	  * default). Should be equivalent to `component.optionally(this / component)`, rather than return a value directly
 	  * without inspection by the component. If this instance is aliased, either explicitly by a previous call
 	  * to one of the `aliased` methods, or as an inherent feature, the component will be substituted with its
 	  * operative version before checking for preset values or calling its methods. This is generally done
@@ -242,19 +242,19 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * subcomponent directly, the preset value would in most cases not be picked up. This is not an issue in
 	  * the default use case of assembling SQL query results as the values are preset only for the bottom-most column
 	  * components, but in order to be fully compatible, a mapping should either extract manually the required value
-	  * from the subject of its direct component containing it, chain `\` calls for all components on the path to
-	  * the subcomponent as in `(this \ party.leader \ party.leader.familiar) get party.leader.familiar.name`,
+	  * from the subject of its direct component containing it, chain `/` calls for all components on the path to
+	  * the subcomponent as in `(this / party.leader / party.leader.familiar) get party.leader.familiar.name`,
 	  * or use the overloaded variant of this method accepting a `MappingPath` which would do it automatically.
 	  * @param component a component of the associated mapping.
 	  */
 	def get[T](component :Component[T]) :Option[T] =
-		component.optionally(this \ component)
+		component.optionally(this / component)
 
 	/** Return the value for the component at the end of the given path or `None` if it can't be obtained in any way
 	  * (preset, assembly or default). This method will adapt itself in sequence to all components on the path,
 	  * eventually creating a `ComponentValues[T, O]` and passing it to `component.optionally()` so it can inspect
-	  * the returned value. Equivalent to `component.optionally(this \ path)` and
-	  * `component.optionally(this \ c1 \ ... \ cn \ path.end)`, where `c1 ... cn` are components on the path from
+	  * the returned value. Equivalent to `component.optionally(this / path)` and
+	  * `component.optionally(this / c1 / ... / cn / path.end)`, where `c1 ... cn` are components on the path from
 	  * the current mapping to the target component, that is a sequence of directly nested components ending
 	  * with the desired component. If this instance is aliased, either explicitly, by a previous call to one of the
 	  * `aliased` methods, or as an inherent feature, all components will be substituted with their operative versions
@@ -269,7 +269,7 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * @throws NoSuchElementException if no value could be provided, be it preset, assembled or default.
 	  */
 	def get[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :Option[T] =
-		path.end.optionally(this \ path)
+		path.end.optionally(this / path)
 
 
 	/** Return `ComponentValues` for the given component of the associated mapping. Returned object will delegate all
@@ -289,13 +289,13 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * subcomponent directly, the preset value would in most cases not be picked up. This is not an issue in
 	  * the default use case of assembling SQL query results as the values are preset only for the bottom-most column
 	  * components, but in order to be fully compatible, a mapping should either extract manually the required value
-	  * from the subject of its direct component containing it, chain `\` calls for all components on the path to
-	  * the subcomponent as in `(this \ party.leader \ party.leader.familiar) get party.leader.familiar.name`,
+	  * from the subject of its direct component containing it, chain `/` calls for all components on the path to
+	  * the subcomponent as in `(this / party.leader / party.leader.familiar) get party.leader.familiar.name`,
 	  * or use the overloaded variant of this method accepting a `MappingPath` which would do it automatically.
 	  * @param extract the extract for the required component of the associated mapping.
 	  */
-	def \[T](extract :Extract[T]) :ComponentValues[T, O] =
-		this \ extract.export
+	def /[T](extract :Extract[T]) :ComponentValues[T, O] =
+		this / extract.export
 
 	/** Return `ComponentValues` for the given component of the associated mapping. Returned object will delegate all
 	  * calls to this instance (or the parent instance of this mapping). If this instance is aliased, either explicitly,
@@ -314,15 +314,15 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * subcomponent directly, the preset value would in most cases not be picked up. This is not an issue in
 	  * the default use case of assembling SQL query results as the values are preset only for the bottom-most column
 	  * components, but in order to be fully compatible, a mapping should either extract manually the required value
-	  * from the subject of its direct component containing it, chain `\` calls for all components on the path to
-	  * the subcomponent as in `(this \ party.leader \ party.leader.familiar) get party.leader.familiar.name`,
+	  * from the subject of its direct component containing it, chain `/` calls for all components on the path to
+	  * the subcomponent as in `(this / party.leader / party.leader.familiar) get party.leader.familiar.name`,
 	  * or use the overloaded variant of this method accepting a `MappingPath` which would do it automatically.
 	  * @param component a component of the associated mapping.
 	  */
-	def \[T](component :Component[T]) :ComponentValues[T, O]
+	def /[T](component :Component[T]) :ComponentValues[T, O]
 
 	/** Return `ComponentValues` for the component at the end of the given path. Equivalent to
-	  * `this \ c1 \ ... \ cn \ path.end`, where `c1 ... cn` are components on the path from
+	  * `this / c1 / ... / cn / path.end`, where `c1 ... cn` are components on the path from
 	  * the current mapping to the target component, that is a sequence of directly nested components ending
 	  * with the desired component. If this instance is aliased, either explicitly, by a previous call to one of the
 	  * `aliased` methods, or as an inherent feature, all components will be substituted with their operative versions
@@ -334,7 +334,7 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * will return `None`.
 	  * @param path the path from the current mapping to the desired component.
 	  */
-	def \[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :ComponentValues[T, O] =
+	def /[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :ComponentValues[T, O] =
 		path.carry(this)
 
 
@@ -374,7 +374,7 @@ trait ComponentValues[S, O] extends Cloneable {
 	/** Create proxy `ComponentValues` which will perform aliasing of all component arguments (including those in
 	  * `MappingExtract` and `MappingPath` instances) by passing them to the given mapping's `export` method
 	  * before passing the result to the corresponding method of this instance.
-	  * The proxy is sticky: descending down the component tree with `\` maintains the wrapping of all
+	  * The proxy is sticky: descending down the component tree with `/` maintains the wrapping of all
 	  * created `ComponentValues`. Methods which combine or change the behaviour of `ComponentValues`
 	  * such as `this orElse that` however work as for every other instance, with `that` not becoming aliased
 	  * as the result. Subsequent calls result in function composition, with the most recent one providing
@@ -393,7 +393,7 @@ trait ComponentValues[S, O] extends Cloneable {
 	  * `MappingExtract` and `MappingPath` instances as well as the root mapping to which this instance is dedicated)
 	  * by substituting all components with the `export` property of the `MappingExtract` associated with it
 	  * in the given map. If the map doesn't have an entry for a mapping (in particular the root mapping),
-	  * a `NoSuchElementException` will be thrown. The proxy is sticky: descending down the component tree with `\`
+	  * a `NoSuchElementException` will be thrown. The proxy is sticky: descending down the component tree with `/`
 	  * maintains the wrapping of all created `ComponentValues`. Methods which combine or change the behaviour
 	  * of `ComponentValues` such as `this orElse that` however work as for every other instance, with `that`
 	  * not becoming aliased as the result. Subsequent calls result in function composition, with the most recent one
@@ -412,7 +412,7 @@ trait ComponentValues[S, O] extends Cloneable {
 	/** Create proxy `ComponentValues` which will perform aliasing of all component arguments (including those in
 	  * `MappingExtract` and `MappingPath` instances as well as the root mapping to which this instance is dedicated)
 	  * by applying the given function and passing the returned component to the corresponding method of this instance.
-	  * The proxy is sticky: descending down the component tree with `\` maintains the wrapping of all
+	  * The proxy is sticky: descending down the component tree with `/` maintains the wrapping of all
 	  * created `ComponentValues`. Methods which combine or change the behaviour of `ComponentValues`
 	  * such as `this orElse that` however work as for every other instance, with `that` not becoming aliased
 	  * as the result. Subsequent calls result in function composition, with the most recent one providing
@@ -431,7 +431,7 @@ trait ComponentValues[S, O] extends Cloneable {
 
 
 	/** Create `ComponentValues` for any subject type, dedicated to the given mapping. It will remain unchanged
-	  * for the whole assembly (returning itself from `\`). For the purpose of all operations, it will behave like
+	  * for the whole assembly (returning itself from `/`). For the purpose of all operations, it will behave like
 	  * empty values. The only exception comes when the passed component argument is equal to the mapping given here,
 	  * in which case it will return this instance (or use it for assembly).
 	  * This is useful when one wants to preset component values for a member component from further down the hierarchy,
@@ -657,7 +657,7 @@ object ComponentValues {
 
 
 
-	/** A proxy `ComponentValues` which delegates all assembly-related and '\' calls to the lazily computed
+	/** A proxy `ComponentValues` which delegates all assembly-related and '/' calls to the lazily computed
 	  * instance initialized with the by-name parameter.
 	  */
 	def delayed[S, O](values: => ComponentValues[S, O]) :ComponentValues[S, O] =
@@ -905,11 +905,11 @@ object ComponentValues {
 	  */
 	trait GlobalComponentValues[S, O] extends ComponentValues[S, O] { outer =>
 
-		override def \[T](extract :Extract[T]) :ComponentValues[T, O] = asComponentsOf[T]
+		override def /[T](extract :Extract[T]) :ComponentValues[T, O] = asComponentsOf[T]
 
-		override def \[T](component :Component[T]) :ComponentValues[T, O] = asComponentsOf[T]
+		override def /[T](component :Component[T]) :ComponentValues[T, O] = asComponentsOf[T]
 
-		override def \[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :ComponentValues[T, O] =
+		override def /[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :ComponentValues[T, O] =
 			asComponentsOf[T]
 	}
 
@@ -999,7 +999,7 @@ object ComponentValues {
 			override def get[T](extract :Extract[T]) :Option[T] =
 				extract.export.optionally(outer.asComponentsOf[T])
 
-			override def \[T](component :Component[T]) = outer.asComponentsOf[T]
+			override def /[T](component :Component[T]) = outer.asComponentsOf[T]
 		}
 
 		/** Proxy `ComponentValues` which perform the aliasing of components before delegating to the enclosing
@@ -1073,7 +1073,7 @@ object ComponentValues {
 
 		private[this] val nonAliasingValues = new ComponentValues[S, O] {
 			override def preset(root :RefinedMapping[S, O]) = values.preset(root)
-			override def \[T](component :Component[T]) :ComponentValues[T, O] = outer \ component
+			override def /[T](component :Component[T]) :ComponentValues[T, O] = outer / component
 		}
 
 		protected def noAliasing :ComponentValues[S, O] = nonAliasingValues
@@ -1101,7 +1101,7 @@ object ComponentValues {
 
 		override def get[T](component :Component[T]) :Option[T] = {
 			val export = alias(component)
-			val next = values \ export
+			val next = values / export
 			if (next eq values) export.optionally(noAliasing.asComponentsOf[T])
 			else export.optionally(new AliasedComponentValues[T, O](next, alias).noAliasing)
 		}
@@ -1109,9 +1109,9 @@ object ComponentValues {
 		override def get[T](extract :Extract[T]) :Option[T] = get(extract.export)
 
 
-		override def \[T](component :Component[T]) :ComponentValues[T, O] = {
+		override def /[T](component :Component[T]) :ComponentValues[T, O] = {
 			val export = alias(component)
-			val next = values \ export
+			val next = values / export
 			if (next eq values) noAliasing.asComponentsOf[T]
 			else new AliasedComponentValues[T, O](next, alias)
 		}
@@ -1164,11 +1164,11 @@ object ComponentValues {
 			if ((first eq overrides) & (second eq fallback)) asComponentsOf[T]
 			else new FallbackValues[T, O](first, second)
 
-		override def \[T](extract :Extract[T]) :ComponentValues[T, O] =
-			decorate(overrides \ extract, fallback \ extract)
+		override def /[T](extract :Extract[T]) :ComponentValues[T, O] =
+			decorate(overrides / extract, fallback / extract)
 
-		override def \[T](component :Component[T]) :ComponentValues[T, O] =
-			decorate(overrides \ component, fallback \ component)
+		override def /[T](component :Component[T]) :ComponentValues[T, O] =
+			decorate(overrides / component, fallback / component)
 
 		override def clone() :ComponentValues[S, O] =
 			decorate(overrides.clone(), fallback.clone())
@@ -1206,7 +1206,7 @@ object ComponentValues {
 		override def get[T](component :Component[T]) :Option[T] =
 			values.get(component).flatMap(_.optionally(component)) orElse default.get(component)
 
-		override def \[T](component :Component[T]) :ComponentValues[T, O] =
+		override def /[T](component :Component[T]) :ComponentValues[T, O] =
 			values.get(component) match {
 				case Some(vals) => vals
 				case _ => asComponentsOf[T]
@@ -1276,8 +1276,8 @@ object ComponentValues {
 		override def get[T](extract :Extract[T]) :Option[T] = backing.get(extract)
 		override def get[T](component :Component[T]) :Option[T] = backing.get(component)
 
-		override def \[T](extract :Extract[T]) :ComponentValues[T, O] = backing \ extract
-		override def \[T](component :Component[T]) :ComponentValues[T, O] = backing \ component
+		override def /[T](extract :Extract[T]) :ComponentValues[T, O] = backing / extract
+		override def /[T](component :Component[T]) :ComponentValues[T, O] = backing / component
 
 		override def orElse(values :ComponentValues[S, O]) :ComponentValues[S, O] = backing orElse values
 		override def ++(values :ComponentValues[S, O]) :ComponentValues[S, O] = backing ++ values
@@ -1478,13 +1478,13 @@ object ComponentValues {
 	  */
 	trait ColumnValues[S, O] extends ComponentValues[S, O] { outer =>
 
-		override def \[T](extract :Extract[T]) :ColumnValues[T, O] = this \ extract.export
+		override def /[T](extract :Extract[T]) :ColumnValues[T, O] = this / extract.export
 
-		override def \[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O])
+		override def /[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O])
 				:ColumnValues[T, O] =
 			path.carry(this)
 
-		override def \[T](component :Component[T]) :ColumnValues[T, O]
+		override def /[T](component :Component[T]) :ColumnValues[T, O]
 
 
 		override def orElse(values :ComponentValues[S, O]) :ComponentValues[S, O] = values match {
@@ -1709,14 +1709,14 @@ object ComponentValues {
 
 
 
-		/** A proxy `ColumnValues` which delegates all assembly-related and '\' calls to the lazily computed
+		/** A proxy `ColumnValues` which delegates all assembly-related and '/' calls to the lazily computed
 		  * instance initialized with the by-name parameter.
 		  */
 		def delayed[S, O](values: => ColumnValues[S, O]) :ColumnValues[S, O] =
 			new LazyComponentValuesProxy[S, O](values) with ColumnValuesAdapter[S, O]
 		{
-			override def \[T](component :Component[T]) :ColumnValues[T, O] =
-				backing.asInstanceOf[ColumnValues[S, O]] \ component
+			override def /[T](component :Component[T]) :ColumnValues[T, O] =
+				backing.asInstanceOf[ColumnValues[S, O]] / component
 
 			override def ++(other :ColumnValues[S, O]) =
 				backing.asInstanceOf[ColumnValues[S, O]] ++ other
@@ -1951,9 +1951,9 @@ object ComponentValues {
 		  * components of the associated mapping.
 		  */
 		trait GlobalColumnValues[S, O] extends GlobalComponentValues[S, O] with ColumnValues[S, O] {
-			override def \[T](extract :Extract[T]) :ColumnValues[T, O] = this.asColumnsOf[T]
-			override def \[T](component :Component[T]) :ColumnValues[T, O] = this.asColumnsOf[T]
-			override def \[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :ColumnValues[T, O] =
+			override def /[T](extract :Extract[T]) :ColumnValues[T, O] = this.asColumnsOf[T]
+			override def /[T](component :Component[T]) :ColumnValues[T, O] = this.asColumnsOf[T]
+			override def /[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :ColumnValues[T, O] =
 				this.asColumnsOf[T]
 		}
 
@@ -1981,12 +1981,12 @@ object ComponentValues {
 		  */
 		trait ColumnValuesAliasing[S, O] extends ComponentValuesAliasing[S, O] with GlobalColumnValues[S, O] { outer =>
 			override val aliasing :ColumnValues[S, O] = new AliasingValues with ColumnValues[S, O] {
-				override def \[T](component :Component[T]) =
+				override def /[T](component :Component[T]) =
 					outer.asColumnsOf[T]
 			}
 		}
 
-		
+
 
 		/** A late mix-in stackable trait adapting a `ComponentValues` implementation to `ColumnValues`.
 		  * Overrides the `preset` method to only call super if the argument is a column.
@@ -2009,7 +2009,7 @@ object ComponentValues {
 			override def preset(root :RefinedMapping[S, O]) :Option[S] =
 				if (root eq column) value.asInstanceOf[Option[S]] else None
 
-			override def \[T](component :Component[T]) :ColumnValues[T, O] =
+			override def /[T](component :Component[T]) :ColumnValues[T, O] =
 				if (component eq column) this.asColumnsOf[T]
 				else throw new IllegalArgumentException(s"Mapping $component is not a component of column $column.")
 
@@ -2063,7 +2063,7 @@ object ComponentValues {
 		}
 
 
-		
+
 		private class PresetColumnValue[S, T, O](override val column :ColumnMapping[T, O], result :Option[T])
 			extends ColumnValue[S, T, O] with ImmutableColumnValues[S, O]
 		{
@@ -2073,7 +2073,7 @@ object ComponentValues {
 		}
 
 
-		
+
 		private class LazyColumnValue[S, T, O](override val column :ColumnMapping[T, O], init: => Option[T])
 			extends ColumnValue[S, T, O]
 		{
@@ -2173,7 +2173,7 @@ object ComponentValues {
 				if (root.isInstanceOf[ColumnMapping[_, _]]) values.get(root).flatMap(_.preset(root))
 				else None
 
-			override def \[T](component :Component[T]) :ColumnValues[T, O] = values.get(component) match {
+			override def /[T](component :Component[T]) :ColumnValues[T, O] = values.get(component) match {
 				case Some(vals) => vals
 				case _ => asColumnsOf[T]
 			}
@@ -2217,12 +2217,12 @@ object ComponentValues {
 
 			protected override val noAliasing :ColumnValues[S, O] = new ColumnValues[S, O] {
 				override def preset(root :RefinedMapping[S, O]) :Option[S] = values.preset(root)
-				override def \[T](component :Component[T]) :ColumnValues[T, O] = outer \ component
+				override def /[T](component :Component[T]) :ColumnValues[T, O] = outer / component
 			}
 
-			override def \[T](component :Component[T]) :ColumnValues[T, O] = {
+			override def /[T](component :Component[T]) :ColumnValues[T, O] = {
 				val export = aliases(component)
-				val next = values \ export
+				val next = values / export
 				if (next eq values) noAliasing.asColumnsOf[T]
 				else next.aliased(aliases)
 			}
@@ -2253,11 +2253,11 @@ object ComponentValues {
 				if ((first eq overrides) & (second eq fallback)) asColumnsOf[T]
 				else first orElse second
 
-			override def \[T](component :Component[T]) :ColumnValues[T, O] =
-				decorate(overrides \ component, fallback \ component)
+			override def /[T](component :Component[T]) :ColumnValues[T, O] =
+				decorate(overrides / component, fallback / component)
 
-			override def \[T](extract :Extract[T]) :ColumnValues[T, O] =
-				decorate(overrides \ extract, fallback \ extract)
+			override def /[T](extract :Extract[T]) :ColumnValues[T, O] =
+				decorate(overrides / extract, fallback / extract)
 
 			override def clone() :ColumnValues[S, O] = decorate(overrides.clone(), fallback.clone())
 		}

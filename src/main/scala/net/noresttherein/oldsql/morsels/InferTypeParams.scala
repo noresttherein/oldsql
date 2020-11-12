@@ -1,13 +1,15 @@
-package net.noresttherein.oldsql.slang
+package net.noresttherein.oldsql.morsels
 
 import scala.annotation.implicitNotFound
 
 
 
+
+
+
 /** A simple class combining the evidence that `X < T with M with U`, designed to alleviate the limitation
   * of scala type inference of type arguments for generic classes. An implicit instance `InferTypeParams[X, X, X]`
-  * is available for any type `X`, which can be additionally shortened with the type alias
-  * `Conforms[X, T, U] = InferTypeParams[X, T, U]` declared in the companion object.
+  * is available for any type `X`.
   * Given some type constructor `F[X]`, we would often like to declare a generic method with regard to both
   * the specific type of `x :F[X]` and the provided type argument at the same time:
   * {{{
@@ -32,7 +34,7 @@ import scala.annotation.implicitNotFound
   * By duplicating the occurrence of type `X` in this type signature and having the last type parameter covariant,
   * we can now write:
   * {{{
-  *     def m[A, X <: F[X], X](x :A)(implicit help :Conforms[A, X, F[X]]) :(X, X) = help(x) -> help(x).get
+  *     def m[A, X <: F[X], X](x :A)(implicit help :InferTypeParams[A, X, F[X]]) :(X, X) = help(x) -> help(x).get
   * }}}
   *
   * By convention, the second type parameter should be the complete inferred type, while the third one its upper bound
@@ -56,7 +58,6 @@ import scala.annotation.implicitNotFound
   *           for example `T <: Generic[X]`. It will always be `T =:= X`.
   * @tparam U the parameterized upper bound for types `X`, `T` with free type parameters only on the first level and
   *           with concrete (or instantiated by the inferer) bounds, for example `Generic[X]`.
-  * @see [[net.noresttherein.oldsql.slang.InferTypeParams.Conforms Conforms]]
   * @author Marcin Mościcki
   */
 @implicitNotFound("Cannot infer type arguments: can't prove ${X} =:= ${T} <:< ${U}.\n" +
@@ -83,25 +84,15 @@ sealed abstract class InferTypeParams[X, T, +U] extends (X => T) {
 
 
 object InferTypeParams {
-
-	/** An isomorphic alias with a shorter name for `InferTypeParams[T, L, R]`.
-	  * Guides the compiler to infer the type arguments of type `R` given by its subtype `T`.
-	  * Having type parameters `[X <: F[P], P]` and types `C <: F[A] forSome { type C; type A }`,
-	  * accepting an implicit argument of `Conforms[T, X, F[P]]` together with an argument of type `T`
-	  * will make the inferer correctly instantiate `X =:= C` and `P =:= A` from an argument `x :C`.
-	  * @see [[net.noresttherein.oldsql.slang.InferTypeParams InferTypeParams]]
-	  */
-	type Conforms[T, L, +R] = InferTypeParams[T, L, R]
-
-	@inline def Conforms[T] :Conforms[T, T, T] = unify[T]
+	def apply[T] :InferTypeParams[T, T, T] = unify[T]
 
 	/** Summon an implicitly available evidence `InferTypeParams[T, L, M, R]` witnessing that `T <: L with M with R`. */
 	@inline def apply[T, L <: R, R](implicit hint :InferTypeParams[T, L, R]) :InferTypeParams[T, L, R] = hint
 
-	implicit def unify[T] :Conforms[T, T, T] =
-		conforms.asInstanceOf[Conforms[T, T, T]]
+	implicit def unify[T] :InferTypeParams[T, T, T] =
+		conforms.asInstanceOf[InferTypeParams[T, T, T]]
 
-	private[this] final val conforms = new Conforms[Any, Any, Any] {
+	private[this] final val conforms = new InferTypeParams[Any, Any, Any] {
 		override def _1 = implicitly[Any =:= Any]
 		override def _2 = implicitly[Any <:< Any]
 		override def ub = implicitly[Any <:< Any]
@@ -112,6 +103,5 @@ object InferTypeParams {
 		override def andThen[A](g :Any => A) = g
 		override def compose[A](g :A => Any) = g
 	}
-
 
 }

@@ -2,11 +2,11 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.abacus.Numeral
+import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Mapping, Relation, SQLForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
@@ -289,7 +289,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	/** Throws `UnsupportedOperationException`. */
 	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	                 (first :Relation[M])
-	                 (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+	                 (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 			:Nothing =
 		throw new UnsupportedOperationException(s"($this).from($first)")
 

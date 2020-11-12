@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql
 
-import scala.reflect.ClassTag
+import scala.reflect.{classTag, ClassTag}
+import scala.util.Try
 
 
 
@@ -180,5 +181,35 @@ package object slang {
 		@inline def crosstyped[S, T, U] :G[S, T, U] = value.asInstanceOf[G[S, T, U]]
 	}
 
+
+
+
+
+
+	final def raise[E <: Throwable :ClassTag](msg :String) :Nothing =
+		throw (Try {
+			classTag[E].runtimeClass.getConstructor(classOf[String]).newInstance(msg).asInstanceOf[Throwable]
+		} orElse Try {
+			classTag[E].runtimeClass.getConstructor(classOf[String], classOf[Throwable]).newInstance(msg, null).asInstanceOf[Throwable]
+		} recover {
+			case ex :Exception => new IllegalArgumentException(
+				s"Can't throw ${classTag[E].runtimeClass} as a result of guard failure: no constructor (String) or (String, Throwable).",
+				ex
+			)
+		}).get
+
+	final def raise[E <: Throwable :ClassTag] :Nothing =
+		throw (Try {
+			classTag[E].runtimeClass.getDeclaredConstructor().newInstance().asInstanceOf[Throwable]
+		} orElse Try {
+			classTag[E].runtimeClass.getConstructor(classOf[String]).newInstance("").asInstanceOf[Throwable]
+		} orElse Try {
+			classTag[E].runtimeClass.getConstructor(classOf[String], classOf[Throwable]).newInstance("", null).asInstanceOf[Throwable]
+		} recover {
+			case ex :Exception => new IllegalArgumentException(
+				s"Can't throw ${classTag[E].runtimeClass} as a result of guard failure: no constructor (), (String) or (String, Throwable).",
+				ex
+			)
+		}).get
 
 }

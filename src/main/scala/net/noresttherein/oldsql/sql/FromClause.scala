@@ -5,7 +5,6 @@ import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm, Mapping, Relation, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.AggregateFunction.{Avg, Count, Max, Min, StdDev, Sum, Var}
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn

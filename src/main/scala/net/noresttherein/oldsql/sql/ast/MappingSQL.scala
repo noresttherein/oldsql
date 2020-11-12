@@ -1,10 +1,10 @@
 package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.morsels.abacus.Numeral
+import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, Relation, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, Extended, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
@@ -17,7 +17,6 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL.{Case
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL.{CaseComponent, ComponentMatcher, ProperComponent}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumnMapping, SubselectMapping, TopSelectAs}
 import net.noresttherein.oldsql.sql.mechanics.{TableCount, TableShift}
-
 
 
 //here be implicits
@@ -1025,7 +1024,7 @@ object MappingSQL {
 		trait RelationSQLFactory[F <: RowProduct] extends Any {
 			def apply[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 			         (relation :Relation[M])
-			         (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]],
+			         (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]],
 			                   shift :TableShift[F, T, _ <: Numeral]) :RelationSQL[F, T, S, F] =
 			{
 				val table = cast(relation)
@@ -1040,7 +1039,7 @@ object MappingSQL {
 
 		def last[M[A] <: MappingAt[A], T[A] <: BaseMapping[S, A], S]
 		        (table :Relation[M])
-		        (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+		        (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 				:LastRelation[T, S] =
 			new RelationSQL[RowProduct AndFrom T, T, S, RowProduct AndFrom T](table, 0)
 

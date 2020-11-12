@@ -45,6 +45,11 @@ trait QuerySQL[-F <: RowProduct, V] extends SQLExpression[F, GlobalScope, Rows[V
 
 	def rows :SQLExpression[F, GlobalScope, Seq[V]] = to[Seq[V]]
 
+	//semantics of unions and rest:
+	// - if the column set is the same, normal union
+	// - if not, but the mapping is the same, than missing columns are added with null values to each operand
+	// - if both are mapping-based, with mappings from the same hierarchy, use union column set with a discriminator column
+	// - otherwise the column set becomes two separate sets with a discriminator
 	def union[E <: F](other :QuerySQL[E, V]) :QuerySQL[E, V] = QuerySQL.Union(this, other)
 	def unionAll[E <: F](other :QuerySQL[E, V]) :QuerySQL[E, V] = QuerySQL.UnionAll(this, other)
 	def minus[E <: F](other :QuerySQL[E, V]) :QuerySQL[E, V] = QuerySQL.Minus(this, other)

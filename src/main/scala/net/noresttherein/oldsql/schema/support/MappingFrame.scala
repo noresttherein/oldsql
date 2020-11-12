@@ -1337,7 +1337,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 				safeExtracts = fastExtracts
 				initExtracts = null
 
-				fastColumnExtracts = schema.selectColumnExtracts(this)(fastExtracts)
+				fastColumnExtracts = schema.filterColumnExtracts(this)(fastExtracts)
 				safeColumnExtracts = fastColumnExtracts
 
 

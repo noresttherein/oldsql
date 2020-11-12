@@ -145,15 +145,30 @@ object UnboundParam {
 	type ?:[N <: Label, X] = { type P[O] = LabeledFromParam[N, X, O] }
 
 	/** Creates a dedicated [[net.noresttherein.oldsql.schema.Relation Relation]] for the synthetic parameter mapping
-	  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]].
+	  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]. It represents a query/statement parameter
+	  * of type `X`, the value of which is unspecified at this point, to be provided when executing the statement.
+	  * The relation can only be used in [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] join types.
+	  * Importing this symbol imports also an overloaded factory method accepting a
+	  * [[net.noresttherein.oldsql.schema.bits.LabeledMapping.Label Label]] type parameter for the parameter name,
+	  * as well as an implicit conversion adding a [[net.noresttherein.oldsql.sql.UnboundParam.method_?:.?: ?:]]
+	  * extension method to `String` literals, creating parameter relations for labeled mappings.
+	  * @see [[net.noresttherein.oldsql.sql.UnboundParam.?:[N<:Label:ValueOf,X:SQLForm] ?:]]
 	  */
 	def ?:[X :SQLForm] :ParamRelation[X] = ParamRelation()
 
 	/** Creates a dedicated [[net.noresttherein.oldsql.schema.Relation Relation]] for the synthetic parameter mapping
-	  * [[net.noresttherein.oldsql.sql.UnboundParam.LabeledFromParam LabeledFromParam]].
+	  * [[net.noresttherein.oldsql.sql.UnboundParam.LabeledFromParam LabeledFromParam]]. It represents a query/statement
+	  * parameter of type `X`, the value of which is unspecified at this point, to be provided when executing
+	  * the statement. Importing this symbol imports also an overloaded factory method without the label, as well as
+	  * an implicit conversion adding a [[net.noresttherein.oldsql.sql.UnboundParam.method_?:.?: ?:]]
+	  * extension method to `String` literals, creating parameter relations for labeled mappings.
+	  * @see [[net.noresttherein.oldsql.sql.UnboundParam.?:[X:SQLForm] ?:]]
 	  */
 	def ?:[N <: Label :ValueOf, X :SQLForm] :NamedParamRelation[N, X] = NamedParamRelation()
 
+	/** Adds a [[net.noresttherein.oldsql.sql.UnboundParam.method_?:.?: ?:]] method to `String` literals for creating
+	  * labeled synthetic parameter relations.
+	  */
 	implicit def ?:[N <: Label](name :N) = new method_?:[N](name)
 
 	/** Extension method [[net.noresttherein.oldsql.sql.UnboundParam.method_?:.?: ?:]] for `String` literals,

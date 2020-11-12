@@ -2,12 +2,11 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.model.PropertyPath.ReflectedPropertyPath
-import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.{ColumnMapping, GenericMappingExtract, Mapping}
 import net.noresttherein.oldsql.schema.GenericMappingExtract.{ConstantExtract, EmptyExtract, IdentityExtract, OptionalExtract, RequisiteExtract}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import scala.reflect.runtime.universe.{typeOf, typeTag, Type, TypeTag}
 
 
@@ -57,7 +56,8 @@ object ComponentProperty {
 
 	def like[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
 	        (component :X)(extractor :Extractor[S, T])
-	        (implicit tag :TypeTag[S], conforms :Conforms[X, M, RefinedMapping[T, O]]) :GenericComponentProperty[M, S, T, O] =
+	        (implicit tag :TypeTag[S], InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
+			:GenericComponentProperty[M, S, T, O] =
 		extractor match {
 			case _ :OptionalExtractor[S @unchecked, T @unchecked] =>
 				optional(component)(extractor.optional)
@@ -85,7 +85,7 @@ object ComponentProperty {
 
 	def optional[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
 	            (component :X)(extract :S => Option[T])
-	            (implicit tag :TypeTag[S], conforms :Conforms[X, M, RefinedMapping[T, O]])
+	            (implicit tag :TypeTag[S], InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericComponentProperty[M, S, T, O] =
 		new OptionalProperty(component, extract)
 
@@ -98,7 +98,8 @@ object ComponentProperty {
 		new RequisiteProperty(column, extract)
 
 	def requisite[X <: Mapping, M <: RefinedMapping[T, O], S, T, O]
-	             (component :X)(extract :S => T)(implicit tag :TypeTag[S], conforms :Conforms[X, M, RefinedMapping[T, O]])
+	             (component :X)(extract :S => T)
+	             (implicit tag :TypeTag[S], InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericComponentProperty[M, S, T, O] =
 		new RequisiteProperty(component, extract)
 
@@ -111,7 +112,7 @@ object ComponentProperty {
 		new IdentityProperty(column)
 
 	def identity[X <: Mapping, M <: RefinedMapping[T, O], T, O]
-	            (component :X)(implicit tag :TypeTag[T], conforms :Conforms[X, M, RefinedMapping[T, O]])
+	            (component :X)(implicit tag :TypeTag[T], InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericComponentProperty[M, T, T, O] =
 		new IdentityProperty(component)
 
@@ -124,7 +125,7 @@ object ComponentProperty {
 		new ConstantProperty[ColumnMapping[T, O], T, O](column, constant)
 
 	def constant[X <: Mapping, M <: RefinedMapping[T, O], T, O]
-	            (component :X)(constant :T)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
+	            (component :X)(constant :T)(implicit InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericComponentProperty[M, Any, T, O] =
 		new ConstantProperty[M, T, O](component, constant)
 
@@ -137,7 +138,7 @@ object ComponentProperty {
 		new EmptyProperty(column)
 
 	def empty[X <: Mapping, M <: RefinedMapping[T, O], T, O]
-	         (component :X)(implicit conforms :Conforms[X, M, RefinedMapping[T, O]])
+	         (component :X)(implicit InferTypeParams :InferTypeParams[X, M, RefinedMapping[T, O]])
 			:GenericComponentProperty[M, Any, T, O] =
 		new EmptyProperty(component)
 

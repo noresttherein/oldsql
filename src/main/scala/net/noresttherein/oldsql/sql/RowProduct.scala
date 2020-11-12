@@ -5,10 +5,10 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
+import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.slang.InferTypeParams.Conforms
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByLabel, ByParamIndex, ByParamName, ByParamType, BySubject, ByType}
 import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate}
@@ -185,7 +185,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	type FromLast >: Generalized <: RowProduct
 
 	/** Given a type constructor for a ''from'' clause accepting a `FromSome` type, apply this type to it
-	  * if it conforms to `FromSome`. This is a helper type allowing the declaration of
+	  * if it InferTypeParams to `FromSome`. This is a helper type allowing the declaration of
 	  * [[net.noresttherein.oldsql.sql.RowProduct.filterNext filterNext]], used in the implementation of
 	  * [[net.noresttherein.oldsql.sql.AndFrom.on AndFrom.on]].
 	  */
@@ -674,11 +674,11 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * It is the generalized form of the outer clause if this clause represents a subselect clause, created by
 	  * `Implicit.subselect()`. All `Join` subclasses and `From` have this type equal to the `Implicit` type
 	  * of their left side, but `Subselect` defines `Implicit` as the generalized type of its left side. Additionally,
-	  * all 'true' joins conform to `AsSubselectOf[L#Implicit]` and `L Subselect R` conforms to `AsSubselectOf[L]`.
+	  * all 'true' joins conform to `AsSubselectOf[L#Implicit]` and `L Subselect R` InferTypeParams to `AsSubselectOf[L]`.
 	  * Therefore, `Implicit` is equal to the `Generalized` type of the left side of the last `Subselect`,
 	  * or `RowProduct` for non subselect clauses. This means that for any generalized type `S <: RowProduct`
 	  * with fully instantiated parameters (the clause is ''complete'' and the `Generalized` type is well defined) value
-	  * `(s :S) subselect t1 join t2 ... join t3` conforms to `SubselectOf[S]` and `s.DirectSubselect`.
+	  * `(s :S) subselect t1 join t2 ... join t3` InferTypeParams to `SubselectOf[S]` and `s.DirectSubselect`.
 	  * This way one can statically express a dependency relationship between ''from'' clauses without resorting
 	  * to implicit evidence.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Outer]]
@@ -697,7 +697,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * All `Join` subclasses and `From` have this type equal to the `Outer` type of their left side, but `Subselect`
 	  * defines `Outer` as the `Self` type of its left side. This means that, for any type `S <: RowProduct`
 	  * with fully instantiated parameters (the clause is ''concrete'', that is the concrete types of all joins in it
-	  * are known), value `(s :S) subselect t1 join t2 ... join t3` conforms to `s.DirectSubselect`
+	  * are known), value `(s :S) subselect t1 join t2 ... join t3` InferTypeParams to `s.DirectSubselect`
 	  * and `RowProduct { type Outer = s.Self }` if none of the joins following the subselect element are
 	  * an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]. This way one can statically express a dependency
 	  * relationship between ''from'' clauses without resorting to implicit evidence.
@@ -972,7 +972,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * [[net.noresttherein.oldsql.sql.RowProduct.joinedWithSubselect joinedWithSubselect]], though the exact types
 	  * may be different when called for abstract types.
 	  * @return a ''from'' clause which, assuming this instance doesn't contain any `UnboundParam` parameters
-	  *         in its outer section, conforms to `newOuter.DirectSubselect` and, if this type is instantiated at least to
+	  *         in its outer section, InferTypeParams to `newOuter.DirectSubselect` and, if this type is instantiated at least to
 	  *         the last `Subselect` (or `Dual`/`From`) and its generalized form is known,
 	  *         to [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[F]`.
 	  * @throws `UnsupportedOperationException` if this clause is empty or there is an `UnboundParam` 'join'
@@ -1019,8 +1019,8 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  *        to `SubselectOf[Generalized]`.
 	  */
 	def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	        (first :Relation[M]) //uses Conforms instead of JoinedRelationSubject because the result type might be a Subselect or From
-	        (implicit infer :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+	        (first :Relation[M]) //uses InferTypeParams instead of JoinedRelationSubject because the result type might be a Subselect or From
+	        (implicit infer :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 			:FromRelation[T]
 
 	/** Type resulting from replacing the `Outer`/`Implicit` part of `F` with `Self` type of this clause.*/
@@ -1278,7 +1278,7 @@ object RowProduct {
 		}
 
 		/** A function type creating an [[net.noresttherein.oldsql.sql.SQLBoolean SQLBoolean]] based on the last
-		  * two relations in this clause. If this type conforms to `F AndFrom T1 AndFrom T2`, than it takes the form of:
+		  * two relations in this clause. If this type InferTypeParams to `F AndFrom T1 AndFrom T2`, than it takes the form of:
 		  * {{{
 		  *     (JoinedRelation[GeneralizedLeft[this.left.FromLast], this.left.LastMapping],
 		  *      JoinedRelation[this.FromLast, this.LastMapping])
@@ -1288,7 +1288,7 @@ object RowProduct {
 		  * is known, than both [[net.noresttherein.oldsql.sql.AndFrom.GeneralizedLeft GeneralizedLeft]]`[left.FromLast]`
 		  * and [[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]] are supertypes of `Generalized`, hence
 		  * any [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] created basing on any of the two relations
-		  * conforms to the required return type of `SQLExpression[Generalized]`.
+		  * InferTypeParams to the required return type of `SQLExpression[Generalized]`.
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]]
 		  */
 		type JoinFilter
@@ -1317,7 +1317,7 @@ object RowProduct {
 		  * is known, than both [[net.noresttherein.oldsql.sql.AndFrom.GeneralizedLeft GeneralizedLeft]]`[left.FromLast]`
 		  * and [[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]] are supertypes of `Generalized`, hence
 		  * any [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] created basing on any of the two relations
-		  * conforms to the required return type of `SQLExpression[Generalized]`.
+		  * InferTypeParams to the required return type of `SQLExpression[Generalized]`.
 		  * For example, for the type `From[L] InnerJoin R` it takes the form of
 		  * {{{
 		  *     def on(condition :(JoinedRelation[RowProduct AndFrom L Join R, L],
@@ -1390,7 +1390,7 @@ object RowProduct {
 		override type LastTable[F <: RowProduct] = JoinedRelation[F, LastMapping]
 		override type FromLast >: Generalized <: NonEmptyFrom
 
-		/** The string literal `A` used as the alias for this relation if it conforms to
+		/** The string literal `A` used as the alias for this relation if it InferTypeParams to
 		  * `F `[[net.noresttherein.oldsql.sql.RowProduct.As As]]` A` and an undefined type for non-aliased clauses.
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom.aliasOpt]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom.alias]]
@@ -1464,7 +1464,7 @@ object RowProduct {
 
 		override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                 (first :Relation[M])
-		                 (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+		                 (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 				:FromRelation[T] =
 			Subselect(self, LastRelation[T, S](cast(first)), None)(True)
 
@@ -1587,7 +1587,7 @@ object RowProduct {
 	  * In essence, conforming to the this type signifies that a type is concrete with respect to the join aspect,
 	  * although the mapping type parameters may still be abstract types. Conforming ''naturally'' to this type implies
 	  * that all functions, in particular those depending on implicit evidence, are available and their result types
-	  * are statically known. This does not hold if a clause conforms only through refinement, in particular by
+	  * are statically known. This does not hold if a clause InferTypeParams only through refinement, in particular by
 	  * being declared as `ConcreteFrom`, as this type alias carries no information in itself.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.GeneralizedFrom]]
 	  */
@@ -1791,7 +1791,7 @@ object RowProduct {
 	}
 
 	/** The upper bound for all ''group by'' clauses such that the generalized form of their grouped segment
-	  * (the actual ''from'' clause) conforms to `F`, guaranteeing in particular that
+	  * (the actual ''from'' clause) InferTypeParams to `F`, guaranteeing in particular that
 	  * [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F]` can be used as part of a grouping expression
 	  * in their ''group by'' clauses, as well as aggregated
 	  * with an [[net.noresttherein.oldsql.sql.ast.AggregateSQL.AggregateFunction aggregate]] function for use in
@@ -1853,7 +1853,7 @@ object RowProduct {
 		@inline def relations :JoinedRelations[F] = new JoinedRelations[F](thisClause)
 
 
-		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
+		/** Checks if this clause InferTypeParams to [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
 		  * (meaning it is a valid ''from'' clause for a subselect of its `Implicit` clause) and, if so, casts `this`
 		  * to `outer.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and passes it to the given function.
 		  * @return result of executing the given function in `Some` if this clause is a subselect clause, or `None` otherwise.
@@ -1863,7 +1863,7 @@ object RowProduct {
 				Some(map(thisClause.asInstanceOf[F with thisClause.outer.DirectSubselect]))
 			else None
 
-		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.RowProduct.TopFrom TopFrom]]
+		/** Checks if this clause InferTypeParams to [[net.noresttherein.oldsql.sql.RowProduct.TopFrom TopFrom]]
 		  * (meaning it is a top-level clause with an empty ''implicit'' portion) and, if so,
 		  * casts `this` to `F with TopFrom` and passes it to the given function.
 		  * @return result of executing the given function in `Some` if this clause is an ''outer'' clause, or `None` otherwise.
@@ -1873,7 +1873,7 @@ object RowProduct {
 				Some(map(thisClause.asInstanceOf[F { type Implicit = RowProduct }]))
 			else None
 
-		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]]
+		/** Checks if this clause InferTypeParams to [[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]]
 		  * (meaning it is a valid ''from'' clause for a ''free'' select - its ''implicit'' portion is empty and
 		  * it contains no [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters) and, if so,
 		  * casts `this` to `F with GroundFrom` and passes it to the given function.
@@ -1884,7 +1884,7 @@ object RowProduct {
 				Some(map(thisClause.asInstanceOf[F with GroundFrom]))
 			else None
 
-		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.RowProduct.ParamlessFrom ParamlessFrom]]
+		/** Checks if this clause InferTypeParams to [[net.noresttherein.oldsql.sql.RowProduct.ParamlessFrom ParamlessFrom]]
 		  * (meaning it has no [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in its definition) and,
 		  * if so, casts `this` to `F with ParamlessFrom` and passes it to the given function.
 		  * @return result of executing the given function in `Some` if this clause is a paramterless clause, or `None` otherwise.
@@ -2217,7 +2217,7 @@ object RowProduct {
 		  */
 		@inline def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                (table :Relation[M])
-		                (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+		                (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 				:thisClause.FromRelation[T] =
 			{ val res = thisClause.from(table); res }  //decouple type inference from the result type
 
@@ -2238,7 +2238,7 @@ object RowProduct {
 		  * @param other a non subselect `RowProduct` listing relations which should be appended to this clause
 		  *              (i.e. joined, preserving the order).
 		  * @return `clause.`[[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]]`[F, Subselect]`
-		  *         if `F` is not empty and `R` otherwise. The result conforms to
+		  *         if `F` is not empty and `R` otherwise. The result InferTypeParams to
 		  *         `clause.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and
 		  *         [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[clause.Generalized]`.
 		  * @throws UnsupportedOperationException if the first join in `other` is a `JoinParam`.
@@ -2259,7 +2259,7 @@ object RowProduct {
 		  *
 		  * @param other a subselect clause of some clause extended by this clause.
 		  * @return `clause.`[[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]]`[F, Subselect]`
-		  *         if `F` is not empty and `R` otherwise. The result conforms to
+		  *         if `F` is not empty and `R` otherwise. The result InferTypeParams to
 		  *         `clause.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and
 		  *         [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[clause.Generalized]`.
 		  * @throws UnsupportedOperationException if the first join in `other` is a `JoinParam`.
@@ -2421,7 +2421,7 @@ object RowProduct {
 		  */
 		@inline def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                (table :Relation[M])
-		                (implicit cast :Conforms[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+		                (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
 				:thisClause.FromRelation[T] =
 			{ val res = thisClause.from(table); res } //decouple type inference from the result type
 
@@ -2442,7 +2442,7 @@ object RowProduct {
 		  * @param other a non subselect `RowProduct` listing relations which should be appended to this clause
 		  *              (i.e. joined, preserving the order).
 		  * @return `clause.`[[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]]`[F, Subselect]`
-		  *         if `F` is not empty and `R` otherwise. The result conforms to
+		  *         if `F` is not empty and `R` otherwise. The result InferTypeParams to
 		  *         `clause.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and
 		  *         [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[clause.Generalized]`.
 		  * @throws UnsupportedOperationException if the first join in `other` is a `JoinParam`.
@@ -2463,7 +2463,7 @@ object RowProduct {
 		  *
 		  * @param other a subselect clause of some clause extended by this clause.
 		  * @return `clause.`[[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]]`[F, Subselect]`
-		  *         if `F` is not empty and `R` otherwise. The result conforms to
+		  *         if `F` is not empty and `R` otherwise. The result InferTypeParams to
 		  *         `clause.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and
 		  *         [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[clause.Generalized]`.
 		  * @throws UnsupportedOperationException if the first join in `other` is a `JoinParam`.
@@ -2491,7 +2491,7 @@ object RowProduct {
 	  */
 	class ProductRelation[F <: RowProduct { type Row = R }, R]
 	                     (val product :GroundFrom { type Self = F; type Row = R })
-		extends Relation[SQLMapping.Expression[F, GlobalScope, R]#Projection]
+		extends Relation[SQLMapping.Project[F, GlobalScope, R]#Expression]
 	{
 		val mapping :SQLMapping[F, GlobalScope, R, ()] = SQLMapping(product.row)
 
