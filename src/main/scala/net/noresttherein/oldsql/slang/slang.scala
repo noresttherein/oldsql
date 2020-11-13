@@ -5,6 +5,9 @@ import scala.util.Try
 
 
 
+
+
+
 package object slang {
 
 	private[oldsql] object && {

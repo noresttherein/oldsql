@@ -12,6 +12,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.ColumnMappingFactoryMethods
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope

@@ -2,8 +2,9 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
+import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, GroupingOfGeneralized, NonEmptyFrom, PartOf}
@@ -38,7 +39,7 @@ import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SQLScribe}
   * As grouping by composite SQL expressions is a common use case, two type aliases exist to support this feature:
   * [[net.noresttherein.oldsql.sql.GroupByVal GroupByVal]]`[F, V]`
   * and [[net.noresttherein.oldsql.sql.GroupByOne GroupByOne]]`[F, V]` which take only the subject type of the mapping
-  * as the `V` parameter, using a generic [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] (for the former)
+  * as the `V` parameter, using a generic [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] (for the former)
   * or [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] (for the latter) as the adapter used
   * in the grouping relation of this instance.
   *
@@ -449,7 +450,7 @@ object GroupBy {
   * As grouping by composite SQL expressions is a common use case, two type aliases exist to support this feature:
   * [[net.noresttherein.oldsql.sql.ByVal ByVal]]`[F, V]`
   * and [[net.noresttherein.oldsql.sql.ByOne ByOne]]`[F, V]` which take only the subject type of the mapping
-  * as the `V` parameter, using a generic [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] (for the former)
+  * as the `V` parameter, using a generic [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] (for the former)
   * or [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] (for the latter) as the adapter used
   * in the grouping relation of this instance.
   *

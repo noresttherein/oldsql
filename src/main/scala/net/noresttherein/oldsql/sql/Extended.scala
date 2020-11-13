@@ -4,7 +4,8 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
+import net.noresttherein.oldsql.schema.Relation
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.RowProduct.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{JoinedRelation, RelationSQL}
@@ -261,7 +262,7 @@ object Compound {
 
 
 	object JoinedRelationSubject {
-		import BaseMapping.AnyAt
+		import net.noresttherein.oldsql.schema.bases.BaseMapping.AnyAt
 
 		private[this] val instance =
 			new JoinedRelationSubject[Compound.WithLeft[RowProduct]#F, AnyAt, AnyAt, AnyAt] {

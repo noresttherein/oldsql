@@ -1,30 +1,30 @@
-package net.noresttherein.oldsql.schema.support
+package net.noresttherein.oldsql.schema.bases
 
-import java.sql.{PreparedStatement, ResultSet}
+import java.sql.ResultSet
 
-import net.noresttherein.oldsql.collection.{MutableNaturalMap, NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.collection.Unique.implicitUnique
-import net.noresttherein.oldsql.model.PropertyPath
-import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, RootMapping, SQLReadForm, SQLWriteForm, BaseMapping}
-import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoInsert, NoFilter, NoSelect, NoUpdate, ReadOnly}
-import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
-import net.noresttherein.oldsql.slang._
 import scala.collection.AbstractSeq
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
-import net.noresttherein.oldsql.schema.ComponentValues.ColumnValues.GlobalColumnValues
-import net.noresttherein.oldsql.OperationType.{INSERT, FILTER, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.collection.Unique.implicitUnique
+import net.noresttherein.oldsql.model.PropertyPath
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoInsert, NoSelect, NoUpdate, ReadOnly}
+import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
+import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.slang._
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
+
 
 
 
@@ -73,8 +73,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * The best of both worlds can be achieved by simply mixing in this trait into a ready component class.
 	  *
 	  * @tparam T subject type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.MandatoryComponent]]
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.OptionalComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.MandatoryComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.OptionalComponent]]
 	  */
 	trait FrameComponent[T] extends BaseMapping[T, O] { self =>
 
@@ -269,8 +269,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * implement the `pick` property with an extractor function `S => T`. It is primarily useful as a mixin for
 	  * ready component classes, while components specific to the enclosing mapping (and belonging
 	  * to their implementation) would benefit from extending one of its subtypes provided for that purpose.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseComponent]]
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.ComponentFrame]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.ComponentFrame]]
 	  */
 	trait MandatoryComponent[T] extends FrameComponent[T] {
 		protected[schema] override def extractor :RequisiteExtractor[S, T] = Extractor.req(pick)
@@ -299,15 +299,15 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  *      This is for example the case with mapping of a class with its subclasses to a single database table.
 	  *
 	  *  Of the above, the first case should use a
-	  *  [[net.noresttherein.oldsql.schema.support.MappingFrame.MandatoryComponent MandatoryComponent]] instance,
+	  *  [[net.noresttherein.oldsql.schema.bases.MappingFrame.MandatoryComponent MandatoryComponent]] instance,
 	  *  while the last two are clear candidates for this type of the component. The second and third cases
 	  *  are less clear cut and can conceivably  use either of the approaches.
 	  *
 	  *  Note that while optional components will often be used in combination with the
 	  *  `OptionalSelect`/`OptionalInsert`/`OptionalUpdate` buffs, none of them is automatically implied.
 	  *
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseOptionalComponent]]
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.OptionalComponentFrame]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseOptionalComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.OptionalComponentFrame]]
 	  * @see [[net.noresttherein.oldsql.schema.bits.OptionMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.OptionalSelect$ Buff.OptionalSelect]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitSelect$ Buff.ExplicitSelect]]
@@ -338,7 +338,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  *             from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
 	  *             to subcomponents of this component.
 	  * @tparam T value type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseOptionalComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseOptionalComponent]]
 	  */
 	abstract class BaseComponent[T](protected override val pick :S => T, opts :Buff[T]*) extends MandatoryComponent[T] {
 //		protected[schema] override val extractor :Extractor[S, T] = Extractor.req(pick)
@@ -382,7 +382,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  *             from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
 	  *             to subcomponents of this component.
 	  * @tparam T value type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.BaseComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseComponent]]
 	  */
 	abstract class BaseOptionalComponent[T](protected override val pick :S => Option[T], opts :Buff[T]*)
 		extends OptionalComponent[T]
@@ -478,7 +478,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * declared column options (buffs). It will also be registered on the subcomponents list, but not the one
 	  * for direct components.
 	  * @tparam T value type of this column.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.DirectColumn]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.DirectColumn]]
 	  */
 	trait FrameColumn[T] extends FrameComponent[T] with ColumnMapping[T, O] {
 		protected[MappingFrame] val index :Int = nextColumnIndex()
@@ -1250,8 +1250,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * @throws IllegalStateException if reentered while a another call to `initPreceding` is present on the stack
 	  *                               as a result of being called from initialization code of a component or
 	  *                               if the mapping is already initialized.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initPreceding[T](value:T) initPreceding(value)]]
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.FrameComponent.include() FrameComponent.include()]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.initPreceding[T](value:T) initPreceding(value)]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.include() FrameComponent.include()]]
 	  */
 	protected final def initPreceding() :Unit = synchronized {
 		if (initializationState == 2)
@@ -1269,7 +1269,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	/** An ease-of-life variant of no-argument `initPreceding()` which returns the given argument after finishing
 	  * the initialization of all already defined components. It allows to 'inject' the initialization as an intermediate
 	  * step into any expression.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initPreceding() initPreceding()]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.initPreceding() initPreceding()]]
 	  */
 	@inline protected final def initPreceding[T](value :T) :T = { initPreceding(); value }
 
@@ -1290,10 +1290,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	/** Tests if the component lists of this instance have already been initialized and can not be changed any further.
 	  * This happens either when any of the column/component lists of this instance are accessed, or when a subclass
 	  * manually triggers the initialization by a call to
-	  * [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]].
+	  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.initialize() initialize()]].
 	  * Any attempt to create new components after this happens will result in `IllegalStateException` thrown
 	  * by the constructor.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.initialize() initialize()]]
 	  */
 	protected final def isInitialized :Boolean = initializationState == 2
 
@@ -1312,7 +1312,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * the first one are ignored.
 	  * @throws IllegalStateException if called when the initialization is already in progress, but has not completed.
 	  *                               This can be in particular caused by calling from initialization of a component.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.finalizeInitialization()]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.finalizeInitialization()]]
 	  */
 	protected final def initialize() :Unit =
 		if (!isInitialized) synchronized {
@@ -1351,7 +1351,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 	/** A hook method called by `initialize()` after component lists are initialized. By default it does nothing,
 	  * but subclasses may override it to implement any additional initialization steps they require.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame.initialize() initialize()]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.initialize() initialize()]]
 	  */
 	protected def finalizeInitialization() :Unit = ()
 
@@ -1615,7 +1615,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
   * declaring a column prefix to be added to all its columns as well as additional buffs which should be inherited
   * by all of its subcomponents (including columns), the component, as defined, can be a different instance from its
   * final representation included on the mapping's component/column lists. This is in particular necessary if a
-  * component not extending the inner [[net.noresttherein.oldsql.schema.support.MappingFrame.FrameComponent FrameComponent]]
+  * component not extending the inner [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent FrameComponent]]
   * class is embedded in the mapping. As it is the latter version of the component which is used by the framework
   * to create any SQL statements, and thus also by the `Pieces`, but typically the original component as defined
   * is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces` implementation

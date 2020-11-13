@@ -1,18 +1,14 @@
-package net.noresttherein.oldsql.schema.bits
+package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{BaseMapping, Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
 import net.noresttherein.oldsql.{schema, OperationType}
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.schema.support.{ColumnMappingFactoryMethods, DelegateMapping, MappingFactoryMethods}
-import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.collection.NaturalMap
-
-
-
-
+import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.schema.{support, Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
+import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 
 
 sealed trait AdapterOf[+M <: Mapping] extends Mapping {
@@ -44,24 +40,24 @@ sealed trait AdapterOf[+M <: Mapping] extends Mapping {
   * some combination of the subject and origin types from the original mapping to the adapter.
   *
   * Most implementations will not extend this trait directly, but rather one of its subtypes:
-  *   - [[net.noresttherein.oldsql.schema.bits.MappingAdapter.BaseAdapter BaseAdapter]], which must be extended
+  *   - [[net.noresttherein.oldsql.schema.support.MappingAdapter.BaseAdapter BaseAdapter]], which must be extended
   *     by all concrete classes extending `MappingAdapter`. This is because `BaseAdapter` enforces that the origin type
   *     of the adapted mapping is the same as the origin of the adapter, which is impossible to do here due to
   *     `MappingAdapter` being covariant in the adapted mapping type, but used in type aliases
   *     which define the adapter's origin type to be equal to the adapted mapping's origin type.
-  *   - [[net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter DelegateAdapter]] for adapters
+  *   - [[net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter DelegateAdapter]] for adapters
   *     implemented as a [[net.noresttherein.oldsql.schema.support.DelegateMapping DelegateMapping]] to their `body`;
-  *   - [[net.noresttherein.oldsql.schema.bits.MappingAdapter.ComposedAdapter ComposedAdapter]] for adapters
+  *   - [[net.noresttherein.oldsql.schema.support.MappingAdapter.ComposedAdapter ComposedAdapter]] for adapters
   *     of adapters or, more correctly, adapters implemented as a `DelegateMapping` to an adapter of their `body`.
   *
   * This trait overrides factory methods creating adapter mappings such as `map` so they return a `MappingAdapter`
   * to the same mapping type `M` as this mapping (rather than to this adapter as `StaticMapping`).
   *
-  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.BaseAdapter]]
-  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.Adapted]]
-  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.AdaptedAt]]
-  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.MappedTo]]
-  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.Mapped]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.BaseAdapter]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.AdaptedAt]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.MappedTo]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.Mapped]]
   * @author Marcin Mościcki
   */
 trait MappingAdapter[+M <: Mapping, S, O]

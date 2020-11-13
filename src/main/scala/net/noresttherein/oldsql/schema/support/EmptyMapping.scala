@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{BaseMapping, ComponentValues, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ComponentValues, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.forms.ScalaForms
 
 

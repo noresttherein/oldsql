@@ -4,9 +4,10 @@ import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnForm, ColumnMapping, GenericMappingExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.NamedRelation
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -339,8 +340,8 @@ object UnboundParam {
 
 
 
-	type ParamExtract[P, S, O] = GenericMappingExtract[ParamMapping[P, S, O], P, S, O]
-	type ParamColumnExtract[P, S, O] = GenericMappingExtract[FromParam[P, O]#ParamColumn[S], P, S, O]
+	type ParamExtract[P, S, O] = GenericExtract[ParamMapping[P, S, O], P, S, O]
+	type ParamColumnExtract[P, S, O] = GenericExtract[FromParam[P, O]#ParamColumn[S], P, S, O]
 
 	sealed abstract class ParamMapping[P, S, O] protected (implicit sqlForm :SQLForm[S]) extends FormMapping[S, O] {
 		def root :FromParam[P, O]
@@ -391,7 +392,7 @@ object UnboundParam {
 		def this()(implicit form :SQLForm[P]) = this("?")
 
 		override def root :FromParam[P, O] = this
-		override def extract :ParamExtract[P, P, O] = GenericMappingExtract.ident(this)
+		override def extract :ParamExtract[P, P, O] = GenericExtract.ident(this)
 		override def derivedForm :SQLWriteForm[P] = form
 
 
@@ -482,7 +483,7 @@ object UnboundParam {
 			extends ParamMapping[P, T, O]
 		{
 			override def root :FromParam[P, O] = This
-			override def extract :ParamExtract[P, T, O] = GenericMappingExtract(this)(pick)
+			override def extract :ParamExtract[P, T, O] = GenericExtract(this)(pick)
 			override def toString = s"$This[$form]"
 		}
 
@@ -494,7 +495,7 @@ object UnboundParam {
 		class ParamColumn[T] private[FromParam] (pick :P =?> T)(implicit override val form :ColumnForm[T])
 			extends ParamComponent[T](pick) with ColumnMapping[T, O]
 		{
-			override def extract :ParamColumnExtract[P, T, O] = GenericMappingExtract(this)(pick)
+			override def extract :ParamColumnExtract[P, T, O] = GenericExtract(this)(pick)
 			override def name :String = This.name
 		}
 

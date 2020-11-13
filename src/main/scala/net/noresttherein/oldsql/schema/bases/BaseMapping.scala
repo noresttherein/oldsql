@@ -1,17 +1,19 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.bases
 
-import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
-import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
-import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, OptionMapping, PrefixedMapping}
-import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
+import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
+import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.bits.OptionMapping
+import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
+import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
+import net.noresttherein.oldsql.schema.support.{CustomizedMapping, MappedMapping, PrefixedMapping}
 
 
 

@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql.mechanics
 
-import net.noresttherein.oldsql.schema.BaseMapping
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql._
 import net.noresttherein.oldsql.sql.DecoratedFrom.{ExtendingDecorator, FromSomeDecorator}
 import net.noresttherein.oldsql.sql.GroupBy.AndBy

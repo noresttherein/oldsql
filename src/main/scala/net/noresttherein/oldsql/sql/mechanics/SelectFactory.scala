@@ -2,15 +2,16 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{Aggregated, ColumnSQL, FromSome, RowProduct}
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.RowProduct.{GroundFrom, NonEmptyFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.LocalScope
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL, SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
 
 
 
@@ -37,7 +38,7 @@ import net.noresttherein.oldsql.sql.ast.SelectSQL.{TopSelectAs, TopSelectColumn,
   *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
   *          (where `M[O]` is the origin [[net.noresttherein.oldsql.schema.Mapping.OriginProjection projection]] of `E`);
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]`[G, M]`,
-  *      `M[O] <: `[[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`[T, O]`:
+  *      `M[O] <: `[[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[T, O]`:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectAs SelectAs]]`[B, M]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectMapping SelectMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and

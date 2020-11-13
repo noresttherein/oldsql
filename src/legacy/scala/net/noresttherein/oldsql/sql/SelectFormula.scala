@@ -1,10 +1,10 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValues, BaseMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValues, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
-import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.AllColumns
-import net.noresttherein.oldsql.schema.Mapping.{Component[_], Component}
+import net.noresttherein.oldsql.schema.Mapping.{Component, _}
+import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
 import net.noresttherein.oldsql.sql.RowProduct.{ParamSource, RowValues, SelectFrom, SubselectFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CaseFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter

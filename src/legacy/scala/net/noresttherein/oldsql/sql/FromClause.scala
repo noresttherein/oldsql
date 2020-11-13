@@ -2,9 +2,10 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.schema.{Mapping, RootMapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.EmptyMapping
 import net.noresttherein.oldsql.schema.Mapping.Component
+import net.noresttherein.oldsql.schema.bases.RootMapping
 import net.noresttherein.oldsql.sql.RowProduct.{RowTables, SubselectFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula}
 import net.noresttherein.oldsql.slang._

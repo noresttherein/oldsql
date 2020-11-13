@@ -2,8 +2,9 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.ChainApplication
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{ColumnSQL, ColumnSQLMapping, Dual, FromSome, GroupByClause, IndexedColumnSQLMapping, IndexedSQLMapping, RowProduct, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher

@@ -45,7 +45,7 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 		customize(INSERT, include, exclude)
 
 	/** Target method for `forSelect`, `forFilter`, `forUpdate` and `forInsert`. Responsible for creating an
-	  * adapter (typically a [[net.noresttherein.oldsql.schema.bits.CustomizedMapping CustomizedMapping]] subclass)
+	  * adapter (typically a [[CustomizedMapping CustomizedMapping]] subclass)
 	  * with modified buffs on certain components so as to include or exclude them ''by default''.
 	  * All components/columns which are not covered by either the `include` or the `exclude` list are left
 	  * unmodified, meaning they will be included in the operation only if they would be included by this mapping

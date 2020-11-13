@@ -2,12 +2,14 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
-import net.noresttherein.oldsql.schema.{BaseMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.support.MappedMapping
 
 
 
@@ -58,15 +60,6 @@ object OptionMapping {
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[Option[S]] =
 			//fixme: not selectable, but default select list
 			get.selectForm(if (components.contains(get)) get.selectable else components).toOpt
-
-//		override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
-//			get.filterForm(if (components.contains(get)) get.filterable else components).toOpt
-//
-//		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
-//			get.updateForm(if (components.contains(get)) get.updatable else components).toOpt
-//
-//		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
-//			get.insertForm(if (components.contains(get)) get.insertable else components).toOpt
 
 		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
 			get.writeForm(op, if (components.contains(get)) op.columns(get) else components).toOpt

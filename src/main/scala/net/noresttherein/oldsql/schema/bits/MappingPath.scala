@@ -1,10 +1,11 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.{ComponentValues, Mapping}
 import net.noresttherein.oldsql.schema.ComponentValues.ColumnValues
 import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, ConcatPath, SelfPath}
+import net.noresttherein.oldsql.schema.bits.MappingPath.{ComponentPath, ConcatPath, SelfPath}
 
 
 

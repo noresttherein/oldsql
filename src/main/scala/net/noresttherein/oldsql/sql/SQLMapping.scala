@@ -8,16 +8,16 @@ import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, BaseMapping, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, ComponentValues, GenericMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, ComponentValues, GenericExtract, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoFilter, NoInsert, NoSelect, NoSelectByDefault, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.schema.support.LazyMapping
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
 import net.noresttherein.oldsql.sql.SQLExpression.{BaseExpressionMatcher, CaseExpression, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
+import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL
@@ -163,7 +163,7 @@ object SQLMapping {
 
 
 		private type ExpressionExtract[V] = {
-			type E[T] = GenericMappingExtract[ColumnSQLMapping[F, S, T, O], V, T, O]
+			type E[T] = GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O]
 		}
 		private type Extractors[-_ >: LocalScope <: GlobalScope, V] =
 			Seq[Assoc[ExpressionColumn, ExpressionExtract[V]#E, _]]
@@ -186,7 +186,7 @@ object SQLMapping {
 
 			override def column[C >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, C, V]) :Extractors[C, V] = {
 				val column = ColumnSQLMapping[F, S, V, O](e.asInstanceOf[ColumnSQL[F, S, V]], nameFor(e))
-				Assoc[ExpressionColumn, ExpressionExtract[V]#E, V](column, GenericMappingExtract.ident(column))::Nil
+				Assoc[ExpressionColumn, ExpressionExtract[V]#E, V](column, GenericExtract.ident(column))::Nil
 			}
 
 			override def component[T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, G >: F <: RowProduct]
@@ -199,7 +199,7 @@ object SQLMapping {
 					val expr = e.origin \ column
 					val selected = ColumnSQLMapping[F, S, C, O](e.origin \ column, nameFor(expr))
 					val componentExtract = mapping(column)
-					val selectExtract = GenericMappingExtract(selected)(componentExtract)
+					val selectExtract = GenericExtract(selected)(componentExtract)
 					Assoc[ExpressionColumn, ExpressionExtract[V]#E, C](selected, selectExtract)
 				}
 				mapping.columns.view.map(table.export(_)).filter(NoSelectByDefault.disabled).map(extractAssoc(_)).toList
@@ -294,7 +294,7 @@ object SQLMapping {
 			                      (e :TypedComponentSQL[F, T, E, M, V, A]) =
 			{
 				val table = e.entity
-				val component = e.mapping
+				val component = e.mapping //fixme: this doesn't take into account include/exclude
 				val exported = component.columns.view.map(table.export(_)).filter(NoSelectByDefault.disabled).toList
 				val count = exported.length
 				val (selected, tail) = columnStack.splitAt(count)
@@ -541,7 +541,7 @@ trait IndexedSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 
 object IndexedSQLMapping {
 	type IndexedSQLExtract[-F <: RowProduct, -S >: LocalScope <: GlobalScope, -X, Y, O] =
-		GenericMappingExtract[IndexedSQLMapping[F, S, Y, O], X, Y, O]
+		GenericExtract[IndexedSQLMapping[F, S, Y, O], X, Y, O]
 
 	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: IndexedChain, O](expr :IndexedChainTuple[F, S, X])
 			:IndexedSQLMapping[F, S, X, O] =
@@ -563,7 +563,7 @@ object IndexedSQLMapping {
 
 		private type Expression[V] = IndexedSQLMapping[F, S, V, O]
 		private type ColumnExpression[N <: Label, V] = IndexedColumnSQLMapping[F, S, N, V, O]
-		private type IndexedExtract[W, P] = GenericMappingExtract[IndexedSQLMapping[F, S, P, O], W, P, O]
+		private type IndexedExtract[W, P] = GenericExtract[IndexedSQLMapping[F, S, P, O], W, P, O]
 		private type MyExtract[V] = IndexedExtract[X, V]
 
 		private type Extracts[-C >: LocalScope <: GlobalScope, V] = List[IndexedSQLExtract[F, C, V, _, O]]
@@ -575,7 +575,7 @@ object IndexedSQLMapping {
 			                             (init :IndexedChainTuple[F, C, I], last :IndexedSQLExpression[F, C, L]) =
 			{
 				val extracts = apply(init).map(_ compose Chain.init[I] _) :Extracts[C, I |~ (K :~ L)]
-				val extract = GenericMappingExtract.req(last.mapping[O])((_:(I |~ (K :~ L))).last.value)
+				val extract = GenericExtract.req(last.mapping[O])((_:(I |~ (K :~ L))).last.value)
 				extract::extracts
 			}
 

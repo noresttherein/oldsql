@@ -3,13 +3,14 @@ package net.noresttherein.oldsql.sql.mechanics
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping}
+import net.noresttherein.oldsql.schema.ColumnMapping
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.SQLExpression.LocalScope
 import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, InnerJoin, Join, LeftJoin, OuterJoin, RightJoin, RowProduct, SQLBoolean, Subselect}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL, SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 
 

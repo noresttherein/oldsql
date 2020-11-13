@@ -4,8 +4,8 @@ import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.model.PropertyPath.ReflectedPropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{ColumnMapping, GenericMappingExtract, Mapping}
-import net.noresttherein.oldsql.schema.GenericMappingExtract.{ConstantExtract, EmptyExtract, IdentityExtract, OptionalExtract, RequisiteExtract}
+import net.noresttherein.oldsql.schema.{ColumnMapping, GenericExtract, Mapping}
+import net.noresttherein.oldsql.schema.GenericExtract.{ConstantExtract, EmptyExtract, IdentityExtract, OptionalExtract, RequisiteExtract}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import scala.reflect.runtime.universe.{typeOf, typeTag, Type, TypeTag}
 
@@ -147,14 +147,14 @@ object ComponentProperty {
 
 
 
-	trait GenericComponentProperty[+M <: RefinedMapping[T, O], -S, T, O] extends GenericMappingExtract[M, S, T, O] {
+	trait GenericComponentProperty[+M <: RefinedMapping[T, O], -S, T, O] extends GenericExtract[M, S, T, O] {
 
 		val property :PropertyPath[S, T]
 		def argumentType :Type
 		protected[this] implicit def tag :TypeTag[S]
 
 
-		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericMappingExtract[C, T, Y, O])
+		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
 				:GenericComponentProperty[C, S, Y, O] = extractor match {
 			case _ :IdentityExtractor[_] =>
 				if (extractor.export == export) this.asInstanceOf[GenericComponentProperty[C, S, Y, O]]
@@ -199,7 +199,7 @@ object ComponentProperty {
 				:GenericComponentProperty[M, X, T, O] =
 			extractor andThen this
 
-		override def compose[X](extractor :X =?> S) :GenericMappingExtract[M, X, T, O] = extractor match {
+		override def compose[X](extractor :X =?> S) :GenericExtract[M, X, T, O] = extractor match {
 			case prop :GenericComponentProperty[_, X @unchecked, S @unchecked, _] => compose(prop)
 			case _ => super.compose(extractor)
 		}
@@ -221,7 +221,7 @@ object ComponentProperty {
 		override val property = prop(f)
 		override val argumentType = typeOf[S]
 
-		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericMappingExtract[C, T, Y, O])
+		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
 				:GenericComponentProperty[C, S, Y, O] =
 			extractor match {
 				case _ :IdentityExtractor[Y @unchecked] =>
@@ -256,7 +256,7 @@ object ComponentProperty {
 		override val property :ReflectedPropertyPath[S, T] = PropertyPath.property(getter)
 		override val argumentType :Type = typeOf[S]
 
-		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericMappingExtract[C, T, Y, O])
+		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
 				:GenericComponentProperty[C, S, Y, O] =
 			extractor match {
 				case requisite :RequisiteExtractor[T @unchecked, Y @unchecked] => requisite match {
@@ -296,7 +296,7 @@ object ComponentProperty {
 		override val property :ReflectedPropertyPath[T, T] = PropertyPath.identity[T]
 		override val argumentType :Type = typeOf[T]
 
-		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericMappingExtract[C, T, Y, O])
+		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
 				:GenericComponentProperty[C, T, Y, O] =
 			extractor match {
 				case prop :GenericComponentProperty[C@unchecked, T@unchecked, Y@unchecked, O@unchecked] =>
@@ -324,7 +324,7 @@ object ComponentProperty {
 		override val argumentType :Type = typeOf[Any]
 
 
-		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericMappingExtract[C, T, Y, O])
+		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
 				:GenericComponentProperty[C, Any, Y, O] =
 			extractor match {
 				case _ :IdentityExtractor[_] =>
@@ -360,7 +360,7 @@ object ComponentProperty {
 		protected[this] override val tag :TypeTag[Any] = typeTag[Any]
 
 
-		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericMappingExtract[C, T, Y, O])
+		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
 				:GenericComponentProperty[C, Any, Y, O] =
 			new EmptyProperty[C, Y, O](extractor.export)
 

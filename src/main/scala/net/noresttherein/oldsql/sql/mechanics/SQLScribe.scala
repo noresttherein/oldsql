@@ -1,8 +1,9 @@
 package net.noresttherein.oldsql.sql.mechanics
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping}
+import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, By, ColumnSQL, From, FromSome, GlobalBoolean, GroupBy, GroupByClause, Join, RowProduct, SQLExpression, Subselect}
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
@@ -15,7 +16,7 @@ import net.noresttherein.oldsql.sql.ast.{AggregateSQL, MappingSQL, QuerySQL, SQL
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, ComponentSQL, LooseColumn, LooseComponent, RelationSQL, TypedColumnComponentSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL.CaseColumnComponent
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, CaseQuery, ColumnQuery, Rows}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseTopSelect, CaseTopSelectColumn, TopSelectColumn, TopSelectSQL, SubselectColumn, SubselectSQL}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseTopSelect, CaseTopSelectColumn, SubselectColumn, SubselectSQL, TopSelectColumn, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, ColumnTerm, CompositeNull, SQLNull, SQLParameter, SQLParameterColumn, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.CaseColumnTerm
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe.{ColumnResult, ExpressionResult}

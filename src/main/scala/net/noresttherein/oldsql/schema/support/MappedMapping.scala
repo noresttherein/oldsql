@@ -1,16 +1,16 @@
-package net.noresttherein.oldsql.schema.bits
+package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.morsels.Extractor
+import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.schema.{MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
-import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{BaseAdapter, ComposedAdapter, DelegateAdapter, MappedTo}
-import net.noresttherein.oldsql.schema.support.DelegateMapping
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{ComposedAdapter, DelegateAdapter, MappedTo}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
+
 
 
 

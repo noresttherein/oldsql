@@ -1,17 +1,17 @@
 package net.noresttherein.oldsql.schema.bits
 
+import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.{Chain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@||, |-|, ||, LabeledSchemaColumn}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.bits.RecordMapping.NonEmptyRecordMapping
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
-import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
+import net.noresttherein.oldsql.schema.bits.RecordMapping.NonEmptyRecordMapping
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@||, |-|, ||, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
 
 

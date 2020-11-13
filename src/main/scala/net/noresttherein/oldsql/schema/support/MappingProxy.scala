@@ -5,13 +5,13 @@ import scala.collection.mutable
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, ComponentValues, GenericMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, ComponentValues, GenericExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoFilter, NoSelect, NoUpdate}
-
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.bases.LazyMapping
 
 
 
@@ -340,7 +340,7 @@ object MappingProxy {
 		override val columnExtracts = NaturalMap[Column, ColumnExtract](
 			exports.flatMap {
 				case (column :ColumnMapping[Any @unchecked, O @unchecked],
-				      extract :GenericMappingExtract[ColumnMapping[Any, O] @unchecked, S @unchecked, Any @unchecked, O @unchecked]) =>
+				      extract :GenericExtract[ColumnMapping[Any, O] @unchecked, S @unchecked, Any @unchecked, O @unchecked]) =>
 					Some(Assoc[Column, ColumnExtract, Any](column, extract))
 				case _ =>
 					None

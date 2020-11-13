@@ -41,21 +41,21 @@ package object schema {
 	  *
 	  * This is a type alias for a template class parameterized with the component mapping type, specified as
 	  * the most generic [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping[T, O] ]].
-	  * @see [[net.noresttherein.oldsql.schema.GenericMappingExtract]]
+	  * @see [[net.noresttherein.oldsql.schema.GenericExtract]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](RefinedMapping[T]) ]]
 	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
 	  * @tparam S the subject type of the parent mapping.
 	  * @tparam T the subject type of the component mapping.
 	  * @tparam O the origin type of the parent and child mappings.
 	  */
-	type MappingExtract[-S, T, O] = GenericMappingExtract[RefinedMapping[T, O], S, T, O]
+	type MappingExtract[-S, T, O] = GenericExtract[RefinedMapping[T, O], S, T, O]
 
 	/** A `MappingExtract` for a column with subject type `T` of a parent mapping with subject type `S` and origin
 	  * type `O`.
 	  * @see [[net.noresttherein.oldsql.schema.MappingExtract]]
-	  * @see [[net.noresttherein.oldsql.schema.GenericMappingExtract]]
+	  * @see [[net.noresttherein.oldsql.schema.GenericExtract]]
 	  */
-	type ColumnMappingExtract[S, T, O] = GenericMappingExtract[ColumnMapping[T, O], S, T, O]
+	type ColumnMappingExtract[S, T, O] = GenericExtract[ColumnMapping[T, O], S, T, O]
 
 
 

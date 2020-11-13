@@ -1,29 +1,31 @@
-package net.noresttherein.oldsql.schema
+package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~, UniqueKey}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, CustomizedSchema, EmptySchema, FlatMappingSchema, FlatMappingSchemaProxy, MappingSchemaProxy, SubjectConstructor}
+import net.noresttherein.oldsql.schema.bits.IndexedMappingSchema.{CustomizedFlatIndexedSchema, CustomizedIndexedSchema, ExtensibleFlatIndexedSchema, FlatIndexedMappingSchema}
+import net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchema, MappedIndexedSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.IndexedMappingSchema.{CustomizedFlatIndexedSchema, CustomizedIndexedSchema, ExtensibleFlatIndexedSchema, FlatIndexedMappingSchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, CustomizedSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
-import net.noresttherein.oldsql.schema.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchema, MappedIndexedSchemaMapping}
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{ComposedAdapter, DelegateAdapter}
-import net.noresttherein.oldsql.schema.bits.{CustomizedMapping, MappedMapping, PrefixedMapping}
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.{DelegateMapping, MappingFactoryMethods}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.support.{CustomizedMapping, DelegateMapping, MappedMapping, MappingFactoryMethods, PrefixedMapping}
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.schema.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
+import net.noresttherein.oldsql.schema.{bits, cascadeBuffs, Buff, ColumnExtract, ColumnForm, MappingExtract}
+import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, CustomizedSchema, EmptySchema, FlatMappingSchema, FlatMappingSchemaProxy, MappingSchemaProxy, SubjectConstructor}
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, CustomizedSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
 import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
 
 
 
 
-/** A [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] variant where all components are indexed
+
+
+/** A [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] variant where all components are indexed
   * with `String` literals for access.
   * @tparam S the ''packed'' type of this schema, that is one of values assembled from the values of the components
   *           from this schema, and the subject type of the mapping based on this schema.
@@ -32,7 +34,7 @@ import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
   *           overriding of some `MappingSchema` methods, which would not be possible with a narrowed upper bound.
   *           It is the subject type of this mapping.
   * @tparam C a `Chain` containing the types of all components of this schema. Each component must be a subtype of
-  *           [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], labeled with a unique string literal type
+  *           [[net.noresttherein.oldsql.schema.bits.SchemaMapping.@|-| @|-|]], labeled with a unique string literal type
   *           for access.
   * @tparam O the `Origin` type of this mapping, that is a marker type used to distinguish between several
   *           instances of the same mapping class, such as different occurrences of the same table in an SQL select.
@@ -59,7 +61,7 @@ object IndexedMappingSchema {
 	  * indexed by `String` literals for ease of access.
 	  * Provides chaining methods for appending new components (in an immutable way) and, once the component list
 	  * is complete, mapping their values collected in a `IndexedChain` to the subject `S`, creating
-	  * a [[net.noresttherein.oldsql.schema.IndexedSchemaMapping IndexedSchemaMapping]] in the process.
+	  * a [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]] in the process.
 	  */
 	def apply[S, O] :ExtensibleFlatIndexedSchema[S, @~, @~, O] = empty.asInstanceOf[EmptyIndexedSchema[S, O]]
 
@@ -69,7 +71,7 @@ object IndexedMappingSchema {
 	  * indexed by `String` literals for ease of access.
 	  * Provides chaining methods for appending new components (in an immutable way) and, once the component list
 	  * is complete, mapping their values collected in a `IndexedChain` to the subject `S`, creating
-	  * a [[net.noresttherein.oldsql.schema.IndexedSchemaMapping IndexedSchemaMapping]] in the process.
+	  * a [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]] in the process.
 	  * @param buffs buffs intended for the built `IndexedSchemaMapping`. They are ''not'' the buffs of the intermediate
 	  *              schema mappings, but are inherited by all added columns as well as components created by the use
 	  *              of given factory functions.
@@ -83,7 +85,7 @@ object IndexedMappingSchema {
 	  * indexed by `String` literals for ease of access.
 	  * Provides chaining methods for appending new components (in an immutable way) and, once the component list
 	  * is complete, mapping their values collected in a `IndexedChain` to the subject `S`, creating
-	  * a [[net.noresttherein.oldsql.schema.IndexedSchemaMapping IndexedSchemaMapping]] in the process.
+	  * a [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]] in the process.
 	  * @param columnPrefix a prefix `String` which will be prepended to the names of all columns added to this
 	  *                     schema. This prefix will be also passed to all components created by the use
 	  *                     of given factory functions.
@@ -101,7 +103,7 @@ object IndexedMappingSchema {
 
 
 
-	/** A [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] variant where all components are columns
+	/** A [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] variant where all components are columns
 	  * indexed with `String` literals for access.
 	  */
 	trait FlatIndexedMappingSchema[S, V <: Chain, C <: Chain, O]
@@ -117,9 +119,9 @@ object IndexedMappingSchema {
 
 
 
-	/** A [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] where all components are labeled (indexed
+	/** A [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] where all components are labeled (indexed
 	  * with `String` literals for access), providing factory methods for larger schemas by adding new components.
-	  * Unlike [[net.noresttherein.oldsql.schema.MappingSchema.ExtensibleMappingSchema ExtensibleMappingSchema]],
+	  * Unlike [[net.noresttherein.oldsql.schema.bits.MappingSchema.ExtensibleMappingSchema ExtensibleMappingSchema]],
 	  * the chain with value types `V` must not be abstract when adding new components in order to guarantee the
 	  * uniqueness of labels.
 	  */
@@ -180,10 +182,10 @@ object IndexedMappingSchema {
 		/** Appends a new labeled component to this schema. The component will inherit any column prefix and all buffs
 		  * provided for the outer mapping of `S` at the initialization of this schema. Inherited buffs will follow
 		  * any buffs passed to this method. The label can be used to access the component by passing it as the argument
-		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method.
+		  * to the [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents./ /]] method.
 		  * @param label a `String` literal (or just a singleton type in generic code) which will be attached
 		  *              to the created component in order to turn into a `LabeledMapping` instance of
-		  *              [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], the form in which it will
+		  *              [[net.noresttherein.oldsql.schema.bits.SchemaMapping.@|-| @|-|]], the form in which it will
 		  *              appear at the end of the component list of the returned schema.
 		  *              The label must be not be already present in the value indexed chain `V` in order to uniquely
 		  *              identify the component and provide a direct access to it.
@@ -210,10 +212,10 @@ object IndexedMappingSchema {
 		/** Appends a new labeled component to this schema. The component will inherit any column prefix and all buffs
 		  * provided for the outer mapping of `S` at the initialization of this schema. Inherited buffs will follow
 		  * any buffs passed to this method. The label can be used to access the component by passing it as the argument
-		  * to the [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method.
+		  * to the [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents./ /]] method.
 		  * @param label a `String` literal (or just a singleton type in generic code) which will be attached
 		  *              to the created component in order to turn into a `LabeledMapping` instance of
-		  *              [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], the form in which it will
+		  *              [[net.noresttherein.oldsql.schema.bits.SchemaMapping.@|-| @|-|]], the form in which it will
 		  *              appear at the end of the component list of the returned schema.
 		  *              The label must be not be already present in the value indexed chain `V` in order to uniquely
 		  *              identify the component and provide a direct access to it.
@@ -273,7 +275,7 @@ object IndexedMappingSchema {
 		  * and all buffs provided for the outer mapping of `S` at the initialization of this schema.
 		  * Inherited buffs will follow any buffs passed to this method. The label can be used to access the component
 		  * by passing it as the argument to the
-		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method. The extractor function
+		  * [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents./ /]] method. The extractor function
 		  * may not produce a value for all instances of the subject type `S`, in which case the component
 		  * will be omitted from a database write. The impact its lack will have on the assembly of the ''packed'' value
 		  * depends on the implementation of the outer mapping based on this schema.
@@ -282,7 +284,7 @@ object IndexedMappingSchema {
 		  * will be impossible to assemble.
 		  * @param label a `String` literal (or just a singleton type in generic code) which will be attached
 		  *              to the created component in order to turn into a `LabeledMapping` instance of
-		  *              [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], the form in which it will
+		  *              [[net.noresttherein.oldsql.schema.bits.SchemaMapping.@|-| @|-|]], the form in which it will
 		  *              appear at the end of the component list of the returned schema.
 		  *              The label must be not be already present in the value indexed chain `V` in order to uniquely
 		  *              identify the component and provide a direct access to it.
@@ -310,7 +312,7 @@ object IndexedMappingSchema {
 		  * and all buffs provided for the outer mapping of `S` at the initialization of this schema.
 		  * Inherited buffs will follow any buffs passed to this method. The label can be used to access the component
 		  * by passing it as the argument to the
-		  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method. The extractor function
+		  * [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents./ /]] method. The extractor function
 		  * may not produce a value for all instances of the subject type `S`, in which case the component
 		  * will be omitted from a database write. The impact its lack will have on the assembly of the ''packed'' value
 		  * depends on the implementation of the outer mapping based on this schema.
@@ -319,7 +321,7 @@ object IndexedMappingSchema {
 		  * will be impossible to assemble.
 		  * @param label a `String` literal (or just a singleton type in generic code) which will be attached
 		  *              to the created component in order to turn into a `LabeledMapping` instance of
-		  *              [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]], the form in which it will
+		  *              [[net.noresttherein.oldsql.schema.bits.SchemaMapping.@|-| @|-|]], the form in which it will
 		  *              appear at the end of the component list of the returned schema.
 		  *              The label must be not be already present in the value indexed chain `V` in order to uniquely
 		  *              identify the component and provide a direct access to it.
@@ -473,41 +475,13 @@ object IndexedMappingSchema {
 		def map[F](constructor :F)(implicit apply :SubjectConstructor[S, V, C, O, F]) :IndexedSchemaMapping[S, V, C, O] =
 			new MappedIndexedSchema(this, constructor, packedBuffs)
 
-//		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions,
-//		  * provided with component and column definitions when building this schema, for disassembly of its subject `S`
-//		  * before writing to the database, and the function specified here for assembling its subject from the index
-//		  * of subjects of all top-level components of this schema. If any of the components in this schema
-//		  * is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce a value
-//		  * during assembly, this function will not be called and the created mapping will likewise fail to produce
-//		  * a value from the passed [[net.noresttherein.oldsql.schema.Mapping.Pieces Pieces]].
-//		  * @param constructor a function accepting a `IndexedChain` with the values of all components as they appear
-//		  *                    in the components chain `C`, indexed by component labels for direct access.
-//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-//		  */
-//		def map(constructor :V => S) :IndexedSchemaMapping[S, V, C, O] =
-//			map[V => S](constructor)
-//
-//		/** Creates a `SchemaMapping` instance using this schema. The mapping will use the extract functions
-//		  * provided with component and column definitions when building this schema for disassembly of its subject
-//		  * before writing to the database, and the function specified here for assembling its subject from the
-//		  * chain of subjects of all top-level components of this schema. Unlike `map`, this variant may
-//		  * not produce the subject value for all input rows. This will also happen if any of the components
-//		  * in this schema is optional (was created with one of the `optcomp` and `optcol` methods) and does not produce
-//		  * a value during assembly, as the intermediate index chain with unpacked values will be impossible to assemble.
-//		  * @param constructor a function accepting a `IndexedChain` with the values of all components as they appear
-//		  *                    in the components chain `C`, indexed by component labels for direct access.
-//		  * @see [[net.noresttherein.oldsql.schema.MappingSchema.optMap]]
-//		  */
-//		def optMap(constructor :V => Option[S]) :IndexedSchemaMapping[S, V, C, O] =
-//			map[V => Option[S]](constructor)
-
 	}
 
 
 
 
 
-	/** A [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] where all components are labeled columns
+	/** A [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] where all components are labeled columns
 	  * (indexed with `String` literals for access), providing factory methods for larger schemas by adding new columns.
 	  */
 	trait ExtensibleFlatIndexedSchema[S, V <: IndexedChain, C <: Chain, O]
@@ -708,9 +682,9 @@ object IndexedMappingSchema {
 
 
 /** A `Mapping` which has all its components listed in its type as the `Chain` parameter `C`.
-  * The added benefit over the standard [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]] is that
+  * The added benefit over the standard [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]] is that
   * all components are labeled with unique `String` literal types. This allows easy access by the
-  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method:
+  * [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents./ /]] method:
   * {{{
   *     val ownedSquirrels = this / "squirrelCount"
   * }}}.
@@ -718,7 +692,7 @@ object IndexedMappingSchema {
   * @tparam V a `IndexedChain` containing the types of all components in `C` in their exact order, indexed
   *           by the labels of the components.
   * @tparam C a `Chain` containing the types of all components of this mapping in their exact order. All components
-  *           are labeled mappings, instances of [[net.noresttherein.oldsql.schema.SchemaMapping.@|-| @|-|]].
+  *           are labeled mappings, instances of [[net.noresttherein.oldsql.schema.bits.SchemaMapping.@|-| @|-|]].
   * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
   *           but coming from different sources (especially different aliases for a table occurring more then once
   *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
@@ -764,16 +738,16 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
-	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
-	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
-	  * @return an empty, extensible [[net.noresttherein.oldsql.schema.IndexedMappingSchema IndexedMappingSchema]].
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]].
+	  * @return an empty, extensible [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema IndexedMappingSchema]].
 	  * @tparam S the subject type of th constructed mapping.
 	  */
 	@inline def apply[S] :ExtensibleFlatIndexedSchema[S, @~, @~, _] = IndexedMappingSchema[S, Any]
 
-	/** Starts building a [[net.noresttherein.oldsql.schema.IndexedSchemaMapping IndexedSchemaMapping]] of `S`
+	/** Starts building a [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]] of `S`
 	  * by chaining methods adding new columns and components.
 	  * Once the component list is complete, the [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]]
 	  * containing their indexed values can be mapped into the 'packed' subject type `S`:
@@ -782,20 +756,20 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
-	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
-	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
-	  * @param buffs the buffs for the constructed [[net.noresttherein.oldsql.schema.IndexedSchemaMapping IndexedSchemaMapping]],
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]].
+	  * @param buffs the buffs for the constructed [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]],
 	  *              inherited by all columns appended to the returned schema and those components which are created
 	  *              with passed factory functions.
-	  * @return an empty, extensible [[net.noresttherein.oldsql.schema.IndexedMappingSchema IndexedMappingSchema]].
+	  * @return an empty, extensible [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema IndexedMappingSchema]].
 	  * @tparam S the subject type of th constructed mapping.
 	  */
 	@inline def apply[S](buffs :Buff[S]*) :ExtensibleFlatIndexedSchema[S, @~, @~, _] =
 		IndexedMappingSchema[S, Any](buffs :_*)
 
-	/** Starts building a [[net.noresttherein.oldsql.schema.IndexedSchemaMapping IndexedSchemaMapping]] of `S`
+	/** Starts building a [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]] of `S`
 	  * by chaining methods adding new columns and components.
 	  * Once the component list is complete, the [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]]
 	  * containing their indexed values can be mapped into the 'packed' subject type `S`:
@@ -804,18 +778,18 @@ object IndexedSchemaMapping {
 	  *         index => PetKeeper(index("squirrels"), index("hamsters"))
 	  *     }
 	  * }}}
-	  * This is equivalent to [[net.noresttherein.oldsql.schema.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
+	  * This is equivalent to [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema.apply IndexedMappingSchema]]`[S, _]`,
 	  * but the origin type is omitted with the intent of the constructed mapping being used as a
-	  * [[net.noresttherein.oldsql.schema.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
-	  * [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]].
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping.|-| |-|]] mapping, included as a component in some larger
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]].
 	  * @param columnPrefix a `String` prepended to the names of all columns added to this schema. It is also passed
 	  *                     to those added components which are created using passed factory functions, in order
 	  *                     to append the prefix to all their columns, too.
-	  * @param buffs the buffs for the constructed [[net.noresttherein.oldsql.schema.IndexedSchemaMapping IndexedSchemaMapping]],
+	  * @param buffs the buffs for the constructed [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]],
 	  *              inherited by all columns appended to the returned schema and those components which are created
 	  *              with passed factory functions.
 	  * @return an empty, extensible `IndexedMappingSchema`.
-	  * @return an empty, extensible [[net.noresttherein.oldsql.schema.IndexedMappingSchema IndexedMappingSchema]].
+	  * @return an empty, extensible [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema IndexedMappingSchema]].
 	  * @tparam S the subject type of th constructed mapping.
 	  */
 	@inline def apply[S](columnPrefix :String, buffs :Buff[S]*) :ExtensibleFlatIndexedSchema[S, @~, @~, _] =
@@ -826,9 +800,9 @@ object IndexedSchemaMapping {
 	/** A `Mapping` which has all its columns listed in its type as the `Chain` parameter `C`. Aside those direct
 	  * columns, the mapping contains no other public components (there may however be hidden, synthetic components used
 	  * to assemble the value index from the column values). The added benefit over the standard
-	  * [[net.noresttherein.oldsql.schema.SchemaMapping.FlatSchemaMapping FlatSchemaMapping]] is that
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping.FlatSchemaMapping FlatSchemaMapping]] is that
 	  * all columns are labeled with unique `String` literal types. This allows easy access by the
-	  * [[net.noresttherein.oldsql.schema.MappingSchema.MappingSchemaSupport./ /]] method:
+	  * [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents./ /]] method:
 	  * {{{
 	  *     val ownedSquirrels = this / "squirrelCount"
 	  * }}}.
@@ -836,7 +810,7 @@ object IndexedSchemaMapping {
 	  * @tparam V a `IndexedChain` containing the types of all columns in `C` in their exact order, indexed
 	  *           by the column labels.
 	  * @tparam C a `Chain` containing the types of all components of this mapping in their exact order. All columns
-	  *           are labeled, instances of [[net.noresttherein.oldsql.schema.SchemaMapping.@|| @||]].
+	  *           are labeled, instances of [[net.noresttherein.oldsql.schema.bits.SchemaMapping.@|| @||]].
 	  * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
 	  *           but coming from different sources (especially different aliases for a table occurring more then once
 	  *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
@@ -1007,7 +981,7 @@ object IndexedSchemaMapping {
 	  * It lists the components which should be included in the operation on the type level as the components chain `C`,
 	  * with all components uniquely labeled on the type level for the purpose of indexing,
 	  * in order to possibly match them with parameter/column names of an SQL statement.
-	  * @see [[net.noresttherein.oldsql.schema.IndexedSchemaMapping]]
+	  * @see [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping]]
 	  */
 	trait IndexedOperationSchema[-A <: OperationType, S, V <: IndexedChain, C <: Chain, O]
 		extends OperationSchema[A, S, V, C, O]
@@ -1016,7 +990,7 @@ object IndexedSchemaMapping {
 	  * It lists the columns which should be included in the operation on the type level as the components chain `C`,
 	  * with no non-column components. All columns are uniquely labeled for the purpose of indexing,
 	  * in order to possibly match them with parameter/column names of an SQL statement.
-	  * @see [[net.noresttherein.oldsql.schema.IndexedSchemaMapping.FlatIndexedSchemaMapping]]
+	  * @see [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping.FlatIndexedSchemaMapping]]
 	  */
 	trait FlatIndexedOperationSchema[-A <: OperationType, S, V <: IndexedChain, C <: Chain, O]
 		extends IndexedOperationSchema[A, S, V, C, O] with FlatOperationSchema[A, S, V, C, O]
@@ -1143,32 +1117,3 @@ abstract class AbstractIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
 			with DelegateAdapter[this.type, X, O] with IndexedSchemaMappingAdapter[this.type, S, X, V, C, O]
 
 }
-
-
-
-
-
-
-abstract class AbstractFlatIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
-                                               (protected override val backer :FlatIndexedMappingSchema[S, V, C, O])
-	extends MappingSchemaDelegate[FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
-	   with FlatIndexedSchemaMapping[S, V, C, O]
-	   with StaticSchemaMapping[
-			({ type A[M <: RefinedMapping[S, O], X] = FlatIndexedSchemaMappingAdapter[M, S, X, V, C, O] })#A,
-			FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
-{
-	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
-			:FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
-			with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
-
-	override def prefixed(prefix :String) :FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new PrefixedMapping[this.type, S, O](prefix, this)
-			with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
-
-	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
-			:FlatIndexedSchemaMappingAdapter[this.type, S, X, V, C, O] =
-		new MappedFlatIndexedSchemaMapping[this.type, S, X, V, C, O](this, there, back)
-			with DelegateAdapter[this.type, X, O] with FlatIndexedSchemaMappingAdapter[this.type, S, X, V, C, O]
-}
-

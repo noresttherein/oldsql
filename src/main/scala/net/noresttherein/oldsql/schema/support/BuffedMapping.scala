@@ -1,11 +1,14 @@
-package net.noresttherein.oldsql.schema.bits
+package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.schema.Buff
 import net.noresttherein.oldsql.schema
+import net.noresttherein.oldsql.schema.Buff
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, EagerDeepProxy, ShallowProxy}
-import net.noresttherein.oldsql.schema.support.DelegateMapping
+import MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, ShallowProxy}
+
+
+
+
 
 
 /**

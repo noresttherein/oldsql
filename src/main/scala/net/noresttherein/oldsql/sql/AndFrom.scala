@@ -3,7 +3,8 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.{BaseMapping, Relation}
+import net.noresttherein.oldsql.schema.Relation
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{As, ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, ParamlessFrom, PartOf, PrefixOf}

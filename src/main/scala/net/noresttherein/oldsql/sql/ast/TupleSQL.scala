@@ -7,6 +7,7 @@ import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SQLReadForms}
 import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedColumnSQLMapping, IndexedSQLMapping, RowProduct, SQLExpression}
@@ -260,7 +261,7 @@ object TupleSQL {
 	  * [[net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn AliasedColumn]]. Instead, it allows referencing
 	  * the columns in a type safe way when mapping results of a select, if this expression appears
 	  * in the ''select'' clause. Additionally, a ''select'' clause consisting solely of this type can be matched
-	  * to any [[net.noresttherein.oldsql.schema.IndexedSchemaMapping IndexedSchemaMapping]] with a component chain
+	  * to any [[IndexedSchemaMapping IndexedSchemaMapping]] with a component chain
 	  * containing exactly the same key-value pairs as the `T` type parameter, regardless of their order.
 	  * Non-column components of the mapping must in that case recursively match a nested indexed tuple paired
 	  * with the same key type in this `LiteralChain` as the component's label.

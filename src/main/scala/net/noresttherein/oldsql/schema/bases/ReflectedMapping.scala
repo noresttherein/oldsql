@@ -1,8 +1,8 @@
-package net.noresttherein.oldsql.schema.support
-
-import net.noresttherein.oldsql.schema.bits.{ColumnProperty, ComponentProperty}
+package net.noresttherein.oldsql.schema.bases
 
 import scala.reflect.runtime.universe.TypeTag
+
+import net.noresttherein.oldsql.schema.bits.{ColumnProperty, ComponentProperty}
 
 
 

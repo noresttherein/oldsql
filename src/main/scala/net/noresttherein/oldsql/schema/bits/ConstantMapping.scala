@@ -6,6 +6,9 @@ import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 
 
 
+
+
+
 /** A `Mapping` implementation with no components or columns, always returning the predefined value.
   * Any value present in `ComponentValues` is always ignored.
   * @author Marcin Mościcki

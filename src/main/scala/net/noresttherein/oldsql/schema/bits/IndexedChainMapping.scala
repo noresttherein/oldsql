@@ -1,15 +1,15 @@
 package net.noresttherein.oldsql.schema.bits
 
+import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~, Item, Key}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, MappingSchema, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@|-|, @||, |-|, ||, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.bits.IndexedChainMapping.NonEmptyIndexMapping
-import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, ||, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
 
@@ -19,8 +19,8 @@ import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
 
 
 /** A mapping for [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]] dictionaries indexed on type level
-  * by arbitrary types. It is a [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]] and its own
-  * [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] at the same time, with the values
+  * by arbitrary types. It is a [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]] and its own
+  * [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] at the same time, with the values
   * of individual components in the schema being the values in the index at the corresponding positions.
   * @author Marcin Mościcki
   */

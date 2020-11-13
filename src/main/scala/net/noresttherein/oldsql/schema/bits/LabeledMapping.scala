@@ -1,14 +1,17 @@
 package net.noresttherein.oldsql.schema.bits
 
-import scala.annotation.unchecked.uncheckedVariance
-
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, BaseMapping}
+import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.ColumnAdapter.ColumnFormProxy
+import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
+import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.ColumnFormProxy
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.support.MappingAdapter
+
+
+
 
 
 

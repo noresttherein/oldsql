@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.RowProduct.GroupingOfGeneralized
 import net.noresttherein.oldsql.sql.GroupByClause.{Group, GroupingRelation}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
@@ -79,7 +80,7 @@ package object sql {
 
 
 	/** The first grouping expression of a [[net.noresttherein.oldsql.sql.GroupBy group by]] clause,
-	  * represented by a [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`[X, _]`.
+	  * represented by a [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[X, _]`.
 	  */ //consider: renaming to GroupBy. Question only if this or GroupBy
 	type GroupByVal[+F <: FromSome, X] = F GroupBy Group[X]#T
 
@@ -100,7 +101,7 @@ package object sql {
 
 
 	/** A [[net.noresttherein.oldsql.sql.By following]] grouping expression of a ''group by'' clause,
-	  * represented by a [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`[X, _]`.
+	  * represented by a [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[X, _]`.
 	  */
 	type ByVal[+F <: GroupByClause, X] = F By Group[X]#T
 

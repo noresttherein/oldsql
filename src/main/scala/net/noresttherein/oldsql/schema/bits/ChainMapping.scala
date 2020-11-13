@@ -4,11 +4,11 @@ import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, MappingExtract, MappingSchema, SchemaMapping}
-import net.noresttherein.oldsql.schema.MappingSchema.{EmptySchema, FlatMappingSchema, NonEmptyFlatSchema, NonEmptySchema}
-import net.noresttherein.oldsql.schema.SchemaMapping.{@||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, MappingExtract}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.bits.MappingSchema.{EmptySchema, FlatMappingSchema, NonEmptyFlatSchema, NonEmptySchema}
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
 
@@ -17,8 +17,8 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
 
 /** A mapping for [[net.noresttherein.oldsql.collection.Chain Chain]] heterogeneous lists which is
-  * a [[net.noresttherein.oldsql.schema.SchemaMapping SchemaMapping]] and its own
-  * [[net.noresttherein.oldsql.schema.MappingSchema MappingSchema]] at the same time.
+  * a [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]] and its own
+  * [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] at the same time.
   * @see [[net.noresttherein.oldsql.schema.bits.IndexedChainMapping]]
   */
 trait ChainMapping[V <: Chain, C <: Chain, O] extends BaseChainMapping[V, C, O] {

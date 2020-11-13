@@ -3,9 +3,10 @@ package net.noresttherein.oldsql.sql.ast
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, Relation, SQLReadForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, Relation, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, Extended, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
@@ -373,8 +374,10 @@ object MappingSQL {
 		def relation :Relation[Entity] = origin.relation
 		def origin :JoinedRelation[Origin, Entity]
 
+		//todo: with includes/excludes this no longer truly is an export component
 		def extract :MappingExtract[Entity[Origin]#Subject, M[Origin]#Subject, Origin]
-		
+
+		//consider: storing the modifications in the component, not relation - for other operations than select
 		def include(components :M[Origin] => RefinedMapping[_, Origin]*) :ComponentSQL[F, M]
 		def exclude(components :M[Origin] => RefinedMapping[_, Origin]*) :ComponentSQL[F, M]
 

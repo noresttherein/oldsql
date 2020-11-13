@@ -11,15 +11,16 @@ import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingBound, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping
-import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
-import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingBound, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
+import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
+import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
@@ -30,6 +31,8 @@ import net.noresttherein.oldsql.sql.mechanics.TableCount
 //implicits
 import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import slang._
+
+
 
 
 
@@ -94,9 +97,9 @@ import slang._
   * [[net.noresttherein.oldsql.schema.Mapping.MappingOf MappingOf]]. For uniformity and interoperability, these
   * are all defined as structural narrowing of the trait `Mapping` itself rather than separate classes, but all
   * concrete implementations should not extend this trait directly, but rather one of the implementation traits:
-  * [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] (the ''LUB'' type of all concrete mappings),
-  * [[net.noresttherein.oldsql.schema.support.LazyMapping LazyMapping]] (an optimized variant of the former),
-  * [[net.noresttherein.oldsql.schema.support.MappingFrame MappingFrame]] (a framework base trait providing methods
+  * [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] (the ''LUB'' type of all concrete mappings),
+  * [[net.noresttherein.oldsql.schema.bases.LazyMapping LazyMapping]] (an optimized variant of the former),
+  * [[net.noresttherein.oldsql.schema.bases.MappingFrame MappingFrame]] (a framework base trait providing methods
   * and types for declaring individual columns and components), or one of the other base types.
   *
   * There are several reasons for the separation of this trait: first, moving out the implementation of several methods
@@ -126,9 +129,9 @@ import slang._
   * Concrete implementing classes should accept a type parameter `O` defining their `Origin` type, so without much
   * loss of generality, a type constructor `M[O] <: MappingAt[O]` can be passed instead of the full mapping type.
   *
-  * @see [[net.noresttherein.oldsql.schema.BaseMapping]]
-  * @see [[net.noresttherein.oldsql.schema.support.MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
+  * @see [[net.noresttherein.oldsql.schema.bases.BaseMapping]]
+  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame]]
   */
 trait Mapping {
 
@@ -179,10 +182,10 @@ trait Mapping {
 	  */
 	type BoundProjection[O] = MappingBound[Subject, O]
 
-	/** A type alias for the [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] trait with the provided
+	/** A type alias for the [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] trait with the provided
 	  * `Origin` type and the same `Subject` type as this mapping. Used primarily in the expression
 	  * `MappingOf[S]#TypedProjection` as a sort of a curried type constructor for the `BaseMapping` trait.
-	  * @see [[net.noresttherein.oldsql.schema.BaseMapping]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.BaseMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.TypedComponent]]
 	  */
 	type TypedProjection[O] = BaseMapping[Subject, O]
@@ -257,14 +260,14 @@ trait Mapping {
 	  */
 	type AnyColumn = Column[_]
 
-	/** Any [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] with the same `Origin` type as this
+	/** Any [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] with the same `Origin` type as this
 	  * mapping and the provided `Subject` type. It is typically used not in the context of components of this
 	  * mapping, which is the domain of the more generic `Component` member type, but as part of a pseudo curried
 	  * type constructor `MappingAt[O]#TypedComponent`, to simply denote any `BaseMapping` instance with
 	  * the provided `Subject` and `Origin` types.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Component]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.TypedProjection]]
-	  * @see [[net.noresttherein.oldsql.schema.BaseMapping]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.BaseMapping]]
 	  */
 	type TypedComponent[T] = BaseMapping[T, Origin]
 
@@ -274,7 +277,7 @@ trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.extracts]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.ColumnExtractMap]]
 	  * @see [[net.noresttherein.oldsql.schema.MappingExtract]]
-	  */
+	  */ //consider: a dedicated collection. Could construct the map lazily and have defaults
 	type ExtractMap = NaturalMap[Component, Extract]
 
 	/** A type alias for a dictionary mapping all columns (including indirect) of this mapping, both their export,
@@ -983,7 +986,7 @@ trait Mapping {
 	override def toString :String = mappingName
 
 
-	/** A seal method implemented only by [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]] to enforce
+	/** A seal method implemented only by [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] to enforce
 	  * that every concrete implementation extends `BaseMapping`, required by the `sql` package.
 	  */
 	protected[oldsql] def everyConcreteMappingMustExtendBaseMapping :Nothing
@@ -1197,7 +1200,7 @@ object Mapping extends LowPriorityMappingImplicits {
 		/** Lifts a projection of a mapping type `M` to one casting from mapping `A[M, X, _]` to `A[WithOrigin[O], X, O]`.
 		  * This is equivalent to the `mapCo` method, differing only in the adapter type constructor `A` accepting
 		  * the subject type of the mapping as the type parameter, which matches the type signature of
-		  * [[net.noresttherein.oldsql.schema.bits.MappingAdapter MappingAdapter]].
+		  * [[net.noresttherein.oldsql.schema.support.MappingAdapter MappingAdapter]].
 		  * It is the responsibility of the caller to make sure that type `A` does not reference directly
 		  * the origin type in its definition. This method is suitable for mappings with `Subject` type
 		  * different from the subject of the adapted mapping.
@@ -1261,7 +1264,7 @@ object Mapping extends LowPriorityMappingImplicits {
 			/** Lifts a projection of a mapping type `M` to one casting from mapping `A[M, X, _]` to `A[WithOrigin[O], X, O]`.
 			  * This is equivalent to the `mapCo` method, differing only in the adapter type constructor `A` accepting
 			  * the subject type of the mapping as the type parameter, which matches the type signature of
-			  * [[net.noresttherein.oldsql.schema.bits.MappingAdapter MappingAdapter]].
+			  * [[net.noresttherein.oldsql.schema.support.MappingAdapter MappingAdapter]].
 			  * It is the responsibility of the caller to make sure that type `A` does not reference directly
 			  * the origin type in its definition. This method is suitable for mappings with `Subject` type
 			  * different from the subject of the adapted mapping.
@@ -1301,7 +1304,7 @@ object Mapping extends LowPriorityMappingImplicits {
 			ExactProjection[M[O]] { type WithOrigin[X] = M[X] }
 
 		/** Type alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection.ExactProjection ExactProjection]]
-		  * of the same kind as [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]], that is accepting
+		  * of the same kind as [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]], that is accepting
 		  * two invariant type parameters: their `Subject` and `Origin` types. This shortens the notation considerably,
 		  * especially if `M` is a natural type constructor (and not a type lambda). */
 		type TypedProjection[M[X, Y] <: BaseMapping[X, Y], S, O] =

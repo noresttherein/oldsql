@@ -3,8 +3,9 @@ package net.noresttherein.oldsql.sql.mechanics
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{BaseMapping, Mapping}
+import net.noresttherein.oldsql.schema.Mapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{By, ByOne, ByVal, ColumnSQL, FromSome, GroupBy, GroupByClause, GroupByOne, GroupByVal, RowProduct}
 import net.noresttherein.oldsql.sql.RowProduct.GroupingOfGeneralized
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL}
@@ -30,7 +31,7 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL, T
   * @tparam E the type of the expression which can be turned into a grouping extension. Predefined implicit values
   *                           of this type exist in the companion
   *                           [[net.noresttherein.oldsql.sql.mechanics.GroupingExpression$ object]] for:
-  *             - [[net.noresttherein.oldsql.schema.BaseMapping BaseMapping]]`V, O]` subtypes,
+  *             - [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`V, O]` subtypes,
   *               where `O >: F <: RowProduct`,
   *             - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] and
   *               [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnComponentSQL ColumnComponentSQL]],

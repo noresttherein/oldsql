@@ -1,12 +1,15 @@
-package net.noresttherein.oldsql.schema.support
+package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.{BaseMapping, Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, InsertAudit, NoInsert, NoFilter, NoUpdate, OptionalSelect, FilterAudit, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, FilterAudit, InsertAudit, NoFilter, NoInsert, NoUpdate, OptionalSelect, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.OperationType.WriteOperationType
+
+
+
 
 
 
@@ -84,7 +87,7 @@ trait OptimizedMappingAssembly extends Mapping {
   * The implemented methods include forms, column, component and extract lists (except for `components`, `extracts`
   * by filtering the result of the abstract method `columns` based on their applied buffs, but also `optionally`
   * and the `writtenValues` family of methods to benefit from stored buff information.
-  * @see [[net.noresttherein.oldsql.schema.support.StableMapping]]
+  * @see [[net.noresttherein.oldsql.schema.bases.StableMapping]]
   */
 trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly {
 
@@ -133,10 +136,10 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
   * It must come in linearization order after the final definitions of all standard `Mapping` properties,
   * in particular buffs, all column, component and extract lists, which are in most cases overriden here
   * as `abstract override` methods. The implementations are very similar to those in
-  * [[net.noresttherein.oldsql.schema.support.LazyMapping LazyMapping]], the difference between the two being
+  * [[net.noresttherein.oldsql.schema.bases.LazyMapping LazyMapping]], the difference between the two being
   * that this trait is not really considered a base trait for extension by custom `Mapping` classes,
   * as the precomputed values are not lazy and would be referenced before the initialization of the extending class.
-  * @see [[net.noresttherein.oldsql.schema.support.LazyMapping]]
+  * @see [[net.noresttherein.oldsql.schema.bases.LazyMapping]]
   */
 trait StableMapping extends Mapping {
 	//todo: this should extend BaseMapping but currently it is extended by some traits with conflicting (narrowed)

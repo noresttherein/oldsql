@@ -1,4 +1,4 @@
-package net.noresttherein.oldsql.schema.bits
+package net.noresttherein.oldsql.schema.support
 
 import scala.collection.mutable.Builder
 
@@ -10,10 +10,9 @@ import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping}
 import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.CustomizedMapping.overrides
-import net.noresttherein.oldsql.schema.bits.MappingAdapter.{Adapted, DelegateAdapter}
+import MappingAdapter.{Adapted, DelegateAdapter}
+import net.noresttherein.oldsql.schema.support.CustomizedMapping.overrides
 import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
-import net.noresttherein.oldsql.schema.support.DelegateMapping
 
 
 
@@ -29,10 +28,6 @@ class CustomizedMapping[+M <: RefinedMapping[S, O], S, O] private
                         substitutions :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component])
 	extends EagerDeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
-//	def this(source :M, includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]],
-//	         prohibited :BuffType, nonDefault :BuffType, exclude :FlagBuffType, optional :BuffType) =
-//		this(source, overrides(source, includes, excludes, prohibited, nonDefault, exclude, optional))
-
 	def this(source :M, op :OperationType,
 	         includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]]) =
 		this(source, overrides(source, op, includes, excludes))

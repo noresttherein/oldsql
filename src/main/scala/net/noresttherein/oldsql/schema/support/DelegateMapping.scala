@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{ComponentValues, Mapping, BaseMapping}
+import net.noresttherein.oldsql.schema.{ComponentValues, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 
 
 
@@ -14,16 +15,16 @@ import net.noresttherein.oldsql.OperationType
   * It is the root of the hierarchy of various types of proxies and adapters which modify some aspect of the original
   * mapping. These are implementation interfaces, introducing or updating no new declarations, but providing defaults
   * and frameworks for implementing the existing methods. It is a separate hierarchy to
-  * [[net.noresttherein.oldsql.schema.bits.MappingAdapter MappingAdapter]], which is a 'public' interface, exposing
+  * [[net.noresttherein.oldsql.schema.support.MappingAdapter MappingAdapter]], which is a 'public' interface, exposing
   * the the adapted mapping through a property. This allows a class to implement both, each with another mapping
   * type as the adapted mapping - a feature used when the adapted mapping itself is an adapter to expose the
   * original mapping, rather than the adapter.
   * @see [[net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate]]
   * @see [[net.noresttherein.oldsql.schema.support.MappingProxy]]
-  * @see [[net.noresttherein.oldsql.schema.bits.MappedMapping]]
-  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter]]
-  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.DelegateAdapter]]
-  * @see [[net.noresttherein.oldsql.schema.bits.MappingAdapter.ComposedAdapter]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappedMapping]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.ComposedAdapter]]
   */
 trait DelegateMapping[+M <: Mapping, S, O] extends BaseMapping[S, O] {
 	protected val backer :M

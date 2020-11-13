@@ -9,6 +9,9 @@ import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 
 
 
+
+
+
 /** A synthetic `EmptyMapping` implementation backed by an `SQLForm`. As it does not have any components
   * but is not a column, either, it breaks the `Mapping` contract and should not be used in the client code.
   * It serves the niche need of representing `SQL` parameters as mappings in the SQL DSL.

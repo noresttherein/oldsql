@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.morsels.generic.{=#>, GenericFun}
 import net.noresttherein.oldsql.schema.ComponentValues.{AliasedComponentValues, DedicatedComponentValues, EmptyValues, FallbackValues}
 import net.noresttherein.oldsql.schema.ComponentValues.ColumnValues.{AliasedColumnValues, ColumnValue, DedicatedColumnValues, FallbackColumnValues, GlobalColumnValues}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.MappingPath.ComponentPath
+import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.slang
 
 //here be implicits
@@ -1916,14 +1916,6 @@ object ComponentValues {
 
 			def result() :ColumnValues[S, O]
 		}
-//
-//
-//		trait ColumnValuesBuilderAliasing[S, O] extends ColumnValuesBuilder[S, O] {
-//			protected val mapping :RefinedMapping[S, O]
-//
-//			abstract override def add[T](column :ColumnMapping[T, O], result :Option[T]) :this.type =
-//				super.add(mapping.export(column), result)
-//		}
 
 
 		private class ColumnValuesMapBuilder[S, O] extends ColumnValuesBuilder[S, O] {

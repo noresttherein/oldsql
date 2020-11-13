@@ -5,6 +5,9 @@ import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 
 
 
+
+
+
 /** A type class marking the type `P` as a ''label path'' - a sequence of one or more `Label`s (string literal types)
   * separated with a `/` (a composite `LabelPath` class). Aside from its implicit witness nature, it actually
   * references the path instance it is parameterized with.

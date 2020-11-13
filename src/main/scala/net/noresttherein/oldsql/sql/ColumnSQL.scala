@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain
-import net.noresttherein.oldsql.schema.{BaseMapping, ColumnMapping, ColumnReadForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}

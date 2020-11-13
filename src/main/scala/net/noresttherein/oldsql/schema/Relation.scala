@@ -1,11 +1,13 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.bits.{ConstantMapping, CustomizedMapping}
+import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, IsomorphicProjection, ProjectionBound}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.Relation.{As, CustomizedRelation}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.support.CustomizedMapping
 import net.noresttherein.oldsql.sql.Compound
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 

@@ -1,4 +1,4 @@
-import net.noresttherein.oldsql.schema.{BaseMapping, Mapping, Relation}
+import net.noresttherein.oldsql.schema.{Mapping, Relation}
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.sql.{AndFrom, From, RowProduct, InnerJoin, Join, SQLExpression}
 import net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition
