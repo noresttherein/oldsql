@@ -373,6 +373,5 @@ object GenericExtract {
 	}
 
 
-
 }
 

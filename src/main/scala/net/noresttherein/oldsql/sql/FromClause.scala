@@ -719,7 +719,7 @@ object FromSome {
 
 		/** Adds a ''group by'' clause to this ''from'' clause with the given single column expression. */
 		def groupBy[V](column :GlobalColumn[Generalized, V]) :F GroupByOne V =
-			GroupByOne[Generalized, thisClause.type, V](thisClause, column)
+ 			GroupByOne[Generalized, thisClause.type, V](thisClause, column)
 
 		/** Adds a ''group by'' clause to this ''from'' clause with all member columns of the given expression.
 		  * The expression is traversed structurally until a [[net.noresttherein.oldsql.sql.ColumnSQL column expression]]
