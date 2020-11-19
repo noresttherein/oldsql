@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.bits.IndexedChainMapping.NonEmptyIndexMap
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, ||, LabeledSchemaColumn}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
+import net.noresttherein.oldsql.schema.forms.SQLForms
 
 
 
@@ -143,11 +143,11 @@ object IndexedChainMapping {
 		extends NonEmptyIndexSchema[S, V, C, K, T, M, O](init, key, next, extract)
 		   with BaseNonEmptyFlatSchema[IndexedChain, Item, |~, S, V, C, T, K :~ T, M, O]
 		   with FlatMappingSchema[S, V |~ (K :~ T), C ~ M, O]
-	{
-		override val selectForm = SQLReadForms.IndexedChainReadForm(init.selectForm, new ValueOf(key), last.selectForm)
-		override val filterForm = SQLWriteForms.IndexedChainWriteForm(init.filterForm, last.filterForm)
-		override val updateForm = SQLWriteForms.IndexedChainWriteForm(init.updateForm, last.updateForm)
-		override val insertForm = SQLWriteForms.IndexedChainWriteForm(init.insertForm, last.insertForm)
+	{   //todo: use implicit conversions or smth, but get rid of explicit reference to SQLForms
+		override val selectForm = SQLForms.IndexedChainReadForm(init.selectForm, new ValueOf(key), last.selectForm)
+		override val filterForm = SQLForms.IndexedChainWriteForm(init.filterForm, last.filterForm)
+		override val updateForm = SQLForms.IndexedChainWriteForm(init.updateForm, last.updateForm)
+		override val insertForm = SQLForms.IndexedChainWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |~ (K :~ T)] = op.form(this)
 
 

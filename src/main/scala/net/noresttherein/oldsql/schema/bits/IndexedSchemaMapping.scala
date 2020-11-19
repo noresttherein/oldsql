@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.schema.{bits, cascadeBuffs, Buff, ColumnExtract,
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, CustomizedSchema, EmptySchema, FlatMappingSchema, FlatMappingSchemaProxy, MappingSchemaProxy, SubjectConstructor}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, CustomizedSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
-import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
+import net.noresttherein.oldsql.schema.forms.SQLForms
 
 
 
@@ -602,11 +602,11 @@ object IndexedMappingSchema {
 			init.asInstanceOf[FlatIndexedMappingSchema[S, I, P, O]]
 
 		//these shortcut implementations work because column mappings moved their buff handling to their forms.
-		override val selectForm =
-			SQLReadForms.IndexedChainReadForm(init.selectForm, new ValueOf(label), component.selectForm)
-		override val filterForm = SQLWriteForms.IndexedChainWriteForm(init.filterForm, component.filterForm)
-		override val updateForm = SQLWriteForms.IndexedChainWriteForm(init.updateForm, component.updateForm)
-		override val insertForm = SQLWriteForms.IndexedChainWriteForm(init.insertForm, component.insertForm)
+		override val selectForm = //todo: get rid of explicit references to SQLForms
+			SQLForms.IndexedChainReadForm(init.selectForm, new ValueOf(label), component.selectForm)
+		override val filterForm = SQLForms.IndexedChainWriteForm(init.filterForm, component.filterForm)
+		override val updateForm = SQLForms.IndexedChainWriteForm(init.updateForm, component.updateForm)
+		override val insertForm = SQLForms.IndexedChainWriteForm(init.insertForm, component.insertForm)
 		override def writeForm(op :WriteOperationType) = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyFlatIndexedSchema[X, V, C, K, T, M, O] =

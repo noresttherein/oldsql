@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
-import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.ColumnFormProxy
+import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.ColumnFormWrapper
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter
@@ -114,7 +114,7 @@ object LabeledMapping {
 
 	class ColumnLabel[N <: Label, S, O](column :ColumnMapping[S, O], columnName :String, columnBuffs :Seq[Buff[S]] = Nil)
 	                                   (implicit form :ColumnForm[S], labelValue :ValueOf[N])
-		extends ColumnFormProxy[ColumnMapping[S, O], S, O](column, columnName, columnBuffs)
+		extends ColumnFormWrapper[ColumnMapping[S, O], S, O](column, columnName, columnBuffs)
 		   with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
 	{
 		def this(column :ColumnMapping[S, O])(implicit label :ValueOf[N]) =

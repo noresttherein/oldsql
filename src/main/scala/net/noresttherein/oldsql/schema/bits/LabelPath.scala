@@ -13,17 +13,17 @@ import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
   * references the path instance it is parameterized with.
   * It is used in places where a (mapping) identifier is needed and must be composed of label identifiers
   * of individual mappings. There are two subtypes of this type:
-  *   1. [[net.noresttherein.oldsql.schema.bits.LabelPath.#/ #/]], the type class for any
+  *   1. [[net.noresttherein.oldsql.schema.bits.LabelPath.:/ #/]], the type class for any
   *      `String` literal type representing an atomic label;
-  *   2. [[net.noresttherein.oldsql.schema.bits.LabelPath./ /]], the type of compound paths composed of several labels.
+  *      2. [[net.noresttherein.oldsql.schema.bits.LabelPath./ /]], the type of compound paths composed of several labels.
   *      `A / B / C` is a type class for itself, `A / B / C`.
-  * This class/type class duality comes from the dual use cases of path types: indexing by values and indexing 
-  * purely on type level and the desire for uniform interface of single labels and compound paths. The polymorphism
-  * provided by the type class interface is unfortunately limited to cases where the label type is specified explicitly,
-  * as the compiler will never infer a literal type in place of `String` unless a singleton type is expected, 
-  * introducing the need for explicit overloads of methods accepting a `Label` and a `LabelPath`.
-  * Importing the [[net.noresttherein.oldsql.schema.bits.LabelPath.Label Label]] type imports also 
-  * an implicit conversion from any string literal to `#/`, allowing their use directly as `LabelPath` values.
+  *      This class/type class duality comes from the dual use cases of path types: indexing by values and indexing
+  *      purely on type level and the desire for uniform interface of single labels and compound paths. The polymorphism
+  *      provided by the type class interface is unfortunately limited to cases where the label type is specified explicitly,
+  *      as the compiler will never infer a literal type in place of `String` unless a singleton type is expected,
+  *      introducing the need for explicit overloads of methods accepting a `Label` and a `LabelPath`.
+  *      Importing the [[net.noresttherein.oldsql.schema.bits.LabelPath.Label Label]] type imports also
+  *      an implicit conversion from any string literal to `#/`, allowing their use directly as `LabelPath` values.
   * @tparam P a path type - either a `Label`, or one or more `/` instances appending new labels to the first one.
   * @see [[net.noresttherein.oldsql.schema.bits.LabelPath.Label]]
   * @see [[net.noresttherein.oldsql.schema.bits.LabelPath./]]
@@ -64,15 +64,15 @@ object LabelPath {
 	type Label = String with Singleton
 
 	/** Wraps a `Label` - a string literal - in its `LabelPath` type class. */
-	@inline implicit def Label[L <: Label](label :L): #/[L] = new #/[L](label)
+	@inline implicit def Label[L <: Label](label :L): :/[L] = new :/[L](label)
 
 
 	/** Pattern matching extractor for ''label paths'' consisting of a single `Label`.
-	  * @see [[net.noresttherein.oldsql.schema.bits.LabelPath.#/]]
+	  * @see [[net.noresttherein.oldsql.schema.bits.LabelPath.:/]]
 	  */
 	object Label {
 		@inline def unapply[P](path :LabelPath[P]) :Option[P with Label] = path match {
-			case label: #/[_] => Some(label.label.asInstanceOf[P with Label])
+			case label: :/[_] => Some(label.label.asInstanceOf[P with Label])
 			case _ => None
 		}
 
@@ -94,24 +94,27 @@ object LabelPath {
 	  * @return `path` itself if it is an instance of `LabelPath`, a `#/` if it is an instance of `String`,
 	  *         or `None` otherwise.
 	  */
-	@inline def fromPath[P](path :P) :Option[LabelPath[P]] = path match {
+	def fromPath[P](path :P) :Option[LabelPath[P]] = path match {
 		case path :LabelPath[P @unchecked] => Some(path)
-		case label :String => Some(new #/[label.type](label).asInstanceOf[LabelPath[P]])
+		case label :String => Some(new :/[label.type](label).asInstanceOf[LabelPath[P]])
 		case _ => None
 	}
 
 
-	@inline implicit def atomicLabelPath[L <: Label :ValueOf]: #/[L] = new #/[L](valueOf[L])
+	@inline implicit def atomicLabelPath[L <: Label :ValueOf]: :/[L] = new :/[L](valueOf[L])
 
 	@inline implicit def compositeLabelPath[A :LabelPath, B <: Label :ValueOf] :A / B =
 		new /[A, B](implicitly[LabelPath[A]].path, valueOf[B])
+
+	@inline implicit def pathSingleton[P, L <: Label](implicit path :LabelPath[P/L]) :ValueOf[P/L] =
+		new ValueOf(path.path)
 
 
 
 	/** A factory of single-element [[net.noresttherein.oldsql.schema.bits.LabelPath LabelPath]] instances. */
 	object $this {
 		/** A single-element path of the given label. */
-		def /[L <: Label](label :L): #/[L] = new #/(label)
+		def /[L <: Label](label :L): :/[L] = new :/(label)
 	}
 
 
@@ -119,7 +122,7 @@ object LabelPath {
 	/** The `LabelPath` type class for a single label `L`. There is an implicit conversion wrapping any
 	  * `String` literal type `L` in this class.
 	  */
-	class #/[L <: Label](val label :L) extends AnyVal with LabelPath[L] {
+	class :/[L <: Label](val label :L) extends AnyVal with LabelPath[L] {
 		def path :L = label
 
 		/** Creates a new path consisting of this label followed by the given label. */
@@ -128,11 +131,11 @@ object LabelPath {
 		override def toString :String = "/" + label
 	}
 
-	object #/ {
-		def apply[L <: Label](label :L): #/[L] = new #/(label)
+	object :/ {
+		def apply[L <: Label](label :L): :/[L] = new :/(label)
 
 		def unapply[P](path :LabelPath[P]) :Option[P with Label] = path match {
-			case atom: #/[_] => Some(atom.label.asInstanceOf[P with Label])
+			case atom: :/[_] => Some(atom.label.asInstanceOf[P with Label])
 			case _ => None
 		}
 	}
@@ -161,7 +164,7 @@ object LabelPath {
 
 
 	object / {
-		def apply[L <: Label](label :L): #/[L] = new #/(label)
+		def apply[L <: Label](label :L): :/[L] = new :/(label)
 
 		def unapply[P, L <: Label](path :P / L) :Option[(LabelPath[P], L)] = path.prefix match {
 			case label :String => Some((Label[label.type](label).asInstanceOf[LabelPath[P]], path.label))
@@ -215,10 +218,10 @@ object LabelPath {
 
 
 	@inline implicit def splitIntoTwoLabels[A <: Label, B <: Label](implicit a :ValueOf[A], b :ValueOf[B])
-			:SplitLabelPath[A / B] { type First = A; type Suffix = #/[B] } =
+			:SplitLabelPath[A / B] { type First = A; type Suffix = :/[B] } =
 		new SplitLabelPath[A/B] {
 			override type First = A
-			override type Suffix = #/[B]
+			override type Suffix = :/[B]
 			val first = a.value
 			val suffix = Label(b.value)
 		}

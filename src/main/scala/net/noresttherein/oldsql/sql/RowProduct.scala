@@ -2202,7 +2202,7 @@ object RowProduct {
 		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
 		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
-		  * ''where'' clause filters and `select` clause headers.
+		  * ''where'' and ''select'' clauses.
 		  * The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
 		  *
@@ -2228,7 +2228,7 @@ object RowProduct {
 		  * as a linearization of the explicit portion - the given relations - following the `Subselect`
 		  * pseudo join and the implicit portion, constituting of this clause. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
-		  * ''where'' clause filters and `select` clause headers. The join condition can be subsequently specified using
+		  * ''where'' and ''select'' clauses. The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
 		  *
 		  * This is similar the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]]
@@ -2255,7 +2255,7 @@ object RowProduct {
 		  * first relation following the last `Subselect` (or `Dual`, if `F =:= Dual`) of `R`, with the rest
 		  * of the relations following suit. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
-		  * ''where'' clause filters and `select` clause headers. The join condition can be subsequently specified using
+		  * ''where'' and ''select'' clauses. The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
 		  *
 		  * @param other a subselect clause of some clause extended by this clause.
@@ -2406,7 +2406,7 @@ object RowProduct {
 		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
 		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
-		  * ''where'' clause filters and `select` clause headers.
+		  * ''where'' and ''select'' clauses.
 		  * The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
 		  *
@@ -2432,7 +2432,7 @@ object RowProduct {
 		  * as a linearization of the explicit portion - the given relations - following the `Subselect`
 		  * pseudo join and the implicit portion, constituting of this clause. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
-		  * ''where'' clause filters and `select` clause headers. The join condition can be subsequently specified using
+		  * ''where'' and ''select'' clauses. The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
 		  *
 		  * This is similar the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]]
@@ -2459,7 +2459,7 @@ object RowProduct {
 		  * first relation following the last `Subselect` (or `Dual`, if `F =:= Dual`) of `R`, with the rest
 		  * of the relations following suit. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
-		  * ''where'' clause filters and `select` clause headers. The join condition can be subsequently specified using
+		  * ''where'' and ''select'' clauses. The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
 		  *
 		  * @param other a subselect clause of some clause extended by this clause.

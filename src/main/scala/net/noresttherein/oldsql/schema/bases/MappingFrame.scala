@@ -1555,7 +1555,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		private[this] val fastColumns = columns.toArray
 		override val readColumns: Int = (0 /: fastColumns)(_ + read(_).readColumns)
 
-		override def opt(position: Int)(res: ResultSet): Option[S] = {
+		override def opt(res :ResultSet, position :Int): Option[S] = {
 			val values = new Array[Option[Any]](columnCount)
 			java.util.Arrays.fill(values.asInstanceOf[Array[AnyRef]], None)
 
@@ -1563,7 +1563,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 			val end = position + fastColumns.length
 			while (i < end) fastColumns(i) match {
 				case c :MappingFrame[_, _]#FrameColumn[_] =>
-					i += 1; values(c.index) = read(c).opt(i - 1)(res)
+					i += 1; values(c.index) = read(c).opt(res, i - 1)
 				case c =>
 					throw new IllegalArgumentException(s"Non-export column $c passed to SQLReadForm $this of $frame.")
 			}
@@ -1597,10 +1597,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		new ReadForm(columns :++ extra)
 	}
 
-	override val selectForm :SQLReadForm[S] = SQLReadForm.Lazy(new ReadForm(selectable))
-	override val filterForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.filterForm)
-	override val insertForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.insertForm)
-	override val updateForm :SQLWriteForm[S] = SQLWriteForm.Lazy(super.updateForm)
+	override val selectForm :SQLReadForm[S] = SQLReadForm.delayed(new ReadForm(selectable))
+	override val filterForm :SQLWriteForm[S] = SQLWriteForm.delayed(super.filterForm)
+	override val insertForm :SQLWriteForm[S] = SQLWriteForm.delayed(super.insertForm)
+	override val updateForm :SQLWriteForm[S] = SQLWriteForm.delayed(super.updateForm)
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 }

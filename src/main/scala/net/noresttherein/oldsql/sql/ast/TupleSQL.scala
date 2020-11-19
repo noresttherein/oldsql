@@ -7,9 +7,8 @@ import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.forms.{SQLForms, SQLReadForms}
+import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedColumnSQLMapping, IndexedSQLMapping, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf}
@@ -50,7 +49,7 @@ trait TupleSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T] extends Com
 
 
 object TupleSQL {
-
+	//todo: true scala tuple expressions
 	def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope](expr: SQLExpression[F, S, _])
 			:Option[Seq[SQLExpression[F, S, _]]] =
 		expr match {
@@ -76,7 +75,7 @@ object TupleSQL {
 			matcher.seq(this)
 
 
-		override def toString :String = inOrder.mkString("Seq(", ",", ")")
+		override def toString :String = inOrder.mkString("Seq(", ", ", ")")
 	}
 
 
@@ -171,11 +170,12 @@ object TupleSQL {
 		{
 			override def size :Int = init.size + 1
 
+			//todo: get rid of explicit references to SQLForms & SQLForms
 			override val readForm :SQLReadForm[T ~ H] = (init.readForm, last.readForm) match {
 				case (i :SQLForm[T @unchecked], l :SQLForm[H @unchecked]) =>
 					SQLForms.ChainForm(i, l)
 				case _ =>
-					SQLReadForms.ChainReadForm[T, H](init.readForm, last.readForm)
+					SQLForms.ChainReadForm[T, H](init.readForm, last.readForm)
 			}
 
 			override def isGlobal :Boolean = last.isGlobal && init.isGlobal
@@ -428,11 +428,12 @@ object TupleSQL {
 
 			override def size :Int = init.size + 1
 
+			//todo: get rid of explicit references to SQLForms & SQLForms
 			override val readForm :SQLReadForm[T |~ (K :~ H)] = (init.readForm, last.readForm) match {
 				case (i :SQLForm[T @unchecked], l :SQLForm[H @unchecked]) =>
 					SQLForms.IndexedChainForm[T, K, H](i, implicitly[ValueOf[K]], l)
 				case _ =>
-					SQLReadForms.IndexedChainReadForm[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
+					SQLForms.IndexedChainReadForm[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
 			}
 
 

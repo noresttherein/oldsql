@@ -1,9 +1,12 @@
 package net.noresttherein.oldsql.schema.bits
 
 import java.{sql, time, util}
-import java.time.{Clock, Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime}
+import java.time.{Clock, Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime, ZoneId, ZoneOffset}
 
 import scala.compat.Platform
+
+
+
 
 
 
@@ -52,4 +55,22 @@ object Temporal extends DefaultTemporalImplicits {
 	implicit def javaOffsetTime(implicit clock :Clock) = apply(OffsetTime.now(clock))
 	implicit def javaLocalTime(implicit clock :Clock) = apply(LocalTime.now(clock))
 
+}
+
+
+
+
+
+
+/** A light wrapper over [[java.time.ZoneId]] to be used as implicit indicating the time zone local to the used
+  * database. This allows [[net.noresttherein.oldsql.schema.SQLForm forms]] which support it to convert temporal
+  * objects with no associated time zone (such as [[java.time.LocalDate date]]) to timestamp-based data specific
+  * to the implicit time zone, rather than using the local time zone of the virtual machine.
+  */
+case class DatabaseTimeZone(ZoneId :ZoneId)
+
+
+
+object DatabaseTimeZone {
+	val UTC = DatabaseTimeZone(ZoneOffset.UTC)
 }

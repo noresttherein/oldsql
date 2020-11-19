@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Chain.ChainApplication
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Relation, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
-import net.noresttherein.oldsql.sql.{ast, ColumnSQL, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL
@@ -30,9 +30,9 @@ import net.noresttherein.oldsql.sql.mechanics.SQLScribe
   * and a [[net.noresttherein.oldsql.sql.ast.QuerySQL.MappingQuery mapping]].
   */
 trait QuerySQL[-F <: RowProduct, V] extends SQLExpression[F, GlobalScope, Rows[V]] {
-	type HeaderMapping[O] <: MappingAt[O]
+	type ResultMapping[O] <: MappingAt[O]
 
-	protected def component[O] :HeaderMapping[O]
+	protected def component[O] :ResultMapping[O]
 
 	override def isAnchored = true
 	override def anchor(from :F) :QuerySQL[F, V] = this
@@ -78,17 +78,15 @@ trait QuerySQL[-F <: RowProduct, V] extends SQLExpression[F, GlobalScope, Rows[V
 
 sealed abstract class ImplicitQueryRelations {
 	implicit def arbitraryQueryRelation[V](query :QuerySQL[RowProduct, V]) :Relation[MappingOf[V]#Projection] =
-		new QueryRelation[query.HeaderMapping](query).asInstanceOf[Relation[MappingOf[V]#Projection]]
+		new QueryRelation[query.ResultMapping](query).asInstanceOf[Relation[MappingOf[V]#Projection]]
 
 	implicit def singleColumnRelation[V](query :ColumnQuery[RowProduct, V]) :Relation[MappingOf[V]#ColumnProjection] =
-		new QueryRelation[query.HeaderMapping](query)
+		new QueryRelation[query.ResultMapping](query)
 }
 
 
 
 object QuerySQL extends ImplicitQueryRelations {
-
-
 
 	/** The value type of `SelectSQL` instances with header (select clause) type `V`.
 	  * This indirection allows the use of a SQL select expression both as a sequence (for example, inside `exists`)
@@ -107,7 +105,6 @@ object QuerySQL extends ImplicitQueryRelations {
 	}
 
 
-
 	object Rows {
 		def apply[E](items :E*) :Rows[E] =
 			if (items.isEmpty || items.sizeIs > 1) MultipleRows(items)
@@ -115,14 +112,12 @@ object QuerySQL extends ImplicitQueryRelations {
 
 		def single[E](item :E) :Rows[E] = new SingleRow(item)
 
-	//	def unapplySeq[E](rows :Rows[E]) :Seq[E] = rows.seq
 
-
-
-		implicit def readForm[T :SQLReadForm] :SQLReadForm[Rows[T]] = SQLReadForm[T].map((t :T) => Rows(t))
+		implicit def readForm[T :SQLReadForm] :SQLReadForm[Rows[T]] =
+			SQLReadForm.map("Rows[_]>")((t :T) => Rows(t))
 
 		implicit def writeForm[T :SQLWriteForm] :SQLWriteForm[Rows[T]] =
-			EmptyForm(throw new UnsupportedOperationException("SQLWriteForm[Rows]"))
+			SQLWriteForm.unsupported("SQLWriteForm[Rows[_]]")
 
 
 		private case class MultipleRows[+E](seq :Seq[E]) extends Rows[E] {
@@ -143,13 +138,39 @@ object QuerySQL extends ImplicitQueryRelations {
 
 
 
+
+	implicit class relationConversionMethod[M[O] <: MappingAt[O], V]
+	               (private val self :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
+		extends AnyVal
+	{
+		def toRelation :Relation[M] = new QueryRelation[M](self)
+	}
+
+
+	implicit def derivedTable[M[O] <: MappingAt[O]](query :MappingQuery[RowProduct, M]) :Relation[M] =
+		new QueryRelation[M](query)
+
+
+	class QueryRelation[M[O] <: MappingAt[O]](val query :QuerySQL[RowProduct, _] { type ResultMapping[O] = M[O] })
+		extends Relation[M]
+	{
+		override def apply[O] :M[O] = query.component[O]
+
+		override def sql :String = ??? //todo: default dialect SQL
+	}
+
+
+
+
+
+
 	/** An SQL query, that is an SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn select]] or
 	  * a [[net.noresttherein.oldsql.sql.ast.QuerySQL.SetColumnOperation set operation]] on them, which returns
 	  * a single column.
 	  */
 	trait ColumnQuery[-F <: RowProduct, V] extends QuerySQL[F, V] with ColumnSQL[F, GlobalScope, Rows[V]] {
-		override type HeaderMapping[O] <: ColumnMapping[V, O]
-	
+		override type ResultMapping[O] <: ColumnMapping[V, O]
+
 		override def anchor(from :F) :ColumnQuery[F, V] = this
 
 		def union[E <: F](other :ColumnQuery[E, V]) :ColumnQuery[E, V] = QuerySQL.Union(this, other)
@@ -174,7 +195,7 @@ object QuerySQL extends ImplicitQueryRelations {
 	  * which provides a [[net.noresttherein.oldsql.schema.Mapping Mapping]] for the returned rows.
 	  */
 	trait MappingQuery[-F <: RowProduct, M[O] <: MappingAt[O]] extends QuerySQL[F, M[()]#Subject] {
-		override type HeaderMapping[O] = M[O]
+		override type ResultMapping[O] = M[O]
 
 		def union[E <: F](other :MappingQuery[E, M]) :MappingQuery[E, M] = QuerySQL.Union(this, other)
 		def unionAll[E <: F](other :MappingQuery[E, M]) :MappingQuery[E, M] = QuerySQL.UnionAll(this, other)
@@ -344,7 +365,7 @@ object QuerySQL extends ImplicitQueryRelations {
 		                                            override val right :QuerySQL[F, V])
 			extends SetOperationSQL[F, V]
 		{
-			override type HeaderMapping[O] = left.HeaderMapping[O]
+			override type ResultMapping[O] = left.ResultMapping[O]
 			protected override def component[O] = left.component[O]
 		}
 
@@ -430,7 +451,7 @@ object QuerySQL extends ImplicitQueryRelations {
 		                                                  override val right :ColumnQuery[F, V])
 			extends SetColumnOperation[F, V]
 		{
-			override type HeaderMapping[O] = ColumnMapping[V, O]
+			override type ResultMapping[O] = ColumnMapping[V, O]
 			protected override def component[O] = left.component
 		}
 
@@ -592,22 +613,6 @@ object QuerySQL extends ImplicitQueryRelations {
 
 		type CaseColumnMappingSetOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
 			ColumnMappingSetOperationMatcher[F, Y]
-	}
-
-
-
-
-
-
-	implicit def derivedTable[M[O] <: MappingAt[O]](query :MappingQuery[RowProduct, M]) :Relation[M] =
-		new QueryRelation[M](query)
-
-	class QueryRelation[M[O] <: MappingAt[O]](val query :QuerySQL[RowProduct, _] { type HeaderMapping[O] = M[O] })
-		extends Relation[M]
-	{
-		override def apply[O] :M[O] = query.component[O]
-
-		override def sql :String = ??? //todo: default dialect SQL
 	}
 
 

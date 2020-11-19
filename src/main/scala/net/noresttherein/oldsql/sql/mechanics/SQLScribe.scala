@@ -235,7 +235,7 @@ object SQLScribe {
 			val newSubselect = replacement.clause.generalized
 			val oldExtension = replacement.newExtension.asInstanceOf[oldClause.Generalized ExtendedBy e.From]
 			val scribe = extended(e.from, newSubselect)(oldExtension, replacement.newExtension)
-			scribe(e.header).selectFrom(newSubselect).asInstanceOf[GlobalSQL[G, Rows[V]]]
+			scribe(e.selectClause).selectFrom(newSubselect).asInstanceOf[GlobalSQL[G, Rows[V]]]
 		}
 
 

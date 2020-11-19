@@ -5,7 +5,6 @@ import net.noresttherein.oldsql.schema.{ComponentValues, SQLReadForm, SQLWriteFo
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.forms.ScalaForms
 
 
 
@@ -61,7 +60,7 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
 		SQLWriteForm.empty
 	
-	override def selectForm :SQLReadForm[S] = ScalaForms.NothingForm
+	override def selectForm :SQLReadForm[S] = SQLReadForm.empty
 //	override def filterForm :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def updateForm :SQLWriteForm[S] = SQLWriteForm.empty
 //	override def insertForm :SQLWriteForm[S] = SQLWriteForm.empty

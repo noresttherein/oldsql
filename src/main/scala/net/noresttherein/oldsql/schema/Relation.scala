@@ -3,13 +3,16 @@ package net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, IsomorphicProjection, ProjectionBound}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.schema.Relation.{As, CustomizedRelation}
+import net.noresttherein.oldsql.schema.Relation.CustomizedRelation
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.CustomizedMapping
 import net.noresttherein.oldsql.sql.Compound
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
+
+
+
 
 
 
@@ -57,8 +60,8 @@ object Relation {
 	  * in the mapping parameter.
 	  */
 	implicit class RelationAliasing[M[O] <: MappingAt[O]](private val self :Relation[M]) extends AnyVal {
-		@inline def alias[A <: Label :ValueOf] :M As A = new As[M, A](self, valueOf[A])
-		@inline def as[A <: Label](alias :A) :M As A = new As[M, A](self, alias)
+		@inline def alias[A <: Label :ValueOf] :M Aliased A = new Aliased[M, A](self, valueOf[A])
+		@inline def as[A <: Label](alias :A) :M Aliased A = new Aliased[M, A](self, alias)
 	}
 
 	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Compound M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
@@ -97,10 +100,10 @@ object Relation {
 	  * The mapping of the relation is adapted to a [[net.noresttherein.oldsql.schema.bits.LabeledMapping LabeledMapping]]
 	  * `L @: M`. It exposes the labeled type as a single-argument type constructor `this.T[O]`
 	  * accepting the `Origin` type for use in `RowProduct` subclasses and other types accepting such a type constructor:
-	  * `Dual Join (Humans As "humans")#T` (where `Humans[O] <: MappingAt[O]`).
+	  * `Dual Join (Humans Aliased "humans")#T` (where `Humans[O] <: MappingAt[O]`).
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
 	  */ //
-	class As[M[O] <: MappingAt[O], A <: Label](val relation :Relation[M], val alias :A)
+	class Aliased[M[O] <: MappingAt[O], A <: Label](val relation :Relation[M], val alias :A)
 		extends NamedRelation[A, ({ type T[O] = A @: M[O] })#T]
 	{ //todo: the contract of name/sql must be specified here; is alias a part of sql?
 		type T[O] = A @: M[O]

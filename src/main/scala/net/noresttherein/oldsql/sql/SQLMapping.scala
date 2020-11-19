@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, ComponentValues, GenericExtract, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, ComponentValues, GenericExtract, MappingExtract, Relation, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoFilter, NoInsert, NoSelect, NoSelectByDefault, NoUpdate, ReadOnly}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
@@ -18,14 +18,13 @@ import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
-import net.noresttherein.oldsql.sql.ast.ConversionSQL
+import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, IndexedChainTuple, SeqTuple}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChain
 import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedColumn, IndexedSQLExpression, MatchIndexedChain}
-import net.noresttherein.oldsql.sql.SQLMapping.NonColumnSQLMapping
 import net.noresttherein.oldsql.sql.IndexedSQLMapping.GetIndexedExpressionComponent
 
 
@@ -42,7 +41,6 @@ import net.noresttherein.oldsql.sql.IndexedSQLMapping.GetIndexedExpressionCompon
   * This class is dedicated to non-component expressions; subclasses of
   * [[net.noresttherein.oldsql.sql.ast.MappingSQL MappingSQL]] should be used directly.
   * Not all possible expressions are supported; the expression may consist of
-  *   - [[net.noresttherein.oldsql.sql.ast.SQLTerm terms]], todo: these not, unless we the SQLForm will list column names
   *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
   *     in particular [[net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm terms]],
   *   - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]] (ranging from whole entities
@@ -241,7 +239,7 @@ object SQLMapping {
 
 			override def unhandled(e :SQLExpression[F, _, _]) :Nothing =
 				throw new IllegalArgumentException(
-					s"SQLExpression $e cannot be used in a SelectSQL header expression (as part of $outer)."
+					s"SQLExpression $e cannot be used in a SelectSQL select clause expression (as part of $outer)."
 				)
 
 
@@ -355,7 +353,7 @@ object SQLMapping {
 
 			override def expression[C >: LocalScope <: GlobalScope, V](e :SQLExpression[F, C, V]) =
 				throw new IllegalArgumentException(
-					s"SQLExpression $e cannot be used in a SelectSQL header expression (as part of $outer)."
+					s"SQLExpression $e cannot be used in a SelectSQL select clause expression (as part of $outer)."
 				)
 
 		}
@@ -450,9 +448,10 @@ trait ColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 
 	override def form :ColumnForm[X] = expr.readForm match {
 		case rw :ColumnForm[X @unchecked] => rw
-		case r => r <> ColumnWriteForm.unsupported(
-			s"expression column $expr does not support write.", r.sqlType
+		case r => r <> ColumnWriteForm.unsupported(r.sqlType)(
+			s"expression column $expr does not support write."
 		)
+
 	}
 
 	override def selectForm :ColumnReadForm[X] = expr.readForm

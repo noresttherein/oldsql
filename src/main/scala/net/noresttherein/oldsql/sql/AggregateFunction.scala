@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql
 
+import java.sql.JDBCType
+
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
@@ -74,7 +76,9 @@ object AggregateFunction {
 
 		private case object AllColumns extends ColumnSQL[RowProduct, LocalScope, Nothing] {
 			override def readForm :ColumnReadForm[Nothing] =
-				ColumnReadForm.unsupported("count(*).expr.readForm")
+				ColumnReadForm.unsupported(JDBCType.INTEGER, "count(*)")(
+					"count(*).expr.readForm"
+				)
 
 
 			override def asGlobal :Option[ColumnSQL[RowProduct, GlobalScope, Nothing]] = None

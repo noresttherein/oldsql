@@ -1,7 +1,11 @@
 package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.exceptions.{PreexistingTransactionException, TransactionAbortedException, TransactionUnavailableException}
-import net.noresttherein.oldsql.ManagedAsset.AbstractManagedAsset
+import net.noresttherein.oldsql.ManagedAsset.{AbstractManagedAsset, ManagedTransactionAPIAsset}
+
+
+
+
 
 
 /** Basic transactional API, optionally used as the base type by [[net.noresttherein.oldsql.Asset Asset]]
@@ -12,6 +16,7 @@ import net.noresttherein.oldsql.ManagedAsset.AbstractManagedAsset
 trait TransactionAPI {
 	def commit() :Unit
 	def rollback() :Unit
+	def clean() :Unit = ()
 	def isOpen :Boolean
 	def willRollback :Boolean
 }
@@ -56,7 +61,12 @@ trait Asset {
 	  */
 	def noTransaction :Transaction
 
-	/** True if the implicitly available transaction is open and not marked for rollback. */
+	/** True if the implicitly available transaction is open and not marked for rollback.
+	  * The default implementation checks only if an implicit `Transaction` exists, which makes it of limited use
+	  * when considered in itself. A part of the reason behind it - apart from subclasses possibly performing
+	  * some actual checks - is a symmetry with [[net.noresttherein.oldsql.ManagedAsset ManagedAsset]], making
+	  * the code dependent on this interface more easily portable to the former.
+	  */
 	def isTransactional(implicit transaction :Transaction = noTransaction) :Boolean = transaction != null
 
 	/** Commits the implicitly available transaction. This is a hook method by which subclasses provide the required
@@ -265,19 +275,11 @@ object Asset {
 	  * @param name the name used in the `toString` implementation of the created asset and in exception messages.
 	  * @param factory generator of fresh transactions. Each evaluation should return a new transaction instance.             
 	  */
-	def apply(name :String, factory: => TransactionAPI) :Asset = new Asset {
+	def apply(name :String, factory: => TransactionAPI) :Asset = new TransactionAPIAsset {
 		type Transaction = TransactionAPI
 
 		protected override def newTransaction = factory
 
-		override def noTransaction = null
-
-		override protected def commit()(implicit transaction :Transaction) :Unit = transaction.commit()
-
-		override def willRollback(implicit transaction :TransactionAPI) = transaction.willRollback
-
-		override def rollback()(implicit transaction :TransactionAPI) :Unit = transaction.rollback()
-		
 		override def toString = if (name == null) super.toString else name
 	}
 
@@ -368,6 +370,26 @@ object Asset {
 		}
 
 		override def toString = asset.toString
+	}
+
+
+
+	trait TransactionAPIAsset extends Asset {
+		type Transaction <: TransactionAPI
+
+		override def noTransaction :Transaction = null.asInstanceOf[Transaction]
+
+		override def isTransactional(implicit transaction :Transaction) :Boolean = transaction.isOpen
+
+		override def willRollback(implicit transaction :Transaction) :Boolean = transaction.willRollback
+
+		override def rollback()(implicit transaction :Transaction) :Unit = {
+			transaction.rollback(); transaction.clean()
+		}
+
+		protected override def commit()(implicit transaction :Transaction) :Unit = {
+			transaction.commit(); transaction.clean()
+		}
 	}
 
 }
@@ -703,6 +725,25 @@ object ManagedAsset {
 
 	}
 
+
+
+
+	trait ManagedTransactionAPIAsset extends AbstractManagedAsset {
+		override type Transaction <: TransactionAPI
+
+		override def isTransactional :Boolean = transactionOpt.exists(_.isOpen)
+
+		protected override def willRollback(transaction :Transaction) :Boolean = transaction.willRollback
+
+		protected override def rollback(transaction :Transaction) :Unit = {
+			transaction.rollback(); transaction.clean()
+		}
+
+		protected override def commit(transaction :Transaction) :Unit = {
+			transaction.commit(); transaction.clean()
+		}
+	}
+
 }
 
 
@@ -791,20 +832,14 @@ object ThreadAsset {
 	  * @param name the name used in the `toString` implementation of the created asset and in exception messages.
 	  * @param factory generator of fresh transactions. Each evaluation should return a new transaction instance.
 	  */
-	def apply(name :String, factory: => TransactionAPI) :ThreadAsset = new ThreadAsset {
-		override type Transaction = TransactionAPI
+	def apply(name :String, factory: => TransactionAPI) :ThreadAsset =
+		new ThreadAsset with ManagedTransactionAPIAsset {
+			override type Transaction = TransactionAPI
 
-		protected override def newTransaction = factory
+			protected override def newTransaction = factory
 
-		protected override def commit(transaction :Transaction) :Unit = transaction.commit()
-
-		protected override def willRollback(transaction :Transaction) = transaction.willRollback
-
-		protected override def rollback(transaction :Transaction) :Unit = transaction.rollback()
-
-
-		override def toString = if (name == null) super.toString else name
-	}
+			override def toString = if (name == null) super.toString else name
+		}
 
 
 

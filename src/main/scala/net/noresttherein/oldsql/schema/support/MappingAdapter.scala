@@ -230,13 +230,13 @@ object MappingAdapter {
 		  * (and `columnExtracts`) maps, which are used only for aliasing to the ''export'' versions of the components.
 		  * As the result, the adapted column is not exported, with only this instance being visible to containing
 		  * mappings, and all operations modifying a component (such as prefixing the column names) apply only
-		  * to this instance and return a new `ColumnFormProxy`, without modifying the `body`.
+		  * to this instance and return a new `ColumnFormWrapper`, without modifying the `body`.
 		  * At the same time, just in case, the `optionally` method is overriden to check for values for the adapted
 		  * columns and passing it to aliasing `ComponentValues` will not result in an exception, as the extract
 		  * for it is provided.
 		  */
-		class ColumnFormProxy[M <: ColumnMapping[S, O], S, O](column :M, name :String, buffs :Seq[Buff[S]])
-		                                                     (implicit override val form :ColumnForm[S] = column.form)
+		class ColumnFormWrapper[M <: ColumnMapping[S, O], S, O](column :M, name :String, buffs :Seq[Buff[S]])
+		                                                       (implicit override val form :ColumnForm[S] = column.form)
 			extends ColumnFormAdapter[M, S, S, O](column, name, buffs)
 		{
 			def this(column :M) = this(column, column.name, column.buffs)(column.form)
@@ -263,12 +263,12 @@ object MappingAdapter {
 				else super.apply(column)
 
 			override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[M, S, S, O] =
-				new ColumnFormProxy(body, name, buffs)
+				new ColumnFormWrapper(body, name, buffs)
 		}
 
 
 
-		/** This class takes the degeneration of the `ColumnFormProxy` adapter one step further and only pretends
+		/** This class takes the degeneration of the `ColumnFormWrapper` adapter one step further and only pretends
 		  * to be an adapter - the `body` property points to this very instance. In all functionality this class
 		  * behaves the same as a `StandardColumn`.
 		  */

@@ -12,4 +12,14 @@ package object morsels {
 	}
 
 
+	/** Mixin trait implementing equality as equality of classes of the compared objects.
+	  * Extended by singleton-like classes which prefer to avoid the additional overhead of `object` definitions.
+	  * The main difference lies in serialization, as even if only one instance is created directly by the application,
+	  * serialization and deserialization can introduce others.
+	  */
+	private[oldsql] trait Contextless {
+		override def equals(that :Any) = that.getClass == getClass
+		override def hashCode :Int = getClass.hashCode
+	}
+
 }

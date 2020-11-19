@@ -101,4 +101,3 @@ object Not {
 	@inline implicit def evidenceFound[P](implicit ev :P) :Not[P] = default[P]
 
 }
-

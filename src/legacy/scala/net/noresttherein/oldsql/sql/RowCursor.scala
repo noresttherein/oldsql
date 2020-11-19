@@ -23,7 +23,7 @@ object RowCursor {
 	implicit def readForm[T :SQLReadForm] :SQLReadForm[Rows[T]] = SQLReadForm[T].map((t :T) => Rows(t))
 
 	implicit def writeForm[T :SQLWriteForm] :SQLWriteForm[Rows[T]] =
-		EmptyForm(throw new UnsupportedOperationException("SQLWriteForm[Rows]")) //SQLWriteForm[T].imap(_.row)
+		EmptySQLForm(throw new UnsupportedOperationException("SQLWriteForm[Rows]")) //SQLWriteForm[T].imap(_.row)
 
 
 	case class Rows[+E](seq :Seq[E]) extends Rows[E] {

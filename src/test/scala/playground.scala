@@ -1,4 +1,5 @@
-import net.noresttherein.oldsql.schema.{ColumnMapping, Relation}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnReadForm, Relation, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, Subselect}
@@ -14,7 +15,12 @@ import net.noresttherein.oldsql.sql.UnboundParam.FromParam
   * @author Marcin Mościcki
   */
 object playground extends App {
+//	implicitly[SQLReadForm[Option[Int]]](ColumnForms.OptionColumnForm)
+	println(scala.reflect.runtime.universe.reify (
+		implicitly[ColumnForm[Option[Int]]]
+	).tree)
 
+/*
 	class A[O] extends FormMapping[Int, O]
 	class B[O] extends FormMapping[Int, O]
 	class C[O] extends FormMapping[Int, O]
@@ -64,4 +70,5 @@ object playground extends App {
 	println(scala.reflect.runtime.universe.reify {
 		params.of[Int]
 	}.tree)
+*/
 }

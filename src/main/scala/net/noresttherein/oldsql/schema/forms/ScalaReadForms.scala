@@ -9,27 +9,18 @@ import net.noresttherein.oldsql.schema.SQLReadForm
 
 
 
-trait ScalaReadForms
+//trait ScalaReadForms
 
 
 
 
-
-
-object ScalaReadForms {
+trait ScalaReadForms {
 
 	@inline private[this] def f[T](implicit form :SQLReadForm[T]) = form
 
 
-
-	implicit def OptionReadForm[T :SQLReadForm] :SQLReadForm[Option[T]] =
-		new OptionReadForm[T] { override val form = SQLReadForm[T] }
-	//risks becoming preferred SQLReadForm[Option[T]] for any T
-	def SomeReadForm[T :SQLReadForm] :SQLReadForm[Some[T]] =
-		SQLReadForm[T].nullMap(Some.apply)
-
-
-
+	//implicit type class definitions
+	
 	implicit def tuple2ReadForm[T1 :SQLReadForm, T2 :SQLReadForm] :SQLReadForm[(T1, T2)] =
 		new Tuple2ReadForm(f[T1], f[T2])
 
@@ -180,29 +171,137 @@ object ScalaReadForms {
 
 
 
+	//implicit conversions from tuples of forms
+	
+	implicit def toTuple2ReadForm[A, B](t :(SQLReadForm[A], SQLReadForm[B])) = 
+		new Tuple2ReadForm(t._1, t._2)
+	
+	implicit def toTuple3ReadForm[A, B, C](t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C])) =
+		new Tuple3ReadForm(t._1, t._2, t._3)
+
+	implicit def toTuple4ReadForm[A, B, C, D](t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D])) =
+		new Tuple4ReadForm(t._1, t._2, t._3, t._4)
+	
+	implicit def toTuple5ReadForm[A, B, C, D, E]
+	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E])) =
+		new Tuple5ReadForm(t._1, t._2, t._3, t._4, t._5)
+	
+	implicit def toTuple6ReadForm[A, B, C, D, E, F]
+	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                              SQLReadForm[F])) =
+		new Tuple6ReadForm(t._1, t._2, t._3, t._4, t._5, t._6)
+	
+	implicit def toTuple7ReadForm[A, B, C, D, E, F, G]
+	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                              SQLReadForm[F], SQLReadForm[G])) =
+		new Tuple7ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
+	
+	implicit def toTuple8ReadForm[A, B, C, D, E, F, G, H]
+	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                              SQLReadForm[F], SQLReadForm[G], SQLReadForm[H])) =
+		new Tuple8ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8)
+	
+	implicit def toTuple9ReadForm[A, B, C, D, E, F, G, H, I]
+	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                              SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I])) =
+		new Tuple9ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9)
+		
+	implicit def toTuple10ReadForm[A, B, C, D, E, F, G, H, I, J]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E], 
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J])) =
+		new Tuple10ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10)
+		
+	implicit def toTuple11ReadForm[A, B, C, D, E, F, G, H, I, J, K]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J], 
+	                  SQLReadForm[K])) =
+		new Tuple11ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11)
+		
+	implicit def toTuple12ReadForm[A, B, C, D, E, F, G, H, I, J, K, L]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L])) =
+		new Tuple12ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12)
+		
+	implicit def toTuple13ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M])) =
+		new Tuple13ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12, t._13)
+		
+	implicit def toTuple14ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N])) =
+		new Tuple14ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12, t._13, t._14)
+		
+	implicit def toTuple15ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O])) =
+		new Tuple15ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
+	                        t._11, t._12, t._13, t._14, t._15)
+		
+	implicit def toTuple16ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+		                           SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+		                           SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
+		                           SQLReadForm[P])) =
+		new Tuple16ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
+	                        t._11, t._12, t._13, t._14, t._15, t._16)
+		
+	implicit def toTuple17ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
+	                  SQLReadForm[P], SQLReadForm[Q])) =
+		new Tuple17ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
+	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17)
+		
+	implicit def toTuple18ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
+	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R])) =
+		new Tuple18ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
+	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18)
+		
+	implicit def toTuple19ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
+	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S])) =
+		new Tuple19ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
+	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19)
+		
+	implicit def toTuple20ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
+	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S], SQLReadForm[T])) =
+		new Tuple20ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
+	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20)
+		
+	implicit def toTuple21ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
+	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S], SQLReadForm[T],
+	                  SQLReadForm[U])) =
+		new Tuple21ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
+	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20, t._21)
+		
+	implicit def toTuple22ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V]
+	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
+	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S], SQLReadForm[T],
+	                  SQLReadForm[U], SQLReadForm[V])) =
+		new Tuple22ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
+	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20, t._21, t._22)
 
 
 
-
-
-	private[schema] trait OptionReadForm[T] extends SQLReadForm[Option[T]] {
-		protected def form :SQLReadForm[T]
-		override def readColumns :Int = form.readColumns
-
-		override def apply(position :Int)(res :ResultSet) :Option[T] = form.opt(position)(res)
-		override def opt(position :Int)(res :ResultSet) :Option[Option[T]] = Some(form.opt(position)(res))
-		override def nullValue :Option[T] = None
-
-		override def equals(that :Any) :Boolean = that match  {
-			case self :AnyRef if self eq this => true
-			case opt :OptionReadForm[_] if opt canEqual this => opt.form == form
-			case _ => false
-		}
-
-		override def hashCode :Int = form.hashCode
-
-		override def toString :String = "Option[" + form + "]>"
-	}
 
 
 
@@ -210,9 +309,9 @@ object ScalaReadForms {
 		val _1  :SQLReadForm[L]
 		val _2  :SQLReadForm[R]
 
-		override def opt(position: Int)(res: ResultSet): Option[(L, R)] = {
-			val l = _1.opt(position)(res)
-			val r = _2.opt(position + _1.readColumns)(res)
+		override def opt(res :ResultSet, position :Int): Option[(L, R)] = {
+			val l = _1.opt(res, position)
+			val r = _2.opt(res, position + _1.readColumns)
 			for (v1 <- l; v2 <- r) yield (v1, v2)
 		}
 
@@ -238,10 +337,10 @@ object ScalaReadForms {
 		private[this] val offset_2 = _1.readColumns
 		private[this] val offset_3 = _1.readColumns + _2.readColumns
 		
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C)] = for {
-				a <- _1.opt(position)(res)
-				b <- _2.opt(position + offset_2)(res)
-				c <- _3.opt(position + offset_3)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C)] = for {
+				a <- _1.opt(res, position)
+				b <- _2.opt(res, position + offset_2)
+				c <- _3.opt(res, position + offset_3)
 			} yield (a, b, c)
 
 		override def nullValue :(A, B, C) = (_1.nullValue, _2.nullValue, _3.nullValue)
@@ -267,11 +366,11 @@ object ScalaReadForms {
 		private[this] val offset_3 = offset_2 + _2.readColumns
 		private[this] val offset_4 = offset_3 + _3.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
 		} yield (a, b, c, d)
 
 		override def nullValue :(A, B, C, D) = (_1.nullValue, _2.nullValue, _3.nullValue, _4.nullValue)
@@ -299,12 +398,12 @@ object ScalaReadForms {
 		private[this] val offset_4 = offset_3 + _3.readColumns
 		private[this] val offset_5 = offset_4 + _4.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
 		} yield (a, b, c, d, e)
 
 		override def nullValue :(A, B, C, D, E) = (_1.nullValue, _2.nullValue, _3.nullValue, _4.nullValue, _5.nullValue)
@@ -335,13 +434,13 @@ object ScalaReadForms {
 		private[this] val offset_5 = offset_4 + _4.readColumns
 		private[this] val offset_6 = offset_5 + _5.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
 		} yield (a, b, c, d, e, f)
 
 		override def nullValue :(A, B, C, D, E, F) = 
@@ -376,14 +475,14 @@ object ScalaReadForms {
 		private[this] val offset_6 = offset_5 + _5.readColumns
 		private[this] val offset_7 = offset_6 + _6.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
 		} yield (a, b, c, d, e, f, g)
 
 		override def nullValue :(A, B, C, D, E, F, G) =
@@ -420,15 +519,15 @@ object ScalaReadForms {
 		private[this] val offset_7 = offset_6 + _6.readColumns
 		private[this] val offset_8 = offset_7 + _7.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
 		} yield (a, b, c, d, e, f, g, h)
 
 		override def nullValue :(A, B, C, D, E, F, G, H) = (
@@ -469,16 +568,16 @@ object ScalaReadForms {
 		private[this] val offset_8 = offset_7 + _7.readColumns
 		private[this] val offset_9 = offset_8 + _8.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
 		} yield (a, b, c, d, e, f, g, h, i)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I) = (
@@ -521,17 +620,17 @@ object ScalaReadForms {
 		private[this] val offset_9 = offset_8 + _8.readColumns
 		private[this] val offset_10 = offset_9 + _9.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
 		} yield (a, b, c, d, e, f, g, h, i, j)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J) = (
@@ -578,18 +677,18 @@ object ScalaReadForms {
 		private[this] val offset_10 = offset_9 + _9.readColumns
 		private[this] val offset_11 = offset_10 + _10.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
 		} yield (a, b, c, d, e, f, g, h, i, j, k)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K) = (
@@ -639,19 +738,19 @@ object ScalaReadForms {
 		private[this] val offset_11 = offset_10 + _10.readColumns
 		private[this] val offset_12 = offset_11 + _11.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L) = (
@@ -703,20 +802,20 @@ object ScalaReadForms {
 		private[this] val offset_12 = offset_11 + _11.readColumns
 		private[this] val offset_13 = offset_12 + _12.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M) = (
@@ -771,21 +870,21 @@ object ScalaReadForms {
 		private[this] val offset_13 = offset_12 + _12.readColumns
 		private[this] val offset_14 = offset_13 + _13.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) = (
@@ -841,22 +940,22 @@ object ScalaReadForms {
 		private[this] val offset_14 = offset_13 + _13.readColumns
 		private[this] val offset_15 = offset_14 + _14.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
-			o <- _15.opt(position + offset_15)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
+			o <- _15.opt(res, position + offset_15)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) = (
@@ -915,23 +1014,23 @@ object ScalaReadForms {
 		private[this] val offset_15 = offset_14 + _14.readColumns
 		private[this] val offset_16 = offset_15 + _15.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
-			o <- _15.opt(position + offset_15)(res)
-			p <- _16.opt(position + offset_16)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
+			o <- _15.opt(res, position + offset_15)
+			p <- _16.opt(res, position + offset_16)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) = (
@@ -993,24 +1092,24 @@ object ScalaReadForms {
 		private[this] val offset_16 = offset_15 + _15.readColumns
 		private[this] val offset_17 = offset_16 + _16.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
-			o <- _15.opt(position + offset_15)(res)
-			p <- _16.opt(position + offset_16)(res)
-			q <- _17.opt(position + offset_17)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
+			o <- _15.opt(res, position + offset_15)
+			p <- _16.opt(res, position + offset_16)
+			q <- _17.opt(res, position + offset_17)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) = (
@@ -1074,25 +1173,25 @@ object ScalaReadForms {
 		private[this] val offset_17 = offset_16 + _16.readColumns
 		private[this] val offset_18 = offset_17 + _17.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
-			o <- _15.opt(position + offset_15)(res)
-			p <- _16.opt(position + offset_16)(res)
-			q <- _17.opt(position + offset_17)(res)
-			r <- _18.opt(position + offset_18)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
+			o <- _15.opt(res, position + offset_15)
+			p <- _16.opt(res, position + offset_16)
+			q <- _17.opt(res, position + offset_17)
+			r <- _18.opt(res, position + offset_18)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) = (
@@ -1158,26 +1257,26 @@ object ScalaReadForms {
 		private[this] val offset_18 = offset_17 + _17.readColumns
 		private[this] val offset_19 = offset_18 + _18.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
-			o <- _15.opt(position + offset_15)(res)
-			p <- _16.opt(position + offset_16)(res)
-			q <- _17.opt(position + offset_17)(res)
-			r <- _18.opt(position + offset_18)(res)
-			s <- _19.opt(position + offset_19)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
+			o <- _15.opt(res, position + offset_15)
+			p <- _16.opt(res, position + offset_16)
+			q <- _17.opt(res, position + offset_17)
+			r <- _18.opt(res, position + offset_18)
+			s <- _19.opt(res, position + offset_19)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) = (
@@ -1245,27 +1344,27 @@ object ScalaReadForms {
 		private[this] val offset_19 = offset_18 + _18.readColumns
 		private[this] val offset_20 = offset_19 + _19.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
-			o <- _15.opt(position + offset_15)(res)
-			p <- _16.opt(position + offset_16)(res)
-			q <- _17.opt(position + offset_17)(res)
-			r <- _18.opt(position + offset_18)(res)
-			s <- _19.opt(position + offset_19)(res)
-			t <- _20.opt(position + offset_20)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
+			o <- _15.opt(res, position + offset_15)
+			p <- _16.opt(res, position + offset_16)
+			q <- _17.opt(res, position + offset_17)
+			r <- _18.opt(res, position + offset_18)
+			s <- _19.opt(res, position + offset_19)
+			t <- _20.opt(res, position + offset_20)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) = (
@@ -1335,28 +1434,28 @@ object ScalaReadForms {
 		private[this] val offset_20 = offset_19 + _19.readColumns
 		private[this] val offset_21 = offset_20 + _20.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
-			o <- _15.opt(position + offset_15)(res)
-			p <- _16.opt(position + offset_16)(res)
-			q <- _17.opt(position + offset_17)(res)
-			r <- _18.opt(position + offset_18)(res)
-			s <- _19.opt(position + offset_19)(res)
-			t <- _20.opt(position + offset_20)(res)
-			u <- _21.opt(position + offset_21)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
+			o <- _15.opt(res, position + offset_15)
+			p <- _16.opt(res, position + offset_16)
+			q <- _17.opt(res, position + offset_17)
+			r <- _18.opt(res, position + offset_18)
+			s <- _19.opt(res, position + offset_19)
+			t <- _20.opt(res, position + offset_20)
+			u <- _21.opt(res, position + offset_21)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) = (
@@ -1429,29 +1528,29 @@ object ScalaReadForms {
 		private[this] val offset_21 = offset_20 + _20.readColumns
 		private[this] val offset_22 = offset_21 + _21.readColumns
 
-		override def opt(position :Int)(res :ResultSet) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)] = for {
-			a <- _1.opt(position)(res)
-			b <- _2.opt(position + offset_2)(res)
-			c <- _3.opt(position + offset_3)(res)
-			d <- _4.opt(position + offset_4)(res)
-			e <- _5.opt(position + offset_5)(res)
-			f <- _6.opt(position + offset_6)(res)
-			g <- _7.opt(position + offset_7)(res)
-			h <- _8.opt(position + offset_8)(res)
-			i <- _9.opt(position + offset_9)(res)
-			j <- _10.opt(position + offset_10)(res)
-			k <- _11.opt(position + offset_11)(res)
-			l <- _12.opt(position + offset_12)(res)
-			m <- _13.opt(position + offset_13)(res)
-			n <- _14.opt(position + offset_14)(res)
-			o <- _15.opt(position + offset_15)(res)
-			p <- _16.opt(position + offset_16)(res)
-			q <- _17.opt(position + offset_17)(res)
-			r <- _18.opt(position + offset_18)(res)
-			s <- _19.opt(position + offset_19)(res)
-			t <- _20.opt(position + offset_20)(res)
-			u <- _21.opt(position + offset_21)(res)
-			v <- _22.opt(position + offset_22)(res)
+		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)] = for {
+			a <- _1.opt(res, position)
+			b <- _2.opt(res, position + offset_2)
+			c <- _3.opt(res, position + offset_3)
+			d <- _4.opt(res, position + offset_4)
+			e <- _5.opt(res, position + offset_5)
+			f <- _6.opt(res, position + offset_6)
+			g <- _7.opt(res, position + offset_7)
+			h <- _8.opt(res, position + offset_8)
+			i <- _9.opt(res, position + offset_9)
+			j <- _10.opt(res, position + offset_10)
+			k <- _11.opt(res, position + offset_11)
+			l <- _12.opt(res, position + offset_12)
+			m <- _13.opt(res, position + offset_13)
+			n <- _14.opt(res, position + offset_14)
+			o <- _15.opt(res, position + offset_15)
+			p <- _16.opt(res, position + offset_16)
+			q <- _17.opt(res, position + offset_17)
+			r <- _18.opt(res, position + offset_18)
+			s <- _19.opt(res, position + offset_19)
+			t <- _20.opt(res, position + offset_20)
+			u <- _21.opt(res, position + offset_21)
+			v <- _22.opt(res, position + offset_22)
 		} yield (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v)
 
 		override def nullValue :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) = (

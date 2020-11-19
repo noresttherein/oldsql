@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LabelPath./
 import net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
-import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
+import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.schema.support.{CustomizedMapping, DelegateMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
@@ -2538,12 +2538,12 @@ object MappingSchema {
 	                                         get :MappingExtract[S, T, O])
 		extends NonEmptySchema[S, V, C, T, M, O](init, next, get)
 		   with BaseNonEmptyFlatSchema[Chain, Any, ~, S, V, C, T, T, M, O]
-	{
+	{ //todo: get rid of explicit references to SQLForms
 		//these shortcut implementations work because column mappings moved their buff handling to their forms.
-		override val selectForm = SQLReadForms.ChainReadForm(init.selectForm, last.selectForm)
-		override val filterForm = SQLWriteForms.ChainWriteForm(init.filterForm, last.filterForm)
-		override val updateForm = SQLWriteForms.ChainWriteForm(init.updateForm, last.updateForm)
-		override val insertForm = SQLWriteForms.ChainWriteForm(init.insertForm, last.insertForm)
+		override val selectForm = SQLForms.ChainReadForm(init.selectForm, last.selectForm)
+		override val filterForm = SQLForms.ChainWriteForm(init.filterForm, last.filterForm)
+		override val updateForm = SQLForms.ChainWriteForm(init.updateForm, last.updateForm)
+		override val insertForm = SQLForms.ChainWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V ~ T] = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyFlatSchema[X, V, C, T, M, O] =

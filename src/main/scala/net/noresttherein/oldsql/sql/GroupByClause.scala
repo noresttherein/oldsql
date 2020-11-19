@@ -784,7 +784,7 @@ object GroupByClause {
 		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
 		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
-		  * ''where'' clause filters and `select` clause headers.
+		  * ''where'' and ''select'' clauses.
 		  * The join condition and the ''where'' clause filter can be subsequently specified using one of
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
 		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]]
@@ -804,7 +804,7 @@ object GroupByClause {
 		  * as a linearization of the explicit portion - the given relations - following the `Subselect`
 		  * pseudo join and the implicit portion, constituting of this clause. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
-		  * ''where'' clause filters and `select` clause headers.
+		  * ''where'' and ''select'' clauses.
 		  * The join condition and the ''where'' clause filter can be subsequently specified using one of
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
 		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]]

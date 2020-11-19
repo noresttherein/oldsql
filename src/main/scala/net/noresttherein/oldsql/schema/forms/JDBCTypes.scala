@@ -5,14 +5,13 @@ import java.math.{BigDecimal => JBigDecimal}
 import java.io.{ByteArrayInputStream, InputStream, Reader}
 import java.net.URL
 import java.sql
-import java.sql.{Blob, Clob, Date, NClob, PreparedStatement, Ref, ResultSet, RowId, SQLXML, Time, Timestamp, Types}
-import java.sql.Types._
+import java.sql.{Blob, Clob, Date, JDBCType, NClob, PreparedStatement, Ref, ResultSet, RowId, SQLXML, Time, Timestamp, Types}
+import java.sql.JDBCType._
 import java.time.format.DateTimeFormatter
 
 import net.noresttherein.oldsql.schema.SQLForm
-import net.noresttherein.oldsql.schema.ColumnForm.{JDBCForm, JDBCSQLType, NullableJDBCForm}
+import net.noresttherein.oldsql.schema.ColumnForm.{JDBCForm, NullableJDBCForm}
 import net.noresttherein.oldsql.schema.SQLForm.{NonLiteralForm, NullValue}
-import net.noresttherein.oldsql.schema.forms.JavaForms.JavaBigDecimalForm
 
 
 
@@ -24,7 +23,7 @@ import net.noresttherein.oldsql.schema.forms.JavaForms.JavaBigDecimalForm
   * standard JDBC types into the implicit search scope. This allows extracting of these forms into a separate
   * companion object (and share them between read and write forms).
   */
-trait JDBCTypes
+//trait JDBCTypes
 
 
 
@@ -36,20 +35,21 @@ trait JDBCTypes
   * for all form classes, so, prefer to rely on implicit resolution by using `SQLForm[Xxx]` to access a form
   * for the type `Xxx` instead of explicit references to declarations in this object and others.
   */
-object JDBCTypes {
+trait JDBCTypes {
 
 	private[this] implicit val NotNull = NullValue.NotNull
 
 
 
+/*
 	def get[X](value: X): Option[SQLForm[X]] = (value match {
 		case _ :Number => PartialFunction.condOpt(value) {
-			case _ :JDBCSQLType | _ :JInt => IntForm
+			case _ :Int | _ :JInt => IntForm
 			case _ :Long | _ :JLong => LongForm
 			case _ :Double | _ :JDouble => DoubleForm
 			case _ :Float | _ :JFloat => FloatForm
 			case _ :BigDecimal => BigDecimalForm
-			case _ :JBigDecimal => JavaBigDecimalForm
+			case _ :JBigDecimal => SQLForms.JavaBigDecimalForm
 			case _ :Byte | _ :JByte => ByteForm
 			case _ :Short | _ :JShort => ShortForm
 		}
@@ -74,91 +74,97 @@ object JDBCTypes {
 			case _ :sql.SQLXML => SQLXMLForm
 		}
 	}).asInstanceOf[Option[SQLForm[X]]]
+*/
 
 
 
 
 
 
-	val BasicLiteralTypes = Seq(BigDecimalForm, BooleanForm, ByteForm, DateForm, DoubleForm, FloatForm, IntForm, LongForm, ShortForm, StringForm, TimeForm, TimestampForm, URLForm)
+	val BasicLiteralTypes = Seq(
+		BigDecimalForm, BooleanForm, ByteForm, DateForm, DoubleForm, FloatForm, IntForm, LongForm, ShortForm,
+		StringForm, TimeForm, TimestampForm, URLForm
+	)
 
 
 
+	//todo: support for arbitrary NullValue type classes
+	//todo: remove NonLiteralForm as the base class where possible.
 	implicit case object SQLArrayForm extends NullableJDBCForm[sql.Array](ARRAY) with NonLiteralForm[sql.Array] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :sql.Array) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :sql.Array) :Unit =
 			statement.setArray(position, value)
 
-		protected override def read(position: Int)(res: ResultSet): sql.Array = res.getArray(position)
+		protected override def read(res :ResultSet, column :Int) :sql.Array = res.getArray(column)
 	}
 
 
 	case object ASCIIStreamForm extends NullableJDBCForm[InputStream](LONGVARCHAR) with NonLiteralForm[InputStream] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :InputStream) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :InputStream) :Unit =
 			statement.setAsciiStream(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): InputStream = res.getAsciiStream(column)
+		protected override def read(res :ResultSet, column :Int) :InputStream = res.getAsciiStream(column)
 	}
 
 
 	implicit case object BigDecimalForm extends NullableJDBCForm[BigDecimal](DECIMAL) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :BigDecimal) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :BigDecimal) :Unit =
 			statement.setBigDecimal(position, value.bigDecimal)
 
-		protected override def read(column: Int)(res: ResultSet): BigDecimal = res.getBigDecimal(column)
+		protected override def read(res :ResultSet, column :Int) :BigDecimal = res.getBigDecimal(column)
 	}
 
 
 
 	case object BinaryStreamForm extends NullableJDBCForm[InputStream](LONGVARBINARY) with NonLiteralForm[InputStream] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :InputStream) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :InputStream) :Unit =
 			statement.setBinaryStream(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): InputStream = res.getBinaryStream(column)
+		protected override def read(res :ResultSet, column :Int) :InputStream = res.getBinaryStream(column)
 	}
 
 
 	implicit case object BlobForm extends NullableJDBCForm[Blob](BLOB) with NonLiteralForm[Blob] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Blob) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Blob) :Unit =
 			statement.setBlob(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Blob = res.getBlob(column)
+		protected override def read(res :ResultSet, column :Int) :Blob = res.getBlob(column)
 	}
 
 
 	implicit case object BooleanForm extends JDBCForm[Boolean](BOOLEAN) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Boolean) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Boolean) :Unit =
 			statement.setBoolean(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Boolean = res.getBoolean(column)
+		protected override def read(res :ResultSet, column :Int) :Boolean = res.getBoolean(column)
 	}
 
 
 	implicit case object ByteForm extends JDBCForm[Byte](TINYINT) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Byte) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Byte) :Unit =
 			statement.setByte(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Byte = res.getByte(column)
+		protected override def read(res :ResultSet, column :Int) :Byte = res.getByte(column)
 	}
 
 
 	implicit case object BytesForm extends NullableJDBCForm[Array[Byte]](BINARY) with NonLiteralForm[Array[Byte]] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Array[Byte]) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Array[Byte]) :Unit =
 			statement.setBytes(position, value)
 
-		protected override def read(column: Int)(res: ResultSet) :Array[Byte] = res.getBytes(column)
+		protected override def read(res :ResultSet, column :Int) :Array[Byte] = res.getBytes(column)
 	}
 
 
 	implicit case object CharForm extends JDBCForm[Char](CHAR) {
-		override protected def read(position :Int)(res :ResultSet) :Char =
+		override protected def read(res :ResultSet, position :Int) :Char =
 			res.getString(position) match {
 				case null => 0
 				case s if s.length != 1 =>
@@ -167,35 +173,35 @@ object JDBCTypes {
 				case c => c.charAt(0)
 			}
 
-		override def set(position :Int)(statement :PreparedStatement, value :Char) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Char) :Unit =
 			statement.setString(position, String.valueOf(value))
 	}
 
 
 	implicit case object CharacterStreamForm extends NullableJDBCForm[Reader](LONGVARCHAR) with NonLiteralForm[Reader] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Reader) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Reader) :Unit =
 			statement.setCharacterStream(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Reader = res.getCharacterStream(column)
+		protected override def read(res :ResultSet, column :Int) :Reader = res.getCharacterStream(column)
 	}
 
 
 	implicit case object ClobForm extends NullableJDBCForm[Clob](CLOB) with NonLiteralForm[Clob] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Clob) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Clob) :Unit =
 			statement.setClob(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Clob = res.getClob(column)
+		protected override def read(res :ResultSet, column :Int) :Clob = res.getClob(column)
 	}
 
 
 	implicit case object DateForm extends NullableJDBCForm[sql.Date](DATE) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Date) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Date) :Unit =
 			statement.setDate(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): sql.Date = res.getDate(column)
+		protected override def read(res :ResultSet, column :Int) :sql.Date = res.getDate(column)
 
 		override def literal(value :sql.Date) :String =
 			if (value == null) "null" else format.format(value.toLocalDate)
@@ -206,64 +212,64 @@ object JDBCTypes {
 
 	implicit case object DoubleForm extends JDBCForm[Double](DOUBLE) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Double) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Double) :Unit =
 			statement.setDouble(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Double = res.getDouble(column)
+		protected override def read(res :ResultSet, column :Int) :Double = res.getDouble(column)
 	}
 
 
 	implicit case object FloatForm extends JDBCForm[Float](FLOAT) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Float) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Float) :Unit =
 			statement.setFloat(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Float = res.getFloat(column)
+		protected override def read(res :ResultSet, column :Int) :Float = res.getFloat(column)
 	}
 
 
 	implicit case object IntForm extends JDBCForm[Int](INTEGER) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Int) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Int) :Unit =
 			statement.setInt(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Int = res.getInt(column)
+		protected override def read(res :ResultSet, column :Int) :Int = res.getInt(column)
 	}
 
 
 	implicit case object LongForm extends JDBCForm[Long](BIGINT) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Long) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Long) :Unit =
 			statement.setLong(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Long = res.getLong(column)
+		protected override def read(res :ResultSet, column :Int) :Long = res.getLong(column)
 	}
 
 
 	case object NCharacterStreamForm extends NullableJDBCForm[Reader](LONGNVARCHAR) with NonLiteralForm[Reader] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Reader) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Reader) :Unit =
 			statement.setNCharacterStream(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Reader = res.getNCharacterStream(column)
+		protected override def read(res :ResultSet, column :Int) :Reader = res.getNCharacterStream(column)
 	}
 
 
 	implicit case object NClobForm extends NullableJDBCForm[NClob](NCLOB) with NonLiteralForm[NClob] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :NClob) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :NClob) :Unit =
 			statement.setNClob(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): NClob = res.getNClob(column)
+		protected override def read(res :ResultSet, column :Int) :NClob = res.getNClob(column)
 	}
 
 
 	case object NStringForm extends NullableJDBCForm[String](NVARCHAR) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :String) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :String) :Unit =
 			statement.setNString(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): String = res.getNString(column)
+		protected override def read(res :ResultSet, column :Int) :String = res.getNString(column)
 
 		override def literal(value :String) :String =
 			if (value == null) "null"
@@ -273,46 +279,46 @@ object JDBCTypes {
 
 	implicit case object RefForm extends NullableJDBCForm[sql.Ref](REF) with NonLiteralForm[Ref] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Ref) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Ref) :Unit =
 			statement.setRef(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Ref = res.getRef(column)
+		protected override def read(res :ResultSet, column :Int) :Ref = res.getRef(column)
 	}
 
 
 	implicit case object RowIdForm extends NullableJDBCForm[sql.RowId](REF) with NonLiteralForm[RowId] {
 
-		override protected def read(position :Int)(res :ResultSet) :RowId = res.getRowId(position)
+		override protected def read(res :ResultSet, position :Int) :RowId = res.getRowId(position)
 
-		override def set(position :Int)(statement :PreparedStatement, value :RowId) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :RowId) :Unit =
 			statement.setRowId(position, value)
 	}
 
 
 	implicit case object ShortForm extends JDBCForm[Short](SMALLINT) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Short) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Short) :Unit =
 			statement.setShort(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): Short = res.getShort(column)
+		protected override def read(res :ResultSet, column :Int) :Short = res.getShort(column)
 	}
 
 
-	implicit case object SQLXMLForm extends NullableJDBCForm[SQLXML](Types.SQLXML) with NonLiteralForm[SQLXML] {
+	implicit case object SQLXMLForm extends NullableJDBCForm[SQLXML](JDBCType.SQLXML) with NonLiteralForm[SQLXML] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :SQLXML) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :SQLXML) :Unit =
 			statement.setSQLXML(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): SQLXML = res.getSQLXML(column)
+		protected override def read(res :ResultSet, column :Int) :SQLXML = res.getSQLXML(column)
 	}
 
 
 	implicit case object StringForm extends NullableJDBCForm[String](VARCHAR) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :String) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :String) :Unit =
 			statement.setString(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): String = res.getString(column)
+		protected override def read(res :ResultSet, column :Int) :String = res.getString(column)
 
 		override def literal(value: String): String =
 			if (value == null) "null"
@@ -322,38 +328,38 @@ object JDBCTypes {
 
 	implicit case object TimestampForm extends NullableJDBCForm[sql.Timestamp](TIMESTAMP) with NonLiteralForm[sql.Timestamp] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Timestamp) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Timestamp) :Unit =
 			statement.setTimestamp(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): sql.Timestamp = res.getTimestamp(column)
+		protected override def read(res :ResultSet, column :Int) :sql.Timestamp = res.getTimestamp(column)
 	}
 
 
 	implicit case object TimeForm extends NullableJDBCForm[sql.Time](TIME) with NonLiteralForm[sql.Time] {
 
-		override def set(position :Int)(statement :PreparedStatement, value :Time) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :Time) :Unit =
 			statement.setTime(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): sql.Time = res.getTime(column)
+		protected override def read(res :ResultSet, column :Int) :sql.Time = res.getTime(column)
 	}
 
 
 	implicit case object URLForm extends NullableJDBCForm[URL](NVARCHAR) {
 
-		override def set(position :Int)(statement :PreparedStatement, value :URL) :Unit =
+		override def set(statement :PreparedStatement, position :Int, value :URL) :Unit =
 			statement.setURL(position, value)
 
-		protected override def read(column: Int)(res: ResultSet): URL = res.getURL(column)
+		protected override def read(res :ResultSet, column :Int) :URL = res.getURL(column)
 
 		override def toString = "URL"
 	}
 
 
 	class NullForm[T >: Null] extends NullableJDBCForm[T](NULL) {
-		override def set(position :Int)(statement :PreparedStatement, value :T) :Unit =
-			statement.setNull(position, NULL)
+		override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
+			statement.setNull(position, NULL.getVendorTypeNumber)
 
-		protected override def read(column: Int)(res: ResultSet): T = null
+		protected override def read(res :ResultSet, column :Int) :T = null
 
 		override def equals(that :Any) :Boolean = that.isInstanceOf[NullForm[_]]
 	}

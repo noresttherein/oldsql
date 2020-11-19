@@ -35,7 +35,7 @@ import net.noresttherein.oldsql.morsels.LUB
   * @see [[net.noresttherein.oldsql.collection.Record]]
   * @author Marcin Mościcki
   */
-sealed trait Chain {
+sealed trait Chain { //todo: Array based implementation; with macros/lazy implicits of scala 3 this would be a big improvement
 	def isEmpty :Boolean
 	def length :Int
 
@@ -1769,7 +1769,7 @@ object IndexedChain extends IndexedChainFactory {
 		type Key <: K
 		type Value <: V
 
-		def key[U >: K](implicit k :ValueOf[U]): U = k.value
+		def key[U >: K <: Singleton](implicit k :ValueOf[U]): U = k.value
 
 		def get :V = value
 

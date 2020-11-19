@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.morsels
 
-import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 
 
 
@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtra
   * @see [[net.noresttherein.oldsql.morsels.Extractor.=?> =?>]]
   * @see [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]]
   * @author Marcin Mościcki
-  */
+  */ //consider: implementing PartialFunction. Would be great if Function extended PartialFunction (or vice versa).
 trait Extractor[-X, +Y] {
 	def optional :X => Option[Y] = get
 	def requisite :Option[X => Y] = None
@@ -84,7 +84,7 @@ object Extractor extends ExtractorImplicits {
 
 	/** A type alias for [[net.noresttherein.oldsql.morsels.Extractor Extractor]], allowing concise writing it
 	  * in the infix function format `X =?> Y`.
-	  */
+	  */ //todo: make Extractor extend PartialFunction
 	type =?>[-X, +Y] = Extractor[X, Y]
 
 

@@ -191,8 +191,8 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	}
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		if (components.size == 1 && components.contains(this)) selectForm
-		else if (components.isEmpty) SQLReadForm.none
+		if (components.size == 1 && components.head == this) selectForm
+		else if (components.isEmpty) SQLReadForm.empty
 		else throw new NoSuchElementException("Mappings " + components + " are not components of column " + this)
 
 

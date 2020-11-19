@@ -102,7 +102,7 @@ object Buff {
 
 
 
-	/** This column/component can't be included in a select statement (as part of its header). */
+	/** This column/component can't be included in a select statement (as part of its select clause). */
 	case object NoSelect extends ComboFlag(NoSelectByDefault)
 
 	/** This column/component can't be included in an insert statement (as the inserted column). */
@@ -241,7 +241,7 @@ object Buff {
 
 	/** Any value returned from the select (or assembled from such values) of a column/component annotated
 	  * with this buff type must be mapped with the function included in the buff. This buff is independent
-	  * from buffs specifying whether and when a component can be included in a select header. */
+	  * from buffs specifying whether and when a component can be included in a select clause. */
 	case object SelectAudit extends ComboBuffType(Audit) with AuditBuffType
 
 	/** Any value compared in SQL with the value of the annotated column/component is first mapped with the function
@@ -668,7 +668,7 @@ object Buff {
 	/** A `Buff` type which carries a value. These buff types are handled explicitly when creating and executing
 	  * individual SQL statements. Which statements are affected (and how the value is used) depends on which
 	  * of the `ValueBuffType` instances are implied by the implementing class:
-	  *   - implying `ExtraSelect` means the annotated component is never included in the select header and the
+	  *   - implying `ExtraSelect` means the annotated component is never included in the select clause and the
 	  *     value provided by the buff is used instead;
 	  *   - implying `ExtraFilter` means that every select and update statement must include the annotated component
 	  *     in the 'where' clause to additionally filter the set of rows mapped by the application;

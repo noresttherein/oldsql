@@ -5,14 +5,13 @@ import net.noresttherein.oldsql.collection.{Chain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 import net.noresttherein.oldsql.schema.bits.RecordMapping.NonEmptyRecordMapping
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@||, |-|, ||, LabeledSchemaColumn}
-import net.noresttherein.oldsql.schema.forms.{SQLReadForms, SQLWriteForms}
+import net.noresttherein.oldsql.schema.forms.SQLForms
 
 
 
@@ -142,11 +141,11 @@ object RecordMapping {
 		extends NonEmptyRecordSchema[S, V, C, K, T, M, O](init, key, next, extract)
 		   with BaseNonEmptyFlatSchema[Record, Key #> Any, |#, S, V, C, T, K #> T, M, O]
 		   with FlatMappingSchema[S, V |# (K #> T), C ~ M, O]
-	{
-		override val selectForm = SQLReadForms.RecordReadForm(init.selectForm, new ValueOf(key), last.selectForm)
-		override val filterForm = SQLWriteForms.RecordWriteForm(init.filterForm, last.filterForm)
-		override val updateForm = SQLWriteForms.RecordWriteForm(init.updateForm, last.updateForm)
-		override val insertForm = SQLWriteForms.RecordWriteForm(init.insertForm, last.insertForm)
+	{   //todo: get rid of explicit references to SQLForms
+		override val selectForm = SQLForms.RecordReadForm(init.selectForm, new ValueOf(key), last.selectForm)
+		override val filterForm = SQLForms.RecordWriteForm(init.filterForm, last.filterForm)
+		override val updateForm = SQLForms.RecordWriteForm(init.updateForm, last.updateForm)
+		override val insertForm = SQLForms.RecordWriteForm(init.insertForm, last.insertForm)
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |# (K, T)] = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V |# (K #> T), C ~ M, O] =

@@ -15,12 +15,13 @@ import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, E
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingBound, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
-import net.noresttherein.oldsql.schema.SQLForm.{EmptyForm, NullValue}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
+import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
@@ -38,9 +39,9 @@ import slang._
 
 
 //todo: provide a semi-complete list of base traits to extend.
-/** A `Mapping` describes how a scala type (declared as the member type `Subject` of this trait)
+/** A `Mapping` describes how a Scala type (declared as the member type `Subject` of this trait)
   * is decomposed into the relational format of the underlying database. In particular, it declares all the columns used,
-  * but it can have a hierarchical structure of arbitrary level, with nested components. It is bidirectional
+  * but it can have a hierarchical structure with components nested to an arbitrary level. It is bidirectional
   * in its nature and invariant regarding its subject type, but it is entirely possible to provide read-only
   * (or write-only) implementations and mechanisms exist to define which columns are included in which operations,
   * allowing to automatically omit some from all INSERT or UPDATE statements for example. In fact,
@@ -51,22 +52,22 @@ import slang._
   * and does not carry any information about column names or other meta data.
   *
   * `Mapping` instances used by this mapping to handle separate fragments of the mapped type are referred to as
-  * ''components'' throughout the library; it is important to note however that a `Mapping` for a database table,
-  * for a whole query row of multiple joined tables, an 'Address' component of a handful of columns or a single
+  * ''components'' throughout the library; it is important to note however that mappings for a database table,
+  * for a whole query row of multiple joined tables, an 'Address' component of a handful of columns and a single
   * column are not distinct in nature, with only the columns being treated specially in some circumstances.
   *
   * This polymorphism and structural nature, apart from promoting reusability and encouraging data encapsulation
-  * in the domain model rather than flat mappings, closely following the table schema, have several implications.
+  * in the domain model rather than flat, closely following the table schema, mappings, have several implications.
   * First, components of a component of a mapping are called sometimes subcomponents when the distinction
   * is being made, but are themselves also valid components of this mapping. It is encouraged that the assembly
-  * (and disassembly) process remains strictly hierarchical, with any instance responsible only on handling
+  * (and disassembly) process remains strictly hierarchical, with any instance responsible only of handling
   * the transformation between its subject type and the values of its direct components. This allows some optimizations
   * and increases reusability, but is not always feasible, and a `Mapping` can always check the value
   * of any of its subcomponents or columns in its assembly process.
   *
   * Second, as a component type can easily appear several times as a part
-  * of a larger mapping (a business having several addresses of different types, or a person having several phone
-  * numbers), they naturally must use different column names. It is a good design principle to think ahead and
+  * of a larger mapping (a business having several addresses, or a person having several phone numbers),
+  * they naturally must use different column names. It is a good design principle to think ahead and
   * have reusable components accept at least a prefix/suffix to include in column names, but exceptions will always
   * exist, especially when dealing with preexisting schemas. A `Mapping` is therefore completely free to translate
   * a component it uses by modifying the column names as it sees fit. Additionally, any mapping can declare
@@ -85,17 +86,17 @@ import slang._
   *
   * This is the root interface of the mapping class hierarchy, used almost exclusively throughout the library,
   * with subclasses - with the exception of adapters exposing the adapted mapping publicly - simply providing different
-  * implementations or features directed 'inwards', towards the implementing classes, rather than providing additional
+  * implementations or features directed 'inwards', towards the implementing classes, rather than providing an additional
   * public interface. Every concrete mapping however needs to define two types: the mapped scala type `Subject`
-  * and a marker phantom type `Origin` which serves solely to introduce static type distinction between several
-  * instances of the same component type but coming from different sources. In fact, many generic operations
+  * and a marker phantom type `Origin` which serves solely to introduce static distinction between several
+  * instances of the same component type, but coming from different sources. In fact, many generic operations
   * are impossible to reliably implement without asserting that the handled `Mapping` actually defines those types
   * (that is, those types are equal for all instances of the mapping type). This is done through the type alias
   * defined here [[net.noresttherein.oldsql.schema.Mapping.Component[T] Component]], and global, static refinements
   * from the companion object: [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingAt MappingAt]],
   * [[net.noresttherein.oldsql.schema.Mapping.MappingOf MappingOf]]. For uniformity and interoperability, these
-  * are all defined as structural narrowing of the trait `Mapping` itself rather than separate classes, but all
+  * are all defined as structural narrowing of the trait `Mapping` itself rather than separate classes. However, all
   * concrete implementations should not extend this trait directly, but rather one of the implementation traits:
   * [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] (the ''LUB'' type of all concrete mappings),
   * [[net.noresttherein.oldsql.schema.bases.LazyMapping LazyMapping]] (an optimized variant of the former),
@@ -128,6 +129,18 @@ import slang._
   *
   * Concrete implementing classes should accept a type parameter `O` defining their `Origin` type, so without much
   * loss of generality, a type constructor `M[O] <: MappingAt[O]` can be passed instead of the full mapping type.
+  *
+  * This trait is `Serializable` as it is referenced by [[net.noresttherein.oldsql.schema.SQLReadForm read]] and
+  * [[net.noresttherein.oldsql.schema.SQLWriteForm write]] forms returned by its methods, which may require
+  * serialization. In this use case, it poses no problems, as forms are fully independent. However, every `Mapping`
+  * is required to correctly identify its components in order to provide their corresponding
+  * [[net.noresttherein.oldsql.schema.MappingExtract extracts]], but all implementation use inherited reference identity
+  * as `equality`. As the result, a serialized and deserialized component will no longer be correctly recognized by
+  * the mapping for the table it came from, leading to `NoSuchElementException` being thrown by various methods.
+  * For this reason, instances of this class should not be serialized in contexts where their reference would
+  * be exposed after deserialization. An exception can be made for mappings of globally defined (i.e., reachable by
+  * a path consisting of static identifiers) singleton objects extending
+  * [[net.noresttherein.oldsql.schema.Relation.Table Table]] relation, as they are deserialized to the same instance.
   *
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   * @see [[net.noresttherein.oldsql.schema.bases.BaseMapping]]
@@ -1451,7 +1464,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		class WriteFilter(buff :BuffType) extends WithoutBuff(buff) {
 			override def read[S](mapping: MappingOf[S]) =
-				EmptyForm(throw new UnsupportedOperationException(s"$this: read for $mapping"))
+				SQLReadForm.unsupported(s"$this: read for $mapping")
 		}
 
 
@@ -1487,9 +1500,9 @@ object Mapping extends LowPriorityMappingImplicits {
 		private[this] val columnArray = columns.toArray
 		override val readColumns: Int = (0 /: columns)(_ + read(_).readColumns)
 
-		override def opt(position: Int)(res: ResultSet): Option[S] = {
+		override def opt(res: ResultSet, position: Int): Option[S] = {
 			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
-			val columnValues = columnArray.map { c => i += 1; read(c).opt(i - 1)(res) }
+			val columnValues = columnArray.map { c => i += 1; read(c).opt(res, i - 1) }
 			val pieces = ComponentValues(mapping)(ArraySeq.unsafeWrapArray(columnValues))(columns.indexOf)
 			mapping.optionally(pieces)
 		}
@@ -1583,9 +1596,9 @@ object Mapping extends LowPriorityMappingImplicits {
 		private[this] val forms = fasterColumns.map(op.form(_))
 		private[this] val extras = fasterColumns.map(op.extra.test(_).orNull)
 
-		override def set(position :Int)(statement :PreparedStatement, subject :S) :Unit =
+		override def set(statement :PreparedStatement, position :Int, subject :S) :Unit =
 			if (subject == null)
-				setNull(position)(statement)
+				setNull(statement, position)
 			else {
 //				val subject = value.asInstanceOf[mapping.Subject]
 				val values = mapping.writtenValues(op, subject)
@@ -1598,18 +1611,18 @@ object Mapping extends LowPriorityMappingImplicits {
 						case null => values get column
 						case buff => Some(buff.value)
 					}
-					form.setOpt(offset)(statement, value)
+					form.setOpt(statement, offset, value)
 					offset += form.writtenColumns
 					i += 1
 				}
 			}
 
-		override def setNull(position :Int)(statement :PreparedStatement) :Unit = {
+		override def setNull(statement :PreparedStatement, position :Int) :Unit = {
 			var i = 0; val len = forms.length
 			var offset = position
 			while (i < len) {
 				val form = forms(i)
-				form.setNull(offset)(statement)
+				form.setNull(statement, offset)
 				offset += form.writtenColumns
 				i += 1
 			}
@@ -1655,7 +1668,6 @@ object Mapping extends LowPriorityMappingImplicits {
 				res append ')'
 			res.toString
 		}
-
 
 		override def literal(value: S): String = literal(value, false)
 		override def inlineLiteral(value: S): String = literal(value, true)

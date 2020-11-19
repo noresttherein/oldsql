@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.collection.Chain.ChainApplication
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Relation, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -28,18 +28,18 @@ import net.noresttherein.oldsql.slang._
   * is the wildcard `RowProduct`, this will be a `TopSelectSQL` instance - a select independent of any external
   * tables or parameters, in which all formulas (''select'' clause, ''where'' clause, etc) can be evaluated
   * based on the values of the tables in its ''from'' clause. If `F` is not `RowProduct`, but contains tables, this is
-  * a subselect nested inside a select for source `F` - in its header, ''from'' or ''where'' clause. The source for
+  * a subselect nested inside a select for source `F` - in its ''select'', ''from'' or ''where'' clause. The source for
   * this expression, given by the member type `From`, is always an extension of `F`. Subclasses should extend the trait
   * for one of the above cases: [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL TopSelectSQL]] or
   * [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]], instead of being derived directly
   * from this trait.
   *
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
-  * @tparam V the mapped header type representing a single row.
+  * @tparam V the combined type of the whole ''select'' clause, to which every returned row maps.
   */
 sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 
-	override def readForm :SQLReadForm[Rows[V]] = header.readForm.map(Rows(_))
+	override def readForm :SQLReadForm[Rows[V]] = selectClause.readForm.nullMap(Rows(_))
 
 	/** The from clause of this select. */
 	type From <: SubselectOf[F]
@@ -47,16 +47,24 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 	trait SelectedColumn[X] {
 		def name :String
 		def expression :ColumnSQL[From, LocalScope, X]
+		override def toString :String = expression.toString + " as " + name
 	}
 
-	val header :SQLExpression[From, LocalScope, V]
+	val selectClause :SQLExpression[From, LocalScope, V]
 
-	def headerColumns :Seq[SelectedColumn[_]]
+	def columns :Seq[SelectedColumn[_]]
 
 	val from :From
 
 	//caution: in group by queries this returns the elements of the group by clause, not the actual from clause
-	def tables :Seq[RelationSQL.AnyIn[from.Generalized]] = from.tableStack
+	def relations :Seq[RelationSQL.AnyIn[from.Generalized]] = from.tableStack.reverse
+
+//	def tables :Seq[Relation.*] = from match {
+//		case GroupByClause(grouped) =>
+//			grouped.tableStack.reverse.map[Relation.*](relationOf).toList
+//		case _ => from.tableStack.reverse.map(t => t.relation).toList
+//	}
+	def tables :Seq[Relation.*] = ???
 
 	def isSubselect :Boolean = from.isSubselect
 
@@ -101,7 +109,7 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 
 	protected override def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] = {
 		//we ignore filters in the implicit portion as, if this is a subselect, they would be collected by the enclosing expression.
-		val headerItems = reverseCollect(header)(fun, super.reverseCollect(fun, acc))
+		val headerItems = reverseCollect(selectClause)(fun, super.reverseCollect(fun, acc))
 		reverseCollect(from.filter)(fun, from match {
 			case GroupByClause(ungrouped) => reverseCollect(ungrouped.filter)(fun, headerItems)
 			case _ => headerItems
@@ -111,13 +119,13 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 
 	override def isomorphic(expression: SQLExpression.*): Boolean = expression match {
 		case s :SelectSQL[_, _] =>
-			(s eq this) || (s canEqual this) && (s.header isomorphic header) && (s.from == from)
+			(s eq this) || (s canEqual this) && (s.selectClause isomorphic selectClause) && (s.from == from)
 		case _ => false
 	}
 
 	private[oldsql] override def equivalent(expression: SQLExpression.*): Boolean = expression match {
 		case s :SelectSQL[_, _] =>
-			(s eq this) || (s canEqual this) && (s.header equivalent header) && (s.from == from)
+			(s eq this) || (s canEqual this) && (s.selectClause equivalent selectClause) && (s.from == from)
 		case _ => false
 	}
 
@@ -126,16 +134,16 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
 	override def equals(that :Any) :Boolean = that match {
-		case s :SelectSQL[_, _] => (s eq this) || (s canEqual this) && s.header == header && s.from == from
+		case s :SelectSQL[_, _] => (s eq this) || (s canEqual this) && s.selectClause == selectClause && s.from == from
 		case _ => false
 	}
 
-	override def hashCode :Int = header.hashCode * 31 + from.hashCode
+	override def hashCode :Int = selectClause.hashCode * 31 + from.hashCode
 
 
 	override def toString :String =
-		if (isDistinct) s"SELECT DISTINCT $header FROM $from"
-		else  s"SELECT $header FROM $from"
+		if (isDistinct) s"SELECT DISTINCT $selectClause FROM $from"
+		else  s"SELECT $selectClause FROM $from"
 
 }
 
@@ -148,12 +156,13 @@ object SelectSQL {
 	//todo: parameterized selects
 	//todo: mapping indexed headers
 
-	def apply[F <: GroundFrom, M[A] <: BaseMapping[V, A], V](from :F, header :ComponentSQL[F, M]) :SelectMapping[F, M, V] =
+	def apply[F <: GroundFrom, M[A] <: BaseMapping[V, A], V]
+	         (from :F, header :ComponentSQL[F, M]) :SelectMapping[F, M, V] =
 		new SelectComponent[F, M, V](from, header, false)
 
 	def apply[F <: GroundFrom, M[A] <: ColumnMapping[V, A], V]
-	         (from :F, column :ColumnComponentSQL[F, M, V]) :SelectColumnMapping[F, M, V] =
-		new SelectComponentColumn[F, M, V](from, column, false)
+	         (from :F, header :ColumnComponentSQL[F, M, V]) :SelectColumnMapping[F, M, V] =
+		new SelectComponentColumn[F, M, V](from, header, false)
 
 	def apply[F <: GroundFrom, V](from :F, header :TupleSQL[F, LocalScope, V]) :TopSelectSQL[V] =
 		new ArbitraryTopSelect[F, V](from, header.anchor(from), false)
@@ -219,9 +228,9 @@ object SelectSQL {
 
 
 	trait SelectColumn[-F <: RowProduct, V] extends ColumnQuery[F, V] with SelectSQL[F, V] {
-		override def readForm :ColumnReadForm[Rows[V]] = header.readForm.map(Rows(_))
+		override def readForm :ColumnReadForm[Rows[V]] = selectClause.readForm.nullMap(Rows(_))
 
-		override val header :ColumnSQL[From, LocalScope, V]
+		override val selectClause :ColumnSQL[From, LocalScope, V]
 
 		override def distinct :SelectColumn[F, V]
 
@@ -250,9 +259,9 @@ object SelectSQL {
 
 
 
-	/** Base trait for SQL select expressions whose header depends solely on the explicit FROM clause of the select,
-	  * i.e. it is not dependent on any outside rows. Such an expression is a valid independent select statement
-	  * in opposition to subselect expressions.
+	/** Base trait for SQL select expressions where the ''select'' clause depends solely on the explicit ''from'' clause
+	  * of the ''select'', i.e. it is not dependent on any outside rows. Such an expression is a valid independent
+	  * select statement in opposition to subselect expressions.
 	  */
 	trait TopSelectSQL[V] extends SelectSQL[RowProduct, V] {
 		override type From <: GroundFrom
@@ -260,7 +269,7 @@ object SelectSQL {
 		override def distinct :TopSelectSQL[V]
 
 		override def map[X](f :V => X) :TopSelectSQL[X] =
-			new ArbitraryTopSelect[From, X](from, header.map(f), isDistinct)
+			new ArbitraryTopSelect[From, X](from, selectClause.map(f), isDistinct)
 
 		override def map[Fun, C <: Chain, X]
 		                (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :TopSelectSQL[X] =
@@ -286,7 +295,7 @@ object SelectSQL {
 		override def distinct :TopSelectColumn[V]
 
 		override def map[X](f :V => X) :TopSelectColumn[X] =
-			new ArbitraryTopSelectColumn[From, X](from, header.map(f), isDistinct)
+			new ArbitraryTopSelectColumn[From, X](from, selectClause.map(f), isDistinct)
 
 		override def map[Fun, C <: Chain, X]
 		                (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
@@ -319,7 +328,7 @@ object SelectSQL {
 		override def distinct :SubselectSQL[F, V]
 
 		override def map[X](f :V => X) :SubselectSQL[F, X] =
-			new ArbitrarySubselect[F, From, X](from, header.map(f), isDistinct)
+			new ArbitrarySubselect[F, From, X](from, selectClause.map(f), isDistinct)
 
 		override def map[Fun, C <: Chain, X]
 		                (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
@@ -347,7 +356,7 @@ object SelectSQL {
 		override def distinct :SubselectColumn[F, V]
 
 		override def map[X](f :V => X) :SubselectColumn[F, X] =
-			new ArbitrarySubselectColumn[F, From, X](from, header.map(f), isDistinct)
+			new ArbitrarySubselectColumn[F, From, X](from, selectClause.map(f), isDistinct)
 
 		override def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
 				:SubselectColumn[F, X] =
@@ -371,7 +380,7 @@ object SelectSQL {
 
 
 
-	/** A `SelectSQL` interface exposing the mapping type `H` used as the header. */
+	/** A `SelectSQL` interface exposing the mapping type `H` used for the ''select'' clause. */
 	trait SelectAs[-F <: RowProduct, H[A] <: MappingAt[A]]
 		extends MappingQuery[F, H] with SelectSQL[F, H[()]#Subject]
 	{
@@ -483,31 +492,32 @@ object SelectSQL {
 
 	private abstract class BaseSelectComponent[-F <: RowProduct, S <: SubselectOf[F],
 	                                           H[A] <: BaseMapping[V, A], V]
-	                                          (override val from :S, override val header :ComponentSQL[S, H])
+	                                          (override val from :S, override val selectClause :ComponentSQL[S, H])
 		extends SelectSQL[F, V] with SelectAs[F, H]
 	{
 		override type From = S
 
-		protected override def component[O] :HeaderMapping[O] = header.mapping.withOrigin[O]
+		protected override def component[O] :ResultMapping[O] = selectClause.mapping.withOrigin[O]
 
-		override val headerColumns: Seq[SelectedColumn[_]] =
-			header.mapping.selectable.toSeq.map(include(_))
+		override val columns: Seq[SelectedColumn[_]] =
+			selectClause.mapping.selectable.toSeq.map(include(_))
 
-		private def include[X](column :ColumnMapping[X, header.Origin]) :SelectedColumn[X] = new SelectedColumn[X] {
-			override val name :String = column.name
-			override val expression  = header \ column
-		}
+		private def include[X](column :ColumnMapping[X, selectClause.Origin]) :SelectedColumn[X] =
+			new SelectedColumn[X] {
+				override val name :String = column.name
+				override val expression  = selectClause \ column
+			}
 	}
 
 
 
 	private class SelectComponent[F <: GroundFrom, H[A] <: BaseMapping[V, A], V]
-	                             (override val from :F, override val header :ComponentSQL[F, H],
+	                             (override val from :F, override val selectClause :ComponentSQL[F, H],
 	                              override val isDistinct :Boolean)
-		extends BaseSelectComponent[RowProduct, F, H, V](from, header) with SelectMapping[F, H, V]
+		extends BaseSelectComponent[RowProduct, F, H, V](from, selectClause) with SelectMapping[F, H, V]
 	{
 		override def distinct :SelectMapping[F, H, V] =
-			if (isDistinct) this else new SelectComponent(from, header, true)
+			if (isDistinct) this else new SelectComponent(from, selectClause, true)
 	}
 
 
@@ -518,7 +528,7 @@ object SelectSQL {
 		   with SubselectMapping[F, S, H, V]
 	{
 		override def distinct :SubselectMapping[F, S, H, V] =
-			if (isDistinct) this else new SubselectComponent(from, header, true)
+			if (isDistinct) this else new SubselectComponent(from, selectClause, true)
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
@@ -530,18 +540,18 @@ object SelectSQL {
 //					implicit val projection = header.projection
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val subselectTables = stretched.fullSize - base.fullSize
-					val table = header.origin
+					val table = selectClause.origin
 					val replacement =
 						if (table.shift < subselectTables)
 							table.asInstanceOf[RelationSQL[Ext, MappingOf[Any]#TypedProjection, Any, Ext]]
 						else
                             stretched.fullTableStack(table.shift + ev.length)
                                      .asInstanceOf[RelationSQL[Ext, MappingOf[Any]#TypedProjection, Any, Ext]]
-					val component = replacement \[H[Ext], V] header.mapping.withOrigin[Ext]
+					val component = replacement \[H[Ext], V] selectClause.mapping.withOrigin[Ext]
 					new SubselectComponent[E, Ext, H, V](stretched, component, isDistinct)
 
 				case empty :Dual =>
-					val adaptedHeader = header.asInstanceOf[ComponentSQL[Dual, H]]
+					val adaptedHeader = selectClause.asInstanceOf[ComponentSQL[Dual, H]]
 					new SubselectComponent[E, Dual, H, V](empty, adaptedHeader, isDistinct)
 
 				case _ =>
@@ -553,24 +563,24 @@ object SelectSQL {
 
 
 	private class SelectComponentColumn[F <: GroundFrom, H[A] <: ColumnMapping[V, A], V]
-	              (clause :F, override val header :ColumnComponentSQL[F, H, V], override val isDistinct :Boolean)
-		extends SelectComponent[F, H, V](clause, header, isDistinct) with SelectColumnMapping[F, H, V]
+	              (clause :F, override val selectClause :ColumnComponentSQL[F, H, V], override val isDistinct :Boolean)
+		extends SelectComponent[F, H, V](clause, selectClause, isDistinct) with SelectColumnMapping[F, H, V]
 	{
 		override def distinct :SelectColumnMapping[F, H, V] =
-			if (isDistinct) this else new SelectComponentColumn(from, header, true)
+			if (isDistinct) this else new SelectComponentColumn(from, selectClause, true)
 	}
 
 
 
 	private class SubselectComponentColumn
 	              [-F <: RowProduct, S <: SubselectOf[F], H[A] <: ColumnMapping[V, A], V]
-	              (override val from :S, override val header :ColumnComponentSQL[S, H, V],
+	              (override val from :S, override val selectClause :ColumnComponentSQL[S, H, V],
 	               override val isDistinct :Boolean)
-		extends SubselectComponent[F, S, H, V](from, header, isDistinct)
+		extends SubselectComponent[F, S, H, V](from, selectClause, isDistinct)
 		   with SubselectColumnMapping[F, S, H, V]
 	{
 		override def distinct :SubselectColumnMapping[F, S, H, V] =
-			if (isDistinct) this else new SubselectComponentColumn(from, header, true)
+			if (isDistinct) this else new SubselectComponentColumn(from, selectClause, true)
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
@@ -581,18 +591,18 @@ object SelectSQL {
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val subselectTables = stretched.fullSize - base.fullSize
-					val table = header.origin
+					val table = selectClause.origin
 					val replacement =
 						if (table.shift < subselectTables)
 							table.asInstanceOf[RelationSQL[Ext, MappingOf[Any]#TypedProjection, Any, Ext]]
 						else
                             stretched.fullTableStack(table.shift + ev.length)
                                      .asInstanceOf[RelationSQL[Ext, MappingOf[Any]#TypedProjection, Any, Ext]]
-					val component = replacement \ header.mapping.withOrigin[Ext]
+					val component = replacement \ selectClause.mapping.withOrigin[Ext]
 					new SubselectComponentColumn[E, Ext, H, V](stretched, component, isDistinct)
 
 				case empty :Dual =>
-					val adaptedHeader = header.asInstanceOf[ColumnComponentSQL[Dual, H, V]]
+					val adaptedHeader = selectClause.asInstanceOf[ColumnComponentSQL[Dual, H, V]]
 					new SubselectComponentColumn[E, Dual, H, V](empty, adaptedHeader, isDistinct)
 
 				case _ =>
@@ -619,7 +629,7 @@ object SelectSQL {
 
 		override type From = S
 
-		override val header = mapping.expr
+		override val selectClause = mapping.expr
 
 		/** A column in the header of owning select.
 		  * @param column the `ColumnMapping` implementation based on a `ColumnSQL` expression
@@ -632,7 +642,7 @@ object SelectSQL {
 			override def name :String = column.name
 		}
 
-		override val headerColumns :Seq[SelectedColumn[_]] = mapping.columns.map { col => new HeaderColumn(col) }
+		override val columns :Seq[SelectedColumn[_]] = mapping.columns.map { col => new HeaderColumn(col) }
 
 	}
 
@@ -642,24 +652,24 @@ object SelectSQL {
 	                                      M[O] <: SQLMapping[S, LocalScope, V, O], V]
 		extends SelectSQL[F, V]
 	{ this :ArbitrarySelect[F, S, V] =>
-		override type HeaderMapping[O] = M[O]
+		override type ResultMapping[O] = M[O]
 
 		protected val mapping :M[()]
 
-		protected override def component[O] :HeaderMapping[O] =
+		protected override def component[O] :ResultMapping[O] =
 			(this :ArbitrarySelectTemplate[F, S, M, V]).mapping.withOrigin[O]
 	}
 
 
 
 	private class ArbitraryTopSelect[F <: GroundFrom, V]
-	              (override val from :F, override val header :LocalSQL[F, V], override val isDistinct :Boolean)
-		extends ArbitrarySelect[RowProduct, F, V](from, header)
+	              (override val from :F, override val selectClause :LocalSQL[F, V], override val isDistinct :Boolean)
+		extends ArbitrarySelect[RowProduct, F, V](from, selectClause)
 		   with ArbitrarySelectTemplate[RowProduct, F, SQLMapping.Project[F, LocalScope, V]#Expression, V]
 		   with TopSelectSQL[V]
 	{
 		override def distinct :TopSelectSQL[V] =
-			if (isDistinct) this else new ArbitraryTopSelect(from, header, true)
+			if (isDistinct) this else new ArbitraryTopSelect(from, selectClause, true)
 	}
 
 
@@ -671,7 +681,7 @@ object SelectSQL {
 		   with SubselectSQL[F, V]
 	{
 		override def distinct :SubselectSQL[F, V] =
-			if (isDistinct) this else new ArbitrarySubselect(from, header, true)
+			if (isDistinct) this else new ArbitrarySubselect(from, selectClause, true)
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
@@ -682,10 +692,10 @@ object SelectSQL {
 					implicit val extension = ext.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
-					new ArbitrarySubselect[E, Ext, V](stretched, substitute(header), isDistinct)
+					new ArbitrarySubselect[E, Ext, V](stretched, substitute(selectClause), isDistinct)
 
 				case empty :Dual =>
-					new ArbitrarySubselect[E, Dual, V](empty, header.asInstanceOf[LocalSQL[Dual, V]], isDistinct)
+					new ArbitrarySubselect[E, Dual, V](empty, selectClause.asInstanceOf[LocalSQL[Dual, V]], isDistinct)
 
 				case _ =>
 					throw new UnsupportedOperationException(
@@ -708,27 +718,27 @@ object SelectSQL {
 		def this(from :S, expression :ColumnSQL[S, LocalScope, V]) =
 			this(from, ColumnSQLMapping[S, LocalScope, V, ()](expression))
 
-		override val header = mapping.expr
+		override val selectClause = mapping.expr
 	}
 
 
 
 	private class ArbitraryTopSelectColumn[F <: GroundFrom, V]
-	              (override val from :F, override val header :ColumnSQL[F, LocalScope, V], override val isDistinct :Boolean)
-		extends ArbitrarySelectColumn[RowProduct, F, V](from, header) with TopSelectColumn[V]
+	              (override val from :F, override val selectClause :ColumnSQL[F, LocalScope, V], override val isDistinct :Boolean)
+		extends ArbitrarySelectColumn[RowProduct, F, V](from, selectClause) with TopSelectColumn[V]
 	{
 		override def distinct :TopSelectColumn[V] =
-			if (isDistinct) this else new ArbitraryTopSelectColumn(from, header, true)
+			if (isDistinct) this else new ArbitraryTopSelectColumn(from, selectClause, true)
 	}
 
 
 
 	private class ArbitrarySubselectColumn[-F <: RowProduct, S <: SubselectOf[F], V]
-	              (clause :S, override val header :ColumnSQL[S, LocalScope, V], override val isDistinct :Boolean)
-		extends ArbitrarySelectColumn[F, S, V](clause, header) with SubselectColumn[F, V]
+	              (clause :S, override val selectClause :ColumnSQL[S, LocalScope, V], override val isDistinct :Boolean)
+		extends ArbitrarySelectColumn[F, S, V](clause, selectClause) with SubselectColumn[F, V]
 	{
 		override def distinct :SubselectColumn[F, V] =
-			if (isDistinct) this else new ArbitrarySubselectColumn(from, header, true)
+			if (isDistinct) this else new ArbitrarySubselectColumn(from, selectClause, true)
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
@@ -739,10 +749,10 @@ object SelectSQL {
 					implicit val extension = ext.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
-					new ArbitrarySubselectColumn[E, Ext, V](stretched, substitute(header), isDistinct)
+					new ArbitrarySubselectColumn[E, Ext, V](stretched, substitute(selectClause), isDistinct)
 
 				case empty :Dual =>
-					val castHeader = header.asInstanceOf[ColumnSQL[Dual, LocalScope, V]]
+					val castHeader = selectClause.asInstanceOf[ColumnSQL[Dual, LocalScope, V]]
 					new ArbitrarySubselectColumn[E, Dual, V](empty, castHeader, isDistinct)
 			}
 	}
@@ -760,7 +770,7 @@ object SelectSQL {
 		def this(from :S, expression :IndexedSQLExpression[S, LocalScope, V]) =
 			this(from, expression.mapping[()])
 
-		override val header = mapping.expr
+		override val selectClause = mapping.expr
 	}
 
 
@@ -771,7 +781,7 @@ object SelectSQL {
 		   with TopSelectAs[SQLMapping.Project[F, LocalScope, V]#IndexedExpression]
 	{
 		override def distinct :TopSelectAs[SQLMapping.Project[F, LocalScope, V]#IndexedExpression] =
-			if (isDistinct) this else new TopIndexedSelect(from, header, true)
+			if (isDistinct) this else new TopIndexedSelect(from, selectClause, true)
 	}
 
 
@@ -782,7 +792,7 @@ object SelectSQL {
 		   with SubselectAs[F, SQLMapping.Project[S, LocalScope, V]#IndexedExpression]
 	{
 		override def distinct :SubselectAs[F, SQLMapping.Project[S, LocalScope, V]#IndexedExpression] =
-			if (isDistinct) this else new IndexedSubselect(from, header, true)
+			if (isDistinct) this else new IndexedSubselect(from, selectClause, true)
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
@@ -793,11 +803,11 @@ object SelectSQL {
 					implicit val extension = ext.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
-					val indexed = substitute(header).asInstanceOf[IndexedSQLExpression[Ext, LocalScope, V]]
+					val indexed = substitute(selectClause).asInstanceOf[IndexedSQLExpression[Ext, LocalScope, V]]
 					new IndexedSubselect[E, Ext, V](stretched, indexed, isDistinct)
 
 				case empty :Dual =>
-					val cast = header.asInstanceOf[IndexedSQLExpression[Dual, LocalScope, V]]
+					val cast = selectClause.asInstanceOf[IndexedSQLExpression[Dual, LocalScope, V]]
 					new IndexedSubselect[E, Dual, V](empty, cast, isDistinct)
 
 				case _ =>
@@ -818,30 +828,30 @@ object SelectSQL {
 		def this(from :S, expression :IndexedColumn[S, LocalScope, A, V]) =
 			this(from, IndexedColumnSQLMapping[S, LocalScope, A, V, ()](expression))
 
-		override val header = mapping.expr
+		override val selectClause = mapping.expr
 	}
 
 
 
 	private class TopSelectIndexedColumn[F <: GroundFrom, A <: Label, V]
-	              (override val from :F, override val header :IndexedColumn[F, LocalScope, A, V],
+	              (override val from :F, override val selectClause :IndexedColumn[F, LocalScope, A, V],
 	               override val isDistinct :Boolean)
-		extends SelectIndexedColumn[RowProduct, F, A, V](from, header)
+		extends SelectIndexedColumn[RowProduct, F, A, V](from, selectClause)
 		   with TopSelectColumnAs[IndexedColumnSQLMapping.Column[F, LocalScope, A, V]#Projection, V]
 	{
 		override def distinct :TopSelectColumnAs[IndexedColumnSQLMapping.Column[F, LocalScope, A, V]#Projection, V] =
-			if (isDistinct) this else new TopSelectIndexedColumn(from, header, true)
+			if (isDistinct) this else new TopSelectIndexedColumn(from, selectClause, true)
 	}
 
 
 
 	private class SubselectIndexedColumn[-F <: RowProduct, S <: SubselectOf[F], A <: Label, V]
-	              (clause :S, override val header :IndexedColumn[S, LocalScope, A, V], override val isDistinct :Boolean)
-		extends SelectIndexedColumn[F, S, A, V](clause, header) with SubselectColumn[F, V]
+	              (clause :S, override val selectClause :IndexedColumn[S, LocalScope, A, V], override val isDistinct :Boolean)
+		extends SelectIndexedColumn[F, S, A, V](clause, selectClause) with SubselectColumn[F, V]
 		   with SubselectColumnAs[F, IndexedColumnSQLMapping.Column[S, LocalScope, A, V]#Projection, V]
 	{
 		override def distinct :SubselectColumnAs[F, IndexedColumnSQLMapping.Column[S, LocalScope, A, V]#Projection, V] =
-			if (isDistinct) this else new SubselectIndexedColumn(from, header, true)
+			if (isDistinct) this else new SubselectIndexedColumn(from, selectClause, true)
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
@@ -852,11 +862,11 @@ object SelectSQL {
 					implicit val extension = ext.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
-					val shift = header.alias @: substitute(header.column) :IndexedColumn[Ext, LocalScope, A, V]
+					val shift = selectClause.alias @: substitute(selectClause.column) :IndexedColumn[Ext, LocalScope, A, V]
 					new SubselectIndexedColumn[E, Ext, A, V](stretched, shift, isDistinct)
 
 				case empty :Dual =>
-					val castHeader = header.asInstanceOf[IndexedColumn[Dual, LocalScope, A, V]]
+					val castHeader = selectClause.asInstanceOf[IndexedColumn[Dual, LocalScope, A, V]]
 					new SubselectIndexedColumn[E, Dual, A, V](empty, castHeader, isDistinct)
 			}
 	}

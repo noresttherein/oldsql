@@ -22,13 +22,13 @@ import extensions._
 
 
 
-//trait BaseSQLForm {
+//trait SuperSQLForm {
 ////	def columnCount :Int
 //}
 //
 //
-//trait BaseCompositeSQLForm extends BaseSQLForm {
-//	def forms :Seq[BaseSQLForm]
+//trait BaseCompositeSQLForm extends SuperSQLForm {
+//	def forms :Seq[SuperSQLForm]
 ////	def columnCount = (0 /: forms)(_ + _.columnCount)
 //}
 
@@ -76,7 +76,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] {
 
 
 
-trait BaseAtomicForm /*extends BaseSQLForm*/ {
+trait BaseAtomicForm /*extends SuperSQLForm*/ {
 //	def columnCount = 1
 	def sqlType :Int
 }
