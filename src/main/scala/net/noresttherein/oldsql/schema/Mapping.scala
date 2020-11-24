@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema
 
-import java.sql.{PreparedStatement, ResultSet}
+import java.sql.{CallableStatement, PreparedStatement, ResultSet}
 
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.ArraySeq
@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
-import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals
+import net.noresttherein.oldsql.schema.SQLWriteForm.NullableWriteFormLiterals
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
@@ -747,6 +747,7 @@ trait Mapping {
 	  */
 	def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
+	//todo: +, -
 //todo: think of a better name for this method (customize clashes with the declaration in StaticMapping)
 //	def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
 //		op match {
@@ -950,7 +951,7 @@ trait Mapping {
 
 
 
-	def mappingName :String  = this.unqualifiedClassName
+	def mappingName :String  = this.localClassName
 
 	def columnString :String = columns.mkString(toString + "{", ", ", "}")
 
@@ -1497,20 +1498,29 @@ object Mapping extends LowPriorityMappingImplicits {
 	                       private val read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S]
 	{
-		private[this] val columnArray = columns.toArray
-		override val readColumns: Int = (0 /: columns)(_ + read(_).readColumns)
+		private[this] val forms = columns.view.map(read).to(Array)
+
+		override val readColumns: Int = (0 /: forms)(_ + _.readColumns)
 
 		override def opt(res: ResultSet, position: Int): Option[S] = {
 			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
-			val columnValues = columnArray.map { c => i += 1; read(c).opt(res, i - 1) }
+			val columnValues = forms.map { f => i += 1; f.opt(res, i - 1) }
 			val pieces = ComponentValues(mapping)(ArraySeq.unsafeWrapArray(columnValues))(columns.indexOf)
 			mapping.optionally(pieces)
 		}
 
 		override def nullValue: S = mapping.nullValue.value
-
 		override def nulls :NullValue[S] = mapping.nullValue
 
+
+		override def register(call :CallableStatement, position :Int) :Unit = {
+			var i = 0; var c = 0; val end = forms.length
+			while (c < end) {
+				val form = forms(i)
+				form.register(call, i)
+				i += form.readColumns; c += 1
+			}
+		}
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true

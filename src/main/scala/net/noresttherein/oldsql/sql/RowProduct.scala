@@ -1200,7 +1200,7 @@ object RowProduct {
 		//these are here so that in GlobalClauseMatrix[U, U] with RowProductTemplate[U, F] they are both public
 		// and returning F. This scenario occurs in U As A, where F =:= U As A
 		protected def having(condition :LocalBoolean[Generalized]) :F =
-			throw new UnsupportedOperationException(s"($this :${this.unqualifiedClassName}).having")
+			throw new UnsupportedOperationException(s"($this :${this.localClassName}).having")
 
 		protected def having(condition :JoinedMappings[F] => LocalBoolean[Generalized]) :F =
 			having(condition(this.mappings))

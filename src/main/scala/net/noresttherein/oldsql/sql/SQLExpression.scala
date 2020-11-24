@@ -376,7 +376,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 	  */
 	def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectSQL[V] =
 		throw new UnsupportedOperationException(
-			s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
 
 	/** Creates a subselect expression selecting this expression from the given `from` clause.
@@ -390,7 +390,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 	  */
 	def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectSQL[B, V] =
 		throw new UnsupportedOperationException(
-			s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
 
 
@@ -841,7 +841,7 @@ object SQLExpression  {
 		def lower(value :Y) :X = inverse(value) match {
 			case Some(x) => x
 			case _ => throw new IllegalArgumentException(
-				s"Cannot convert $value :${value.unqualifiedClassName} back with $this."
+				s"Cannot convert $value :${value.localClassName} back with $this."
 			)
 		}
 
@@ -997,7 +997,7 @@ object SQLExpression  {
 			throw new IllegalArgumentException(s"Can't map expression $e :${e.getClass.getName} using $this - " +
 			                                   s"unexpected subclass of ${implicitly[ClassTag[E]].runtimeClass.getName}")
 
-		override def toString :String = this.unqualifiedClassName
+		override def toString :String = this.localClassName
 	}
 
 

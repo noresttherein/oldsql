@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema
 
-import java.sql.JDBCType
+import java.sql.{JDBCType, PreparedStatement, ResultSet}
 
 import scala.annotation.implicitNotFound
 import scala.reflect.ClassTag
@@ -9,18 +9,50 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.ColumnReadForm.{DirectColumnReadForm, FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
-import net.noresttherein.oldsql.schema.SQLForm.{FlatMappedSQLForm, JoinedForms, LazyForm, MappedSQLForm, NullableForm, NullValue, ReifiedSQLForm}
+import net.noresttherein.oldsql.schema.SQLForm.{FlatMappedSQLForm, JoinedForms, LazyForm, MappedSQLForm, NullValue, ReifiedSQLForm}
 import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.schema.ColumnWriteForm.{DirectColumnWriteForm, LazyColumnWriteForm}
-import net.noresttherein.oldsql.schema.SQLReadForm.ProxyReadForm
-import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
+import net.noresttherein.oldsql.schema.SQLReadForm.{NullableReadForm, ProxyReadForm, ReadFormNullValue}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, NullableWriteForm, ProxyWriteForm, WriteFormNullGuard}
+import net.noresttherein.oldsql.slang
+
+//here be implicits
+import slang._
 
 
 
 
 
 
-
+/** An [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] responsible for reading and writing a single column
+  * from a `ResultSet`/to a `PreparedStatement`. All [[net.noresttherein.oldsql.schema.ColumnMapping columns]]
+  * of a mapping must have a `ColumnForm` for the mapped type. Implementations exist for all standard JDBC types,
+  * with default implicit (and non-implicit for alternatives definitions) values grouped in
+  * [[net.noresttherein.oldsql.schema.forms.SQLForms SQLForms]].
+  *
+  * As all [[net.noresttherein.oldsql.schema.SQLReadForm read forms]], `ColumnForm` relies on
+  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue NullValue]] type class which defines how null columns should
+  * be represented as a particular scala type. While the default (and recommended in general) value for many factory
+  * methods is [[net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull NullValue.NotNull]], which simply throws
+  * a `NullPointerException` with debugging information, enforcing that all types other than `Option` must map
+  * to not-null columns, this decision should be consciously made by each application and, for this reason,
+  * with few exception, no implicit values of the type class exist, but must be introduced into lexical scope
+  * (or implicit search scope for application classes). Logical implicit defaults for importing exist in
+  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue.Defaults NullValue.Defaults]]. If an implicit `NullValue`
+  * for a type exists, implicit form definitions will use it over `NotNull`.
+  *
+  * While the [[net.noresttherein.oldsql.schema.ColumnForm$ companion object]] contains several base classes/traits
+  * which can be useful when implementing new forms (and companions to super types of `ColumnForm` include more),
+  * the simplest way of introducing a form for a new type, is either
+  * [[net.noresttherein.oldsql.schema.ColumnForm.jdbc jdbc]] factory method - for types directly supported
+  * by the JDBC driver - or to map an existing form. The latter will be most common for application classes
+  * and can be done either using the methods defined in this class, or those in the companion object, using
+  * an implicit form as the base:
+  * {{{
+  *     case class URL(url :String)
+  *     implicit val URLForm = ColumnForm.map(URL.apply)(_.url)
+  * }}}
+  */
 @implicitNotFound("I do not know how to map type ${T} into a database column: missing implicit ColumnForm[${T}].")
 trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteForm[T] { outer =>
 
@@ -90,7 +122,21 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 
 object ColumnForm {
 
-	@inline def apply[X :ColumnForm] :ColumnForm[X] = implicitly[ColumnForm[X]]
+	/** Summons an implicitly available instance of `ColumnForm[T]`. */
+	@inline def apply[T :ColumnForm] :ColumnForm[T] = implicitly[ColumnForm[T]]
+
+
+	/** Factory method for column forms of classes supported directly by the JDBC driver.
+	  * The form will use [[java.sql.ResultSet.getObject getObject]]/[[java.sql.PreparedStatement.setObject setObject]]
+	  * to read and write the value, respectively, providing the class from the implicit `ClassTag[T]` as the argument.
+	  * The `sqlType` argument is currently used only in [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]]
+	  * method and in most cases can be omitted.
+	  */
+	def jdbc[T :NullValue :ClassTag](sqlType :JDBCType) :ColumnForm[T] =
+		new JDBCObjectForm[T](sqlType)
+
+	/** Equivalent to [[net.noresttherein.oldsql.schema.ColumnForm.jdbc(sqlType:JDBCType) jdbc]]`(`[[java.sql.JDBCType.JAVA_OBJECT JDBCType.JAVA_OBJECT]]`)`. */
+	def jdbc[T :NullValue :ClassTag] :ColumnForm[T] = new JDBCObjectForm[T]
 
 
 	/** Creates a `ColumnForm` delegating all calls to the implicitly provided read and write forms. */
@@ -260,7 +306,7 @@ object ColumnForm {
 	  * Implements also the null literal methods to return "null".
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue]]
 	  */
-	trait NullableColumnForm[T >: Null] extends NullableForm[T] with ColumnForm[T] {
+	trait NullableColumnForm[T >: Null] extends NullableReadForm[T] with NullableWriteForm[T] with ColumnForm[T] {
 		override def nullLiteral :String = "null"
 		override def inlineNullLiteral :String = "null"
 	}
@@ -271,47 +317,100 @@ object ColumnForm {
 
 
 
-	/** A convenience base class for `ColumnForm` implementations using an implicit `NullValue[T]` and the provided
-	  * JDBC code.
+	/** A convenience base class for `ColumnForm` implementations using an implicit
+	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue NullValue]] for their
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue null value]] and the provided JDBC code.
+	  * @see [[net.noresttherein.oldsql.schema.ColumnReadForm.DirectColumnReadForm]]
+	  * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm.DirectColumnWriteForm]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.NonLiteralWriteForm]]
 	  */
 	abstract class AbstractColumnForm[T](override val sqlType :JDBCType)(implicit override val nulls :NullValue[T])
-		extends ColumnForm[T]
-	{
-		override def nullValue :T = nulls.value
-	}
+		extends ColumnForm[T] with ReadFormNullValue[T]
 
 
-
-	/** A convenience base class for `ColumnForm` implementations using an implicit `NullValue[T]` and the provided
-	  * JDBC code. The only difference from `AbstractColumnForm[T]` lies in the `toString` implementation:
-	  * this class uses the unqualified class name of type `T` rather than the form class name.
+	/** A convenience base class for `ColumnForm` implementations using implicit
+	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue NullValue]] for their
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue null value]] and having a predefined name.
+	  * Only the latter differentiates it from
+	  * [[net.noresttherein.oldsql.schema.ColumnForm.AbstractColumnForm AbstractColumnForm]], which uses
+	  * inner class name in its `toString` method instead.
+	  * @see [[net.noresttherein.oldsql.schema.ColumnReadForm.DirectColumnReadForm]]
+	  * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm.DirectColumnWriteForm]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.NonLiteralWriteForm]]
 	  */
-	abstract class ReifiedColumnForm[T](override val sqlType :JDBCType)
-	                                   (implicit nulls :NullValue[T], clazz :ClassTag[T])
-		extends ReifiedSQLForm[T] with ColumnForm[T] with DirectColumnWriteForm[T]
+	abstract class NamedColumnForm[T](override val toString :String, override val sqlType :JDBCType)
+	                                 (implicit override val nulls :NullValue[T])
+		extends ColumnForm[T] with ReadFormNullValue[T]
 
-
-
-	/** A base class for `ColumnForm` implementations for standard JDBC types. The only difference from
-	  * `AbstractColumnForm[T]` lies in the `toString` implementation: this class uses the name of the underlying
-	  * SQL type rather than unqualified form class name.
+	/** A convenience base class for `ColumnForm` implementations using an implicit
+	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue NullValue]] for their
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue null value]] and the provided JDBC code.
+	  * The only difference from `AbstractColumnForm[T]` lies in the `toString` implementation:
+	  * this class uses the local class name of type `T` rather than the form class name.
+	  * @see [[net.noresttherein.oldsql.schema.ColumnReadForm.DirectColumnReadForm]]
+	  * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm.DirectColumnWriteForm]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.NonLiteralWriteForm]]
 	  */
-	abstract class JDBCForm[T](val sqlType :JDBCType)(implicit override val nulls :NullValue[T])
-		extends ColumnForm[T] with DirectColumnReadForm[T] with DirectColumnWriteForm[T] //with NullSafeColumnForm[T]
+	abstract class ReifiedColumnForm[T :NullValue :ClassTag](override val sqlType :JDBCType)
+		extends ReifiedSQLForm[T] with ColumnForm[T] with ReadFormNullValue[T]
+
+
+
+	/** A base class for `ColumnForm` implementations for standard JDBC types.
+	  * It uses the provided `JDBCType` as its `toString` implementation and, in addition to
+	  * other base types, implements [[net.noresttherein.oldsql.schema.ColumnForm.JDBCForm.literal literal]]
+	  * as `String.valueOf(value)`, which is suitable for most, but not all, types which actually have a literal
+	  * representation in SQL.
+	  * @see [[net.noresttherein.oldsql.schema.ColumnForm.AbstractColumnForm]]
+	  * @see [[net.noresttherein.oldsql.schema.ColumnForm.NamedColumnForm]]
+	  * @see [[net.noresttherein.oldsql.schema.ColumnForm.ReifiedColumnForm]]
+	  */
+	abstract class JDBCForm[T](override val sqlType :JDBCType)(implicit override val nulls :NullValue[T])
+		extends ColumnForm[T] with ReadFormNullValue[T] with DirectColumnReadForm[T] with DirectColumnWriteForm[T]
 	{
-		override def nullValue :T = nulls.value
+		override def literal(value :T) :String = String.valueOf(value)
 
 		override def toString :String = sqlType.toString
 	}
 
 
 
-
-	abstract class NullableJDBCForm[T >: Null](sqlType :JDBCType)
-		extends JDBCForm[T](sqlType)(NullValue.Null) with NullableColumnForm[T]
+	/** A `ColumnForm` for classes supported directly by JDBC drivers.
+	  * The form will use [[java.sql.ResultSet.getObject getObject]]/[[java.sql.PreparedStatement.setObject setObject]]
+	  * to read and write the value, respectively, providing the class from the implicit `ClassTag[T]` as the argument.
+	  * The `sqlType` argument is currently used only in [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]]
+	  * method and in most cases can be omitted.
+	  */
+	class JDBCObjectForm[T](private val cls :Class[T], override val sqlType :JDBCType = JDBCType.JAVA_OBJECT)
+	                       (implicit nulls :NullValue[T])
+		extends JDBCForm[T](sqlType)
 	{
-		override val nulls :NullValue[T] = NullValue.Null
+		def this(sqlType :JDBCType)(implicit nulls :NullValue[T], tag :ClassTag[T]) =
+			this(tag.runtimeClass.asInstanceOf[Class[T]], sqlType)
+
+		def this()(implicit nulls :NullValue[T], tag :ClassTag[T]) =
+			this(tag.runtimeClass.asInstanceOf[Class[T]])
+
+		override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
+			statement.setObject(position, value, sqlType)
+
+		protected override def read(res :ResultSet, position :Int) :T =
+			res.getObject(position, cls)
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case form :JDBCObjectForm[_] if form canEqual this => cls == form.cls && sqlType == form.sqlType
+			case _ => false
+		}
+
+		override def hashCode :Int = cls.hashCode * 31 + sqlType.hashCode
+
+		override val toString :String = innerNameOf(cls)
 	}
+
 
 
 

@@ -23,7 +23,7 @@ import net.noresttherein.oldsql.schema.SQLForm
   * in this object and others.
   */
 trait ScalaForms extends ScalaReadForms with ScalaWriteForms {
-	//consider: accepting implicit NullValue for null handling
+	//todo: accepting implicit NullValue for null handling (in Scala 3)
 	@inline private[this] final def f[T](implicit form :SQLForm[T]) = form
 
 

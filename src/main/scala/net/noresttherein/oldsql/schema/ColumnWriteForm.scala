@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.schema
 
-import java.sql.{JDBCType, PreparedStatement, Types}
+import java.sql.{JDBCType, PreparedStatement}
 
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstSQLWriteForm, CustomNullSQLWriteForm, ErrorSQLWriteForm, EvalOrNullSQLWriteForm, EvalSQLWriteForm, FlatMappedWriteForm, LazyWriteForm, MappedWriteForm, NonLiteralWriteForm, NullSQLWriteForm, NullValueSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstSQLWriteForm, CustomNullSQLWriteForm, ErrorSQLWriteForm, EvalSQLWriteForm, FlatMappedWriteForm, LazyWriteForm, MappedWriteForm, NonLiteralWriteForm, NullSQLWriteForm, NullValueSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperColumnForm}
 import net.noresttherein.oldsql.schema.forms.SQLForms.SuperAdapterColumnForm
 
@@ -40,9 +40,8 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with SuperColumnForm { outer =
 	override def toOpt :ColumnWriteForm[Option[T]] = SQLForms.OptionColumnWriteForm(this)
 
 	override def nullSafe :ColumnWriteForm[T] =
-		new ProxyWriteForm[T] with WriteFormNullGuard[T] with ColumnWriteForm[T] {
+		new ProxyWriteForm[T] with WriteFormNullGuard[T] with ColumnWriteForm[T] with SuperAdapterColumnForm {
 			override def form = outer
-			override val sqlType = outer.sqlType
 			override def nullSafe :ColumnWriteForm[T] = this
 		}
 
@@ -262,10 +261,9 @@ object ColumnWriteForm {
 	  * an `SQLWriteForm` for the whole entity.
 	  */
 	def map[S :ColumnWriteForm, T](name :String)(map :T => S) :ColumnWriteForm[T] =
-		new MappedWriteForm[S, T] with ColumnWriteForm[T] {
-			override val source = ColumnWriteForm[S]
+		new MappedWriteForm[S, T] with ColumnWriteForm[T] with SuperAdapterColumnForm {
+			override val form = ColumnWriteForm[S]
 			override val unmap = map
-			override def sqlType = source.sqlType
 			override val toString = if (name != null) name else super[MappedWriteForm].toString
 		}
 
@@ -283,10 +281,9 @@ object ColumnWriteForm {
 	  * [[net.noresttherein.oldsql.schema.ColumnWriteForm.set set]].
 	  */
 	def flatMap[S :ColumnWriteForm, T](name :String)(map :T => Option[S]) :ColumnWriteForm[T] =
-		new FlatMappedWriteForm[S, T] with ColumnWriteForm[T] {
-			override val source = ColumnWriteForm[S]
+		new FlatMappedWriteForm[S, T] with ColumnWriteForm[T] with SuperAdapterColumnForm {
+			override val form = ColumnWriteForm[S]
 			override val unmap = map
-			override def sqlType: JDBCType = source.sqlType
 			override val toString = if (name != null) name else super[FlatMappedWriteForm].toString
 		}
 
@@ -313,18 +310,27 @@ object ColumnWriteForm {
 
 
 	/** Base trait for column forms which do not rely on other forms in implementations, but
-	  * set parameters directly on the `PreparedStatement`. Implements null-specific and literal methods.
-	  * The latter assume that `T`'s `toString` will create a valid SQL literal.
+	  * set parameters directly on the `PreparedStatement`. Returns "null" as the `null` literal from all
+	  * null-specific literal methods and delegates all non-null literal methods to
+	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.literal(value:T) literal]]`(value)`
+	  * (essentially equating literals and inline literals).
 	  */
 	trait DirectColumnWriteForm[-T] extends ColumnWriteForm[T] {
 		override def setNull(statement :PreparedStatement, position :Int) :Unit =
 			statement.setNull(position, sqlType.getVendorTypeNumber)
 
-		override def literal(value: T): String = if (value == null) "null" else value.toString
-		override def nullLiteral: String = "null"
-
+		override def literal(value :T, inline :Boolean) :String = literal(value)
 		override def inlineLiteral(value: T): String = literal(value)
+
+		override def nullLiteral(inline :Boolean) :String = nullLiteral
+		override def nullLiteral: String = "null"
 		override def inlineNullLiteral: String = nullLiteral
+	}
+
+
+	trait NonLiteralColumnWriteForm[-T] extends NonLiteralWriteForm[T] with ColumnWriteForm[T] {
+		override def nullLiteral :String = "null"
+		override def inlineNullLiteral :String = nullLiteral
 	}
 
 

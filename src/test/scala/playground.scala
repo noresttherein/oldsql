@@ -1,10 +1,18 @@
+import java.sql.JDBCType
+import java.time.{Instant, LocalDate, LocalDateTime, OffsetDateTime, OffsetTime, ZonedDateTime}
+
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnReadForm, Relation, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
+import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, Subselect}
 import net.noresttherein.oldsql.sql.RowProduct.As
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
+import net.noresttherein.oldsql.slang
+
+//implicits
+import slang._
 
 
 
@@ -15,10 +23,15 @@ import net.noresttherein.oldsql.sql.UnboundParam.FromParam
   * @author Marcin Mościcki
   */
 object playground extends App {
+	type T = JDBCType.LONGVARCHAR.type
+	println(SQLForms.NotNullZonedDateTime)
+	println(ZonedDateTime.now)
+
+	println(SQLForm[Instant].literal(Instant.now))
 //	implicitly[SQLReadForm[Option[Int]]](ColumnForms.OptionColumnForm)
-	println(scala.reflect.runtime.universe.reify (
-		implicitly[ColumnForm[Option[Int]]]
-	).tree)
+//	println(scala.reflect.runtime.universe.reify (
+//		implicitly[SQLReadForm[Option[Int]]]
+//	).tree)
 
 /*
 	class A[O] extends FormMapping[Int, O]

@@ -11,9 +11,13 @@ package net.noresttherein.oldsql.morsels.witness
 class Maybe[+T] private[witness] (val opt :Option[T])
 
 
+
 sealed abstract class MaybeNoImplicit {
-	implicit val maybeNo :Maybe[Nothing] = new Maybe(None)
+	private[this] val no :Maybe[Nothing] = new Maybe(None)
+
+	implicit def maybeNo[T] :Maybe[T] = no
 }
+
 
 /** Provides optional implicit values if they are available wrapped as `Maybe[T]`. */
 object Maybe extends MaybeNoImplicit {

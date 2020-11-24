@@ -555,7 +555,7 @@ object SelectSQL {
 					new SubselectComponent[E, Dual, H, V](empty, adaptedHeader, isDistinct)
 
 				case _ =>
-					throw new UnsupportedOperationException(s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base.")
+					throw new UnsupportedOperationException(s"Cannot rebase clause $from :${from.localClassName} onto $base.")
 			}
 
 	}
@@ -607,7 +607,7 @@ object SelectSQL {
 
 				case _ =>
 					throw new UnsupportedOperationException(
-						s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base."
+						s"Cannot rebase clause $from :${from.localClassName} onto $base."
 					)
 			}
 	}
@@ -699,7 +699,7 @@ object SelectSQL {
 
 				case _ =>
 					throw new UnsupportedOperationException(
-						s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base."
+						s"Cannot rebase clause $from :${from.localClassName} onto $base."
 					)
 			}
 	}
@@ -812,7 +812,7 @@ object SelectSQL {
 
 				case _ =>
 					throw new UnsupportedOperationException(
-						s"Cannot rebase clause $from :${from.unqualifiedClassName} onto $base."
+						s"Cannot rebase clause $from :${from.localClassName} onto $base."
 					)
 			}
 	}

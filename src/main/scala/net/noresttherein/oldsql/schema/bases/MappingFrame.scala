@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.bases
 
-import java.sql.ResultSet
+import java.sql.{CallableStatement, ResultSet}
 
 import scala.collection.AbstractSeq
 import scala.collection.immutable.ArraySeq
@@ -1553,7 +1553,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		extends SQLReadForm[S]
 	{
 		private[this] val fastColumns = columns.toArray
-		override val readColumns: Int = (0 /: fastColumns)(_ + read(_).readColumns)
+		private val forms :Array[SQLReadForm[_]] = fastColumns.map(read)
+		override val readColumns: Int = (0 /: forms)(_ + _.readColumns)
 
 		override def opt(res :ResultSet, position :Int): Option[S] = {
 			val values = new Array[Option[Any]](columnCount)
@@ -1563,7 +1564,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 			val end = position + fastColumns.length
 			while (i < end) fastColumns(i) match {
 				case c :MappingFrame[_, _]#FrameColumn[_] =>
-					i += 1; values(c.index) = read(c).opt(res, i - 1)
+					i += 1; values(c.index) = forms(i).opt(res, i - 1)
 				case c =>
 					throw new IllegalArgumentException(s"Non-export column $c passed to SQLReadForm $this of $frame.")
 			}
@@ -1578,6 +1579,16 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		override def nullValue: S = frame.nullValue.value
 
 		override def nulls :NullValue[S] = frame.nullValue
+
+
+		override def register(call :CallableStatement, position :Int) :Unit = {
+			var i = position; var c = 0; val end = fastColumns.length
+			while (c < end) {
+				val form = forms(i)
+				form.register(call, i)
+				i += form.readColumns; c += 1
+			}
+		}
 
 		override def toString :String = columns.map(read).mkString(s"$frame{", ",", "}>")
 	}

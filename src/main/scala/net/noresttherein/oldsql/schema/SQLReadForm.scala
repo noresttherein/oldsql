@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema
 
-import java.sql.{ResultSet, SQLException}
+import java.sql.{CallableStatement, ResultSet, SQLException, Types}
 
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.Seq
@@ -8,6 +8,7 @@ import scala.collection.immutable.Seq
 import net.noresttherein.oldsql.morsels.ColumnBasedFactory
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
+import net.noresttherein.oldsql.pixies.CallableStatementOutParams
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.FallbackSQLReadForm
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperSQLForm}
@@ -53,7 +54,8 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  *                                this is different in intent from the `NullPointerException` case
 	  *                                as it is used primarily for multi-column forms, when the missing values are
 	  *                                likely the result of an outer join or subclass columns in a
-	  *                                table per class hierarchy mapping.
+	  *                                table per class hierarchy mapping. For example, A table entity form
+	  *                                might throw this exception if the primary key is null.
 	  * @throws NullPointerException if the read column is `null` and type `T` does not define a representation of `null`.
 	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]]
@@ -64,9 +66,11 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 			nullValue
 		} catch {
 			case e :NullPointerException =>
-				throw (new NullPointerException(errorMessage(position, res)).initCause(e))
+				throw new NullPointerException(errorMessage(position, res)).initCause(e)
 			case e :NoSuchElementException =>
-				throw (new NoSuchElementException(errorMessage(position, res)).initCause(e))
+				throw new NoSuchElementException(errorMessage(position, res)).initCause(e)
+			case e :ClassCastException =>
+				throw new ClassCastException(errorMessage(position, res)).initCause(e)
 		}
 	}
 
@@ -85,6 +89,52 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  */
 	def opt(res :ResultSet, position :Int) :Option[T]
 
+
+	/** Attempts to read the values of ''out'' parameters of the given `CallableStatement` and create an instance of `T`.
+	  * The index of the first parameter to read is `position`; all succeeding parameters until (not including)
+	  * `position + this.readColumns` should also be ''out'' parameters reserved for this form.
+	  * Default implementation wraps the statement in a `ResultSet` adapter and delegates
+	  * to [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]`(res, position)`.
+	  * Default implementation delegates to `opt` and fallbacks to `nullValue`
+	  * if no value is available, but the exact handling is completely up to the implementation. Note that `null` column
+	  * values may happen even on not-null database columns in outer joins.
+	  * @throws NoSuchElementException if the value cannot be assembled, typically because the indicated columns are null;
+	  *                                this is different in intent from the `NullPointerException` case
+	  *                                as it is used primarily for multi-column forms, when the missing values are
+	  *                                likely the result of an outer join or subclass columns in a
+	  *                                table per class hierarchy mapping. For example, A table entity form
+	  *                                might throw this exception if the primary key is null.
+	  * @throws NullPointerException if the read column is `null` and type `T` does not define a representation of `null`.
+	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]]
+	  */
+	def apply(call :CallableStatement, position :Int) :T = {
+		val res = new CallableStatementOutParams(call)
+		opt(res, position) match {
+			case Some(x) => x
+			case _ => guardedNullValue(position, res)
+		}
+	}
+
+	/** Attempts to read the values of ''out'' parameters of the given `CallableStatement` and create an instance of `T`.
+	  * The index of the first parameter to read is `position`; all succeeding parameters until (not including)
+	  * `position + this.readColumns` should also be ''out'' parameters reserved for this form.
+	  * Default implementation wraps the statement in a `ResultSet` adapter and delegates
+	  * to [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]`(res, position)`.
+	  * If the values are unavailable (required columns carry `null` values),
+	  * `None` is returned. It is the recommended practice to have the returned option reflect only the availability
+	  * of the input values and not their validity. It is allowed for the form to return `Some(null)`
+	  * (as long as `T >: Null`), but this results in propagation of `null` values to any forms derived from it
+	  * and to the application. As such, it is discouraged, with the exception of `ColumnForm`s, as the validity of
+	  * `null` values can be explicitly switched on for columns using the `Nullable` buff (and otherwise affected
+	  * by other buffs). The `ColumnMapping` trait explicitly checks for `null` values throwing a `NullPointerException`
+	  * if they are not permitted. While not strictly required, the form should
+	  * throw an exception if the values do not conform to expected constraints or the assembly process fails
+	  * for any other reason. Similarly, all thrown `SQLException`s are propagated.
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.apply apply]]
+	  */
+	def opt(call :CallableStatement, position :Int) :Option[T] = opt(new CallableStatementOutParams(call), position)
+
 	/** The value a `null` column (or all `null` columns) should be mapped to. It is used in particular by `apply`
 	  * when the value is unavailable, for example as a result of an outer join. Extending classes are allowed
 	  * to throw an exception here (either a `NoSuchElementException` or a `NullPointerException`) if a concept
@@ -93,6 +143,14 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  * will return `None`).
 	  */
 	def nullValue :T
+
+	protected def guardedNullValue(position :Int, res :ResultSet) :T = try {
+			nullValue
+		} catch {
+			case e :NullPointerException => throw new NullPointerException(errorMessage(position, res)).initCause(e)
+			case e :NoSuchElementException => throw new NoSuchElementException(errorMessage(position, res)).initCause(e)
+			case e :ClassCastException => throw new ClassCastException(errorMessage(position, res)).initCause(e)
+		}
 
 	/** Null representation for type `T`. It is the value returned whenever a `null` is read from a database column
 	  * (or is reported with [[java.sql.ResultSet.wasNull wasNull]]).
@@ -130,6 +188,17 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 		}
 		columns.mkString(this.toString + " does not allow null values. Read ", ", ", ".")
 	}
+
+
+
+	def register(call :CallableStatement, position :Int) :Unit = {
+		var i = position + readColumns - 1
+		while (i >= position) {
+			call.registerOutParameter(position, Types.OTHER); i -= 1
+		}
+	}
+
+
 
 
 	/** Number of columns read by this form. This must be a constant as it is typically is used to calculate offsets
@@ -551,23 +620,49 @@ object SQLReadForm {
 
 
 
-	/** Implements `nullValue` as throwing a `NoSuchElementException`. */
-	trait NotNullReadForm[T] extends SQLReadForm[T] {
-		override def nulls :NullValue[T] = NullValue.NotNull
-		override def nullValue :T = throw new NoSuchElementException("No null value allowed for " + this)
+	/** A minimal mix-in trait for `SQLWriteForm` implementations which use their
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nulls nulls]] type class for
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue nullValue]]. Note that this reverses the standard
+	  * order of delegation: `nulls` is not abstract and its default implementation directs to `nullValue`,
+	  * leading to infinite recursion unless overriden.
+	  */
+	trait ReadFormNullValue[+T] extends SQLReadForm[T] {
+		override def nullValue :T = nulls.value
 	}
+
+
+	/** Implements `nullValue` as throwing a `NoSuchElementException` and sets `nulls` to `NullValue.NotNull`. */
+	trait NotNullReadForm[+T] extends SQLReadForm[T] {
+		override def nulls :NullValue[T] = NullValue.NotNull
+		override def nullValue :T = throw new NoSuchElementException("Null value not allowed for " + this)
+	}
+
+
+	/** Implements `nullValue` as `null` and sets `nulls` to `NullValue.Null`. */
+	trait NullableReadForm[+T >: Null] extends SQLReadForm[T] {
+		override def nulls :NullValue[T] = NullValue.Null
+		override def nullValue :T = null
+	}
+
 
 
 	/** A convenience base `SQLReadForm[T]` class which implements `nullValue` based on an implicit `NullValue[T]`
 	  * (overriding also `nulls` in the process). */
 	abstract class AbstractSQLReadForm[+T](implicit override val nulls :NullValue[T])
-		extends SQLReadForm[T]
-	{
-		override def nullValue :T = nulls.value
+		extends SQLReadForm[T] with ReadFormNullValue[T]
+
+
+
+	trait CompositeReadForm[+T] extends SQLReadForm[T] {
+		protected def forms :Seq[SQLReadForm[Any]]
+
+		override def register(call :CallableStatement, position :Int) :Unit = {
+			var i = position
+			forms foreach { form => form.register(call, position); i += form.readColumns }
+		}
+
+		override def readColumns :Int = (0 /: forms)(_ + _.readColumns)
 	}
-
-
-
 
 
 
@@ -576,6 +671,7 @@ object SQLReadForm {
 
 		override def opt(res :ResultSet, position :Int) :Option[T] = None
 		override def apply(res :ResultSet, position :Int) :T = nullValue
+		override def register(call :CallableStatement, position :Int) :Unit = ()
 
 		protected override def errorMessage(position :Int, res :ResultSet) :String = {
 			val columns = Iterator.iterate(position)(_ + 1).take(readColumns).map {
@@ -585,6 +681,14 @@ object SQLReadForm {
 		}
 	}
 
+
+
+	trait ReadFormAdapter[+T] extends SQLReadForm[T] {
+		protected def form :SQLReadForm[Any]
+
+		override def register(call :CallableStatement, position :Int) :Unit = form.register(call, position)
+		override def readColumns :Int = form.readColumns
+	}
 
 
 	trait ProxyReadForm[+T] extends SQLReadForm[T] {
@@ -731,6 +835,9 @@ object SQLReadForm {
 
 		override def nulls :NullValue[T] = overrides.nulls
 
+		override def register(call :CallableStatement, position :Int) :Unit =
+			overrides.register(call, position)
+
 		override def readColumns :Int = overrides.readColumns
 
 		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] =
@@ -841,10 +948,8 @@ object SQLReadForm {
 
 
 
-	private[schema] trait ReadFormSeq[+T] extends SQLReadForm[Seq[T]] {
-		protected val forms :Seq[SQLReadForm[T]]
-
-		override def readColumns :Int = (0 /: forms)(_ + _.readColumns)
+	private[schema] trait ReadFormSeq[+T] extends CompositeReadForm[Seq[T]] {
+		protected override val forms :Seq[SQLReadForm[T]]
 
 		override def opt(res :ResultSet, position :Int) :Option[Seq[T]] = {
 			var i = position + readColumns

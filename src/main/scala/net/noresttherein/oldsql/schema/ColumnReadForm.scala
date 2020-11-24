@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema
 
-import java.sql.{JDBCType, ResultSet, Types}
+import java.sql.{CallableStatement, JDBCType, ResultSet}
 
 import scala.annotation.implicitNotFound
 
@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, Empty
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{ConstSQLReadForm, EvalSQLReadForm, FallbackSQLReadForm, FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NullSQLReadForm, ProxyReadForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{ConstSQLReadForm, EvalSQLReadForm, FallbackSQLReadForm, FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NullSQLReadForm}
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperColumnForm}
 import net.noresttherein.oldsql.schema.forms.SQLForms.SuperAdapterColumnForm
 
@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.schema.forms.SQLForms.SuperAdapterColumnForm
 
 /** An `SQLReadForm` describing the format of a simple type `T`, mapping to a single database column.
   * Aside from fixing the `readColumns` method to return `1` and overloaded `apply` and `opt` for reading
-  * the value from the column of the provided name, it enables static checks that the type `T` is a valid type
+  * the value from the column of the provided name, it enables static checks that type `T` is a valid type
   * for a single mapped column.
   * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm]]
   * @see [[net.noresttherein.oldsql.schema.ColumnForm]]
@@ -36,6 +36,10 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
 
 	protected override def errorMessage(position :Int, res :ResultSet) :String =
 		"Null values not allowed for column " + res.getMetaData.getColumnName(position) + ":" + this + "."
+
+	override def register(call :CallableStatement, position :Int) :Unit =
+		call.registerOutParameter(position, sqlType)
+
 
 	override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] =
 		ColumnReadForm.map(fun)(this, NullValue[X])
@@ -396,8 +400,12 @@ object ColumnReadForm {
 			if (res.wasNull) try {
 				nullValue
 			} catch {
-				case e :NullPointerException => throw new NullPointerException(errorMessage(position, res))
-				case e :NoSuchElementException => throw new NoSuchElementException(errorMessage(position, res))
+				case e :NullPointerException =>
+					throw new NullPointerException(errorMessage(position, res)).initCause(e)
+				case e :NoSuchElementException =>
+					throw new NoSuchElementException(errorMessage(position, res)).initCause(e)
+				case e :ClassCastException =>
+					throw new ClassCastException(errorMessage(position, res)).initCause(e)
 			} else t
 		}
 

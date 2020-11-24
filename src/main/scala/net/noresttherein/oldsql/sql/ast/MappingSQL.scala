@@ -75,12 +75,12 @@ trait MappingSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, M[O] <: Mapp
 
 	override def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectAs[M] =
 		throw new UnsupportedOperationException(
-			s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
 
 	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectAs[B, M] =
 		throw new UnsupportedOperationException(
-			s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
 
 }
@@ -736,13 +736,13 @@ object MappingSQL {
 
 		override def topSelectFrom[E <: F with GroundFrom](from :E) :SelectColumnMapping[E, M, V] =
 			throw new UnsupportedOperationException(
-				s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+				s"Expression $this :${this.localClassName} can't be used as a select clause."
 			)
 
 		override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B])
 				:SubselectColumnMapping[B, from.type, M, V] =
 			throw new UnsupportedOperationException(
-				s"Expression $this :${this.unqualifiedClassName} can't be used as a select clause."
+				s"Expression $this :${this.localClassName} can't be used as a select clause."
 			)
 
 	}

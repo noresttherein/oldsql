@@ -56,7 +56,7 @@ trait AutoConversionFormula[-F <: RowProduct, S, +T] extends CompositeFormula[F,
 
 
 
-	protected def name :String = this.unqualifiedClassName
+	protected def name :String = this.localClassName
 
 	override def toString = s"$name($expr)"
 

@@ -82,17 +82,12 @@ object Relation {
 
 
 
-	trait NamedRelation[N <: String with Singleton, +M[O] <: MappingAt[O]] extends Relation[M] {
-		def name :N
-		override def sql :String = name
-	}
-
-
-
 	trait PersistentRelation[+M[O] <: MappingAt[O]] extends Relation[M] {
 		def name :String
 		override def sql :String = name
 	}
+
+	trait StaticRelation[N <: String with Singleton, +M[O] <: MappingAt[O]] extends PersistentRelation[M]
 
 
 
@@ -104,7 +99,7 @@ object Relation {
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
 	  */ //
 	class Aliased[M[O] <: MappingAt[O], A <: Label](val relation :Relation[M], val alias :A)
-		extends NamedRelation[A, ({ type T[O] = A @: M[O] })#T]
+		extends StaticRelation[A, ({ type T[O] = A @: M[O] })#T]
 	{ //todo: the contract of name/sql must be specified here; is alias a part of sql?
 		type T[O] = A @: M[O]
 
@@ -171,7 +166,7 @@ object Relation {
 
 
 
-		trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with NamedRelation[N, M]
+		trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M]
 
 	}
 

@@ -43,7 +43,7 @@ trait ConversionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, Y] ext
 		matcher.conversion(this)
 
 
-	protected def name :String = this.unqualifiedClassName
+	protected def name :String = this.localClassName
 
 	override def toString = s"$name($value)"
 

@@ -9,11 +9,6 @@ import net.noresttherein.oldsql.schema.SQLReadForm
 
 
 
-//trait ScalaReadForms
-
-
-
-
 trait ScalaReadForms {
 
 	@inline private[this] def f[T](implicit form :SQLReadForm[T]) = form
@@ -1573,6 +1568,9 @@ trait ScalaReadForms {
 	{
 		override def productPrefix :String = "<"
 	}
+
+
+
 
 
 	

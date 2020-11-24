@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.NamedRelation
+import net.noresttherein.oldsql.schema.Relation.StaticRelation
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
@@ -306,12 +306,12 @@ object UnboundParam {
 	  */
 	sealed abstract class NamedParamRelation[N <: Label, X :SQLForm](override val name :N)
 		extends GenericParamRelation[X, (N ?: X)#P](name)
-	{ this :NamedRelation[N, (N ?: X)#P] =>
+	{ this :StaticRelation[N, (N ?: X)#P] =>
 		private[this] val param = new LabeledFromParam[N, X, Any](name)
 
 		override def apply[O] :LabeledFromParam[N, X, O] = param.asInstanceOf[LabeledFromParam[N, X, O]]
 
-		protected[sql] override def toRelation :NamedRelation[N, (N ?: X)#P]
+		protected[sql] override def toRelation :StaticRelation[N, (N ?: X)#P]
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[NamedParamRelation[_, _]]
 	}
@@ -323,7 +323,7 @@ object UnboundParam {
 
 		//the order of implicits reversed to avoid double definition with the one above.
 		def apply[N <: Label, X]()(implicit form :SQLForm[X], name :ValueOf[N]) :NamedParamRelation[N, X] =
-			new NamedParamRelation[N, X](valueOf[N]) with NamedRelation[N, (N ?: X)#P] {
+			new NamedParamRelation[N, X](valueOf[N]) with StaticRelation[N, (N ?: X)#P] {
 				override def toRelation = this
 			}
 

@@ -3,14 +3,9 @@ package net.noresttherein.oldsql.schema.forms
 import java.sql.PreparedStatement
 
 import net.noresttherein.oldsql.schema.SQLWriteForm
-import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals
+import net.noresttherein.oldsql.schema.SQLWriteForm.NullableWriteFormLiterals
 
 
-
-
-
-
-//trait ScalaWriteForms
 
 
 
@@ -360,7 +355,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple3WriteForm[-A, -B, -C] extends WriteFormLiterals[(A, B, C)] {
+	private[schema] trait AbstractTuple3WriteForm[-A, -B, -C] extends NullableWriteFormLiterals[(A, B, C)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -414,7 +409,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple4WriteForm[-A, -B, -C, -D] extends WriteFormLiterals[(A, B, C, D)] {
+	private[schema] trait AbstractTuple4WriteForm[-A, -B, -C, -D] extends NullableWriteFormLiterals[(A, B, C, D)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -474,7 +469,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple5WriteForm[-A, -B, -C, -D, -E] extends WriteFormLiterals[(A, B, C, D, E)] {
+	private[schema] trait AbstractTuple5WriteForm[-A, -B, -C, -D, -E] extends NullableWriteFormLiterals[(A, B, C, D, E)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -541,7 +536,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple6WriteForm[-A, -B, -C, -D, -E, -F] extends WriteFormLiterals[(A, B, C, D, E, F)] {
+	private[schema] trait AbstractTuple6WriteForm[-A, -B, -C, -D, -E, -F] extends NullableWriteFormLiterals[(A, B, C, D, E, F)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -615,7 +610,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple7WriteForm[-A, -B, -C, -D, -E, -F, -G] extends WriteFormLiterals[(A, B, C, D, E, F, G)] {
+	private[schema] trait AbstractTuple7WriteForm[-A, -B, -C, -D, -E, -F, -G] extends NullableWriteFormLiterals[(A, B, C, D, E, F, G)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -696,7 +691,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple8WriteForm[-A, -B, -C, -D, -E, -F, -G, -H]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -784,7 +779,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple9WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -878,7 +873,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple10WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -978,7 +973,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple11WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1085,7 +1080,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple12WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1198,7 +1193,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple13WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1317,7 +1312,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple14WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1442,7 +1437,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple15WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1574,7 +1569,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple16WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1713,7 +1708,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple17WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1858,7 +1853,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple18WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2009,7 +2004,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple19WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2166,7 +2161,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple20WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2329,7 +2324,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple21WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T, -U]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2499,7 +2494,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple22WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T, -U, -V]
-		extends WriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)]
+		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
