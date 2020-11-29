@@ -39,7 +39,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.GroupBy]]
   * @see [[net.noresttherein.oldsql.sql.By]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-  */
+  */ //alternative name ideas: fuse/attach
 trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 	extends NonEmptyFrom with NonEmptyFromTemplate[L Compound R, L Compound R]
 {
@@ -75,8 +75,9 @@ trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 	/** The right side of the join - representation of a table/relation alias containing the mapping of its schema.
 	  * It identifies the SQL relation (table, view or ''select'') which is being added to the clause and its index,
 	  * to distinguish between possible multiple occurrences of the same relation.
+	  *
 	  * It is an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] for the subject of the relation's mapping,
-	  * so it can be used directly as part of larger expressions. Note that, true to its name, it is treated always
+	  * so it can be used directly as part of larger expressions. True to its name, it is treated always
 	  * as the last entry on the list and the expression `join.left.last` is an instance representing only
 	  * the last relation in the prefix clause `join.left`. In particular, it is not a valid reference to a relation
 	  * from the point of view of this clause. Its type parameter makes it incompatible for direct use
@@ -91,12 +92,20 @@ trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  * with types sharing a suffix, can freely exchange relations from that suffix and, by transitivity,
 	  * any SQL expressions based on the clause type representing that suffix, with the differing prefixes
 	  * replaced with a wildcard or abstract type.
-	  *
+
 	  * Note however that specialized `Compound` implementations can use dedicated implementations
 	  * of [[net.noresttherein.oldsql.schema.Relation Relation]] or its [[net.noresttherein.oldsql.schema.Mapping Mapping]],
 	  * tied not only to this particular implementation, but also to this instance: for example,
 	  * the relation of an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] cannot be reused in the same
 	  * clause, and cannot be joined the same way as relations for tables.
+	  *
+	  * All instances created internally (rather than provided by the application as an argument to a factory method)
+	  * have empty [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation.includes includes]] and
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation.excludes excludes]] list, meaning the operative
+	  * column set for the relation was not altered from the default provided by the wrapped
+	  * [[net.noresttherein.oldsql.schema.Relation Relation]]. It is a recommended practice, although not
+	  * validated. Deviating from this principle will not result in an error, but can introduce unexpected alterations
+	  * to the final SQL.
 	  */
 	override val last :JoinedRelation[FromLast, R]
 

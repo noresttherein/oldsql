@@ -3,12 +3,18 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.{schema, OperationType}
 import net.noresttherein.oldsql.collection.NaturalMap
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{support, Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
 import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.support.AdjustedMapping.SpecificAdjustedMapping
+import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
+
+
+
+
 
 
 sealed trait AdapterOf[+M <: Mapping] extends Mapping {
@@ -67,13 +73,14 @@ trait MappingAdapter[+M <: Mapping, S, O]
 	/** The adapted mapping. It is considered a valid component of this mapping. */
 	val body :M { type Origin = O }
 
-	override def prefixed(prefix :String) :MappingAdapter[M, S, O] =
-		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
+	override def apply(adjustments :ComponentSelection[_, O]*) :MappingAdapter[M, S, O] = fail
 
-	override def as[X](there: S =?> X, back: X =?> S)
-	                  (implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] =
-		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
+	override def prefixed(prefix :String) :MappingAdapter[M, S, O] = fail
 
+	override def as[X](there: S =?> X, back: X =?> S)(implicit nulls :NullValue[X]) :MappingAdapter[M, X, O] = fail
+
+	private def fail :Nothing =
+		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
 
 	protected[oldsql] def everyConcreteMappingAdapterMustExtendBaseAdapter :Nothing
 }
@@ -109,13 +116,19 @@ object MappingAdapter {
 	  * due to its use in type aliases which define the `MappingAdapter`'s `Origin` type based on the origin type
 	  * of the mapping `M`.
 	  */
-	trait BaseAdapter[+M <: MappingAt[O], S, O] extends MappingAdapter[M, S, O] {
+	trait BaseAdapter[+M <: MappingAt[O], S, O] extends MappingAdapter[M, S, O] { outer =>
 		override val body :M
 
-		protected override def customize(op :OperationType,
-		                                 include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+		private[this] type Adapter[X] = MappingAdapter[M, X, O]
+
+		override def apply(adjustments :ComponentSelection[_, O]*) :MappingAdapter[M, S, O] =
+			new AdjustedMapping[this.type, S, O](this, adjustments)
+				with ComposedAdapter[M, S, S, O] with SpecificAdjustedMapping[Adapter, this.type, S, O]
+
+		protected override def alter(op :OperationType,
+		                             include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:MappingAdapter[M, S, O] =
-			new CustomizedMapping[this.type, S, O](this, op, include, exclude) with ComposedAdapter[M, S, S, O]
+			new AlteredMapping[this.type, S, O](this, op, include, exclude) with ComposedAdapter[M, S, S, O]
 
 
 		override def prefixed(prefix :String) :MappingAdapter[M, S, O] = PrefixedMapping(prefix, this)
@@ -152,7 +165,7 @@ object MappingAdapter {
 
 	/** A `MappingAdapter` mix-in implementation for `DelegateMapping` subclasses which `backer` is a `MappingAdapter`
 	  * itself. It exposes the `backer`'s `body` property as this adapter's `body`, while delegating all methods
-	  * to the adapter rather than the adapted mapping. As it accesses the `backer` property, it should be mixed-in
+	  * to the `backer` rather than `body`. As it accesses the `backer` property, it should be mixed-in
 	  * after the implementation `DelegateMapping` subtypes.
 	  * @tparam M the original adapted mapping which should be exposed as the adapted mapping.
 	  * @tparam T the subject type of the adapter to which this adapter will delegate.
@@ -286,5 +299,15 @@ object MappingAdapter {
 		}
 
 	}
+
+
+
+
+	/** An adapter which changes nothing about the adapted mapping. It can be used where `Adapted[M]` (or similar)
+	  * type is required, but the mapping should remain unmodified.
+	  */
+	class IdentityAdapter[M <: RefinedMapping[S, O], S, O](override protected val backer :M)
+		extends DelegateAdapter[M, S, O] with ShallowProxy[S, O]
+
 
 }

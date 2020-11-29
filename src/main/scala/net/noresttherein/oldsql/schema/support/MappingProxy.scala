@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnMapping, ComponentValues, GenericExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoFilter, NoSelect, NoUpdate}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoUpdate, NoUpdateByDefault}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
@@ -42,8 +42,8 @@ object MappingProxy {
 
 
 		override def apply[T](component :Component[T]) :Extract[T] =
-			(if (component eq backer)
-				 MappingExtract.ident(backer)
+			(if ((component eq backer) | (component eq this))
+				 MappingExtract.ident(component)
 			 else
 				 backer(component)
 			).asInstanceOf[Extract[T]]
@@ -146,21 +146,16 @@ object MappingProxy {
 
 
 
-	/** A skeleton trait for a mapping proxy which needs to adapt every component of the proxied mapping. */
+	/** A skeleton trait for a mapping proxy which needs to adapt every component of the proxied mapping.
+	  * The `components`, `subcomponents` and all `columns` lists of this mapping are the corresponding lists
+	  * from the adapted mapping, mapped with the `adapt` methods, meaning the components of the proxied mapping
+	  * are not in themselves the components of this mapping. `Extract` maps however include both the adapted
+	  * and original components as keys.
+	  */ //todo: remove this trait, leave only EagerDeepProxy
 	trait DeepProxy[S, O] extends MappingProxy[S, O] {
 
 		override def assemble(pieces :Pieces) :Option[S] = //use backer.assemble to bypass buffs on the backer
 			backer.assemble(pieces.asInstanceOf[backer.Pieces]) //and use only those on the proxy
-
-
-
-		override def pick[T](component :Component[T], subject :S) :Option[T] =
-			if ((component eq backer) || (component eq this)) Some(subject.asInstanceOf[T])
-			else backer.pick(dealias(component), subject)
-
-		override def apply[T](component :Component[T], subject :S) :T =
-			if ((component eq backer) || (component eq this)) subject.asInstanceOf[T]
-			else backer(dealias(component), subject)
 
 
 
@@ -280,7 +275,10 @@ object MappingProxy {
 		override def autoUpdated :Unique[Column[_]] = backer.autoUpdated.map(alias(_))
 		override def insertable :Unique[Column[_]] = backer.insertable.map(alias(_))
 		override def autoInserted :Unique[Column[_]] = backer.autoInserted.map(alias(_))
-
+		override def selectedByDefault :Unique[Column[_]] = backer.selectedByDefault.map(alias(_))
+		override def filteredByDefault :Unique[Column[_]] = backer.filteredByDefault.map(alias(_))
+		override def updatedByDefault :Unique[Column[_]] = backer.updatedByDefault.map(alias(_))
+		override def insertedByDefault :Unique[Column[_]] = backer.insertedByDefault.map(alias(_))
 
 
 		override def toString :String = "->>" + backer
@@ -295,12 +293,15 @@ object MappingProxy {
 	//todo: look into removing Origin and Subject parameters
 	/** A `DeepProxy` implementation which eagerly initializes all column and component lists and creates
 	  * a fixed mapping between components of the adapted mapping and their adapted counterparts as well as the
-	  * reverse.
+	  * reverse. The components of the adapted mapping are not part of any component or column lists of this mapping,
+	  * which are formed by adapting each element of the corresponding list from `backer` with `adapt` methods,
+	  * left for subclasses to implement. `Extract` maps however include as keys all the keys from the corresponding
+	  * extract map of the adapted mapping and the adapted components.
 	  */
 	abstract class EagerDeepProxy[S, O] private
 		                         (protected override val backer :MappingOf[S],
-		                          exports :mutable.Map[Mapping, MappingExtract[S, _, O]],
-		                          originals :mutable.Map[MappingAt[O], Mapping])
+		                          exports :mutable.Map[Mapping, MappingExtract[S, _, O]], //both start empty, are used
+		                          originals :mutable.Map[MappingAt[O], Mapping])          //only as tmp in the constructor
 		extends DeepProxy[S, O] with LazyMapping[S, O] //inherit the optimized optionally/writtenValues
 	{
 		//a private constructor with mutable maps ensures that extract entries can be created as method side effects,
@@ -325,8 +326,13 @@ object MappingProxy {
 		override val selectable :Unique[Column[_]] = columnsWithout(NoSelect)
 		override val filterable :Unique[Column[_]] = columnsWithout(NoFilter)
 		override val updatable :Unique[Column[_]] = columnsWithout(NoUpdate)
+		override val insertable :Unique[Column[_]] = columnsWithout(NoInsert)
 		override val autoUpdated :Unique[Column[_]] = columnsWith(AutoUpdate)
 		override val autoInserted :Unique[Column[_]] = columnsWith(AutoInsert)
+		override val selectedByDefault :Unique[Column[_]] = columnsWithout(NoInsertByDefault)
+		override val filteredByDefault :Unique[Column[_]] = columnsWithout(NoFilterByDefault)
+		override val updatedByDefault :Unique[Column[_]] = columnsWithout(NoUpdateByDefault)
+		override val insertedByDefault :Unique[Column[_]] = columnsWithout(NoInsertByDefault)
 
 		override val components :Unique[Component[_]] = backer.components.map(alias(exports, originals, _))
 		override val subcomponents :Unique[Component[_]] = backer.subcomponents.map(alias(exports, originals, _))
@@ -387,9 +393,11 @@ object MappingProxy {
 		/** Method called from the `EagerDeepProxy` constructor before any component lists are initialized. */
 		protected def preInit(): Unit = ()
 
+		/** Maps a component of this proxy back to its corresponding export component of `backer`. */
 		protected override def dealias[T](component :Component[T]) :backer.Component[T] =
 			originals.getOrElse(component, component).asInstanceOf[backer.Component[T]]
 
+		/** Maps a column of this proxy back to its corresponding export column of `backer`. */
 		protected override def dealias[T](column :Column[T]) :backer.Column[T] =
 			originals.getOrElse(column, column).asInstanceOf[backer.Column[T]]
 

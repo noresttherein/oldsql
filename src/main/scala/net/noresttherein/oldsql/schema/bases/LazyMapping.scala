@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.{Mapping, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, FilterAudit, InsertAudit, NoFilter, NoInsert, NoUpdate, OptionalSelect, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
@@ -91,6 +91,11 @@ trait OptimizedMappingAssembly extends Mapping {
   */
 trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly {
 
+	override def apply[T](component :Component[T]) :Extract[T] =
+		if (component eq this) lazySelfExtract.get.asInstanceOf[Extract[T]]
+		else extracts(component)
+
+	private val lazySelfExtract = Lazy(MappingExtract.ident(this))
 	private val lazyColumnExtracts = Lazy(schema.filterColumnExtracts(this)(extracts))
 
 	override def columnExtracts :NaturalMap[Column, ColumnExtract] = lazyColumnExtracts
@@ -103,6 +108,10 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 	private val lazyAutoUpdated = Lazy(super.autoUpdated)
 	private val lazyInsertable = Lazy(super.insertable)
 	private val lazyAutoInserted = Lazy(super.autoInserted)
+	private val lazySelectedByDefault = Lazy(super.selectedByDefault)
+	private val lazyFilteredByDefault = Lazy(super.filteredByDefault)
+	private val lazyUpdatedByDefault = Lazy(super.updatedByDefault)
+	private val lazyInsertedByDefault = Lazy(super.insertedByDefault)
 
 	override def subcomponents :Unique[Component[_]] = lazySubcomponents
 	override def columns :Unique[Column[_]] = lazyColumns
@@ -112,6 +121,10 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 	override def autoUpdated :Unique[Column[_]] = lazyAutoUpdated
 	override def insertable :Unique[Column[_]] = lazyInsertable
 	override def autoInserted :Unique[Column[_]] = lazyAutoInserted
+	override def selectedByDefault :Unique[Column[_]] = lazySelectedByDefault
+	override def filteredByDefault :Unique[Column[_]] = lazyFilteredByDefault
+	override def updatedByDefault :Unique[Column[_]] = lazyUpdatedByDefault
+	override def insertedByDefault :Unique[Column[_]] = lazyInsertedByDefault
 
 	private val lazySelectForm = Lazy(super.selectForm)
 	private val lazyFilterForm = Lazy(super.filterForm)
@@ -202,8 +215,15 @@ trait StableMapping extends Mapping {
 	private val explicit = ExtraSelect.Value(refine)
 
 
+//	override def apply[T](component :Component[T]) :Extract[T] =
+//		if (component eq this) selfExtract.asInstanceOf[Extract[T]]
+//		else extracts(component)
+//
+//	override def export[T](component :Component[T]) :Component[T] = apply(component).export
+//
 	abstract override val extracts :NaturalMap[Component, Extract] = super.extracts
 	abstract override val columnExtracts :NaturalMap[Column, ColumnExtract] = super.columnExtracts
+//	private val selfExtract = extracts.getOrElse(refine, MappingExtract.ident(refine))
 
 	abstract override val subcomponents :Unique[Component[_]] = super.subcomponents
 	abstract override val components :Unique[Component[_]] = super.components
@@ -216,6 +236,10 @@ trait StableMapping extends Mapping {
 	override val autoUpdated :Unique[Column[_]] = super.autoUpdated
 	override val insertable :Unique[Column[_]] = super.insertable
 	override val autoInserted :Unique[Column[_]] = super.autoInserted
+	override val selectedByDefault :Unique[Column[_]] = super.selectedByDefault
+	override val filteredByDefault :Unique[Column[_]] = super.filteredByDefault
+	override val updatedByDefault :Unique[Column[_]] = super.updatedByDefault
+	override val insertedByDefault :Unique[Column[_]] = super.insertedByDefault
 
 	abstract override val selectForm: SQLReadForm[Subject] = super.selectForm
 	abstract override val filterForm :SQLWriteForm[Subject] = super.filterForm

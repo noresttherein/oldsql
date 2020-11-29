@@ -50,6 +50,10 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 	override def autoUpdated :Unique[Column[_]] = Unique.empty
 	override def insertable :Unique[Column[_]] = Unique.empty
 	override def autoInserted :Unique[Column[_]] = Unique.empty
+	override def selectedByDefault :Unique[Column[_]] = Unique.empty
+	override def filteredByDefault :Unique[Column[_]] = Unique.empty
+	override def updatedByDefault :Unique[Column[_]] = Unique.empty
+	override def insertedByDefault :Unique[Column[_]] = Unique.empty
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = selectForm

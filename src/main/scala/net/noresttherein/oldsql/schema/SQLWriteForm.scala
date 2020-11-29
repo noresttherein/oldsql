@@ -384,18 +384,24 @@ object SQLWriteForm {
 
 
 
+	/** A write form of zero columns which will throw the given exception at every write attempt.
+	  * Note that this includes [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt setOpt]], not only
+	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]].
+	  */
+	def error(raise: => Nothing) :SQLWriteForm[Any] = error(0, "<ERROR")(raise)
+
 	/** A write form which will throw the given exception at every write attempt.
 	  * Note that this includes [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt setOpt]], not only
 	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]].
 	  */
-	def error(raise: => Nothing, columns :Int = 0, name :String = null) :SQLWriteForm[Any] =
+	def error(columns :Int, name :String)(raise: => Nothing) :SQLWriteForm[Any] =
 		new ErrorSQLWriteForm(columns, raise, if (name != null) name else "<ERROR")
 
 	/** A write form which will throw an `UnsupportedOperationException` with the given message at every write attempt.
 	  * This is a simple shorthand for [[net.noresttherein.oldsql.schema.SQLWriteForm.error error]].
 	  */
 	def unsupported(columns :Int, name :String = null)(message :String) :SQLWriteForm[Any] =
-		eval(columns, if (name != null) name else "<UNSUPPORTED") {
+		error(columns, if (name != null) name else "<UNSUPPORTED") {
 			throw new UnsupportedOperationException(message)
 		}
 

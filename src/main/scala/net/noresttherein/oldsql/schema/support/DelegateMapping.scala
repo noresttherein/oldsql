@@ -70,20 +70,24 @@ object DelegateMapping {
 		override def autoUpdated :Unique[Column[_]] = backer.autoUpdated
 		override def insertable :Unique[Column[_]] = backer.insertable
 		override def autoInserted :Unique[Column[_]] = backer.autoInserted
+		override def selectedByDefault :Unique[Column[_]] = backer.selectedByDefault
+		override def filteredByDefault :Unique[Column[_]] = backer.filteredByDefault
+		override def updatedByDefault :Unique[Column[_]] = backer.updatedByDefault
+		override def insertedByDefault :Unique[Column[_]] = backer.insertedByDefault
 
 
 		/** Refers to the adapted mapping `backer` to export the passed component to its final representation,
 		  * unless `component` is the `backer` itself, in which it is returned as-is.
 		  */
 		override def export[X](component :Component[X]) :Component[X] =
-			if (component eq backer) component
+			if ((component eq backer) | (component eq this)) component
 			else backer.export(component)
 
 		/** Refers to the adapted mapping `backer` to export the passed component to its final representation,
 		  * unless `column` is the `backer` itself, in which it is returned as-is.
 		  */
 		override def export[X](column :Column[X]) :Column[X] =
-			if (column eq backer) column
+			if ((column eq backer) | (column eq this)) column
 			else backer.export(column)
 
 	}

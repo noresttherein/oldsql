@@ -396,6 +396,12 @@ object SQLReadForm {
 
 
 
+//	/** Creates a form reading the given number of columns and always returning from its `apply` method the value
+//	  * obtained by reevaluating the given expression. The result of `opt` is defined as `Some(value)`.
+//	  * The expression must be thread safe.
+//	  */
+//	def eval[T](expr: => T) :SQLReadForm[T] = eval(null, 0)(expr)
+
 	/** Creates a form reading the given number of columns and always returning from its `apply` method the value
 	  * obtained by reevaluating the given expression. The result of `opt` is defined as `Some(value)`.
 	  * The expression must be thread safe.
@@ -436,8 +442,16 @@ object SQLReadForm {
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nulls nulls]] if you wish the form to simply return `None`.
 	  * This functions the same way as `eval`, but can more clearly define intent.
 	  */
-	def error(value: => Nothing, readColumns :Int = 0, name :String = "ERROR>") :SQLReadForm[Nothing] =
-		eval(value, readColumns, name)
+	def error(raise: => Nothing) :SQLReadForm[Nothing] = error(0, "ERROR>")(raise)
+
+	/** A form always throwing the given exception instead of producing a value. Note that this applies also to
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]] method.
+	  * See [[net.noresttherein.oldsql.schema.SQLReadForm.none none]] and
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nulls nulls]] if you wish the form to simply return `None`.
+	  * This functions the same way as `eval`, but can more clearly define intent.
+	  */
+	def error(readColumns :Int, name :String)(raise: => Nothing) :SQLReadForm[Nothing] =
+		eval(raise, readColumns, name)
 
 //	/** A form always throwing the given exception instead of producing a value. This doesn't apply to
 //	  * [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]] method, which will simply return `None`.
@@ -449,7 +463,7 @@ object SQLReadForm {
 	  * This is a simple shorthand for [[net.noresttherein.oldsql.schema.SQLReadForm.error error]].
 	  */
 	def unsupported(readColumns :Int, name :String = "UNSUPPORTED>")(message :String) :SQLReadForm[Nothing] =
-		error(throw new UnsupportedOperationException(message), readColumns, name)
+		error(readColumns, name)(throw new UnsupportedOperationException(message))
 
 	/** A  form which throws an `UnsupportedOperationException` with the given message with every read attempt.
 	  * This is a simple shorthand for [[net.noresttherein.oldsql.schema.SQLReadForm.error error]].

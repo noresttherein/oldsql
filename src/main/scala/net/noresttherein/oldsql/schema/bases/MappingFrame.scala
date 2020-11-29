@@ -10,13 +10,12 @@ import scala.reflect.runtime.universe.TypeTag
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoInsert, NoSelect, NoUpdate, ReadOnly}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -244,8 +243,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	                                 override val columnPrefix :String, override val buffs :Seq[Buff[T]])
 		extends EagerDeepProxy[T, O](backer) with FrameComponent[T]
 	{
-		def adapted :Component[T] = backer
-
 		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
 			initSubcomponents += this
 			extracts foreach { exportExtract(_) }
@@ -257,7 +254,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		protected override def adapt[X](column :backer.Column[X]) :Column[X] = exportColumn(column)
 
 		override def toString :String = "^" + backer + "^"
-
 	}
 
 
@@ -317,7 +313,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitInsert$ Buff.ExplicitInsert]]
 	  */ //todo: should this come already with an OptionalInsert/Update/Select buff?
 	trait OptionalComponent[T] extends FrameComponent[T] {
-		protected[schema] override def extractor = Extractor(pick)
+		protected[schema] override def extractor : S =?> T = Extractor(pick)
 		protected def pick :S => Option[T]
 	}
 
@@ -1046,8 +1042,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		val export = current.export
 		val extractor = Extractor(current.optional, current.requisite) //don't retain the reference to export
 
-		val lists = initComponents::initSubcomponents::initColumns::initSelectable::initFilterable::
-			initUpdatable::initInsertable::initAutoInsert::initAutoUpdate::Nil
+		val lists = initComponents::initSubcomponents::initColumns::
+			initSelectable::initFilterable:: initUpdatable::initInsertable::initAutoInsert::initAutoUpdate::
+			initSelectedByDefault::initFilteredByDefault::initUpdatedByDefault::initInsertedByDefault::Nil
 
 		val replacement = new ColumnComponent[T](extractor, name, export.buffs)(column.form) {
 			//we'll replace the export column with this manually
@@ -1099,6 +1096,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	override def export[T](component :Component[T]) :Component[T] = component match {
 		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
 			export.asInstanceOf[Component[T]]
+		case self if self eq this => self
 		case _ =>
 			apply(component).export
 	}
@@ -1220,6 +1218,11 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		if (NoInsert.disabled(column)) initInsertable += column
 		if (AutoInsert.enabled(column)) initAutoInsert += column
 		if (AutoUpdate.enabled(column)) initAutoUpdate += column
+		if (NoSelectByDefault.disabled(column)) initSelectedByDefault += column
+		if (NoFilterByDefault.disabled(column)) initFilteredByDefault += column
+		if (NoUpdateByDefault.disabled(column)) initUpdatedByDefault += column
+		if (NoInsertByDefault.disabled(column)) initInsertedByDefault += column
+
 
 		column
 	}
@@ -1327,6 +1330,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 				initInsertable.initialize()
 				initAutoInsert.initialize()
 				initAutoUpdate.initialize()
+				initSelectedByDefault.initialize()
+				initFilteredByDefault.initialize()
+				initUpdatedByDefault.initialize()
+				initInsertedByDefault.initialize()
 				initSubcomponents.initialize()
 
 				columnIndex = initColumnIndex.toArray
@@ -1429,7 +1436,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		def isInitialized :Boolean = initialized != null
 
 		def initialize() :Unit = {
-			cached = uninitialized.result().toUnique
+			cached = uninitialized.result().to(Unique)
 			initialized = cached
 			uninitialized = null
 		}
@@ -1472,6 +1479,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	private[this] final val initAutoUpdate = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initInsertable = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initAutoInsert = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initSelectedByDefault = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initFilteredByDefault = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initUpdatedByDefault = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initInsertedByDefault = new LateInitComponents[FrameColumn[_]]
 
 	final override def components :Unique[Component[_]] = initComponents.items
 	final override def subcomponents :Unique[Component[_]] = initSubcomponents.items
@@ -1482,6 +1493,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	final override def autoUpdated :Unique[Column[_]] = initAutoUpdate.items
 	final override def insertable :Unique[Column[_]] = initInsertable.items
 	final override def autoInserted :Unique[Column[_]] = initAutoInsert.items
+	final override def selectedByDefault :Unique[Column[_]] = initSelectedByDefault.items
+	final override def filteredByDefault :Unique[Column[_]] = initFilteredByDefault.items
+	final override def updatedByDefault :Unique[Column[_]] = initUpdatedByDefault.items
+	final override def insertedByDefault :Unique[Column[_]] = initInsertedByDefault.items
 
 
 

@@ -126,17 +126,6 @@ object Unique extends IterableFactory[Unique] {
 	}
 
 
-	/** An implicit extension of any `Iterable` adding a `toUnique` method which converts it to a `Unique` instance.*/
-	implicit class implicitUnique[T](private val elems :collection.Iterable[T]) extends AnyVal {
-		/** A shorthand method for converting `this` collection to a `Unique`.
-		  * It delegates to `Unique.from`, meaning if `this` already is a `Unique` or collection created by
-		  * one of the `toSeq`, `toIndexedSeq`, `toSet` methods of a `Unique`, it will simply return the underlying
-		  * `Unique` instance.
-		  */
-		@inline def toUnique :Unique[T] = from(elems)
-	}
-
-
 
 
 

@@ -3,8 +3,9 @@ package net.noresttherein.oldsql.schema.bases
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.{CustomizedMapping, PrefixedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, RefinedMapping}
+import net.noresttherein.oldsql.schema.support.{AlteredMapping, PrefixedMapping, AdjustedMapping}
+import net.noresttherein.oldsql.schema.support.AdjustedMapping.SpecificAdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.MappingSchema
@@ -71,9 +72,14 @@ abstract class AbstractSchemaMapping[S, V <: Chain, C <: Chain, O]
 	   with StaticSchemaMapping[({ type A[M <: RefinedMapping[S, O], X] = SchemaMappingAdapter[M, S, X, V, C, O] })#A,
 		                        MappingSchema[S, V, C, O], S, V, C, O]
 {
-	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+	private[this] type Adapter[X] = SchemaMappingAdapter[this.type, S, X, V, C, O]
+
+	override def apply(adjustments :ComponentSelection[_, O]*) :SchemaMappingAdapter[this.type, S, S, V, C, O] =
+		AdjustedMapping(this, adjustments, alter)
+
+	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:SchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
+		new AlteredMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
 
 	override def prefixed(prefix :String) :SchemaMappingAdapter[this.type, S, S, V, C, O] =
@@ -102,9 +108,12 @@ abstract class AbstractFlatSchemaMapping[S, V <: Chain, C <: Chain, O]
 			({ type A[M <: RefinedMapping[S, O], X] = FlatSchemaMappingAdapter[M, S, X, V, C, O] })#A,
 			FlatMappingSchema[S, V, C, O], S, V, C, O]
 {
-	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+	override def apply(adjustments :ComponentSelection[_, O]*) :FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		AdjustedMapping(this, adjustments, alter)
+
+	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
+		new AlteredMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
 
 
@@ -133,9 +142,13 @@ abstract class AbstractFlatIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain
 			({ type A[M <: RefinedMapping[S, O], X] = FlatIndexedSchemaMappingAdapter[M, S, X, V, C, O] })#A,
 			FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
 {
-	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+	override def apply(adjustments :ComponentSelection[_, O]*)
 			:FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new CustomizedMapping[this.type, S, O](this, op, include, exclude)
+		AdjustedMapping(this, adjustments, alter)
+
+	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+			:FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		new AlteredMapping[this.type, S, O](this, op, include, exclude)
 			with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 	override def prefixed(prefix :String) :FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =

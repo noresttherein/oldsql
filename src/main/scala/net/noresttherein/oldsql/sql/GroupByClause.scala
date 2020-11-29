@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, Relation, SQLFor
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.Relation.PseudoRelation
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
@@ -990,9 +991,10 @@ object GroupByClause {
 	class GroupingRelation[M[O] <: BaseMapping[S, O], S, A] private
 	                      (val expr :SQLExpression[_, GlobalScope, S], template :M[A])
 	                      (implicit projection :IsomorphicProjection[M, S, A])
-		extends Relation[M]
+		extends PseudoRelation[M]
 	{
 		override def apply[O] :M[O] = projection(template)
+		override def altered[O] :M[O] = projection(template)
 
 		override def sql :String = ??? //fixme: proper default SQL
 	}

@@ -5,8 +5,8 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.StaticRelation
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Relation.{PseudoRelation, StaticRelation}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
@@ -282,7 +282,8 @@ object UnboundParam {
 
 	object ParamRelation {
 		def apply[X :SQLForm](name :String) :ParamRelation[X] =
-			new ParamRelation[X](name) with Relation[ParamRelation[X]#Param] {
+			new ParamRelation[X](name) with PseudoRelation[ParamRelation[X]#Param] {
+				override def altered[O] = apply[O]
 				override def toRelation = this
 			}
 
@@ -306,12 +307,12 @@ object UnboundParam {
 	  */
 	sealed abstract class NamedParamRelation[N <: Label, X :SQLForm](override val name :N)
 		extends GenericParamRelation[X, (N ?: X)#P](name)
-	{ this :StaticRelation[N, (N ?: X)#P] =>
+	{ this :Relation[(N ?: X)#P] => //this :StaticRelation[N, (N ?: X)#P] =>
 		private[this] val param = new LabeledFromParam[N, X, Any](name)
 
 		override def apply[O] :LabeledFromParam[N, X, O] = param.asInstanceOf[LabeledFromParam[N, X, O]]
 
-		protected[sql] override def toRelation :StaticRelation[N, (N ?: X)#P]
+//		protected[sql] override def toRelation :StaticRelation[N, (N ?: X)#P]
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[NamedParamRelation[_, _]]
 	}
@@ -323,7 +324,8 @@ object UnboundParam {
 
 		//the order of implicits reversed to avoid double definition with the one above.
 		def apply[N <: Label, X]()(implicit form :SQLForm[X], name :ValueOf[N]) :NamedParamRelation[N, X] =
-			new NamedParamRelation[N, X](valueOf[N]) with StaticRelation[N, (N ?: X)#P] {
+			new NamedParamRelation[N, X](valueOf[N]) with PseudoRelation[(N ?: X)#P] {
+				override def altered[O] = apply[O]
 				override def toRelation = this
 			}
 
@@ -582,7 +584,7 @@ object UnboundParam {
 				:Option[(FromParam[E, O], ParamColumnExtract[E, V, O], Int)] =
 			expr.extract.export match {
 				case param :FromParam[E @unchecked, O @unchecked]#ParamColumn[V @unchecked] =>
-					Some((param.root, param.extract, expr.origin.shift))
+					Some((param.root, param.extract, expr.origin.offset))
 				case _ =>
 					None
 			}
@@ -591,7 +593,7 @@ object UnboundParam {
 		           (expr :TypedComponentSQL[_, T, E, M, V, O]) :Option[(FromParam[E, O], ParamExtract[E, V, O], Int)] =
 			expr.extract.export match {
 				case param :ParamMapping[E @unchecked, V @unchecked, O @unchecked] =>
-					Some((param.root, param.extract, expr.origin.shift))
+					Some((param.root, param.extract, expr.origin.offset))
 				case _ =>
 					None
 			}
@@ -601,7 +603,7 @@ object UnboundParam {
 			expr match {
 				case TypedComponentSQL(table, extractor) if extractor.export.isInstanceOf[ParamMapping[_, _, _]] =>
 					val param = extractor.export.asInstanceOf[ParamMapping[Any, X, Any]]
-					Some((param.root, param.extract, table.shift))
+					Some((param.root, param.extract, table.offset))
 				case _ => None
 			}
 
@@ -812,10 +814,12 @@ object JoinParam {
 
 	trait ParamFactory[X] extends Any {
 		def apply[F <: TopFromSome](from :F)(implicit form :SQLForm[X]) :F WithParam X =
-			JoinParam[F, ParamRelation[X]#Param, X, Nothing](from, LastRelation(ParamRelation[X]().toRelation), None)(True)
+			JoinParam[F, ParamRelation[X]#Param, X, Nothing](
+				from, LastRelation(ParamRelation[X]().toRelation), None)(True)
 
 		def apply[F <: TopFromSome](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
-			JoinParam[F, ParamRelation[X]#Param, X, Nothing](from, LastRelation(ParamRelation[X](name).toRelation), None)(True)
+			JoinParam[F, ParamRelation[X]#Param, X, Nothing](
+				from, LastRelation(ParamRelation[X](name).toRelation), None)(True)
 	}
 
 

@@ -191,23 +191,32 @@ object ColumnReadForm {
 
 
 
+
 	/** A form always throwing the given exception instead of producing a value. Note that this applies also to
 	  * [[net.noresttherein.oldsql.schema.ColumnReadForm!.opt opt]] method.
 	  * See [[net.noresttherein.oldsql.schema.ColumnReadForm.none none]] and
 	  * [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls nulls]] if you wish the form to simply return `None`.
 	  * This functions the same way as `eval`, but can more clearly define intent.
 	  */
-	def error(raise : => Nothing, name :String = null)
+	def error(raise: => Nothing) :ColumnReadForm[Nothing] = error(JDBCType.OTHER, "ERROR>")(raise)
+
+	/** A form always throwing the given exception instead of producing a value. Note that this applies also to
+	  * [[net.noresttherein.oldsql.schema.ColumnReadForm!.opt opt]] method.
+	  * See [[net.noresttherein.oldsql.schema.ColumnReadForm.none none]] and
+	  * [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls nulls]] if you wish the form to simply return `None`.
+	  * This functions the same way as `eval`, but can more clearly define intent.
+	  */
+	def error(jdbcType :JDBCType, name :String)(raise: => Nothing)
 			:ColumnReadForm[Nothing] =
-		eval(JDBCType.OTHER, raise, if (name != null) name else "ERROR>")
+		eval(jdbcType, raise, if (name != null) name else "ERROR>")
 
 	/** A  form which throws an `UnsupportedOperationException` with the given message with every read attempt.
 	  * This is a simple shorthand for [[net.noresttherein.oldsql.schema.ColumnReadForm.error error]].
 	  */
 	def unsupported(jdbcType :JDBCType, name :String = null)(message :String) :ColumnReadForm[Nothing] =
-		eval(jdbcType, throw new UnsupportedOperationException(message),
-			if (name != null) name else "UNSUPPORTED[" + jdbcType + "]>"
-		)
+		error(jdbcType, if (name != null) name else "UNSUPPORTED[" + jdbcType + "]>") {
+			throw new UnsupportedOperationException(message)
+		}
 
 	/** A  form which throws an `UnsupportedOperationException` with the given message with every read attempt.
 	  * This is a simple shorthand for [[net.noresttherein.oldsql.schema.ColumnReadForm.error error]].
@@ -241,21 +250,6 @@ object ColumnReadForm {
 	  */
 	def none[T](jdbcType :JDBCType, name :String = null) :ColumnReadForm[T] =
 		nulls(jdbcType, name)(NullValue.NotNull)
-
-
-
-	/** A proxy form which will delegate all calls to the form returned by the given expression. The expression
-	  * will be evaluated only if/when needed, but must be thread safe and may be executed more than once
-	  * if several threads trigger the initialization at the same time, but the returned form is thread safe.
-	  * The proxy is shallow: all methods returning another form are delegated to the backing form, evaluating them.
-	  * If you wish them to remain lazy, invoke them directly on the backing form in the evaluation expression instead.
-	  * This is useful when the initialization expression cannot be successfully evaluated at this time,
-	  * but the form must be passed by-reference to some method. In other cases a `lazy val` or
-	  * [[net.noresttherein.oldsql.morsels.Lazy Lazy]] wrapper are preferable, as they do not incur the penalty
-	  * of checking for initialization and delegation at every call.
-	  */
-	def delayed[T](init: =>ColumnReadForm[T]) :ColumnReadForm[T] =
-		new LazySQLReadForm[T](() => init) with LazyColumnReadForm[T] with SuperAdapterColumnForm
 
 
 
@@ -375,6 +369,21 @@ object ColumnReadForm {
 	  */
 	def flatMap[S :ColumnReadForm, T](name :String, map :S => Option[T], nullValue: => T) :ColumnReadForm[T] =
 		flatMap(name)(map)(ColumnReadForm[S], NullValue.eval(nullValue))
+
+
+
+	/** A proxy form which will delegate all calls to the form returned by the given expression. The expression
+	  * will be evaluated only if/when needed, but must be thread safe and may be executed more than once
+	  * if several threads trigger the initialization at the same time, but the returned form is thread safe.
+	  * The proxy is shallow: all methods returning another form are delegated to the backing form, evaluating them.
+	  * If you wish them to remain lazy, invoke them directly on the backing form in the evaluation expression instead.
+	  * This is useful when the initialization expression cannot be successfully evaluated at this time,
+	  * but the form must be passed by-reference to some method. In other cases a `lazy val` or
+	  * [[net.noresttherein.oldsql.morsels.Lazy Lazy]] wrapper are preferable, as they do not incur the penalty
+	  * of checking for initialization and delegation at every call.
+	  */
+	def delayed[T](init: =>ColumnReadForm[T]) :ColumnReadForm[T] =
+		new LazySQLReadForm[T](() => init) with LazyColumnReadForm[T] with SuperAdapterColumnForm
 
 
 

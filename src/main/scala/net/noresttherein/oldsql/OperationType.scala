@@ -1,10 +1,10 @@
 package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Buff.{AuditBuffType, BuffType, ExplicitInsert, ExplicitFilter, ExplicitSelect, ExplicitUpdate, ExtraInsert, ExtraFilter, ExtraSelect, ExtraUpdate, FlagBuffType, InsertAudit, NoInsert, NoInsertByDefault, NoFilter, NoFilterByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalInsert, OptionalFilter, OptionalSelect, OptionalUpdate, FilterAudit, SelectAudit, UpdateAudit, ValueBuffType}
+import net.noresttherein.oldsql.schema.Buff.{AuditBuffType, BuffType, ExplicitFilter, ExplicitInsert, ExplicitSelect, ExplicitUpdate, ExtraFilter, ExtraInsert, ExtraSelect, ExtraUpdate, FilterAudit, FlagBuffType, InsertAudit, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalFilter, OptionalInsert, OptionalSelect, OptionalUpdate, SelectAudit, UpdateAudit, ValueBuffType}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ComponentValues, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 
 
 
@@ -68,17 +68,25 @@ sealed trait OperationType {
 	/** All columns, direct or indirect, of the given mapping which are applicable to this operation type. 
 	  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
 	  * the [[net.noresttherein.oldsql.OperationType.prohibited prohibited]] buff.
+	  * @see [[net.noresttherein.oldsql.OperationType.defaultColumns]]
 	  */
-	def columns[S, O](mapping :RefinedMapping[S, O]) :Unique[ColumnMapping[_, O]]
+	def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]]
+
+	/** Columns, both direct and indirect, of the given mapping which are used by default in this operation type.
+	  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
+	  * the [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]] buff.
+	  * @see [[net.noresttherein.oldsql.OperationType.columns]]
+	  */
+	def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]]
 
 	/** Creates a version of the given mapping with buffs manipulated in such a way that the specified components
 	  * are included or excluded from this operation type by default. It can only include components which are
 	  * allowed for this operation type (have the `explicit` buff) and exclude those which are specifically marked
 	  * as optional with the `optional` buff.
 	  */
-	def customize[S, O](mapping :RefinedMapping[S, O],
-	                    include :Iterable[RefinedMapping[_, O]],
-	                    exclude :Iterable[RefinedMapping[_, O]] = Nil) :RefinedMapping[S, O]
+	def alter[S, O](mapping :RefinedMapping[S, O],
+	                include :Iterable[RefinedMapping[_, O]],
+	                exclude :Iterable[RefinedMapping[_, O]] = Nil) :RefinedMapping[S, O]
 }
 
 
@@ -115,11 +123,13 @@ object OperationType {
 		override val optional = OptionalSelect
 		override val audit = SelectAudit
 
-		override def columns[S, O](mapping :RefinedMapping[S, O]) :Unique[ColumnMapping[_, O]] = mapping.selectable
+		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.selectable
 
-		override def customize[S, O](mapping :RefinedMapping[S, O],
-		                             include :Iterable[RefinedMapping[_, O]],
-		                             exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
+		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.selectedByDefault
+
+		override def alter[S, O](mapping :RefinedMapping[S, O],
+		                         include :Iterable[RefinedMapping[_, O]],
+		                         exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
 			mapping.forSelect(include, exclude)
 
 		override def form[S](mapping :MappingOf[S]) :SQLReadForm[S] = mapping.selectForm
@@ -140,11 +150,13 @@ object OperationType {
 		override val optional = OptionalFilter
 		override val audit = FilterAudit
 
-		override def columns[S, O](mapping :RefinedMapping[S, O]) :Unique[ColumnMapping[_, O]] = mapping.filterable
+		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.filterable
 
-		override def customize[S, O](mapping :RefinedMapping[S, O],
-		                             include :Iterable[RefinedMapping[_, O]],
-		                             exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
+		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.filteredByDefault
+
+		override def alter[S, O](mapping :RefinedMapping[S, O],
+		                         include :Iterable[RefinedMapping[_, O]],
+		                         exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
 			mapping.forFilter(include, exclude)
 
 		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O],
@@ -172,11 +184,13 @@ object OperationType {
 		override val optional = OptionalUpdate
 		override val audit = UpdateAudit
 
-		override def columns[S, O](mapping :RefinedMapping[S, O]) :Unique[ColumnMapping[_, O]] = mapping.updatable
+		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatable
 
-		override def customize[S, O](mapping :RefinedMapping[S, O],
-		                             include :Iterable[RefinedMapping[_, O]],
-		                             exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
+		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatedByDefault
+
+		override def alter[S, O](mapping :RefinedMapping[S, O],
+		                         include :Iterable[RefinedMapping[_, O]],
+		                         exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
 			mapping.forUpdate(include, exclude)
 
 		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O],
@@ -204,11 +218,13 @@ object OperationType {
 		override val optional = OptionalInsert
 		override val audit = InsertAudit
 
-		override def columns[S, O](mapping :RefinedMapping[S, O]) :Unique[ColumnMapping[_, O]] = mapping.insertable
+		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.insertable
 
-		override def customize[S, O](mapping :RefinedMapping[S, O],
-		                             include :Iterable[RefinedMapping[_, O]],
-		                             exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
+		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.insertedByDefault
+
+		override def alter[S, O](mapping :RefinedMapping[S, O],
+		                         include :Iterable[RefinedMapping[_, O]],
+		                         exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
 			mapping.forInsert(include, exclude)
 
 		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O],

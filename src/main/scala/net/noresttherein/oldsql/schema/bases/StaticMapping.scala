@@ -3,12 +3,13 @@ package net.noresttherein.oldsql.schema.bases
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, MappedTo}
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, RefinedMapping}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
 import net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate
-import net.noresttherein.oldsql.schema.support.{CustomizedMapping, MappedMapping, MappingAdapter, PrefixedMapping}
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, MappedMapping, MappingAdapter, PrefixedMapping}
+import net.noresttherein.oldsql.schema.Mapping
 
 
 
@@ -29,10 +30,12 @@ import net.noresttherein.oldsql.schema.support.{CustomizedMapping, MappedMapping
 trait StaticMapping[S, O] extends BaseMapping[S, O]
 	with StaticMappingTemplate[({ type A[M <: RefinedMapping[S, O], X] = MappingAdapter[M, X, O] })#A, S, O]
 {
+	override def apply(adjustments :ComponentSelection[_, O]*) :Adapted[this.type] =
+		AdjustedMapping[this.type, S, O](this :this.type, adjustments)
 
-	protected override def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:Adapted[this.type] =
-		CustomizedMapping[this.type, S, O](this, op, include, exclude)
+		AlteredMapping[this.type, S, O](this, op, include, exclude)
 
 
 	override def prefixed(prefix :String) :Adapted[this.type] =
@@ -41,7 +44,7 @@ trait StaticMapping[S, O] extends BaseMapping[S, O]
 
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X] = null) :this.type MappedTo X =
-		MappedMapping[this.type, S, X, O](this :this.type, there, back)
+		MappedMapping[this.type, S, X, O](this, there, back)
 
 }
 
@@ -64,8 +67,8 @@ object StaticMapping {
 	  *
 	  * It is very similar to
 	  * [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods MappingAdapter.MappingFactoryMethods]],
-	  * but the adapter type parameter takes an additional parameter which value is always given as `this.type`.
-	  * Unfortunately this duplication can't be avoided by a common implementation, as `this.type` cannot appear
+	  * but the adapter type parameter takes an additional parameter, the value of which is always given as `this.type`.
+	  * Unfortunately this duplication can't be avoided by a shared implementation, as `this.type` cannot appear
 	  * in a type signature making it necessary to accept an additional parameter, but, due to a scalac bug,
 	  * this trait is not in practice covariant in its adapter type parameter (and thus cannot be safely mixed into
 	  * classes designed for extension).
@@ -156,20 +159,21 @@ object StaticMapping {
 			pieces(apply(component))
 
 
+		override def apply(adjustments :Mapping.ComponentSelection[_, O]*) :A[this.type, S]
 
 		override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(SELECT, include, exclude)
+			alter(SELECT, include, exclude)
 
 		override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(FILTER, include, exclude)
+			alter(FILTER, include, exclude)
 
 		override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(UPDATE, include, exclude)
+			alter(UPDATE, include, exclude)
 
 		override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			customize(INSERT, include, exclude)
+			alter(INSERT, include, exclude)
 
-		protected def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+		protected def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:A[this.type, S]
 
 

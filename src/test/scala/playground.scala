@@ -23,17 +23,8 @@ import slang._
   * @author Marcin Mościcki
   */
 object playground extends App {
-	type T = JDBCType.LONGVARCHAR.type
-	println(SQLForms.NotNullZonedDateTime)
-	println(ZonedDateTime.now)
 
-	println(SQLForm[Instant].literal(Instant.now))
-//	implicitly[SQLReadForm[Option[Int]]](ColumnForms.OptionColumnForm)
-//	println(scala.reflect.runtime.universe.reify (
-//		implicitly[SQLReadForm[Option[Int]]]
-//	).tree)
 
-/*
 	class A[O] extends FormMapping[Int, O]
 	class B[O] extends FormMapping[Int, O]
 	class C[O] extends FormMapping[Int, O]
@@ -45,6 +36,8 @@ object playground extends App {
 	val D :Relation[D] = Relation("D", new D[Any])
 	val E :Relation[E] = Relation("E", new E[Any])
 
+	A[()]((t :A[()]) => t)
+/*
 	val f = From(A) as "A" leftJoin B as "B" rightJoin C as "C" subselect D as "D" join E as "E"
 //	val a = f[A]; val b = f[B]; val c = f[C]; val d = f[D]; val e = f[E]
 //	val a = f(0); val b = f(1); val c = f(2); val d = f(3); val e = f(4)

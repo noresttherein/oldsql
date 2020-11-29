@@ -267,8 +267,7 @@ trait FromSome
 			:next.Copy =
 	{
 		val condition = filter(last.asIn(next.generalizedExtension[FromLast]), next.last)
-		val anchored = SQLScribe.anchorLooseComponents(next.generalized)(condition)
-		next.filtered(anchored)
+		next.filtered(condition.anchor(next.generalized))
 	}
 
 	override type Paramless <: BoundParamless

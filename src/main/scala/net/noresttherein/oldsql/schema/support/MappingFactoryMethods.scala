@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping
 
 
 
-/** Implementations of `Mapping`'s methods which create adapter to the original mapping,
+/** Implementations of `Mapping`'s methods which create an adapter to the original mapping,
   * such as `forSelect`, `prefixed`, `map`. All implemented methods return a specific mapping type `A[X]`.
   */
 trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping {
@@ -20,32 +20,34 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 	override type Origin = O
 
 
+	override def apply(adjustments :ComponentSelection[_, O]*) :A[S]
+
 	/** @inheritdoc
-	  * @return `customize(SELECT, include, exclude)`.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.customize customize]] */
+	  * @return `alter(SELECT, include, exclude)`.
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.alter alter]] */
 	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-		customize(SELECT, include, exclude)
+		alter(SELECT, include, exclude)
 
 	/** @inheritdoc
-	  * @return `customize(FILTER, include, exclude)`.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.customize customize]] */
+	  * @return `alter(FILTER, include, exclude)`.
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.alter alter]] */
 	override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-		customize(FILTER, include, exclude)
+		alter(FILTER, include, exclude)
 
 	/** @inheritdoc
-	  * @return `customize(UPDATE, include, exclude)`.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.customize customize]] */
+	  * @return `alter(UPDATE, include, exclude)`.
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.alter alter]] */
 	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-		customize(UPDATE, include, exclude)
+		alter(UPDATE, include, exclude)
 
 	/** @inheritdoc
-	  * @return `customize(INSERT, include, exclude)`.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.customize customize]] */
+	  * @return `alter(INSERT, include, exclude)`.
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.alter alter]] */
 	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-		customize(INSERT, include, exclude)
+		alter(INSERT, include, exclude)
 
 	/** Target method for `forSelect`, `forFilter`, `forUpdate` and `forInsert`. Responsible for creating an
-	  * adapter (typically a [[CustomizedMapping CustomizedMapping]] subclass)
+	  * adapter (typically an [[net.noresttherein.oldsql.schema.support.AlteredMapping AlteredMapping]] subclass)
 	  * with modified buffs on certain components so as to include or exclude them ''by default''.
 	  * All components/columns which are not covered by either the `include` or the `exclude` list are left
 	  * unmodified, meaning they will be included in the operation only if they would be included by this mapping
@@ -61,8 +63,12 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 	  *                components whose export versions have the `optional` buff. All components on this list
 	  *                will receive the `nonDefault` buff (if not already present) and so will
 	  *                all their subcomponents with the `optional` buff.
-	  */
-	protected def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S]
+	  * @throws IllegalArgumentException if a component of `include` contains buff
+	  *                                  `op.`[[net.noresttherein.oldsql.OperationType.prohibited prohibited]],
+	  *                                  or a component of `exclude` does not contain buff
+	  *                                  `op.`[[net.noresttherein.oldsql.OperationType.optional optional]].
+	  */ //this may conflict with the extension method alter
+	protected def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S]
 
 
 
@@ -107,7 +113,7 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 	protected def thisColumn :A[S] = copy(name, buffs)
 
 	/** A column with the specified name and buffs, inheriting the form and any other properties from this
-	  * instance. It is the target of the `prefixed`, `customize` and related methods.
+	  * instance. It is the target of the `prefixed`, `alter` and related methods.
 	  */
 	protected def copy(name :String, buffs :Seq[Buff[S]]) :A[S]
 
@@ -118,12 +124,37 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 	def withBuffs(buffs :Seq[Buff[S]]) :A[S] = copy(name, buffs)
 
 
-	protected override def customize(op :OperationType,
-	                                 include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
+	override def apply(adjustments :ComponentSelection[_, O]*) :A[S] =
+		if (adjustments.size > 1)
+			throw new IllegalArgumentException(
+				"Multiple mappings listed for including/excluding: " + adjustments + " from " + this + "."
+			)
+		else if (adjustments.isEmpty)
+			thisColumn
+		else adjustments.head match {
+			case IncludedComponent(c) if c == this =>
+				val ops = OperationType.operations.filterNot(_.prohibited.enabled(this))
+				if (ops.nonEmpty)
+					withBuffs(buffs.filter { buff => ops.forall{ op => op.extra.disabled(buff) } })
+				else
+	                thisColumn
+
+			case ExcludedComponent(c) if c ==  this =>
+				val excludes = OperationType.operations.filter(_.optional.enabled(this)).map(_.exclude[S])
+				if (excludes.nonEmpty) withBuffs(excludes ++: buffs)
+				else thisColumn
+
+			case mod => throw new IllegalArgumentException(
+				"Mapping " + mod.component + " is not a component of column " + this + "."
+			)
+		}
+
+	protected override def alter(op :OperationType,
+	                             include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
 		if (include.size > 1)
-			throw new IllegalArgumentException("Mappings " + include + " are not components of column " + this)
+			throw new IllegalArgumentException("Mappings " + include + " are not components of column " + this + ".")
 		else if (exclude.size > 1)
-			throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this)
+			throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this + ".")
 		else if (exclude.headOption.contains(this) && op.optional.enabled(this))
 			withBuffs(op.exclude[S] +: buffs)
 		else if (include.headOption.contains(this) && op.explicit.enabled(this))

@@ -10,6 +10,7 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Relation.PseudoRelation
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByLabel, ByParamIndex, ByParamName, ByParamType, BySubject, ByType}
 import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate}
@@ -2492,11 +2493,12 @@ object RowProduct {
 	  */
 	class ProductRelation[F <: RowProduct { type Row = R }, R]
 	                     (val product :GroundFrom { type Self = F; type Row = R })
-		extends Relation[SQLMapping.Project[F, GlobalScope, R]#Expression]
+		extends PseudoRelation[SQLMapping.Project[F, GlobalScope, R]#Expression]
 	{
 		val mapping :SQLMapping[F, GlobalScope, R, ()] = SQLMapping(product.row)
 
 		override def apply[O] :SQLMapping[F, GlobalScope, R, O] = mapping.withOrigin[O]
+		override def altered[O] :SQLMapping[F, GlobalScope, R, O] = mapping.withOrigin[O]
 
 		override def sql :String = ??? //todo: default sql
 	}

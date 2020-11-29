@@ -255,7 +255,7 @@ trait BasicForms extends NotNullBasicForms {
 		}
 
 	implicit def DateForm(implicit nulls :NullValue[Date]) :ColumnForm[Date] =
-		new Basic[Date](DATE) { //todo: verify the literal format
+		new Basic[Date](DATE) {
 			override def set(statement :PreparedStatement, position :Int, value :Date) :Unit =
 				statement.setDate(position, value)
 
@@ -333,7 +333,7 @@ trait BasicForms extends NotNullBasicForms {
 		}
 
 	implicit def RowIdForm(implicit nulls :NullValue[RowId]) :ColumnForm[RowId] =
-		new Basic[RowId](ROWID) { //todo: RowId literal format
+		new Basic[RowId](ROWID) with NonLiteralForm[RowId] {
 			override def set(statement :PreparedStatement, position :Int, value :RowId) :Unit =
 				statement.setRowId(position, value)
 
@@ -368,7 +368,7 @@ trait BasicForms extends NotNullBasicForms {
 		}
 
 	implicit def TimeForm(implicit nulls :NullValue[Time]) :ColumnForm[Time] =
-		new Basic[Time](TIME) { //todo: verify the literal format
+		new Basic[Time](TIME) {
 			override def set(statement :PreparedStatement, position :Int, value :Time) :Unit =
 				statement.setTime(position, value)
 
@@ -378,7 +378,7 @@ trait BasicForms extends NotNullBasicForms {
 		}
 
 	implicit def TimestampForm(implicit nulls :NullValue[Timestamp]) :ColumnForm[Timestamp] =
-		new Basic[Timestamp](TIMESTAMP) { //todo: verify the literal form
+		new Basic[Timestamp](TIMESTAMP) {
 			override def set(statement :PreparedStatement, position :Int, value :Timestamp) :Unit =
 				statement.setTimestamp(position, value)
 

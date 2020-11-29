@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingBound, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingBound, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.BaseMapping
@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
-import net.noresttherein.oldsql.schema.SQLWriteForm.NullableWriteFormLiterals
+import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
@@ -30,7 +30,6 @@ import net.noresttherein.oldsql.sql.mechanics.TableCount
 
 
 //implicits
-import net.noresttherein.oldsql.collection.Unique.implicitUnique
 import slang._
 
 
@@ -495,31 +494,24 @@ trait Mapping {
 
 
 
-	/** Extract the value for the given component from the given `Subject` instance. */
-	def pick[T](component :Component[T], subject :Subject) :Option[T] = apply(component).get(subject)
-
-	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
-	def pick[T](component :Component[T], pieces :Pieces) :Option[T] = pieces.get(export(component))
-
-	/** Extract the value for the given component from the given `Subject` instance. */
-	def apply[T](component :Component[T], subject :Subject) :T = apply(component)(subject)
-
-	/** Extracts - or assembles - the value for the given component from the given `Pieces` instance. */
-	def apply[T](component :Component[T], pieces :Pieces) :T = pieces(export(component))
-
-
-
 
 
 
 	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]]
-	  * for the given component.
+	  * for the given component. Default implementation performs lookup in
+	  * [[net.noresttherein.oldsql.schema.Mapping.extracts extracts]], but if no extract is found
+	  * and `component eq this` than an identity extract is created as needed.
 	  * @throws NoSuchElementException if `component` is not a subcomponent of this mapping.
 	  */
-	def apply[T](component :Component[T]) :Extract[T] = extracts(component)
+	def apply[T](component :Component[T]) :Extract[T] =
+		if (component eq this) extracts.get(component) match {
+			case Some(ex) => ex
+			case _ => MappingExtract.ident(component).asInstanceOf[Extract[T]]
+		} else extracts(component)
 
 	/** Retrieves the [[net.noresttherein.oldsql.schema.ColumnMappingExtract ColumnMappingExtract]]
-	  * for the given column.
+	  * for the given column. Default implementation performs lookup in
+	  * [[net.noresttherein.oldsql.schema.Mapping.columnExtracts columnExtracts]].
 	  * @throws NoSuchElementException if `column` is not a subcomponent of this mapping.
 	  */
 	def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
@@ -528,21 +520,24 @@ trait Mapping {
 	/** A dictionary mapping all subcomponents of this mapping to extracts with their ''export'' versions.
 	  * It is used during the assembly process to alias all components to their operative versions, in order to make sure
 	  * that even if a subcomponent implementation asks for a value of one of its components which have been modified
-	  * by some enclosing component, the mapping passed to its `Pieces` is substituted with the export version
-	  * as defined by this mapping (the root). This is both to alias all versions to a single instance for the purpose
-	  * of presetting a value, as well as using the possibly modified assembly process to produce the subject value.
+	  * by some enclosing component, the mapping passed to its [[net.noresttherein.oldsql.schema.ComponentValues Pieces]]
+	  * is substituted with the export version as defined by this mapping (the root). This is both to alias all versions
+	  * to the same instance for the purpose of presetting a value, as well as using possibly overriden
+	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method, modifying the assembly process
+	  * producing the subject value.
 	  * Unlike the [[net.noresttherein.oldsql.schema.Mapping.subcomponents subcomponents]] list, this collection
 	  * must contain not only all export components, but also all their original versions as defined by their
 	  * parent mappings. It must also contain entries for all mapping instances which can be potentially used in the
 	  * assembly process, even if they are not exposed - failing to include such a hidden component will most likely
-	  * result in an exception being thrown from the `assemble` method. This again stands in contrast to the
-	  * `subcomponents` list in that the latter may potentially omit 'synthetic' components - implementation artifacts
-	  * used to assemble intermediate values and/or proxies. In some circumstances it may be acceptable
-	  * for a component to be absent from this list - this is the case with private components managed by another
-	  * mapping and guaranteed to not be used for the assembly (for example, only serving as a group of columns
-	  * used directly by its parent), or a table mapping implementation which is known to use all its components as-is
-	  * (performing no aliasing, with every component being its export version), but these are all exceptions which
-	  * should be avoided in general.
+	  * result in an exception being thrown from [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] method.
+	  * This again stands in contrast to the `subcomponents` list in that the latter may potentially omit 'synthetic'
+	  * components - implementation artifacts used to assemble intermediate values and/or proxies. In some circumstances
+	  * it may be acceptable for a component to be absent from this list - this is the case with private components
+	  * managed by another mapping and guaranteed to not be used for the assembly (for example, only serving as a group
+	  * of columns used directly by its parent), or a table mapping implementation which is known to use all
+	  * its components as-is (performing no aliasing, with every component being its export version), but these are all
+	  * exceptions which should be avoided in general. The map may, but doesn't have to if this mapping is not a column,
+	  * contain an identity extract for this instance.
 	  *
 	  * The general way of building this map is by starting with entries for all mappings on the `subcomponents` list
 	  * (which would map to themselves, being export components) and then, for every one of them, adding
@@ -575,13 +570,15 @@ trait Mapping {
 	  * It is used during the assembly process to alias all components to their operative versions, in order to make sure
 	  * that even if a subcomponent implementation asks for a value of one of its columns which have been modified
 	  * by some enclosing component, the column passed to its `Pieces` is substituted with the export version
-	  * as defined by this mapping (the root). This is both to alias all versions to a single instance for the purpose
-	  * of presetting a value, as well as using their `optionally` method, possibly modified by modifications
-	  * to the buff list. Unlike the [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list, this collection
+	  * as defined by this mapping (the root). This is both to alias all versions to the same instance for the purpose
+	  * of presetting a value, as well as using their [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
+	  * method (instead of the aliased component's), possibly modified by modifications to the buff list.
+	  * If this component is a column, the map is a singleton containing this mapping and an identity extract.
+	  * Unlike the [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list, this collection
 	  * must contain not only all export columns, but also all their original versions as defined by their
 	  * parent mappings. It must also contain entries for all mapping instances which can be potentially used in the
 	  * assembly process, even if they are not exposed - failing to include such a hidden component will most likely
-	  * result in an exception being thrown from the `assemble` method.
+	  * result in an exception being thrown from [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] method.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.extracts extracts]] method documentation for more information
 	  *     about implementation.
 	  */
@@ -594,18 +591,37 @@ trait Mapping {
 	  * subcomponent of this mapping, there is exactly one equal to its export form on the `subcomponents` list.
 	  * This process can modify the mapping definition by changing names of the columns (prefixing them) and updating
 	  * their buffs by cascading the buffs present on this instance.
-	  * By default it returns the `export` property of the extract for the component returned by
+	  * By default it returns the `export` property of the extract of the component, returned by
 	  * [[net.noresttherein.oldsql.schema.Mapping.apply[T](component:Component[T]) apply(component)]].
+	  * Unlike [[net.noresttherein.oldsql.schema.Mapping.extracts extracts]] map, this method
+	  * is guaranteed to return `this` if `column eq this` (that is, this mapping is considered the export component
+	  * of itself by this method).
 	  */
-	def export[T](component :Component[T]) :Component[T] = apply(component).export
+	def export[T](component :Component[T]) :Component[T] =
+		if (component eq this) component else apply(component).export //extra check in order to not create a MappingExtract
 
 	/** Adapts the given column of one of the transitive subcomponents of this instance to the form present
 	  * in the `columns` list (and others). For every column of every subcomponent of this instance, there is
 	  * exactly one equal to its export version on the `columns` list. This process can change the name and buffs
 	  * of the column, reflecting additional information present in this mapping.
-	  * By default this is an identity operation as no adaptation of subcomponents takes place.
+	  * By default it returns the `export` property of the extract of the column, returned by
+	  * [[net.noresttherein.oldsql.schema.Mapping.apply[T](column:Column[T]) apply(column)]].
+	  * Unlike [[net.noresttherein.oldsql.schema.Mapping.columnExtracts columnExtracts]] map, this method
+	  * is guaranteed to return `this` if `column eq this` (that is, this mapping is considered the export component
+	  * of itself by this method).
 	  */ //consider: renaming it to operative perhaps? it can easily conflict with an `export` column in client apps
-	def export[T](column :Column[T]) :Column[T] = apply(column).export
+	def export[T](column :Column[T]) :Column[T] =
+		if (column eq this) column else apply(column).export
+
+	/** Verifies if the given mapping is a (sub)component of this mapping. If this method returns `true`,
+	  * [[net.noresttherein.oldsql.schema.Mapping.export export]] and
+	  * [[net.noresttherein.oldsql.schema.Mapping.apply apply]] methods returning the export version of the component
+	  * and its extract will not throw an exception. Default implementation simply checks if `component`
+	  * is a key of [[net.noresttherein.oldsql.schema.Mapping.extracts extracts]] map of this mapping.
+	  */
+	def contains[T](component :Component[T]) :Boolean = extracts.contains(component)
+
+
 
 
 
@@ -636,7 +652,7 @@ trait Mapping {
 	  * are the ''export'' (operative) versions from the point of view of this mapping.
 	  */
 	def columns :Unique[Column[_]]
-//todo: 'default' lists
+
 	/** All columns which can be listed in the select clause of an SQL statement (don't have the `NoSelect` buff).
 	  * All columns on the list are the ''export'' (operative) versions from the point of view of this mapping.
 	  */
@@ -668,6 +684,36 @@ trait Mapping {
 	  */
 	def autoInserted :Unique[Column[_]] = columnsWith(AutoInsert)
 
+	/** Columns included in ''select'' clauses using this component unless the list is modified by an explicit
+	  * request for including or excluding certain optional component. This list should always be consistent
+	  * with [[net.noresttherein.oldsql.schema.Mapping.columns columns]]`.filter(`[[net.noresttherein.oldsql.schema.Buff.NoSelectByDefault NoSelectByDefault]]`.disabled)`,
+	  * it is provided here as a shorthand and in order to allow its caching.
+	  */
+	def selectedByDefault :Unique[Column[_]] = columnsWithout(NoSelectByDefault)
+
+	/** Columns included when comparing this component with another [[net.noresttherein.oldsql.sql.SQLExpression]],
+	  * with the value type being equal to `this.Subject`, inside ''where'' clauses of SQL ''selects'', unless
+	  * an explicit request is made for including or excluding certain optional component. This list should always
+	  * be consistent with
+	  * [[net.noresttherein.oldsql.schema.Mapping.columns columns]]`.filter(`[[net.noresttherein.oldsql.schema.Buff.NoFilterByDefault NoFilterByDefault]]`.disabled)`,
+	  * it is provided here as a shorthand and in order to allow its caching.
+	  */
+	def filteredByDefault :Unique[Column[_]] = columnsWithout(NoFilterByDefault)
+
+	/** Columns included in all SQL ''update'' statements for this component, unless certain optional components
+	  * are explicitly included or excluded. This list should always be consistent with
+	  * [[net.noresttherein.oldsql.schema.Mapping.columns columns]]`.filter(`[[net.noresttherein.oldsql.schema.Buff.NoUpdateByDefault NoUpdateByDefault]],`.disabled)`,
+	  * it is provided here as a shorthand and in order to allow its caching.
+	  */
+	def updatedByDefault :Unique[Column[_]] = columnsWithout(NoUpdateByDefault)
+
+	/** Columns included in all SQL ''insert'' statements for this component, unless certain optional components
+	  * are explicitly included or excluded. This list should always be consistent with
+	  * [[net.noresttherein.oldsql.schema.Mapping.columns columns]]`.filter(`[[net.noresttherein.oldsql.schema.Buff.NoInsertByDefault NoInsertByDefault]]`.disabled)`,
+	  * it is provided here as a shorthand and in order to allow its caching.
+	  */
+	def insertedByDefault :Unique[Column[_]] = columnsWithout(NoInsertByDefault)
+
 	/** All columns from the `columns` list with a given buff enabled. */
 	def columnsWith(buff :BuffType) :Unique[Column[_]] =
 		columns.filter(buff.enabled)
@@ -693,6 +739,41 @@ trait Mapping {
 
 
 
+	/** Wraps this mapping in a [[net.noresttherein.oldsql.schema.Mapping.IncludedComponent IncludedComponent]],
+	  * marking that it should be used in some database operation. Result can be used in
+	  * [[net.noresttherein.oldsql.schema.Mapping.apply apply]] and similar methods of other classes.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.-]]
+	  */
+	def + :ComponentSelection[Subject, Origin] = IncludedComponent(refine)
+
+	/** Wraps this mapping in a [[net.noresttherein.oldsql.schema.Mapping.IncludedComponent IncludedComponent]],
+	  * marking that it should be used in some database operation. Result can be used in
+	  * [[net.noresttherein.oldsql.schema.Mapping.apply apply]] and similar methods of other classes.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.+]]
+	  */
+	def - :ComponentSelection[Subject, Origin] = ExcludedComponent(refine)
+
+	/** A modified version this mapping with the given components included/excluded ''by default''
+	  * from all applicable database operations. This method is similar to
+	  * [[net.noresttherein.oldsql.schema.Mapping.forSelect forSelect]],
+	  * [[net.noresttherein.oldsql.schema.Mapping.forFilter forFilter]],
+	  * [[net.noresttherein.oldsql.schema.Mapping.forUpdate forUpdate]],
+	  * [[net.noresttherein.oldsql.schema.Mapping.forInsert forInsert]] in that it creates a mapping
+	  * with copies or adapters of these components having certain buffs added and removed. Where it differs
+	  * is that, primarily, ''all'' operation types are affected and, secondarily, in case a component cannot
+	  * be included/excluded for some - or even all - operations types, these changes will not affect said operations
+	  * with regard to that component. This differs from individual methods in that they throw
+	  * an `IllegalArgumentException` if the change cannot be made for some of the listed components.
+	  * The easiest way to obtain arguments for this method is to call one of
+	  * [[net.noresttherein.oldsql.schema.Mapping.+ +]] and [[net.noresttherein.oldsql.schema.Mapping.- -]] methods
+	  * on a component of this mapping.
+	  * @param adjustments a sequence of components of this mapping wrapped in either
+	  *                    [[net.noresttherein.oldsql.schema.Mapping.IncludedComponent IncludedComponent]],
+	  *                    if the component is to be included, or in
+	  *                    [[net.noresttherein.oldsql.schema.Mapping.ExcludedComponent ExcludedComponent]]
+	  *                    if it should be excluded.
+	  */
+	def apply(adjustments :ComponentSelection[_, Origin]*) :RefinedMapping[Subject, Origin]
 
 	/** A modified version of this mapping with the given components included/excluded ''by default''
 	  * from the SQL select operations.
@@ -704,6 +785,8 @@ trait Mapping {
 	  *                with all their selectable subcomponents, the `NoSelectByDefault` buff.
 	  * @return an adapter delegating to this mapping for assembly, but having some of its components recursively
 	  *         replaced as per the rules for the `include` and `exclude` lists.
+	  * @throws IllegalArgumentException if a component on the `include` list has the `NoSelect` buff or
+	  *                                  a component on the `exclude` list doesn't have the `OptionalSelect` buff.
 	  */
 	def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
@@ -718,6 +801,8 @@ trait Mapping {
 	  *                with all their selectable subcomponents, the `NoFilterByDefault` buff.
 	  * @return an adapter delegating to this mapping for assembly, but having some of its components recursively
 	  *         replaced as per the rules for the `include` and `exclude` lists.
+	  * @throws IllegalArgumentException if a component on the `include` list has the `NoFilter` buff or
+	  *                                  a component on the `exclude` list doesn't have the `OptionalFilter` buff.
 	  */
 	def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
@@ -731,6 +816,8 @@ trait Mapping {
 	  *                with all their selectable subcomponents, the `NoUpdateByDefault` buff.
 	  * @return an adapter delegating to this mapping for assembly, but having some of its components recursively
 	  *         replaced as per the rules for the `include` and `exclude` lists.
+	  * @throws IllegalArgumentException if a component on the `include` list has the `NoUpdate` buff or
+	  *                                  a component on the `exclude` list doesn't have the `OptionalUpdate` buff.
 	  */
 	def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
@@ -744,12 +831,14 @@ trait Mapping {
 	  *                with all their selectable subcomponents, the `NoInsertByDefault` buff.
 	  * @return an adapter delegating to this mapping for assembly, but having some of its components recursively
 	  *         replaced as per the rules for the `include` and `exclude` lists.
+	  * @throws IllegalArgumentException if a component on the `include` list has the `NoInsert` buff or
+	  *                                  a component on the `exclude` list doesn't have the `OptionalInsert` buff.
 	  */
 	def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject]
 
-	//todo: +, -
+
 //todo: think of a better name for this method (customize clashes with the declaration in StaticMapping)
-//	def customize(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
+//	def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[Subject] =
 //		op match {
 //			case SELECT => forSelect(include, exclude)
 //			case FILTER => forFilter(include, exclude)
@@ -1014,7 +1103,7 @@ trait Mapping {
 
 sealed abstract class LowPriorityMappingImplicits {
 	//exists for use as the right side of SQLExpression.=== and similar, which will instantiate type F before applying conversion
-	implicit def mappingSQL[F <: RowProduct, C <: Mapping, S, O <: RowProduct] //can't use TableShift as we might be converting a component of a table
+	implicit def mappingSQL[F <: RowProduct, C <: Mapping, S, O <: RowProduct] //can't use TableOffset as we might be converting a component of a table
                            (mapping :C)(implicit origin :C <:< MappingAt[O], base :F <:< O,
                                                  offset :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
 			:SQLExpression[F, GlobalScope, S] =
@@ -1053,7 +1142,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-	implicit def componentSQL[F <: RowProduct, C <: Mapping, S]//can't use TableShift as we might be converting a component of a table
+	implicit def componentSQL[F <: RowProduct, C <: Mapping, S]//can't use TableOffset as we might be converting a component of a table
                              (mapping :C)(implicit origin :C <:< MappingAt[F], offset :TableCount[F, _ <: Numeral],
                                                    projection :OriginProjection[C, S])
 			:LooseComponent[F, projection.WithOrigin, S] =
@@ -1417,6 +1506,30 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
+	/** A thin wrapper over a component of some mapping `MappingAt[O]` which selects it to be included or
+	  * excluded from some database operation, depending on which of the two subclasses of this type is the class
+	  * of this object. Instances of this trait are typically created by calling either
+	  * [[net.noresttherein.oldsql.schema.Mapping.+ +]] or [[net.noresttherein.oldsql.schema.Mapping.- -]]
+	  * on a component of the enclosing mapping.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.IncludedComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.ExcludedComponent]]
+	  */
+	sealed trait ComponentSelection[T, O] extends Serializable {
+		val component :RefinedMapping[T, O]
+	}
+
+	/** Marks the wrapped component for being included in some database operation.
+	  * Each mapping has a factory method wrapping it in this class: [[net.noresttherein.oldsql.schema.Mapping.+ +]].
+	  */
+	case class IncludedComponent[T, O](component :RefinedMapping[T, O]) extends ComponentSelection[T, O]
+
+	/** Marks the wrapped component for being excluded from some database operation.
+	  * Each mapping has a factory method wrapping it in this class: [[net.noresttherein.oldsql.schema.Mapping.- -]].
+	  */
+	case class ExcludedComponent[T, O](component :RefinedMapping[T, O]) extends ComponentSelection[T, O]
+
+
+
 	trait ColumnFilter {
 		def apply[S](mapping :MappingOf[S]) :Unique[mapping.Column[_]] =
 			mapping.columns.filter(test[mapping.Origin])
@@ -1496,7 +1609,7 @@ object Mapping extends LowPriorityMappingImplicits {
 	private[schema] class MappingReadForm[S, O] private[schema] //consider: making it public and using in SQLExpression for the columns
 	                      (private val mapping :RefinedMapping[S, O], private val columns :Unique[ColumnMapping[_, O]],
 	                       private val read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
-		extends SQLReadForm[S]
+		extends SQLReadForm[S] //could extend CompositeReadForm, but doesn't for extra speed
 	{
 		private[this] val forms = columns.view.map(read).to(Array)
 
@@ -1551,13 +1664,16 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 		def select[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLReadForm[S] = {
-			val columns = components.toSeq.map(mapping.export(_)).flatMap(_.selectable.map(mapping.export(_))).toUnique
+			val exports = components.view.map(mapping.export(_))
 			//todo: should adding an ExplicitSelect to a column of component with ExplicitSelect require explicitly
 			// listing both? how to differentiate from inherited buffs?
-			if (columns.exists(NoSelect.enabled))
+			if (exports.exists(NoSelect.enabled))
 				throw new IllegalArgumentException(
 					s"Can't create a select form for $mapping using $components: NoSelect buff present among the selection."
 				)
+			val columns = exports.flatMap(
+				_.columns.view.map(mapping.export(_)).filter(NoSelectByDefault.disabled)
+			).to(Unique)
 			val mandatory = mapping.selectable.filter(OptionalSelect.disabled(_))
 			val missing = mandatory.toSet - columns.toSet
 			if (missing.nonEmpty)
@@ -1570,7 +1686,7 @@ object Mapping extends LowPriorityMappingImplicits {
 		}
 
 		def defaultSelect[S](mapping :MappingOf[S]) :SQLReadForm[S] = {
-			val columns = mapping.selectable.filter(NoSelectByDefault.disabled) ++ ExtraSelect.Enabled(mapping)
+			val columns = mapping.selectedByDefault ++ ExtraSelect.Enabled(mapping)
 			new MappingReadForm[S, mapping.Origin](mapping, columns, _.selectForm)
 		}
 
@@ -1596,7 +1712,7 @@ object Mapping extends LowPriorityMappingImplicits {
 	private[schema] class MappingWriteForm[S, O] private[schema]
 	                      (private val op :WriteOperationType,
 	                       private val mapping :RefinedMapping[S, O], private val columns :Unique[ColumnMapping[_, O]])
-		extends SQLWriteForm[S]
+		extends SQLWriteForm[S] with WriteFormLiterals[S]
 	{
 //		def this(op :WriteOperationType, mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]]) =
 //			this(mapping, columns, op.extra, op.form(_))
@@ -1643,7 +1759,6 @@ object Mapping extends LowPriorityMappingImplicits {
 			val res = new java.lang.StringBuilder
 			if (!inline)
 				res append '('
-
 			var i = 0; val len = forms.length
 			while (i < len) {
 				if (i > 0)
@@ -1666,7 +1781,6 @@ object Mapping extends LowPriorityMappingImplicits {
 			val res = new java.lang.StringBuilder
 			if (!inline)
 				res append '('
-
 			var i = 0; val len = forms.length
 			while (i < len) {
 				if (i > 0)
@@ -1679,13 +1793,7 @@ object Mapping extends LowPriorityMappingImplicits {
 			res.toString
 		}
 
-		override def literal(value: S): String = literal(value, false)
-		override def inlineLiteral(value: S): String = literal(value, true)
-		override def nullLiteral: String = nullLiteral(false)
-		override def inlineNullLiteral: String = nullLiteral(true)
-
 		override val writtenColumns: Int = (0 /: forms)(_ + _.writtenColumns)
-
 
 
 		override def equals(that :Any) :Boolean = that match {
@@ -1754,16 +1862,15 @@ object Mapping extends LowPriorityMappingImplicits {
 		                         mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]])
 				:SQLWriteForm[S] =
 		{
-			val exports = components.toSeq.map(mapping.export(_))
+			val exports = components.view.map(mapping.export(_))
 			if (exports.exists(op.prohibited.enabled))
 				throw new IllegalArgumentException(
 					s"Can't create a $op write form for $mapping using $exports: ${op.prohibited} buff present among selection."
 				)
-
 			val columns = exports.flatMap { //fixme: adding an ExplicitXxx buff to excluded columns with the OptionalXxx
-				c => c.columns.toSeq.map(mapping.export(_)).filter(op.prohibited.disabled)
-			}.toUnique
-			val mandatory = mapping.columns.filter(op.nonDefault.disabled)
+				c => c.columns.view.map(mapping.export(_)).filter(op.nonDefault.disabled)
+			}.to(Unique)
+			val mandatory = mapping.columns.filter(op.optional.disabled)
 			val missing = mandatory.toSet - columns.toSet
 			if (missing.nonEmpty)
 				throw new IllegalArgumentException(missing.mkString(
@@ -1781,7 +1888,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		private def full[S](op :WriteOperationType, mapping :MappingOf[S]) :SQLWriteForm[S] =
 			new MappingWriteForm[S, mapping.Origin](
-				op, mapping, op.columns[S, mapping.Origin](mapping) ++ op.extra.Enabled(mapping)
+				op, mapping, op.columns[mapping.Origin](mapping) ++ op.extra.Enabled(mapping)
 			)
 
 	}

@@ -7,13 +7,13 @@ import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.OptionMapping
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
-import net.noresttherein.oldsql.schema.support.{CustomizedMapping, MappedMapping, PrefixedMapping}
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, MappedMapping, PrefixedMapping}
 
 
 
@@ -140,17 +140,20 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 
 
+	def apply(adjustments :ComponentSelection[_, O]*) :Component[S] =
+		AdjustedMapping[BaseMapping[S, O], S, O](this, adjustments)
+
 	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.select[BaseMapping[S, O], S, O](this, include, exclude)
+		AlteredMapping.select[BaseMapping[S, O], S, O](this, include, exclude)
 
 	override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.filter[BaseMapping[S, O], S, O](this, include, exclude)
+		AlteredMapping.filter[BaseMapping[S, O], S, O](this, include, exclude)
 
 	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.update[BaseMapping[S, O], S, O](this, include, exclude)
+		AlteredMapping.update[BaseMapping[S, O], S, O](this, include, exclude)
 
 	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		CustomizedMapping.insert[BaseMapping[S, O], S, O](this, include, exclude)
+		AlteredMapping.insert[BaseMapping[S, O], S, O](this, include, exclude)
 
 
 

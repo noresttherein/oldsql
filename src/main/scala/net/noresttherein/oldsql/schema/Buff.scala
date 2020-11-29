@@ -138,18 +138,38 @@ object Buff {
 
 	/** A factory for buffs marking that a given column/component can be omitted from the select clause.
 	  * It is still included by default and needs to be excluded explicitly. Created values carry a placeholder
-	  * value to assign to the annotated component on assembly. */
+	  * value to assign to the annotated component on assembly if the component is excluded.
+	  * The column can be excluded from a [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] expression by
+	  * providing it to the [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.exclude exclude]]
+	  * (or [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.exclude exclude]])
+	  * and [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter alter]]
+	  * (or [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.alter alter]]
+	  * method of the expression from the ''select'' clause for an owning entity/component,
+	  * or on the level of [[net.noresttherein.oldsql.schema.Relation Relation]]:
+	  * [[net.noresttherein.oldsql.schema.Relation.exclude exclude]] and
+	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation(...)]].
+	  */
 	case object OptionalSelect extends ComboValueBuffType
 
 	/** A factory for buffs marking that a given column/component is omitted by default from the select clause
 	  * and needs to be included explicitly. When not included, the value stored in the buff will be used
-	  * as the value for the annotated component. It implies `OptionalSelect` and `NoSelectByDefault`. */
+	  * as the value for the annotated component. It implies `OptionalSelect` and `NoSelectByDefault`.
+	  * The column can be included either by listing it among ''fetch'' components of
+	  * [[net.noresttherein.oldsql.hoard.Pile Pile]] methods,
+	  * by [[net.noresttherein.oldsql.schema.Relation.apply Relation(...)]],
+	  * [[net.noresttherein.oldsql.schema.Relation.include Relation.include]],
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.include include]] & [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.include include]],
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter alter]] & [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.alter alter]],
+	  * or simply by explicitly including it in a [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] expression
+	  * along the containing entity/component.
+	  */
 	case object ExplicitSelect extends ComboValueBuffType(OptionalSelect, NoSelectByDefault)
 
 	/** A buff marking a column as non-selectable, and providing the value for the annotated component.
 	  * This can be used in particular for 'virtual' columns - components which take part in the mapping, but
 	  * aren't present in the database at all.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual$]] */
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual$]]
+	  */
 	case object ExtraSelect extends ComboValueBuffType(NoSelect)
 
 
@@ -158,25 +178,48 @@ object Buff {
 	  * clause of an SQL statement. This covers the case when a comparison in an SQL expression happens between
 	  * whole subjects of a multi column mapping, rather than listing the columns individually. The annotated component
 	  * is still included by default when comparing the owning mapping's subjects and needs to be excluded explicitly.
+	  * The component can be excluded through the 'alter' methods of expressions for any owning component:
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.exclude]]
+	  * (and [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.exclude]]),
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter]]
+	  * (and [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.alter]]), thusly excluding the component
+	  * from that particular expression. Alternatively, corresponding methods of
+	  * [[net.noresttherein.oldsql.schema.Relation Relation]] can be used, which will exclude it
+	  * (unless explicitly included) from all occurrences of any owning component in an SQL ''select''
+	  * using the relation: [[net.noresttherein.oldsql.schema.Relation.include exclude]] and
+	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation(...)]].
 	  */
 	case object OptionalFilter extends FlagBuffType with Cascading
 
 	/** A buff marking that a given column or component can be omitted from the parameter list of the ''where'' clause
 	  * of an SQL statement and needs to be included explicitly. This applies when the comparison expression
 	  * happens on the level of the subject of a multi column mapping enclosing the buffed component without listing
-	  * its columns individually. It implies `OptionalFilter` and `NoFilterByDefault`. */
+	  * its columns individually. It implies `OptionalFilter` and `NoFilterByDefault`.
+	  * The component can be included through the 'alter' methods of expressions for any owning component:
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.include]]
+	  * (and [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.include]]),
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter]]
+	  * (and [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.alter]]), thusly including the component
+	  * as part of that particular expression. Alternatively, corresponding methods of
+	  * [[net.noresttherein.oldsql.schema.Relation Relation]] can be used, which will include it
+	  * (unless explicitly excluded) in all its occurrences in an SQL ''select'' using the relation:
+	  * [[net.noresttherein.oldsql.schema.Relation.include include]] and
+	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation(...)]].
+	  */
 	case object ExplicitFilter extends ComboFlag(OptionalFilter, NoFilterByDefault)
 
 	/** A buff type marking that a given column/component must be included in every query against the table, using
 	  * the value provided by the buff. It implies `NoSelect` and `NoFilter` and is used to artificially limit the number
 	  * of mapped entities.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped$]] */
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped$]]
+	  */
 	case object ExtraFilter extends ComboValueBuffType(NoSelect, NoFilter)
 
 
 
 	/** A buff marking that a given column/component can be omitted from the insert statement.
-	  * It is still included by default and needs to be excluded explicitly. */
+	  * It is still included by default and needs to be excluded explicitly.
+	  */
 	case object OptionalInsert extends FlagBuffType with Cascading
 
 	/** A buff marking that a given column/component is not inserted by default into the underlying table
@@ -587,17 +630,17 @@ object Buff {
 	  * it is possible to omit the type parameter of the factory `apply` method.
 	  */
 	trait FlagBuffType extends BuffType {
-		private[this] val buff = new FlagBuff[Nothing](this)
+		private[this] val instance = new FlagBuff[Nothing](this)
 
 		/** Creates a new instance of this buff type for a column/component with subject type `T`.
 		  * All instances created by this `BuffType` are equal.
 		  */
-		def apply[T] :Buff[T] = buff.asInstanceOf[Buff[T]]
+		def apply[T] :Buff[T] = instance.asInstanceOf[Buff[T]]
 
 		/** Creates a new instance of this buff type for a column/component with subject type `T`.
 		  * This is the same as `apply[T]`, but the type parameter in most cases will be inferred and can be omitted.
 		  */
-		@inline def flag[T] :Buff[T] = apply[T]
+		@inline def buff[T] :Buff[T] = apply[T]
 
 		@inline final def apply[T](buff :Buff[T]) :Boolean = enabled(buff)
 		@inline final def apply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)

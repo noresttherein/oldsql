@@ -195,8 +195,10 @@ object ColumnWriteForm {
 
 
 	/** A write form which will throw the given exception at every write attempt. */
-	def error(raise: => Nothing, columnType :JDBCType = JDBCType.OTHER, name :String = null)
-			:ColumnWriteForm[Any] =
+	def error(raise: => Nothing) :ColumnWriteForm[Any] = error(JDBCType.OTHER, "<ERROR")(raise)
+
+	/** A write form which will throw the given exception at every write attempt. */
+	def error(columnType :JDBCType, name :String)(raise: => Nothing) :ColumnWriteForm[Any] =
 		new ErrorSQLWriteForm[Any](1, raise, name) with ColumnWriteForm[Any] {
 			override val sqlType = columnType
 		}
@@ -206,9 +208,9 @@ object ColumnWriteForm {
 	  * where its write functionality is known not to be used. Be careful!
 	  */
 	def unsupported(columnType :JDBCType, name :String = null)(message :String) :ColumnWriteForm[Any] =
-		error(throw new UnsupportedOperationException(message),
-			columnType, if (name != null) name else "<UNSUPPORTED[" + columnType + "]"
-		)
+		error(columnType, if (name != null) name else "<UNSUPPORTED[" + columnType + "]") {
+			throw new UnsupportedOperationException(message)
+		}
 
 	/** A dummy column form which throws an `UnsupportedOperationException` at each write attempt.
 	  * Used as part of `ColumnForm.join` to convert a `ColumnReadForm` into a `ColumnForm` for situations

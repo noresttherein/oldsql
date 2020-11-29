@@ -580,7 +580,7 @@ object By {
 //	         (from :G, group :LooseComponent[O, M, S])
 //	         (implicit origin :F <:< FromSome { type Generalized <: O }, grouping :G <:< GroupingOf[F]) :G By M =
 //	{
-//		val relation = from.from.fullTableStack(group.shift).toRelationSQL
+//		val relation = from.from.fullTableStack(group.offset).toRelationSQL
 //		                   .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
 //		val component = TypedComponentSQL(relation, group.mapping)(group.projection)
 //		By[G, M, M, S](from, component.groupingRelation)

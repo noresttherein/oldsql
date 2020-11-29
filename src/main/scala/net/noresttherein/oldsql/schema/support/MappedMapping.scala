@@ -48,6 +48,7 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 
 	override def apply[X](component :Component[X]) :Extract[X] =
 		if (component eq backer) backerExtract.asInstanceOf[Extract[X]]
+		else if (component eq this) selfExtract.asInstanceOf[Extract[X]]
 		else extracts(component)
 
 	override def apply[X](column :Column[X]) :ColumnExtract[X] =
@@ -58,6 +59,7 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	private[this] val mapFun = map.requisite.orNull
 	private[this] val flatMapFun = map.optional
 	private[this] val backerExtract :Extract[T] = MappingExtract(backer)(unmap)
+	private[this] val selfExtract :Extract[S] = MappingExtract.ident(this)
 
 	override val extracts :NaturalMap[Component, Extract] =
 		schema.composeExtracts(backer, backerExtract).updated(backer, backerExtract)
@@ -71,8 +73,10 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
-		//fixme: not selectable, default select form
-		val form = backer.selectForm(if (components.contains(backer)) backer.selectable else components)
+		val comps =
+			if (components.contains(backer)) backer.selectedByDefault ++ components.view.filter(_ != backer)
+			else components
+		val form = backer.selectForm(comps)
 		if (nulls == null) form.nullTo(map) else form.to(map)
 	}
 

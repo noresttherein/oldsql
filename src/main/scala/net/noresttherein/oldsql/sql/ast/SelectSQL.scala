@@ -1,9 +1,9 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
+import net.noresttherein.oldsql.collection.{Chain, IndexedChain, Unique}
 import net.noresttherein.oldsql.collection.Chain.ChainApplication
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Relation, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{ColumnSQL, ColumnSQLMapping, Dual, FromSome, GroupByClause, IndexedColumnSQLMapping, IndexedSQLMapping, RowProduct, SQLExpression, SQLMapping}
@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, Componen
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, MappingQuery, Rows}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedColumn, IndexedSQLExpression}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.mechanics.{SQLScribe, TableOffset}
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -498,9 +498,10 @@ object SelectSQL {
 		override type From = S
 
 		protected override def component[O] :ResultMapping[O] = selectClause.mapping.withOrigin[O]
+		protected override def export[O] :RefinedMapping[V, O] = selectClause.export.withOrigin[O]
 
-		override val columns: Seq[SelectedColumn[_]] =
-			selectClause.mapping.selectable.toSeq.map(include(_))
+		override val columns: Seq[SelectedColumn[_]] = //todo: is this the place where we finally decide on the column set?
+			selectClause.export.selectedByDefault.toSeq.map(include(_))
 
 		private def include[X](column :ColumnMapping[X, selectClause.Origin]) :SelectedColumn[X] =
 			new SelectedColumn[X] {
@@ -537,18 +538,15 @@ object SelectSQL {
 				case some :NonEmptyFrom =>
 					type Ext = SubselectOf[E] //pretend this is the actual type S after rebasing to the extension clause G
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
-//					implicit val projection = header.projection
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val subselectTables = stretched.fullSize - base.fullSize
-					val table = selectClause.origin
+					val offset = selectClause.origin.offset
 					val replacement =
-						if (table.shift < subselectTables)
-							table.asInstanceOf[RelationSQL[Ext, MappingOf[Any]#TypedProjection, Any, Ext]]
+						if (offset < subselectTables)
+							selectClause.asInstanceOf[ComponentSQL[Ext, H]]
 						else
-                            stretched.fullTableStack(table.shift + ev.length)
-                                     .asInstanceOf[RelationSQL[Ext, MappingOf[Any]#TypedProjection, Any, Ext]]
-					val component = replacement \[H[Ext], V] selectClause.mapping.withOrigin[Ext]
-					new SubselectComponent[E, Ext, H, V](stretched, component, isDistinct)
+							selectClause.moveTo(new TableOffset[Ext, selectClause.Entity](offset + ev.length))
+					new SubselectComponent[E, Ext, H, V](stretched, replacement, isDistinct)
 
 				case empty :Dual =>
 					val adaptedHeader = selectClause.asInstanceOf[ComponentSQL[Dual, H]]
@@ -591,15 +589,14 @@ object SelectSQL {
 					implicit val extension = ev.asInstanceOf[some.Implicit ExtendedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val subselectTables = stretched.fullSize - base.fullSize
+					val offset = selectClause.origin.offset
 					val table = selectClause.origin
 					val replacement =
-						if (table.shift < subselectTables)
-							table.asInstanceOf[RelationSQL[Ext, MappingOf[Any]#TypedProjection, Any, Ext]]
+						if (offset < subselectTables)
+							selectClause.asInstanceOf[ColumnComponentSQL[Ext, H, V]]
 						else
-                            stretched.fullTableStack(table.shift + ev.length)
-                                     .asInstanceOf[RelationSQL[Ext, MappingOf[Any]#TypedProjection, Any, Ext]]
-					val component = replacement \ selectClause.mapping.withOrigin[Ext]
-					new SubselectComponentColumn[E, Ext, H, V](stretched, component, isDistinct)
+							selectClause.moveTo(new TableOffset[Ext, selectClause.Entity](offset + ev.length))
+					new SubselectComponentColumn[E, Ext, H, V](stretched, replacement, isDistinct)
 
 				case empty :Dual =>
 					val adaptedHeader = selectClause.asInstanceOf[ColumnComponentSQL[Dual, H, V]]
@@ -656,8 +653,10 @@ object SelectSQL {
 
 		protected val mapping :M[()]
 
-		protected override def component[O] :ResultMapping[O] =
+		protected override def component[O] :M[O] =
 			(this :ArbitrarySelectTemplate[F, S, M, V]).mapping.withOrigin[O]
+
+		protected override def export[O] :M[O] = component[O]
 	}
 
 

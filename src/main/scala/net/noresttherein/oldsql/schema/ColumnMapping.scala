@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraSelect, FilterAudit, InsertAudit, NoFilter, NoInsert, NoSelect, NoUpdate, Nullable, OptionalSelect, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraSelect, FilterAudit, InsertAudit, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalSelect, SelectAudit, UpdateAudit}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -151,6 +151,10 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	override def autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
  	override def insertable :Unique[Column[S]] = selfUnless(NoInsert)
 	override def autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
+	override def selectedByDefault :Unique[Column[S]] = selfUnless(NoSelectByDefault)
+	override def filteredByDefault :Unique[Column[S]] = selfUnless(NoFilterByDefault)
+	override def updatedByDefault :Unique[Column[S]] = selfUnless(NoUpdateByDefault)
+	override def insertedByDefault :Unique[Column[S]] = selfUnless(NoInsertByDefault)
 
 	/** An empty `Unique` if the given buff is ''disabled'' (not attached), or a singleton `Unique(this)` otherwise. */
 	@inline protected final def selfUnless(buff :BuffType) :Unique[Column[S]] =
@@ -168,23 +172,28 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	  */
 	def form :ColumnForm[S]
 
-	/** `this.form` adapted to a `SQLReadForm` by incorporating behaviour modifications caused by applied buffs.
-	  * This includes default values from buffs like `OptionalSelect`, transformations from `AuditBuff`s and similar.
+	/** `this.form` adapted to a `SQLReadForm` by incorporating some of behaviour modifications caused by applied buffs.
+	  * This includes default values from buffs like `OptionalSelect` and transformations from `AuditBuff`s and similar.
+	  * It doesn't verify if the column is selectable by default or at all, returning always (possibly decorated)
+	  * `this.form`, unless [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]] is present, in which case
+	  * a constant `SQLReadForm` is returned, which does not read anything from the `ResultSet`. In all other cases,
+	  * the returned form is a [[net.noresttherein.oldsql.schema.ColumnReadForm ColumnReadForm]].
 	  * Note that the `optionally`/`apply` and `assembly` methods of this mapping are ''not'' called by the returned
-	  * form. They are involved only as part of the assembly process for owning components, provided
-	  * by the created `ComponentValues` with the value returned by this form instead.
+	  * form. They are involved only as a part of the assembly process for owning components, provided
+	  * by the created `ComponentValues` containing the value returned by this form instead.
 	  */
 	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
-		case Some(ConstantBuff(x)) => SQLReadForm.const(x)
-		case Some(buff) => SQLReadForm.eval(buff.value)
+		//these *could* be column forms, but likely we'd rather have it zero width, as there is no such column in the db.
+		case Some(ConstantBuff(x)) => SQLReadForm.const(x, 0, name + "='" + x + "'>")
+		case Some(buff) => SQLReadForm.eval(buff.value, 0, name + "=_>")
 		case _ =>
 			val audits = SelectAudit.Audit(buffs)
 			val read = //we can't enforce not null here because of artificial nulls resulting from outer joins
 				if (audits.isEmpty) form
-				else form.map(audits.reduce(_ andThen _), form.nullValue)
+				else form.map(audits.reduce(_ andThen _))(form.nulls)
 			OptionalSelect.test(buffs) match {
-				case Some(ConstantBuff(x)) => read orElse SQLReadForm.const(x)
-				case Some(buff) => read orElse SQLReadForm.eval(buff.value)
+				case Some(ConstantBuff(x)) => read orElse ColumnReadForm.const(read.sqlType, x, name + "='" + x + "'>")
+				case Some(buff) => read orElse ColumnReadForm.eval(read.sqlType, buff.value, name + "=_>")
 				case _ => read
 			}
 
@@ -197,6 +206,9 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 	/** Adapts `this.form` by incorporating the behaviour of relevant buffs: the `ExtraXxx` and `XxxAudit`.
+	  * Only standard buffs modifying/providing the written value are applied; any buffs determining if the column
+	  * can or should be included in the given operation are ignored. The caller should use an explicit column list
+	  * rather than rely on this form to handle the case of an excluded column.
 	  * Note that `OptionalXxx` and even `NoXxx` buffs are ignored here and columns need to be explicitly
 	  * included/excluded in an operation and the burden of validating this information lies with the owning mapping.
 	  */
@@ -445,12 +457,16 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 
 		override val columns :Unique[Column[S]] = Unique.single(this)
 
-		override val selectable :Unique[Column[S]] = selfUnless(NoSelect)
-		override val filterable :Unique[Column[S]] = selfUnless(NoFilter)
-		override val updatable :Unique[Column[S]] = selfUnless(NoUpdate)
-		override val autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
-		override val insertable :Unique[Column[S]] = selfUnless(NoInsert)
-		override val autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
+		override val selectable :Unique[Column[S]] = super.selectable
+		override val filterable :Unique[Column[S]] = super.filterable
+		override val updatable :Unique[Column[S]] = super.updatable
+		override val autoUpdated :Unique[Column[S]] = super.autoUpdated
+		override val insertable :Unique[Column[S]] = super.insertable
+		override val autoInserted :Unique[Column[S]] = super.autoInserted
+		override val selectedByDefault :Unique[Column[S]] = super.selectedByDefault
+		override val filteredByDefault :Unique[Column[S]] = super.filteredByDefault
+		override val updatedByDefault :Unique[Column[S]] = super.updatedByDefault
+		override val insertedByDefault :Unique[Column[S]] = super.insertedByDefault
 
 		override val selectForm :SQLReadForm[S] = super.selectForm
 		override val filterForm :SQLWriteForm[S] = super.filterForm

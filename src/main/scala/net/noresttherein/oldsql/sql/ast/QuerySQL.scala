@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql.ast
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.ChainApplication
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Relation, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
@@ -33,6 +33,7 @@ trait QuerySQL[-F <: RowProduct, V] extends SQLExpression[F, GlobalScope, Rows[V
 	type ResultMapping[O] <: MappingAt[O]
 
 	protected def component[O] :ResultMapping[O]
+	protected def export[O] :RefinedMapping[ResultMapping[O]#Subject, O] //= component[O]
 
 	override def isAnchored = true
 	override def anchor(from :F) :QuerySQL[F, V] = this
@@ -155,6 +156,7 @@ object QuerySQL extends ImplicitQueryRelations {
 		extends Relation[M]
 	{
 		override def apply[O] :M[O] = query.component[O]
+		override def altered[O] :RefinedMapping[M[O]#Subject, O] = query.export[O]
 
 		override def sql :String = ??? //todo: default dialect SQL
 	}
@@ -367,6 +369,7 @@ object QuerySQL extends ImplicitQueryRelations {
 		{
 			override type ResultMapping[O] = left.ResultMapping[O]
 			protected override def component[O] = left.component[O]
+			protected override def export[O] = left.export[O] //todo: this should involve some reconciliation
 		}
 
 
@@ -453,6 +456,7 @@ object QuerySQL extends ImplicitQueryRelations {
 		{
 			override type ResultMapping[O] = ColumnMapping[V, O]
 			protected override def component[O] = left.component
+			protected override def export[O] = left.export //todo: this should involve some reconciliation
 		}
 
 
@@ -493,6 +497,7 @@ object QuerySQL extends ImplicitQueryRelations {
 		override val right :MappingQuery[F, M]
 
 		protected override def component[O] = left.component
+		protected override def export[O] = left.export //todo: this should involve some reconciliation
 
 		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :SQLExpression[E, GlobalScope, Rows[M[()]#Subject]] =
 			(mapper(left), mapper(right)) match {
