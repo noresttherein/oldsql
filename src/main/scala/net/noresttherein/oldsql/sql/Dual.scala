@@ -67,14 +67,18 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 
 
 
+	override def lastParamOffset :Nothing = throw new UnsupportedOperationException("Dual.lastParamOffset")
 	override def isParameterized :Boolean = false
 	override def isSubselectParameterized :Boolean = false
 
+	override type LastParam = Nothing
 	override type Params = @~
-	override type BoundParamless = FromClause { type Params = @~ }
+	override type AppliedParam = Nothing
 	override type Paramless = Dual
+	override type BoundParamless = FromClause { type Params = @~ }
 	override type DecoratedParamless[D <: BoundParamless] = D
 
+	override def bind(param :Nothing) :Nothing = throw new UnsupportedOperationException("Dual.bind(" + param + ")")
 	override def bind(params: @~) :Dual = this
 
 	protected override def decoratedBind[D <: BoundParamless](params: @~)(decorate :Dual => D) :D =

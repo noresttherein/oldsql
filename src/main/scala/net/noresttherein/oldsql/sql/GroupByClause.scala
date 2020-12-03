@@ -123,14 +123,14 @@ sealed trait AggregateClause extends RowProduct with RowProductTemplate[Aggregat
 
 	/** The supertype of [[net.noresttherein.oldsql.sql.AggregateClause.GeneralizedDiscrete GeneralizedDiscrete]]
 	  * which replaces its whole [[net.noresttherein.oldsql.sql.RowProduct.Implicit ''implicit'']] prefix with
-	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]. Equals `from.Explicit`.
+	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]. Equals `fromClause.Explicit`.
 	  */
 	type GeneralizedGrouped = fromClause.Explicit
 
 	/** The supertype of [[net.noresttherein.oldsql.sql.AggregateClause.Discrete Discrete]]
 	  * which replaces its whole [[net.noresttherein.oldsql.sql.RowProduct.Outer outer]] prefix with
 	  * the upper bound for the left side of the [[net.noresttherein.oldsql.sql.AndFrom join]] between the
-	  * outer and inner sections. Equals `from.Inner`.
+	  * outer and inner sections. Equals `fromClause.Inner`.
 	  */
 	type Grouped = fromClause.Inner
 
@@ -204,10 +204,11 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 		throw new UnsupportedOperationException(s"($this).where($condition)")
 
 
-
+	override type AppliedParam = Aggregated[clause.AppliedParam]
 	override type Paramless = Aggregated[clause.Paramless]
 	override type DecoratedParamless[D <: BoundParamless] = D
 
+	override def bind(param :LastParam) :AppliedParam = withClause(clause.bind(param))
 	override def bind(params :Params) :Paramless = withClause(clause.bind(params))
 
 	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
@@ -421,6 +422,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 		type OuterRow = thisClause.OuterRow
 	}
 
+	override type AppliedParam <: GroupByClause
 	override type Paramless <: BoundParamless //because GroupParam requires a GroupByClause on the left.
 	override type BoundParamless = GroupByClause { type Params = @~ }
 

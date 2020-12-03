@@ -356,6 +356,8 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 
 
+	type LastParam
+
 	/** A [[net.noresttherein.oldsql.collection.Chain Chain]] listing all parameters of this clause joined with
 	  * the [[net.noresttherein.oldsql.sql.FromSome.TopFromSomeExtension.param param]] method.
 	  * In particular, a `RowProduct` subtype with no `JoinParam` joins in its full type has this type equal to `@~`.
@@ -364,8 +366,15 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  */
 	type Params <: Chain
 
+	/** The type of this clause with the last [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo join
+	  * removed. It is the result type of method [[net.noresttherein.oldsql.sql.RowProduct.bind(param:LastParam) bind]]
+	  * used to provide the value for the last parameter.
+	  */
+	type AppliedParam <: RowProduct
+
 	/** The type of this clause with all [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] extensions
-	  * removed. It is the result type of method [[net.noresttherein.oldsql.sql.RowProduct bind bind]]`(`[[net.noresttherein.oldsql.sql.RowProduct.Params Params]]`)`,
+	  * removed. It is the result type of method
+	  * [[net.noresttherein.oldsql.sql.RowProduct.bind(params:Params) bind]]`(`[[net.noresttherein.oldsql.sql.RowProduct.Params Params]]`)`,
 	  * which replaces all references to unbound parameters with [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]]
 	  * parameter expressions.
 	  */
@@ -377,7 +386,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * [[net.noresttherein.oldsql.sql.FromSome FromSome]] and
 	  * [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] define it as parameterless refinements
 	  * of themselves, while their superclasses declare it as bound from above by their parameterless refinements.
-	  */
+	  */ //with union types this will work for AppliedParam, too
 	type BoundParamless >: Paramless <: ParamlessFrom
 
 	/** A helper type used in the definitions of [[net.noresttherein.oldsql.sql.RowProduct.Paramless Paramless]]:
@@ -389,9 +398,21 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  */
 	type DecoratedParamless[D <: BoundParamless] <: BoundParamless
 
+	/** Applies this clause to its last parameter, removing the last
+	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] and substituting all references to its parameter
+	  * components with [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions
+	  * with values derived from `param`. Parameters in aggregated sections (for example, under
+	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] are treated the same way as all others
+	  * @param param the value for the last parameter pseudo relation joined with `UnboundParam`
+	  * @return a `RowProduct` instance obtained by removing the rightmost `UnboundParam` pseudo join
+	  *         from this clause's type.
+	  */
+	def bind(param :LastParam) :AppliedParam
+
 	/** Applies this clause to its parameters: removes all [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
-	  * parameters from this clause and substitutes all references to parameter components with SQL literals
-	  * extracted from parameter values. This method will include ''all'' parameters in their order of appearance
+	  * parameters from this clause and substitutes all references to parameter components with
+	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions with values derived
+	  * from the corresponding chain elements. This method will include ''all'' parameters in their order of appearance
 	  * in `F`, including those in the grouped, 'discrete' section, which aren't available for use in SQL expressions.
 	  * @param params a chain consisting of subject types of all parameter mappings of all `UnboundParam` joins
 	  *               in this clause in order of their appearance. Note that there is an implicit conversion
@@ -399,7 +420,6 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * @return a `RowProduct` instance obtained by removing all `UnboundParam` instances from this clause's type.
 	  */
 	def bind(params :Params) :Paramless
-	//todo: bind individual parameters based on index. Will require implicits.
 
 	/** Forwards to the `decoratedBind` method of `prefix`.
 	  */
@@ -418,6 +438,8 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  */
 	protected def decoratedBind[D <: BoundParamless]
 	                           (params :Params)(decorate :Paramless => D) :DecoratedParamless[D]
+
+	def lastParamOffset :Int
 
 	/** Does this clause contain any [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] 'joins'
 	  * (or its subtypes)?
@@ -1123,7 +1145,7 @@ object RowProduct {
 		  * the subclasses. It is defined as the most specialized supertype type of `f :F` which is not its
 		  * singleton type; for concrete classes, `Copy >: this.type` always holds, but it is not enforced on this level.
 		  * The difference from the other self type [[net.noresttherein.oldsql.sql.RowProduct.Self Self]] is that
-		  * this type if ''not'' formed recursively, with the narrowing in subclasses being restricted only
+		  * this type is ''not'' formed recursively, with the narrowing in subclasses being restricted only
 		  * to the outer class, retaining the same type parameters. For this reason, this type generally doesn't receive
 		  * a concrete definition in public classes, as the covariance in type parameters restricts it to remain
 		  * an upper bound instead. Thus, for `join :InnerJoin[L, R]`: `join.Copy <: L InnerJoin R` and
@@ -1180,7 +1202,7 @@ object RowProduct {
 		  * implicit conversions from a [[net.noresttherein.oldsql.schema.Mapping Mapping]] to
 		  * [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]].
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where]]
-		  */ //consider: maybe anchor this after all? it is not anchored as it hopes to reuse the same instance.
+		  */
 		def where(filter :GlobalBoolean[Generalized]) :F = filtered(filter.anchor(generalized))
 
 		/** Apply a filter condition to this clause. The condition is combined using `&&` with `this.condition`
@@ -1198,7 +1220,7 @@ object RowProduct {
 		def where(condition :JoinedMappings[F] => GlobalBoolean[Generalized]) :F =
 			where(condition(this.mappings))
 
-		//these are here so that in GlobalClauseMatrix[U, U] with RowProductTemplate[U, F] they are both public
+		//these are here so that in GroupByClauseTemplate[U, U] with RowProductTemplate[U, F] they are both public
 		// and returning F. This scenario occurs in U As A, where F =:= U As A
 		protected def having(condition :LocalBoolean[Generalized]) :F =
 			throw new UnsupportedOperationException(s"($this :${this.localClassName}).having")
@@ -1374,9 +1396,6 @@ object RowProduct {
 		  */
 		def aliased[A <: Label](alias :A) :DealiasedCopy As A
 
-
-//		protected[sql] def transplantToExtension[O >: F, E <: RowProduct, M[A] <: MappingAt[A]]
-//		                                        (table :JoinedRelation[O, M])(implicit extension :F ExtendedBy E)
 	}
 
 
@@ -1455,6 +1474,7 @@ object RowProduct {
 		override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :JoinedRelation[E, LastMapping] =
 			last.asIn[E]
 
+		override type AppliedParam <: NonEmptyFrom
 		override type Paramless <: NonEmptyFrom { type Params = @~ }
 		override type BoundParamless >: Paramless <: NonEmptyFrom { type Params = @~ }
 
@@ -1855,6 +1875,7 @@ object RowProduct {
 		@inline def relations :JoinedRelations[F] = new JoinedRelations[F](thisClause)
 
 
+//		def apply(param :thisClause.LastParam) :thisClause.AppliedParam = thisClause.bind(param)
 		/** Checks if this clause InferTypeParams to [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
 		  * (meaning it is a valid ''from'' clause for a subselect of its `Implicit` clause) and, if so, casts `this`
 		  * to `outer.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and passes it to the given function.
@@ -1944,7 +1965,7 @@ object RowProduct {
 		  *                                       in its [[net.noresttherein.oldsql.sql.RowProduct.Explicit explicit]]
 		  *                                       section).
 		  * @throws IllegalArgumentException if the return expression contains a subexpression of a not supported type.
-		  */
+		  */ //did JoinedMappings[Self] not work?
 		@inline def select[E](header :JoinedMappings[F] => E)(implicit factory :SelectFactory[Self, E]) :factory.Select =
 			if (thisClause.isSubselectParameterized)
 				throw new UnsupportedOperationException(s"Cannot create a SelectSQL with a parameterized RowProduct $this")

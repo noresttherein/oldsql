@@ -34,11 +34,12 @@ trait DecoratedFrom[+F <: RowProduct] extends RowProduct { thisClause =>
 	def withClause[C <: Bound](body :C) :DecoratedFrom[C]
 
 
+	override def lastParamOffset :Int = clause.lastParamOffset
 	override def isParameterized :Boolean = clause.isParameterized
 	override def isSubselectParameterized :Boolean = clause.isSubselectParameterized
 
 	override type Params = clause.Params
-
+	override type LastParam = clause.LastParam
 
 	override type Implicit = clause.Implicit
 	override type Outer = clause.Outer
@@ -142,7 +143,7 @@ object DecoratedFrom {
 			withClause(clause.filtered(condition))
 
 
-		//todo: we should at least give the option of omitting the decorator if the decorated clause ended with a param
+		//todo: AppliedParam
 		override type Paramless = clause.DecoratedParamless[WithClause[clause.Paramless]]
 		override type DecoratedParamless[D <: BoundParamless] = clause.DecoratedParamless[D]
 

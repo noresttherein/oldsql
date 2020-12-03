@@ -163,6 +163,7 @@ trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	override def fullSize :Int = left.fullSize + 1
 
+	override def lastParamOffset :Int = left.lastParamOffset + 1
 	override def isParameterized :Boolean = left.isParameterized
 	override def isValidSubselect :Boolean = left.isValidSubselect
 

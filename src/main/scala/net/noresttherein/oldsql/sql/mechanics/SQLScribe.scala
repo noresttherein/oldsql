@@ -511,7 +511,7 @@ object SQLScribe {
 	/** Removes all references to unbound statement parameters (synthetic mappings joined with `JoinParam`),
 	  * replacing all their components with bound parameter expressions (`SQLParameter`) using the values for `F#Params`
 	  * provided as constructor arguments.
-	  */
+	  */ //todo: make it a method in SQLExpression
 	private[sql] def applyParams[F <: RowProduct, N <: RowProduct]
 	                             (parameterized :F, parameterless :N)(params :parameterized.Params) :SQLScribe[F, N] =
 		new ApplyParams(parameterized, parameterless)(params)
@@ -561,7 +561,7 @@ object SQLScribe {
 			e match {
 				case UnboundParamSQL(param, _, idx) =>
 					val shift = followingParams(followingParams.length - 1 - idx)
-					SQLParameter(param.form)(params(params.length - shift).asInstanceOf[E])
+						SQLParameter(param.form)(params(params.length - shift).asInstanceOf[E])
 				case _ =>
 					val shift = followingParams(followingParams.length - 1 - e.offset)
 					e.moveTo(new TableOffset[G, T](e.offset - shift))
@@ -617,7 +617,7 @@ object SQLScribe {
 
 	/** Removes a single unbound parameter with the relation offset given as `idx` (counting from the ''right'')
 	  * and all its components with bound parameter(s) of/derived from the given value.
-	  */
+	  *///todo: make it a method in SQLExpression
 	private[sql] def applyParam[F <: RowProduct, N <: RowProduct, X]
 	                            (from :F, without :N, param :X, idx :Int) :SQLScribe[F, N] =
 		new ApplyParam(from, without, param, idx)

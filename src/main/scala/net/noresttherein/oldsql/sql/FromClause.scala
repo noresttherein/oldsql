@@ -41,8 +41,9 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 
 
 
-	override type BoundParamless >: Paramless <: FromClause { type Params = @~ }
+	override type AppliedParam <: FromClause
 	override type Paramless <: FromClause { type Params = @~ }
+	override type BoundParamless >: Paramless <: FromClause { type Params = @~ }
 
 	/** A join between this clause and the relation for mapping `T`. For non empty clauses, this is simply `J[Self, T]`,
 	  * but `Dual` defines it as `From[T]` instead.
@@ -270,6 +271,7 @@ trait FromSome
 		next.filtered(condition.anchor(next.generalized))
 	}
 
+	override type AppliedParam <: FromSome
 	override type Paramless <: BoundParamless
 	override type BoundParamless = FromSome { type Params = @~ } //only because JoinParam requires FromSome on the left
 

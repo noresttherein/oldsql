@@ -10,6 +10,7 @@ import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, JoinParam, 
 import net.noresttherein.oldsql.sql.RowProduct.As
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 import net.noresttherein.oldsql.slang
+import net.noresttherein.oldsql.sql.JoinParam.WithParam
 
 //implicits
 import slang._
@@ -36,7 +37,16 @@ object playground extends App {
 	val D :Relation[D] = Relation("D", new D[Any])
 	val E :Relation[E] = Relation("E", new E[Any])
 
-	A[()]((t :A[()]) => t)
+//	val f = From(A) as "A" param[Int] "int" param[Long] "long" param[String] "string"
+	val f :From[A] As "A" WithParam Int WithParam Long WithParam String = null
+//	val res = f("string")(1L)(1)
+//	res :From[A]
+	println(scala.reflect.runtime.universe.reify(
+		f.apply("A")
+	).tree)
+
+//	val a = f("A")
+//	a :Nothing
 /*
 	val f = From(A) as "A" leftJoin B as "B" rightJoin C as "C" subselect D as "D" join E as "E"
 //	val a = f[A]; val b = f[B]; val c = f[C]; val d = f[D]; val e = f[E]

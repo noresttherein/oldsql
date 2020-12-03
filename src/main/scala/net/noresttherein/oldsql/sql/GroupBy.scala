@@ -116,9 +116,18 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 		condition.basedOn(target)
 
 
+	override type LastParam = left.LastParam
 	override type Params = left.Params
+	override type AppliedParam = WithLeft[left.AppliedParam]
 	override type Paramless = WithLeft[left.Paramless]
 	override type DecoratedParamless[D <: BoundParamless] = D
+
+	override def bind(param :LastParam) :AppliedParam = {
+		val l = left.bind(param)
+		val unfiltered = unsafeLeftSwap[l.type](l)(True)
+		val substitute = SQLScribe.applyParam(self, unfiltered.generalized, param, lastParamOffset)
+		unsafeLeftSwap[l.type](l)(substitute(condition))
+	}
 
 	override def bind(params :Params) :Paramless = {
 		val l = left.bind(params)
@@ -502,9 +511,18 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 
 
 
+	override type LastParam = left.LastParam
 	override type Params = left.Params
+	override type AppliedParam = WithLeft[left.AppliedParam]
 	override type Paramless = WithLeft[left.Paramless]
 	override type DecoratedParamless[D <: BoundParamless] = D
+
+	override def bind(param :LastParam) :AppliedParam = {
+		val l = left.bind(param)
+		val unfiltered = unsafeLeftSwap[l.type](l)(True)
+		val substitute = SQLScribe.applyParam(self, unfiltered.generalized, param, lastParamOffset)
+		unsafeLeftSwap[l.type](l)(substitute(condition))
+	}
 
 	override def bind(params :Params) :Paramless = {
 		val l = left.bind(params)

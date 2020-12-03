@@ -296,10 +296,13 @@ sealed trait From[T[O] <: MappingAt[O]]
 		filter.basedOn(target)
 
 
+	override type LastParam = Nothing
 	override type Params = @~
+	override type AppliedParam = Nothing
 	override type Paramless = Self
 	override type DecoratedParamless[D <: BoundParamless] = D
 
+	override def bind(param :Nothing) :Nothing = left.bind(param)
 	override def bind(params :Params) :Self = self
 
 	protected override def decoratedBind[D <: BoundParamless](params: @~)(decorate :Self => D) :D =

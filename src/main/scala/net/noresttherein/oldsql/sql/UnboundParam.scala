@@ -5,20 +5,19 @@ import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.{PseudoRelation, StaticRelation}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, ParamlessFrom, PartOf, PrefixOf, TopFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, FromParam, NamedParamRelation, ParamAt, ParamRelation}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
-import net.noresttherein.oldsql.sql.ast.{MappingSQL, SelectSQL, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TypedColumnComponentSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
@@ -76,13 +75,16 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 
 
 
+	override def lastParamOffset = 0
 	override def isParameterized :Boolean = true
 	override def isSubselectParameterized :Boolean = true
 
 	/** The type of this parameter, that is the subject type of the joined mapping. */
 	type Param = last.Subject //P[FromLast]#Subject
 
+	override type LastParam = Param
 	override type Params = left.Params ~ Param
+	override type AppliedParam = left.Copy
 	override type Paramless = left.Paramless
 	override type DecoratedParamless[D <: BoundParamless] = Paramless
 
@@ -116,12 +118,6 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 			"JoinParam.asSubselectOf: join parameters can't appear as a part of a subselect from clause. " +
 				s"$this asSubselectOf $outer"
 		)
-
-
-	/** Provides the value for the joined parameter, removing it from this clause and replacing all references to it
-	  * with bound parameters in the form of `SQLParameter` instances.
-	  */
-	def apply(value :Param) :left.Copy
 
 
 
@@ -657,7 +653,7 @@ object UnboundParam {
   * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam.WithParam]]
   * @see [[net.noresttherein.oldsql.sql.GroupParam]]
-  */ //lets try to widen the bound to `FromClause`
+  */ //lets try to widen the bound to `FromClause` - union types should do it, the problem is the upper bound on WithLeft and ilk.
 sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 	extends UnboundParam[F, P] with AndFrom[F, P] with AndFromTemplate[F, P, F JoinParam P]
 { thisClause =>
@@ -675,6 +671,12 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 
 	override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
 		left.filter(target)(extension.extendFront[left.Generalized, P]) && condition.basedOn(target)
+
+	override def bind(param :LastParam) :AppliedParam = {
+		val substitute = SQLScribe.applyParam(self, left.generalized, param, 0)
+		left.filtered(substitute(condition))
+//		left.where(substitute(condition)).asInstanceOf[AppliedParam]
+	}
 
 	override def bind(params :Params) :Paramless = {
 		val res = left.bind(params.init)
@@ -862,12 +864,6 @@ object JoinParam {
 
 
 
-			override def apply(value :X) :left.Copy = {
-				val substitute = SQLScribe.applyParam(generalized, left.generalized, value, 0)
-				left filtered substitute(condition)
-			}
-
-
 			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.joinParam[L, P, X](this)
 
 		}.asInstanceOf[L JoinParam P As A]
@@ -1007,6 +1003,12 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
 
 	override def withLeft[L <: GroupByClause] //overriden to make public
 	                     (left :L)(filter :LocalBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[L]
+
+	override def bind(param :Param) :AppliedParam = {
+		val substitute = SQLScribe.applyParam(self, left.generalized, param, 0)
+//		left.having(substitute(condition)).asInstanceOf[AppliedParam]
+		left.filtered(substitute(condition))
+	}
 
 	override def bind(params :Params) :Paramless = {
 		val res = left.bind(params.init)
@@ -1161,12 +1163,6 @@ object GroupParam {
 			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
 				last.extend(target) #:: left.tableStack(target)(stretch.extendFront[left.Generalized, P])
 
-
-
-			override def apply(value :X) :left.Copy = {
-				val substitute = SQLScribe.applyParam(generalized, left.generalized, value, 0)
-				left filtered substitute(condition)
-			}
 
 
 			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.groupParam[L, P, X](this)

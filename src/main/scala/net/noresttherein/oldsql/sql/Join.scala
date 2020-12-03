@@ -129,6 +129,7 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 	def likeJoin[P <: FromSome, S <: FromSome](left :P, right :S) :right.JoinedWith[P, LikeJoin]
 
 
+	override type LastParam = left.LastParam
 	override type Params = left.Params
 	override type DecoratedParamless[D <: BoundParamless] = D
 
@@ -301,7 +302,15 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 		left.filter(target)(extension.extendFront[left.Generalized, R]) && condition.basedOn(target)
 
 
+	override type AppliedParam = left.AppliedParam LikeJoin R
 	override type Paramless = left.Paramless LikeJoin R
+
+	override def bind(param :LastParam) :AppliedParam = {
+		val l = left.bind(param)
+		val unfiltered = withLeft[l.type](l)(True)
+		val substitute = SQLScribe.applyParam(self, unfiltered.generalized, param, lastParamOffset)
+		withLeft[l.type](l)(substitute(condition))
+	}
 
 	override def bind(params :Params) :Paramless = {
 		val l = left.bind(params)
@@ -1243,7 +1252,15 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 		right.joinedWithSubselect(left)
 
 
+	override type AppliedParam = WithLeft[left.AppliedParam]
 	override type Paramless = WithLeft[left.Paramless]
+
+	override def bind(param :LastParam) :AppliedParam = {
+		val l = left.bind(param)
+		val unfiltered = withLeft[l.type](l)(True)
+		val substitute = SQLScribe.applyParam(self, unfiltered.generalized, param, lastParamOffset)
+		withLeft[l.type](l)(substitute(condition))
+	}
 
 	override def bind(params :Params) :Paramless = {
 		val l = left.bind(params)
