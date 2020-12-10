@@ -13,9 +13,25 @@ package object sql {
 	/** An occurrence of an SQL [[net.noresttherein.oldsql.schema.Relation relation]] in a ''from'' clause
 	  * of an SQL ''select''. It declares the [[net.noresttherein.oldsql.schema.Mapping mapping]] for that relation
 	  * and is a valid SQL [[net.noresttherein.oldsql.sql.SQLExpression expression]] based on the ''from'' clause
-	  * of its second type parameter.
+	  * of its second type parameter. The relation object (both this value and wrapped `Relation`) may
+	  * be a relation only in the abstract sense, and not a valid ''derived table''; chief example here
+	  * are grouping relations which represent a subset of attributes from a ''group by'' clause.
+	  * @see [[net.noresttherein.oldsql.sql.JoinedTable]]
 	  */
 	type JoinedRelation[F <: RowProduct, M[O] <: MappingAt[O]] = ast.MappingSQL.JoinedRelation[F, M]
+
+	val JoinedRelation = ast.MappingSQL.JoinedRelation
+
+	/** An occurrence of an SQL [[net.noresttherein.oldsql.schema.Relation.Table Table]] in a ''from'' clause
+	  * of an SQL ''select''. It declares the [[net.noresttherein.oldsql.schema.Mapping mapping]] for that table
+	  * and is a valid SQL [[net.noresttherein.oldsql.sql.SQLExpression expression]] based on the ''from'' clause
+	  * of its second type parameter.
+	  * @see [[net.noresttherein.oldsql.sql.JoinedRelation]]
+	  */
+	type JoinedTable[F <: RowProduct, M[O] <: MappingAt[O]] = ast.MappingSQL.JoinedTable[F, M]
+
+	val JoinedTable = ast.MappingSQL.JoinedTable
+
 
 	/** Represents the multipurpose 'everything' wildcard `*` in SQL. Can be used as the argument to
 	  * [[net.noresttherein.oldsql.sql.AggregateFunction.Count Count]] and
@@ -23,7 +39,7 @@ package object sql {
 	  */
 	final class * private[sql] ()
 
-	/** Represents the multipurpose 'everything' wildcard `*` in SQL. Can be used as the argument to
+	/** Represents the multipurpose 'everything' wildcard `*` in SQL. Can be used as an argument to
 	  * [[net.noresttherein.oldsql.sql.AggregateFunction.Count Count]] and
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductExtension.select select]].
 	  */

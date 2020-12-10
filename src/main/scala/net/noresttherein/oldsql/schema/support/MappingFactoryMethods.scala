@@ -20,7 +20,13 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 	override type Origin = O
 
 
-	override def apply(adjustments :ComponentSelection[_, O]*) :A[S]
+	override def apply(adjustments :ComponentSelection[_, O]*) :A[S] =
+		apply(
+			adjustments.view.collect { case IncludedComponent(c) => c },
+			adjustments.view.collect { case ExcludedComponent(c) => c }
+		)
+
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S]
 
 	/** @inheritdoc
 	  * @return `alter(SELECT, include, exclude)`.
@@ -135,7 +141,7 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 			case IncludedComponent(c) if c == this =>
 				val ops = OperationType.operations.filterNot(_.prohibited.enabled(this))
 				if (ops.nonEmpty)
-					withBuffs(buffs.filter { buff => ops.forall{ op => op.extra.disabled(buff) } })
+					withBuffs(buffs.filter { buff => ops.forall { op => op.extra.disabled(buff) } })
 				else
 	                thisColumn
 
@@ -148,6 +154,37 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 				"Mapping " + mod.component + " is not a component of column " + this + "."
 			)
 		}
+
+
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
+		if (include.size > 1 | exclude.size > 1)
+			throw new IllegalArgumentException(
+				exclude.mkString(
+					include.mkString("Multiple mappings listed for including/excluding: +(", ", ", ") -("), ", ", ")."
+				)
+			)
+		else if (exclude.isEmpty)
+			if (include.isEmpty)
+				thisColumn
+			else if (include.head == this) {
+				val ops = OperationType.operations.filterNot(_.prohibited.enabled(this))
+				if (ops.nonEmpty)
+					withBuffs(buffs.filter { buff => ops.forall { op => op.extra.disabled(buff) } })
+				else
+					thisColumn
+			} else
+				throw new IllegalArgumentException(
+					"Mapping " + include.head + " is not a component of column " + this + "."
+				)
+		else if (exclude.head == this) {
+			val excludes = OperationType.operations.filter(_.optional.enabled(this)).map(_.exclude[S])
+			if (excludes.nonEmpty) withBuffs(excludes ++: buffs)
+			else thisColumn
+		} else
+			throw new IllegalArgumentException(
+				"Mapping " + exclude.head + " is not a component of column " + this + "."
+			)
+
 
 	protected override def alter(op :OperationType,
 	                             include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =

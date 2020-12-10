@@ -2,27 +2,28 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Mapping, Relation, SQLForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.AggregateFunction.{Avg, Count, Max, Min, StdDev, Sum, Var}
-import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
-import net.noresttherein.oldsql.sql.RowProduct.{AggregateOf, As, ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, ParamlessFrom, PartOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, NamedParamRelation, ParamRelation}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
-import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, LocalScope}
-import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ConversionSQL, MappingSQL, SelectSQL, SQLTerm, TupleSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, JoinedRelation, LooseColumn, RelationSQL, TypedComponentSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.LastRelation
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalSQL, LocalScope}
+import net.noresttherein.oldsql.sql.ast.AggregateSQL
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, RelationSQL, TableSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
-import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, RowProductMatcher, SQLScribe, TableCount}
+import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, LastTableOf, RowProductMatcher, TableCount}
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
+import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
+import net.noresttherein.oldsql.sql.mechanics.LastTableOf.LastBound
 
 
 
@@ -34,6 +35,8 @@ import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
   * @see [[net.noresttherein.oldsql.sql.GroupByClause]]
   */
 trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisClause =>
+
+//	override type Last[O] <: JoinedTable[FromLast, O]
 
 	override def filter :GlobalBoolean[Generalized] = filter(generalized)
 
@@ -57,15 +60,15 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	  * @return `From(next)` if this clause is empty and `join.likeJoin(self, next)` for non empty clauses.
 	  */
 	def extend[T[O] <: BaseMapping[S, O], S]
-	    (next :Relation[T], filter :GlobalBoolean[Generalized AndFrom T] = True, join :JoinLike.* = InnerJoin.template)
+	    (next :Table[T], filter :GlobalBoolean[Generalized AndFrom T] = True, join :JoinLike.* = InnerJoin.template)
 			:Extend[join.LikeJoin, T]
 
 	/** Used to add any relation to any clause, creates the clause of a type depending on this clause:
 	  * empty clauses return `From[T]`, while non empty clauses create `this.type InnerJoin T`.
 	  */ //this method serves also as a seal ensuring that every discrete clause extends either EmptyFrom or FromSome
 	protected[sql] def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
-	                         (right :LastRelation[T, S], alias :Option[A],
-	                          filter :GlobalBoolean[Generalized AndFrom T]) :this.type AndFrom T As A
+	                         (right :LastTable[T, S], alias :Option[A],
+	                          filter :GlobalBoolean[Generalized NonParam T]) :this.type NonParam T As A
 
 
 
@@ -73,7 +76,7 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	  * Non-empty clauses define it as `F#JoinedWith[Self, J]]`, while `Dual` defines it as `F` - the indirection
 	  * enforced by the join type `J` (and `Join` subclasses) having `FromSome` as the upper bound of their left side.
 	  */
-	type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L AndFrom R, F <: RowProduct] <: RowProduct
+	type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L NonParam R, F <: RowProduct] <: RowProduct
 
 	/** Joins the clause given as the parameter with this clause. If any of the clauses is empty, the other is
 	  * returned. Otherwise the created clause contains this clause as its prefix, followed by all relations
@@ -101,7 +104,7 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.fromClause(this)
 
 
-	private[sql] def concrete_FromClause_subclass_must_extend_DiscreteFrom_or_GroupByClause :Nothing =
+	private[sql] def concrete_RowProduct_subclass_must_extend_FromClause_or_GroupByClause :Nothing =
 		throw new UnsupportedOperationException
 
 }
@@ -136,9 +139,9 @@ object FromClause {
 		  * @return `From[R]` if this clause is empty or `F InnerJoin R` otherwise.
 		  */
 		@inline def andFrom[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		            (table :Relation[R])
-		            (implicit cast :JoinedRelationSubject[AndFrom.WithLeft[F]#F, R, T, MappingOf[S]#TypedProjection])
-				:F AndFrom R =
+		            (table :Table[R])
+		            (implicit cast :JoinedRelationSubject[NonParam.WithLeft[F]#F, R, T, MappingOf[S]#TypedProjection])
+				:F NonParam R =
 			AndFrom(thisClause, table)
 
 		/** Performs a join between this clause on the left side, and all relations listed by the `other`
@@ -151,7 +154,7 @@ object FromClause {
 		  * @param other a `RowProduct` listing relations which should be appended to this clause (i.e. joined,
 		  *              preserving the order).
 		  */
-		@inline def andFrom[R <: RowProduct](other :R) :other.JoinedWith[F, AndFrom] = other.appendedTo(thisClause)
+		@inline def andFrom[R <: RowProduct](other :R) :other.JoinedWith[F, NonParam] = other.appendedTo(thisClause)
 	}
 
 
@@ -199,6 +202,16 @@ object FromClause {
 		type Params = @~
 	}
 
+
+
+
+	implicit def lastTableOf[U <: NonEmptyFrom, M[O] <: MappingAt[O]]
+			:LastTableOf[LastBound[JoinedTable.Of[M]#T, U, M]]
+				{ type FromLast = U; type LastMapping[O] = M[O]; type Last[O <: RowProduct] = JoinedTable[O, M] } =
+		LastBound.asInstanceOf[LastTableOf[LastBound[JoinedTable.Of[M]#T, U, M]] {
+			type FromLast = U; type LastMapping[O] = M[O]; type Last[O <: RowProduct] = JoinedTable[O, M]
+		}]
+
 }
 
 
@@ -218,11 +231,12 @@ trait FromSome
 	extends FromClause with NonEmptyFrom with FromClauseTemplate[FromSome] with NonEmptyFromTemplate[FromSome, FromSome]
 { thisClause =>
 
-	override type LastTable[F <: RowProduct] = JoinedRelation[F, LastMapping]
+//	override type Last[F <: RowProduct] = JoinedTable[F, LastMapping]
 	override type FromLast >: Generalized <: FromSome
 	override type FromNext[E[+L <: FromSome] <: RowProduct] = E[FromLast]
 
 	override type Generalized >: Dealiased <: FromSome {
+		type LastMapping[O] = thisClause.LastMapping[O]
 		type FromLast = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
@@ -232,6 +246,8 @@ trait FromSome
 	}
 
 	type Dealiased >: Self <: FromSome {
+		type LastMapping[O] = thisClause.LastMapping[O]
+//		type Last[O <: RowProduct] = thisClause.Last[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
@@ -245,6 +261,8 @@ trait FromSome
 	}
 
 	override type Self <: FromSome {
+		type LastMapping[O] = thisClause.LastMapping[O]
+//		type Last[O <: RowProduct] = thisClause.Last[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
@@ -279,18 +297,18 @@ trait FromSome
 	override type Extend[+J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = Self J T
 
 	override def extend[T[O] <: BaseMapping[S, O], S]
-	                   (next :Relation[T], filter :GlobalBoolean[Generalized AndFrom T], join :JoinLike.*)
+	                   (next :Table[T], filter :GlobalBoolean[Generalized AndFrom T], join :JoinLike.*)
 			:join.LikeJoin[Self, T] =
 		join.likeJoin[Self, T, S](self, next)(filter)
 
 	protected[sql] def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
-	                   (right :LastRelation[T, S], alias :Option[A], filter :GlobalBoolean[Generalized AndFrom T])
-			:this.type AndFrom T As A =
+	                   (right :LastTable[T, S], alias :Option[A], filter :GlobalBoolean[Generalized NonParam T])
+			:this.type NonParam T As A =
 		InnerJoin[this.type, T, S, A](this, right, alias)(filter)
 
 
 
-	override type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L AndFrom R, F <: RowProduct] =
+	override type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L NonParam R, F <: RowProduct] =
 		F#JoinedWith[Self, J]
 
 	override def joinWith[F <: FromSome](suffix :F, join :JoinLike.*) :suffix.JoinedWith[Self, join.LikeJoin] =
@@ -328,7 +346,7 @@ object FromSome {
 	  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL aggregate]] expressions.
 	  */
 	implicit class FromSomeExtension[F <: FromSome](val thisClause :F) extends AnyVal {
-		import thisClause.{Base, Generalized, FromLast, LastMapping}
+		import thisClause.{Base, Generalized, FromLast, LastMapping, Last}
 
 		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
 		  * object on the right side.
@@ -340,7 +358,7 @@ object FromSome {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
 		@inline def join[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                (table :Relation[R])(implicit cast :InferSubject[F, InnerJoin, R, T, S]) :F InnerJoin R =
+		                (table :Table[R])(implicit cast :InferSubject[F, InnerJoin, R, T, S]) :F InnerJoin R =
 			InnerJoin(thisClause, table)
 
 		/** Performs an inner join between this clause on the left side, and all relations listed by the `other`
@@ -366,7 +384,7 @@ object FromSome {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
 		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                     (table :Relation[R])
+		                     (table :Table[R])
 		                     (implicit cast :InferSubject[F, OuterJoin, R, T, S]) :F OuterJoin R =
 			OuterJoin(thisClause, table)
 
@@ -393,7 +411,7 @@ object FromSome {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
 		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                    (table :Relation[R])
+		                    (table :Table[R])
 		                    (implicit cast :InferSubject[F, LeftJoin, R, T, S]) :F LeftJoin R =
 			LeftJoin(thisClause, table)
 
@@ -420,7 +438,7 @@ object FromSome {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
 		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                     (table :Relation[R])
+		                     (table :Table[R])
 		                     (implicit cast :InferSubject[F, RightJoin, R, T, S]) :F RightJoin R =
 			RightJoin(thisClause, table)
 
@@ -448,7 +466,7 @@ object FromSome {
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
 		@inline def naturalJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                       (table :Relation[R])
+		                       (table :Table[R])
 		                       (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
 		                                 last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
 				:F InnerJoin R =
@@ -465,7 +483,7 @@ object FromSome {
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
 		@inline def naturalOuterJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                            (table :Relation[R])
+		                            (table :Table[R])
 		                            (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
 		                                      last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
 				:F OuterJoin R =
@@ -482,7 +500,7 @@ object FromSome {
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
 		@inline def naturalLeftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                           (table :Relation[R])
+		                           (table :Table[R])
 		                           (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
 		                                     last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
 				:F LeftJoin R =
@@ -499,7 +517,7 @@ object FromSome {
 		  * @param last an implicit accessor to the last table of this clause (left side).
 		  */
 		@inline def naturalRightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                            (table :Relation[R])
+		                            (table :Table[R])
 		                            (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
 		                                      last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
 				:F RightJoin R =
@@ -551,7 +569,7 @@ object FromSome {
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
 		@inline def subselect[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                     (table :Relation[R])
+		                     (table :Table[R])
 		                     (implicit cast :InferSubject[F, Subselect, R, T, S]) :F Subselect R =
 			Subselect(thisClause, table)
 
@@ -681,7 +699,7 @@ object FromSome {
 		  *         (or `F `[[net.noresttherein.oldsql.sql.GroupByOne GroupByOne]]` V`), where `V` is the value type
 		  *         of the expression `E`.
 		  */
-		def groupByLast[E](expr :JoinedRelation[FromLast, LastMapping] => E)
+		def groupByLast[E](expr :Last[FromLast] => E)
 		                  (implicit grouping :GroupingExpression[Generalized, F, E]) :grouping.Result =
 			grouping(thisClause, expr(thisClause.last))
 
@@ -730,7 +748,7 @@ object FromSome {
 		  *     in particular [[net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm terms]],
 		  *   - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]] (ranging from whole entities
 		  *     to single columns),
-		  *   - [[ConversionSQL conversion]] nodes,
+		  *   - [[net.noresttherein.oldsql.sql.ast.ConversionSQL conversion]] nodes,
 		  *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
 		  *   - [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuples]] and
 		  *     [[ast.TupleSQL.IndexedChainTuple indexed tuples]].

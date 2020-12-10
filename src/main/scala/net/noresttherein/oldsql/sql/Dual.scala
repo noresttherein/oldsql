@@ -3,18 +3,18 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.InferTypeParams
-import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.LastRelation
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
+import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 
 
 
@@ -34,7 +34,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 { thisClause =>
 
 	override type LastMapping[O] = Nothing
-	override type LastTable[-F <: RowProduct] = Nothing
+	override type Last[-F <: RowProduct] = Nothing
 	override type FromLast = RowProduct
 	override type FromNext[E[+L <: RowProduct] <: RowProduct] = Nothing
 
@@ -75,7 +75,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override type Params = @~
 	override type AppliedParam = Nothing
 	override type Paramless = Dual
-	override type BoundParamless = FromClause { type Params = @~ }
+	override type BoundParamless = FromClause { type Params = @~ } //todo: FromClause | WithClause
 	override type DecoratedParamless[D <: BoundParamless] = D
 
 	override def bind(param :Nothing) :Nothing = throw new UnsupportedOperationException("Dual.bind(" + param + ")")
@@ -109,21 +109,21 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override type Extend[J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = From[T]
 
 	override def extend[T[O] <: BaseMapping[S, O], S]
-	                   (next :Relation[T], filter :GlobalBoolean[RowProduct AndFrom T], join :JoinLike.*) :From[T] =
+	                   (next :Table[T], filter :GlobalBoolean[RowProduct AndFrom T], join :JoinLike.*) :From[T] =
 		From[T, S](next, filter)
 
 	protected[sql] override def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
-	                                  (right :LastRelation[T, S], alias :Option[A],
-	                                   filter :GlobalBoolean[RowProduct AndFrom T]) :this.type AndFrom T As A =
+	                                  (right :LastTable[T, S], alias :Option[A],
+	                                   filter :GlobalBoolean[RowProduct NonParam T]) :this.type NonParam T As A =
 		From.custom(this, right, alias, filter)
 
 
-	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L AndFrom R, F <: RowProduct] = F
+	override type JoinWith[J[+L <: FromSome, R[O] <: MappingAt[O]] <: L NonParam R, F <: RowProduct] = F
 
 	override def joinWith[F <: RowProduct](suffix :F, join :JoinLike.*) :F = suffix
 
 
-	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = P
+	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] = P
 
 	override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :F = prefix
 
@@ -196,9 +196,9 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override def from[F <: GroundFrom](suffix :F) :F = suffix
 
 	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	                 (next :Relation[M])
+	                 (next :Table[M])
 //	                 (implicit cast :InferSubject[this.type, Subselect, M, T, S])
-	                 (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+	                 (implicit cast :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]])
 			:From[T] =
 		From(cast(next))
 

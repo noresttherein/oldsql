@@ -151,7 +151,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 		left.outerRow(target)(explicitSpan.extend(extension)) ~ last.extend(target)
 
 
-	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
 		WithLeft[left.JoinedWith[P, J]]
 
 	override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
@@ -162,7 +162,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :JoinedWithSubselect[P] =
 		withLeft(left.joinedWithSubselect(prefix))(condition)
 
-	override def appendedTo[P <: FromClause](prefix :P) :JoinedWith[P, AndFrom] =
+	override def appendedTo[P <: FromClause](prefix :P) :JoinedWith[P, NonParam] =
 		withLeft(left.appendedTo(prefix))(condition)
 
 
@@ -536,7 +536,7 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 
 
 
-	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
 		WithLeft[left.JoinedWith[P, J]]
 
 	override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
@@ -547,7 +547,7 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 	override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :JoinedWithSubselect[P] =
 		withLeft(left.joinedWithSubselect(prefix))(condition)
 
-	override def appendedTo[P <: FromClause](prefix :P) :WithLeft[left.JoinedWith[P, AndFrom]] =
+	override def appendedTo[P <: FromClause](prefix :P) :WithLeft[left.JoinedWith[P, NonParam]] =
 		withLeft(left.appendedTo(prefix))(condition)
 
 
@@ -657,6 +657,7 @@ object By {
 			override val fromClause = left.fromClause
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
+			override def lastRelation = last
 
 			override type Alias = A
 			override type WithLeft[+L <: GroupByClause] = L By T As A

@@ -241,7 +241,7 @@ trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Column]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Projection]]
-	  */
+	  */ //consider: renaming it to Brick
 	type Component[T] = RefinedMapping[T, Origin]
 
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin marker type
@@ -314,8 +314,9 @@ trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
 	def apply(pieces: Pieces): Subject =
-		optionally(pieces) getOrElse {
-			throw new NoSuchElementException(s"Can't assemble $this from $pieces.")
+		optionally(pieces) match {
+			case Some(result) => result
+			case _ => throw new NoSuchElementException(s"Can't assemble $this from $pieces.")
 		}
 
 	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
@@ -774,6 +775,8 @@ trait Mapping {
 	  *                    if it should be excluded.
 	  */
 	def apply(adjustments :ComponentSelection[_, Origin]*) :RefinedMapping[Subject, Origin]
+
+	def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :RefinedMapping[Subject, Origin]
 
 	/** A modified version of this mapping with the given components included/excluded ''by default''
 	  * from the SQL select operations.

@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnReadFor
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.forms.SQLForms
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, Subselect}
 import net.noresttherein.oldsql.sql.RowProduct.As
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
@@ -36,6 +37,15 @@ object playground extends App {
 	val C :Relation[C] = Relation("C", new C[Any])
 	val D :Relation[D] = Relation("D", new D[Any])
 	val E :Relation[E] = Relation("E", new E[Any])
+
+//	type With[T[O] <: MappingAt[O]] = RowProduct
+//	type AndWith[+L <: RowProduct, T[O] <: MappingAt[O]] = RowProduct
+//	type SelectFrom[+L <: RowProduct, T[O] <: MappingAt[O]]
+//	type TT = With[A] As "A" AndWith B As "B" SelectFrom C
+//	type Select = RowProduct
+//	type From[+L <: RowProduct, T[O] <: MappingAt[O]] = RowProduct
+//	type Def = Select From A
+//	type Def2 = Select With A With B With C From A
 
 //	val f = From(A) as "A" param[Int] "int" param[Long] "long" param[String] "string"
 	val f :From[A] As "A" WithParam Int WithParam Long WithParam String = null

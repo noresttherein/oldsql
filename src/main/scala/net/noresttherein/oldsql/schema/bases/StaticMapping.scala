@@ -3,13 +3,13 @@ package net.noresttherein.oldsql.schema.bases
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, MappedTo}
-import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, RefinedMapping}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
 import net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate
 import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, MappedMapping, MappingAdapter, PrefixedMapping}
-import net.noresttherein.oldsql.schema.Mapping
+import net.noresttherein.oldsql.schema.{ComponentValues, Mapping, MappingExtract}
 
 
 
@@ -30,8 +30,8 @@ import net.noresttherein.oldsql.schema.Mapping
 trait StaticMapping[S, O] extends BaseMapping[S, O]
 	with StaticMappingTemplate[({ type A[M <: RefinedMapping[S, O], X] = MappingAdapter[M, X, O] })#A, S, O]
 {
-	override def apply(adjustments :ComponentSelection[_, O]*) :Adapted[this.type] =
-		AdjustedMapping[this.type, S, O](this :this.type, adjustments)
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Adapted[this.type] =
+		AdjustedMapping[this.type, S, O](this :this.type, include, exclude)
 
 	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:Adapted[this.type] =
@@ -140,12 +140,12 @@ object StaticMapping {
 
 		/** Verifies the presence of necessary subcomponents in the input pieces for the assembly to be successful.
 		  * This method is called from `assemble` in order to possibly prevent it from proceeding with the assembly
-		  * and  calling `construct`, and return `None` instead. The contract obliges it only detect the situations
+		  * by calling `construct`, and return `None` instead. The contract obliges it only detect the situations
 		  * where `construct` would certainly fail with an exception, but not necessarily all of them. It is designed
 		  * primarily with the thought of outer joins where all columns of a table can carry `null` values.
 		  * For this reason, it simply always returns `true`, but entity tables override it with a check of availability
 		  * of the primary key. The subclasses are free to implement any condition here.
-		  * @see [[net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate.onstruct construct]]
+		  * @see [[net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate.construct construct]]
 		  * @see [[net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate.assemble assemble]]
 		  */
 		protected def isDefined(implicit pieces :Pieces) :Boolean = true
@@ -158,8 +158,18 @@ object StaticMapping {
 		@inline implicit final def valueOf[T](component :Component[T])(implicit pieces :Pieces) :T =
 			pieces(apply(component))
 
+		@inline implicit final def componentExtension[T](component :Component[T]) :GetComponentValue[S, T, O] =
+			new GetComponentValue[S, T, O](apply(component))
 
-		override def apply(adjustments :Mapping.ComponentSelection[_, O]*) :A[this.type, S]
+
+
+		override def apply(adjustments :ComponentSelection[_, O]*) :A[this.type, S] =
+			apply(
+				adjustments.view.collect { case IncludedComponent(c) => c },
+				adjustments.view.collect { case ExcludedComponent(c) => c }
+			)
+
+		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S]
 
 		override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
 			alter(SELECT, include, exclude)
@@ -197,5 +207,30 @@ object StaticMapping {
 
 	}
 
+
+	/** Extends any `Component[T]` of some `RefinedMapping[S, O]` with an `apply()` method returning the value
+	  * of the component from implicit [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]].
+	  */
+	class GetComponentValue[S, T, O](private val extract :MappingExtract[S, T, O]) extends AnyVal {
+
+		/** The value of this component. If no value for this component is present in the implicit
+		  * `ComponentValues`, it will be assembled using component's
+		  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method.
+		  * @return `pieces(extract)`, where `extract` is
+		  *         the [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]] for this component.
+		  * @throws NoSuchElementException if no value is preset for the component and it cannot be assembled due
+		  *                                to missing values for its subcomponents.
+		  */
+		def apply()(implicit pieces :ComponentValues[S, O]) :T = pieces(extract)
+
+		/** The value of this component in an `Option`. If no value for this component is present in the implicit
+		  * `ComponentValues`, it will be assembled using the component's
+		  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method. If it cannot be assembled
+		  * due to missing subcomponent values, `None` is returned.
+		  * @return `pieces.get(extract)`, where `extract` is
+		  *         the [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]] for this component.
+		  */
+		def ?(implicit pieces :ComponentValues[S, O]) :Option[T] = pieces.get(extract)
+	}
 }
 

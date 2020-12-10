@@ -266,7 +266,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 	  * be mapped into `X`, rather than switching to a different `getXxx` method of the JDBC `ResultSet`.
 	  * It thus works the same way as [[net.noresttherein.oldsql.sql.SQLExpression.map map]], but takes advantage
 	  * of an implicit `List` argument which can be compared with `equals`, making the resulting expression
-	  * comparable with other instances of [[ConversionSQL ConversionSQL]],
+	  * comparable with other instances of [[net.noresttherein.oldsql.sql.ast.ConversionSQL ConversionSQL]],
 	  * which a custom function of `map` cannot be expected to facilitate.
 	  */
 	def to[X](implicit lift :Lift[V, X]) :SQLExpression[F, S, X] = PromotionConversion(this, lift)
@@ -412,9 +412,12 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 		fun.lift(this) ++: acc
 
 	/** A bridge method exporting the `reverseCollect` method of other expressions to any subtype of this trait. */
-	protected[this] def reverseCollect[X](e :SQLExpression.*)
-	                                     (fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
+	protected[this] final def reverseCollect[X](e :SQLExpression.*)
+	                                           (fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
 		e.reverseCollect(fun, acc)
+
+	protected[sql] final def bridgeReverseCollect[X](fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
+		reverseCollect(fun, acc)
 
 
 

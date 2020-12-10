@@ -59,7 +59,7 @@ import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, Selec
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]]`[B, T]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL FreeSeelctSQL]]`[T]` for `F <: GroundFrom` and
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]]`[B, T]` for `F <: SubselectFrom`;
-  *   1. `E <: `[[ConversionSQL ConversionSQL]]`[G, LocalScope, X, Y]`:
+  *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.ConversionSQL ConversionSQL]]`[G, LocalScope, X, Y]`:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]]`[B, Y]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL FreeSeelctSQL]]`[Y]` for `F <: GroundFrom` and
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]]`[B, Y]` for `F <: SubselectFrom`;
@@ -205,9 +205,9 @@ sealed abstract class SingleColumnSelectFactories extends DefaultSelectFactories
 
 sealed abstract class SecondChoiceSelectFactories extends SingleColumnSelectFactories {
 
-	implicit def freeSelectColumn[F <: G with GroundFrom { type Generalized <: G }, G  <: RowProduct,
-	                              E <: ColumnSQL[G, LocalScope, T], T]
-	                             (implicit types :E <:< ColumnSQL[G, LocalScope, T])
+	implicit def topSelectColumn[F <: G with GroundFrom { type Generalized <: G }, G  <: RowProduct,
+	                             E <: ColumnSQL[G, LocalScope, T], T]
+	                            (implicit types :E <:< ColumnSQL[G, LocalScope, T])
 			:SelectFactory[F, E] { type Select = TopSelectColumn[T] } =
 		new SelectFactory[F, E] {
 			type Select = TopSelectColumn[T]
@@ -215,10 +215,10 @@ sealed abstract class SecondChoiceSelectFactories extends SingleColumnSelectFact
 			override def apply(from :F, expr :E) = SelectSQL(from, expr)
 		}
 
-	implicit def freeSelectMapping[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
-	                               E <: Mapping, T]
-	                              (implicit origin :E <:< BaseMapping[T, G], offset :TableCount[G, _ <: Numeral],
-	                               project :OriginProjection[E, T])
+	implicit def topSelectMapping[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
+	                              E <: Mapping, T]
+	                             (implicit origin :E <:< BaseMapping[T, G], offset :TableCount[G, _ <: Numeral],
+	                              project :OriginProjection[E, T])
 			:SelectFactory[F, E] { type Select = TopSelectAs[project.WithOrigin] } =
 		new SelectFactory[F, E] {
 			override type Select = TopSelectAs[project.WithOrigin]
@@ -226,9 +226,9 @@ sealed abstract class SecondChoiceSelectFactories extends SingleColumnSelectFact
 			override def apply(from :F, expr :E) = expr.topSelectFrom(from)
 		}
 
-	implicit def freeSelectComponent[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
-	                                 E <: ComponentSQL[G, M], M[A] <: MappingAt[A]]
-	                                (implicit typer :E <:< ComponentSQL[G, M])
+	implicit def topSelectComponent[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
+	                                E <: ComponentSQL[G, M], M[A] <: MappingAt[A]]
+	                               (implicit typer :E <:< ComponentSQL[G, M])
 			:SelectFactory[F, E] { type Select = TopSelectAs[M] } =
 		new SelectFactory[F, E] { //consider: TopSelectAs result type: not needed BaseMapping supertype
 			override type Select = TopSelectAs[M]
@@ -237,7 +237,7 @@ sealed abstract class SecondChoiceSelectFactories extends SingleColumnSelectFact
 		}
 
 	//no ambiguity with column conversion as SelectFactory is not contravariant in the expression type
-	implicit def freeSelectConversion[F <: GroundFrom { type Generalized <: G }, G >: F <: RowProduct, X, T]
+	implicit def topSelectConversion[F <: GroundFrom { type Generalized <: G }, G >: F <: RowProduct, X, T]
 			:SelectFactory[F, ConversionSQL[G, LocalScope, X, T]] { type Select = TopSelectSQL[T] } =
 		new SelectFactory[F, ConversionSQL[G, LocalScope, X, T]] {
 			override type Select = TopSelectSQL[T]
@@ -245,9 +245,9 @@ sealed abstract class SecondChoiceSelectFactories extends SingleColumnSelectFact
 			override def apply(from :F, expr :ConversionSQL[G, LocalScope, X, T]) = SelectSQL(from, expr)
 		}
 
-	implicit def freeSelectTuple[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
-	                             E <: TupleSQL[G, LocalScope, T], T]
-	                            (implicit typer :E <:< TupleSQL[G, LocalScope, T])
+	implicit def topSelectTuple[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
+	                            E <: TupleSQL[G, LocalScope, T], T]
+	                           (implicit typer :E <:< TupleSQL[G, LocalScope, T])
 			:SelectFactory[F, E] { type Select = TopSelectSQL[T] } =
 		new SelectFactory[F, E] {
 			override type Select = TopSelectSQL[T]
@@ -255,8 +255,8 @@ sealed abstract class SecondChoiceSelectFactories extends SingleColumnSelectFact
 			override def apply(from :F, expr :E) = SelectSQL(from, expr)
 		}
 
-	implicit def freeSelectAll[F <: G with GroundFrom { type Generalized = G; type Row = R }, G <: RowProduct, R <: Chain]
-	                          (implicit typer :F <:< GroundFrom { type Generalized = G; type Row = R })
+	implicit def topSelectAll[F <: G with GroundFrom { type Generalized = G; type Row = R }, G <: RowProduct, R <: Chain]
+	                         (implicit typer :F <:< GroundFrom { type Generalized = G; type Row = R })
 			:SelectFactory[F, sql.*] { type Select = TopSelectSQL[R] } =
 		new SelectFactory[F, sql.*] {
 			override type Select = TopSelectSQL[R]
@@ -347,11 +347,11 @@ sealed abstract class SecondChoiceSelectFactories extends SingleColumnSelectFact
 
 object SelectFactory extends SecondChoiceSelectFactories { //todo: IndexedColumn, IndexedTuple select
 
-	implicit def freeSelectColumnMapping[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
-	                                     E <: ColumnMapping[_, G], T]
-	                                    (implicit origin :E <:< ColumnMapping[T, G],
-	                                     offset :TableCount[G, _ <: Numeral],
-	                                     project :OriginProjection[E, T] { type WithOrigin[A] <: ColumnMapping[T, A] })
+	implicit def topSelectColumnMapping[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
+	                                    E <: ColumnMapping[_, G], T]
+	                                   (implicit origin :E <:< ColumnMapping[T, G],
+	                                    offset :TableCount[G, _ <: Numeral],
+	                                    project :OriginProjection[E, T] { type WithOrigin[A] <: ColumnMapping[T, A] })
 			:SelectFactory[F, E] { type Select = TopSelectColumnAs[project.WithOrigin, T] } =
 		new SelectFactory[F, E] {
 			override type Select = TopSelectColumnAs[project.WithOrigin, T]
@@ -359,9 +359,9 @@ object SelectFactory extends SecondChoiceSelectFactories { //todo: IndexedColumn
 			override def apply(from :F, expr :E) = expr.topSelectFrom(from)
 		}
 
-	implicit def freeSelectColumnComponent[F <: GroundFrom { type Generalized <: G }, G >: F <: RowProduct,
-	                                       M[A] <: ColumnMapping[T, A], T]
-	                                      (implicit subject :M[G] <:< ColumnMapping[T, G])
+	implicit def topSelectColumnComponent[F <: GroundFrom { type Generalized <: G }, G >: F <: RowProduct,
+	                                      M[A] <: ColumnMapping[T, A], T]
+	                                     (implicit subject :M[G] <:< ColumnMapping[T, G])
 			:SelectFactory[F, ColumnComponentSQL[G, M, T]] { type Select = TopSelectColumnAs[M, T] } =
 		new SelectFactory[F, ColumnComponentSQL[G, M, T]] {
 			override type Select = TopSelectColumnAs[M, T]

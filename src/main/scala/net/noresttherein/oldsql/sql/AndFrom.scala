@@ -6,17 +6,18 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{As, ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, ParamlessFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.LastRelation
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
+import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 
 
 
@@ -49,7 +50,7 @@ trait AndFrom[+L <: RowProduct, R[O] <: MappingAt[O]]
 	extends Extended[L, R] with FromSome with AndFromTemplate[L, R, L AndFrom R]
 { thisClause =>
 
-	override val left :L
+	override val left :L //overrides independent definitions from Extended and AndFromTemplate
 
 	override type FromLast = RowProduct AndFrom R
 
@@ -61,9 +62,9 @@ trait AndFrom[+L <: RowProduct, R[O] <: MappingAt[O]]
 	}
 
 	override type Dealiased >: Self <: (left.Self AndFrom R) {
+		type Last[O <: RowProduct] = thisClause.Last[O]
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Implicit = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
@@ -72,9 +73,9 @@ trait AndFrom[+L <: RowProduct, R[O] <: MappingAt[O]]
 	}
 
 	override type Self <: (left.Self AndFrom R) {
+		type Last[O <: RowProduct] = thisClause.Last[O]
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
@@ -135,7 +136,7 @@ object AndFrom {
 	  */
 	def apply[L[O] <: MappingAt[O], LG[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RG[O] <: BaseMapping[B, O], B]
-	         (left :Relation[L], right :Relation[R])
+	         (left :Table[L], right :Table[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LG, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RG, B])
 			:From[L] InnerJoin R =
@@ -158,17 +159,17 @@ object AndFrom {
 	  * @param cast implicit witness providing type inference of the subject type of the mapping `R` (and `T`).
 	  */
 	def apply[L <: FromClause, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (left :L, right :Relation[R], filter :GlobalBoolean[L#Generalized AndFrom R] = True)
-	         (implicit cast :InferSubject[L, AndFrom, R, T, S]) :L AndFrom R =
+	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized NonParam R] = True)
+	         (implicit cast :InferSubject[L, NonParam, R, T, S]) :L NonParam R =
 	{
-		val condition = cast.cast[WithLeft[L#Generalized]#F, GlobalScope, Boolean](filter)
-		cast(left.extend(LastRelation[T, S](cast(right)), None, condition))
+		val condition = cast.cast[NonParam.WithLeft[L#Generalized]#F, GlobalScope, Boolean](filter)
+		cast(left.extend(LastTable[T, S](cast(right)), None, condition))
 	}
 
 
 	/** Splits any `AndFrom` into its left (all relations but the last one) and right (the last relation) sides. */
 	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](join :L Compound R) :Option[(L, Relation[R])] = join match {
-		case _ :AndFrom[_, _] => Some((join.left, join.right))
+		case join :AndFrom[L @unchecked, R @unchecked] => Some((join.left, join.right))
 		case _ => None
 	}
 
@@ -211,14 +212,15 @@ object AndFrom {
 
 		/** The same type as `this.WithLeft[F]`, but without a [[net.noresttherein.oldsql.sql.RowProduct.As As]] clause
 		  * for the last relation. It is the `Dealiased` type of this instance with the left side of the last join
-		  * substituted for `F`.*/
+		  * substituted for `F`.
+		  */
 		type DealiasedLeft[+F <: FromSome] <: GeneralizedLeft[F]
 
 		/** This `Self` type with the left side substituted for `F`. */
 		type WithLeft[+F <: FromSome] <: DealiasedLeft[F]
 
 		/** The upper bound on the left side of [[net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate.WithLeft WithLeft]]. */
-		type LeftBound = FromSome
+		type LeftBound = FromSome //this is required by As
 
 		/** A join of the same kind as this clause, but with the left clause substituted for `left`. */
 		def withLeft[F <: FromSome](left :F)(filter :GlobalBoolean[GeneralizedLeft[left.Generalized]]) :WithLeft[F]
@@ -268,28 +270,121 @@ object AndFrom {
 
 
 
+trait NonParam[+L <: RowProduct, R[O] <: MappingAt[O]] extends AndFrom[L, R] with AndFromTemplate[L, R, L NonParam R] {
+	thisClause =>
+
+	override type Last[O <: RowProduct] = JoinedTable[O, R]
+
+	override type Generalized >: Dealiased <: (left.Generalized NonParam R) {
+		type Generalized <: thisClause.Generalized
+		type Explicit <: thisClause.Explicit
+		type Implicit <: thisClause.Implicit
+		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
+	}
+
+	override type Dealiased >: Self <: (left.Self NonParam R) {
+		type Generalized = thisClause.Generalized
+		type Params = thisClause.Params
+		type Explicit = thisClause.Explicit
+		type Implicit = thisClause.Implicit
+		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
+		type Row = thisClause.Row
+		type OuterRow = thisClause.OuterRow
+	}
+
+	override type Self <: (left.Self NonParam R) {
+		type Generalized = thisClause.Generalized
+		type Params = thisClause.Params
+		type Explicit = thisClause.Explicit
+		type Inner = thisClause.Inner
+		type Implicit = thisClause.Implicit
+		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
+		type Row = thisClause.Row
+		type OuterRow = thisClause.OuterRow
+	}
+
+//	type GeneralizedRight[T[O] <: MappingAt[O]] <: L NonParam R
+//	type WithRight[T[O] <: MappingAt[O]] <: GeneralizedRight[T]
+//
+//	def withRight[T[O] <: BaseMapping[S, O], S]
+//	             (table :LastTable[T, S])(filter :GlobalBoolean[GeneralizedRight[T]]) :WithRight[T]
+
+	protected override def narrow :left.type NonParam R
+}
+
+
+
+
+
+
+object NonParam {
+
+	implicit def nonParamDecomposition[L <: RowProduct, R[O] <: MappingAt[O]]
+			:ExtendedDecomposition[L NonParam R, L, R, NonParam, RowProduct] =
+		decomposition.asInstanceOf[ExtendedDecomposition[L NonParam R, L, R, NonParam, RowProduct]]
+
+	private[this] val decomposition =
+		new ExtendedDecomposition[RowProduct NonParam MappingAt, RowProduct, MappingAt, NonParam, RowProduct]
+
+
+
+	/** An existential upper bound of all `AndFrom` instances that can be used in casting or pattern matching
+	  * without generating compiler warnings about erasure.
+	  */
+	type * = NonParam[_ <: RowProduct, M] forSome { type M[O] <: MappingAt[O] }
+
+	/** A curried type constructor for `AndFrom` instances, accepting the left `RowProduct` type parameter
+	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
+	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
+	  */
+	type WithLeft[L <: RowProduct] = { type F[R[O] <: MappingAt[O]] = L NonParam R }
+
+	/** A curried type constructor for `AndFrom` instances, accepting the right mapping type parameter
+	  * and returning a type with a member type `F` accepting the left `RowProduct` type.
+	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
+	  */
+	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: RowProduct] = L NonParam R }
+
+}
+
+
+
+
+
+
 /** A `RowProduct` constituting of exactly one table or SQL relation.
   * This is a specialized subclass of `AndFrom[Dual, T]`, so that we can write the type From[T] instead, especially
   * in larger clauses like `From[Children] Join Daemons`.
   *///consider: making it a subclass of Subselect. The relation of being a subselect of a clause and grafting would be easier
 sealed trait From[T[O] <: MappingAt[O]]
-	extends AndFrom[Dual, T] with NonSubselect[Dual, T] with AndFromTemplate[Dual, T, From[T]]
+	extends NonParam[Dual, T] with NonSubselect[Dual, T] with AndFromTemplate[Dual, T, From[T]]
 { thisClause =>
-	def table :Relation[T] = last.relation
+	override val last :JoinedTable[RowProduct AndFrom T, T]
+	override def right :Table[T] = last.table
+	def table :Table[T] = last.relation
 
-	override type Generalized = RowProduct AndFrom T
+	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :Last[E] =
+		last.asIn[E]
+
+	override type Last[O <: RowProduct] = JoinedTable[O, T]
+	override type Generalized = RowProduct NonParam T
 	override type Dealiased = From[T]
 	override type Self <: From[T]
 
-	override type GeneralizedLeft[+L <: RowProduct] = L AndFrom T
-	override type DealiasedLeft[+L <: RowProduct] = L AndFrom T
-	override type WithLeft[+L <: RowProduct] <: L AndFrom T
+	override type GeneralizedLeft[+L <: RowProduct] = L NonParam T
+	override type DealiasedLeft[+L <: RowProduct] = L NonParam T
+	override type WithLeft[+L <: RowProduct] <: L NonParam T
+//	override type GeneralizedRight[R[O] <: MappingAt[O]] = RowProduct NonParam R
+//	override type WithRight[R[O] <: MappingAt[O]] = From[R]
 
 	override def withLeft[L <: FromClause]
-	                     (newLeft :L)(filter :GlobalBoolean[newLeft.Generalized AndFrom T]) :WithLeft[L]
+	                     (newLeft :L)(filter :GlobalBoolean[newLeft.Generalized NonParam T]) :WithLeft[L]
+
+//	override def withRight[R[O] <: BaseMapping[S, O], S]
+//	                      (table :LastTable[R, S])(filter :GlobalBoolean[GeneralizedRight[R]]) :WithRight[R]
 
 
-	override def filter :GlobalBoolean[RowProduct AndFrom T] =
+	override def filter :GlobalBoolean[RowProduct NonParam T] =
 		if (left.filter eq True) condition else left.filter && condition
 
 	override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
@@ -311,10 +406,10 @@ sealed trait From[T[O] <: MappingAt[O]]
 
 	override def fullSize = 1
 
-	override def generalizedExtension[F <: FromSome] :F PrefixOf (F AndFrom T) = PrefixOf.itself[F].extend[AndFrom, T]
+	override def generalizedExtension[F <: FromSome] :F PrefixOf (F NonParam T) = PrefixOf.itself[F].extend[NonParam, T]
 
 	//overriden for clarity
-	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] <: P J T
+	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] <: P J T
 	override type JoinedWithSubselect[+P <: NonEmptyFrom] = JoinedWith[P, Subselect]
 
 	override type Explicit = RowProduct AndFrom T
@@ -373,9 +468,9 @@ object From {
 	  * @return an unfiltered `From[R]`.
 	  */
 	def apply[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (relation :Relation[R])(implicit cast :JoinedRelationSubject[From, R, T, MappingOf[S]#TypedProjection])
+	         (relation :Table[R])(implicit cast :JoinedRelationSubject[From, R, T, MappingOf[S]#TypedProjection])
 			:From[R] =
-		cast(From(LastRelation[T, S](cast(relation)), None, True))
+		cast(From(LastTable[T, S](cast(relation)), None, True))
 
 
 	/** Creates a ''from'' clause consisting of a single relation (table, view, select, or even a surrogate temporary
@@ -389,50 +484,55 @@ object From {
 	  * @return a `From[R]`.
 	  */
 	def apply[T[O] <: BaseMapping[S, O], S]
-	         (relation :Relation[T], filter: GlobalBoolean[RowProduct AndFrom T] = True) :From[T] =
-		From(LastRelation[T, S](relation), None, filter)
+	         (relation :Table[T], filter: GlobalBoolean[RowProduct NonParam T] = True) :From[T] =
+		From(LastTable[T, S](relation), None, filter)
 
 
 	private[sql] def apply[T[O] <: BaseMapping[S, O], S, A <: Label]
-	                      (relation :LastRelation[T, S], alias :Option[A], filter :GlobalBoolean[RowProduct AndFrom T])
+	                      (relation :LastTable[T, S], alias :Option[A], filter :GlobalBoolean[RowProduct NonParam T])
 			:From[T] =
 		custom(Dual, relation, alias, filter)
 
 	private[sql] def custom[T[O] <: BaseMapping[S, O], S, A <: Label]
-	                       (dual :Dual, relation :LastRelation[T, S], asOpt :Option[A],
-	                        cond :GlobalBoolean[RowProduct AndFrom T])
+	                       (dual :Dual, relation :LastTable[T, S], asOpt :Option[A],
+	                        cond :GlobalBoolean[RowProduct NonParam T])
 			:EmptyJoin[dual.type, T] As A =
 		new EmptyJoin[dual.type, T]
 			with AbstractExtended[dual.type, T, S]
-//			with NonEmptyFromTemplate[dual.type EmptyJoin T, dual.type EmptyJoin T As A]
 		{
 			override val left :dual.type = dual
 			override val last = relation
 			override val aliasOpt = asOpt
 			override val condition = cond
 			override val outer = left.outer
+			override def lastRelation :TableSQL[FromLast, T, S, FromLast] = last
 
-			override def narrow :dual.type AndFrom T = this
+			override def narrow :dual.type NonParam T = this
 
 			override type Alias = A
-			override type WithLeft[+L <: RowProduct] = L AndFrom T As A
+			override type WithLeft[+L <: RowProduct] = L NonParam T As A
 			override type Self = Dual EmptyJoin T As A
 			override type DealiasedCopy = left.type EmptyJoin T
 			override type Copy = left.type EmptyJoin T As A
 
-			override def withCondition(filter :GlobalBoolean[RowProduct AndFrom T]) =
+			override def withCondition(filter :GlobalBoolean[RowProduct NonParam T]) =
 				From.custom(left, last, aliasOpt, filter)
 
-			override def withLeft[F <: FromClause](newLeft :F)(filter :GlobalBoolean[newLeft.Generalized AndFrom T]) =
+			override def withLeft[F <: FromClause](newLeft :F)(filter :GlobalBoolean[newLeft.Generalized NonParam T]) =
 				newLeft.extend(last, aliasOpt, filter)
 
-			override def aliased[N <: Label](alias :N) = custom(left, last, Option(alias), condition)
+//			override def withRight[R[O] <: BaseMapping[X, O], X]
+//			                      (table :LastTable[R, X])(filter :GlobalBoolean[RowProduct NonParam R]) :From[R] =
+//				From.custom(left, table, None, filter)
+
+			override def aliased[N <: Label](alias :N) =
+				custom(left, last, Option(alias), condition)
+
+			override def extension[P <: FromSome] =
+				PrefixOf.itself[P].extend[NonParam, T].as[A]
 
 
-			override def extension[P <: FromSome] = PrefixOf.itself[P].extend[AndFrom, T].as[A]
-
-
-			override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = P J T As A
+			override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] = P J T As A
 			override type JoinedWithSubselect[+P <: NonEmptyFrom] = P Subselect T As A
 
 			override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) =
@@ -441,8 +541,7 @@ object From {
 			override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) =
 				Subselect[F, T, S, A](prefix, last, aliasOpt)(filter)
 
-			override def appendedTo[P <: FromClause](prefix :P) :P AndFrom T As A =
-				prefix.extend(last, aliasOpt, filter)
+			override def appendedTo[P <: FromClause](prefix :P) = prefix.extend(last, aliasOpt, filter)
 
 
 			override def tableStack[E <: RowProduct]
@@ -463,13 +562,13 @@ object From {
 
 
 	/** Matches all `From` instances, extracting their relation in the process. */
-	def unapply[M[O] <: MappingAt[O]](from :RowProduct Compound M) :Option[Relation[M]] = from match {
-		case _ :From.* => Some(from.right)
+	def unapply[M[O] <: MappingAt[O]](from :RowProduct Compound M) :Option[Table[M]] = from match {
+		case f :From[M @unchecked] => Some(f.right)
 		case _ => None
 	}
 
 	/** Matches all `From` instances, extracting their relation in the process. */
-	def unapply(from :RowProduct) :Option[Relation.*] = from match {
+	def unapply(from :RowProduct) :Option[Table.*] = from match {
 		case f :From.* => Some(f.table)
 		case _ => None
 	}
@@ -523,37 +622,40 @@ object From {
 
 
 	private[sql] trait EmptyJoin[+L <: Dual, T[O] <: MappingAt[O]]
-		extends From[T] with AndFrom[L, T] with AndFromTemplate[L, T, L EmptyJoin T]
+		extends From[T] with NonParam[L, T] with AndFromTemplate[L, T, L EmptyJoin T]
 
 
 	private class FromTemplate[L <: Dual, T[O] <: BaseMapping[S, O], S, A <: Label]
-	              (override val left :L, override val last :LastRelation[T, S], override val aliasOpt :Option[A],
+	              (override val left :L, override val last :LastTable[T, S], override val aliasOpt :Option[A],
 	               override val condition :GlobalBoolean[RowProduct AndFrom T])
 		extends EmptyJoin[L, T] with AbstractExtended[L, T, S]
 	{
+		override def lastRelation :TableSQL[FromLast, T, S, FromLast] = last
 		override val outer = left.outer
 
-		override def narrow :left.type AndFrom T = this.asInstanceOf[left.type AndFrom T]
+		override def narrow :left.type NonParam T = this.asInstanceOf[left.type NonParam T]
 
 		override type Alias = A
-		override type WithLeft[+F <: RowProduct] = F AndFrom T As A
+		override type WithLeft[+F <: RowProduct] = F NonParam T As A
 		override type Self = Dual EmptyJoin T As A
 		override type DealiasedCopy = L EmptyJoin T
 		override type Copy = L EmptyJoin T As A
 
-		override def withCondition(filter :GlobalBoolean[RowProduct AndFrom T]) =
+		override def withCondition(filter :GlobalBoolean[RowProduct NonParam T]) =
 			From.custom(left, last, aliasOpt, filter)
 
-		override def withLeft[F <: FromClause](newLeft :F)(filter :GlobalBoolean[newLeft.Generalized AndFrom T]) =
+		override def withLeft[F <: FromClause](newLeft :F)(filter :GlobalBoolean[newLeft.Generalized NonParam T]) =
 			newLeft.extend(last, aliasOpt, filter)
 
-		override def aliased[N <: Label](alias :N) = custom(left, last, Option(alias), condition)
+		override def aliased[N <: Label](alias :N) =
+			custom(left, last, Option(alias), condition)
 
 
-		override def extension[P <: FromSome] = PrefixOf.itself[P].extend[AndFrom, T].as[A]
+		override def extension[P <: FromSome] =
+			PrefixOf.itself[P].extend[NonParam, T].as[A]
 
 
-		override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] = P J T As A
+		override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] = P J T As A
 		override type JoinedWithSubselect[+P <: NonEmptyFrom] = P Subselect T As A
 
 		override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) =
@@ -562,7 +664,7 @@ object From {
 		override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) =
 			Subselect[F, T, S, A](prefix, last, aliasOpt)(filter)
 
-		override def appendedTo[P <: FromClause](prefix :P) :P AndFrom T As A =
+		override def appendedTo[P <: FromClause](prefix :P) =
 			prefix.extend(last, aliasOpt, filter)
 
 

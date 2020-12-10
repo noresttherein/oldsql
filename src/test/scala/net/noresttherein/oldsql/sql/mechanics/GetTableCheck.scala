@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql.mechanics
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.{Mapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.sql.{AndFrom, By, From, FromSome, GroupBy, GroupByClause, InnerJoin, Join, LeftJoin, RightJoin, RowProduct, Subselect}
+import net.noresttherein.oldsql.sql.{AndFrom, By, From, FromSome, GroupBy, GroupByClause, InnerJoin, Join, LeftJoin, NonParam, RightJoin, RowProduct, Subselect}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByParamAlias, ByParamIndex, ByParamType, BySubject, ByType, RelationEvidence}
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
@@ -35,32 +35,32 @@ class GetTableCheck {{
 	val D :Relation[D] = Relation("D", new D[()])
 	val E :Relation[E] = Relation("E", new E[()])
 
-	type F = (
+	type Test = (
 		From[A] As "A" LeftJoin B As "B" WithParam Int As "Int" RightJoin C As "C" WithParam Long As "Long"
 			Subselect D As "D" InnerJoin E As "E" WithParam Short As "Short" GroupBy D As "D" By E As "E"
 			Subselect M As "M" InnerJoin N As "N"
 			Subselect D As "D" RightJoin X As "X" LeftJoin Y As "Y" GroupBy Y As "Y" By X As "X" ByParam Byte As "Byte"
 			Subselect Z As "Z"
 	)
-	type U = (
-		RowProduct AndFrom A Join B WithParam Int Join C WithParam Long
+	type Generalized = (
+		RowProduct NonParam A Join B WithParam Int Join C WithParam Long
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
 			Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 			Subselect Z
 	)
 
-	class Expect[E <: RelationEvidence[F, U, K], K, M <: Mapping]
+	class Expect[E <: RelationEvidence[Test, Generalized, K], K, M <: Mapping]
 
-	implicit def Expect[E <: RelationEvidence[F, U, K], A, M[O] <: MappingAt[O], K, R <: Mapping]
-	                   (implicit get :E { type O = A; type T[X] = M[X] }, same :M[A] =:= R) :Expect[E, K, R] =
+	implicit def Expect[E <: RelationEvidence[Test, Generalized, K], A, X[O] <: MappingAt[O], K, Y <: Mapping]
+	                   (implicit get :E { type O = A; type M[O] = X[O] }, same :X[A] =:= Y) :Expect[E, K, Y] =
 		new Expect
 
 	def expect[E[F <: RowProduct, G <: RowProduct, X] <: RelationEvidence[F, G, X], K, M <: Mapping]
-	          (implicit ev :Expect[E[F, U, K], K, M]) = ev
+	          (implicit ev :Expect[E[Test, Generalized, K], K, M]) = ev
 
-	
-	
+
+
 	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ByPositiveIndex ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
 	expect[ByIndex.ByPositiveIndex.Return, 0, A[

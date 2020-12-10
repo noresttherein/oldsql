@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, ExtendedDecomposition, NonSubselect}
@@ -15,11 +16,10 @@ import net.noresttherein.oldsql.sql.Join.{AbstractJoin, JoinComposition}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.LastRelation
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.ast.SelectSQL
 import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SQLScribe}
 
 
@@ -34,8 +34,17 @@ import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SQLScribe}
   * of its outer select.
   */ //this class is almost unused; it seems to serve only the purpose of 'not join param'
 sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
-	extends AndFrom[L, R] with AndFromTemplate[L, R, L JoinLike R]
+	extends NonParam[L, R] with AndFromTemplate[L, R, L JoinLike R]
 { thisClause =>
+
+	override val last :JoinedTable[RowProduct AndFrom R, R]
+	override def right :Table[R] = last.table
+
+	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :Last[E] =
+		last.asIn[E]
+
+
+	override type Last[F <: RowProduct] = JoinedTable[F, LastMapping]
 
 	override type Generalized >: Dealiased <: (left.Generalized JoinLike R) {
 		type Generalized <: thisClause.Generalized
@@ -45,7 +54,6 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 	}
 
 	type Dealiased >: Self <: (left.Self JoinLike R) {
-		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
 		type FullRow = thisClause.FullRow
@@ -72,8 +80,8 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	override type GeneralizedLeft[+F <: FromSome] = F GeneralizedJoin R
 	override type DealiasedLeft[+F <: FromSome] = F LikeJoin R
-	override type WithLeft[+F <: FromSome] <: F LikeJoin R // <: because alias is kept
-	type WithRight[T[O] <: MappingAt[O]] <: L JoinLike T
+//	override type WithLeft[+F <: FromSome] <: F LikeJoin R // <: because alias is kept
+//	override type GeneralizedRight[T[O] <: MappingAt[O]] <: L JoinLike T
 
 
 	/** The generalized version of this join kind: it is `Join` for all real joins and `Subselect` for `Subselect`. */
@@ -96,12 +104,12 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 
 	protected[sql] final def aliasedJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X, A <: Label]
-	                                    (left :F, right :LastRelation[T, X], alias :Option[A])
+	                                    (left :F, right :LastTable[T, X], alias :Option[A])
 	                                    (filter :GlobalBoolean[left.Generalized GeneralizedJoin T]) :F LikeJoin T As A =
 		likeJoin(left, right, alias)(filter)
 
 	protected def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X, A <: Label]
-	                      (left :F, right :LastRelation[T, X], alias :Option[A])
+	                      (left :F, right :LastTable[T, X], alias :Option[A])
 	                      (filter :GlobalBoolean[left.Generalized GeneralizedJoin T]) :F LikeJoin T As A
 
 	/** Creates a join of the same kind as this one between the `left` prefix clause and `right` relation given
@@ -111,15 +119,16 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  * @param right a `RelationSQL[RowProduct AndFrom T, T, S, RowProduct AndFrom T]` representing the last joined relation.
 	  */
 	def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X]
-	            (left :F, right :LastRelation[T, X])(filter :GlobalBoolean[left.Generalized GeneralizedJoin T]) :F LikeJoin T =
+	            (left :F, right :LastTable[T, X])
+	            (filter :GlobalBoolean[left.Generalized GeneralizedJoin T]) :F LikeJoin T =
 		likeJoin(left, right, None)(filter)
 
 	/** Creates a join of the same kind as this one between the `left` prefix clause and `right` relation given
 	  * as parameters, using the provided `filter` as the `condition` stored in the created join.
 	  */
 	def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X]
-	            (left :F, right :Relation[T])(filter :GlobalBoolean[left.Generalized GeneralizedJoin T]) :F LikeJoin T =
-		likeJoin(left, LastRelation[T, X](right))(filter)
+	            (left :F, right :Table[T])(filter :GlobalBoolean[left.Generalized GeneralizedJoin T]) :F LikeJoin T =
+		likeJoin(left, LastTable[T, X](right))(filter)
 
 	/** Joins the two clauses using this join kind. If the first join of the second, `right` clause
 	  * is not the `From` pseudo join, the existing join is used instead of this join.
@@ -143,7 +152,7 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 		PrefixOf.itself[P].extend[GeneralizedJoin, R]
 
 
-//todo: def by(fk :R[FromLast] => ForeignKey[FromLast]) :L LikeJoin R
+//todo: def using(fk :R[FromLast] => ForeignKey[FromLast]) :L LikeJoin R
 
 }
 
@@ -178,7 +187,7 @@ object JoinLike {
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
-	         (left :Relation[L], right :Relation[R])
+	         (left :Table[L], right :Table[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
 			:From[L] InnerJoin R =
@@ -205,7 +214,7 @@ object JoinLike {
 	  * @return an `L InnerJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (left :L, right :Relation[R], filter :GlobalBoolean[L#Generalized Join R] = True)
+	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
 	         (implicit cast :InferSubject[L, InnerJoin, R, T, S]) :L InnerJoin R =
 		InnerJoin(left, right, filter)
 
@@ -213,13 +222,13 @@ object JoinLike {
 	/** Matches all `JoinLike` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
-		case _ :JoinLike[_, _] => Some((from.left, from.right))
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+		case join :JoinLike[L @unchecked, R @unchecked] => Some((join.left, join.right))
 		case _ => None
 	}
 
 	/** Matches all `JoinLike` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(RowProduct, Relation.*)]  = from match {
+	def unapply(from :RowProduct) :Option[(RowProduct, Table.*)]  = from match {
 		case join :JoinLike.* => Some((join.left, join.right))
 		case _ => None
 	}
@@ -285,7 +294,8 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 
 	protected override def narrow :WithLeft[left.type]
 
-	override type WithRight[T[O] <: MappingAt[O]] <: L LikeJoin T
+//	override type GeneralizedRight[T[O] <: MappingAt[O]] >: WithRight[T] <: L GeneralizedJoin T
+//	override type WithRight[T[O] <: MappingAt[O]] <: L LikeJoin T
 	override type GeneralizedJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F Join T
 
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] <:
@@ -321,7 +331,7 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 
 
 
-	override type JoinedWith[+P <: RowProduct, +J[+K <: P, T[O] <: MappingAt[O]] <: K AndFrom T] =
+	override type JoinedWith[+P <: RowProduct, +J[+K <: P, T[O] <: MappingAt[O]] <: K NonParam T] =
 		WithLeft[left.JoinedWith[P, J]]
 
 	override type JoinedWithSubselect[+P <: NonEmptyFrom] = WithLeft[left.JoinedWithSubselect[P]]
@@ -387,7 +397,7 @@ object Join {
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
-	         (left :Relation[L], right :Relation[R])
+	         (left :Table[L], right :Table[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
 			:From[L] InnerJoin R =
@@ -414,7 +424,7 @@ object Join {
 	  * @return an `L InnerJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (left :L, right :Relation[R], filter :GlobalBoolean[L#Generalized Join R] = True)
+	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
 	         (implicit cast :InferSubject[L, InnerJoin, R, T, S]) :L InnerJoin R =
 		InnerJoin(left, right, filter)
 
@@ -422,13 +432,13 @@ object Join {
 	/** Matches all `Join` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
-		case _ :Join[_, _] => Some((from.left, from.right))
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+		case join :Join[L @unchecked, R @unchecked] => Some((join.left, join.right))
 		case _ => None
 	}
 
 	/** Matches all `Join` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Relation.*)]  = from match {
+	def unapply(from :RowProduct) :Option[(FromSome, Table.*)]  = from match {
 		case join :Join.* => Some((join.left, join.right))
 		case _ => None
 	}
@@ -447,7 +457,7 @@ object Join {
 		override def apply[C <: FromSome](template :L J R, left :C) :C J R = template.withLeft(left)(True)
 
 		def apply[A <: FromSome, B[O] <: BaseMapping[S, O], S]
-		         (template :L J R, left :A, right :Relation[B])
+		         (template :L J R, left :A, right :Table[B])
 		         (condition :GlobalBoolean[template.GeneralizedJoin[left.Generalized, B]]) :A J B =
 			template.likeJoin[A, B, S](left, right)(condition)
 	}
@@ -483,13 +493,21 @@ object Join {
 	private[sql] trait AbstractJoin[L <: FromSome, R[O] <: BaseMapping[S, O], S]
 		extends AbstractExtended[L, R, S] with Join[L, R]
 	{ thisClause =>
+		override val last :TableSQL[FromLast, R, S, FromLast]
+		protected override def lastRelation :TableSQL[FromLast, R, S, FromLast] = last
+
 		override type WithLeft[+F <: FromSome] = F LikeJoin R As Alias
-		override type WithRight[T[O] <: MappingAt[O]] = L LikeJoin T
+//		override type GeneralizedRight[T[O] <: MappingAt[O]] = L GeneralizedJoin T
+//		override type WithRight[T[O] <: MappingAt[O]] = L LikeJoin T
 		override type Self = WithLeft[left.Self]
 
 		override def withLeft[F <: FromSome](newLeft :F)(filter :GlobalBoolean[newLeft.Generalized GeneralizedJoin R])
 				:F LikeJoin R As Alias =
 			likeJoin(newLeft, last, aliasOpt)(filter)
+
+//		override def withRight[T[O] <: BaseMapping[X, O], X]
+//		                      (table :LastTable[T, X])(filter :GlobalBoolean[L GeneralizedJoin T]) :L LikeJoin T =
+//			likeJoin(left, table, None)(filter)
 
 
 		override def extension[P <: FromSome] :P PrefixOf (P LikeJoin R As Alias) =
@@ -501,7 +519,7 @@ object Join {
 		override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) :JoinedWithSubselect[F] =
 			withLeft(left.joinedWithSubselect(prefix))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
 
-		override def appendedTo[P <: FromClause](prefix :P) :JoinedWith[P, AndFrom] =
+		override def appendedTo[P <: FromClause](prefix :P) :JoinedWith[P, NonParam] =
 			withLeft(left.appendedTo(prefix))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
 
 
@@ -526,7 +544,7 @@ sealed trait InnerJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F InnerJoin T
 
 	protected override def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X, A <: Label]
-	                               (left :F, right :LastRelation[T, X], alias :Option[A])
+	                               (left :F, right :LastTable[T, X], alias :Option[A])
 	                               (filter :GlobalBoolean[left.Generalized Join T]) :F InnerJoin T As A =
 		InnerJoin(left, right, alias)(filter)
 
@@ -570,11 +588,11 @@ object InnerJoin {
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
-	         (left :Relation[L], right :Relation[R])
+	         (left :Table[L], right :Table[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
 			:From[L] InnerJoin R =
-		castR(apply(From(left), LastRelation[RB, B](castR(right)), None)(True))
+		castR(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -597,14 +615,14 @@ object InnerJoin {
 	  * @return an `L InnerJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (left :L, right :Relation[R], filter :GlobalBoolean[L#Generalized Join R] = True)
+	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
 	         (implicit cast :InferSubject[L, InnerJoin, R, T, S]) :L InnerJoin R =
-		cast(apply(left, LastRelation[T, S](cast(right)), None)(cast(filter)))
+		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
 
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
-	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
+	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L InnerJoin R As A =
 		new InnerJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
@@ -636,13 +654,13 @@ object InnerJoin {
 	/** Matches all `InnerJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
-		case _ :InnerJoin[_, _] => Some(from.left -> from.right)
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+		case join :InnerJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
 		case _ => None
 	}
 
 	/** Matches all `InnerJoin` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Relation.*)] = from match {
+	def unapply(from :RowProduct) :Option[(FromSome, Table.*)] = from match {
 		case join :InnerJoin.* => Some((join.left, join.right))
 		case _ => None
 	}
@@ -690,7 +708,7 @@ sealed trait OuterJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F OuterJoin T
 
 	protected override def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X, A <: Label]
-	                               (left :F, right :LastRelation[T, X], alias :Option[A])
+	                               (left :F, right :LastTable[T, X], alias :Option[A])
 	                               (filter :GlobalBoolean[left.Generalized Join T]) :F OuterJoin T As A =
 		OuterJoin(left, right, alias)(filter)
 
@@ -734,11 +752,11 @@ object OuterJoin {
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 		      R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
-	         (left :Relation[L], right :Relation[R])
+	         (left :Table[L], right :Table[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], OuterJoin, R, RB, B])
 			:From[L] OuterJoin R =
-		castR(apply(From(left), LastRelation[RB, B](castR(right)), None)(True))
+		castR(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
 
 	/** Create an outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -761,14 +779,14 @@ object OuterJoin {
 	  * @return an `L InnerJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (left :L, right :Relation[R], filter :GlobalBoolean[L#Generalized Join R] = True)
+	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
 	         (implicit cast :InferSubject[L, OuterJoin, R, T, S]) :L OuterJoin R =
-		cast(apply(left, LastRelation[T, S](cast(right)), None)(cast(filter)))
+		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
 
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
-	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
+	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L OuterJoin R As A =
 		new OuterJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
@@ -801,13 +819,13 @@ object OuterJoin {
 	/** Matches all `OuterJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
-		case _ :OuterJoin[_, _] => Some(from.left -> from.right)
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+		case join :OuterJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
 		case _ => None
 	}
 
 	/** Matches all `OuterJoin` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Relation.*)] = from match {
+	def unapply(from :RowProduct) :Option[(FromSome, Table.*)] = from match {
 		case join :OuterJoin.* => Some((join.left, join.right))
 		case _ => None
 	}
@@ -857,7 +875,7 @@ sealed trait LeftJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F LeftJoin T
 
 	protected override def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X, A <: Label]
-	                               (left :F, right :LastRelation[T, X], alias :Option[A])
+	                               (left :F, right :LastTable[T, X], alias :Option[A])
 	                               (filter :GlobalBoolean[left.Generalized Join T]) :F LeftJoin T As A =
 		LeftJoin(left, right, alias)(filter)
 
@@ -901,11 +919,11 @@ object LeftJoin {
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
-	         (left :Relation[L], right :Relation[R])
+	         (left :Table[L], right :Table[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], LeftJoin, R, RB, B])
 			:From[L] LeftJoin R =
-		castR(apply(From(left), LastRelation[RB, B](castR(right)), None)(True))
+		castR(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
 
 	/** Create a left outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -928,14 +946,14 @@ object LeftJoin {
 	  * @return an `L LeftJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (left :L, right :Relation[R], filter :GlobalBoolean[L#Generalized Join R] = True)
+	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
 	         (implicit cast :InferSubject[L, LeftJoin, R, T, S]) :L LeftJoin R =
-		cast(apply(left, LastRelation[T, S](cast(right)), None)(cast(filter)))
+		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
 
 
 
-	private[sql] def apply[L <: FromSome, R[A] <: BaseMapping[S, A], S, A <: Label]
-	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
+	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
+	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L LeftJoin R As A =
 		new LeftJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
@@ -966,13 +984,13 @@ object LeftJoin {
 	/** Matches all `LeftJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
-		case _ :LeftJoin[_, _] => Some(from.left -> from.right)
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+		case join :LeftJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
 		case _ => None
 	}
 
 	/** Matches all `LeftJoin` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Relation.*)] = from match {
+	def unapply(from :RowProduct) :Option[(FromSome, Table.*)] = from match {
 		case join :LeftJoin.* => Some((join.left, join.right))
 		case _ => None
 	}
@@ -1022,7 +1040,7 @@ sealed trait RightJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 	override type LikeJoin[+F <: FromSome, T[O] <: MappingAt[O]] = F RightJoin T
 
 	protected override def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X, A <: Label]
-	                               (left :F, right :LastRelation[T, X], alias :Option[A])
+	                               (left :F, right :LastTable[T, X], alias :Option[A])
 	                               (filter :GlobalBoolean[left.Generalized Join T]) :F RightJoin T As A =
 		RightJoin(left, right, alias)(filter)
 
@@ -1067,11 +1085,11 @@ object RightJoin {
 	  */
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
-	         (left :Relation[L], right :Relation[R])
+	         (left :Table[L], right :Table[R])
 	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
 	                   castR :InferSubject[From[L], RightJoin, R, RB, B])
 			:From[L] RightJoin R =
-		castR(apply(From(left), LastRelation[RB, B](castR(right)), None)(True))
+		castR(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
 
 	/** Create a right outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -1094,14 +1112,14 @@ object RightJoin {
 	  * @return an `L RightJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (left :L, right :Relation[R], filter :GlobalBoolean[L#Generalized Join R] = True)
+	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
 	         (implicit cast :InferSubject[L, RightJoin, R, T, S]) :L RightJoin R =
-		cast(apply(left, LastRelation[T, S](cast(right)), None)(cast(filter)))
+		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
 
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
-	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
+	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L RightJoin R As A =
 		new RightJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
 			override val left = prefix
@@ -1132,13 +1150,13 @@ object RightJoin {
 	/** Matches all `RightJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
-		case _ :RightJoin[_, _] => Some(from.left -> from.right)
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+		case join :RightJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
 		case _ => None
 	}
 
 	/** Matches all `RightJoin` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Relation.*)] = from match {
+	def unapply(from :RowProduct) :Option[(FromSome, Table.*)] = from match {
 		case join :RightJoin.* => Some((join.left, join.right))
 		case _ => None
 	}
@@ -1222,7 +1240,7 @@ object RightJoin {
   * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom]]
   * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf]]
   * @see [[net.noresttherein.oldsql.sql.RowProduct.TopFrom]]
-  */
+  */ //consider :renaming to SelectFrom. Could be used as a join between With clause and first select. Then DirectSubselect can be Subselect
 sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	extends JoinLike[F, T] with AndFromTemplate[F, T, F Subselect T]
 { thisClause =>
@@ -1233,20 +1251,25 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 
 	//widened bounds
 	override type WithLeft[+L <: NonEmptyFrom] <: L Subselect T
-	override type WithRight[R[O] <: MappingAt[O]] <: F Subselect R
+//	override type GeneralizedRight[R[O] <: MappingAt[O]] = WithRight[R] //<: F Subselect R
+//	override type WithRight[R[O] <: MappingAt[O]] <: F Subselect R
 	override type GeneralizedJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L Subselect R
 	override type LikeJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L Subselect R
 
 	override def withLeft[L <: NonEmptyFrom](left :L)(filter :GlobalBoolean[left.Generalized Subselect T]) :WithLeft[L] //wider bound
 
+//	override def withRight[R[O] <: BaseMapping[S, O], S]
+//	                      (table :LastTable[R, S])(filter :GlobalBoolean[WithRight[R]]) :WithRight[R] =
+//		likeJoin(left, table, None)(filter)
+
 	protected override def likeJoin[L <: NonEmptyFrom, R[O] <: BaseMapping[X, O], X, A <: Label]
-	                               (left :L, right :LastRelation[R, X], alias :Option[A])
+	                               (left :L, right :LastTable[R, X], alias :Option[A])
 	                               (filter :GlobalBoolean[left.Generalized Subselect R]) :L Subselect R As A =
 		Subselect(left, right, alias)(filter)
 
 	override def likeJoin[L <: NonEmptyFrom, R[O] <: BaseMapping[X, O], X] //wider bound
-	                     (left :L, right :Relation[R])(filter :GlobalBoolean[left.Generalized Subselect R]) :L Subselect R =
-		Subselect(left, LastRelation[R, X](right), None)(filter)
+	                     (left :L, right :Table[R])(filter :GlobalBoolean[left.Generalized Subselect R]) :L Subselect R =
+		Subselect(left, LastTable[R, X](right), None)(filter)
 
 	override def likeJoin[P <: NonEmptyFrom, S <: FromSome](left :P, right :S) :right.JoinedWithSubselect[P] =
 		right.joinedWithSubselect(left)
@@ -1285,7 +1308,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 		condition.basedOn(target)
 
 
-	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
 		WithLeft[left.JoinedWith[P, J]]
 
 	override type JoinedWithSubselect[+P <: NonEmptyFrom] = WithLeft[left.JoinedWithSubselect[P]]
@@ -1361,14 +1384,14 @@ object Subselect {
 	  * @return an `L Subselect R`.
 	  */
 	def apply[L <: NonEmptyFrom, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (outer :L, first :Relation[R], filter :GlobalBoolean[L#Generalized Subselect R] = True)
+	         (outer :L, first :Table[R], filter :GlobalBoolean[L#Generalized Subselect R] = True)
 	         (implicit cast :InferSubject[L, Subselect, R, T, S]) :L Subselect R =
-		cast(Subselect[L, T, S, Nothing](outer, LastRelation[T, S](cast(first)), None)(cast(filter)))
+		cast(Subselect[L, T, S, Nothing](outer, LastTable[T, S](cast(first)), None)(cast(filter)))
 
 
 
 	private[sql] def apply[L <: NonEmptyFrom, R[O] <: BaseMapping[S, O], S, A <: Label]
-	                      (prefix :L, next :LastRelation[R, S], asOpt :Option[A])
+	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Subselect R]) :L Subselect R As A =
 		new Subselect[prefix.type, R] with AbstractExtended[prefix.type, R, S] {
 			override val left = prefix
@@ -1377,6 +1400,7 @@ object Subselect {
 			override val condition = cond
 			override val outer = left.self
 			override val fullSize = left.fullSize + 1
+			override def lastRelation = last
 
 			override type Alias = A
 			override type WithLeft[+F <: NonEmptyFrom] = F Subselect R As A
@@ -1385,7 +1409,7 @@ object Subselect {
 
 			override def narrow :left.type Subselect R As A = this.asInstanceOf[left.type Subselect R As A]
 
-			override type WithRight[T[O] <: MappingAt[O]] = prefix.type Subselect T
+//			override type WithRight[T[O] <: MappingAt[O]] = prefix.type Subselect T
 
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
 				Subselect[left.type, R, S, A](left, last, aliasOpt)(filter)
@@ -1421,13 +1445,13 @@ object Subselect {
 
 
 	/** Matches all `Subselect` instances, splitting them into their left (implicit) and right (explicit) sides. */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](join :L Compound R) :Option[(L, Relation[R])] = join match {
-		case _ :Subselect[_, _] => Some(join.left -> join.right)
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+		case subselect :Subselect[L @unchecked, R @unchecked] => Some(subselect.left -> subselect.right)
 		case _ => None
 	}
 
 	/** Matches all `Subselect` instances, splitting them into their left (implicit) and right (explicit) sides. */
-	def unapply(from :RowProduct) :Option[(NonEmptyFrom, Relation.*)] = from match {
+	def unapply(from :RowProduct) :Option[(NonEmptyFrom, Table.*)] = from match {
 		case join :Subselect.* => Some(join.left -> join.right)
 		case _ => None
 	}

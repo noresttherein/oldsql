@@ -5,7 +5,7 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL
-import net.noresttherein.oldsql.sql.{AndFrom, By, ByOne, ByVal, ColumnSQL, From, GroupBy, GroupByOne, GroupByVal, InnerJoin, Join, LeftJoin, RowProduct, SQLExpression, Subselect}
+import net.noresttherein.oldsql.sql.{AndFrom, By, ByOne, ByVal, ColumnSQL, From, GroupBy, GroupByOne, GroupByVal, InnerJoin, Join, LeftJoin, NonParam, RowProduct, SQLExpression, Subselect}
 
 
 
@@ -15,7 +15,7 @@ class GroupingExpressionCheck {{
 	trait E[O] extends BaseMapping[Int, O]; trait F[O] extends BaseMapping[Int, O]
 
 	type S = From[A] InnerJoin B Subselect C LeftJoin D
-	type T = RowProduct AndFrom A Join B Subselect C Join D
+	type T = RowProduct NonParam A Join B Subselect C Join D
 	type G = S GroupBy E By F
 	type U = T GroupBy E By F
 

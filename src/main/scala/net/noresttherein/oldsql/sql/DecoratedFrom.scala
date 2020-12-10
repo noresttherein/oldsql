@@ -30,6 +30,9 @@ trait DecoratedFrom[+F <: RowProduct] extends RowProduct { thisClause =>
 	type Bound >: clause.FromLast <: RowProduct
 	type LeftBound = Bound
 
+//	override type LastMapping[O] = clause.LastMapping[O]
+//	override type Last[O <: RowProduct] <: clause.Last[O]
+
 	/** Wraps a (possibly modified) copy of the underlying clause in a new decorator instance. */
 	def withClause[C <: Bound](body :C) :DecoratedFrom[C]
 
@@ -73,6 +76,7 @@ object DecoratedFrom {
 		override def fullSize :Int = clause.fullSize
 
 		override type LastMapping[O] = clause.LastMapping[O]
+		override type Last[O <: RowProduct] = clause.Last[O]
 		override type FullRow = clause.FullRow
 		override type Row = clause.Row
 		override type OuterRow = clause.OuterRow
@@ -104,6 +108,7 @@ object DecoratedFrom {
 		override type Copy = WithClause[clause.Copy] {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
+			type Dealiased = thisClause.Dealiased
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
@@ -117,7 +122,7 @@ object DecoratedFrom {
 		}
 
 
-		override def last :JoinedRelation[FromLast, LastMapping] = clause.last.asIn[FromLast]
+		override def last :Last[FromLast] = clause.lastAsIn[FromLast]
 
 
 		type GeneralizedClause[+G <: FromSome] <: FromSomeDecorator[G] {
@@ -169,7 +174,7 @@ object DecoratedFrom {
 			clause.fullTableStack(target)(extension.unwrapFront)
 
 
-		override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+		override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
 			WithClause[clause.JoinedWith[P, J]]
 
 		override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
@@ -180,7 +185,7 @@ object DecoratedFrom {
 		override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :JoinedWithSubselect[P] =
 			withClause(clause.joinedWithSubselect(prefix))
 
-		override def appendedTo[P <: FromClause](prefix :P) :WithClause[clause.JoinedWith[P, AndFrom]] =
+		override def appendedTo[P <: FromClause](prefix :P) :WithClause[clause.JoinedWith[P, NonParam]] =
 			withClause(clause.appendedTo(prefix))
 
 

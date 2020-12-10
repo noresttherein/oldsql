@@ -7,8 +7,8 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, NegativeInc, Nume
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
-import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, Compound, DecoratedFrom, Extended, FromSome, GroupBy, GroupByClause, GroupParam, JoinedRelation, JoinParam, RowProduct, Subselect, UnboundParam}
-import net.noresttherein.oldsql.sql.mechanics.GetTable.{Delegate, EvidenceTemplate, GetTableByPredicate, RelationEvidence}
+import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, Compound, DecoratedFrom, Extended, FromSome, GroupBy, GroupByClause, GroupParam, JoinedRelation, JoinedTable, JoinParam, RowProduct, Subselect, UnboundParam}
+import net.noresttherein.oldsql.sql.mechanics.GetTable.{Delegate, EvidenceTemplate, RelationEvidence}
 import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExtendingDecorator}
 import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.RowProduct.{As, ClauseDecomposition, NonEmptyFrom, PrefixOf}
@@ -20,44 +20,66 @@ import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, LabeledFromParam, P
 
 
 
-/** Implicit evidence providing the `LastMapping` and `FromLast` types of the mapping `F`. An implicit value
-  * of this class exists for every type `F` which defines the eponymous type. While in many contexts
+/** Implicit evidence providing the `LastMapping`, `Last` and `FromLast` types of the mapping `F`.
+  * An implicit value of this class exists for every type `F` which defines the eponymous type. While in many contexts
   * this information could be obtained by simply refining the type of the accepted ''from'' clause,
   * if an alternative in the form of a `FromLast` type parameter of a generic method and a free variable,
   * it will be likely instantiated based on its bounds and failing the typing. An implicit type which defines these
   * as member types instead eliminates the possibility of them being instantiated prematurely.
+  * Apart from simply accessing the last relation, it also handles the mechanics of
+  * ''extending'' the relation, as defined by clause `F`, to clauses containing `F` as their
+  * [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf prefix]]. For this reason, type `Last` is, potentially,
+  * not reported as defined in clause `F`, but as its supertype. In practice, default implicit values exist for
+  * all `F#Last` and bundled types `F <: RowProduct`. Introducing a new `RowProduct` using a relation expression
+  * type different than [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]] and
+  * [[net.noresttherein.oldsql.sql.JoinedTable JoinedTable]], will require declaring custom implicit instances
+  * in companion objects to the new clause types.
   */
 @implicitNotFound("I cannot determine the last relation of ${F}. This typically means the type is too abstract " +
-                  "and doesn't define types LastMapping and FromLast or that F =:= Dual.")
-final class LastTableOf[-F <: NonEmptyFrom] private () {
+                  "and doesn't define types LastMapping and FromLast or that F =:= Dual.\n" +
+                  "Missing implicit LastTableOf[${F}].")
+abstract class LastTableOf[-F <: NonEmptyFrom] {
 
-	/** The [[net.noresttherein.oldsql.sql.RowProduct.LastMapping LastMapping]] type of the clause `F`. */
+	/** The [[net.noresttherein.oldsql.sql.RowProduct.LastMapping LastMapping]] type of clause `F`. */
 	type LastMapping[O] <: MappingAt[O]
 
-	/** The [[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]] type of the clause `F`. */
+	/** A supertype of type [[net.noresttherein.oldsql.sql.RowProduct.Last Last]] of clause `F`. */
+	type Last[O <: RowProduct] <: JoinedRelation[O, LastMapping]
+
+	/** The [[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]] type of clause `F`. */
 	type FromLast >: F <: NonEmptyFrom
 
-	@inline def apply(from :F) :JoinedRelation[FromLast, LastMapping] =
-		from.last.asInstanceOf[JoinedRelation[FromLast, LastMapping]]
+	/** The last relation in `F`, based on `F#FromLast`. */
+	def apply(from :F) :Last[FromLast] = extend[FromLast](from)(PrefixOf.itself)
+
+	/** The last relation in `from` based on ''from'' clause `E` extending `F#FromLast`. */
+	def extend[E <: RowProduct](from :F)(implicit prefix :FromLast PrefixOf E) :Last[E]
 }
 
 
 
 object LastTableOf {
+
 	/** A refinement of a `RowProduct` lifting its `FromLast` and `LastMapping` types to type parameters
 	  * of this type alias in the 'Aux' pattern.
 	  */
-	type LastTableBound[U <: NonEmptyFrom, T[O] <: MappingAt[O]] = U {
+	type LastBound[+T[O <: RowProduct] <: JoinedRelation[O, M], U <: NonEmptyFrom, M[O] <: MappingAt[O]] = U {
 		type FromLast = U
-		type LastMapping[O] = T[O]
+		type LastMapping[O] = M[O]
+		type Last[O <: RowProduct] <: T[O]
 	}
 
+	private[sql] val LastBound = new LastTableOf[NonEmptyFrom] {
+		override type LastMapping[O] = MappingAt[O]
+		override type Last[O <: RowProduct] = JoinedRelation[O, LastMapping]
+//		override type FromLast = RowProduct AndFrom LastMapping
 
-	implicit def lastTableOf[U <: NonEmptyFrom, M[O] <: MappingAt[O]]
-			:LastTableOf[LastTableBound[U, M]] { type FromLast = U; type LastMapping[O] = M[O] } =
-		lastTableBound.asInstanceOf[LastTableOf[LastTableBound[U, M]] { type FromLast = U; type LastMapping[O] = M[O] }]
+		override def apply(from :NonEmptyFrom) :JoinedRelation[FromLast, LastMapping] =
+			from.last.asInstanceOf[JoinedRelation[FromLast, LastMapping]]
 
-	private[this] val lastTableBound = new LastTableOf[NonEmptyFrom]
+		override def extend[E <: RowProduct](from :NonEmptyFrom)(implicit prefix :FromLast PrefixOf E) =
+			from.last.asInstanceOf[JoinedRelation[FromLast, LastMapping]].asIn(prefix)
+	}
 
 }
 
@@ -102,25 +124,35 @@ abstract class GetTable {
 
 
 
-	/** Implicit resolution of search for a mapping `M` in the `RowProduct` `F` satisfying a `Predicate[F, M, X]`
-	  * (that is, an `M` for which such an implicit value exists. The type of the mapping of the found relation
-	  * is returned as the member type `T[O]`. In other words, an implicit value `found :Found[F, X] { type I = N }`
-	  * witnesses that `found.T` is the mapping of the last relation (rightmost) in the clause `F` for which
-	  * an implicit `Predicate[F, T, X]` exists, with `N` being the ''negative'' index of the mapping
-	  * (starting with `-1` for the last mapping and decreasing). It is not the actual companion evidence class
-	  * reported by this object for two reasons: first, various implementations introduce additional refinements
-	  * over the standard [[net.noresttherein.oldsql.sql.mechanics.GetTable.RelationEvidence RelationEvidence]]
-	  * interface and, second, because after erasure all `GetTableByPredicate#Found` classes are equal
-	  * and methods of the same signature accepting evidence from different `GetTableByEvidence` instances
-	  * would clash with each other. The typical procedure is thus to implement the evidence resolution in
-	  * means of `Found` and convert the final `Found` evidence into a `Get`. Leaving things at that would
-	  * however not allow to perform the search based on an existing implicit `Get` (for example, to convert
-	  * `Get[F, X] { type I = -2 }` into `Get[F Join T, X] { type I = -3 }`. For this reason, `GetTableByPredicate`
-	  * subclasses typically introduce also a fallback conversion in the other direction - from `Get` to `Found`.
-	  * As this would lead to infinite loops when the evidence cannot be found (and reporting a 'diverging
-	  * implicit expansion' error instead of 'implicit not found' with the customized message),
-	  * `Found` instances obtained through scanning of the ''from'' clause `F` rather than from an implicit `Get`
-	  * are always returned as its subclass
+	/** Implicit resolution of search for a mapping `M` in `F <: RowProduct` which matches key type `X`.
+	  * The nature of the match depends on the instance, but can take into account the mapping type,
+	  * the prefix clause of `F` `P <: RowProduct { type LastMapping[O] = M[O] }`, such that
+	  * `P `[[net.noresttherein.oldsql.sql.RowProduct.PrefixOf PrefixOf]]` F`, which contains the mapping as well
+	  * as position (index) in the clause. Recursion framework provided here is predicate based;
+	  * if a clause `P` satisfies
+	  * [[net.noresttherein.oldsql.sql.mechanics.GetTable.GetTableByPredicate.Predicate Predicate]]`[P, X]`
+	  * (that is, such an implicit value exists), than its last relation `P#Last`/`P#LastMapping` is returned.
+	  * Other implementations are also possible, but may require dedicated implicit recursion.
+	  * The type of the mapping of the found relation is returned as the member type `M[O]` and
+	  * the ([[net.noresttherein.oldsql.sql.JoinedRelation relation type]] as member type `T[O]`. The type of the key
+	  * used to retrieve the relation is implementation dependent. In other words, an implicit value
+	  * `found :Found[F, G, X] { type I = N }` witnesses that `found.M` is the mapping of the last relation (rightmost)
+	  * in the clause `F` for which an implicit `Predicate[F, X]` exists, with `N` being the ''negative'' index
+	  * of the mapping (starting with `-1` for the last mapping and decreasing).
+	  *
+	  * This class is not the actual companion evidence class reported by this object for two reasons: first,
+	  * various implementations introduce additional refinements over the standard
+	  * [[net.noresttherein.oldsql.sql.mechanics.GetTable.RelationEvidence RelationEvidence]] interface and, second,
+	  * because after erasure all `GetTable#Found` classes are equal and methods of the same signature accepting
+	  * evidence from different `GetTable` instances would clash with each other. The typical procedure is thus
+	  * to implement the evidence resolution in means of `Found` and convert the final `Found` evidence into a `Get`.
+	  * Leaving things at that would however not allow to perform the search based on an existing implicit `Get`
+	  * (for example, to convert `Get[F, X] { type I = -2 }` into `Get[F Join T, X] { type I = -3 }`.
+	  * For this reason, `GetTableByPredicate` subclasses typically introduce also a fallback feedback conversion
+	  * in the other direction - from `Get` to `Found`. As this would lead to infinite loops when the evidence
+	  * cannot be found (and reporting a 'diverging implicit expansion' error instead of 'implicit not found'
+	  * with the customized message), `Found` instances obtained through scanning of the ''from'' clause `F`,
+	  * rather than from an implicit `Get`, are always returned as its subclass
 	  * [[net.noresttherein.oldsql.sql.mechanics.GetTable.GetTableTemplate.Return Return]], and only values
 	  * of that class are legible for conversion into the final `Get` evidence.
 	  */
@@ -146,17 +178,19 @@ abstract class GetTable {
 
 
 
-	/** Helper implementations method providing a [[net.noresttherein.oldsql.sql.mechanics.GetTable.Return Return]]
+	/** Helper implementation method providing a [[net.noresttherein.oldsql.sql.mechanics.GetTable.Return Return]]
 	  * instance returning the last relation of the specified
 	  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom NonEmptyFrom]] clause.
 	  */
-	protected def found[F <: NonEmptyFrom, G <: NonEmptyFrom, X]
-	                   (implicit last :LastTableOf[G])
-			:Return[F, G, X] { type T[A] = last.LastMapping[A]; type O = last.FromLast; type I = -1 } =
-		new EvidenceTemplate[F, G, X, last.FromLast, last.FromLast, last.LastMapping, -1](PrefixOf.itself)
+	protected def found[F <: NonEmptyFrom, G <: NonEmptyFrom, X](implicit last :LastTableOf[G])
+			:Return[F, G, X] {
+				type T[O <: RowProduct] = last.Last[O]; type M[O] = last.LastMapping[O]
+				type O = last.FromLast; type I = -1
+			} =
+		new EvidenceTemplate[F, G, X, last.FromLast, last.FromLast, -1, last.LastMapping, last.Last](PrefixOf.itself)
 			with Return[F, G, X]
 		{
-			override def table(from :G) = last(from)
+			override def table[E <: RowProduct](from :G)(implicit stretch :S PrefixOf E) :T[E] = last.extend(from)
 		}
 
 	/** Helper implementation method providing a [[net.noresttherein.oldsql.sql.mechanics.GetTable.Return Return]]
@@ -165,12 +199,14 @@ abstract class GetTable {
 	protected def forward[F <: RowProduct, G <: RowProduct, L <: U, U <: RowProduct, X, N <: Numeral]
 	                     (get :RelationEvidence[_, L, _] { type O >: L <: U },
 	                      general :ClauseDecomposition[G, L, U])
-			:Return[F, G, X] { type T[A] = get.T[A]; type O = general.S[get.O]; type I = N } =
-		new EvidenceTemplate[F, G, X, general.S[get.O], get.S, get.T, N](
+			:Return[F, G, X]
+				{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = general.S[get.O]; type I = N } =
+		new EvidenceTemplate[F, G, X, get.S, general.S[get.O], N, get.M, get.T](
 		                     get.stretch + general.prefix[get.O])
 			with Return[F, G, X]
 		{
-			override def table(from :G) = get.table(general.unapply(from))
+			override def table[E <: RowProduct](from :G)(implicit stretch :get.S PrefixOf E) =
+				get.table(general.unapply(from))
 		}
 
 	/** Helper implementation method providing a [[net.noresttherein.oldsql.sql.mechanics.GetTable.Return Return]]
@@ -179,9 +215,11 @@ abstract class GetTable {
 	protected def left[F <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
 	                   J[+A >: L <: U, B[O] <: R[O]] <: A Compound B, U <: RowProduct, X, N <: Numeral]
 	                  (get :RelationEvidence[_, L, _] { type O >: L <: U })(prefix :get.S PrefixOf (get.O J R))
-			:Return[F, G, X] { type T[O] = get.T[O]; type O = get.O J R; type I = N } =
-		new EvidenceTemplate[F, G, X, get.O J R, get.S, get.T, N](prefix) with Return[F, G, X] {
-			override def table(from :G) = get.table(from.left)
+			:Return[F, G, X]
+				{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O J R; type I = N } =
+		new EvidenceTemplate[F, G, X, get.S, get.O J R, N, get.M, get.T](prefix) with Return[F, G, X] {
+			override def table[E <: RowProduct](from :G)(implicit stretch :get.S PrefixOf E) =
+				get.table(from.left)
 		}
 
 	/** Helper implementation method providing a [[net.noresttherein.oldsql.sql.mechanics.GetTable.Return Return]]
@@ -191,20 +229,25 @@ abstract class GetTable {
 	protected def body[F <: RowProduct, G <: D[B], B <: U, D[+C >: B <: U] <: DecoratedFrom[C], U <: RowProduct,
 	                   X, N <: Numeral]
 	                  (get :RelationEvidence[_, B, _] { type O >: B <: U })(prefix :get.S PrefixOf D[get.O])
-			:Return[F, G, X] { type T[O] = get.T[O]; type O = D[get.O]; type I = N } =
-		new EvidenceTemplate[F, G, X, D[get.O], get.S, get.T, N](prefix) with Return[F, G, X] {
-			override def table(from :G) = get.table(from.clause)
+			:Return[F, G, X]
+				{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = D[get.O]; type I = N } =
+		new EvidenceTemplate[F, G, X, get.S, D[get.O], N, get.M, get.T](prefix) with Return[F, G, X] {
+			override def table[E <: RowProduct](from :G)(implicit stretch :get.S PrefixOf E) =
+				get.table(from.clause)
 		}
 
 
-	/** Feedback conversion from the 'public' evidence to the the 'implementation' evidence. */
+	/** Feedback conversion from 'public' evidence to 'implementation' evidence. */
 	implicit def continue[F <: RowProduct, G <: RowProduct, X <: Key](implicit get :Get[F, G, X])
-			:Found[F, G, X] { type T[O] = get.T[O]; type O = get.O; type I = get.I } =
+			:Found[F, G, X]
+				{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O; type I = get.I } =
 		get match {
 			case found :GetTable#Found[_, _, _] if found.how == this =>
-				found.asInstanceOf[Found[F, G, X] { type T[O] = get.T[O]; type O = get.O; type I = get.I }]
+				found.asInstanceOf[Found[F, G, X] {
+					type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O; type I = get.I
+				}]
 			case _ =>
-				new Delegate[F, G, X, get.O, get.T, get.I](get) with Found[F, G, X]
+				new Delegate[F, G, X, get.O, get.I, get.M, get.T](get) with Found[F, G, X]
 		}
 
 
@@ -236,16 +279,20 @@ abstract class GetTable {
 
 	implicit def outer[F <: FromSome, G <: FromSome, R[O] <: MappingAt[O], X]
 	                  (implicit get :Found[F, G, X] { type O >: G <: FromSome })
-			:GroupedTunnel[F Subselect R, G Subselect R, X]
-				{ type T[O] = get.T[O]; type O = get.O Subselect R; type B = get.O; type I = get.I } =
-		new EvidenceTemplate[F Subselect R, G Subselect R, X, get.O Subselect R, get.S, get.T, get.I](
+			:GroupedTunnel[F Subselect R, G Subselect R, X] {
+				type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+				type O = get.O Subselect R; type B = get.O; type I = get.I
+			} =
+		new EvidenceTemplate[F Subselect R, G Subselect R, X, get.S, get.O Subselect R, get.I, get.M, get.T](
 			get.stretch.extend[get.O Subselect R])
 			with GroupedTunnel[F Subselect R, G Subselect R, X]
 		{
 			override type B = get.O
 			override def outer :B OuterClauseOf O = OuterClauseOf.subselect[get.O, R]
 			override def suffix = get.stretch
-			override def table(from :G Subselect R) = get.table(from.left)
+
+			override def table[E <: RowProduct](from :G Subselect R)(implicit stretch :get.S PrefixOf E) =
+				get.table(from.left)
 		}
 
 
@@ -254,15 +301,19 @@ abstract class GetTable {
 	                       (implicit specific :ClauseDecomposition[F, C, _],
 	                                 general :ExtendedDecomposition[G, L, R, J, U],
 	                                 get :GroupedTunnel[C, L, X] { type O >: L <: U })
-			:GroupedTunnel[F, G, X]
-				{ type T[O] = get.T[O]; type O = general.S[get.O]; type B = get.B; type I = get.I } =
-		new EvidenceTemplate[F, G, X, general.S[get.O], get.S, get.T, get.I](get.stretch.extend[J, R])
+			:GroupedTunnel[F, G, X] {
+				type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+				type O = general.S[get.O]; type B = get.B; type I = get.I
+			} =
+		new EvidenceTemplate[F, G, X, get.S, general.S[get.O], get.I, get.M, get.T](get.stretch.extend[J, R])
 			with GroupedTunnel[F, G, X]
 		{
 			override type B = get.B
 			override val suffix = get.suffix
 			override val outer = OuterClauseOf.extended[get.B, get.O J R, get.O, R, J, U](general.upcast[get.O], get.outer)
-			override def table(from :G) = get.table(from.left)
+
+			override def table[E <: RowProduct](from :G)(implicit stretch :get.S PrefixOf E) =
+				get.table(from.left)
 		}
 
 	implicit def tunnelDecorator[F <: D[B], B <: U, G <: D[C], C <: U,
@@ -270,19 +321,26 @@ abstract class GetTable {
 	                            (implicit specific :ClauseDecomposition[F, B, _],
 	                                      general :DecoratorDecomposition[G, C, D, U],
 	                                      get :GroupedTunnel[B, C, X] { type O >: C <: U })
-			:GroupedTunnel[F, G, X]
-				{ type T[O] = get.T[O]; type O = D[get.O]; type B = get.B; type I = get.I } =
-		new EvidenceTemplate[F, G, X, D[get.O], get.S, get.T, get.I](
+			:GroupedTunnel[F, G, X] {
+				type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+				type O = D[get.O]; type B = get.B; type I = get.I
+			} =
+		new EvidenceTemplate[F, G, X, get.S, D[get.O], get.I, get.M, get.T](
 			get.stretch.extend(general.extension[get.O]))
 			with GroupedTunnel[F, G, X]
 		{
 			override type B = get.B
 			override val suffix = get.suffix
 			override val outer = OuterClauseOf.decorated[get.B, D[get.O], D, get.O, U](general.upcast[get.O], get.outer)
-			override def table(from :G) = get.table(from.clause)
+
+			override def table[E <: RowProduct](from :G)(implicit stretch :get.S PrefixOf E) =
+				get.table(from.clause)
 		}
 
 }
+
+
+
 
 
 
@@ -297,10 +355,10 @@ object GetTable {
 	  */
 	type SpecificOf[G <: RowProduct] = RowProduct { type Generalized <: G }
 
-	/** Base trait for various implicit evidence used to find a particular relation based on some key type `X`.
-	  * It carries the mapping type `T` associated with the found relation, `S` - the `FromLast` type
+	/** Base trait for various implicit evidence classes used to find a particular relation based on some key type `X`.
+	  * It carries the mapping type `M` associated with the found relation, `S` - the `FromLast` type
 	  * of the link with the found relation and `O`- a suffix clause of `G` which starts with `S` followed by all
-	  * joins and relations just as they appear in the type `G`. The adaptation of the accessed relation
+	  * joins and relations exactly as they appear in the type `G`. The adaptation of the accessed relation
 	  * from type `S` to `O` is done based on the [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf PrefixOf]]
 	  * instance representing the extension.
 	  * @tparam F The input clause type which is used to match the relation. In the
@@ -310,10 +368,26 @@ object GetTable {
 	  *           must exist in order for the relation to be returned.
 	  * @tparam G The [[net.noresttherein.oldsql.sql.RowProduct.Generalized Generalized]] type of `F`.
 	  *           It must be a supertype of `F` on the suffix starting with the accessed relation.
+	  *           It is provided here in order to statically bound `O` type used as `Origin` type of returned mappings
+	  *           from below, hence making [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]]`[O, M]`
+	  *           a subtype of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[G, M[()]#Subject]`,
+	  *           and thus usable in ''where'', ''select'', ''group by'' and ''having'' clauses of SQL ''selects''
+	  *           based on type `F/G`.
+	  * @tparam X The type given as the argument which determines some, implementation dependent,
+	  *           relation characteristic of the accessed relation.
 	  */
 	trait RelationEvidence[-F <: RowProduct, -G <: RowProduct, X] {
+
+		/** The type of the table expression specific to the returned relation. It is returned as defined
+		  * by [[net.noresttherein.oldsql.sql.RowProduct.Last Last]] of the row prefix which ends with
+		  * the returned relation. In practice, it is [[net.noresttherein.oldsql.sql.JoinedTable JoinedTable]]
+		  * for 'true' tables from the ''from'' clause and [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]]
+		  * for others.
+		  */
+		type T[O <: RowProduct] <: JoinedRelation[O, M]
+
 		/** The accessed `Mapping` type, matching the key `X`. */
-		type T[A] <: MappingAt[A]
+		type M[O] <: MappingAt[O]
 
 		/** The supertype of the generalized supertype `G` of the input ''from'' clause `F`, in which the search
 		  * takes place, resulting from replacing the [[net.noresttherein.oldsql.sql.Compound Compound]] link
@@ -338,20 +412,23 @@ object GetTable {
 		/** Extension of the initial clause `S` with the found relation as the last one to the final clause `O`. */
 		def stretch :S PrefixOf O
 
-		/** Getter for the matching relation. */
-		def apply(from :G) :JoinedRelation[O, T] = table(from).asIn(stretch)
+		/** Getter for the matching relation.
+		  * @return `this.table(from)(this.stretch)`.
+		  */
+		def apply(from :G) :T[O] = table(from)(stretch)
 
-		/** The returned relation based on its containing extension clause `S`, before extending it over `F`. */
-		private[GetTable] def table(from :G) :JoinedRelation[S, T]
+		def table[E <: RowProduct](from :G)(implicit stretch :S PrefixOf E) :T[E]
 	}
 
 
-	protected[GetTable] abstract class EvidenceTemplate[-F <: RowProduct, G <: RowProduct, X, U >: G <: RowProduct,
-	                                                    C <: RowProduct, M[A] <: MappingAt[A], N <: Numeral]
+	protected[GetTable] abstract class EvidenceTemplate[-F <: RowProduct, G <: RowProduct, X,
+	                                                    C <: RowProduct, U >: G <: RowProduct, N <: Numeral,
+	                                                    E[A] <: MappingAt[A], R[O <: RowProduct] <: JoinedRelation[O, E]]
 	                                                   (override val stretch :C PrefixOf U)
 		extends RelationEvidence[F, G, X]
 	{
-		override type T[A] = M[A]
+		override type T[O <: RowProduct] = R[O]
+		override type M[O] = E[O]
 		override type O = U
 		override type S = C
 		override type I = N
@@ -372,23 +449,25 @@ object GetTable {
 	  *           `Predicate[F, M[Any], X]`.
 	  * @tparam U the `Origin` type for the mapping, which is a supertype of `F` resulting from replacing
 	  *           the prefix clause which contains the accessed relation with its `FromLast` type.
-	  * @tparam M the mapping of the accessed relation.
+	  * @tparam E the mapping of the accessed relation.
 	  * @tparam N the negative index of the accessed relation in the clause `F` - it starts with -1
 	  *           for the rightmost relation and decreases with each relation going to the left.
 	  */
-	private[mechanics] abstract class Delegate[-F <: RowProduct, G <: RowProduct, X, U >: G <: RowProduct,
-	                                           M[A] <: MappingAt[A], N <: Numeral]
-	                            (val evidence :RelationEvidence[F, G, X] { type T[A] = M[A]; type O = U; type I = N })
+	private[mechanics] abstract class Delegate[-F <: RowProduct, G <: RowProduct, X, U >: G <: RowProduct, N <: Numeral,
+	                                           E[A] <: MappingAt[A], R[A <: RowProduct] <: JoinedRelation[A, E]]
+	                            (val evidence :RelationEvidence[F, G, X]
+	                                { type T[O <: RowProduct] = R[O]; type M[O] = E[O]; type O = U; type I = N })
 		extends RelationEvidence[F, G, X]
 	{
-		override type T[A] = M[A]
+		override type T[O <: RowProduct] = R[O]
+		override type M[O] = E[O]
 		override type O = U
 		override type S = evidence.S
 		override type I = N
 
-		override def stretch :PrefixOf[S, O] = evidence.stretch
+		override def stretch :S PrefixOf O = evidence.stretch
 
-		override def table(from :G) :JoinedRelation[S, T] = evidence.table(from)
+		override def table[C <: RowProduct](from :G)(implicit stretch :S PrefixOf C) :T[C] = evidence.table(from)
 	}
 
 
@@ -433,30 +512,42 @@ object GetTable {
 		//and in a GroupByClause we search for GroupedTunnel, not Return/Found
 		implicit def extended[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
 		                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct,
-		                      X, M <: Numeral, N <: Numeral]
+		                      X, V <: Numeral, W <: Numeral]
 		                     (implicit specific :ClauseDecomposition[F, P, _],
 		                               general :ExtendedDecomposition[G, L, R, J, U],
-		                               get :Found[P, L, X] { type O >: L <: U; type I = N }, dec :Inc[M, N])
-				:Return[F, G, X] { type T[A] = get.T[A]; type O = general.S[get.O]; type I = M } =
-			forward[F, G, L, U, X, M](get, general)
+		                               get :Found[P, L, X] { type O >: L <: U; type I = W }, dec :Inc[V, W])
+				:Return[F, G, X] {
+					type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+					type O = general.S[get.O]; type I = V
+				} =
+			forward[F, G, L, U, X, V](get, general)
+
 
 		implicit def decorated[F <: RowProduct, B <: RowProduct, G <: D[C], C <: U,
 		                       D[+A <: U] <: ExtendingDecorator[A], U <: RowProduct, X]
 		                      (implicit specific :ClauseDecomposition[F, B, _],
 		                                general :DecoratorDecomposition[G, C, D, U],
 		                                get :Found[B, C, X] { type O >: C <: U })
-				:Return[F, G, X] { type T[A] = get.T[A]; type O = general.S[get.O]; type I = get.I } =
+				:Return[F, G, X] {
+					type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+					type O = general.S[get.O]; type I = get.I
+				} =
 			forward[F, G, C, U, X, get.I](get, general)
 
-		implicit def grouped[P <: FromSome, L <: FromSome, R[O] <: MappingAt[O], X, M <: Numeral, N <: Numeral]
-		                    (implicit get :GroupedTunnel[P, L, X] { type O >: L <: FromSome; type I = N }, dec :Inc[M, N])
-				:Return[P GroupBy R, L GroupBy R, X] { type T[O] = get.T[O]; type O = get.O GroupBy R; type I = M } =
-			left[P GroupBy R, L GroupBy R, L, R, GroupBy, FromSome, X, M](get)(get.suffix.group(get.outer))
+
+		implicit def grouped[P <: FromSome, L <: FromSome, R[O] <: MappingAt[O], X, V <: Numeral, W <: Numeral]
+		                    (implicit get :GroupedTunnel[P, L, X] { type O >: L <: FromSome; type I = W }, dec :Inc[V, W])
+				:Return[P GroupBy R, L GroupBy R, X]
+					{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O GroupBy R; type I = V } =
+			left[P GroupBy R, L GroupBy R, L, R, GroupBy, FromSome, X, V](get)(get.suffix.group(get.outer))
+
 
 		implicit def aggregated[F <: FromSome, G <: FromSome, X]
 		                       (implicit get :GroupedTunnel[F, G, X] { type O >: G <: FromSome })
-				:Return[Aggregated[F], Aggregated[G], X]
-					{ type T[A] = get.T[A]; type O = Aggregated[get.O]; type I = get.I } =
+				:Return[Aggregated[F], Aggregated[G], X] {
+					type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+					type O = Aggregated[get.O]; type I = get.I
+				} =
 			body[Aggregated[F], Aggregated[G], G, Aggregated, FromSome, X, get.I](get)(
 				get.suffix.aggregate(get.outer)
 			)
@@ -475,8 +566,12 @@ object GetTable {
 		//has to have priority as there is ambiguity with As and several mappings matching in general
 		implicit def last[F <: NonEmptyFrom, G <: NonEmptyFrom, M[O] <: MappingAt[O], X]
 		                 (implicit last :LastTableOf[G] { type LastMapping[O] = M[O] },
-		                           check :LastTableOf[F] { type LastMapping[O] = M[O] }, pred :Predicate[F, X])
-				:Return[F, G, X] { type T[O] = last.LastMapping[O]; type O = last.FromLast; type I = -1 } =
+		                  check :LastTableOf[F] { type LastMapping[O] = M[O] },
+		                  pred :Predicate[F, X])
+				:Return[F, G, X] {
+					type T[O <: RowProduct] = last.Last[O]; type M[O] = last.LastMapping[O]
+					type O = last.FromLast; type I = -1
+				} =
 			found
 	}
 
@@ -530,14 +625,17 @@ object GetTable {
 
 		implicit def byPositiveIndex[F <: RowProduct, G <: RowProduct, N <: Numeral]
 		             (implicit left2right :Positive[N], found :ByPositiveIndex.Return[F, G, N])
-				:ByIndex[F, G, N] { type T[O] = found.T[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, N, found.O, found.T, found.I](found)
+				:ByIndex[F, G, N] {
+					type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]
+					type O = found.O; type I = found.I
+				} =
+			new Delegate[F, G, N, found.O, found.I, found.M, found.T](found)
 				with ByIndex[F, G, N] with ByPositiveIndex.Found[F, G, N]
 
 		implicit def byNegativeIndex[F <: RowProduct, G <: RowProduct, N <: Numeral]
 		             (implicit right2left :Negative[N], found :ByNegativeIndex.Return[F, G, N] { type I = N })
-				:ByIndex[F, G, N] { type T[O] = found.T[O]; type O = found.O } =
-			new Delegate[F, G, N, found.O, found.T, N](found)
+				:ByIndex[F, G, N] { type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O } =
+			new Delegate[F, G, N, found.O, N, found.M, found.T](found)
 				with ByIndex[F, G, N] with ByNegativeIndex.Found[F, G, N]
 
 
@@ -566,13 +664,19 @@ object GetTable {
 			  *///can't use the inherited one from GetTable as we must check if N is negative; NegativeInc will exist for 0
 			implicit def byIndexFeedback[F <: RowProduct, G <: RowProduct, X <: Numeral]
 			                            (implicit negative :Negative[X], get :ByIndex[F, G, X])
-					:Found[F, G, X] { type T[O] = get.T[O]; type O = get.O; type I = X  } =
+					:Found[F, G, X] {
+						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+						type O = get.O; type I = X
+					} =
 				get match {
 					case pos :GetTable#Found[_, _, _] if pos.how == ByNegativeIndex =>
-						pos.asInstanceOf[Found[F, G, X] { type T[O] = get.T[O]; type O = get.O; type I = X }]
+						pos.asInstanceOf[Found[F, G, X] {
+							type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O; type I = X
+						}]
 					case _ =>
-						new EvidenceTemplate[F, G, X, get.O, get.S, get.T, X](get.stretch) with Found[F, G, X] {
-							override def table(from :G) = get.table(from)
+						new EvidenceTemplate[F, G, X, get.S, get.O, X, get.M, get.T](get.stretch) with Found[F, G, X] {
+							override def table[E <: RowProduct](from :G)(implicit stretch :get.S PrefixOf E) =
+								get.table(from)
 						}
 				}
 		}
@@ -582,34 +686,44 @@ object GetTable {
 
 			implicit def extended[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
 			                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct,
-			                      M <: Numeral, N <: Numeral]
+			                      V <: Numeral, W <: Numeral]
 			                     (implicit specific :ClauseDecomposition[F, P, _],
 			                               general :ExtendedDecomposition[G, L, R, J, U],
-			                               dec :NegativeInc[M, N], get :Found[P, L, N] { type O >: L <: U })
-					:Return[F, G, M] { type T[O] = get.T[O]; type O = general.S[get.O]; type I = M } =
-				forward[F, G, L, U, M, M](get, general)
+			                               dec :NegativeInc[V, W], get :Found[P, L, W] { type O >: L <: U })
+					:Return[F, G, V] {
+						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+						type O = general.S[get.O]; type I = V
+					} =
+				forward[F, G, L, U, V, V](get, general)
 
 			implicit def decorated[F <: RowProduct, P <: RowProduct, G <: D[C], C <: U,
 			                       D[+A <: U] <: ExtendingDecorator[A], U <: RowProduct, X <: Numeral]
 			                      (implicit specific :ClauseDecomposition[F, P, _],
 			                                general :DecoratorDecomposition[G, C, D, U],
 			                                get :Found[P, C, X] { type O >: C <: U })
-					:Return[F, G, X] { type T[O] = get.T[O]; type O = general.S[get.O]; type I = X } =
+					:Return[F, G, X] {
+						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+						type O = general.S[get.O]; type I = X
+					} =
 				forward[F, G, C, U, X, X](get, general)
 
-			implicit def grouped[P <: FromSome, L <: FromSome, R[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
-			                    (implicit dec :NegativeInc[M, N],
-			                              get :GroupedTunnel[P, L, N] { type O >: L <: FromSome })
-					:Return[P GroupBy R, L GroupBy R, M]
-						{ type T[O] = get.T[O]; type O = get.O GroupBy R; type I = M } =
-				left[P GroupBy R, L GroupBy R, L, R, GroupBy, FromSome, M, M](get)(
+			implicit def grouped[P <: FromSome, L <: FromSome, R[O] <: MappingAt[O], V <: Numeral, W <: Numeral]
+			                    (implicit dec :NegativeInc[V, W],
+			                              get :GroupedTunnel[P, L, W] { type O >: L <: FromSome })
+					:Return[P GroupBy R, L GroupBy R, V] {
+						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+						type O = get.O GroupBy R; type I = V
+					} =
+				left[P GroupBy R, L GroupBy R, L, R, GroupBy, FromSome, V, V](get)(
 					get.suffix.group(get.outer)
 				)
 
 			implicit def aggregated[F <: FromSome, G <: FromSome, X <: Numeral]
 			                       (implicit get :GroupedTunnel[F, G, X] { type O >: G <: FromSome })
-					:Return[Aggregated[F], Aggregated[G], X]
-						{ type T[O] = get.T[O]; type O = Aggregated[get.O]; type I = X } =
+					:Return[Aggregated[F], Aggregated[G], X] {
+						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+						type O = Aggregated[get.O]; type I = X
+					} =
 				body[Aggregated[F], Aggregated[G], G, Aggregated, FromSome, X, X](get)(
 					get.suffix.aggregate(get.outer)
 				)
@@ -619,10 +733,13 @@ object GetTable {
 
 		object ByNegativeIndex extends ByNegativeIndexRecursion {
 
-			implicit def last[F <: NonEmptyFrom, G <: NonEmptyFrom, M[O] <: MappingAt[O]]
-			                 (implicit last :LastTableOf[G] { type LastMapping[O] = M[O] },
-			                           check :LastTableOf[F] { type LastMapping[O] = M[O] })
-					:Return[F, G, -1] { type T[O] = M[O]; type O = last.FromLast; type I = -1 } =
+			implicit def last[F <: NonEmptyFrom, G <: NonEmptyFrom, E[O] <: MappingAt[O]]
+			                 (implicit last :LastTableOf[G] { type LastMapping[O] = E[O] },
+			                           check :LastTableOf[F] { type LastMapping[O] = E[O] })
+					:Return[F, G, -1] {
+						type T[O <: RowProduct] = last.Last[O]; type M[O] = E[O]
+						type O = last.FromLast; type I = -1
+					} =
 				found
 		}
 
@@ -645,7 +762,7 @@ object GetTable {
 	@implicitNotFound("No relation with Mapping labeled ${N} in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.ByLabel[${F}, ${G}, ${N}].")
 	sealed trait ByLabel[-F <: RowProduct, G <: RowProduct, N <: Label] extends RelationEvidence[F, G, N] {
-		override type T[O] <: LabeledMapping[N, _, O]
+		override type M[O] <: LabeledMapping[N, _, O]
 	}
 
 
@@ -659,9 +776,10 @@ object GetTable {
 		override type Get[-F <: RowProduct, G <: RowProduct, A <: Label] = ByLabel[F, G, A]
 
 		implicit def byLabel[F <: RowProduct, G <: RowProduct, A <: Label]
-		                    (implicit found :Return[F, G, A] { type T[O] <: LabeledMapping[A, _, O] })
-				:ByLabel[F, G, A] { type T[O] = found.T[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, A, found.O, found.T, found.I](found) with ByLabel[F, G, A]
+		                    (implicit found :Return[F, G, A] { type M[O] <: LabeledMapping[A, _, O] })
+				:ByLabel[F, G, A]
+					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
+			new Delegate[F, G, A, found.O, found.I, found.M, found.T](found) with ByLabel[F, G, A]
 
 		implicit def satisfies[M[O] <: LabeledMapping[L, _, O], L <: Label] :Predicate[RowProduct Compound M, L] =
 			report
@@ -700,8 +818,9 @@ object GetTable {
 		override type Get[-F <: RowProduct, G <: RowProduct, X <: Label] = ByAlias[F, G, X]
 
 		implicit def byAlias[F <: RowProduct, G <: RowProduct, A <: Label](implicit found :Return[F, G, A])
-				:ByAlias[F, G, A] { type T[O] = found.T[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, A, found.O, found.T, found.I](found) with ByAlias[F, G, A]
+				:ByAlias[F, G, A]
+					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
+			new Delegate[F, G, A, found.O, found.I, found.M, found.T](found) with ByAlias[F, G, A]
 
 		implicit def satisfies[M[O] <: MappingAt[O], A <: Label] :Predicate[NonEmptyFrom As A, A] = report
 	}
@@ -710,7 +829,7 @@ object GetTable {
 
 
 	/** An implicit accessor object for the last relation in `F` with `Subject` type `S`.
-	  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`.
+	  * The type and index of the relation are returned as members `M[O]` and `I`/ `shift :I`.
 	  * For the purpose of this implicit, all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
@@ -723,7 +842,7 @@ object GetTable {
 	@implicitNotFound("No relation with Subject type ${X} appears in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.BySubject[${F}, ${G}, ${X}].")
 	sealed trait BySubject[-F <: RowProduct, G <: RowProduct, X] extends RelationEvidence[F, G, X] {
-		override type T[O] <: RefinedMapping[X, O]
+		override type M[O] <: RefinedMapping[X, O]
 	}
 
 
@@ -738,9 +857,10 @@ object GetTable {
 		override type Get[-F <: RowProduct, G <: RowProduct, S] = BySubject[F, G, S]
 
 		implicit def bySubject[F <: RowProduct, G <: RowProduct, X] //type name S confuses the compiler which mixes it with RelationEvidence.S
-		                      (implicit found :Return[F, G, X] { type T[O] <: RefinedMapping[X, O] })
-				:BySubject[F, G, X] { type T[O] = found.T[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, X, found.O, found.T, found.I](found) with BySubject[F, G, X]
+		                      (implicit found :Return[F, G, X] { type M[O] <: RefinedMapping[X, O] })
+				:BySubject[F, G, X]
+					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
+			new Delegate[F, G, X, found.O, found.I, found.M, found.T](found) with BySubject[F, G, X]
 
 
 		implicit def satisfies[M[O] <: RefinedMapping[S, O], S] :Predicate[RowProduct Compound M, S] =
@@ -753,7 +873,7 @@ object GetTable {
 	/** An implicit accessor object for the last relation in `F`
 	  * for a [[net.noresttherein.oldsql.schema.Mapping Mapping]] with type constructor `M`.
 	  * The argument type of the type constructor must be the mapping's `Origin` type.
-	  * The type and index of the relation are returned as members `T[O]` and `I`/ `shift :I`.
+	  * The type and index of the relation are returned as members `M[O]` and `I`/ `shift :I`.
 	  * For the purpose of this implicit, all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
@@ -763,12 +883,12 @@ object GetTable {
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
 	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
 	  */
-	@implicitNotFound("No relation with type constructor ${M} in the FROM clause ${F}:\n" +
-	                  "no implicit value for GetTable.ByType[${F}, ${G}, ${M}].")
-	sealed trait ByType[-F <: RowProduct, G <: RowProduct, M[O] <: MappingAt[O]]
-		extends RelationEvidence[F, G, M[()]]
+	@implicitNotFound("No relation with type constructor ${C} in the FROM clause ${F}:\n" +
+	                  "no implicit value for GetTable.ByType[${F}, ${G}, ${C}].")
+	sealed trait ByType[-F <: RowProduct, G <: RowProduct, C[O] <: MappingAt[O]]
+		extends RelationEvidence[F, G, C[()]]
 	{
-		override type T[O] = M[O]
+		override type M[O] = C[O]
 	}
 
 
@@ -785,10 +905,11 @@ object GetTable {
 	  */
 	object ByType extends GetTableByPredicate {
 
-		implicit def byTypeConstructor[F <: RowProduct, G <: RowProduct, M[O] <: MappingAt[O]]
-		                              (implicit found :Return[F, G, M[()]] { type T[O] = M[O] })
-				:ByType[F, G, M] { type T[O] = found.T[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, M[()], found.O, found.T, found.I](found) with ByType[F, G, M]
+		implicit def byTypeConstructor[F <: RowProduct, G <: RowProduct, C[O] <: MappingAt[O]]
+		                              (implicit found :Return[F, G, C[()]] { type M[O] = C[O] })
+				:ByType[F, G, C]
+					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
+			new Delegate[F, G, C[()], found.O, found.I, found.M, found.T](found) with ByType[F, G, C]
 
 		implicit def satisfies[M[O] <: MappingAt[O]] :Predicate[RowProduct Compound M, M[()]] = report
 
@@ -808,7 +929,7 @@ object GetTable {
 	  * with [[net.noresttherein.oldsql.sql.mechanics.GetTable.ByIndex ByIndex]], all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] are still included in the counting
-	  * (but remain unaccessible due to the lack of an implicit value of this evidence for the particular index).
+	  * (but remain inaccessible due to the lack of an implicit value of this evidence for the particular index).
 	  *
 	  * While the mapping could be also returned based on any other criteria (for example, its absolute index),
 	  * its type as provided by this class is statically narrowed down to
@@ -827,7 +948,7 @@ object GetTable {
 		              "or ${N} >= 0 and the clause is incomplete (starts with a wildcard or abstract type).\n" +
 	                  "Missing implicit GetTable.ByParamIndex[${F}, ${G}, ${N}].")
 	sealed trait ByParamIndex[-F <: RowProduct, G <: RowProduct, N <: Numeral] extends RelationEvidence[F, G, N] {
-		type T[O] <: ParamAt[O]
+		type M[O] <: ParamAt[O]
 	}
 
 
@@ -848,16 +969,18 @@ object GetTable {
 
 		implicit def byPositiveParamIndex[F <: RowProduct, G <: RowProduct, N <: Numeral]
 		                                 (implicit positive :Positive[N],
-		                                  get :ByPositiveParamIndex.Return[F, G, N] { type T[O] <: ParamAt[O] })
-				:ByParamIndex[F, G, N] { type T[O] = get.T[O]; type O = get.O; type I = get.I } =
-			new Delegate[F, G, N, get.O, get.T, get.I](get)
+		                                  get :ByPositiveParamIndex.Return[F, G, N] { type M[O] <: ParamAt[O] })
+				:ByParamIndex[F, G, N]
+					{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O; type I = get.I } =
+			new Delegate[F, G, N, get.O, get.I, get.M, get.T](get)
 				with ByParamIndex[F, G, N] with ByPositiveParamIndex.Found[F, G, N]
 
 		implicit def byNegativeParamIndex[F <: RowProduct, G <: RowProduct, N <: Numeral]
 		                                 (implicit negative :Negative[N],
-		                                  get :ByNegativeParamIndex.Return[F, G, N] { type T[O] <: ParamAt[O] })
-				:ByParamIndex[F, G, N] { type T[O] = get.T[O]; type O = get.O; type I = get.I } =
-			new Delegate[F, G, N, get.O, get.T, get.I](get)
+		                                  get :ByNegativeParamIndex.Return[F, G, N] { type M[O] <: ParamAt[O] })
+				:ByParamIndex[F, G, N]
+					{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O; type I = get.I } =
+			new Delegate[F, G, N, get.O, get.I, get.M, get.T](get)
 				with ByParamIndex[F, G, N] with ByNegativeParamIndex.Found[F, G, N]
 
 
@@ -874,12 +997,14 @@ object GetTable {
 			//can't use the 'free' inherited feedback implicit because we must assert that N is negative first.
 			implicit def feedback[F <: RowProduct, G <: RowProduct, N <: Numeral]
 			                     (implicit negative :Negative[N], get :ByParamIndex[F, G, N])
-					:Found[F, G, N] { type T[O] = get.T[O]; type O = get.O; type I = get.I } =
+					:Found[F, G, N] { type M[O] = get.M[O]; type O = get.O; type I = get.I } =
 				get match {
 					case pos :GetTableByPredicate#Found[_, _, _] if pos.how == this =>
-						pos.asInstanceOf[Found[F, G, N] { type T[O] = get.T[O]; type O = get.O; type I = get.I }]
+						pos.asInstanceOf[Found[F, G, N] {
+							type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O; type I = get.I
+						}]
 					case _ =>
-						new Delegate[F, G, N, get.O, get.T, get.I](get) with Found[F, G, N]
+						new Delegate[F, G, N, get.O, get.I, get.M, get.T](get) with Found[F, G, N]
 				}
 		}
 
@@ -888,30 +1013,37 @@ object GetTable {
 
 			/** Decrease the absolute value of the index type parameter and search in the left side
 			  * of the unbound parameter. This implicit has precedence over all standard inherited definitions,
-			  * but not over `joinParam` and `groupParam` for `N =:= -1`.
+			  * but not over `joinParam` and `groupParam` for `X =:= -1`.
 			  */
-			implicit def param[F <: RowProduct, P <: RowProduct, G <: L J T, L <: U, T[O] <: ParamAt[O],
+			implicit def param[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: ParamAt[O],
 			                   J[+A <: U, B[O] <: ParamAt[O]] <: A UnboundParam B, U <: NonEmptyFrom,
-			                   X <: Numeral, Y <: Numeral, M <: Numeral, N <: Numeral]
+			                   X <: Numeral, Y <: Numeral, V <: Numeral, W <: Numeral]
 			                  (implicit specific :ClauseDecomposition[F, P, _],
-			                            general :ExtendedDecomposition[G, L, T, J, U],
-			                            key :NegativeInc[X, Y], get :Found[P, L, Y] { type O >: L <: U; type I = N },
-			                            idx :NegativeInc[M, N])
-					:Return[F, G, X] { type T[O] = get.T[O]; type O = general.S[get.O]; type I = M } =
-				forward[F, G, L, U, X, M](get, general)
+			                   general :ExtendedDecomposition[G, L, R, J, U],
+			                   key :NegativeInc[X, Y], get :Found[P, L, Y] { type O >: L <: U; type I = W },
+			                   idx :NegativeInc[V, W])
+					:Return[F, G, X] {
+						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
+						type O = general.S[get.O]; type I = V
+					} =
+				forward[F, G, L, U, X, V](get, general)
 		}
 
 
 		object ByNegativeParamIndex extends ByNegativeParamIndexParams {
 
 			implicit def joinParam[P[O] <: ParamAt[O], L <: FromSome]
-					:Return[FromSome JoinParam P, L JoinParam P, -1]
-						{ type T[O] = P[O]; type O = RowProduct AndFrom P; type I = -1 } =
+					:Return[FromSome JoinParam P, L JoinParam P, -1] {
+						type T[O <: RowProduct] = JoinedRelation[O, P]; type M[O] = P[O]
+						type O = RowProduct AndFrom P; type I = -1
+					} =
 				found
 
 			implicit def groupParam[P[O] <: ParamAt[O], L <: GroupByClause]
-					:Return[GroupByClause GroupParam P, L GroupParam P, -1]
-						{ type T[O] = P[O]; type O = GroupByClause AndBy P; type I = -1 } =
+					:Return[GroupByClause GroupParam P, L GroupParam P, -1] {
+						type T[O <: RowProduct] = JoinedRelation[O, P]; type M[O] = P[O]
+						type O = GroupByClause AndBy P; type I = -1
+					} =
 				found
 		}
 
@@ -941,7 +1073,7 @@ object GetTable {
 	                  "no implicit value for GetTable.ByParamName[${F}, ${G}, ${N}].\n" +
 	                  "Note that a parameter name is a label of a Mapping, not a relation alias.")
 	sealed trait ByParamName[-F <: RowProduct, G <: RowProduct, N <: Label] extends ByParamName.Found[F, G, N] {
-		type T[O] <: LabeledFromParam[N, _, O]
+		type M[O] <: LabeledFromParam[N, _, O]
 	}
 
 
@@ -963,9 +1095,10 @@ object GetTable {
 		override type Get[-F <: RowProduct, G <: RowProduct, N <: Label] = ByParamName[F, G, N]
 
 		implicit def byParamName[F <: RowProduct, G <: RowProduct, A <: Label]
-		                        (implicit found :Return[F, G, A] { type T[O] <: LabeledFromParam[A, _, O] })
-				:ByParamName[F, G, A] { type T[O] = found.T[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, A, found.O, found.T, found.I](found) with ByParamName[F, G, A]
+		                        (implicit found :Return[F, G, A] { type M[O] <: LabeledFromParam[A, _, O] })
+				:ByParamName[F, G, A]
+					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
+			new Delegate[F, G, A, found.O, found.I, found.M, found.T](found) with ByParamName[F, G, A]
 
 		implicit def satisfies[M[O] <: LabeledFromParam[N, _, O], N <: Label]
 				:Predicate[NonEmptyFrom UnboundParam M, N] =
@@ -1006,8 +1139,9 @@ object GetTable {
 		override type Get[-F <: RowProduct, G <: RowProduct, X <: Label] = ByParamAlias[F, G, X]
 
 		implicit def byParamAlias[F <: RowProduct, G <: RowProduct, A <: Label](implicit found :Return[F, G, A])
-				:ByParamAlias[F, G, A] { type T[O] = found.T[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, A, found.O, found.T, found.I](found) with ByParamAlias[F, G, A]
+				:ByParamAlias[F, G, A]
+					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
+			new Delegate[F, G, A, found.O, found.I, found.M, found.T](found) with ByParamAlias[F, G, A]
 
 		implicit def satisfies[M[O] <: ParamAt[O], A <: Label] :Predicate[NonEmptyFrom UnboundParam M As A, A] =
 			report
@@ -1035,7 +1169,7 @@ object GetTable {
 	@implicitNotFound("No parameter with type ${X} in the FROM clause ${F}:\n"+
 	                  "no implicit GetTable.ByParamType[${F}, ${G}, ${X}]")
 	sealed trait ByParamType[-F <: RowProduct, G <: RowProduct, X] extends RelationEvidence[F, G, X] {
-		type T[O] <: FromParam[X, O]
+		type M[O] <: FromParam[X, O]
 	}
 
 
@@ -1056,9 +1190,10 @@ object GetTable {
 		override type Get[-F <: RowProduct, G <: RowProduct, X] = ByParamType[F, G, X]
 
 		implicit def byParamType[F <: RowProduct, G <: RowProduct, X]
-		                        (implicit found :Return[F, G, X] { type T[O] <: FromParam[X, O] })
-				:ByParamType[F, G, X] { type T[O] = found.T[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, X, found.O, found.T, found.I](found) with ByParamType[F, G, X]
+		                        (implicit found :Return[F, G, X] { type M[O] <: FromParam[X, O] })
+				:ByParamType[F, G, X]
+					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
+			new Delegate[F, G, X, found.O, found.I, found.M, found.T](found) with ByParamType[F, G, X]
 
 		implicit def satisfies[M[O] <: FromParam[X, O], X] :Predicate[NonEmptyFrom UnboundParam M, X] =
 			report

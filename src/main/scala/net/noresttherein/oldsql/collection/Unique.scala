@@ -53,6 +53,7 @@ trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with
 
 	def ++:[U >: T](elems :IterableOnce[U]) :Unique[U]
 
+	def -[U >: T](elem :U) :Unique[T]
 
 
 	/** Verifies if the element sets of the two collections are equal.
@@ -191,6 +192,8 @@ object Unique extends IterableFactory[Unique] {
 			if (elems.iterator.isEmpty) this
 			else ((elems ++: items) : @nowarn)
 
+		override def -[U >: T](elem :U) :Unique[T] = items - elem
+
 		override def concat[B >: T](suffix :IterableOnce[B]) :Unique[B] = items ++ suffix
 
 		override def foreach[U](f :T => U) :Unit = items foreach f
@@ -237,6 +240,14 @@ object Unique extends IterableFactory[Unique] {
 			else
 	            (new UniqueBuilder ++= elems ++= this).result()
 
+		override def -[U >: T](elem :U) :Unique[T] =
+			index.get(elem.asInstanceOf[T]) match {
+				case Some(i) =>
+					val view = items.view
+					new IndexedUnique[T]((view.take(i) ++ view.drop(i + 1)).toIndexedSeq, index - elem.asInstanceOf[T])
+				case _ => this
+			}
+
 
 		override def concat[U >: T](that :IterableOnce[U]) :Unique[U] =
 			if (that.iterator.isEmpty)
@@ -277,8 +288,13 @@ object Unique extends IterableFactory[Unique] {
 			if (elems.iterator.isEmpty) this
 			else Unique.from(head::elems.iterator.to(List))
 
+		override def -[U >: T](elem :U) :Unique[T] =
+			if (elem == head ) Unique.empty[T] else this
+
+
 		override def iterator = Iterator.single(head)
 
+		override def toString = "Unique(" + head + ")"
 	}
 
 

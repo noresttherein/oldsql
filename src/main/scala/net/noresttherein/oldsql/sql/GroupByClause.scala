@@ -4,11 +4,11 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
-import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, Relation, SQLForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.Relation.PseudoRelation
+import net.noresttherein.oldsql.schema.Relation.{PseudoRelation, Table}
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
@@ -47,6 +47,8 @@ sealed trait AggregateClause extends RowProduct with RowProductTemplate[Aggregat
 	}
 
 	type Dealiased >: Self <: AggregateClause {
+		type LastMapping[O] = thisClause.LastMapping[O]
+//		type Last[O <: RowProduct] = thisClause.Last[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
@@ -60,6 +62,8 @@ sealed trait AggregateClause extends RowProduct with RowProductTemplate[Aggregat
 	}
 
 	override type Self <: AggregateClause {
+		type LastMapping[O] = thisClause.LastMapping[O]
+//		type Last[O <: RowProduct] = thisClause.Last[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
@@ -175,7 +179,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	thisClause =>
 
 	override type LastMapping[O] = Nothing
-	override type LastTable[E <: RowProduct] = Nothing
+	override type Last[E <: RowProduct] = Nothing
 	override type FromLast = RowProduct
 
 	/** Throws an `NoSuchElementException`. */
@@ -232,7 +236,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 		outer.fullTableStack(target)(explicitSpan.extend(extension))
 
 
-	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L AndFrom R] =
+	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
 		Aggregated[clause.JoinedWith[P, J]]
 
 	override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
@@ -243,7 +247,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :JoinedWithSubselect[P] =
 		withClause(clause.joinedWithSubselect(prefix))
 
-	override def appendedTo[P <: FromClause](prefix :P) :Aggregated[clause.JoinedWith[P, AndFrom]] =
+	override def appendedTo[P <: FromClause](prefix :P) :Aggregated[clause.JoinedWith[P, NonParam]] =
 		withClause(clause.appendedTo(prefix))
 
 
@@ -291,8 +295,8 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 
 	/** Throws `UnsupportedOperationException`. */
 	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	                 (first :Relation[M])
-	                 (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]])
+	                 (first :Table[M])
+	                 (implicit cast :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]])
 			:Nothing =
 		throw new UnsupportedOperationException(s"($this).from($first)")
 
@@ -325,7 +329,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 
 
 
-	private[sql] override def concrete_FromClause_subclass_must_extend_DiscreteFrom_or_GroupByClause =
+	private[sql] override def concrete_RowProduct_subclass_must_extend_FromClause_or_GroupByClause =
 		throw new UnsupportedOperationException
 
 
@@ -380,6 +384,7 @@ object Aggregated {
 trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClauseTemplate[GroupByClause, GroupByClause] {
 	thisClause =>
 
+	override type Last[O <: RowProduct] = JoinedRelation[O, LastMapping]
 	override type FromLast >: Generalized <: GroupByClause
 	override type FromNext[E[+L <: FromSome] <: RowProduct] = Nothing
 
@@ -394,6 +399,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	}
 
 	type Dealiased >: Self <: GroupByClause {
+		type LastMapping[O] = thisClause.LastMapping[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type GeneralizedDiscrete = thisClause.GeneralizedDiscrete
@@ -408,6 +414,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	}
 
 	override type Self <: GroupByClause {
+		type LastMapping[O] = thisClause.LastMapping[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type GeneralizedDiscrete = thisClause.GeneralizedDiscrete
@@ -425,6 +432,9 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	override type AppliedParam <: GroupByClause
 	override type Paramless <: BoundParamless //because GroupParam requires a GroupByClause on the left.
 	override type BoundParamless = GroupByClause { type Params = @~ }
+
+	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :Last[E] =
+		last.asIn[E]
 
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 	  * SQL standard for true joins, or the ''having'' clause. It is not the complete filter
@@ -470,7 +480,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.groupByClause(this)
 
 
-	private[sql] def concrete_FromClause_subclass_must_extend_DiscreteFrom_or_GroupByClause :Nothing =
+	private[sql] def concrete_RowProduct_subclass_must_extend_FromClause_or_GroupByClause :Nothing =
 		throw new UnsupportedOperationException
 
 }
@@ -501,6 +511,7 @@ object GroupByClause {
 			type FromLast = thisClause.FromLast
 			type Generalized = thisClause.Generalized
 			type GeneralizedDiscrete = thisClause.GeneralizedDiscrete
+			type Dealiased = thisClause.Dealiased
 			type Params = thisClause.Params
 			type FullRow = thisClause.FullRow
 			type Explicit = thisClause.Explicit
@@ -771,7 +782,7 @@ object GroupByClause {
 		  *     in particular [[net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm terms]],
 		  *   - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]] (ranging from whole entities
 		  *     to single columns),
-		  *   - [[ConversionSQL conversion]] nodes,
+		  *   - [[net.noresttherein.oldsql.sql.ast.ConversionSQL conversion]] nodes,
 		  *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
 		  *   - [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuples]] and
 		  *     [[ast.TupleSQL.IndexedChainTuple indexed tuples]].
@@ -797,7 +808,7 @@ object GroupByClause {
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
 		@inline def subselect[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                     (table :Relation[R])
+		                     (table :Table[R])
 		                     (implicit cast :InferSubject[G, Subselect, R, T, S]) :G Subselect R =
 			Subselect(thisClause, table)
 
@@ -996,9 +1007,9 @@ object GroupByClause {
 		extends PseudoRelation[M]
 	{
 		override def apply[O] :M[O] = projection(template)
-		override def altered[O] :M[O] = projection(template)
+		override def export[O] :M[O] = projection(template)
 
-		override def sql :String = ??? //fixme: proper default SQL
+		override def sql :String = template.selectedByDefault.view.map(_.name).mkString(", ")
 	}
 
 

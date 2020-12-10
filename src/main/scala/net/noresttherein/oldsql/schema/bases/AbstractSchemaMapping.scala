@@ -72,10 +72,9 @@ abstract class AbstractSchemaMapping[S, V <: Chain, C <: Chain, O]
 	   with StaticSchemaMapping[({ type A[M <: RefinedMapping[S, O], X] = SchemaMappingAdapter[M, S, X, V, C, O] })#A,
 		                        MappingSchema[S, V, C, O], S, V, C, O]
 {
-	private[this] type Adapter[X] = SchemaMappingAdapter[this.type, S, X, V, C, O]
-
-	override def apply(adjustments :ComponentSelection[_, O]*) :SchemaMappingAdapter[this.type, S, S, V, C, O] =
-		AdjustedMapping(this, adjustments, alter)
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+			:SchemaMappingAdapter[this.type, S, S, V, C, O] =
+		AdjustedMapping(this, include, exclude, alter)
 
 	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:SchemaMappingAdapter[this.type, S, S, V, C, O] =
@@ -108,8 +107,9 @@ abstract class AbstractFlatSchemaMapping[S, V <: Chain, C <: Chain, O]
 			({ type A[M <: RefinedMapping[S, O], X] = FlatSchemaMappingAdapter[M, S, X, V, C, O] })#A,
 			FlatMappingSchema[S, V, C, O], S, V, C, O]
 {
-	override def apply(adjustments :ComponentSelection[_, O]*) :FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		AdjustedMapping(this, adjustments, alter)
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+			:FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		AdjustedMapping(this, include, exclude, alter)
 
 	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
@@ -142,9 +142,9 @@ abstract class AbstractFlatIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain
 			({ type A[M <: RefinedMapping[S, O], X] = FlatIndexedSchemaMappingAdapter[M, S, X, V, C, O] })#A,
 			FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
 {
-	override def apply(adjustments :ComponentSelection[_, O]*)
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		AdjustedMapping(this, adjustments, alter)
+		AdjustedMapping(this, include, exclude, alter)
 
 	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =

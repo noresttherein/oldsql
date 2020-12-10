@@ -133,14 +133,14 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 		}
 
 
-	override def apply(adjustments :ComponentSelection[_, O]*) :SchemaMapping[S, V, C, O] =
-		AdjustedMapping(this, adjustments, alter)
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :SchemaMapping[S, V, C, O] =
+		AdjustedMapping(this, include, exclude, alter)
 
 	private[this] type Adapter[X] = SchemaMappingAdapter[this.type, S, X, V, C, O]
 
 	protected[schema] def alter(includes :Unique[RefinedMapping[_, O]], excludes :Unique[RefinedMapping[_, O]])
 			:SchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new AdjustedMapping[this.type, S, O](this, includes, excludes)
+		new AdjustedMapping[this.type, S, O](this)(includes, excludes)
 			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
 			with AdjustedMappingMerger[Adapter, S, O]
 		{   //in Scala 3, this method should become a constructor parameter
@@ -608,14 +608,15 @@ object SchemaMapping {
 			LabeledSchemaMapping(label, this)
 
 
-		override def apply(adjustments :ComponentSelection[_, O]*) :FlatSchemaMapping[S, V, C, O] =
-			AdjustedMapping(this, adjustments, alter)
+		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+				:FlatSchemaMapping[S, V, C, O] =
+			AdjustedMapping(this, include, exclude, alter)
 
 		private[this] type Adapter[X] = FlatSchemaMappingAdapter[this.type, S, X, V, C, O]
 
 		protected[schema] override def alter(includes :Unique[RefinedMapping[_, O]], excludes :Unique[RefinedMapping[_, O]])
 				:FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
-			new AdjustedMapping[this.type, S, O](this, includes, excludes)
+			new AdjustedMapping[this.type, S, O](this)(includes, excludes)
 				with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
 				with AdjustedMappingMerger[Adapter, S, O]
 			{   //in Scala 3, this method should become a constructor parameter
@@ -974,8 +975,9 @@ object SchemaMapping {
 	{
 		private[this] type Adapter[X] = SchemaMappingAdapter[M, T, X, V, C, O]
 
-		override def apply(adjustments :ComponentSelection[_, O]*) :SchemaMappingAdapter[M, T, S, V, C, O] =
-			new AdjustedMapping[this.type, S, O](this, adjustments)
+		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+				:SchemaMappingAdapter[M, T, S, V, C, O] =
+			new AdjustedMapping[this.type, S, O](this, include, exclude)
 				with ComposedAdapter[M, S, S, O] with DelegateSchemaMapping[S, V, C, O]
 				with SchemaMappingAdapter[M, T, S, V, C, O]
 				with SpecificAdjustedMapping[Adapter, this.type, S, O]
@@ -1024,12 +1026,12 @@ object SchemaMapping {
 	{
 		private[this] type Adapter[X] = FlatSchemaMappingAdapter[M, T, X, V, C, O]
 
-		override def apply(adjustments :ComponentSelection[_, O]*) :FlatSchemaMappingAdapter[M, T, S, V, C, O] =
-			new AdjustedMapping[this.type, S, O](this, adjustments)
+		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+				:FlatSchemaMappingAdapter[M, T, S, V, C, O] =
+			new AdjustedMapping[this.type, S, O](this, include, exclude)
 				with ComposedAdapter[M, S, S, O] with DelegateFlatSchemaMapping[S, V, C, O]
 				with FlatSchemaMappingAdapter[M, T, S, V, C, O]
 				with SpecificAdjustedMapping[Adapter, this.type, S, O]
-
 
 		protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatSchemaMappingAdapter[M, T, S, V, C, O] =

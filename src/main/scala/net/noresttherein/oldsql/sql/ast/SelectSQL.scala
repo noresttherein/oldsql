@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain, Unique}
 import net.noresttherein.oldsql.collection.Chain.ChainApplication
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Relation, SQLReadForm}
+import net.noresttherein.oldsql.schema.{AbstractRelation, ColumnMapping, ColumnReadForm, Relation, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -59,12 +59,11 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 	//caution: in group by queries this returns the elements of the group by clause, not the actual from clause
 	def relations :Seq[RelationSQL.AnyIn[from.Generalized]] = from.tableStack.reverse
 
-//	def tables :Seq[Relation.*] = from match {
-//		case GroupByClause(grouped) =>
-//			grouped.tableStack.reverse.map[Relation.*](relationOf).toList
-//		case _ => from.tableStack.reverse.map(t => t.relation).toList
-//	}
-	def tables :Seq[Relation.*] = ???
+	def tables :Seq[Relation.*] = (from match {
+		case GroupByClause(grouped) =>
+			grouped.tableStack.reverse.map(_.relation :AbstractRelation).toList
+		case _ => from.tableStack.reverse.map(t => t.relation :AbstractRelation).toList
+	}).asInstanceOf[Seq[Relation.*]]
 
 	def isSubselect :Boolean = from.isSubselect
 
@@ -153,6 +152,8 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 
 
 object SelectSQL {
+	//todo: order by
+	//todo: limit etc
 	//todo: parameterized selects
 	//todo: mapping indexed headers
 
@@ -400,9 +401,6 @@ object SelectSQL {
 		override def distinct :SelectColumnAs[F, H, V]
 
 		override def asGlobal :Option[SelectColumnAs[F, H, V]] = Some(this)
-
-		override def canEqual(that :Any) :Boolean =
-			that.isInstanceOf[SelectColumnAs[_, M, _] forSome { type M[O] <: ColumnMapping[_, O] }]
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =

@@ -241,16 +241,22 @@ object AlteredMapping {
   * @see [[net.noresttherein.oldsql.schema.Mapping.ComponentSelection]]
   */
 class AdjustedMapping[+M <: RefinedMapping[S, O], S, O] private[schema]
-      (mapping :M, val includes :Unique[RefinedMapping[_, O]], val excludes :Unique[RefinedMapping[_, O]])
+      (mapping :M)(val includes :Unique[RefinedMapping[_, O]], val excludes :Unique[RefinedMapping[_, O]])
 	extends AlteredMapping[M, S, O](mapping, AdjustedMapping.overrides(mapping, includes, excludes))
 {
+	private def this(mapping :M, includes :Iterable[RefinedMapping[_, O]])(excludes :Unique[RefinedMapping[_, O]]) =
+		this(mapping)(includes.view.map(mapping.export(_)).filterNot(excludes.contains(_)).to(Unique), excludes)
+
+	def this(mapping :M, includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]]) =
+		this(mapping, includes)(excludes.view.map(mapping.export(_)).to(Unique))
+
 	def this(mapping :M, adjustments :Iterable[ComponentSelection[_, O]]) =
-		this(mapping, AdjustedMapping.includes(mapping, adjustments), AdjustedMapping.excludes(mapping, adjustments))
+		this(mapping, AdjustedMapping.includes(mapping, adjustments))(AdjustedMapping.excludes(mapping, adjustments))
 
 
-	override def apply(adjustments :ComponentSelection[_, O]*) :RefinedMapping[S, O] = {
-		val newIncludes = adjustments.view.collect { case IncludedComponent(c) => dealias(c) }.to(Unique)
-		val newExcludes = adjustments.view.collect { case ExcludedComponent(c) => dealias(c) }.to(Unique)
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :RefinedMapping[S, O] = {
+		val newIncludes = include.view.map(dealias(_)).to(Unique)
+		val newExcludes = exclude.view.map(dealias(_)).to(Unique)
 		AdjustedMapping[M, S, O](backer,
 			(includes.view ++ newIncludes).filterNot(newExcludes.contains).to(Unique),
 			(excludes.view.filterNot(newIncludes.contains) ++ newExcludes).to(Unique)
@@ -276,6 +282,17 @@ object AdjustedMapping {
 		alter(incl, excl)
 	}
 
+	private[schema] def apply[A <: RefinedMapping[S, O], S, O]
+	                         (original :RefinedMapping[S, O],
+	                          include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]],
+	                          alter :(Unique[RefinedMapping[_, O]], Unique[RefinedMapping[_, O]]) => A) :A =
+	{
+		val excl = exclude.view.map(original.export(_)).to(Unique)
+		val incl = include.view.map(original.export(_)).filterNot(excl.contains(_)).to(Unique)
+		alter(incl, excl)
+	}
+
+
 	
 	
 	def apply[M <: RefinedMapping[S, O], S, O]
@@ -289,8 +306,7 @@ object AdjustedMapping {
 	def apply[M <: RefinedMapping[S, O], S, O]
 	         (original :M, includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]])
 			:Adapted[M] =
-		new AdjustedMapping[M, S, O](original, includes.to(Unique), excludes.to(Unique))
-			with DelegateAdapter[M, S, O]
+		new AdjustedMapping[M, S, O](original, includes, excludes) with DelegateAdapter[M, S, O]
 
 	
 	
@@ -446,9 +462,9 @@ object AdjustedMapping {
 		protected def adjustments :Seq[ComponentSelection[_, O]] =
 			(includes.view.map(_.+) ++ excludes.view.map(_.-)).toSeq
 
-		override def apply(adjustments :ComponentSelection[_, O]*) :A[S] = {
-			val newIncludes = adjustments.view.collect { case IncludedComponent(c) => dealias(c) }.to(Unique)
-			val newExcludes = adjustments.view.collect { case ExcludedComponent(c) => dealias(c) }.to(Unique)
+		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] = {
+			val newIncludes = include.view.map(dealias(_)).to(Unique)
+			val newExcludes = exclude.view.map(dealias(_)).to(Unique)
 			adjustedMapping(
 				(includes.view ++ newIncludes).filterNot(newExcludes.contains).to(Unique),
 				(excludes.view.filterNot(newIncludes.contains) ++ newExcludes).to(Unique)
@@ -486,13 +502,12 @@ object AdjustedMapping {
 		   extends MappingFactoryMethods[A, S, O]
 	{ this :AdjustedMapping[M, S, O] =>
 
-		override def apply(adjustments :ComponentSelection[_, O]*) :A[S] = {
-			val newIncludes = adjustments.view.collect { case IncludedComponent(c) => dealias(c) }.to(Unique)
-			val newExcludes = adjustments.view.collect { case ExcludedComponent(c) => dealias(c) }.to(Unique)
+		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] = {
+			val newIncludes = include.view.map(dealias(_)).to(Unique)
+			val newExcludes = exclude.view.map(dealias(_)).to(Unique)
 			backer(
-				((includes.view ++ newIncludes).filterNot(newExcludes.contains).map(_.+) ++
-					(excludes.view.filterNot(newIncludes.contains) ++ newExcludes).map(_.-)
-				).toSeq :_*
+				(includes.view ++ newIncludes).filterNot(newExcludes.contains),
+				excludes.view.filterNot(newIncludes.contains) ++ newExcludes
 			)
 		}
 	}

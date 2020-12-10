@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.{schema, OperationType}
-import net.noresttherein.oldsql.collection.NaturalMap
+import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
 import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
@@ -73,7 +73,7 @@ trait MappingAdapter[+M <: Mapping, S, O]
 	/** The adapted mapping. It is considered a valid component of this mapping. */
 	val body :M { type Origin = O }
 
-	override def apply(adjustments :ComponentSelection[_, O]*) :MappingAdapter[M, S, O] = fail
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :MappingAdapter[M, S, O] = fail
 
 	override def prefixed(prefix :String) :MappingAdapter[M, S, O] = fail
 
@@ -121,9 +121,9 @@ object MappingAdapter {
 
 		private[this] type Adapter[X] = MappingAdapter[M, X, O]
 
-		override def apply(adjustments :ComponentSelection[_, O]*) :MappingAdapter[M, S, O] =
-			new AdjustedMapping[this.type, S, O](this, adjustments)
-				with ComposedAdapter[M, S, S, O] with SpecificAdjustedMapping[Adapter, this.type, S, O]
+		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :MappingAdapter[M, S, O] =
+			new AdjustedMapping[this.type, S, O](this, include, exclude)
+				with ComposedAdapter[M ,S, S, O] with SpecificAdjustedMapping[Adapter, this.type, S, O]
 
 		protected override def alter(op :OperationType,
 		                             include :Iterable[Component[_]], exclude :Iterable[Component[_]])

@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndFrom, By, Dual, Extended, From, FromClause, FromSome, GroupBy, GroupByClause, GroupParam, Join, JoinParam, RowProduct, Subselect}
+import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndFrom, By, Dual, Extended, From, FromClause, FromSome, GroupBy, GroupByClause, GroupParam, Join, JoinParam, NonParam, RowProduct, Subselect}
 import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExtendingDecorator}
 import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
@@ -261,6 +261,10 @@ object TableOffset {
 	//this is the only one really needed by JoinedRelations + GetTable, which use FromLast
 	implicit def firstAndFrom[T[A] <: MappingAt[A]] :TableOffset.Of[RowProduct AndFrom T, T, 0] =
 		new TableOffset[RowProduct AndFrom T, T](0).asInstanceOf[Of[RowProduct AndFrom T, T, 0]]
+
+	//generalized form of From
+	implicit def firstNonParam[T[A] <: MappingAt[A]] :TableOffset.Of[RowProduct NonParam T, T, 0] =
+		new TableOffset[RowProduct NonParam T, T](0).asInstanceOf[Of[RowProduct NonParam T, T, 0]]
 
 	//these firstXxx are here mostly to allow other uses of TableOffset
 	implicit def firstFrom[T[A] <: MappingAt[A]] :TableOffset.Of[From[T], T, 0] =

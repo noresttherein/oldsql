@@ -111,10 +111,10 @@ object SQLScribe {
 		protected[this] val oldClause :F
 		protected[this] val newClause :G
 
-		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :SQLExpression[G, S, X] =
+		override def expression[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :SQLExpression[G, S, V] =
 			unhandled(e)
 
-		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :ColumnSQL[G, S, X] =
+		override def column[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[G, S, V] =
 			unhandled(e)
 
 		override def mapping[S >: LocalScope <: GlobalScope, M[O] <: MappingAt[O]]
@@ -125,13 +125,13 @@ object SQLScribe {
 
 		override def query[V](e :ColumnQuery[F, V]) :ColumnSQL[G, GlobalScope, Rows[V]] = unhandled(e)
 
-		override def looseComponent[O >: F <: RowProduct, M[A] <: BaseMapping[X, A], X]
-		                          (e :LooseComponent[O, M, X]) :MappingSQL[G, GlobalScope, M] =
-			unhandled(e)
+		override def looseComponent[O >: F <: RowProduct, M[A] <: BaseMapping[V, A], V]
+		                          (e :LooseComponent[O, M, V]) :SQLExpression[G, GlobalScope, V] =
+			e.anchor(oldClause).applyTo(this)
 
 		override def looseComponent[O >: F <: RowProduct, M[A] <: ColumnMapping[V, A], V]
 		                          (e :LooseColumn[O, M, V]) :ColumnSQL[G, GlobalScope, V] =
-			unhandled(e)
+			e.anchor(oldClause).applyTo(this)
 
 
 
@@ -380,7 +380,7 @@ object SQLScribe {
 			if (table eq e.origin)
 				e.asInstanceOf[TypedComponentSQL[G, T, R, M, V, G]]
 			else
-				e.transplant(table)
+				e.graft(table)
 		}
 
 
@@ -391,7 +391,7 @@ object SQLScribe {
 			if (table eq e.origin)
 				e.asInstanceOf[ColumnSQL[G, GlobalScope, V]]
 			else
-				e.transplant(table)
+				e.graft(table)
 		}
 
 

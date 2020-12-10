@@ -139,9 +139,15 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	override def buffs :Seq[Buff[S]] = Nil
 
 
+	override def apply(adjustments :ComponentSelection[_, O]*) :Component[S] =
+		apply(
+			adjustments.view.collect { case IncludedComponent(c) => c },
+			adjustments.view.collect { case ExcludedComponent(c) => c }
+		)
 
-	def apply(adjustments :ComponentSelection[_, O]*) :Component[S] =
-		AdjustedMapping[BaseMapping[S, O], S, O](this, adjustments)
+
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
+		AdjustedMapping[BaseMapping[S, O], S, O](this, include, exclude)
 
 	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		AlteredMapping.select[BaseMapping[S, O], S, O](this, include, exclude)

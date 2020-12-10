@@ -1,6 +1,7 @@
 import net.noresttherein.oldsql.schema.{Mapping, Relation}
 import net.noresttherein.oldsql.schema.bits.FormMapping
-import net.noresttherein.oldsql.sql.{AndFrom, From, RowProduct, InnerJoin, Join, SQLExpression}
+import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition
 
 /**
@@ -9,8 +10,8 @@ import net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition
 object compilerHangup extends App {{
 	class A[O] extends FormMapping[Int, O]
 	class B[O] extends FormMapping[Int, O]
-	val A = Relation("A", new A[Any])
-	val B = Relation("B", new B[Any])
+	val A = Table("A", new A[Any])
+	val B = Table("B", new B[Any])
 
 //	val a :A[RowProduct AndFrom A Join B] = ???
 //	val b :B[RowProduct AndFrom B] = ???

@@ -1,13 +1,14 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.collection.Chain.ChainApplication
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, Relation, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, DerivedTable, Table}
 import net.noresttherein.oldsql.schema.SQLForm.EmptyForm
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{*, CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnQuery, QueryRelation, Rows}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.ColumnMappingSetOperation.ColumnMappingSetOperationMatcher
@@ -78,11 +79,11 @@ trait QuerySQL[-F <: RowProduct, V] extends SQLExpression[F, GlobalScope, Rows[V
 
 
 sealed abstract class ImplicitQueryRelations {
-	implicit def arbitraryQueryRelation[V](query :QuerySQL[RowProduct, V]) :Relation[MappingOf[V]#Projection] =
-		new QueryRelation[query.ResultMapping](query).asInstanceOf[Relation[MappingOf[V]#Projection]]
+	implicit def arbitraryQueryRelation[V](query :QuerySQL[RowProduct, V]) :Table[MappingOf[V]#Projection] =
+		QueryRelation[query.ResultMapping, V](query).asInstanceOf[Table[MappingOf[V]#Projection]]
 
-	implicit def singleColumnRelation[V](query :ColumnQuery[RowProduct, V]) :Relation[MappingOf[V]#ColumnProjection] =
-		new QueryRelation[query.ResultMapping](query)
+	implicit def singleColumnRelation[V](query :ColumnQuery[RowProduct, V]) :Table[MappingOf[V]#ColumnProjection] =
+		QueryRelation[query.ResultMapping, V](query)
 }
 
 
@@ -144,21 +145,46 @@ object QuerySQL extends ImplicitQueryRelations {
 	               (private val self :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
 		extends AnyVal
 	{
-		def toRelation :Relation[M] = new QueryRelation[M](self)
+		def toRelation :Table[M] = QueryRelation[M, V](self)
+		def toTable :Table[M] = QueryRelation[M, V](self)
 	}
 
 
-	implicit def derivedTable[M[O] <: MappingAt[O]](query :MappingQuery[RowProduct, M]) :Relation[M] =
-		new QueryRelation[M](query)
+	implicit def derivedTable[M[O] <: MappingAt[O]](query :MappingQuery[RowProduct, M]) :Table[M] =
+		QueryRelation[M, M[()]#Subject](query)
 
 
-	class QueryRelation[M[O] <: MappingAt[O]](val query :QuerySQL[RowProduct, _] { type ResultMapping[O] = M[O] })
-		extends Relation[M]
+	def QueryRelation[M[O] <: MappingAt[O], V](query :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
+			:QueryRelation[M] =
 	{
+		val q = query
+		new QueryRelation[M] { val query = q }
+	}
+
+	trait QueryRelation[M[O] <: MappingAt[O]]
+		extends DerivedTable[M]
+	{ outer =>
+		val query :QuerySQL[RowProduct, _] { type ResultMapping[O] = M[O] }
+
 		override def apply[O] :M[O] = query.component[O]
-		override def altered[O] :RefinedMapping[M[O]#Subject, O] = query.export[O]
+//		override def altered[O] :RefinedMapping[M[O]#Subject, O] = query.export[O]
+		override def export[O] :MappingAt[O] = query.export[O]
 
 		override def sql :String = ??? //todo: default dialect SQL
+
+		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+				:QueryRelation[M] =
+			new AlteredRelation[M](this, includes, excludes) with QueryRelation[M] {
+				override val query = outer.query
+
+				override def export[O] = super[AlteredRelation].export[O]
+
+				override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]]) =
+					outer.alter(
+						(this.includes.view ++ includes).filterNot(excludes.contains(_)).to(Unique),
+						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
+					)
+			}
 	}
 
 

@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.SQLExpression.LocalScope
-import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, InnerJoin, Join, LeftJoin, OuterJoin, RightJoin, RowProduct, SQLBoolean, Subselect}
+import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, InnerJoin, Join, LeftJoin, NonParam, OuterJoin, RightJoin, RowProduct, SQLBoolean, Subselect}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
@@ -29,7 +29,7 @@ class SelectFactoryCheck {{
 	type S = From[A] RightJoin B Subselect C InnerJoin D
 	type T = RowProduct AndFrom A Join B Subselect C Join D
 	type U = RowProduct AndFrom B Subselect C Join D
-	type R = RowProduct AndFrom A Join B
+	type R = RowProduct NonParam A Join B
 
 	type V = RowProduct AndFrom A LeftJoin B RightJoin C InnerJoin D
 	type W = RowProduct AndFrom A Join B Join C Join D

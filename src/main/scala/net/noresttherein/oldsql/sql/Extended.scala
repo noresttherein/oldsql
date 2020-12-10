@@ -2,13 +2,14 @@ package net.noresttherein.oldsql.sql
 
 import scala.annotation.implicitNotFound
 
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.RowProduct.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 
@@ -39,14 +40,14 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
   * @see [[net.noresttherein.oldsql.sql.GroupBy]]
   * @see [[net.noresttherein.oldsql.sql.By]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-  */ //alternative name ideas: fuse/attach
+  */ //alternative name ideas: fuse/attach/annex/augment
 trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 	extends NonEmptyFrom with NonEmptyFromTemplate[L Compound R, L Compound R]
 {
 	thisClause =>
 
 	override type LastMapping[O] = R[O]
-	override type LastTable[F <: RowProduct] = JoinedRelation[F, R]
+	override type Last[F <: RowProduct] <: JoinedRelation[F, R]
 	override type FromLast >: Generalized <: RowProduct Compound R
 
 
@@ -107,11 +108,7 @@ trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  * validated. Deviating from this principle will not result in an error, but can introduce unexpected alterations
 	  * to the final SQL.
 	  */
-	override val last :JoinedRelation[FromLast, R]
-
-
-	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :JoinedRelation[E, R] =
-		last.asIn[E]
+	override val last :Last[FromLast]
 
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
 	  * SQL standard for true joins, or the ''where''/''having'' clause. It is not the complete filter
@@ -130,6 +127,7 @@ trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 	}
 
 	type Dealiased >: Self <: (left.Self Compound R) {
+		type Last[O <: RowProduct] = thisClause.Last[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
@@ -142,6 +140,7 @@ trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 	}
 
 	override type Self <: (left.Self Compound R) {
+		type Last[O <: RowProduct] = thisClause.Last[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
@@ -252,6 +251,8 @@ object Compound {
 	{
 		def apply(rows :Relation[R]) :Relation[T]
 
+		def apply(rows :Table[R]) :Table[T]
+
 		def apply(join :F[T]) :F[R]
 
 		def cast[E[M[O] <: MappingAt[O]] <: RowProduct, S >: LocalScope <: GlobalScope, X]
@@ -277,6 +278,7 @@ object Compound {
 		private[this] val instance =
 			new JoinedRelationSubject[Compound.WithLeft[RowProduct]#F, AnyAt, AnyAt, AnyAt] {
 				override def apply(rows :Relation[AnyAt]) = rows
+				override def apply(rows :Table[AnyAt]) = rows
 
 				override def apply(join :RowProduct Compound AnyAt) = join
 
@@ -347,7 +349,7 @@ object Compound {
   * @see [[net.noresttherein.oldsql.sql.By]]
   * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
   * @author Marcin Mościcki
-  */ //other words :Tack, Include, With
+  */ //other words :Expand Tack, Include
 trait Extended[+L <: RowProduct, R[O] <: MappingAt[O]]
 	extends Compound[L, R] with ExtendingClause[L] with NonEmptyFromTemplate[L Extended R, L Extended R]
 { thisClause =>
@@ -363,10 +365,10 @@ trait Extended[+L <: RowProduct, R[O] <: MappingAt[O]]
 	}
 
 	type Dealiased >: Self <: (left.Self Extended R) {
+		type Last[O <: RowProduct] = thisClause.Last[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Implicit = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
@@ -375,10 +377,10 @@ trait Extended[+L <: RowProduct, R[O] <: MappingAt[O]]
 	}
 
 	override type Self <: (left.Self Extended R) {
+		type Last[O <: RowProduct] = thisClause.Last[O]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
@@ -443,16 +445,16 @@ object Extended {
 	  */
 	trait AbstractExtended[+L <: RowProduct, R[O] <: BaseMapping[S, O], S] extends Extended[L, R] { thisClause =>
 
-		override val last :RelationSQL[FromLast, R, S, FromLast]
+		protected def lastRelation :RelationSQL[FromLast, R, S, FromLast]
 
 		override def fullTableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			last.extend(target) #:: left.fullTableStack(target)(extension.extendFront[left.Generalized, R])
+			lastRelation.extend(target) #:: left.fullTableStack(target)(extension.extendFront[left.Generalized, R])
 
 
 		override def tableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			last.extend(target) #:: left.tableStack(target)(extension.extendFront[left.Generalized, R])
+			lastRelation.extend(target) #:: left.tableStack(target)(extension.extendFront[left.Generalized, R])
 	}
 
 
