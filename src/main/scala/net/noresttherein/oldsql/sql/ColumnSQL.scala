@@ -21,8 +21,8 @@ import net.noresttherein.oldsql.sql.ast.LogicalSQL.{AndSQL, CaseLogical, Logical
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{LooseColumn, MappingColumnMatcher, TypedColumnComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn.CaseLooseColumn
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL.CaseColumnComponent
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryMatcher, Rows, SetColumnOperation}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.SetColumnOperation.{CaseSetColumnOperation, SetColumnOperationMatcher}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryMatcher, Rows, CompoundSelectColumn}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnMatcher}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumn, SubselectColumn, TopSelectColumn}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
@@ -540,14 +540,14 @@ object ColumnSQL {
 			if (isGlobal) Some(this.asInstanceOf[ColumnSQL[F, GlobalScope, X]])
 			else None
 
+		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, X]
+
 		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnSQL[E, S, X] =
 			rephrase(SQLScribe.extend(base))
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, X] =
 			rephrase(SQLScribe.extend(base))
-
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, X]
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, X] =
 //			matcher.composite(this)
@@ -645,7 +645,7 @@ object ColumnSQL {
 		trait CompositeColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends AliasedColumnMatcher[F, Y] with ArithmeticMatcher[F, Y] with ConcatMatcher[F, Y]
 			   with ConditionMatcher[F, Y] with ColumnConversionMatcher[F, Y] with FunctionColumnMatcher[F, Y]
-			   with LogicalMatcher[F, Y] with SetColumnOperationMatcher[F, Y]
+			   with LogicalMatcher[F, Y] with CompoundSelectColumnMatcher[F, Y]
 		{
 			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X]
 		}
@@ -658,7 +658,7 @@ object ColumnSQL {
 
 		trait MatchCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends MatchOnlyCompositeColumn[F, Y] with CaseColumnConversion[F, Y] with CaseFunctionColumn[F, Y]
-			   with CaseSetColumnOperation[F, Y]
+			   with CaseCompoundSelectColumn[F, Y]
 
 		trait CaseCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends MatchCompositeColumn[F, Y]
@@ -680,7 +680,7 @@ object ColumnSQL {
 
 			override def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean] = composite(e)
 
-			override def setOperation[V](e :SetColumnOperation[F, V]) :Y[GlobalScope, Rows[V]] =
+			override def compoundSelect[V](e :CompoundSelectColumn[F, V]) :Y[GlobalScope, Rows[V]] =
 				composite(e)
 		}
 	}

@@ -51,21 +51,8 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 		if (isDistinct) this
 		else new DefaultAggregateSQL(function, arg, true)(readForm)
 
-
 	override def isGlobal = false
 	override def asGlobal :Option[Nothing] = None
-
-
-	override def basedOn[U <: G, E <: RowProduct](base :E)(implicit ext :U PartOf E) :AggregateSQL[F, E, X, Y] =
-		new DefaultAggregateSQL(function, arg, isDistinct)(readForm) //we could just cast ourselves and it would be fine
-
-	override def extend[U <: G, E <: RowProduct]
-	                   (base :E)(implicit extension :U ExtendedBy E, global: GlobalScope <:< LocalScope) :Nothing =
-		throw new UnsupportedOperationException(
-			s"AggregateSQL expression cannot be extended over to a subselect clause $base."
-		)
-
-
 	override def isAnchored :Boolean = arg.isAnchored
 
 	override def anchor(from :G) :ColumnSQL[G, LocalScope, Y]  = from match {
@@ -79,6 +66,16 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 		case _ =>
 			throw new IllegalArgumentException(s"Can't anchor an AggregateSQL $this in a non AggregateClause $from")
 	}
+
+
+	override def basedOn[U <: G, E <: RowProduct](base :E)(implicit ext :U PartOf E) :AggregateSQL[F, E, X, Y] =
+		new DefaultAggregateSQL(function, arg, isDistinct)(readForm) //we could just cast ourselves and it would be fine
+
+	override def extend[U <: G, E <: RowProduct]
+	                   (base :E)(implicit extension :U ExtendedBy E, global: GlobalScope <:< LocalScope) :Nothing =
+		throw new UnsupportedOperationException(
+			s"AggregateSQL expression cannot be extended over to a subselect clause $base."
+		)
 
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[G, R]) :R[LocalScope, Y] =

@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.{PseudoRelation, RelationTemplate, RelVar, StaticRelation, Table}
+import net.noresttherein.oldsql.schema.Relation.{PseudoRelation, StaticRelation, Table}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
@@ -208,7 +208,7 @@ object UnboundParam {
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply(from :RowProduct) :Option[(RowProduct, Relation[M] forSome { type M[O] <: FromParam[_, O] })] =
+	def unapply(from :RowProduct) :Option[(RowProduct, Relation[ParamRelation[_]#Param])] =
 		from match {
 			case param :UnboundParam.* @unchecked => Some(param.left -> param.right)
 			case _ => None
@@ -221,8 +221,7 @@ object UnboundParam {
 	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
 	  * be matched directly with the wildcard '_'.
 	  */
-	type * = UnboundParam[_ <: NonEmptyFrom, M] forSome { type M[O] <: FromParam[_, O] }
-	type ** = UnboundParam[_ <: NonEmptyFrom, M] forSome { type M[O] <: FromParam[_, O] }
+	type * = UnboundParam[_ <: NonEmptyFrom, ParamRelation[_]#Param]
 
 	/** A curried type constructor for `UnboundParam` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
@@ -899,7 +898,7 @@ object JoinParam {
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply(from :RowProduct) :Option[(FromSome, Relation[M] forSome { type M[O] <: FromParam[_, O] })] =
+	def unapply(from :RowProduct) :Option[(FromSome, Relation[ParamRelation[_]#Param])] =
 		from match {
 			case param :JoinParam.* @unchecked => Some(param.left -> param.right)
 			case _ => None
@@ -926,7 +925,7 @@ object JoinParam {
 	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
 	  * be matched directly with the wildcard '_'.
 	  */
-	type * = JoinParam[_ <: FromSome, M] forSome { type M[O] <: FromParam[_, O] }
+	type * = JoinParam[_ <: FromSome, ParamRelation[_]#Param]
 
 	/** A curried type constructor for `JoinParam` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
@@ -1201,7 +1200,7 @@ object GroupParam {
 	/** Matches all `GroupParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply(from :RowProduct) :Option[(GroupByClause, Relation[M] forSome { type M[O] <: FromParam[_, O] })] =
+	def unapply(from :RowProduct) :Option[(GroupByClause, Relation[ParamRelation[_]#Param])] =
 		from match {
 			case param :GroupParam.* @unchecked => Some(param.left -> param.right)
 			case _ => None
@@ -1229,7 +1228,7 @@ object GroupParam {
 	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
 	  * be matched directly with the wildcard '_'.
 	  */
-	type * = GroupParam[_ <: GroupByClause, M] forSome { type M[O] <: FromParam[_, O] }
+	type * = GroupParam[_ <: GroupByClause, ParamRelation[_]#Param]
 
 	/** A curried type constructor for `GroupParam` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.

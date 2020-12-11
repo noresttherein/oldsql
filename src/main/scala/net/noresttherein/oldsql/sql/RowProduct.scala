@@ -446,8 +446,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 	/** The index of the rightmost [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] in this clause.
 	  * Counting goes from right to left and starts with zero;
-	  * [[net.noresttherein.oldsql.sql.RowProduct.tableStack tableStack]]`(lastParamOffset)` will return
+	  * [[net.noresttherein.oldsql.sql.RowProduct.fullTableStack fullTableStack]]`(lastParamOffset)` will return
 	  * the [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]] representing the parameter.
+	  * @throws UnsupportedOperationException if `!this.isParameterized`.
 	  */
 	def lastParamOffset :Int
 

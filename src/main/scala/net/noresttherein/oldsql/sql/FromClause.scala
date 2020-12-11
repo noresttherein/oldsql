@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.AggregateFunction.{Avg, Count, Max, Min, StdDev, Sum, Var}
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
-import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.UnboundParam.{?:, NamedParamRelation, ParamRelation}
@@ -98,6 +98,13 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	  *             and the first relation in `suffix`.
 	  */
 	def joinWith[F <: FromSome](suffix :F, join :JoinLike.* = InnerJoin.template) :JoinWith[join.LikeJoin, F]
+
+
+	//foiled by JoinParam
+//	override def tableStack :LazyList[TableSQL.AnyIn[Generalized]] = tableStack(generalized)
+//
+//	override def tableStack[E <: RowProduct]
+//	                       (target :E)(implicit extension :Generalized ExtendedBy E) :LazyList[TableSQL.AnyIn[E]]
 
 
 

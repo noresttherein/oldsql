@@ -13,8 +13,8 @@ import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, C
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchOnlyCompositeColumn}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, QueryMatcher, Rows, SetOperationSQL}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.SetOperationSQL.{CaseSetOperation, SetOperationMatcher}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, QueryMatcher, Rows, CompoundSelectSQL}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.{CaseCompoundSelect, CompoundSelectMatcher}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, ConversionSQL, FunctionSQL, LogicalSQL, MappingSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
@@ -53,19 +53,6 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 	  * (if this expression is used as the ''select'' clause of a query).
 	  */
 	def readForm :SQLReadForm[V]
-
-
-	/** Answers if this expressions is applicable to the [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope global]]
-	  * scope. If true, it can be safely cast to `SQLExpression[F, GlobalScope, V]`
-	  * (and [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL GlobalSQL]]`[F, V]`).
-	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.asGlobal]]
-	  */
-	def isGlobal :Boolean = false
-
-	/** Returns this expression in an option if it is a [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL global]]
-	  * expression or `None` otherwise.
-	  */
-	def asGlobal :Option[GlobalSQL[F, V]]
 
 //	def =:[T <: RefinedMapping[O, E], C <: RefinedMapping[O, L], O, E, L, R >: V, X]
 //	      (path :ComponentPath[T, C, O, E, L])(implicit lift :SQLTypeUnification[L, R, X]) :SetComponent[F, T, C, O, E, L, R, X] =
@@ -304,6 +291,17 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 	          (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V]
 
 
+	/** Answers if this expressions is applicable to the [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope global]]
+	  * scope. If true, it can be safely cast to `SQLExpression[F, GlobalScope, V]`
+	  * (and [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL GlobalSQL]]`[F, V]`).
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.asGlobal]]
+	  */
+	def isGlobal :Boolean = false
+
+	/** Returns this expression in an option if it is a [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL global]]
+	  * expression or `None` otherwise.
+	  */
+	def asGlobal :Option[GlobalSQL[F, V]]
 
 	/** True, if this expression does not contain any
 	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] subexpression. Loose components
@@ -557,16 +555,10 @@ object SQLExpression  {
 			if (isGlobal) Some(this.asInstanceOf[GlobalSQL[F, V]])
 			else None
 
+		override def isAnchored :Boolean = parts.forall(_.isAnchored)
 
 		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V] =
 			rephrase(SQLScribe.extend(base))
-
-		override def extend[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V] =
-			rephrase(SQLScribe.extend(base))
-
-
-		override def isAnchored :Boolean = parts.forall(_.isAnchored)
 
 		/** Method used in the implementation of
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.basedOn basedOn]] and
@@ -575,6 +567,10 @@ object SQLExpression  {
 		  * composite expression of the same type as this one.
 		  */
 		def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :SQLExpression[E, S, V]
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V] =
+			rephrase(SQLScribe.extend(base))
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V] =
 //			matcher.composite(this)
@@ -735,13 +731,13 @@ object SQLExpression  {
 
 		trait CompositeMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends CompositeColumnMatcher[F, Y] with ConversionMatcher[F, Y] with FunctionMatcher[F, Y]
-			   with SetOperationMatcher[F, Y] with TupleMatcher[F, Y]
+			   with CompoundSelectMatcher[F, Y] with TupleMatcher[F, Y]
 		{
 			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeSQL[F, S, X]) :Y[S, X]
 		}
 
 		trait MatchComposite[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends CompositeMatcher[F, Y]
-			with CaseConversion[F, Y] with CaseFunction[F, Y] with CaseSetOperation[F, Y] with CaseTuple[F, Y]
+			with CaseConversion[F, Y] with CaseFunction[F, Y] with CaseCompoundSelect[F, Y] with CaseTuple[F, Y]
 			with MatchOnlyCompositeColumn[F, Y]
 		{
 			override def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X] =
@@ -769,7 +765,7 @@ object SQLExpression  {
 
 			override def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean] = composite(e)
 
-			override def setOperation[V](e :SetOperationSQL[F, V]) :Y[GlobalScope, Rows[V]] = composite(e)
+			override def compoundSelect[V](e :CompoundSelectSQL[F, V]) :Y[GlobalScope, Rows[V]] = composite(e)
 
 			override def tuple[S >: LocalScope <: GlobalScope, X](e :TupleSQL[F, S, X]) :Y[S, X] = composite(e)
 		}

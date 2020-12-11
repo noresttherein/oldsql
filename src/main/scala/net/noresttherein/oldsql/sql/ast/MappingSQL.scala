@@ -260,10 +260,8 @@ object MappingSQL {
 
 
 		override def readForm :SQLReadForm[V] = mapping.selectForm
-
 		override def isGlobal = true
 		override def asGlobal :Option[GlobalSQL[F, V]] = Some(this)
-
 		override def isAnchored = false
 
 		override def anchor(from :F) :ComponentSQL[F, M] = {
@@ -658,10 +656,8 @@ object MappingSQL {
 		  */
 		def graft[P <: RowProduct](relation :JoinedRelation[P, Entity]) :ComponentSQL[P, M]
 
-
 		override def isGlobal = true
 		override def asGlobal :Option[GlobalSQL[F, Subject]] = Some(this)
-
 		override def isAnchored = true
 		override def anchor(from :F) :ComponentSQL[F, M] = this
 
@@ -1381,8 +1377,7 @@ object MappingSQL {
 
 	object JoinedRelation {
 
-		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X])
-				:Option[(Relation[T] forSome { type T[O] <: MappingAt[O] }, Int)] =
+		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Option[(Relation[MappingAt], Int)] =
 			e match {
 				case from :JoinedRelation.Typed[F, X] @unchecked =>
 					Some(from.relation -> from.offset)
@@ -1452,8 +1447,7 @@ object MappingSQL {
 
 	object JoinedTable {
 
-		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X])
-				:Option[(Table[T] forSome { type T[O] <: MappingAt[O] }, Int)] =
+		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Option[(Table[MappingAt], Int)] =
 			e match {
 				case from :JoinedTable.Typed[F, X] @unchecked =>
 					Some(from.relation -> from.offset)
@@ -1671,8 +1665,7 @@ object MappingSQL {
 
 
 
-		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X])
-				:Option[(Relation[T] forSome { type T[O] <: BaseMapping[X, O] }, Int)] =
+		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Option[(Relation[MappingAt], Int)] =
 			e match {
 				case from :RelationSQL.Typed[F, X] @unchecked =>
 					Some(from.relation.asInstanceOf[Relation[MappingOf[X]#TypedProjection]] -> from.offset)
@@ -1858,8 +1851,7 @@ object MappingSQL {
 
 
 
-		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X])
-				:Option[(Table[T] forSome { type T[O] <: BaseMapping[X, O] }, Int)] =
+		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Option[(Table[MappingAt], Int)] =
 			e match {
 				case from :TableSQL.Typed[F, X] @unchecked =>
 					Some(from.relation.asInstanceOf[Table[MappingOf[X]#TypedProjection]] -> from.offset)

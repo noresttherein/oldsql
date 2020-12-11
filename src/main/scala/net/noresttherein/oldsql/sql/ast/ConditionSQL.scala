@@ -380,7 +380,6 @@ object ConditionSQL {
 			case (l, r) => InSQL(l, r)
 		}
 
-
 		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, Boolean] =
 			InSQL(mapper(left), mapper(right))
 

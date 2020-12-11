@@ -100,7 +100,6 @@ object FunctionSQL {
 				function(tuple)
 			case res =>
 				throw new IllegalArgumentException(s"Cannot anchor $this: arguments anchored to non-tuple: $res.")
-
 		}
 
 		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, Y] = mapper(args) match {
@@ -112,7 +111,6 @@ object FunctionSQL {
 
 		override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, R]) :R[S, Y] =
 			matcher.function(this)
-
 	}
 
 

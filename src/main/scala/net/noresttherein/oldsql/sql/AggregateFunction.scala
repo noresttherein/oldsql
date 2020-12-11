@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.sql.ast.AggregateSQL.DefaultAggregateSQL
   * @see [[net.noresttherein.oldsql.sql.AggregateFunction.HomomorphicAggregateFunction]]
   * @see [[net.noresttherein.oldsql.sql.AggregateFunction.RepresentativeAggregateFunction]]
   * @see [[net.noresttherein.oldsql.sql.AggregateFunction.FractionalAggregateFunction]]
-  */
+  */ //todo: window functions
 trait AggregateFunction extends Serializable {
 	val name :String
 

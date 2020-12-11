@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain, Unique}
-import net.noresttherein.oldsql.collection.Chain.ChainApplication
+import net.noresttherein.oldsql.collection.Chain.{@~, ChainApplication}
+import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
 import net.noresttherein.oldsql.schema.{AbstractRelation, ColumnMapping, ColumnReadForm, Relation, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.{ColumnSQL, ColumnSQLMapping, Dual, FromSome, GroupByClause, IndexedColumnSQLMapping, IndexedSQLMapping, RowProduct, SQLExpression, SQLMapping}
+import net.noresttherein.oldsql.sql.{ColumnSQL, ColumnSQLMapping, Dual, FromSome, GroupByClause, IndexedColumnSQLMapping, IndexedMapping, IndexedSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, SubselectOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, LocalScope, LocalSQL}
@@ -15,6 +15,7 @@ import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuer
 import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedColumn, IndexedSQLExpression}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{SQLScribe, TableOffset}
+import net.noresttherein.oldsql.sql.SelectAPI.SelectTemplate
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -37,73 +38,28 @@ import net.noresttherein.oldsql.slang._
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the combined type of the whole ''select'' clause, to which every returned row maps.
   */
-sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
-
+sealed trait SelectSQL[-F <: RowProduct, V]
+	extends QuerySQL[F, V] with SelectTemplate[V, ({ type S[X] = SelectSQL[F, X] })#S]
+{
 	override def readForm :SQLReadForm[Rows[V]] = selectClause.readForm.nullMap(Rows(_))
 
 	/** The from clause of this select. */
-	type From <: SubselectOf[F]
-
-	trait SelectedColumn[X] {
-		def name :String
-		def expression :ColumnSQL[From, LocalScope, X]
-		override def toString :String = expression.toString + " as " + name
-	}
-
-	val selectClause :SQLExpression[From, LocalScope, V]
-
-	def columns :Seq[SelectedColumn[_]]
-
-	val from :From
-
-	//caution: in group by queries this returns the elements of the group by clause, not the actual from clause
-	def relations :Seq[RelationSQL.AnyIn[from.Generalized]] = from.tableStack.reverse
-
-	def tables :Seq[Relation.*] = (from match {
-		case GroupByClause(grouped) =>
-			grouped.tableStack.reverse.map(_.relation :AbstractRelation).toList
-		case _ => from.tableStack.reverse.map(t => t.relation :AbstractRelation).toList
-	}).asInstanceOf[Seq[Relation.*]]
+	override type From <: SubselectOf[F]
 
 	def isSubselect :Boolean = from.isSubselect
-
-
-//	def as[X <: FlatSchemaMapping[_, _, _, _], M <: FlatSchemaMapping[T, R, C, A], T, R <: Chain, C <: Chain, A]
-//	      (mapping :X)(implicit typer :InferTypeParams[X, M, FlatSchemaMapping[T, R, C, A]], tuple :V =:= R) :SelectAs[F, S, M, O] = ???
-//
-//	def as[FC <: Chain, FR <: Chain, X <: SchemaMapping[_, _, _, _], M <: SchemaMapping[T, R, C, A], T, R <: Chain, C <: Chain, A]
-//	      (mapping :X)(implicit typer :InferTypeParams[X, M, SchemaMapping[T, R, C, A]],
-//	                   flat :SchemaFlattening[R, C, FR, FC], tuple :V =:= R) :SelectAs[F, S, M, O] = ???
-//
-	def isDistinct :Boolean
-
-	def distinct :SelectSQL[F, V]
-
-
-	override def map[X](f :V => X) :SelectSQL[F, X]
-
-	override def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
-			:SelectSQL[F, X] =
-		map(applyFun(f))
-
-
 	override def isGlobal = true
 	override def asGlobal :Option[SelectSQL[F, V]] = Some(this)
-
+	override def isAnchored = true
+	override def anchor(from :F) :SelectSQL[F, V] = this
 
 	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SelectSQL[E, V]
 
 	override def extend[U <: F, E <: RowProduct]
 	                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :SelectSQL[E, V]
 
-
 //	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //	                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
 //		matcher.select(this)
-
-
-	override def isAnchored = true
-	override def anchor(from :F) :SelectSQL[F, V] = this
 
 
 	protected override def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] = {
@@ -129,21 +85,7 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 	}
 
 
-
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
-
-	override def equals(that :Any) :Boolean = that match {
-		case s :SelectSQL[_, _] => (s eq this) || (s canEqual this) && s.selectClause == selectClause && s.from == from
-		case _ => false
-	}
-
-	override def hashCode :Int = selectClause.hashCode * 31 + from.hashCode
-
-
-	override def toString :String =
-		if (isDistinct) s"SELECT DISTINCT $selectClause FROM $from"
-		else  s"SELECT $selectClause FROM $from"
-
 }
 
 
@@ -153,7 +95,7 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] {
 
 object SelectSQL {
 	//todo: order by
-	//todo: limit etc
+	//todo: limit, offset
 	//todo: parameterized selects
 	//todo: mapping indexed headers
 
@@ -169,12 +111,12 @@ object SelectSQL {
 		new ArbitraryTopSelect[F, V](from, header.anchor(from), false)
 
 	def apply[F <: GroundFrom, V <: IndexedChain](from :F, header :IndexedChainTuple[F, LocalScope, V])
-			:TopSelectAs[SQLMapping.Project[F, LocalScope, V]#IndexedExpression] =
-		new TopIndexedSelect(from, header, false)
+			:TopSelectAs[IndexedMapping.Of[V]#Projection] =
+		new TopIndexedSelect(from, header.anchor(from), false)
 
 	def apply[F <: GroundFrom, A <: Label, V](from :F, header :IndexedColumn[F, LocalScope, A, V])
-			:TopSelectColumnAs[IndexedColumnSQLMapping.Column[F, LocalScope, A, V]#Projection, V] =
-		new TopSelectIndexedColumn(from, header, false)
+			:TopSelectColumnAs[IndexedMapping.Of[V]#Column, V] =
+		new TopSelectIndexedColumn(from, header.anchor(from), false)
 
 	def apply[F <: GroundFrom, X, Y](from :F, header :ConversionSQL[F, LocalScope, X, Y]) :TopSelectSQL[Y] =
 		new ArbitraryTopSelect[F, Y](from, header.anchor(from), false)
@@ -199,13 +141,13 @@ object SelectSQL {
 
 	def subselect[F <: NonEmptyFrom, S <: SubselectOf[F], V <: IndexedChain]
 	             (from :S, header :IndexedChainTuple[S, LocalScope, V])
-			:SubselectAs[F, SQLMapping.Project[S, LocalScope, V]#IndexedExpression] =
-		new IndexedSubselect(from, header, false)
+			:SubselectAs[F, IndexedMapping.Of[V]#Projection] =
+		new IndexedSubselect(from, header.anchor(from), false)
 
 	def subselect[F <: NonEmptyFrom, S <: SubselectOf[F], A <: Label, V]
 	             (from :S, header :IndexedColumn[S, LocalScope, A, V])
-			:SubselectColumnAs[F, IndexedColumnSQLMapping.Column[S, LocalScope, A, V]#Projection, V] =
-		new SubselectIndexedColumn(from, header, false)
+			:SubselectColumnAs[F, IndexedMapping.Of[V]#Column, V] =
+		new SubselectIndexedColumn(from, header.anchor(from), false)
 
 	def subselect[F <: NonEmptyFrom, S <: SubselectOf[F], X, Y]
 	             (from :S, header :ConversionSQL[S, LocalScope, X, Y]) :SubselectSQL[F, Y] =
@@ -228,24 +170,14 @@ object SelectSQL {
 
 
 
-	trait SelectColumn[-F <: RowProduct, V] extends ColumnQuery[F, V] with SelectSQL[F, V] {
+	trait SelectColumn[-F <: RowProduct, V]
+		extends ColumnQuery[F, V] with SelectSQL[F, V] with SelectTemplate[V, ({ type S[X] = SelectColumn[F, X] })#S]
+	{
 		override def readForm :ColumnReadForm[Rows[V]] = selectClause.readForm.nullMap(Rows(_))
-
 		override val selectClause :ColumnSQL[From, LocalScope, V]
-
-		override def distinct :SelectColumn[F, V]
-
 		override def single :ColumnSQL[F, GlobalScope, V] = to[V]
 
-		override def map[X](f :V => X) :SelectColumn[F, X]
-
-		override def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
-				:SelectColumn[F, X] =
-			map(applyFun(f))
-
-
 		override def asGlobal :Option[SelectColumn[F, V]] = Some(this)
-
 		override def anchor(from :F) :SelectColumn[F, V] = this
 
 
@@ -264,18 +196,13 @@ object SelectSQL {
 	  * of the ''select'', i.e. it is not dependent on any outside rows. Such an expression is a valid independent
 	  * select statement in opposition to subselect expressions.
 	  */
-	trait TopSelectSQL[V] extends SelectSQL[RowProduct, V] {
+	trait TopSelectSQL[V]
+		extends SelectSQL[RowProduct, V] with ParamSelect[@~, V] with SelectTemplate[V, TopSelectSQL]
+	{
 		override type From <: GroundFrom
-
-		override def distinct :TopSelectSQL[V]
 
 		override def map[X](f :V => X) :TopSelectSQL[X] =
 			new ArbitraryTopSelect[From, X](from, selectClause.map(f), isDistinct)
-
-		override def map[Fun, C <: Chain, X]
-		                (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :TopSelectSQL[X] =
-			map(applyFun(f))
-
 
 		override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit ext :U PartOf E) :TopSelectSQL[V] =
 			this
@@ -288,20 +215,19 @@ object SelectSQL {
 		                    (matcher :ExpressionMatcher[RowProduct, Y]) :Y[GlobalScope, Rows[V]] =
 			matcher.topSelect(this)
 
+		protected override def reverseCollect[X](fun :PartialFunction[SQLExpression.*, X], acc :List[X]) :List[X] =
+			super[SelectSQL].reverseCollect(fun, acc)
+
+		override def bind(params: @~) :TopSelectSQL[V] = this
 	}
 
 
 
-	trait TopSelectColumn[V] extends TopSelectSQL[V] with SelectColumn[RowProduct, V] {
-		override def distinct :TopSelectColumn[V]
-
+	trait TopSelectColumn[V]
+		extends TopSelectSQL[V] with SelectColumn[RowProduct, V] with SelectTemplate[V, TopSelectColumn]
+	{
 		override def map[X](f :V => X) :TopSelectColumn[X] =
 			new ArbitraryTopSelectColumn[From, X](from, selectClause.map(f), isDistinct)
-
-		override def map[Fun, C <: Chain, X]
-		                (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C)
-			:TopSelectColumn[X] =
-			map(applyFun(f))
 
 
 		override def basedOn[U <: RowProduct, E <: RowProduct]
@@ -643,8 +569,7 @@ object SelectSQL {
 
 
 
-	private trait ArbitrarySelectTemplate[-F <: RowProduct, S <: SubselectOf[F],
-	                                      M[O] <: SQLMapping[S, LocalScope, V, O], V]
+	private trait ArbitrarySelectTemplate[-F <: RowProduct, S <: SubselectOf[F], M[O] <: BaseMapping[V, O], V]
 		extends SelectSQL[F, V]
 	{ this :ArbitrarySelect[F, S, V] =>
 		override type ResultMapping[O] = M[O]
@@ -762,7 +687,7 @@ object SelectSQL {
 	private abstract class IndexedSelect[-F <: RowProduct, S <: SubselectOf[F], V]
 	                       (from :S, override val mapping :IndexedSQLMapping[S, LocalScope, V, ()])
 		extends ArbitrarySelect[F, S, V](from, mapping)
-		   with ArbitrarySelectTemplate[F, S, SQLMapping.Project[S, LocalScope, V]#IndexedExpression, V]
+		   with ArbitrarySelectTemplate[F, S, IndexedMapping.Of[V]#Projection, V]
 	{
 		def this(from :S, expression :IndexedSQLExpression[S, LocalScope, V]) =
 			this(from, expression.mapping[()])
@@ -775,9 +700,9 @@ object SelectSQL {
 	private class TopIndexedSelect[F <: GroundFrom, V]
 	              (clause :F, select :IndexedSQLExpression[F, LocalScope, V], override val isDistinct :Boolean)
 		extends IndexedSelect[RowProduct, F, V](clause, select)
-		   with TopSelectAs[SQLMapping.Project[F, LocalScope, V]#IndexedExpression]
+		   with TopSelectAs[IndexedMapping.Of[V]#Projection]
 	{
-		override def distinct :TopSelectAs[SQLMapping.Project[F, LocalScope, V]#IndexedExpression] =
+		override def distinct :TopSelectAs[IndexedMapping.Of[V]#Projection] =
 			if (isDistinct) this else new TopIndexedSelect(from, selectClause, true)
 	}
 
@@ -786,9 +711,9 @@ object SelectSQL {
 	private class IndexedSubselect[-F <: RowProduct, S <: SubselectOf[F], V]
 	              (subclause :S, select :IndexedSQLExpression[S, LocalScope, V], override val isDistinct :Boolean)
 		extends IndexedSelect[F, S, V](subclause, select)
-		   with SubselectAs[F, SQLMapping.Project[S, LocalScope, V]#IndexedExpression]
+		   with SubselectAs[F, IndexedMapping.Of[V]#Projection]
 	{
-		override def distinct :SubselectAs[F, SQLMapping.Project[S, LocalScope, V]#IndexedExpression] =
+		override def distinct :SubselectAs[F, IndexedMapping.Of[V]#Projection] =
 			if (isDistinct) this else new IndexedSubselect(from, selectClause, true)
 
 		override def extend[U <: F, E <: RowProduct]
@@ -819,7 +744,7 @@ object SelectSQL {
 	private abstract class SelectIndexedColumn[-F <: RowProduct, S <: SubselectOf[F], A <: Label, V]
 	                       (override val from :S, override val mapping :IndexedColumnSQLMapping[S, LocalScope, A, V, ()])
 		extends ArbitrarySelect[F, S, V](from, mapping)
-		   with ArbitrarySelectTemplate[F, S, IndexedColumnSQLMapping.Column[S, LocalScope, A, V]#Projection, V]
+		   with ArbitrarySelectTemplate[F, S, IndexedMapping.Of[V]#Column, V]
 		   with SelectColumn[F, V]
 	{
 		def this(from :S, expression :IndexedColumn[S, LocalScope, A, V]) =
@@ -834,9 +759,9 @@ object SelectSQL {
 	              (override val from :F, override val selectClause :IndexedColumn[F, LocalScope, A, V],
 	               override val isDistinct :Boolean)
 		extends SelectIndexedColumn[RowProduct, F, A, V](from, selectClause)
-		   with TopSelectColumnAs[IndexedColumnSQLMapping.Column[F, LocalScope, A, V]#Projection, V]
+		   with TopSelectColumnAs[IndexedMapping.Of[V]#Column, V]
 	{
-		override def distinct :TopSelectColumnAs[IndexedColumnSQLMapping.Column[F, LocalScope, A, V]#Projection, V] =
+		override def distinct :TopSelectColumnAs[IndexedMapping.Of[V]#Column, V] =
 			if (isDistinct) this else new TopSelectIndexedColumn(from, selectClause, true)
 	}
 
@@ -845,9 +770,9 @@ object SelectSQL {
 	private class SubselectIndexedColumn[-F <: RowProduct, S <: SubselectOf[F], A <: Label, V]
 	              (clause :S, override val selectClause :IndexedColumn[S, LocalScope, A, V], override val isDistinct :Boolean)
 		extends SelectIndexedColumn[F, S, A, V](clause, selectClause) with SubselectColumn[F, V]
-		   with SubselectColumnAs[F, IndexedColumnSQLMapping.Column[S, LocalScope, A, V]#Projection, V]
+		   with SubselectColumnAs[F, IndexedMapping.Of[V]#Column, V]
 	{
-		override def distinct :SubselectColumnAs[F, IndexedColumnSQLMapping.Column[S, LocalScope, A, V]#Projection, V] =
+		override def distinct :SubselectColumnAs[F, IndexedMapping.Of[V]#Column, V] =
 			if (isDistinct) this else new SubselectIndexedColumn(from, selectClause, true)
 
 		override def extend[U <: F, E <: RowProduct]

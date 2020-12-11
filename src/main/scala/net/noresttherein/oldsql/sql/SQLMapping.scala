@@ -39,7 +39,7 @@ import net.noresttherein.oldsql.sql.IndexedSQLMapping.GetIndexedExpressionCompon
   * [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] expressions to be used as
   * [[net.noresttherein.oldsql.schema.Relation Relation]]s in the ''from'' clauses of other SQL selects.
   * This class is dedicated to non-component expressions; subclasses of
-  * [[net.noresttherein.oldsql.sql.ast.MappingSQL MappingSQL]] should be used directly.
+  * [[net.noresttherein.oldsql.sql.ast.MappingSQL MappingSQL]] should be used directly for component expressions.
   * Not all possible expressions are supported; the expression may consist of
   *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
   *     in particular [[net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm terms]],
@@ -504,11 +504,69 @@ object ColumnSQLMapping {
 
 
 
-
+//todo: move to schema
 sealed trait IndexedMapping[S, O] extends BaseMapping[S, O] {
 	override def components :Unique[IndexedMapping[_, O]]
 	override def subcomponents :Unique[IndexedMapping[_, O]]
+
+
+	override def columns(op :OperationType) :Unique[IndexedColumnMapping[_, O]] = op match {
+		case SELECT => selectable
+		case FILTER => filterable
+		case INSERT => insertable
+		case UPDATE => updatable
+	}
+
+	override def columns :Unique[IndexedColumnMapping[_, O]]
+	override def selectable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoSelect)
+	override def filterable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoFilter)
+	override def updatable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoUpdate)
+	override def autoUpdated :Unique[IndexedColumnMapping[_, O]] = columnsWith(AutoUpdate)
+	override def insertable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoInsert)
+	override def autoInserted :Unique[IndexedColumnMapping[_, O]] = columnsWith(AutoInsert)
+	override def selectedByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoSelectByDefault)
+	override def filteredByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoFilterByDefault)
+	override def updatedByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoUpdateByDefault)
+	override def insertedByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoInsertByDefault)
+
+	override def columnsWith(buff :BuffType) :Unique[IndexedColumnMapping[_, O]] =
+		columns.filter(buff.enabled)
+
+	override def columnsWithout(buff :BuffType) :Unique[IndexedColumnMapping[_, O]] =
+		columns.filter(buff.disabled)
 }
+
+
+
+
+
+
+sealed trait IndexedColumnMapping[S, O] extends IndexedMapping[S, O] with ColumnMapping[S, O] {
+	override def columns :Unique[IndexedColumnMapping[S, O]] = Unique.single(this)
+	override def selectable :Unique[IndexedColumnMapping[S, O]] = columns
+	override def filterable :Unique[IndexedColumnMapping[S, O]] = columns
+	override def updatable :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def autoUpdated :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def insertable :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def autoInserted :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def selectedByDefault :Unique[IndexedColumnMapping[S, O]] = columns
+	override def filteredByDefault :Unique[IndexedColumnMapping[S, O]] = columns
+	override def updatedByDefault :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def insertedByDefault :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+}
+
+
+
+
+
+
+object IndexedMapping {
+	type Of[S] = {
+		type Projection[O] = IndexedMapping[S, O]
+		type Column[O] = IndexedColumnMapping[S, O]
+	}
+}
+
 
 
 
@@ -519,6 +577,7 @@ trait IndexedSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 {
 	override val expr :IndexedSQLExpression[F, S, X]
 
+	//todo: indexing of components
 	def apply[N <: Label](label :N)(implicit get :GetIndexedExpressionComponent[F, S, X, N]) :get.Component[O] =
 		get(this, label)
 
@@ -586,7 +645,6 @@ object IndexedSQLMapping {
 	                                 (override val expr :IndexedChainTuple[F, S, X])
 		extends IndexedSQLMapping[F, S, X, O]
 	{ outer =>
-
 		private type Expression[V] = IndexedSQLMapping[F, S, V, O]
 		private type ColumnExpression[N <: Label, V] = IndexedColumnSQLMapping[F, S, N, V, O]
 		private type IndexedExtract[W, P] = GenericExtract[IndexedSQLMapping[F, S, P, O], W, P, O]
@@ -661,11 +719,11 @@ object IndexedSQLMapping {
 
 
 trait IndexedColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, N <: Label, X, O]
-	extends ColumnSQLMapping[F, S, X, O] with IndexedSQLMapping[F, S, X, O]
+	extends ColumnSQLMapping[F, S, X, O] with IndexedSQLMapping[F, S, X, O] with IndexedColumnMapping[X, O]
 {
 	override val expr :IndexedColumn[F, S, N, X]
 
-	override def columns :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.single(this)
+	override val columns :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.single(this)
 	override def selectable :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = columns
 	override def filterable :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = columns
 	override def updatable :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
@@ -691,7 +749,6 @@ object IndexedColumnSQLMapping {
 		new IndexedColumnSQLMapping[F, S, N, X, O] {
 			override val expr = column
 			override val name :String = column.alias
-			override val columns :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.single(this)
 			override val form = super.form
 			override val selectForm :ColumnReadForm[X] = expr.readForm
 		}

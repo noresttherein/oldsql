@@ -34,20 +34,16 @@ trait SQLTerm[T] extends SQLExpression[RowProduct, GlobalScope, T] {
 	def writeForm :SQLWriteForm[Unit]
 
 	protected def groundValue :Option[T]
-
 	override def isGlobal = true
 	override def asGlobal :Option[GlobalSQL[RowProduct, T]] = Some(this)
+	override def isAnchored = true
+	override def anchor(from :RowProduct) :SQLTerm[T] = this
 
 	override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLTerm[T] = this
 
 	override def extend[U <: RowProduct, E <: RowProduct]
 	                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :SQLTerm[T] =
 		this
-
-
-	override def isAnchored = true
-	override def anchor(from :RowProduct) :SQLTerm[T] = this
-
 
 //	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //	                    (matcher :ExpressionMatcher[RowProduct, Y]) :Y[GlobalScope, T] =

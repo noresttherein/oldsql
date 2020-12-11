@@ -89,11 +89,10 @@ object LogicalSQL {
 
 		override def anchor(from :F) :SQLBoolean[F, S] = new AndSQL(parts.map(_.anchor(from)))
 
+		override def rephrase[E <: RowProduct](mapper: SQLScribe[F, E]) = new AndSQL(parts.map(mapper(_)))
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.and(this)
-
-		override def rephrase[E <: RowProduct](mapper: SQLScribe[F, E]) = new AndSQL(parts.map(mapper(_)))
 
 
 		override def equals(that :Any) :Boolean = that match {
@@ -165,14 +164,12 @@ object LogicalSQL {
 				case _ => new OrSQL(other :: parts)
 			}
 
-
 		override def anchor(from :F) :SQLBoolean[F, S] = new OrSQL(parts.map(_.anchor(from)))
 
+		override def rephrase[E <: RowProduct](mapper: SQLScribe[F, E]) = new OrSQL(parts.map(mapper(_)))
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.or(this)
-
-		override def rephrase[E <: RowProduct](mapper: SQLScribe[F, E]) = new OrSQL(parts.map(mapper(_)))
 
 
 		override def equals(that :Any) :Boolean = that match {
