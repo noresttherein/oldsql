@@ -9,12 +9,13 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, ExtendedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.Join.{AbstractJoin, JoinComposition}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
@@ -444,8 +445,6 @@ object Join {
 	                        (A Join B) { type LikeJoin[+X <: FromSome, Y[O] <: MappingAt[O]] <: X J Y }]
 		extends ExtendedComposition[L J R, L, R, J, FromSome, MappingAt]
 	{
-		override type Generalized[+A <: FromSome, B[O] <: MappingAt[O]] = A Join B
-
 		override def apply[C <: FromSome](template :L J R, left :C) :C J R = template.withLeft(left)(True)
 
 		def apply[A <: FromSome, B[O] <: BaseMapping[S, O], S]
@@ -611,6 +610,29 @@ object InnerJoin {
 	         (implicit cast :InferSubject[L, InnerJoin, R, T, S]) :L InnerJoin R =
 		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
 
+	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
+	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
+	  * The `String` literal with the name of the table is used as the alias, allowing easier access to the relation.
+	  * The ''where'' clause can be subsequently specified using
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] or
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method. It is a lower level method;
+	  * it is generally recommended to use
+	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
+	  * @param left a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *              `Mapping` type.
+	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
+	  *             and conversions of associated classes between instances parameterized with the more generic `R`
+	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @return an `L InnerJoin R As N`.
+	  */
+	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (left :L, right :StaticTable[N, R])
+	         (implicit cast :InferAliasedSubject[L, InnerJoin, R, T, S, N]) :L InnerJoin R As N =
+		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
@@ -774,6 +796,30 @@ object OuterJoin {
 	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
 	         (implicit cast :InferSubject[L, OuterJoin, R, T, S]) :L OuterJoin R =
 		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
+
+	/** Create an outer join between the `left` side, given as a non empty clause/list of relations,
+	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
+	  * The `String` literal with the name of the table is used as the alias, allowing easier access to the relation.
+	  * The ''where'' clause can be subsequently specified using
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] or
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method. It is a lower level method;
+	  * it is generally recommended to use
+	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
+	  * @param left a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *              `Mapping` type.
+	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
+	  *             and conversions of associated classes between instances parameterized with the more generic `R`
+	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @return an `L OuterJoin R As N`.
+	  */
+	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (left :L, right :StaticTable[N, R])
+	         (implicit cast :InferAliasedSubject[L, OuterJoin, R, T, S, N]) :L OuterJoin R As N =
+		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
 
@@ -942,6 +988,30 @@ object LeftJoin {
 	         (implicit cast :InferSubject[L, LeftJoin, R, T, S]) :L LeftJoin R =
 		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
 
+	/** Create a left outer join between the `left` side, given as a non empty clause/list of relations,
+	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
+	  * The `String` literal with the name of the table is used as the alias, allowing easier access to the relation.
+	  * The ''where'' clause can be subsequently specified using
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] or
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method. It is a lower level method;
+	  * it is generally recommended to use
+	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
+	  * @param left a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *              `Mapping` type.
+	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
+	  *             and conversions of associated classes between instances parameterized with the more generic `R`
+	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @return an `L LeftJoin R As N`.
+	  */
+	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (left :L, right :StaticTable[N, R])
+	         (implicit cast :InferAliasedSubject[L, LeftJoin, R, T, S, N]) :L LeftJoin R As N =
+		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
+
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
@@ -1108,6 +1178,30 @@ object RightJoin {
 	         (implicit cast :InferSubject[L, RightJoin, R, T, S]) :L RightJoin R =
 		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
 
+	/** Create a right outer join between the `left` side, given as a non empty clause/list of relations,
+	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
+	  * The `String` literal with the name of the table is used as the alias, allowing easier access to the relation.
+	  * The ''where'' clause can be subsequently specified using
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] or
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method. It is a lower level method;
+	  * it is generally recommended to use
+	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
+	  * @param left a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *              `Mapping` type.
+	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
+	  *             and conversions of associated classes between instances parameterized with the more generic `R`
+	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @return an `L RightJoin R As N`.
+	  */
+	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (left :L, right :StaticTable[N, R])
+	         (implicit cast :InferAliasedSubject[L, RightJoin, R, T, S, N]) :L RightJoin R As N =
+		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
+
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
@@ -1232,7 +1326,7 @@ object RightJoin {
   * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom]]
   * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf]]
   * @see [[net.noresttherein.oldsql.sql.RowProduct.TopFrom]]
-  */ //consider :renaming to SelectFrom. Could be used as a join between With clause and first select. Then DirectSubselect can be Subselect
+  */ //consider: renaming to SelectFrom. Could be used as a join between With clause and first select. Then DirectSubselect can be Subselect
 sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	extends JoinLike[F, T] with AndFromTemplate[F, T, F Subselect T]
 { thisClause =>
@@ -1379,6 +1473,35 @@ object Subselect {
 	         (outer :L, first :Table[R], filter :GlobalBoolean[L#Generalized Subselect R] = True)
 	         (implicit cast :InferSubject[L, Subselect, R, T, S]) :L Subselect R =
 		cast(Subselect[L, T, S, Nothing](outer, LastTable[T, S](cast(first)), None)(cast(filter)))
+
+	/** Create a ''from'' clause of a subselect of a select with `outer` as its ''from'' clause, using the given
+	  * relation `first` as the sole member of its (actual) ''from'' clause. The string literal with the name 
+	  * of the table is used as the alias in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause,
+	  * allowing easier access to the relation.  The result is a special kind of
+	  * an artificial 'join' between the ''implicit'' portion (the ''from'' clause of the outer select, providing
+	  * access to all its relations, without them appearing in the ''from'' clause of the generated select SQL)
+	  * and the ''explicit'' portion (the relations which actually appear in the ''from'' clause of the generated
+	  * subselect SQL), consisting of the relation `first` and any other, subsequently joined with the result.
+	  * The ''where'' clause can be subsequently specified using
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] or
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method. It is a lower level method;
+	  * it is generally recommended to use
+	  * `outer` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]] `first`
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `fullFilter` DSL instead.
+	  * @param outer a ''from'' clause containing the list of relations preceding `first`.
+	  * @param first the first (and currently only) relation of the actual ''from'' clause of the created subselect,
+	  *              using the `T[O] <: BaseMapping[S, O]` `Mapping` type.
+	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
+	  *             and conversions of associated classes between instances parameterized with the more generic `R`
+	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @return an `L Subselect R As N`.
+	  */
+	def apply[L <: NonEmptyFrom, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (outer :L, first :StaticTable[N, R])
+	         (implicit cast :InferAliasedSubject[L, Subselect, R, T, S, N]) :L Subselect R As N =
+		cast(apply(outer, LastTable[T, S](cast(first)), Some(first.name))(True))
 
 
 

@@ -2,7 +2,7 @@ import net.noresttherein.oldsql.schema.{Mapping, Relation}
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, RowProduct, SQLExpression}
-import net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition
+import net.noresttherein.oldsql.sql.RowProduct.RowDecomposition
 
 /**
   * @author Marcin Mościcki
@@ -31,7 +31,7 @@ object compilerHangup extends App {{
 //	val from = From(A)
 //	(new Invariant[from.Self] {}) :Invariant[From[A]]
 
-//	def decompose[F <: RowProduct, P <: U, U <: RowProduct](f :F)(implicit deco :ClauseDecomposition[F, P, U]) = ???
+//	def decompose[F <: RowProduct, P <: U, U <: RowProduct](f :F)(implicit deco :RowDecomposition[F, P, U]) = ???
 //
 //	decompose(from.self :from.Self)
 

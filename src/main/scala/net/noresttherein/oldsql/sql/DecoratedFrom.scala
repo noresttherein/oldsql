@@ -4,11 +4,14 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator.FromSomeDecoratorComposition
-import net.noresttherein.oldsql.sql.RowProduct.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.RowProduct.{RowComposition, RowDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
+
+
+
 
 
 
@@ -282,7 +285,7 @@ object DecoratedFrom {
 	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
 	                  "and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
 	class DecoratorDecomposition[-F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
-		extends ClauseDecomposition[F, C, U]
+		extends RowDecomposition[F, C, U]
 	{
 		override type E[+A <: U] = D[A]
 		override type S[+A >: C <: U] = D[A]
@@ -300,26 +303,10 @@ object DecoratedFrom {
 	}
 
 
-	@implicitNotFound("I do not know how the generalized DecoratedFrom type constructor of ${F}.\n" +
-	                  "Missing implicit DecoratorGeneralization[${F}, ${C}, ${D}, ${U}]." )
-	class DecoratorGeneralization[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
-		extends DecoratorDecomposition[F, C, D, U] with ClauseGeneralization[F, C, U]
-	{ self =>
-		override type G[+A >: C <: U] = Generalized[A]
-		type Generalized[+A <: U] >: D[A] <: ExtendingDecorator[A]
-
-		override def generalized[A >: C <: U] :DecoratorGeneralization[Generalized[A], A, Generalized, U]
-				{ type Generalized[+P <: U] = self.Generalized[P] } =
-			this.asInstanceOf[DecoratorGeneralization[Generalized[A], A, Generalized, U] {
-				type Generalized[+P <: U] = self.Generalized[P]
-			}]
-	}
-
-
 	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} and " +
 	                  "the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
 	abstract class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
-		extends DecoratorGeneralization[F, C, D, U] with ClauseComposition[F, C, U]
+		extends DecoratorDecomposition[F, C, D, U] with RowComposition[F, C, U]
 
 
 	implicit def DecoratorDecomposition[D[+C <: FromSome] <: FromSomeDecorator[C], F <: FromSome]

@@ -4,21 +4,22 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
+import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
-import net.noresttherein.oldsql.sql.RowProduct.{As, ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, ParamlessFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.RowProduct.{As, RowComposition, RowDecomposition, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
-import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
-import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
+import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
 
 
 
@@ -483,18 +484,41 @@ object From {
 	  * clause associated with the created clause. The clause can be also subsequently joined with other relations
 	  * using join methods defined in [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension FromSomeExtension]]:
 	  * `join`, `outerJoin`, `leftJoin`, `rightJoin` and `subselect`.
-	  * @param relation the relation for the ''from'' clause, parameterized with a `BaseMapping` with subject type `S`,
-	  *                 represented here by types `R =:= T`, split in order to separate the inference of the mapping
-	  *                 type and its subject type and remove the need to specify the type parameter for the method
-	  *                 explicitly.
+	  * @param table the relation for the ''from'' clause, parameterized with a `BaseMapping` with subject type `S`,
+	  *              represented here by types `R =:= T`, split in order to separate the inference of the mapping
+	  *              type and its subject type and remove the need to specify the type parameter for the method
+	  *              explicitly.
 	  * @param cast an implicit witness providing the type inference of the subject type of the relation's mapping
 	  *             as well as casting functions between associated classes parameterized with `T` and `R`.
 	  * @return an unfiltered `From[R]`.
 	  */
 	def apply[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (relation :Table[R])(implicit cast :JoinedRelationSubject[From, R, T, MappingOf[S]#TypedProjection])
+	         (table :Table[R])(implicit cast :JoinedRelationSubject[From, R, T, MappingOf[S]#TypedProjection])
 			:From[R] =
-		cast(From(LastTable[T, S](cast(relation)), None, True))
+		cast(From(LastTable[T, S](cast(table)), None, True))
+
+	/** Creates a ''from'' clause consisting of a single table (or view, select, even a surrogate temporary
+	  * mapping) with `Mapping` `R`, using the name of the table as the alias given in
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause. The alias can be changed if needed as normal,
+	  * using [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.as as]] method. The result can be later
+	  * filtered using [[net.noresttherein.oldsql.sql.RowProduct.where where]] or
+	  * [[net.noresttherein.oldsql.sql.AndFrom.whereLast whereLast]] methods, providing the condition for the ''where''
+	  * clause associated with the created clause. The clause can be also subsequently joined with other relations
+	  * using join methods defined in [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension FromSomeExtension]]:
+	  * `join`, `outerJoin`, `leftJoin`, `rightJoin` and `subselect`.
+	  * @param table the table for the ''from'' clause, parameterized with a `String` literal with the name of the table
+	  *              and `BaseMapping` subtype with subject type `S`, represented here by types `R =:= T`,
+	  *              split in order to separate the inference of the mapping type and its subject type and remove
+	  *              the need to specify the type parameter for the method explicitly.
+	  * @param cast an implicit witness providing the type inference of the subject type of the relation's mapping
+	  *             as well as casting functions between associated classes parameterized with `T` and `R`.
+	  * @return an unfiltered `From[R] As N`.
+	  */
+	def apply[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	         (table :StaticTable[N, R])
+	         (implicit cast :JoinedRelationSubject[({ type F[M[O] <: MappingAt[O]] = From[M] As N })#F, R, T, MappingOf[S]#TypedProjection])
+			:From[R] As N =
+		cast(custom(Dual, LastTable[T, S](cast(table)), Some(table.name), True))
 
 
 	/** Creates a ''from'' clause consisting of a single relation (table, view, select, or even a surrogate temporary
@@ -603,10 +627,9 @@ object From {
 	private[this] val composition = new FromComposition[MappingAt]
 
 
-	class FromComposition[M[O] <: MappingAt[O]] extends ClauseComposition[From[M], Dual, Dual] {
+	class FromComposition[M[O] <: MappingAt[O]] extends RowComposition[From[M], Dual, Dual] {
 		override type E[+D <: Dual] = From[M]
 		override type S[+D >: Dual <: Dual] = From[M]
-		override type G[+D >: Dual <: Dual] = D AndFrom M
 
 		override def prefix[A >: Dual <: Dual] :A PrefixOf From[M] =
 			PrefixOf.itself[From[M]].asInstanceOf[A PrefixOf From[M]]
@@ -620,17 +643,12 @@ object From {
 			if (template.left.filter == dual.filter) template //this assumes Dual is sealed and thus it doesn't matter
 			else template.withCondition(dual.filter && template.condition) //which instance is used if the filter is right
 
-		override def upcast[A >: Dual <: Dual] :ClauseDecomposition[From[M], A, Dual] =
-			this.asInstanceOf[ClauseDecomposition[From[M], A, Dual]]
+		override def upcast[A >: Dual <: Dual] :RowDecomposition[From[M], A, Dual] =
+			this.asInstanceOf[RowDecomposition[From[M], A, Dual]]
 
-		override def cast[A <: Dual] :ClauseDecomposition[From[M], A, Dual] =
-			this.asInstanceOf[ClauseDecomposition[From[M], A, Dual]]
+		override def cast[A <: Dual] :RowDecomposition[From[M], A, Dual] =
+			this.asInstanceOf[RowDecomposition[From[M], A, Dual]]
 
-		override def generalized[A >: Dual <: Dual] :ClauseGeneralization[A AndFrom M, A, Dual]
-				{ type G[+B >: A <: Dual] = E[B]; type S[+B >: A <: Dual] = E[B]; type E[+B <: Dual] = B AndFrom M } =
-			this.asInstanceOf[ClauseGeneralization[A AndFrom M, A, Dual] {
-				type G[+B >: A <: Dual] = E[B]; type S[+B >: A <: Dual] = E[B]; type E[+B <: Dual] = B AndFrom M
-			}]
 	}
 
 

@@ -7,22 +7,23 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProj
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.sql.AggregateFunction.{Avg, Count, Max, Min, StdDev, Sum, Var}
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, RowProductTemplate}
-import net.noresttherein.oldsql.sql.mechanics.GetTable.ByIndex
-import net.noresttherein.oldsql.sql.JoinParam.WithParam
-import net.noresttherein.oldsql.sql.UnboundParam.{?:, NamedParamRelation, ParamRelation}
 import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
+import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
+import net.noresttherein.oldsql.sql.JoinParam.WithParam
+import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, RelationSQL, TableSQL, TypedComponentSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, RelationSQL, TypedComponentSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, LastTableOf, RowProductMatcher, TableCount}
-import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
-import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
+import net.noresttherein.oldsql.sql.mechanics.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.mechanics.LastTableOf.LastBound
 
 
@@ -134,7 +135,7 @@ object FromClause {
 	  */
 	implicit class FromClauseExtension[F <: FromClause](val thisClause :F) extends AnyVal {
 
-		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
+		/** Performs an inner join between this clause on the left side, and the table given as a `Table`
 		  * object on the right side. The real type of the result depends on the type of this clause:
 		  * for `Dual`, the result is `From[R]`, for non-empty clauses the result is `F InnerJoin R`.
 		  * The join condition can be subsequently specified using
@@ -355,7 +356,7 @@ object FromSome {
 	implicit class FromSomeExtension[F <: FromSome](val thisClause :F) extends AnyVal {
 		import thisClause.{Base, Generalized, FromLast, LastMapping, Last}
 
-		/** Performs an inner join between this clause on the left side, and the relation given as a `Relation`
+		/** Performs an inner join between this clause on the left side, and the table given as a `Table`
 		  * object on the right side.
 		  * The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
@@ -366,6 +367,21 @@ object FromSome {
 		  */
 		@inline def join[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                (table :Table[R])(implicit cast :InferSubject[F, InnerJoin, R, T, S]) :F InnerJoin R =
+			InnerJoin(thisClause, table)
+
+		/** Performs an inner join between this clause on the left side, and the table given as a `Table`
+		  * object on the right side. The `String` literal with the name of the table taken from the table's type
+		  * is used in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause, immediately added 
+		  * to the joined table. The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
+		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast()]] method.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */
+		@inline def join[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                (table :StaticTable[N, R])
+		                (implicit cast :InferAliasedSubject[F, InnerJoin, R, T, S, N]) :F InnerJoin R As N =
 			InnerJoin(thisClause, table)
 
 		/** Performs an inner join between this clause on the left side, and all relations listed by the `other`
@@ -381,7 +397,7 @@ object FromSome {
 			other.joinedWith(thisClause, InnerJoin.template)
 
 
-		/** Performs a symmetric outer join between this clause on the left side, and the relation given as a `Relation`
+		/** Performs a symmetric outer join between this clause on the left side, and the table given as a `Table`
 		  * object on the right side.
 		  * The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
@@ -393,6 +409,21 @@ object FromSome {
 		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :Table[R])
 		                     (implicit cast :InferSubject[F, OuterJoin, R, T, S]) :F OuterJoin R =
+			OuterJoin(thisClause, table)
+		
+		/** Performs a symmetric outer join between this clause on the left side, and the table given as a `Table`
+		  * object on the right side. The `String` literal with the name of the table taken from the table's type
+		  * is used in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause, immediately added 
+		  * to the joined table. The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
+		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast()]] method.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */
+		@inline def outerJoin[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                     (table :StaticTable[N, R])
+		                     (implicit cast :InferAliasedSubject[F, OuterJoin, R, T, S, N]) :F OuterJoin R As N =
 			OuterJoin(thisClause, table)
 
 		/** Performs a symmetric outer join between this clause on the left side, and all relations listed by the `other`
@@ -408,7 +439,7 @@ object FromSome {
 			other.joinedWith(thisClause, OuterJoin.template)
 
 
-		/** Performs a left outer join between this clause on the left side, and the relation given as a `Relation`
+		/** Performs a left outer join between this clause on the left side, and the table given as a `Table`
 		  * object on the right side.
 		  * The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
@@ -420,6 +451,21 @@ object FromSome {
 		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                    (table :Table[R])
 		                    (implicit cast :InferSubject[F, LeftJoin, R, T, S]) :F LeftJoin R =
+			LeftJoin(thisClause, table)
+
+		/** Performs a left outer join between this clause on the left side, and the table given as a `Table`
+		  * object on the right side.The `String` literal with the name of the table taken from the table's type
+		  * is used in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause, immediately added 
+		  * to the joined table. The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
+		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast()]] method.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */
+		@inline def leftJoin[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                    (table :StaticTable[N, R])
+		                    (implicit cast :InferAliasedSubject[F, LeftJoin, R, T, S, N]) :F LeftJoin R As N =
 			LeftJoin(thisClause, table)
 
 		/** Performs a left outer join between this clause on the left side, and all relations listed by the `other`
@@ -435,7 +481,7 @@ object FromSome {
 			other.joinedWith(thisClause, LeftJoin.template)
 
 
-		/** Performs a right outer join between this clause on the left side, and the relation given as a `Relation`
+		/** Performs a right outer join between this clause on the left side, and the table given as a `Table`
 		  * object on the right side.
 		  * The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
@@ -447,6 +493,21 @@ object FromSome {
 		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :Table[R])
 		                     (implicit cast :InferSubject[F, RightJoin, R, T, S]) :F RightJoin R =
+			RightJoin(thisClause, table)
+
+		/** Performs a right outer join between this clause on the left side, and the table given as a `Table`
+		  * object on the right side.The `String` literal with the name of the table taken from the table's type
+		  * is used in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause, immediately added 
+		  * to the joined table. The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
+		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] or
+		  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast()]] method.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */
+		@inline def rightJoin[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                     (table :StaticTable[N, R])
+		                     (implicit cast :InferAliasedSubject[F, RightJoin, R, T, S, N]) :F RightJoin R As N =
 			RightJoin(thisClause, table)
 
 		/** Performs a right outer join between this clause on the left side, and all relations listed by the `other`
@@ -463,7 +524,7 @@ object FromSome {
 
 
 
-		/** Performs a natural inner join between this clause on the left side, and the relation given as a `Relation`
+		/** Performs a natural inner join between this clause on the left side, and the table given as a `Table`
 		  * object on the right side. The join condition of the created instance will compare all columns of the last
 		  * relation in this clause with columns with matching names from the given relation. If the column types
 		  * (associated `ColumnForm` objects) of any of these column pairs differ, an `IllegalArgumentException`
@@ -479,9 +540,28 @@ object FromSome {
 				:F InnerJoin R =
 			cast(InnerJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
 
+		/** Performs a natural inner join between this clause on the left side, and the table given as a `Table`
+		  * object on the right side. The `String` literal with the name of the table taken from the table's type
+		  * is used in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause, immediately added 
+		  * to the joined table. The join condition of the created instance will compare all columns of the last
+		  * relation in this clause with columns with matching names from the given relation. If the column types
+		  * (associated `ColumnForm` objects) of any of these column pairs differ, an `IllegalArgumentException`
+		  * is thrown.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @param last an implicit accessor to the last table of this clause (left side).
+		  */
+		@inline def naturalJoin[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                       (table :StaticTable[N, R])
+		                       (implicit cast :InferSubject[thisClause.type, InnerJoin, R, T, S],
+		                                 last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
+				:F InnerJoin R As N =
+			cast(InnerJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
+				.as(table.name)
 
-		/** Performs a natural symmetric outer join between this clause on the left side, and the relation given
-		  * as a `Relation` object on the right side. The join condition of the created instance will compare
+
+		/** Performs a natural symmetric outer join between this clause on the left side, and the table given
+		  * as a `Table` object on the right side. The join condition of the created instance will compare
 		  * all columns of the last relation in this clause with columns with matching names from the given relation.
 		  * If the column types (associated `ColumnForm` objects) of any of these column pairs differ,
 		  * an `IllegalArgumentException` is thrown.
@@ -496,9 +576,28 @@ object FromSome {
 				:F OuterJoin R =
 			cast(OuterJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
 
+		/** Performs a natural symmetric outer join between this clause on the left side, and the table given
+		  * as a `Table` object on the right side. The `String` literal with the name of the table taken from 
+		  * the table's type is used in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause, immediately added 
+		  * to the joined table. The join condition of the created instance will compare all columns of the last
+		  * all columns of the last relation in this clause with columns with matching names from the given relation.
+		  * If the column types (associated `ColumnForm` objects) of any of these column pairs differ,
+		  * an `IllegalArgumentException` is thrown.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @param last an implicit accessor to the last table of this clause (left side).
+		  */
+		@inline def naturalOuterJoin[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                            (table :StaticTable[N, R])
+		                            (implicit cast :InferSubject[thisClause.type, OuterJoin, R, T, S],
+		                                      last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
+				:F OuterJoin R As N =
+			cast(OuterJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
+				.as(table.name)
 
-		/** Performs a natural left outer join between this clause on the left side, and the relation given
-		  * as a `Relation` object on the right side. The join condition of the created instance will compare
+
+		/** Performs a natural left outer join between this clause on the left side, and the table given
+		  * as a `Table` object on the right side. The join condition of the created instance will compare
 		  * all columns of the last relation in this clause with columns with matching names from the given relation.
 		  * If the column types (associated `ColumnForm` objects) of any of these column pairs differ,
 		  * an `IllegalArgumentException` is thrown.
@@ -513,9 +612,28 @@ object FromSome {
 				:F LeftJoin R =
 			cast(LeftJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
 
+		/** Performs a natural left outer join between this clause on the left side, and the table given
+		  * as a `Table` object on the right side. The `String` literal with the name of the table taken from
+		  * the table's type is used in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause, immediately added
+		  * to the joined table. The join condition of the created instance will compare all columns of the last
+		  * relation in this clause with columns with matching names from the given relation.
+		  * If the column types (associated `ColumnForm` objects) of any of these column pairs differ,
+		  * an `IllegalArgumentException` is thrown.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @param last an implicit accessor to the last table of this clause (left side).
+		  */
+		@inline def naturalLeftJoin[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                           (table :StaticTable[N, R])
+		                           (implicit cast :InferSubject[thisClause.type, LeftJoin, R, T, S],
+		                                     last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
+				:F LeftJoin R As N =
+			cast(LeftJoin[thisClause.type, T, T, S](thisClause, cast(table)) where naturalFilter[T] _)
+				.as(table.name)
 
-		/** Performs a natural right outer join between this clause on the left side, and the relation given
-		  * as a `Relation` object on the right side. The join condition of the created instance will compare
+
+		/** Performs a natural right outer join between this clause on the left side, and the table given
+		  * as a `Table` object on the right side. The join condition of the created instance will compare
 		  * all columns of the last relation in this clause with columns with matching names from the given relation.
 		  * If the column types (associated `ColumnForm` objects) of any of these column pairs differ,
 		  * an `IllegalArgumentException` is thrown.
@@ -529,6 +647,25 @@ object FromSome {
 		                                      last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
 				:F RightJoin R =
 			cast(RightJoin[thisClause.type, T, T, S](thisClause, cast(table))(cast.self) where naturalFilter[T] _)
+
+		/** Performs a natural right outer join between this clause on the left side, and the table given
+		  * as a `Table` object on the right side.The `String` literal with the name of the table taken from
+		  * the table's type is used in the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause, immediately added
+		  * to the joined table. The join condition of the created instance will compare all columns of the last
+		  * relation in this clause with columns with matching names from the given relation.
+		  * If the column types (associated `ColumnForm` objects) of any of these column pairs differ,
+		  * an `IllegalArgumentException` is thrown.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @param last an implicit accessor to the last table of this clause (left side).
+		  */
+		@inline def naturalRightJoin[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                            (table :StaticTable[N, R])
+		                            (implicit cast :InferSubject[thisClause.type, RightJoin, R, T, S],
+		                                      last :ByIndex[F, Generalized, -1] { type O >: Generalized <: FromSome })
+				:F RightJoin R As N =
+			cast(RightJoin[thisClause.type, T, T, S](thisClause, cast(table))(cast.self) where naturalFilter[T] _)
+				.as(table.name)
 
 
 		private def naturalFilter[T[O] <: BaseMapping[_, O]]
@@ -561,7 +698,7 @@ object FromSome {
 
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
-		  * The explicit list of relations in the clause is initialized with the relation given as a `Relation` object
+		  * The explicit list of relations in the clause is initialized with the relation given as a `Table` object
 		  * and can be further expanded by joining with additional relations. The created clause is represented
 		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
 		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
@@ -578,6 +715,28 @@ object FromSome {
 		@inline def subselect[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :Table[R])
 		                     (implicit cast :InferSubject[F, Subselect, R, T, S]) :F Subselect R =
+			Subselect(thisClause, table)
+
+		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
+		  * The `String` literal type with name of the table, taken from the argument's type, is used for
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause added to the joined table.
+		  * The explicit list of relations in the clause is initialized with the relation given as a `Table` object
+		  * and can be further expanded by joining with additional relations. The created clause is represented
+		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
+		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
+		  * mappings for all relations in this clause to any expression based on the created instance, in particular
+		  * ''where'' clause filters and ''select'' clauses.
+		  * The join condition and the ''where'' clause filter can be subsequently specified using one of
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
+		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]]
+		  * and [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast()]] methods.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
+		  */
+		@inline def subselect[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                     (table :StaticTable[N, R])
+		                     (implicit cast :InferAliasedSubject[F, Subselect, R, T, S, N]) :F Subselect R As N =
 			Subselect(thisClause, table)
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
@@ -1069,7 +1228,7 @@ object FromSome {
 		  * as a parameter of SQL statements created using the returned instance.
 		  *
 		  * The artificial pseudo relation [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]]
-		  * is best obtained using the [[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]] factory method
+		  * is best obtained using the [[net.noresttherein.oldsql.sql.?: ?:]] factory method
 		  * defined in the [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] object:
 		  * {{{
 		  *     From(Hamsters) param ?:[String] on (_.name === _)
@@ -1088,7 +1247,13 @@ object FromSome {
 		  * the subject of which can be used as the subject of any other joined relation. Additionally, it
 		  * allows the creation of components for arbitrary functions of `X`, which can be used in SQL expressions
 		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
-		  * as a parameter of SQL statements created using the returned instance.
+		  * as a parameter of SQL statements created using the returned instance. Non-inferable parameter type `X`
+		  * can still be provided explicitly, even using the infix method call syntax:
+		  * {{{
+		  *     From(Hamsters) param[String] "name" on (_.name == _)
+		  * }}}
+		  * Note that the parameter name given here can be any `String`, not just literals, but is not used
+		  * to add an `as` clause to the parameter mapping.
 		  * @param name the suggested name for the parameter in the generated SQL, as specified by JDBC.
 		  * @see [[net.noresttherein.oldsql.sql.JoinParam]]
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
@@ -1108,7 +1273,7 @@ object FromSome {
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */ //the order of implicits is important to avoid double definition
-		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F JoinParam (N ?: X)#P =
+		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F WithParam X As N =
 			JoinParam(thisClause, form ?: (name.value :N))
 
 
@@ -1120,11 +1285,10 @@ object FromSome {
 		  * as a parameter of SQL statements created using the returned instance.
 		  *
 		  * The recommended ways of creating these relations are the
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]] factory method in object
-		  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] and an extension method for `String` literals
-		  * with the same name: [[net.noresttherein.oldsql.sql.UnboundParam.method_?:.?: ?:]].
+		  * [[net.noresttherein.oldsql.sql.?: ?:]] factory method in object from package `sql` and an extension method
+		  * for `String` literals with the same name: [[net.noresttherein.oldsql.sql.method_?:.?: ?:]].
 		  * {{{
-		  *     def parameterize[N <: Label :ValueOf, X :SQLForm, F <: TopFromSome](from :F) :F JoinParam (N ?: X)#P =
+		  *     def parameterize[N <: Label :ValueOf, X :SQLForm, F <: TopFromSome](from :F) :F WithParam X As N =
 		  *         from param ?:[N, X]
 		  *
 		  *     From(Characters) param "XP".?:[Int] where { t => t[Characters].XP >= t.labeled["XP"] }
@@ -1141,7 +1305,7 @@ object FromSome {
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */
-		@inline def param[N <: Label, X](relation :NamedParamRelation[N, X]) :F JoinParam (N ?: X)#P =
+		@inline def param[N <: Label, X](relation :NamedParamRelation[N, X]) :F WithParam X As N =
 			JoinParam(thisClause, relation)
 
 	}

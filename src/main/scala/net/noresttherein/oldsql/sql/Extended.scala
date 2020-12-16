@@ -2,12 +2,12 @@ package net.noresttherein.oldsql.sql
 
 import scala.annotation.implicitNotFound
 
-import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.sql.RowProduct.{ClauseComposition, ClauseDecomposition, ClauseGeneralization, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.sql.RowProduct.{As, RowComposition, RowDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
@@ -314,7 +314,7 @@ object Compound {
 		  * type `J`, given as a two-argument type constructor, and the (origin-accepting) type constructor
 		  * for the mapping `R` on the right side of the join. These should be specified as the types of parameters
 		  * passed to the constructor function. The last two type parameters are the output: the type `T[O] =:= R[O]`
-		  * (in reality, but not provable at the spot), but with the `BaseMapping` trait as its upper bound,
+		  * (in reality, but not provable on the spot), but with the `BaseMapping` trait as its upper bound,
 		  * and the type parameter `S` given by `R` to `BaseMapping` for the subject type. The object itself
 		  * contains methods for converting various types related to the use case between those parameterized with `T`,
 		  * and those parameterized with `R`. As the result, the parameters with more generic types, but which can be
@@ -326,6 +326,29 @@ object Compound {
 		                  R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S] =
 			JoinedRelationSubject[({ type F[M[O] <: MappingAt[O]] = L J M })#F, R, T, MappingOf[S]#TypedProjection]
 
+
+		/** A simplified form of the implicit witness
+		  * [[net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject JoinedRelationSubject]], it guides the compiler
+		  * into proper inference of both the type of a mapping, and its `Subject` type as defined by `BaseMapping`.
+		  * It is used when constructing a new `Extended` subtype to avoid the need for explicit specification
+		  * of the joined mapping type and its subject. It is a variant
+		  * of [[net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject InferSubject]] which adds
+		  * an [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause to the joined table.
+		  * It accepts six type parameters: first three are input parameters - the left side of the join `L`, the join
+		  * type `J`, given as a two-argument type constructor, and the (origin-accepting) type constructor
+		  * for the mapping `R` on the right side of the join. These should be specified as the types of parameters
+		  * passed to the constructor function. The next two type parameters are the output: the type `T[O] =:= R[O]`
+		  * (in reality, but not provable on the spot), but with the `BaseMapping` trait as its upper bound,
+		  * and the type parameter `S` given by `R` to `BaseMapping` for the subject type. The object itself
+		  * contains methods for converting various types related to the use case between those parameterized with `T`,
+		  * and those parameterized with `R`. As the result, the parameters with more generic types, but which can be
+		  * inferred automatically by the compiler, can be converted to the more specific variants,
+		  * used in the construction on the join, and then converted back to a type expressed in terms of the input
+		  * parameters. Finally, the last type parameter `N` is a string literal which is used as the alias for `R`.
+		  */
+		type InferAliasedSubject[L <: RowProduct, J[+F <: L, M[O] <: MappingAt[O]] <: F Compound M,
+		                         R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label] =
+			JoinedRelationSubject[({ type F[M[O] <: MappingAt[O]] = L J M As A })#F, R, T, MappingOf[S]#TypedProjection]
 	}
 
 }
@@ -489,13 +512,13 @@ object Extended {
 	                  "Missing implicit ExtendedDecomposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
 	class ExtendedDecomposition[-F <: L J R, L <: U, R[O] <: MappingAt[O],
 	                            J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct]
-		extends ClauseDecomposition[F, L, U]
+		extends RowDecomposition[F, L, U]
 	{
 		override type E[+A <: U] = A J R
 		override type S[+A >: L <: U] = A J R
 
-		@inline final override def prefix[A >: L <: U] :A PrefixOf (A J R) = PrefixOf.itself[A].extend[J, R]
-		@inline final override def extension[A <: U] :A PrefixOf (A J R) = PrefixOf.itself[A].extend[J, R]
+		@inline final override def prefix[A >: L <: U] :A PrefixOf (A J R) = new PrefixOf[A, A J R](1)
+		@inline final override def extension[A <: U] :A PrefixOf (A J R) = new PrefixOf[A, A J R](1)
 
 		@inline final override def unapply(join :F) :L = join.left
 
@@ -508,46 +531,17 @@ object Extended {
 
 
 
-	@implicitNotFound("I do not know the generalized Extended type constructor of ${F}.\n" +
-	                  "Missing implicit ExtendedGeneralization[${F}, ${L}, ${R}, ${J}, ${U}].")
-	abstract class ExtendedGeneralization[F <: L J R, L <: U, R[O] <: MappingAt[O],
-	                                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct]
-		extends ExtendedDecomposition[F, L, R, J, U] with ClauseGeneralization[F, L, U]
-	{ self =>
-		override type G[+A >: L <: U] >: A J R <: A Extended R
-
-		override def upcast[A >: L <: U] :ExtendedGeneralization[A J R, A, R, J, U] =
-			this.asInstanceOf[ExtendedGeneralization[A J R, A, R, J, U]]
-
-		override def cast[A <: U] :ExtendedDecomposition[A J R, A, R, J, U] =
-			this.asInstanceOf[ExtendedGeneralization[A J R, A, R, J, U]]
-	}
-
-
-
 	@implicitNotFound("I do not know how to decompose ${F} into an Extended subtype ${L} ${J} ${R}.\n" +
 	                  "Missing implicit ExtendedComposition[${F}, ${L}, ${R}, ${J}, ${U}, ${M}].")
 	abstract class ExtendedComposition[F <: L J R, L <: U, R[O] <: M[O],
 	                                   J[+A <: U, B[O] <: M[O]] <: A Extended B, U <: RowProduct, M[O] <: MappingAt[O]]
-		extends ExtendedGeneralization[F, L, R, J, U] with ClauseComposition[F, L, U]
+		extends ExtendedDecomposition[F, L, R, J, U] with RowComposition[F, L, U]
 	{ self =>
-		override type G[+A >: L <: U] = A Generalized R
-		type Generalized[+A <: U, B[O] <: M[O]] >: A J B <: A Extended B
-
-
-		override def generalized[P <: U] :ExtendedComposition[P Generalized R, P, R, Generalized, U, M] {
-				type Generalized[+A <: U, B[O] <: M[O]] = self.Generalized[A, B]
-			} =
-			this.asInstanceOf[ExtendedComposition[P Generalized R, P, R, Generalized, U, M] {
-				type Generalized[+A <: U, B[O] <: M[O]] = self.Generalized[A, B]
-			}]
-
 		override def upcast[A >: L <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
 			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
 
 		override def cast[A <: U] :ExtendedComposition[A J R, A, R, J, U, M] =
 			this.asInstanceOf[ExtendedComposition[A J R, A, R, J, U, M]]
-
 	}
 
 

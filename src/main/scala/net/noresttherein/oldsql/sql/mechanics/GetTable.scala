@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, Compound, DecoratedFro
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{Delegate, EvidenceTemplate, RelationEvidence}
 import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExtendingDecorator}
 import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.RowProduct.{As, ClauseDecomposition, NonEmptyFrom, PrefixOf}
+import net.noresttherein.oldsql.sql.RowProduct.{As, RowDecomposition, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, LabeledFromParam, ParamAt}
 
@@ -198,7 +198,7 @@ abstract class GetTable {
 	  */
 	protected def forward[F <: RowProduct, G <: RowProduct, L <: U, U <: RowProduct, X, N <: Numeral]
 	                     (get :RelationEvidence[_, L, _] { type O >: L <: U },
-	                      general :ClauseDecomposition[G, L, U])
+	                      general :RowDecomposition[G, L, U])
 			:Return[F, G, X]
 				{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = general.S[get.O]; type I = N } =
 		new EvidenceTemplate[F, G, X, get.S, general.S[get.O], N, get.M, get.T](
@@ -298,9 +298,9 @@ abstract class GetTable {
 
 	implicit def tunnelJoin[F <: RowProduct, C <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
 	                        J[+A <: U, B[O] <: R[O]] <: A NonSubselect B, U <: RowProduct, X]
-	                       (implicit specific :ClauseDecomposition[F, C, _],
-	                                 general :ExtendedDecomposition[G, L, R, J, U],
-	                                 get :GroupedTunnel[C, L, X] { type O >: L <: U })
+	                       (implicit specific :RowDecomposition[F, C, _],
+	                        general :ExtendedDecomposition[G, L, R, J, U],
+	                        get :GroupedTunnel[C, L, X] { type O >: L <: U })
 			:GroupedTunnel[F, G, X] {
 				type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
 				type O = general.S[get.O]; type B = get.B; type I = get.I
@@ -318,9 +318,9 @@ abstract class GetTable {
 
 	implicit def tunnelDecorator[F <: D[B], B <: U, G <: D[C], C <: U,
 	                             D[+A <: U] <: ExtendingDecorator[A], U <: RowProduct, X]
-	                            (implicit specific :ClauseDecomposition[F, B, _],
-	                                      general :DecoratorDecomposition[G, C, D, U],
-	                                      get :GroupedTunnel[B, C, X] { type O >: C <: U })
+	                            (implicit specific :RowDecomposition[F, B, _],
+	                             general :DecoratorDecomposition[G, C, D, U],
+	                             get :GroupedTunnel[B, C, X] { type O >: C <: U })
 			:GroupedTunnel[F, G, X] {
 				type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
 				type O = D[get.O]; type B = get.B; type I = get.I
@@ -513,9 +513,9 @@ object GetTable {
 		implicit def extended[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
 		                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct,
 		                      X, V <: Numeral, W <: Numeral]
-		                     (implicit specific :ClauseDecomposition[F, P, _],
-		                               general :ExtendedDecomposition[G, L, R, J, U],
-		                               get :Found[P, L, X] { type O >: L <: U; type I = W }, dec :Inc[V, W])
+		                     (implicit specific :RowDecomposition[F, P, _],
+		                      general :ExtendedDecomposition[G, L, R, J, U],
+		                      get :Found[P, L, X] { type O >: L <: U; type I = W }, dec :Inc[V, W])
 				:Return[F, G, X] {
 					type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
 					type O = general.S[get.O]; type I = V
@@ -525,9 +525,9 @@ object GetTable {
 
 		implicit def decorated[F <: RowProduct, B <: RowProduct, G <: D[C], C <: U,
 		                       D[+A <: U] <: ExtendingDecorator[A], U <: RowProduct, X]
-		                      (implicit specific :ClauseDecomposition[F, B, _],
-		                                general :DecoratorDecomposition[G, C, D, U],
-		                                get :Found[B, C, X] { type O >: C <: U })
+		                      (implicit specific :RowDecomposition[F, B, _],
+		                       general :DecoratorDecomposition[G, C, D, U],
+		                       get :Found[B, C, X] { type O >: C <: U })
 				:Return[F, G, X] {
 					type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
 					type O = general.S[get.O]; type I = get.I
@@ -687,9 +687,9 @@ object GetTable {
 			implicit def extended[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
 			                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct,
 			                      V <: Numeral, W <: Numeral]
-			                     (implicit specific :ClauseDecomposition[F, P, _],
-			                               general :ExtendedDecomposition[G, L, R, J, U],
-			                               dec :NegativeInc[V, W], get :Found[P, L, W] { type O >: L <: U })
+			                     (implicit specific :RowDecomposition[F, P, _],
+			                      general :ExtendedDecomposition[G, L, R, J, U],
+			                      dec :NegativeInc[V, W], get :Found[P, L, W] { type O >: L <: U })
 					:Return[F, G, V] {
 						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
 						type O = general.S[get.O]; type I = V
@@ -698,9 +698,9 @@ object GetTable {
 
 			implicit def decorated[F <: RowProduct, P <: RowProduct, G <: D[C], C <: U,
 			                       D[+A <: U] <: ExtendingDecorator[A], U <: RowProduct, X <: Numeral]
-			                      (implicit specific :ClauseDecomposition[F, P, _],
-			                                general :DecoratorDecomposition[G, C, D, U],
-			                                get :Found[P, C, X] { type O >: C <: U })
+			                      (implicit specific :RowDecomposition[F, P, _],
+			                       general :DecoratorDecomposition[G, C, D, U],
+			                       get :Found[P, C, X] { type O >: C <: U })
 					:Return[F, G, X] {
 						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
 						type O = general.S[get.O]; type I = X
@@ -1018,7 +1018,7 @@ object GetTable {
 			implicit def param[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: ParamAt[O],
 			                   J[+A <: U, B[O] <: ParamAt[O]] <: A UnboundParam B, U <: NonEmptyFrom,
 			                   X <: Numeral, Y <: Numeral, V <: Numeral, W <: Numeral]
-			                  (implicit specific :ClauseDecomposition[F, P, _],
+			                  (implicit specific :RowDecomposition[F, P, _],
 			                   general :ExtendedDecomposition[G, L, R, J, U],
 			                   key :NegativeInc[X, Y], get :Found[P, L, Y] { type O >: L <: U; type I = W },
 			                   idx :NegativeInc[V, W])

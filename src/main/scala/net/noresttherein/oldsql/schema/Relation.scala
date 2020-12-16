@@ -228,7 +228,9 @@ object Relation {
 		                          (implicit project :OriginProjection[M, S]) :Table[project.WithOrigin] =
 			BaseTable[M, S](tableName, template)
 
-		trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M]
+		trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
+			def name :N
+		}
 
 		type * = Table[M] forSome { type M[O] <: MappingAt[O] }
 
@@ -288,7 +290,9 @@ object Relation {
 				override def name = sql
 			}
 
-		trait StaticView[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M]
+		trait StaticView[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
+			override def name :N
+		}
 
 		type * = View[M] forSome { type M[O] <: MappingAt[O] }
 

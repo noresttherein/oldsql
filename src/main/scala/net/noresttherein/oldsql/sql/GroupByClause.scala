@@ -1,21 +1,22 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
-import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
-import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.Relation.{PseudoRelation, Table}
+import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
-import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
 import net.noresttherein.oldsql.sql.GroupParam.ByParam
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, LocalScope}
-import net.noresttherein.oldsql.sql.UnboundParam.{?:, NamedParamRelation, ParamRelation}
+import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
@@ -793,7 +794,7 @@ object GroupByClause {
 
 		//the subselect methods are exact copy&paste from FromSomeExtension
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
-		  * The explicit list of relations in the clause is initialized with the relation given as a `Relation` object
+		  * The explicit list of relations in the clause is initialized with the table given as a `Table` object
 		  * and can be further expanded by joining with additional relations. The created clause is represented
 		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
 		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
@@ -811,6 +812,28 @@ object GroupByClause {
 		                     (table :Table[R])
 		                     (implicit cast :InferSubject[G, Subselect, R, T, S]) :G Subselect R =
 			Subselect(thisClause, table)
+
+		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
+		  * The `String` literal type with name of the table, taken from the argument's type, is used for
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause added to the joined table.
+		  * The explicit list of relations in the clause is initialized with the relation given as a `Table` object
+		  * and can be further expanded by joining with additional relations. The created clause is represented
+		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
+		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
+		  * mappings for all relations in this clause to any expression based on the created instance, in particular
+		  * ''where'' clause filters and ''select'' clauses.
+		  * The join condition and the ''where'' clause filter can be subsequently specified using one of
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on()]],
+		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]]
+		  * and [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast()]] methods.
+		  * @param table a producer of the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
+		  */
+		@inline def subselect[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                     (table :StaticTable[N, R])
+		                     (implicit cast :InferAliasedSubject[G, Subselect, R, T, S, N]) :G Subselect R As N =
+			Subselect(thisClause, table)(cast)
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
 		  * The explicit list of relations in the clause is initialized with the relations given as a `RowProduct`
@@ -863,8 +886,7 @@ object GroupByClause {
 		  * as a parameter of SQL statements created using the returned instance.
 		  *
 		  * The artificial pseudo relation [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]]
-		  * is best obtained using the [[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]] factory method
-		  * defined in the [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] object:
+		  * is best obtained using the [[net.noresttherein.oldsql.sql.?: ?:]] factory method from package `sql`:
 		  * {{{
 		  *     From(Critters) groupBy (_.last.species) as "species" param ?:[String] on (_.name === _) having {
 		  *         t => t("species") === t(-1)
@@ -903,7 +925,7 @@ object GroupByClause {
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */ //the order of implicits is important to avoid a double definition
-		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F GroupParam (N ?: X)#P =
+		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F ByParam X As N =
 			GroupParam(thisClause, form ?: (name.value :N))
 
 		/** Creates a parameterized `RowProduct` instance allowing the use of a statement parameter `X` in the SQL
@@ -914,11 +936,10 @@ object GroupByClause {
 		  * as a parameter of SQL statements created using the returned instance.
 		  *
 		  * The recommended ways of creating these relations are the
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.?: ?:]] factory method in object
-		  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] and an extension method for `String` literals
-		  * with the same name: [[net.noresttherein.oldsql.sql.UnboundParam.method_?:.?: ?:]].
+		  * [[net.noresttherein.oldsql.sql.?: ?:]] factory method from package `sql` and an extension method
+		  * for `String` literals with the same name: [[net.noresttherein.oldsql.sql.method_?:.?: ?:]].
 		  * {{{
-		  *     def parameterize1[N <: Label :ValueOf, X :SQLForm, F <: TopGroupByClause](from :F) :F JoinParam (N ?: X)#P =
+		  *     def parameterize1[N <: Label :ValueOf, X :SQLForm, F <: TopGroupByClause](from :F) :F WithParam X As N =
 		  *         from param ?:[N, X]
 		  *
 		  *     From(Characters) groupBy (_.last.characterClass) as "class" param "selectedClass".?:[String] having {
@@ -937,7 +958,7 @@ object GroupByClause {
 		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */
-		@inline def param[N <: Label, X](relation :NamedParamRelation[N, X]) :F GroupParam (N ?: X)#P =
+		@inline def param[N <: Label, X](relation :NamedParamRelation[N, X]) :F ByParam X As N =
 			GroupParam(thisClause, relation)
 
 	}

@@ -2528,8 +2528,8 @@ object RowProduct {
 	  *           which preserves the type constructor `C` intact.
 	  */
 	@implicitNotFound("I don't know how to extract a prefix clause ${P} (with an upper bound ${U}) from ${F}.\n" +
-	                  "Missing implicit ClauseDecomposition[${F}, ${P}, ${U}].")
-	trait ClauseDecomposition[-F <: RowProduct, P <: U, U <: RowProduct] {
+	                  "Missing implicit RowDecomposition[${F}, ${P}, ${U}].")
+	trait RowDecomposition[-F <: RowProduct, P <: U, U <: RowProduct] {
 
 		/** The type constructor of `F`, accepting a prefix clause. This is the generic version of `S[A]`,
 		  * accepting any type conforming to `U`, but without the lower bound of `F` in the result.
@@ -2543,7 +2543,7 @@ object RowProduct {
 		type S[+A >: P <: U] >: F <: RowProduct
 
 		/** a `PrefixOf` instance representing the application of the type constructor
-		  * [[net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition.S S]] to some supertype of the decomposed
+		  * [[net.noresttherein.oldsql.sql.RowProduct.RowDecomposition.S S]] to some supertype of the decomposed
 		  * prefix `P` of the clause `F`, which this instance is the type class of. It has the length of `1` for
 		  * [[net.noresttherein.oldsql.sql.Extended Extended]] subtypes and `0` for
 		  * [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] subtypes.
@@ -2551,7 +2551,7 @@ object RowProduct {
 		def prefix[A >: P <: U] :A PrefixOf S[A]
 
 		/** a `PrefixOf` instance representing the application of the type constructor
-		  * [[net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition.S S]] to some arbitrary ''from'' clause `A`.
+		  * [[net.noresttherein.oldsql.sql.RowProduct.RowDecomposition.S S]] to some arbitrary ''from'' clause `A`.
 		  * It has the length of `1` for [[net.noresttherein.oldsql.sql.Extended Extended]] subtypes and `0` for
 		  * [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] subtypes.
 		  */
@@ -2563,20 +2563,20 @@ object RowProduct {
 		/** A type class for a supertype of the represented ''from'' clause, resulting from the application
 		  * of the type constructor specific to this clause to some supertype `A` of `P`.
 		  */
-		def upcast[A >: P <: U] :ClauseDecomposition[S[A], A, U]
+		def upcast[A >: P <: U] :RowDecomposition[S[A], A, U]
 
 		/** A type class for a ''from'' clause sharing the top type constructor
-		  *  [[net.noresttherein.oldsql.sql.RowProduct.ClauseDecomposition.E E]] with this clause `F`.
+		  *  [[net.noresttherein.oldsql.sql.RowProduct.RowDecomposition.E E]] with this clause `F`.
 		  */
-		def cast[A <: U] :ClauseDecomposition[E[A], A, U]
+		def cast[A <: U] :RowDecomposition[E[A], A, U]
 
 	}
 
 
-	@deprecated("Use either ClauseDecomposition or ClauseComposition", "Imoen")
+	@deprecated("Use either RowDecomposition or RowComposition", "Imoen")
 	@implicitNotFound("I don't know the generalized form of the FROM clause ${F}.\n" +
-	                  "Missing implicit ClauseGeneralization[${F}, ${P}, ${U}].")
-	trait ClauseGeneralization[F <: RowProduct, P <: U, U <: RowProduct] extends ClauseDecomposition[F, P, U] { self =>
+	                  "Missing implicit RowGeneralization[${F}, ${P}, ${U}].")
+	trait RowGeneralization[F <: RowProduct, P <: U, U <: RowProduct] extends RowDecomposition[F, P, U] { self =>
 		/** The [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] supertype of clause `E[A]`. */
 		type G[+A >: P <: U] >: S[A] <: RowProduct
 
@@ -2584,23 +2584,23 @@ object RowProduct {
 		  * the clause `F[A]`.
 		  */
 		def generalized[A >: P <: U]
-				:ClauseGeneralization[G[A], A, U] { type G[+B >: A <: U] = self.G[B]; type S[+B >: A <: U] = G[B] }
+				:RowGeneralization[G[A], A, U] { type G[+B >: A <: U] = self.G[B]; type S[+B >: A <: U] = G[B] }
 	}
 
 
-	@implicitNotFound("I don't know how to extract a prefix clause ${P} (with an upper bound ${U}) from ${F}.\n" +
-	                  "Missing implicit ClauseComposition[${F}, ${P}, ${U}].")
-	trait ClauseComposition[F <: RowProduct, P <: U, U <: RowProduct] extends ClauseGeneralization[F, P, U] {
+	@implicitNotFound("I don't know how to extract a prefix ${P} (with an upper bound ${U}) from FROM clause ${F}.\n" +
+	                  "Missing implicit RowComposition[${F}, ${P}, ${U}].")
+	trait RowComposition[F <: RowProduct, P <: U, U <: RowProduct] extends RowDecomposition[F, P, U] {
 		/** Create a new ''from'' clause by replacing the 'prefix' `P` in `template` with `F`.
 		  * The created instance will contain no filter condition over what already exists in the clause `C`.
 		  */
 		def apply[C <: U](template :F, clause :C) :E[C]
 	}
 
-	
-	
-	
-	
+
+
+
+
 	/** A proof that the ''from'' clause `F` is a part of the ''from'' clause `E` and represents the 'same'
 	  * SQL ''select''. This holds if `F ExtendedBy E` and there is no `Subselect` join present
 	  * in the extension. The implication is that `E` contains all the relations listed in `F`, with a possible addition
@@ -2820,7 +2820,7 @@ object RowProduct {
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PartOf]]
 	  */
 	@implicitNotFound("The FROM clause ${F} is not a prefix of the clause ${E}.")
-	class PrefixOf[F <: RowProduct, E <: RowProduct] private[RowProduct](val diff :Int) extends AnyVal {
+	class PrefixOf[F <: RowProduct, E <: RowProduct] private[sql](val diff :Int) extends AnyVal {
 
 		/** An `F` [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]] `E` instance representing the
 		  * same extension of the clause `F`. `ExtendedBy`, unlike `PrefixOf`, is covariant/contravariant in its
@@ -2874,7 +2874,7 @@ object RowProduct {
 		implicit def itself[F <: RowProduct] :F PrefixOf F = new PrefixOf(0)
 
 		implicit def extend[F <: RowProduct, E <: RowProduct, L <: U, U <: RowProduct]
-		                    (implicit decompose :ClauseDecomposition[E, L, U], prefix :F PrefixOf L) :F PrefixOf E =
+		                    (implicit decompose :RowDecomposition[E, L, U], prefix :F PrefixOf L) :F PrefixOf E =
 			new PrefixOf[F, E](prefix.diff + decompose.extension.diff)
 
 		implicit def group[F <: RowProduct, O <: RowProduct, E <: FromSome, R[A] <: MappingAt[A]]
