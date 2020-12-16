@@ -37,15 +37,6 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 	extends NonParam[L, R] with AndFromTemplate[L, R, L JoinLike R]
 { thisClause =>
 
-	override val last :JoinedTable[RowProduct AndFrom R, R]
-	override def right :Table[R] = last.table
-
-	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :Last[E] =
-		last.asIn[E]
-
-
-	override type Last[F <: RowProduct] = JoinedTable[F, LastMapping]
-
 	override type Generalized >: Dealiased <: (left.Generalized JoinLike R) {
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
@@ -144,9 +135,6 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
 		decorate(bind(params))
-
-	override type DefineBase[+I <: RowProduct] = I
-	override def base :Base = outer
 
 	override def generalizedExtension[P <: FromSome] :P PrefixOf (P GeneralizedJoin R) =
 		PrefixOf.itself[P].extend[GeneralizedJoin, R]
@@ -312,8 +300,8 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 		left.filter(target)(extension.extendFront[left.Generalized, R]) && condition.basedOn(target)
 
 
-	override type AppliedParam = left.AppliedParam LikeJoin R
-	override type Paramless = left.Paramless LikeJoin R
+	override type AppliedParam = WithLeft[left.AppliedParam] //WithLeft because it is overriden by As
+	override type Paramless = WithLeft[left.Paramless]
 
 	override def bind(param :LastParam) :AppliedParam = {
 		val l = left.bind(param)
@@ -343,6 +331,10 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 	override type Outer = left.Outer
 	override type Row = left.Row ~ last.Subject
 	override type OuterRow = left.OuterRow
+
+	override def row[E <: RowProduct]
+	                (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
+		left.row(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
 
 
 	override type AsSubselectOf[+F <: NonEmptyFrom] = WithLeft[left.AsSubselectOf[F]]

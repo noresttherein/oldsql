@@ -282,9 +282,12 @@ sealed abstract class LowPriorityColumnMappingImplicits {
 
 object ColumnMapping extends LowPriorityColumnMappingImplicits {
 
-	type ColumnOf[S] = ColumnMapping[S, _]
-
-	type ColumnAt[O] = ColumnMapping[_, O]
+	/** A curried definition of [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]`[S, O]`,
+	  * containing a single type constructor `P[O] = ColumnMapping[S, O]`. It allows the use of `ColumnMapping`
+	  * as a type parameters to classes/methods which require the definition of a mapping accepting
+	  * its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
+	  */
+	type Of[S] = { type P[O] = ColumnMapping[S, O] }
 
 
 

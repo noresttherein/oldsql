@@ -509,8 +509,6 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 	override type DealiasedLeft[+L <: GroupByClause] = L By M
 	override type WithLeft[+L <: GroupByClause] <: L By M
 
-
-
 	override type LastParam = left.LastParam
 	override type Params = left.Params
 	override type AppliedParam = WithLeft[left.AppliedParam]
@@ -536,6 +534,14 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 
 
 
+	override type FullRow = left.FullRow ~ last.Subject
+
+	override def fullRow[E <: RowProduct]
+	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
+		left.fullRow(target)(extension.extendFront[left.Generalized, M]) ~ last.extend(target)
+
+
+
 	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
 		WithLeft[left.JoinedWith[P, J]]
 
@@ -556,6 +562,13 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 	override type Base = left.DefineBase[left.Implicit] //a supertype of clause.Base (in theory, equal in practice)
 	override type DefineBase[+I <: RowProduct] = left.DefineBase[I]
 	override def base :Base = left.base
+
+
+	override type Row = left.Row ~ last.Subject
+
+	override def row[E <: RowProduct]
+	                (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
+		left.row(target)(extension.extendFront[left.Generalized, M]) ~ last.extend(target)
 
 
 	override type AsSubselectOf[+P <: NonEmptyFrom] = WithLeft[left.AsSubselectOf[P]]

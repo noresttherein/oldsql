@@ -9,9 +9,9 @@ import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedColumnSQLMapping, IndexedMapping, IndexedSQLMapping, RowProduct, SQLExpression, SQLMapping}
+import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedColumnSQLMapping, IndexedMapping, IndexedSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral
@@ -19,6 +19,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChain, ChainHea
 import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedChainHead, IndexedChainMatcher, IndexedColumn, IndexedSQLExpression}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple.{CaseSeq, SeqMatcher}
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 
 
 
@@ -36,6 +37,9 @@ trait TupleSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T] extends Com
 
 	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectSQL[B, T] =
 		SelectSQL.subselect[B, from.type, T](from, this)
+
+	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, T] =
+		ParamSelect(from, this)
 
 	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
 		matcher.tuple(this)
@@ -307,12 +311,27 @@ object TupleSQL {
 			matcher.indexedChain(this)
 
 
+		override def selectFrom(from :F) :SelectAs[from.Base, IndexedMapping.Of[T]#Projection] =
+			if (from.isParameterized)
+				throw new IllegalArgumentException(
+					s"Cannot use a parameterized clause as a basis for select $this: $from."
+				)
+			else if (from.isSubselect) {
+				subselectFrom(from.asInstanceOf[ExactSubselectOf[from.type, NonEmptyFrom]])
+					.asInstanceOf[SelectAs[from.Base, IndexedMapping.Of[T]#Projection]]
+			} else
+				topSelectFrom(from.asInstanceOf[F with GroundFrom])
+
 		override def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectAs[IndexedMapping.Of[T]#Projection] =
 			SelectSQL[E, T](from, this)
 
 		override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B])
 				:SubselectAs[B, IndexedMapping.Of[T]#Projection] =
 			SelectSQL.subselect[B, ExactSubselectOf[F, B], T](from, this)
+
+		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E)
+				:ParamSelectAs[P, IndexedMapping.Of[T]#Projection] =
+			ParamSelect(from, this)
 
 
 		def |~[E <: F, O >: LocalScope <: S, K <: Label :ValueOf, H]
@@ -424,6 +443,10 @@ object TupleSQL {
 			override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B])
 					:SubselectColumnAs[B, IndexedMapping.Of[V]#Column, V] =
 				SelectSQL.subselect[B, ExactSubselectOf[F, B], N, V](from, this)
+
+			override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E)
+					:ParamSelectAs[P, IndexedMapping.Of[V]#Column] =
+				ParamSelect[E, N, V](from, this)
 		}
 
 

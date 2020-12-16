@@ -8,12 +8,12 @@ import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchOnlyCompositeColumn}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, QueryMatcher, Rows, CompoundSelectSQL}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, CompoundSelectSQL, QueryMatcher, Rows}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.{CaseCompoundSelect, CompoundSelectMatcher}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
@@ -391,6 +391,28 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
 
+	/** Creates an parameterized SQL ''select'' with this expression as its ''select'' clause.
+	  * The ''from'' and ''where'' clauses are defined by this argument, while the ''select'' clause consists
+	  * of all column sub-expressions constituting this expression.
+	  * This method is supported only by chosen expression types, which have a well defined, unique SQL representation.
+	  * These are mainly
+	  * [[net.noresttherein.oldsql.sql.ast.TupleSQL TupleSQL]],
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]
+	  * and all [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] subclasses.
+	  * It is considered low level API exposed only to support potential extension by custom expression types
+	  * and should not be used by the client code directly; prefer using
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductExtension.select select]] and its relatives instead.
+	  *
+	  * @param from a top-level `RowProduct` instance (i.e., not corresponding to a subselect) conforming to the type
+	  *             this expression is based on, that is containing all the relations listed in `F` in its suffix.
+	  * @return a `ParamSelect` parameterized with the unbound parameters in `from`.
+	  * @throws UnsupportedOperationException if this expression cannot be used for a ''select'' clause.
+	  */
+	def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, V] =
+		throw new UnsupportedOperationException(
+			s"Expression $this :${this.localClassName} can't be used as a select clause."
+		)
+
 
 
 	/** List of [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter ''bound'']] parameters used by this expression,
@@ -557,9 +579,6 @@ object SQLExpression  {
 
 		override def isAnchored :Boolean = parts.forall(_.isAnchored)
 
-		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V] =
-			rephrase(SQLScribe.extend(base))
-
 		/** Method used in the implementation of
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.basedOn basedOn]] and
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.extend extend]].
@@ -567,6 +586,9 @@ object SQLExpression  {
 		  * composite expression of the same type as this one.
 		  */
 		def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :SQLExpression[E, S, V]
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V] =
+			rephrase(SQLScribe.extend(base))
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V] =

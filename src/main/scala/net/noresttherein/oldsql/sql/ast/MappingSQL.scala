@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{Chain, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, Relation, SQLReadForm}
@@ -8,18 +8,19 @@ import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComp
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, Extended, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, Extended, ParamSelect, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn.LooseColumnMatcher
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.{CaseLooseComponent, LooseComponentMatcher}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.{CaseRelation, RelationMatcher}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL.{CaseColumnComponent, ColumnComponentMatcher}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL.{CaseComponent, ComponentMatcher, ProperComponent}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumnMapping, SubselectMapping, TopSelectAs}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, TopSelectAs, TopSelectColumnAs}
 import net.noresttherein.oldsql.sql.mechanics.{TableCount, TableOffset}
+import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 
 
 //here be implicits
@@ -80,6 +81,11 @@ trait MappingSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, M[O] <: Mapp
 		)
 
 	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectAs[B, M] =
+		throw new UnsupportedOperationException(
+			s"Expression $this :${this.localClassName} can't be used as a select clause."
+		)
+
+	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
@@ -295,6 +301,9 @@ object MappingSQL {
 		override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B])
 				:SubselectMapping[B, from.type, M, V] =
 			SelectSQL.subselect(from, anchor(from))
+
+		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
+			ParamSelect[E, M, V](from, anchor(from))
 
 
 		override def isomorphic(expression :SQLExpression.*) :Boolean = equals(expression)
@@ -533,6 +542,8 @@ object MappingSQL {
 				:SubselectColumnMapping[B, from.type, M, V] =
 			SelectSQL.subselect(from, anchor(from))
 
+		override def paramSelectFrom[E <: F with TopFrom {type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
+			ParamSelect[E, M, V](from, anchor(from))
 	}
 
 
@@ -869,6 +880,9 @@ object MappingSQL {
 				:SubselectMapping[B, from.type, M, V] =
 			SelectSQL.subselect(from, this)
 
+		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
+			ParamSelect[E, M, V](from, this)
+
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[TypedComponentSQL.* @unchecked]
 
@@ -1034,17 +1048,19 @@ object MappingSQL {
 			} else
 				topSelectFrom(from.asInstanceOf[F with GroundFrom])
 
-		override def topSelectFrom[E <: F with GroundFrom](from :E) :SelectColumnMapping[E, M, V] =
+		override def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectColumnAs[M, V] =
 			throw new UnsupportedOperationException(
 				s"Expression $this :${this.localClassName} can't be used as a select clause."
 			)
 
 		override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B])
-				:SubselectColumnMapping[B, from.type, M, V] =
+				:SubselectColumnAs[B, M, V] =
 			throw new UnsupportedOperationException(
 				s"Expression $this :${this.localClassName} can't be used as a select clause."
 			)
 
+		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
+			ParamSelect[E, M, V](from, this)
 	}
 
 
@@ -1321,6 +1337,7 @@ object MappingSQL {
 		def asRelationSQL :Option[RelationSQL[F, M, T[F]#Subject, F]
 				forSome { type M[A] <: BaseMapping[T[F]#Subject, A] with T[A] }]
 
+		/** Casts this relation down to the more strongly typed `TableSQL` if it is a table (persistent or derived). */
 		def asTableSQL :Option[TableSQL[F, M, T[F]#Subject, F]
 				forSome { type M[A] <: BaseMapping[T[F]#Subject, A] with T[A] }] = None
 
@@ -1612,6 +1629,8 @@ object MappingSQL {
 				:SubselectMapping[B, from.type, T, R] =
 			SelectSQL.subselect(from, toRelationSQL)
 
+		override def paramSelectFrom[E <: O with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, T] =
+			ParamSelect[E, T, R](from, toRelationSQL)
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true

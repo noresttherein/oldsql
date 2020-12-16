@@ -1,15 +1,16 @@
 package net.noresttherein.oldsql.sql.ast
 
+import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{ColumnSQL, ParamSelect, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.UnaryColumnOperator
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, GroundFrom, NonEmptyFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, GroundFrom, NonEmptyFrom, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.UnaryOperatorSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionMatcher}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion.{CasePromotion, PromotionMatcher}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{TopSelectSQL, SubselectSQL}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -37,6 +38,9 @@ trait ConversionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, Y] ext
 
 	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectSQL[B, Y] =
 		SelectSQL.subselect[B, from.type, X, Y](from, this)
+
+	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, Y] =
+		ParamSelect(from, this)
 
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[F, R]): R[S, Y] =

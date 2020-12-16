@@ -561,7 +561,7 @@ sealed trait IndexedColumnMapping[S, O] extends IndexedMapping[S, O] with Column
 
 
 object IndexedMapping {
-	type Of[S] = {
+	type Of[S] = { //consider: renaming projections to simply P and C
 		type Projection[O] = IndexedMapping[S, O]
 		type Column[O] = IndexedColumnMapping[S, O]
 	}
@@ -761,7 +761,7 @@ object IndexedColumnSQLMapping {
 		}
 
 	type Column[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label, X] = {
-		type Projection[O] = IndexedColumnSQLMapping[F, S, N, X, O]
+		type Projection[O] = IndexedColumnSQLMapping[F, S, N, X, O] //consider: renaming to P
 	}
 
 }

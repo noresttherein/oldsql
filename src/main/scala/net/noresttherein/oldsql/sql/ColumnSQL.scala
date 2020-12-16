@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, FunctionSQL, LogicalSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateMatcher, CaseAggregate}
@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.sql.ast.LogicalSQL.{AndSQL, CaseLogical, Logical
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{LooseColumn, MappingColumnMatcher, TypedColumnComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn.CaseLooseColumn
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL.CaseColumnComponent
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryMatcher, Rows, CompoundSelectColumn}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryMatcher, CompoundSelectColumn, Rows}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnMatcher}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumn, SubselectColumn, TopSelectColumn}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, True}
@@ -317,6 +317,8 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectColumn[B, V] =
 		SelectSQL.subselect[B, from.type, V](from, this)
 
+	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, V] =
+		ParamSelect(from, this)
 }
 
 

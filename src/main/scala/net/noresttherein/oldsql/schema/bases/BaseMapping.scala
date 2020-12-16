@@ -188,11 +188,13 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 
 object BaseMapping {
-	type * = M[O] forSome { type M[A] <: BaseMapping[_, A]; type O }
 
-	type From[O] = BaseMapping[_, O]
-
-	type Of[S] = BaseMapping[S, _]
+	/** A curried definition of [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[S, O]`,
+	  * containing a single type constructor `P[O] = BaseMapping[S, O]`. It allows the use of `BaseMapping`
+	  * as a type parameters to classes/methods which require the definition of a mapping accepting
+	  * its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
+	  */
+	type Of[S] = { type P[O] = BaseMapping[S, O] }
 
 	type AnyAt[O] = M[O] forSome { type M[A] <: BaseMapping[_, A] }
 

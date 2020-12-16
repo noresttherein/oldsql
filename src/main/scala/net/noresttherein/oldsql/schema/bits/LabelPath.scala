@@ -111,7 +111,9 @@ object LabelPath {
 
 
 
-	/** A factory of single-element [[net.noresttherein.oldsql.schema.bits.LabelPath LabelPath]] instances. */
+	/** A factory of single-element [[net.noresttherein.oldsql.schema.bits.LabelPath LabelPath]] instances.
+	  * `$this / label` is a `LabelPath` type class for type `L <: String with Singleton` such that `label :L`.
+	  */
 	object $this {
 		/** A single-element path of the given label. */
 		def /[L <: Label](label :L): :/[L] = new :/(label)

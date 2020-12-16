@@ -23,6 +23,8 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SQLScribe}
 import net.noresttherein.oldsql.sql.FromSome.TopFromSome
+import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 
 
 
@@ -98,6 +100,12 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 	                                    (params :Params)(decorate :Paramless => D) :left.Paramless =
 		bind(params)
 
+	override type FullRow = left.FullRow
+
+	override def fullRow[E <: RowProduct]
+	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
+		left.fullRow(target)(extension.extendFront[left.Generalized, P])
+
 
 
 	override type JoinedWithSubselect[+S <: NonEmptyFrom] = Nothing
@@ -115,6 +123,13 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 	override type Base = Nothing
 	override type DefineBase[+I <: RowProduct] = Nothing
 	override def base = throw new UnsupportedOperationException(s"JoinParam.base on $this")
+
+
+	override type Row = left.Row
+
+	override def row[E <: RowProduct]
+	             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
+		left.row(target)(extension.extendFront[left.Generalized, P])
 
 
 	override type AsSubselectOf[+O <: NonEmptyFrom] = Nothing
@@ -725,7 +740,7 @@ object JoinParam {
 	/** An alias for `JoinParam` accepting the parameter type as the second (right) argument, hiding the
 	  * `FromParam[X, _]` from the type signature.
 	  */ //not F <: TopFromSome so it can be used in Generalized types
-	type WithParam[+F <: FromSome, X] = JoinParam[F, FromParam.Of[X]#P]
+	type WithParam[+F <: FromSome, X] = JoinParam[F, FromParam.Of[X]#P] //todo: rename, conflicts with param for WithClause
 
 	/** A type alias for `JoinParam` accepting parameter type `X`. As a `RowProduct` containing a `JoinParam` join
 	  * in its type is a preliminary from clause which will be translated to a parameterized statement, it uses

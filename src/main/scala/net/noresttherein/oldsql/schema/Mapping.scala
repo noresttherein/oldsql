@@ -151,14 +151,14 @@ trait Mapping {
 	type Subject
 
 
-	/** A phantom marker type denoting the origin of this mapping. It is used to statically distinguish between
+	/** A phantom marker type identifying the origin of this mapping. It is used to statically distinguish between
 	  * different instances of the same mapping class, but mapping different portions of the result set -
 	  * in particular, they work like aliases for repeated occurrences of a table and its components in a joined query.
 	  * In addition, it is used by the SQL DSL to ensure that an SQL expression refers only to components
 	  * coming from the one particular query, preventing accidental use of other, non-joined mappings.
-	  * This type should ''not'' be used for other purposes, keep values or be interpreted in any way, such as actual
+	  * This type should ''not'' be used for other purposes, to keep values or be interpreted in any way, such as actual
 	  * alias names for joined tables. All concrete `Mapping` implementations are expected to take `Origin`
-	  * as a type parameter (by convention, and to leverage scala's partial kind unification, the last one) for
+	  * as a type parameter (by convention, and to leverage Scala's partial kind unification, the last one) for
 	  * seamless use in SQL expressions.
 	  *
 	  * Casting a `Mapping` to a different `Origin` should be safe. In order to abbreviate the code and provide
@@ -170,9 +170,18 @@ trait Mapping {
 	  * `M[O] <: Mapping { type Subject = S; type Origin = O }`, which will happen automatically for any mapping class
 	  * which accepts its origin type as the last type parameter, an implicit `OriginProjection[M, S]` will exist,
 	  * and `m.withOrigin[O]` will be an instance of `M[O]` for any `m :M[_]`. If such a conversion cannot be performed
-	  * or is unsuitable, the mapping class should declare its own implicit `OriginProjection` within its companion object.
-	  * This makes it possible to define the result type of the cast in case a mapping class doesn't accept
+	  * or is unsuitable, the mapping class should declare its own implicit `OriginProjection` within its companion
+	  * object. This makes it possible to define the result type of the cast in case a mapping class doesn't accept
 	  * the `Origin` type as its last type parameter, or it can appear in more than one place in the type signature.
+	  *
+	  * The definitions of this type vary between use cases, but, most notably, SQL DSL specifies the origin
+	  * of any component of a table `T[O]` from a ''from'' clause
+	  * `F <: `[[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as a type `F <: O <: RowProduct` which starts
+	  * with a wildcard `RowProduct` type (either `RowProduct` itself or one of its subtypes, used
+	  * as broad classification of their derived classes), 'joined' with table `T`, for example
+	  * `RowProduct AndFrom T Join X`.
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingAt]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.Of.P]]
 	  */
 	type Origin
 
@@ -1263,7 +1272,7 @@ object Mapping extends LowPriorityMappingImplicits {
 	  * @tparam S the `Subject` type of the mapping `M`, preserved by the projected mapping `WithOrigin[_]`.
 	  */
 	@implicitNotFound("Cannot project mapping ${M} (of ${S}) to another Origin type: " +
-		               "no (unique) implicit OriginProjection[${M}, ${S}].")
+		              "no implicit OriginProjection[${M}, ${S}].")
 	sealed trait OriginProjection[-M <: Mapping, S] { self =>
 
 		/** A type such that `M <: WithOrigin[_]` which does not reference the origin type `O` in its signature
@@ -1474,13 +1483,13 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 	/** Narrowing of the `Mapping` trait to subtypes which define the `Subject` type as `S`. */
-	type MappingOf[S] = Mapping { type Subject = S }
+	type MappingOf[S] = Mapping { type Subject = S } //todo: rename to MappingFor
 
 	/** Narrowing of the `Mapping` trait to subtypes which define the `Origin` type as `O`.
 	  * While mapping types are expected to have the `Origin` as a free type parameter, conversion from one
 	  * origin type to another may require more
 	  */ //todo: at is not the proper preposition associated with 'Origin', but 'of' would be misleading. Rename Origin to ...? Lineage, sphere, family, line
-	type MappingAt[O] = Mapping { type Origin = O }
+	type MappingAt[O] = Mapping { type Origin = O } //MappingFrom/ComponentOf
 
 	/** Narrowing of the `Mapping` trait to subtypes which define the `Subject` type as `S` and `Origin` as `O`. */
 	type RefinedMapping[S, O] = Mapping { type Subject = S; type Origin = O }
@@ -1503,6 +1512,14 @@ object Mapping extends LowPriorityMappingImplicits {
 		type Origin = M#Origin
 		type Subject = M#Subject
 	}
+
+	/** A curried definition of [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]]`[S, O]`,
+	  * containing a single type constructor `P[O] = RefinedMapping[S, O]`. Similar types are defined
+	  * in companion objects of various `Mapping` subtypes, allowing their use as type parameters to classes/methods
+	  * which require the definition of a mapping accepting its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]]
+	  * type.
+	  */
+	type Of[S] = { type P[O] = RefinedMapping[S, O] }
 
 
 

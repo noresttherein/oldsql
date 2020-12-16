@@ -5,16 +5,17 @@ import net.noresttherein.oldsql.collection.Chain.ChainApplication
 import net.noresttherein.oldsql.schema.{ColumnMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.ParamQuery.{ParamCompoundSelect, ParamCompoundSelectMapping, ParamMappingQuery}
 import net.noresttherein.oldsql.sql.ParamSelect.ArbitraryParamSelect
-import net.noresttherein.oldsql.sql.RowProduct.{GroundFrom, TopFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SelectAPI.{QueryTemplate, SelectTemplate, SetOperator}
-import net.noresttherein.oldsql.sql.SQLExpression.LocalScope
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, QuerySQL, SelectSQL, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, CompoundSelectColumn, CompoundSelectColumnMapping, CompoundSelectMapping, CompoundSelectSQL, MappingQuery}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.IndexedSQLExpression
+import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedColumn, IndexedSQLExpression}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectMapping, TopSelectAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
@@ -97,6 +98,7 @@ object SelectAPI {
 
 		protected def component[O] :ResultMapping[O]
 		protected def export[O] :RefinedMapping[ResultMapping[O]#Subject, O] //= component[O]
+
 
 		def map[X](f :V => X) :S[X]
 
@@ -366,22 +368,27 @@ trait ParamSelect[P, V] extends SelectAPI[RowProduct, V] with SelectTemplate[V, 
 object ParamSelect {
 	//todo: mapping indexed headers
 
-	def apply[P <: Chain, F <: TopFrom { type Params = P }, M[A] <: BaseMapping[V, A], V]
-	         (from :F, header :ComponentSQL[F, M]) :ParamSelectMapping[P, F, M, V] =
-		new ParamSelectComponent[P, F, M, V](from, header)
+	def apply[F <: TopFrom, M[A] <: BaseMapping[V, A], V]
+	         (from :F, header :ComponentSQL[F, M]) :ParamSelectAs[from.Params, M] =
+		new ParamSelectComponent[from.Params, from.type, M, V](from, header)
+
+	def apply[P <: Chain, F <: TopFrom { type Params = P }, X, Y]
+	         (from :F, header :ConversionSQL[F, LocalScope, X, Y]) :ParamSelect[P, Y] =
+		new ArbitraryParamSelect[P, F, Y](from, header.anchor(from))
 
 	def apply[P <: Chain, F <: TopFrom { type Params = P }, V]
 	         (from :F, header :TupleSQL[F, LocalScope, V]) :ParamSelect[P, V] =
 		new ArbitraryParamSelect[P, F, V](from, header.anchor(from))
 
 	def apply[P <: Chain, F <: TopFrom { type Params = P }, V <: IndexedChain]
-	         (from :F, header :IndexedChainTuple[F, LocalScope, V])
-			:ParamSelectAs[P, IndexedMapping.Of[V]#Projection] =
+	         (from :F, header :IndexedChainTuple[F, LocalScope, V]) :ParamSelectAs[P, IndexedMapping.Of[V]#Projection] =
 		new ParamIndexedSelect(from, header)
 
-	def apply[P <: Chain, F <: TopFrom { type Params = P }, X, Y]
-	         (from :F, header :ConversionSQL[F, LocalScope, X, Y]) :ParamSelect[P, Y] =
-		new ArbitraryParamSelect[P, F, Y](from, header.anchor(from))
+	def apply[F <: TopFrom, A <: Label, V](from :F, header :IndexedColumn[F, LocalScope, A, V])
+			:ParamSelectAs[from.Params, IndexedMapping.Of[V]#Column] =
+		new ParamIndexedColumnSelect[from.Params, from.type, A, V](
+			from, IndexedColumnSQLMapping[F, LocalScope, A, V, ()](header.anchor(from))
+		)
 
 	def apply[P <: Chain, F <: TopFrom { type Params = P }, V]
 	         (from :F, header :ColumnSQL[F, LocalScope, V]) :ParamSelect[P, V] =
@@ -394,9 +401,7 @@ object ParamSelect {
 
 
 	/** A `SelectSQL` interface exposing the mapping type `H` used for the ''select'' clause. */
-	trait ParamSelectAs[P, H[A] <: MappingAt[A]]
-		extends ParamSelect[P, H[()]#Subject]
-	{
+	trait ParamSelectAs[P, H[A] <: MappingAt[A]] extends ParamSelect[P, H[()]#Subject] {
 		override type ResultMapping[O] = H[O]
 
 		override def distinct :ParamSelectAs[P, H]
@@ -546,6 +551,30 @@ object ParamSelect {
 			val paramless = from.bind(params).asInstanceOf[GroundFrom]
 			val header = SQLScribe.applyParams(from, paramless)(params)(selectClause)
 				.asInstanceOf[IndexedChainTuple[GroundFrom, LocalScope, V]]
+			val select = header.topSelectFrom(paramless)
+			if (isDistinct) select.distinct else select
+		}
+	}
+
+	private[sql] class ParamIndexedColumnSelect[P, F <: TopFrom { type Params = P }, A <: Label, V]
+	                   (override val from :F, override val mapping :IndexedColumnSQLMapping[F, LocalScope, A, V, ()],
+	                    override val isDistinct :Boolean = false)
+		extends BaseArbitraryParamSelect[P, F, V](from, mapping)
+		   with ArbitraryParamSelectTemplate[P, F, IndexedMapping.Of[V]#Column, V]
+		   with ParamSelectAs[P, IndexedMapping.Of[V]#Column]
+	{
+//		def this(from :F, selectClause :IndexedColumn[F, LocalScope, A, V]) =
+//			this(from, IndexedColumnSQLMapping[F, LocalScope, A, V, ()](selectClause))
+
+		override val selectClause = mapping.expr
+
+		override def distinct :ParamSelectAs[P, IndexedMapping.Of[V]#Column] =
+			if (isDistinct) this else new ParamIndexedColumnSelect[P, F, A, V](from, mapping, true)
+
+		override def bind(params :P) :TopSelectAs[IndexedMapping.Of[V]#Column] = {
+			val paramless = from.bind(params).asInstanceOf[GroundFrom]
+			val header = SQLScribe.applyParams(from, paramless)(params)(selectClause)
+				.asInstanceOf[IndexedColumn[GroundFrom, LocalScope, A, V]]
 			val select = header.topSelectFrom(paramless)
 			if (isDistinct) select.distinct else select
 		}

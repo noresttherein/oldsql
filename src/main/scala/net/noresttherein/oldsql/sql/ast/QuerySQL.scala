@@ -1,11 +1,10 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.{Chain, Unique}
-import net.noresttherein.oldsql.collection.Chain.ChainApplication
+import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, DerivedTable, Table}
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SelectAPI, SQLExpression}
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.SelectAPI.{Intersect, Minus, QueryTemplate, SetOperator, Union, UnionAll}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
@@ -17,6 +16,7 @@ import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompo
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.CaseCompoundSelect
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseSelect, CaseSelectColumn, CaseSelectMapping, SelectColumn, SelectColumnMappingMatcher, SelectColumnMatcher, SelectMappingMatcher, SelectMatcher}
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, PartOf}
 
 
 
@@ -58,6 +58,12 @@ trait QuerySQL[-F <: RowProduct, V]
 	def minus[E <: F](other :QuerySQL[E, V]) :QuerySQL[E, V] = Minus(this, other)
 	def intersect[E <: F](other :QuerySQL[E, V]) :QuerySQL[E, V] = Intersect(this, other)
 
+
+	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :QuerySQL[E, V]
+
+	override def extend[U <: F, E <: RowProduct]
+	                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :QuerySQL[E, V]
+
 //	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //	                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
 //		matcher.query(this)
@@ -69,8 +75,11 @@ trait QuerySQL[-F <: RowProduct, V]
 
 
 sealed abstract class ImplicitQueryRelations {
-	implicit def arbitraryQueryRelation[V](query :QuerySQL[RowProduct, V]) :Table[MappingOf[V]#Projection] =
-		QueryRelation[query.ResultMapping, V](query).asInstanceOf[Table[MappingOf[V]#Projection]]
+	//we can't have a single implicit into Table[query.ResultMapping] and we need these casts as, above all,
+	//  we need to preserve the value type of the query as the subject type, and bound MappingAt does not specify it.
+	//todo: replace typedprojection with projection once we get rid of referernces to BaseMapping in API
+	implicit def arbitraryQueryRelation[V](query :QuerySQL[RowProduct, V]) :Table[MappingOf[V]#TypedProjection] =
+		QueryRelation[query.ResultMapping, V](query).asInstanceOf[Table[MappingOf[V]#TypedProjection]]
 
 	implicit def singleColumnRelation[V](query :ColumnQuery[RowProduct, V]) :Table[MappingOf[V]#ColumnProjection] =
 		QueryRelation[query.ResultMapping, V](query)
@@ -137,6 +146,7 @@ object QuerySQL extends ImplicitQueryRelations {
 	{
 		def toRelation :Table[M] = QueryRelation[M, V](self)
 		def toTable :Table[M] = QueryRelation[M, V](self)
+//		def as[A <: Label](alias :A) :With[M] As A = With(alias, this) //todo: With for MappingQuery
 	}
 
 
@@ -147,14 +157,9 @@ object QuerySQL extends ImplicitQueryRelations {
 
 	def QueryRelation[M[O] <: MappingAt[O], V](query :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
 			:QueryRelation[M] =
-	{
-		val q = query
-		new QueryRelation[M] { val query = q }
-	}
+		{ val q = query; new QueryRelation[M] { val query = q } }
 
-	trait QueryRelation[M[O] <: MappingAt[O]]
-		extends DerivedTable[M]
-	{ outer =>
+	trait QueryRelation[M[O] <: MappingAt[O]] extends DerivedTable[M] { outer =>
 		val query :QuerySQL[RowProduct, _] { type ResultMapping[O] = M[O] }
 
 		override def apply[O] :M[O] = query.component[O]
@@ -183,6 +188,15 @@ object QuerySQL extends ImplicitQueryRelations {
 
 
 
+	type * = QuerySQL[_ <: RowProduct, _]
+
+	type GroundQuery[V] = QuerySQL[RowProduct, V]
+	type GroundColumnQuery[V] = ColumnQuery[RowProduct, V]
+	type GroundMappingQuery[H[A] <: MappingAt[A]] = MappingQuery[RowProduct, H]
+	type GroundColumnMappingQuery[H[A] <: ColumnMapping[V, A], V] = ColumnMappingQuery[RowProduct, H, V]
+
+
+
 	/** An SQL query, that is an SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn select]] or
 	  * a [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn compound select]] on them, which returns
 	  * a single column.
@@ -199,6 +213,11 @@ object QuerySQL extends ImplicitQueryRelations {
 		def unionAll[E <: F](other :ColumnQuery[E, V]) :ColumnQuery[E, V] = UnionAll(this, other)
 		def minus[E <: F](other :ColumnQuery[E, V]) :ColumnQuery[E, V] = Minus(this, other)
 		def intersect[E <: F](other :ColumnQuery[E, V]) :ColumnQuery[E, V] = Intersect(this, other)
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnQuery[E, V]
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :ColumnQuery[E, V]
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
@@ -218,6 +237,11 @@ object QuerySQL extends ImplicitQueryRelations {
 		def minus[E <: F](other :MappingQuery[E, M]) :MappingQuery[E, M] = Minus(this, other)
 		def intersect[E <: F](other :MappingQuery[E, M]) :MappingQuery[E, M] = Intersect(this, other)
 
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :MappingQuery[E, M]
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :MappingQuery[E, M]
+
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[M[()]#Subject]] =
 //			matcher.mappingQuery(this)
@@ -235,6 +259,12 @@ object QuerySQL extends ImplicitQueryRelations {
 		def unionAll[E <: F](other :ColumnMappingQuery[E, M, V]) :ColumnMappingQuery[E, M, V] = UnionAll(this, other)
 		def minus[E <: F](other :ColumnMappingQuery[E, M, V]) :ColumnMappingQuery[E, M, V] = Minus(this, other)
 		def intersect[E <: F](other :ColumnMappingQuery[E, M, V]) :ColumnMappingQuery[E, M, V] = Intersect(this, other)
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnMappingQuery[E, M, V]
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+				:ColumnMappingQuery[E, M, V]
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
@@ -262,7 +292,7 @@ object QuerySQL extends ImplicitQueryRelations {
 
 		override def map[X](f :V => X) :QuerySQL[F, X] = CompoundSelectSQL(left.map(f), operator, right.map(f))
 
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :SQLExpression[E, GlobalScope, Rows[V]] =
+		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :CompoundSelectSQL[E, V] =
 			(mapper(left), mapper(right)) match {
 				case (l :QuerySQL[E @unchecked, V @unchecked], r :QuerySQL[E @unchecked, V @unchecked]) =>
 					CompoundSelectSQL(l, operator, r)
@@ -270,6 +300,19 @@ object QuerySQL extends ImplicitQueryRelations {
 					throw new IllegalArgumentException(
 						s"Failed $mapper transformation of $this: ($l, $r) is not a valid QuerySQL pair."
 					)
+			}
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :QuerySQL[E, V] =
+			(left.basedOn(base), right.basedOn(base)) match {
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[QuerySQL[E, V]]
+				case (l, r) => operator(l, r)
+			}
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :QuerySQL[E, V] =
+			(left.extend(base), right.extend(base)) match {
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[QuerySQL[E, V]]
+				case (l, r) => operator(l, r)
 			}
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
@@ -366,7 +409,7 @@ object QuerySQL extends ImplicitQueryRelations {
 
 		override def map[X](f :V => X) :ColumnQuery[F, X] = CompoundSelectColumn(left.map(f), operator, right.map(f))
 
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, GlobalScope, Rows[V]] =
+		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :CompoundSelectColumn[E, V] =
 			(mapper(left), mapper(right)) match {
 				case (l :ColumnQuery[E @unchecked, V @unchecked], r :ColumnQuery[E @unchecked, V @unchecked]) =>
 					CompoundSelectColumn(l, operator, r)
@@ -375,6 +418,20 @@ object QuerySQL extends ImplicitQueryRelations {
 						s"Failed $mapper transformation of $this: ($l, $r) is not a valid ColumnQuery pair."
 					)
 			}
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnQuery[E, V] =
+			(left.basedOn(base), right.basedOn(base)) match {
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[ColumnQuery[E, V]]
+				case (l, r) => operator(l, r)
+			}
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :ColumnQuery[E, V] =
+			(left.extend(base), right.extend(base)) match {
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[ColumnQuery[E, V]]
+				case (l, r) => operator(l, r)
+			}
+
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
@@ -446,7 +503,7 @@ object QuerySQL extends ImplicitQueryRelations {
 		protected override def component[O] = left.component
 		protected override def export[O] = left.export //todo: this should involve some reconciliation
 
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :SQLExpression[E, GlobalScope, Rows[M[()]#Subject]] =
+		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :CompoundSelectMapping[E, M] =
 			(mapper(left), mapper(right)) match {
 				case (l :MappingQuery[E @unchecked, M @unchecked], r :MappingQuery[E @unchecked, M @unchecked]) =>
 					CompoundSelectMapping(l, operator, r)
@@ -454,6 +511,19 @@ object QuerySQL extends ImplicitQueryRelations {
 					throw new IllegalArgumentException(
 						s"Failed $mapper transformation of $this: ($l, $r) is not a valid ColumnQuery pair."
 					)
+			}
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :MappingQuery[E, M] =
+			(left.basedOn(base), right.basedOn(base)) match {
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[MappingQuery[E, M]]
+				case (l, r) => operator(l, r)
+			}
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :MappingQuery[E, M] =
+			(left.extend(base), right.extend(base)) match {
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[MappingQuery[E, M]]
+				case (l, r) => operator(l, r)
 			}
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
@@ -515,7 +585,21 @@ object QuerySQL extends ImplicitQueryRelations {
 		override val left :ColumnMappingQuery[F, M, V]
 		override val right :ColumnMappingQuery[F, M, V]
 
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, GlobalScope, Rows[V]] =
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnMappingQuery[E, M, V] =
+			(left.basedOn(base), right.basedOn(base)) match {
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[ColumnMappingQuery[E, M, V]]
+				case (l, r) => operator(l, r)
+			}
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :ColumnMappingQuery[E, M, V] =
+			(left.extend(base), right.extend(base)) match {
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[ColumnMappingQuery[E, M, V]]
+				case (l, r) => operator(l, r)
+			}
+
+		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :CompoundSelectColumnMapping[E, M, V] =
 			(mapper(left), mapper(right)) match {
 				case (l :ColumnMappingQuery[E @unchecked, M @unchecked, V @unchecked],
 				      r :ColumnMappingQuery[E @unchecked, M @unchecked, V @unchecked]) =>

@@ -46,7 +46,9 @@ trait Relation[+M[O] <: MappingAt[O]] extends AbstractRelation with RelationTemp
 	//we can't have OriginProjection here as M[O] is not a BaseMapping[S, O] and it can't be because it's used in Joins
 
 	/** The mapping for this relation, with `Origin` type equal to `O`. This is the same as `apply[O]`, but can read
-	  * better if the origin type parameter `O` is omitted and inferred.
+	  * better if the origin type parameter `O` is omitted and inferred. Additionally, calling `apply[O]`
+	  * in the form shortened to `[O]` directly on the result of a no argument method can be reported as an error
+	  * by IDE.
 	  * @return `this[O]`.
 	  */
 	def row[O] :M[O] = apply[O]

@@ -46,6 +46,8 @@ object LabeledMapping {
 	/** A base trait for labeled columns. */
 	trait LabeledColumn[N <: Label, S, O] extends ColumnMapping[S, O] with LabeledMapping[N, S, O]
 
+	type Of[S] = { type As[N <: Label] = { type P[O] = LabeledMapping[N, S, O] } }
+
 	def LabeledColumn[N <: Label, S, O](label :N, column :ColumnMapping[S, O]) :N @: ColumnMapping[S, O] =
 		new ColumnLabel[N, S, O](column)(new ValueOf[N](label))
 

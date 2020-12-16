@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.collection.Chain.@~
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
@@ -18,6 +18,7 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 
 
 
@@ -65,6 +66,7 @@ trait AndFrom[+L <: RowProduct, R[O] <: MappingAt[O]]
 		type Last[O <: RowProduct] = thisClause.Last[O]
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Implicit = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
@@ -76,6 +78,7 @@ trait AndFrom[+L <: RowProduct, R[O] <: MappingAt[O]]
 		type Last[O <: RowProduct] = thisClause.Last[O]
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
@@ -275,6 +278,13 @@ trait NonParam[+L <: RowProduct, R[O] <: MappingAt[O]] extends AndFrom[L, R] wit
 
 	override type Last[O <: RowProduct] = JoinedTable[O, R]
 
+	override val last :JoinedTable[RowProduct AndFrom R, R]
+	override def right :Table[R] = last.table
+
+	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :JoinedTable[E, R] =
+		last.asIn[E]
+
+
 	override type Generalized >: Dealiased <: (left.Generalized NonParam R) {
 		type Generalized <: thisClause.Generalized
 		type Explicit <: thisClause.Explicit
@@ -310,6 +320,18 @@ trait NonParam[+L <: RowProduct, R[O] <: MappingAt[O]] extends AndFrom[L, R] wit
 //	             (table :LastTable[T, S])(filter :GlobalBoolean[GeneralizedRight[T]]) :WithRight[T]
 
 	protected override def narrow :left.type NonParam R
+
+
+	override type FullRow = left.FullRow ~ last.Subject
+
+	override def fullRow[E <: RowProduct]
+	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
+		left.fullRow(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
+
+
+	override type DefineBase[+I <: RowProduct] = I
+	override def base :Base = outer
+
 }
 
 
@@ -417,10 +439,12 @@ sealed trait From[T[O] <: MappingAt[O]]
 	override type Implicit = RowProduct
 	override type Outer = Dual
 	override type Base = RowProduct
-	override type DefineBase[+I <: RowProduct] = I
 
-	override def base :Dual = left
+	override type Row = @~ ~ last.Subject
 
+	override def row[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+			:ChainTuple[E, GlobalScope, Row] =
+		ChainTuple.EmptyChain ~ last.extend(target)
 
 	override type AsSubselectOf[+F <: NonEmptyFrom] <: F Subselect T
 
@@ -497,9 +521,7 @@ object From {
 	                       (dual :Dual, relation :LastTable[T, S], asOpt :Option[A],
 	                        cond :GlobalBoolean[RowProduct NonParam T])
 			:EmptyJoin[dual.type, T] As A =
-		new EmptyJoin[dual.type, T]
-			with AbstractExtended[dual.type, T, S]
-		{
+		new EmptyJoin[dual.type, T] with AbstractExtended[dual.type, T, S] {
 			override val left :dual.type = dual
 			override val last = relation
 			override val aliasOpt = asOpt

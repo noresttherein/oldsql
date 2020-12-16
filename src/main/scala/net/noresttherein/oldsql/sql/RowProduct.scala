@@ -350,7 +350,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	type FilterNext[E[+L <: FromSome] <: L Extended N, S <: RowProduct Extended N, G <: S, N[O] <: MappingAt[O]] <:
 		           (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => GlobalBoolean[G]
 
-	/** The implementation method to which [[net.noresttherein.oldsql.sql.AndFrom.on on]] delegates. */
+	/** The implementation method to which [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]] delegates. */
 	protected def filterNext[F <: RowProduct AndFrom N, N[O] <: MappingAt[O]]
 	              (next :F)(filter :FilterNext[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) :next.Copy
 
@@ -504,12 +504,13 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	@inline final def fullSuffix :Dual PrefixOf Self = new PrefixOf(fullSize)
 
 
-	/** Subject types of the mappings of all relations in this clause, concatenated into a heterogeneous list.
-	  * The [[net.noresttherein.oldsql.collection.Chain chain]] contains the mapped types in the same order
-	  * as their mappings appear in this type's definition and is, like [[net.noresttherein.oldsql.sql.Compound Compound]]
-	  * (and all [[net.noresttherein.oldsql.sql.Join Join]] kinds), but unlike `::`, left associative.
-	  * Clauses with a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] component are treated specially:
-	  * any mappings preceding the `GroupBy` extension class since the last
+	/** Subject types of the mappings of all relations in this clause, excluding unbound parameters (synthetic relations
+	  * joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins), concatenated into
+	  * a heterogeneous list. The [[net.noresttherein.oldsql.collection.Chain chain]] contains the mapped types
+	  * in the same order as their mappings appear in this type's definition and is,
+	  * like [[net.noresttherein.oldsql.sql.Compound Compound]] (and all [[net.noresttherein.oldsql.sql.Join Join]]
+	  * kinds), but unlike `::`, left associative. Clauses with a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]
+	  * component are treated specially: any mappings preceding the `GroupBy` extension class since the last
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] or the start of the clause are omitted from the chain
 	  * as being under the ''group by'' clause.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.fullRow]]
@@ -518,8 +519,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	type FullRow <: Chain
 
 	/** Create an SQL tuple expression containing `JoinedRelation` expressions for all relations available
-	  * in this clause in their order of appearance. All mappings occurring between a
-	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]]
+	  * in this clause in their order of appearance, excluding unbound parameters
+	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins).
+	  * All mappings occurring between a [[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * (or [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]) until the next
 	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]], if present, are considered unavailable. The omitted
 	  * segment constitutes the ''from'' clause of a single select expression with a ''group by'' clause, meaning
@@ -540,8 +542,6 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 	/** All relations in this clause as abstract, untyped mappings, in the reverse order of their appearance.
 	  * Any relations in the scope of a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] clause are excluded.
-	  * For the idea about what exact relations are included in the result see
-	  * the [[net.noresttherein.oldsql.sql.RowProduct.FullRow FullRow]] type, which should be consistent with this method.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.fullRow]]
 	  */
 	def fullTableStack :LazyList[RelationSQL.AnyIn[Generalized]] = fullTableStack(generalized)
@@ -882,14 +882,15 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 
 
-	/** Subject types of all mappings in this clause following the `Implicit` prefix, concatenated into
-	  * a [[net.noresttherein.oldsql.collection.Chain Chain]]. This amounts to the list of mappings from
-	  * all the relations from the ''from'' clause of the most deeply nested subselect or, if this is a ''group by''
+	/** Subject types of all mappings in this clause, following the `Implicit` prefix and excluding unbound parameters
+	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins),
+	  * concatenated into a [[net.noresttherein.oldsql.collection.Chain Chain]]. This amounts to the list of mappings
+	  * from all the relations from the ''from'' clause of the most deeply nested subselect or, if this is a ''group by''
 	  * clause, all mappings to the right of the last `GroupBy` appended by it or `By`. This way the chain
 	  * contains all mappings which are available to the ''select'' clause created from this instance.
 	  * If this clause doesn't represent a subselect, but a top-level query, it is the same as `FullRow`.
 	  * The chain contains the mapped types in the same order as their mappings appear in this type's definition and is,
-	  * like `AndFrom` (but unlike `::`), left associative.
+	  * like `Extended` (but unlike `::`), left associative.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.row]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Implicit]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.FullRow]]
@@ -897,11 +898,12 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	type Row <: Chain
 
 	/** Create an SQL tuple expression containing [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]]
-	  * expressions for all joined relations in the most deeply nested subselect, in their order of appearance.
-	  * This includes all relations in this clause following the most recent `Subselect` or `GroupBy` 'join',
-	  * marking the first not grouped relation following the `Implicit` clause prefix. It represents the complete
-	  * data set available to the ''select'' clause with the exception of potential grouped relations available only
-	  * to aggregate functions.
+	  * expressions for all joined relations in the most deeply nested subselect, excluding unbound parameters
+	  * * (synthetic relations joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins),
+	  * in their order of appearance. This includes all relations in this clause following the most recent `Subselect`
+	  * or `GroupBy` 'join', marking the first not grouped relation following the `Implicit` clause prefix.
+	  * It represents the complete data set available to the ''select'' clause with the exception of potential
+	  * grouped relations available only to aggregate functions.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.fullRow]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Explicit]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Implicit]]
@@ -925,9 +927,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * It is the one joined with the last `Subselect` 'join', unless it is followed (possibly indirectly) by a `GroupBy`
 	  * clause (before any other `Subselect`), in which case the last relation is the one for the component following
 	  * `GroupBy`. If this is not a subselect clause (no `Subselect` 'joins' are present in this clause
-	  * and `Implicit =:= RowProduct`), all not grouped relations are included. For the idea about what exact relations
-	  * are included in the result, see the [[net.noresttherein.oldsql.sql.RowProduct.Row Row]] type,
-	  * which should be consistent with this method.
+	  * and `Implicit =:= RowProduct`), all not grouped relations are included.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.row]]
 	  */
 	def tableStack :LazyList[RelationSQL.AnyIn[Generalized]] = tableStack(generalized)
@@ -958,9 +958,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  */ //this type is needed to implement FullRow in GroupBy so that Self preserves it, as it does not outer.type
 	type OuterRow <: Chain
 
-	/** Create an SQL tuple expression containing all `JoinedRelation` expressions from the outer, ''implicit''
-	  * section of this clause, that is all elements until the rightmost `Subselect` join, in their order of appearance.
-	  * If this is not a subselect clause, the chain will be empty.
+	/** Create an SQL tuple expression containing all non-parameter `JoinedRelation` expressions from the outer,
+	  * ''implicit'' section of this clause, that is all elements until the rightmost `Subselect` join, in their order
+	  * of appearance. If this is not a subselect clause, the chain will be empty.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Explicit]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Implicit]]
 	  */
@@ -1338,7 +1338,7 @@ object RowProduct {
 		/** A variant of [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]] with the return type
 		  * using the member type `Copy <: F` used in its implementation. It should be used only for values of
 		  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom NonEmptyFrom]] (without a proper upper bound),
-		  * if the value of `JoinFilter` is supplied from the context where this type is known. In almost all cases,
+		  * if the definition of `JoinFilter` is supplied from the context where this type is known. In almost all cases,
 		  * `on` should be preferred, as it provides better type inference and works better with implicits.
 		  */
 		def filtered(condition :JoinFilter) :Copy
@@ -2104,7 +2104,7 @@ object RowProduct {
 	  * an `SQLExpression[O, GlobalScope, M#Subject]`, so the components of the root mapping can be used directly
 	  * inside SQL expressions. The greatest lower bound of all such `Origin` types is `this.Generalized`,
 	  * which makes all SQL expressions based on them be upper bound by `SQLExpression[Generalized, GlobalScope, _]`.
-	  */
+	  */ //todo: implicitNotFound on all implicit parameters will be very helpful
 	implicit class JoinedMappings[+F <: RowProduct]
 	                             /** The `RowProduct` with the accessed relations. Note that inside factory methods
 	                               * for `F` it might not be fully initialized - in that case only the `left`
@@ -2293,6 +2293,8 @@ object RowProduct {
 				:thisClause.FromSubselect[R] =
 			thisClause.fromSubselect(other)
 
+
+		override def toString :String = thisClause.toString
 	}
 
 
@@ -2492,6 +2494,8 @@ object RowProduct {
 				:thisClause.FromSubselect[R] =
 			thisClause.fromSubselect(other)
 
+
+		override def toString :String = thisClause.toString
 	}
 
 
@@ -2641,6 +2645,8 @@ object RowProduct {
 			new PartOf(diff)
 
 		//todo: aggregates
+
+		override def toString :String = diff.toString + " tables"
 	}
 
 
@@ -2751,6 +2757,7 @@ object RowProduct {
 			new ExtendedBy(length)
 		//todo: aggregates
 
+		override def toString :String = length.toString + " tables"
 	}
 
 
@@ -2845,6 +2852,7 @@ object RowProduct {
 		/** A transitive proof that `F PrefixOf D[E]` for any ''from'' clause decorator (with no change in length). */
 		@inline def wrap[D[B >: E <: E] <: ExtendingDecorator[B]] :F PrefixOf D[E] = new PrefixOf[F, D[E]](diff)
 
+		override def toString :String = diff.toString + " tables"
 	}
 
 

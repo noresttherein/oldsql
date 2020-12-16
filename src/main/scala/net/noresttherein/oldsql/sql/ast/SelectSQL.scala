@@ -315,6 +315,11 @@ object SelectSQL {
 
 		override def asGlobal :Option[SelectAs[F, H]] = Some(this)
 
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SelectAs[E, H]
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :SelectAs[E, H]
+
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[H[Any]#Subject]] =
 //			matcher.selectMapping(this)
@@ -328,6 +333,11 @@ object SelectSQL {
 
 		override def asGlobal :Option[SelectColumnAs[F, H, V]] = Some(this)
 
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SelectColumnAs[E, H, V]
+
+		override def extend[U <: F, E <: RowProduct]
+		             (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :SelectColumnAs[E, H, V]
+
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
 //			matcher.selectMapping(this)
@@ -338,6 +348,13 @@ object SelectSQL {
 	trait TopSelectAs[H[A] <: MappingAt[A]] extends TopSelectSQL[H[()]#Subject] with SelectAs[RowProduct, H] {
 		override def distinct :TopSelectAs[H]
 		override def asGlobal :Option[TopSelectAs[H]] = Some(this)
+
+		override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit ext :U PartOf E) :TopSelectAs[H] =
+			this
+
+		override def extend[U <: RowProduct, S <: RowProduct]
+		             (base :S)(implicit ev :U ExtendedBy S, global :GlobalScope <:< GlobalScope) :TopSelectAs[H] =
+			this
 	}
 
 	trait TopSelectColumnAs[H[A] <: ColumnMapping[V, A], V]
@@ -345,6 +362,14 @@ object SelectSQL {
 	{
 		override def distinct :TopSelectColumnAs[H, V]
 		override def asGlobal :Option[TopSelectColumnAs[H, V]] = Some(this)
+
+		override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit ext :U PartOf E) :TopSelectColumnAs[H, V] =
+			this
+
+		override def extend[U <: RowProduct, S <: RowProduct]
+		                   (base :S)(implicit ev :U ExtendedBy S, global :GlobalScope <:< GlobalScope)
+				:TopSelectColumnAs[H, V] =
+			this
 	}
 
 
@@ -353,6 +378,13 @@ object SelectSQL {
 	{
 		override def distinct :SubselectAs[F, H]
 		override def asGlobal :Option[SubselectAs[F, H]] = Some(this)
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SubselectAs[E, H] =
+			extend(base)(ext.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit extension :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+				:SubselectAs[E, H]
 	}
 
 	trait SubselectColumnAs[-F <: RowProduct, H[A] <: ColumnMapping[V, A], V]
@@ -360,6 +392,13 @@ object SelectSQL {
 	{
 		override def distinct :SubselectColumnAs[F, H, V]
 		override def asGlobal :Option[SubselectColumnAs[F, H, V]] = Some(this)
+
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SubselectColumnAs[E, H, V] =
+			extend(base)(ext.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
+
+		override def extend[U <: F, E <: RowProduct]
+		                   (base :E)(implicit extension :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+				:SubselectColumnAs[E, H, V]
 	}
 
 
@@ -457,7 +496,7 @@ object SelectSQL {
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
-				:SubselectSQL[E, V] =
+				:SubselectAs[E, H] =
 			from match { //would be safer to refactor this out as a RowProduct method
 				case some :NonEmptyFrom =>
 					type Ext = SubselectOf[E] //pretend this is the actual type S after rebasing to the extension clause G
@@ -506,7 +545,7 @@ object SelectSQL {
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
-				:SubselectColumn[E, V] =
+				:SubselectColumnAs[E, H, V] =
 			from match { //would be safer to refactor this out as a RowProduct method
 				case some :NonEmptyFrom => //todo: refactor this together with SubselectComponent; if S <: NonEmptyFrom, than the casting could conceivably by omitted
 					type Ext = SubselectOf[E] //pretend this is the actual type S after rebasing to the extension clause G
@@ -718,7 +757,7 @@ object SelectSQL {
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
-				:SubselectSQL[E, V] =
+				:SubselectAs[E, IndexedMapping.Of[V]#Projection] =
 			from match { //would be safer to refactor this out as a RowProduct method
 				case some :NonEmptyFrom =>
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
@@ -777,7 +816,7 @@ object SelectSQL {
 
 		override def extend[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
-				:SubselectColumn[E, V] =
+				:SubselectColumnAs[E, IndexedMapping.Of[V]#Column, V] =
 			from match {
 				case some :FromSome =>
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }

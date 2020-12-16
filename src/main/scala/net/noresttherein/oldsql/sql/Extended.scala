@@ -188,7 +188,8 @@ trait Compound[+L <: RowProduct, R[O] <: MappingAt[O]]
 	def name :String
 
 	override def toString :String =
-		left.toString + " " + name + " " + right + (if (condition == True) "" else " on " + condition)
+		left.toString + " " + name + " " + right +
+			(if (aliasOpt.isEmpty) "" else " as " + alias) + (if (condition == True) "" else " on " + condition)
 
 }
 
@@ -369,6 +370,7 @@ trait Extended[+L <: RowProduct, R[O] <: MappingAt[O]]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Implicit = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
@@ -381,6 +383,7 @@ trait Extended[+L <: RowProduct, R[O] <: MappingAt[O]]
 		type FromLast = thisClause.FromLast
 		type Generalized = thisClause.Generalized
 		type Params = thisClause.Params
+		type FullRow = thisClause.FullRow
 		type Explicit = thisClause.Explicit
 		type Inner = thisClause.Inner
 		type Implicit = thisClause.Implicit
@@ -394,14 +397,6 @@ trait Extended[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  * using member types of `RowProduct`, as they become proper path types instead of projections.
 	  */
 	protected def narrow :left.type Extended R
-
-
-	override type FullRow = left.FullRow ~ last.Subject
-
-	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		left.fullRow(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
-
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Extended.*]
@@ -469,7 +464,7 @@ object Extended {
 	  * to conform to either it, or the `Subselect`, with no provision for other cases. Note that this holds only
 	  * for `Extended` subtypes, and there are other clauses, in particular
 	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]], which are neither.
-	  */
+	  */ //todo: update docs with usage once With is fully incorporated
 	trait NonSubselect[+L <: RowProduct, R[O] <: MappingAt[O]]
 		extends Extended[L, R] with NonEmptyFromTemplate[L NonSubselect R, L NonSubselect R]
 	{ thisClause =>
@@ -477,12 +472,6 @@ object Extended {
 
 		override type Implicit = left.Implicit
 		override type Outer = left.Outer
-
-		override type Row = left.Row ~ last.Subject
-
-		override def row[E <: RowProduct]
-		             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
-			left.row(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
 
 		override type OuterRow = left.OuterRow
 
