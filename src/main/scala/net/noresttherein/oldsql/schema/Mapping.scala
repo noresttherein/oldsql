@@ -511,6 +511,7 @@ trait Mapping {
 	  * for the given component. Default implementation performs lookup in
 	  * [[net.noresttherein.oldsql.schema.Mapping.extracts extracts]], but if no extract is found
 	  * and `component eq this` than an identity extract is created as needed.
+	  * Overrides should keep this contract.
 	  * @throws NoSuchElementException if `component` is not a subcomponent of this mapping.
 	  */
 	def apply[T](component :Component[T]) :Extract[T] =

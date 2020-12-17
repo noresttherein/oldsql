@@ -11,14 +11,15 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByLabel, ByParamIndex, ByParamName, ByParamType, BySubject, ByType}
-import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
-import net.noresttherein.oldsql.sql.DecoratedFrom.ExtendingDecorator
-import net.noresttherein.oldsql.sql.Extended.NonSubselect
+import net.noresttherein.oldsql.sql.DecoratedFrom.ExpandingDecorator
+import net.noresttherein.oldsql.sql.Expanded.NonSubselect
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL
@@ -52,17 +53,17 @@ import net.noresttherein.oldsql.slang._
   * {{{}}}
   * The mappings taking part in the query are encoded in the static type of the standard implementation, which
   * builds both the instance and its type by recursively applying various
-  * [[net.noresttherein.oldsql.sql.Compound Compound]] subtypes to a shorter clause, extending it by another relation.
+  * [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] subtypes to a shorter clause, expanding it by another relation.
   * In that aspect it is quite similar to general purpose polymorphic tuples or heterogeneous lists such as
   * the ''shapeless'' `HList` and [[net.noresttherein.oldsql.collection.Chain Chain]], replacing its wider functionality
   * with specific application to this task. Just as a `HList` - and all other two-argument type constructors -
   * it can be and is better written using the infix notation: `Dual Join Rangers Join Familiars Join Monsters`.
-  * Note that the whole `Compound` class hierarchy is left-associative for a more natural left to right reading and writing.
+  * Note that the whole `Adjoin` class hierarchy is left-associative for a more natural left to right reading and writing.
   * Specialized classes for all join kinds exist, as well as special variants for ''from'' clauses of subselects
   * of some outer clause and unbound query parameters. A ''group by'' clause is also represented under this type,
   * with all subtypes having to extend either [[net.noresttherein.oldsql.sql.FromClause FromClause]] or
   * [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]], the latter tree containing in particular
-  * the [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] type. Other implementations, not derived from `Compound`
+  * the [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] type. Other implementations, not derived from `Adjoin`
   * are also possible, in particular decorators extending [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]]
   * which introduce no new relations, but can add other features. As subtypes are also universally covariant
   * regarding their `RowProduct` type parameters, any prefix can be always substituted with the abstract superclass
@@ -115,7 +116,7 @@ import net.noresttherein.oldsql.slang._
   * {{{}}}
   * This trait is a bare bones common upper type, serving at the same time as a wildcard in type definitions meaning
   * 'an arbitrary number of other preceding relations not relevant in the circumstances at hand'. Most functionality
-  * is defined in the `Extended` and `AndFrom` subclasses, representing actual non-empty clauses. Some additional
+  * is defined in the `Expanded` and `AndFrom` subclasses, representing actual non-empty clauses. Some additional
   * generic methods however are made available through implicit conversions in order to benefit from the static self type:
   *   - from any `F <: RowProduct` to
   *     [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]]`[`F`]`,
@@ -144,14 +145,15 @@ import net.noresttherein.oldsql.slang._
   *
   * @see [[net.noresttherein.oldsql.sql.FromSome]] the base trait for all non-empty clauses
   *      (without a ''group by'' clause).
-  * @see [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] the 'link' type extending a preceding discrete clause
-  *      by another relation and the base trait for all join kinds.
+  * @see [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] the root of the type hierarchy of classes which add another
+  *      relation to some other clause.
+  * @see [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] the 'join' type expanding a preceding discrete clause
+  *      by another relation and the base trait for all SQL join kinds.
   * @see [[net.noresttherein.oldsql.sql.Dual Dual]] the standard empty clause used for ''select'' statements
   *      without a ''from'' clause (or 'select ... from Dual' in Oracle) as well as the terminator of non-empty
   *      relation lists.
   * @see [[net.noresttherein.oldsql.sql.From From]] The factory for clauses with a single relation which
   *      is the most common starting point for building larger clauses.
-  * @see [[net.noresttherein.oldsql.sql.JoinLike JoinLike]] The supertype for all join kinds as well as subselect clauses.
   * @see [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] the supertype of all ''from'' clauses
   *      with a ''group by'' clause.
   * @see [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] a ''group by'' clause under the interface
@@ -166,7 +168,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 	/** Type alias for the last relation in this list as seen from some `RowProduct` type `F` containing this instance
 	  * in it1s 'tail'. In other words, this projects the type of the last element of this clause to one based
-	  * on an extending clause. `JoinedRelation[F, LastMapping]` provides access to the `Mapping` for the relation
+	  * on an expanding clause. `JoinedRelation[F, LastMapping]` provides access to the `Mapping` for the relation
 	  * together with all its components and is an instance of `SQLExpression[F, GlobalScope, LastMapping[_]#Subject]`,
 	  * meaning it can be used as part of larger SQL expressions. Notably, `Dual`, containing no relations,
 	  * defines this type as `Nothing`.
@@ -198,7 +200,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  */
 	def last :Last[FromLast]
 
-	/** The last relation in this clause as an expression based on some extending clause `E`.
+	/** The last relation in this clause as an expression based on some expanding clause `E`.
 	  * For this particular purpose, if `E` contains this type as its prefix, but also
 	  * a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] clause following this relation,
 	  * and they are not separated by a [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join,
@@ -208,13 +210,13 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * `JoinedRelation[E, LastMapping]`. Thus it preserves the `Nothing` return type for empty clauses and allows
 	  * its use in the `on` filtering method.
 	  * @tparam E a `RowProduct` type which results from application of various `RowProduct` type constructors,
-	  *           in particular `Compound` implementations, to this type.
-	  * @param extension an implicit witness to the fact that clause of type `E` can by created by adding additional
-	  *                  links (`Compound` instances) to this clause and that this relation is available
+	  *           in particular `Adjoin` implementations, to this type.
+	  * @param expansion an implicit witness to the fact that clause of type `E` can by created by adding additional
+	  *                  links (`Adjoin` instances) to this clause and that this relation is available
 	  *                  to SQL expressions based on that clause.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf]]
 	  */
-	def lastAsIn[E <: FromSome](implicit extension :FromLast PrefixOf E) :Last[E]
+	def lastAsIn[E <: FromSome](implicit expansion :FromLast PrefixOf E) :Last[E]
 
 
 
@@ -318,24 +320,24 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 	/** The filter condition applied to all rows represented by this product relation. implicit and explicit relations of this clause.
 	  * For instances representing a true (ungrouped) ''from'' clause, it is the conjunction of any join
-	  * [[net.noresttherein.oldsql.sql.Compound.condition conditions]]
+	  * [[net.noresttherein.oldsql.sql.Adjoin.condition conditions]]
 	  * (`join ??? on (???)`) and the associated ''where'' clause of this subselect.
 	  */
 	def filter :LocalBoolean[Generalized] = filter(generalized)
 
 	/** The combined join conditions of all joins since the last `Subselect` or `GroupBy` join as a expression based
-	  * on an extending clause. Used by zero-argument `filter` to request the individual join conditions
+	  * on an expanding clause. Used by zero-argument `filter` to request the individual join conditions
 	  * as expressions based on the clause it was called for.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
-	def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E]
+	def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :LocalBoolean[E]
 
 
 	/** A boolean function of two relations - the `last` relation of this clause and another one for mapping `N` -.
 	  * Used by the [[net.noresttherein.oldsql.sql.AndFrom.on on]] method to provide a join condition between this
 	  * clause and another relation. It is always parameterized with the same set of type members of the filtered
 	  * relation: `next.GeneralizedLeft`, `next.FromLast`, `next.Generalized` and `next.LastMapping`.
-	  * For non-empty clauses and an extending join `next :_ AndFrom N`, this type essentially resolves to:
+	  * For non-empty clauses and an expanding join `next :_ AndFrom N`, this type essentially resolves to:
 	  * {{{
 	  *     (JoinedRelation[FromLast next.GeneralizedJoin N, LastMapping], JoinedRelation[next.FromLast, N])
 	  *         => SQLBoolean[next.Generalized]
@@ -347,7 +349,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * not conforming to `FromSome` it is also equivalent to `Nothing`, meaning no argument can be provided
 	  * and the `next.on` method cannot be called.
 	  */
-	type FilterNext[E[+L <: FromSome] <: L Extended N, S <: RowProduct Extended N, G <: S, N[O] <: MappingAt[O]] <:
+	type FilterNext[E[+L <: FromSome] <: L Expanded N, S <: RowProduct Expanded N, G <: S, N[O] <: MappingAt[O]] <:
 		           (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => GlobalBoolean[G]
 
 	/** The implementation method to which [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]] delegates. */
@@ -377,7 +379,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  */
 	type AppliedParam <: RowProduct
 
-	/** The type of this clause with all [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] extensions
+	/** The type of this clause with all [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] expansions
 	  * removed. It is the result type of method
 	  * [[net.noresttherein.oldsql.sql.RowProduct.bind(params:Params) bind]]`(`[[net.noresttherein.oldsql.sql.RowProduct.Params Params]]`)`,
 	  * which replaces all references to unbound parameters with [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]]
@@ -485,12 +487,12 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	/** The number of all available relations in this clause, implicitly or explicitly, that is `this.fullSize`,
 	  * as a witness to the fact that 'RowProduct' is the prefix clause of its `Generalized` type, with all its relations.
 	  */
-	@inline final def generalizedSpan :RowProduct ExtendedBy Generalized = new ExtendedBy(fullSize)
+	@inline final def generalizedSpan :RowProduct ExpandedBy Generalized = new ExpandedBy(fullSize)
 
 	/** The number of all available relations in this clause, implicitly or explicitly, that is `this.fullSize`,
 	  * as a witness to the fact that 'Dual' is the prefix clause of its `Self` type, with all its relations.
 	  */
-	@inline final def fullSpan :Dual ExtendedBy Self = new ExtendedBy(fullSize)
+	@inline final def fullSpan :Dual ExpandedBy Self = new ExpandedBy(fullSize)
 
 
 	/** The number of all relations available in this clause, implicitly or explicitly, that is `this.fullSize`,
@@ -508,7 +510,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins), concatenated into
 	  * a heterogeneous list. The [[net.noresttherein.oldsql.collection.Chain chain]] contains the mapped types
 	  * in the same order as their mappings appear in this type's definition and is,
-	  * like [[net.noresttherein.oldsql.sql.Compound Compound]] (and all [[net.noresttherein.oldsql.sql.Join Join]]
+	  * like [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] (and all [[net.noresttherein.oldsql.sql.Join Join]]
 	  * kinds), but unlike `::`, left associative. Clauses with a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]
 	  * component are treated specially: any mappings preceding the `GroupBy` extension class since the last
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] or the start of the clause are omitted from the chain
@@ -529,16 +531,16 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  */
 	def fullRow :ChainTuple[Generalized, GlobalScope, FullRow] = fullRow(generalized)
 
-	/** Create an SQL tuple expression, based on some extending clause `E`, containing `JoinedRelation` expressions
+	/** Create an SQL tuple expression, based on some expanding clause `E`, containing `JoinedRelation` expressions
 	  * for all joined elements in their order of appearance. It will contain entries for all mappings in this clause,
 	  * including parameter mappings and mappings listed in this clause's `Implicit` prefix (if this clause
 	  * is a subselect clause). This overloaded variant is used by the zero-argument `fullRow` to obtain
 	  * the chain prefix containing the relation formulas based on the final clause type from a prefix clause of a join,
 	  * without the need to adapt each relation once for every intermediate join.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
 	def fullRow[E <: RowProduct]
-	           (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow]
+	           (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow]
 
 	/** All relations in this clause as abstract, untyped mappings, in the reverse order of their appearance.
 	  * Any relations in the scope of a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] clause are excluded.
@@ -547,12 +549,12 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	def fullTableStack :LazyList[RelationSQL.AnyIn[Generalized]] = fullTableStack(generalized)
 
 	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance.
-	  * The `JoinedRelation`s are based on some extending clause `E`, so that the stack for a prefix clause
-	  * can be used as-is, with no need to map over it, by extending clause's zero argument `fullTableStack`.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * The `JoinedRelation`s are based on some expanding clause `E`, so that the stack for a prefix clause
+	  * can be used as-is, with no need to map over it, by expanding clause's zero argument `fullTableStack`.
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
 	def fullTableStack[E <: RowProduct]
-	                  (target :E)(implicit extension :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]]
+	                  (target :E)(implicit expansion :Generalized ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]]
 
 
 
@@ -767,7 +769,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  */ //not defined as DefineBase[Implicit] here because of a clash with SubselectOf refinement caused by a scala bug
 	type Base <: DefineBase[Implicit] //consider: renaming to Closure, Dependencies or Floor
 
-	/** A helper type used to define the type `Base`. Always parameterized with `Implicit`, all `Extended` subclasses
+	/** A helper type used to define the type `Base`. Always parameterized with `Implicit`, all `Expanded` subclasses
 	  * define it as equals to the argument `I`, except of `UnboundParam`, which defines it as `Nothing`.
 	  * This is better than defining `Base` directly, as it allows to propagate behavior of the explicit portion
 	  * (which determines whether `Base` will equal `Implicit` or `Nothing`) when rebasing it onto another
@@ -834,7 +836,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * This is the same value and relation as in [[net.noresttherein.oldsql.sql.RowProduct.innerSpan innerSpan]],
 	  * but expressed in terms of the generalized forms of this clause and its outer clause.
 	  */
-	@inline final def explicitSpan :Implicit ExtendedBy Generalized = new ExtendedBy(size)
+	@inline final def explicitSpan :Implicit ExpandedBy Generalized = new ExpandedBy(size)
 
 	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.size`,
 	  * as a witness to the fact that its 'Outer' type is the generalization of the prefix clause
@@ -843,7 +845,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * This is the same value and relation as in [[net.noresttherein.oldsql.sql.RowProduct.explicitSpan explicitSpan]],
 	  * but expressed in terms of the self types of this clause and its outer clause.
 	  */
-	@inline final def innerSpan :Outer ExtendedBy Self = new ExtendedBy(size)
+	@inline final def innerSpan :Outer ExpandedBy Self = new ExpandedBy(size)
 
 	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.size`,
 	  * as a witness to the fact that [[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf this.AsSubselectOf]]`[F]`
@@ -852,7 +854,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * and [[net.noresttherein.oldsql.sql.RowProduct.innerSpan innerSpan]], but expressed in the form of the
 	  * `AsSubselectOf` type constructor.
 	  */
-	@inline final def subselectSpan[F <: NonEmptyFrom] :F ExtendedBy AsSubselectOf[F] = new ExtendedBy(size)
+	@inline final def subselectSpan[F <: NonEmptyFrom] :F ExpandedBy AsSubselectOf[F] = new ExpandedBy(size)
 
 	/** The number of relations in the explicit ''from'' clause of this subselect, that is `this.size`,
 	  * as a witness to the fact that its 'Implicit' base clause, constituting of all relations listed by
@@ -890,7 +892,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * contains all mappings which are available to the ''select'' clause created from this instance.
 	  * If this clause doesn't represent a subselect, but a top-level query, it is the same as `FullRow`.
 	  * The chain contains the mapped types in the same order as their mappings appear in this type's definition and is,
-	  * like `Extended` (but unlike `::`), left associative.
+	  * like `Expanded` (but unlike `::`), left associative.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.row]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Implicit]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.FullRow]]
@@ -915,12 +917,12 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * This includes all relations in this clause following the most recent `Subselect` or `GroupBy` 'join',
 	  * marking the first not grouped relation following the `Implicit` clause prefix. It represents the complete
 	  * data set available to the ''select'' clause with the exception of potential grouped relations available only
-	  * to aggregate functions. The expressions are based on some extending clause `E`, so they can be used by the
+	  * to aggregate functions. The expressions are based on some expanding clause `E`, so they can be used by the
 	  * zero-argument `row` as the chain prefix of its result.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
 	def row[E <: RowProduct]
-	       (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row]
+	       (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, Row]
 
 	/** All relations in the ''explicit'' section of this instance as generic, untyped mappings, in the reverse order
 	  * of their appearance, ending with the first not grouped relation following the `Implicit` prefix.
@@ -938,12 +940,12 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * clause (before any other `Subselect`), in which case the last relation is the one for the component following
 	  * `GroupBy`. If this is not a subselect clause (no `Subselect` 'joins' are present in this clause
 	  * and `Implicit =:= RowProduct`), all not grouped relations are included. The returned relation SQL expressions
-	  * are based on some extending clause `E`. Used by the zero-argument `tableStack`
+	  * are based on some expanding clause `E`. Used by the zero-argument `tableStack`
 	  * to request the tail of the stack with expressions of the correct type from the prefix clause.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
 	def tableStack[E <: RowProduct]
-	              (target :E)(implicit extension :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]]
+	              (target :E)(implicit expansion :Generalized ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]]
 
 
 //	def toRelation :Relation[MappingOf[Row]#Projection] =
@@ -968,12 +970,12 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 	/** Create an SQL tuple expression containing `JoinedRelation` expressions for all elements joined until
 	  * the rightmost `Subselect` join, in their order of appearance. If this is not a subselect clause,
-	  * the chain will be empty. The expressions are based on some extending clause `E`, so they can be used
+	  * the chain will be empty. The expressions are based on some expanding clause `E`, so they can be used
 	  * by the zero-argument `outerRow` as the chain prefix of its result.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
 	def outerRow[E <: RowProduct]
-	            (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, GlobalScope, OuterRow]
+	            (target :E)(implicit expansion :Implicit ExpandedBy E) :ChainTuple[E, GlobalScope, OuterRow]
 
 
 
@@ -996,12 +998,12 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 
 	/** For subselect clauses - that is subtypes with a `Subselect` join kind occurring somewhere in their definition,
 	  * not necessarily `Subselect` instances - it represents them as a subselect of a clause `F`, being
-	  * an extension of their outer clause (the left side of the right-most `Subselect` join). In syntactic terms,
+	  * an expansion of their outer clause (the left side of the right-most `Subselect` join). In syntactic terms,
 	  * it replaces the `Outer` type in this type's definition with type `F`. Procedurally, it joins in order
 	  * all relations since the last occurrence of a `Subselect` join, forming the explicit ''from'' clause of
 	  * a modified subselect, with the new outer clause `F`, preserving all join conditions. If this clause is not a
 	  * subselect clause, this method will use `Subselect` 'join' to join the `newOuter` with the first relation of this
-	  * clause. All join conditions are preserved. As the argument clause is an extension of the outer clause of
+	  * clause. All join conditions are preserved. As the argument clause is an expansion of the outer clause of
 	  * this instance, this has the effect of inserting the relations appended to the outer clause between it and
 	  * the inner clause. For outer clauses, this should produce the same result as
 	  * [[net.noresttherein.oldsql.sql.RowProduct.joinedWithSubselect joinedWithSubselect]], though the exact types
@@ -1012,9 +1014,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  *         to [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[F]`.
 	  * @throws `UnsupportedOperationException` if this clause is empty or there is an `UnboundParam` 'join'
 	  *                                         in its explicit portion.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
-	def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit extension :Implicit ExtendedBy F)
+	def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit expansion :Implicit ExpandedBy F)
 			:AsSubselectOf[F] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self }
 
 
@@ -1045,7 +1047,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.from from]] method of
 	  * [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]] and
 	  * [[net.noresttherein.oldsql.sql.RowProduct.JoinedRelations JoinedRelations]]; client code may prefer to use
-	  * the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]] extension method instead,
+	  * the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]] expansion method instead,
 	  * which has a friendlier return type, but is available only for non-empty clauses.
 	  * @param first the sole relation of the ''from'' clause of the new subselect clause.
 	  * @param infer implicit witness guiding the compiler to properly infer the subject type of mapping `M` (and `T`).
@@ -1054,9 +1056,31 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  *        to `SubselectOf[Generalized]`.
 	  */
 	def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	        (first :Table[M]) //uses InferTypeParams instead of JoinedRelationSubject because the result type might be a Subselect or From
-	        (implicit infer :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]])
-			:FromRelation[T]
+	        (first :Table[M])(implicit infer :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]])
+			:FromRelation[T] //uses InferTypeParams instead of JoinedRelationSubject because the result type might be a Subselect or From
+
+	/** Creates a ''from'' clause for a subselect of a select with this clause. It will have the given relation
+	  * as the only member of the ''explicit'' portion (i.e. the one actually appearing in the ''from'' clause
+	  * of the generated SQL) and this clause as the ''implicit'' prefix,
+	  * joined with the [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo join. All relations included
+	  * in this clause are available to any `SQLExpression` parameterized with the type of the returned clause.
+	  * The method works differently for empty clauses: as an empty clause cannot appear on the left side
+	  * of `Subselect`, it simply returns `From(subselect)`. All non subselect clauses conform to
+	  * [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf[RowProduct] ]] so the returned clause
+	  * is a valid subselect clause of `Generalized` (and `Self`) either way, as long as its `Generalized` type is known.
+	  *
+	  * This overloaded method variant accepts a table tagged with a `String` literal type with its name, which
+	  * is used for the [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause of the returned object.
+	  * You may prefer to use [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]] extension
+	  * method instead, which has a friendlier return type, but is available only for non-empty clauses.
+	  * @param first the sole relation of the ''from'' clause of the new subselect clause.
+	  * @param infer implicit witness guiding the compiler to properly infer the subject type of mapping `M` (and `T`).
+	  * @return An object equal to `from(first :Table[M]) as first.name`, but of correct narrowed type.
+	  */
+	def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label]
+	        (first :StaticTable[A, M])
+	        (implicit infer :InferTypeParams[StaticTable[A, M], StaticTable[A, T], Table[MappingOf[S]#TypedProjection]])
+			:FromRelation[T] As A
 
 	/** Type resulting from replacing the `Outer`/`Implicit` part of `F` with `Self` type of this clause.*/
 	type FromSubselect[+F <: NonEmptyFrom] <: NonEmptyFrom {
@@ -1093,9 +1117,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  * portion of the given `subselect` clause as its ''explicit'' suffix (i.e. all the explicit relations
 	  * from the ''from'' clause of the associated subselect, be they statically known or not), substituting
 	  * its ''implicit'' prefix with this clause, joined with the [[net.noresttherein.oldsql.sql.Subselect Subselect]]
-	  * pseudo join. It can only be applied to clauses of with an implicit, outer portion extended by this clause,
+	  * pseudo join. It can only be applied to clauses of with an implicit, outer portion expanded by this clause,
 	  * that is if the latter contains all the relations available implicitly to the `subselect` clause as its prefix
-	  * in the exact order and, presumably, was created by extending the very `subselect.outer` instance.
+	  * in the exact order and, presumably, was created by expanding the very `subselect.outer` instance.
 	  * Compare this with the [[net.noresttherein.oldsql.sql.RowProduct.from from]] method, which joins
 	  * a whole independent clause as the ''explicit/inner'' portion of a the resulting subselect clause.
 	  *
@@ -1114,7 +1138,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
 	  *         conforming to `outer.DirectSubselect` and `SubselectOf[Generalized]` (if this clause's `Generalized` type
 	  *         is well defined).
 	  */
-	def fromSubselect[F <: NonEmptyFrom](subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
+	def fromSubselect[F <: NonEmptyFrom](subselect :F)(implicit expansion :subselect.Implicit ExpandedBy Generalized)
 			:FromSubselect[F] { type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] }
 
 
@@ -1268,11 +1292,11 @@ object RowProduct {
 	  * All relations available from `F` are also available from this clause. Most implementations
 	  * derive from this trait, with the exception of the [[net.noresttherein.oldsql.sql.AggregateClause AggregateClause]]
 	  * and its subtypes. Every concrete class having this trait as its supertype must extend either
-	  * [[net.noresttherein.oldsql.sql.Extended Extended]] or
-	  * [[net.noresttherein.oldsql.sql.DecoratedFrom.ExtendingDecorator]].
+	  * [[net.noresttherein.oldsql.sql.Expanded Expanded]] or
+	  * [[net.noresttherein.oldsql.sql.DecoratedFrom.ExpandingDecorator]].
 	  */
-	trait ExtendingClause[+F <: RowProduct] extends RowProduct {
-		private[sql] def concrete_ExtendingClause_subclass_must_extend_Extended_or_ExtendingDecorator :Nothing
+	trait ExpandingClause[+F <: RowProduct] extends RowProduct {
+		private[sql] def concrete_ExpandingClause_subclass_must_extend_Expanded_or_ExpandedDecorator :Nothing
 	}
 
 
@@ -1345,7 +1369,7 @@ object RowProduct {
 
 		/** Apply a join condition to the last two relations in this clause. The condition is combined using `&&` with
 		  * the preexising `where` part of this clause
-		  * ([[net.noresttherein.oldsql.sql.Compound.condition Compound.condition]]) and becomes a part of `this.filter`.
+		  * ([[net.noresttherein.oldsql.sql.Adjoin.condition Adjoin.condition]]) and becomes a part of `this.filter`.
 		  * This works exactly like 'where', but instead of a single argument representing all joined relations,
 		  * the filter function should take as its arguments the last two relations, i.e, the last relation defined
 		  * by the left side of this join, if any, and the right side of this join.
@@ -1385,7 +1409,7 @@ object RowProduct {
 		  * It is equivalent to `this.where(mappings => condition(mappings.last))`.
 		  * @param condition a function accepting the expression for the last relation in this clause and creating
 		  *                  an additional SQL expression for the join condition.
-		  * @return an `Extended` instance of the same kind as this one, with the same left and right sides,
+		  * @return an `Expanded` instance of the same kind as this one, with the same left and right sides,
 		  *         but with the join condition being the conjunction of this join's condition and the `SQLBoolean`
 		  *         returned by the passed filter function.
 		  */ //consider: simply JoinedRelation as an argument - may result in better type inference
@@ -1510,6 +1534,12 @@ object RowProduct {
 				:FromRelation[T] =
 			Subselect(self, TableSQL.LastTable[T, S](cast(first)), None)(True)
 
+		override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label]
+		                 (first :StaticTable[A, M])
+		                 (implicit cast :InferTypeParams[StaticTable[A, M], StaticTable[A, T], Table[MappingOf[S]#TypedProjection]])
+				:FromRelation[T] As A =
+			Subselect(self, TableSQL.LastTable[T, S](cast(first)), None)(True)
+
 
 		override type FromSubselect[+F <: NonEmptyFrom] = F#AsSubselectOf[Self] {
 			type Implicit = thisClause.Generalized
@@ -1521,7 +1551,7 @@ object RowProduct {
 			subselect.asSubselectOf(self)
 
 		override def fromSubselect[F <: NonEmptyFrom]
-		                          (subselect :F)(implicit extension :subselect.Implicit ExtendedBy Generalized)
+		                          (subselect :F)(implicit expansion :subselect.Implicit ExpandedBy Generalized)
 				:subselect.AsSubselectOf[Self] { type Implicit = thisClause.Generalized } =
 			subselect.asSubselectOf(self)
 
@@ -1720,7 +1750,7 @@ object RowProduct {
 	  * If `F <: GeneralizedFrom`, then such a subselect expression can be used
 	  * as a part of both ''select'' and ''where'' clauses of a select from `F`. On the other hand,
 	  * an `SQLExpression[F, GlobalScope, T]` is convertible to `SQLExpression[S, GlobalScope, T]` by a call
-	  * [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]]`(s)(s.explicitSpan, GlobalScope)`.
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.expand expand]]`(s)(s.explicitSpan, GlobalScope)`.
 	  * In other words, when concerning oneself only with the explicit portion of `S`, that is all relations
 	  * and join/filter conditions in its deepest subselect, any instance of `S` can be safely evaluated with `F`
 	  * as the enclosing select, without any modifications to its ''where'' clause filter.
@@ -1733,7 +1763,7 @@ object RowProduct {
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.SubclauseOf]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect]]
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
 	type SubselectOf[-F <: RowProduct] = RowProduct {
 		type Base >: F <: RowProduct //F may still have an abstract prefix
@@ -1863,7 +1893,7 @@ object RowProduct {
 
 
 
-	/* There is a certain competition between the xxxExtension and xxxMatrix classes, as their primary purpose
+	/* There is a certain competition between the xxxExtension and xxxTemplate classes, as their primary purpose
 	 * is to provide a 'clean' return type (not an abstract member type with an upper bound, which is bad for inference).
 	 * The possibilities are however different and, unfortunately, both families are needed.
 	 * RowProductTemplate:
@@ -2217,10 +2247,11 @@ object RowProduct {
 		def ?[N <: Numeral](n :N)(implicit get :ByParamIndex[F, thisClause.Generalized, N]) :get.M[get.O] =
 			get(thisClause.generalized).mapping
 
+		//methods below are copy&pasted without changes to JoinedRelations
 
-		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using this clause.
-		  * The explicit list of relations in the clause is initialized with the relation given as a `Relation` object
-		  * and can be further expanded by joining with additional relations. The created clause is represented
+		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression using this object as its ''from''
+		  * clause. The explicit list of relations in the clause is initialized with the table given as a `Table`
+		  * object and can be further expanded by joining with additional tables. The created clause is represented
 		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
 		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
@@ -2230,10 +2261,10 @@ object RowProduct {
 		  *
 		  * This is similar the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]]
 		  * extension method available for any `RowProduct`; the difference is that this method works also
-		  * on empty 'outer' clauses, creating a `From[T]` clause, forgoing the `Subselect` join in the result.
+		  * on empty 'outer' clauses, creating a `From[T]` clause instead of `Subselect` join in the result.
 		  * As a trade off, it has a more complex return type, expressed through the `Self` type of this clause rather
 		  * than simply the static type of this clause.
-		  * @param table a producer of the mapping for the relation.
+		  * @param table a database table (including views and adapted ''selects'') exposing the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `M`.
 		  * @return `F Subselect T` if `F` is not empty and `From[T]` otherwise.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
@@ -2243,6 +2274,34 @@ object RowProduct {
 		                (implicit cast :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]])
 				:thisClause.FromRelation[T] =
 			{ val res = thisClause.from(table); res }  //decouple type inference from the result type
+
+		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression using this object as its ''from''
+		  * clause. The explicit list of relations in the clause is initialized with the table given as a `StaticTable`
+		  * object and can be further expanded by joining with additional tables. The name of the table, given
+		  * as the string literal type parameter of the argument, is automatically used for its
+		  * [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause. The created clause is represented
+		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
+		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
+		  * mappings for all relations in this clause to any expression based on the created instance, in particular
+		  * ''where'' and ''select'' clauses.
+		  * The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
+		  *
+		  * This is similar the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]]
+		  * extension method available for any `RowProduct`; the difference is that this method works also
+		  * on empty 'outer' clauses, creating a `From[T]` clause instead of a `Subselect` join in the result.
+		  * As a trade off, it has a more complex return type, expressed through the `Self` type of this clause rather
+		  * than simply the static type of this clause.
+		  * @param table a database table (including views and adapted ''selects''), exposing the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `M`.
+		  * @return `F Subselect T` if `F` is not empty and `From[T]` otherwise.
+		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
+		  */
+		@inline def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label]
+		                (table :StaticTable[A, M])
+		                (implicit cast :InferTypeParams[StaticTable[A, M], StaticTable[A, T], Table[MappingOf[S]#TypedProjection]])
+				:thisClause.FromRelation[T] As A =
+			{ val res = thisClause.from(table); res }
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using on clause.
 		  * The explicit list of relations in the clause is initialized with the relations given as a `RowProduct`
@@ -2280,7 +2339,7 @@ object RowProduct {
 		  * ''where'' and ''select'' clauses. The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
 		  *
-		  * @param other a subselect clause of some clause extended by this clause.
+		  * @param other a subselect clause of some clause expanded by this clause.
 		  * @return `clause.`[[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]]`[F, Subselect]`
 		  *         if `F` is not empty and `R` otherwise. The result conforms to
 		  *         `clause.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and
@@ -2289,7 +2348,7 @@ object RowProduct {
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
 		@inline def fromSubselect[R <: FromSome]
-		                         (other :R)(implicit extension :other.Implicit ExtendedBy thisClause.Generalized)
+		                         (other :R)(implicit expansion :other.Implicit ExpandedBy thisClause.Generalized)
 				:thisClause.FromSubselect[R] =
 			thisClause.fromSubselect(other)
 
@@ -2417,11 +2476,11 @@ object RowProduct {
 		def ?[N <: Numeral](n :N)(implicit get :ByParamIndex[F, thisClause.Generalized, N]) :get.T[get.O] =
 			get(thisClause.generalized)
 
+		//straight copy&paste from JoinedMappings for convenience
 
-
-		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using this clause.
-		  * The explicit list of relations in the clause is initialized with the relation given as a `Relation` object
-		  * and can be further expanded by joining with additional relations. The created clause is represented
+		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression using this object as its ''from''
+		  * clause. The explicit list of relations in the clause is initialized with the table given as a `Table`
+		  * object and can be further expanded by joining with additional tables. The created clause is represented
 		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
 		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
 		  * mappings for all relations in this clause to any expression based on the created instance, in particular
@@ -2431,10 +2490,10 @@ object RowProduct {
 		  *
 		  * This is similar the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]]
 		  * extension method available for any `RowProduct`; the difference is that this method works also
-		  * on empty 'outer' clauses, creating a `From[T]` clause, forgoing the `Subselect` join in the result.
+		  * on empty 'outer' clauses, creating a `From[T]` clause instead of `Subselect` join in the result.
 		  * As a trade off, it has a more complex return type, expressed through the `Self` type of this clause rather
 		  * than simply the static type of this clause.
-		  * @param table a producer of the mapping for the relation.
+		  * @param table a database table (including views and adapted ''selects'') exposing the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `M`.
 		  * @return `F Subselect T` if `F` is not empty and `From[T]` otherwise.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
@@ -2444,6 +2503,34 @@ object RowProduct {
 		                (implicit cast :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]])
 				:thisClause.FromRelation[T] =
 			{ val res = thisClause.from(table); res } //decouple type inference from the result type
+
+		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression using this object as its ''from''
+		  * clause. The explicit list of relations in the clause is initialized with the table given as a `StaticTable`
+		  * object and can be further expanded by joining with additional tables. The name of the table, given
+		  * as the string literal type parameter of the argument, is automatically used for its
+		  * [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause. The created clause is represented
+		  * as a linearization of the explicit portion - the given relation and all others, following the `Subselect`
+		  * pseudo join - and the implicit portion, constituting of this clause. This grants access to the
+		  * mappings for all relations in this clause to any expression based on the created instance, in particular
+		  * ''where'' and ''select'' clauses.
+		  * The join condition can be subsequently specified using
+		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
+		  *
+		  * This is similar the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]]
+		  * extension method available for any `RowProduct`; the difference is that this method works also
+		  * on empty 'outer' clauses, creating a `From[T]` clause instead of a `Subselect` join in the result.
+		  * As a trade off, it has a more complex return type, expressed through the `Self` type of this clause rather
+		  * than simply the static type of this clause.
+		  * @param table a database table (including views and adapted ''selects''), exposing the mapping for the relation.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `M`.
+		  * @return `F Subselect T` if `F` is not empty and `From[T]` otherwise.
+		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
+		  */
+		@inline def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label]
+		                (table :StaticTable[A, M])
+		                (implicit cast :InferTypeParams[StaticTable[A, M], StaticTable[A, T], Table[MappingOf[S]#TypedProjection]])
+				:thisClause.FromRelation[T] As A =
+			{ val res = thisClause.from(table); res }
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based using on clause.
 		  * The explicit list of relations in the clause is initialized with the relations given as a `RowProduct`
@@ -2481,7 +2568,7 @@ object RowProduct {
 		  * ''where'' and ''select'' clauses. The join condition can be subsequently specified using
 		  * the [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where()]] method.
 		  *
-		  * @param other a subselect clause of some clause extended by this clause.
+		  * @param other a subselect clause of some clause expanded by this clause.
 		  * @return `clause.`[[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]]`[F, Subselect]`
 		  *         if `F` is not empty and `R` otherwise. The result conforms to
 		  *         `clause.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and
@@ -2490,7 +2577,7 @@ object RowProduct {
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
 		@inline def fromSubselect[R <: FromSome]
-		                         (other :R)(implicit extension :other.Implicit ExtendedBy thisClause.Generalized)
+		                         (other :R)(implicit expansion :other.Implicit ExpandedBy thisClause.Generalized)
 				:thisClause.FromSubselect[R] =
 			thisClause.fromSubselect(other)
 
@@ -2510,16 +2597,16 @@ object RowProduct {
 			type FromLast = U; type LastMapping[O] = M[O]; type Last[O <: RowProduct] = JoinedRelation[O, M]
 		}]
 
-	/** Implicit evidence that the clause `F` is a ''direct'' extension of `P`, that is type `F` results
-	  * from applying some type constructor to `P`. This covers both the [[net.noresttherein.oldsql.sql.Extended Extended]]
+	/** Implicit evidence that the clause `F` is a ''direct'' expansion of `P`, that is type `F` results
+	  * from applying some type constructor to `P`. This covers both the [[net.noresttherein.oldsql.sql.Expanded Expanded]]
 	  * class hierarchy which actually add a relation to the clause `P` and
 	  * the [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] hierarchy of clauses which only modify
-	  * the adapted clause without adding new relations. Hence, the `extension` property always represents
+	  * the adapted clause without adding new relations. Hence, the `expansion` property always represents
 	  * the length of `0` or `1`. This class is used by various other implicits in order to recursively deconstruct
 	  * the type `F`, for example for the relation accessor methods, and is introduced to allow their usage with
 	  * any future or custom `RowProduct` implementations which provide an implicit value of this class in their
 	  * companion object.
-	  * @tparam F the 'whole' clause extending (in the sense of
+	  * @tparam F the 'whole' clause expanding (in the sense of
 	  *           `P` [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf PrefixOf]] `F`) the clause `P`.
 	  * @tparam P the largest subclause of `F` which doesn't equal `F` - typically the `RowProduct` type argument
 	  *           provided for `F`.
@@ -2545,19 +2632,19 @@ object RowProduct {
 		/** a `PrefixOf` instance representing the application of the type constructor
 		  * [[net.noresttherein.oldsql.sql.RowProduct.RowDecomposition.S S]] to some supertype of the decomposed
 		  * prefix `P` of the clause `F`, which this instance is the type class of. It has the length of `1` for
-		  * [[net.noresttherein.oldsql.sql.Extended Extended]] subtypes and `0` for
+		  * [[net.noresttherein.oldsql.sql.Expanded Expanded]] subtypes and `0` for
 		  * [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] subtypes.
 		  */
 		def prefix[A >: P <: U] :A PrefixOf S[A]
 
 		/** a `PrefixOf` instance representing the application of the type constructor
 		  * [[net.noresttherein.oldsql.sql.RowProduct.RowDecomposition.S S]] to some arbitrary ''from'' clause `A`.
-		  * It has the length of `1` for [[net.noresttherein.oldsql.sql.Extended Extended]] subtypes and `0` for
+		  * It has the length of `1` for [[net.noresttherein.oldsql.sql.Expanded Expanded]] subtypes and `0` for
 		  * [[net.noresttherein.oldsql.sql.DecoratedFrom DecoratedFrom]] subtypes.
 		  */
-		def extension[A <: U] :A PrefixOf E[A]
+		def expansion[A <: U] :A PrefixOf E[A]
 
-		/** Extracts the prefix clause `P` extended by the associated ''from'' clause `F`. */
+		/** Extracts the prefix clause `P` expanded by the associated ''from'' clause `F`. */
 		def unapply(clause :F) :P
 
 		/** A type class for a supertype of the represented ''from'' clause, resulting from the application
@@ -2570,21 +2657,6 @@ object RowProduct {
 		  */
 		def cast[A <: U] :RowDecomposition[E[A], A, U]
 
-	}
-
-
-	@deprecated("Use either RowDecomposition or RowComposition", "Imoen")
-	@implicitNotFound("I don't know the generalized form of the FROM clause ${F}.\n" +
-	                  "Missing implicit RowGeneralization[${F}, ${P}, ${U}].")
-	trait RowGeneralization[F <: RowProduct, P <: U, U <: RowProduct] extends RowDecomposition[F, P, U] { self =>
-		/** The [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] supertype of clause `E[A]`. */
-		type G[+A >: P <: U] >: S[A] <: RowProduct
-
-		/** A decomposition of the [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] supertype of
-		  * the clause `F[A]`.
-		  */
-		def generalized[A >: P <: U]
-				:RowGeneralization[G[A], A, U] { type G[+B >: A <: U] = self.G[B]; type S[+B >: A <: U] = G[B] }
 	}
 
 
@@ -2602,46 +2674,46 @@ object RowProduct {
 
 
 	/** A proof that the ''from'' clause `F` is a part of the ''from'' clause `E` and represents the 'same'
-	  * SQL ''select''. This holds if `F ExtendedBy E` and there is no `Subselect` join present
-	  * in the extension. The implication is that `E` contains all the relations listed in `F`, with a possible addition
+	  * SQL ''select''. This holds if `F ExpandedBy E` and there is no `Subselect` join present
+	  * in the expansion. The implication is that `E` contains all the relations listed in `F`, with a possible addition
 	  * of extra relations appended to (by joining) it or 'prepended' to it (by substituting wildcard prefix type of `F`
 	  * with its subtype) while not being a subselect expression of `E`, but also all relations
 	  * from the ''explicit'' portion of `F` are included in the ''explicit'' portion of `E`.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf]]
 	  */
 	@implicitNotFound("The FROM clause ${F} is not a part of the same SELECT as the clause ${E}.")
 	class PartOf[+F <: RowProduct, -E <: RowProduct] private[RowProduct](val diff :Int) extends AnyVal {
 
-		/** An `F` [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]] `E` instance representing the
-		  * same extension of the clause `F`. */
-		implicit def asExtendedBy :F ExtendedBy E = new ExtendedBy(diff)
+		/** An `F` [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]] `E` instance representing the
+		  * same expansion of the clause `F`. */
+		implicit def asExpandedBy :F ExpandedBy E = new ExpandedBy(diff)
 
-		/** A transitive proof that a clause extending `E` with a single relation (mapping) also extends `F`. */
-		@inline def extend[R[O] <: MappingAt[O]] :F PartOf (E NonSubselect R) = new PartOf(diff + 1)
+		/** A transitive proof that a clause expanding `E` with a single relation (mapping) also extends `F`. */
+		@inline def expand[R[O] <: MappingAt[O]] :F PartOf (E NonSubselect R) = new PartOf(diff + 1)
 
-		/** A transitive proof that a clause extended by `F` with a single relation (mapping) is also extended by `E`. */
-		@inline def extendFront[L <: RowProduct, R[O] <: MappingAt[O]]
+		/** A transitive proof that a clause expanded by `F` with a single relation (mapping) is also expanded by `E`. */
+		@inline def expandFront[L <: RowProduct, R[O] <: MappingAt[O]]
 		                       (implicit front :F <:< (L NonSubselect R)) :L PartOf E =
 			new PartOf(diff + 1)
 
 		/** A transitive proof that if `E PartOf C`, then also `F PartOf C` (appending to this witness). */
-		@inline def extend[C <: RowProduct](implicit next :E PartOf C) :F PartOf C =
+		@inline def expand[C <: RowProduct](implicit next :E PartOf C) :F PartOf C =
 			new PartOf[F, C](diff + next.diff)
 
 		/** A transitive proof that if `C PartOf F`, then also `C PartOf E` (prepending to this witness). */
-		@inline def extendFront[C <: RowProduct](implicit front :C PartOf F) :C PartOf E =
+		@inline def expandFront[C <: RowProduct](implicit front :C PartOf F) :C PartOf E =
 			new PartOf(front.diff + diff)
 
 		/** A transitive proof that if `E PartOf C`, then also `F PartOf C` (appending to this witness). */
 		@inline def +[C <: RowProduct](next :E PartOf C) :F PartOf C =
 			new PartOf[F, C](diff + next.diff)
 
-		/** A transitive proof that a decorated clause `E` is still an extension of `F`. */
-		@inline def wrap :F PartOf ExtendingDecorator[E] = new PartOf[F, ExtendingDecorator[E]](diff)
+		/** A transitive proof that a decorated clause `E` is still an expansion of `F`. */
+		@inline def wrap :F PartOf ExpandingDecorator[E] = new PartOf[F, ExpandingDecorator[E]](diff)
 
-		/** A transitive proof that if `F <: ExtendingDecorator[C]`, then `C PartOf E` without any length change. */
-		@inline def unwrapFront[C <: FromSome](implicit front :F <:< ExtendingDecorator[C]) :C PartOf E =
+		/** A transitive proof that if `F <: ExpandingDecorator[C]`, then `C PartOf E` without any length change. */
+		@inline def unwrapFront[C <: FromSome](implicit front :F <:< ExpandingDecorator[C]) :C PartOf E =
 			new PartOf(diff)
 
 		//todo: aggregates
@@ -2656,12 +2728,12 @@ object RowProduct {
 
 		implicit def itself[F <: RowProduct] :F PartOf F = new (F PartOf F)(0)
 
-		implicit def extend[F <: RowProduct, L <: RowProduct, R[A] <: MappingAt[A]]
+		implicit def expand[F <: RowProduct, L <: RowProduct, R[A] <: MappingAt[A]]
 		                   (implicit ev :F PartOf L) :F PartOf (L NonSubselect R) =
 			new PartOf(ev.diff + 1)
 
-		implicit def wrap[F <: RowProduct, E <: RowProduct](implicit ev :F PartOf E) :F PartOf ExtendingDecorator[E] =
-			new PartOf[F, ExtendingDecorator[E]](ev.diff)
+		implicit def wrap[F <: RowProduct, E <: RowProduct](implicit ev :F PartOf E) :F PartOf ExpandingDecorator[E] =
+			new PartOf[F, ExpandingDecorator[E]](ev.diff)
 
 		implicit def group[F <: RowProduct, O <: RowProduct, E <: FromSome, R[A] <: MappingAt[A]]
 		                  (implicit outer :O OuterClauseOf E, part :F PartOf O) :F PartOf (E GroupBy R) =
@@ -2677,33 +2749,33 @@ object RowProduct {
 
 
 
-	/** A proof that the ''from'' clause `E` is an ''extension'' of the clause `F`, meaning `E` contains all relations
+	/** A proof that the ''from'' clause `E` is an ''expansion'' of the clause `F`, meaning `E` contains all relations
 	  * listed by type `F` as a consecutive, ordered sequence. If `F` is a ''complete'' clause
 	  * (starting with `Dual`/`From`), then `F` is a supertype of some prefix of `E`. More formally,
-	  * `F ExtendedBy E` if one of the following conditions hold:
+	  * `F ExpandedBy E` if one of the following conditions hold:
 	  *   - `E <: F`,
-	  *   - `E <: ExtendingClause[S]` for some `S <: RowProduct` such that `F ExtendedBy S`,
+	  *   - `E <: ExpandingClause[S]` for some `S <: RowProduct` such that `F ExpandedBy S`,
 	  *   - `E <: F#Aggregate` (and `F <: FromSome`),
 	  *   - `F =:= Dual` and `E <: F#Aggregate` for some `F <: TopFromSome`.
 	  *
 	  * It means that a value of type `F` can be extracted from `E` by a sequence of operations:
-	  *   - taking the inner clause of an [[net.noresttherein.oldsql.sql.DecoratedFrom.ExtendingDecorator ExtendingDecorator]];
-	  *   - taking the left side of an [[net.noresttherein.oldsql.sql.Extended Extended]] clause;
+	  *   - taking the inner clause of an [[net.noresttherein.oldsql.sql.DecoratedFrom.ExpandingDecorator ExpandingDecorator]];
+	  *   - taking the left side of an [[net.noresttherein.oldsql.sql.Expanded Expanded]] clause;
 	  *   - taking the outer clause of a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] clause;
 	  *   - taking the outer clause of an [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] clause.
 	  *
 	  * This takes into account only the static type of both clauses and the actual mapping lists on both can
 	  * differ and be of different lengths if `F` is not a complete clause and has a wildcard prefix.
-	  * For this reason this class should be in general relied upon only in the context of the actual extension,
+	  * For this reason this class should be in general relied upon only in the context of the actual expansion,
 	  * rather than a proof of some clause `e :E` containing all the relations of `F` unless `F` is complete.
 	  * It does however specify this when only the mapping lists in the static types are compared and can
 	  * be understood as a stronger version of the statement that any dependency on the relations from `F`
 	  * can be satisfied with the clause `E`. The primary use of this class is in conversions
 	  * from `SQLExpression[F, S, T]` to `SQLExpression[E, S, T]`.
 	  *
-	  * A non-obvious implication of being contravariant in the extending type `E` is that if `F` is incomplete,
+	  * A non-obvious implication of being contravariant in the expanding type `E` is that if `F` is incomplete,
 	  * this instance is also a witness that subtypes of `E` which replace the initial `RowProduct` with a join list
-	  * are likewise extensions of `F`, in this way covering both extensions from the back (right side) and front
+	  * are likewise expansions of `F`, in this way covering both expansions from the back (right side) and front
 	  * (left side). The purpose of this class is to allow `SQLExpression` instances based on one clause `F`
 	  * to be converted into isomorphic expressions based on a second clause `E`, as long as all mappings
 	  * in `F`'s static type form a continuous subsequence of mappings listed in `E`. Note that `SQLExpression`
@@ -2721,40 +2793,40 @@ object RowProduct {
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PartOf]]
 	  */ //alternative names :ExpandedBy PartOf IncludedIn, ProvidedBy, UsedBy
-	@implicitNotFound("The FROM clause ${F} is not extended by the clause ${E} (ignoring join kinds).")
-	class ExtendedBy[+F <: RowProduct, -E <: RowProduct] private[RowProduct](val length :Int) extends AnyVal {
+	@implicitNotFound("The FROM clause ${F} is not expanded by the clause ${E} (ignoring join kinds).")
+	class ExpandedBy[+F <: RowProduct, -E <: RowProduct] private[RowProduct](val length :Int) extends AnyVal {
 		//todo: doesn't compile as of now, but a fix is reportedly coming
 //		type Bound <: RowProduct
 //		type Extension[+T <: Bound] <: RowProduct
 //
-//		def extension[T <: Bound] :T ExtendedBy Extension[T] = new ExtendedBy[T, Extension[T]](length)
+//		def expansion[T <: Bound] :T ExpandedBy Extension[T] = new ExpandedBy[T, Extension[T]](length)
 
-		/** A transitive proof that a clause extending `E` with a single relation (mapping) also extends `F`. */
-		@inline def extend[R[O] <: MappingAt[O]] :F ExtendedBy (E Extended R) = new ExtendedBy(length + 1)
+		/** A transitive proof that a clause expanding `E` with a single relation (mapping) also extends `F`. */
+		@inline def expand[R[O] <: MappingAt[O]] :F ExpandedBy (E Expanded R) = new ExpandedBy(length + 1)
 
-		/** A transitive proof that a clause extended by `F` with a single relation (mapping) is also extended by `E`. */
-		@inline def extendFront[L <: RowProduct, R[O] <: MappingAt[O]]
-		                        (implicit front :F <:< (L Extended R)) :L ExtendedBy E =
-			new ExtendedBy(length + 1)
+		/** A transitive proof that a clause expanded by `F` with a single relation (mapping) is also expanded by `E`. */
+		@inline def expandFront[L <: RowProduct, R[O] <: MappingAt[O]]
+		                        (implicit front :F <:< (L Expanded R)) :L ExpandedBy E =
+			new ExpandedBy(length + 1)
 
-		/** A transitive proof that if `E ExtendedBy C`, then also `F ExtendedBy C` (appending to this witness). */
-		@inline def extend[C <: RowProduct](implicit next :E ExtendedBy C) :F ExtendedBy C =
-			new ExtendedBy[F, C](length + next.length)
+		/** A transitive proof that if `E ExpandedBy C`, then also `F ExpandedBy C` (appending to this witness). */
+		@inline def expand[C <: RowProduct](implicit next :E ExpandedBy C) :F ExpandedBy C =
+			new ExpandedBy[F, C](length + next.length)
 
-		/** A transitive proof that if `C ExtendedBy F`, then also `C ExtendedBy E` (prepending to this witness). */
-		@inline def extendFront[C <: RowProduct](implicit front :C ExtendedBy F) :C ExtendedBy E =
-			new ExtendedBy(front.length + length)
+		/** A transitive proof that if `C ExpandedBy F`, then also `C ExpandedBy E` (prepending to this witness). */
+		@inline def expandFront[C <: RowProduct](implicit front :C ExpandedBy F) :C ExpandedBy E =
+			new ExpandedBy(front.length + length)
 
-		/** A transitive proof that if `E ExtendedBy C`, then also `F ExtendedBy C` (appending to this witness). */
-		@inline def +[C <: RowProduct](next :E ExtendedBy C) :F ExtendedBy C =
-			new ExtendedBy[F, C](length + next.length)
+		/** A transitive proof that if `E ExpandedBy C`, then also `F ExpandedBy C` (appending to this witness). */
+		@inline def +[C <: RowProduct](next :E ExpandedBy C) :F ExpandedBy C =
+			new ExpandedBy[F, C](length + next.length)
 
-		/** A transitive proof that a decorated clause `E` is still an extension of `F`. */
-		@inline def wrap :F ExtendedBy ExtendingDecorator[E] = new ExtendedBy[F, ExtendingDecorator[E]](length)
+		/** A transitive proof that a decorated clause `E` is still an expansion of `F`. */
+		@inline def wrap :F ExpandedBy ExpandingDecorator[E] = new ExpandedBy[F, ExpandingDecorator[E]](length)
 
-		/** A transitive proof that if `F <: ExtendingDecorator[C]`, then `C ExtendedBy E` without any length change. */
-		@inline def unwrapFront[C <: FromSome](implicit front :F <:< ExtendingDecorator[C]) :C ExtendedBy E =
-			new ExtendedBy(length)
+		/** A transitive proof that if `F <: ExpandingDecorator[C]`, then `C ExpandedBy E` without any length change. */
+		@inline def unwrapFront[C <: FromSome](implicit front :F <:< ExpandingDecorator[C]) :C ExpandedBy E =
+			new ExpandedBy(length)
 		//todo: aggregates
 
 		override def toString :String = length.toString + " tables"
@@ -2762,31 +2834,31 @@ object RowProduct {
 
 
 
-	sealed abstract class ExtendedByFromPartOf {
-		implicit def part[F <: RowProduct, E <: RowProduct](implicit part :F PartOf E) :F ExtendedBy E =
-			new ExtendedBy(part.diff)
+	sealed abstract class ExpandedByFromPartOf {
+		implicit def part[F <: RowProduct, E <: RowProduct](implicit part :F PartOf E) :F ExpandedBy E =
+			new ExpandedBy(part.diff)
 	}
 
-	object ExtendedBy extends ExtendedByFromPartOf {
-		@inline def apply[F <: RowProduct, E <: RowProduct](implicit ev :F ExtendedBy E) :F ExtendedBy E = ev
+	object ExpandedBy extends ExpandedByFromPartOf {
+		@inline def apply[F <: RowProduct, E <: RowProduct](implicit ev :F ExpandedBy E) :F ExpandedBy E = ev
 
-		implicit def itself[F <: RowProduct] :F ExtendedBy F = new (F ExtendedBy F)(0)
+		implicit def itself[F <: RowProduct] :F ExpandedBy F = new (F ExpandedBy F)(0)
 
-		implicit def extend[F <: RowProduct, L <: RowProduct, R[A] <: MappingAt[A]]
-		                   (implicit ev :F ExtendedBy L) :F ExtendedBy (L Extended R) =
-			new ExtendedBy(ev.length + 1)
+		implicit def expand[F <: RowProduct, L <: RowProduct, R[A] <: MappingAt[A]]
+		                   (implicit ev :F ExpandedBy L) :F ExpandedBy (L Expanded R) =
+			new ExpandedBy(ev.length + 1)
 
 		implicit def wrap[F <: RowProduct, E <: RowProduct]
-		                 (implicit ev :F ExtendedBy E) :F ExtendedBy ExtendingDecorator[E] =
-			new ExtendedBy[F, ExtendingDecorator[E]](ev.length)
+		                 (implicit ev :F ExpandedBy E) :F ExpandedBy ExpandingDecorator[E] =
+			new ExpandedBy[F, ExpandingDecorator[E]](ev.length)
 
 		implicit def group[F <: RowProduct, O <: RowProduct, E <: FromSome, R[A] <: MappingAt[A]]
-		                  (implicit outer :O OuterClauseOf E, prefix :F ExtendedBy O) :F ExtendedBy (E GroupBy R) =
-			new ExtendedBy(prefix.length + 1)
+		                  (implicit outer :O OuterClauseOf E, prefix :F ExpandedBy O) :F ExpandedBy (E GroupBy R) =
+			new ExpandedBy(prefix.length + 1)
 
 		implicit def aggregate[F <: RowProduct, O <: RowProduct, E <: FromSome]
-		                      (implicit outer :O OuterClauseOf E, prefix :F ExtendedBy O) :F ExtendedBy Aggregated[E] =
-			new ExtendedBy(prefix.length)
+		                      (implicit outer :O OuterClauseOf E, prefix :F ExpandedBy O) :F ExpandedBy Aggregated[E] =
+			new ExpandedBy(prefix.length)
 
 	}
 
@@ -2798,46 +2870,46 @@ object RowProduct {
 	/** A proof that the ''from'' clause  `F` is a prefix of the clause of `E`.
 	  * A clause `F` is a prefix of `E` if one of the conditions hold:
 	  *   - `E =:= F`,
-	  *   - `E =:= D[G]` for some `D[C] <: ExtendingDecorator[C], G <: RowProduct` such that `F PrefixOf G`,
-	  *   - `E =:= G J _` for some `J[+L, R[O]] <: Extended[L, R], G <: RowProduct` such that `F PrefixOf G`,
+	  *   - `E =:= D[G]` for some `D[C] <: ExpandingDecorator[C], G <: RowProduct` such that `F PrefixOf G`,
+	  *   - `E =:= G J _` for some `J[+L, R[O]] <: Expanded[L, R], G <: RowProduct` such that `F PrefixOf G`,
 	  *   - `E =:= G GroupBy _` for some `G <: F#DirectSubselect`,
 	  *   - `E =:= Aggregated[G]` for some `G <: F#DirectSubselect`,
 	  *   - `F =:= Dual` and `E <: O GroupBy _` or `E <: Aggregated[O]` for some `O <: TopFromSome`,
 	  *
 	  * This takes into account only the static type of both clauses and the actual mapping lists on both can
 	  * differ and be of different lengths if `F` is not a complete clause and has a wildcard prefix.
-	  * For this reason this class should be in general relied upon only in the context of the actual extension,
+	  * For this reason this class should be in general relied upon only in the context of the actual expansion,
 	  * rather than a proof of `E` containing all the relations of `F` unless `F` is complete.
 	  *
-	  * The difference from the similar witness [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]
+	  * The difference from the similar witness [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]
 	  * is that this type is invariant in both its parameters and hence attests that `F` occurs exactly in this form
 	  * as a part of type `E`. It is primarily used in conjunction with invariant
 	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]], to make sure the type parameters
 	  * is preserved exactly for the purpose of indexing, or in operations where one of its type parameters is a part
-	  * of the output. In contrast, `F ExtendedBy E` is covariant/contravariant and used primarily
+	  * of the output. In contrast, `F ExpandedBy E` is covariant/contravariant and used primarily
 	  * when there is a need to confirm that `E` contains all the relations listed in `F`.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PartOf]]
 	  */
 	@implicitNotFound("The FROM clause ${F} is not a prefix of the clause ${E}.")
 	class PrefixOf[F <: RowProduct, E <: RowProduct] private[sql](val diff :Int) extends AnyVal {
 
-		/** An `F` [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]] `E` instance representing the
-		  * same extension of the clause `F`. `ExtendedBy`, unlike `PrefixOf`, is covariant/contravariant in its
+		/** An `F` [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]] `E` instance representing the
+		  * same expansion of the clause `F`. `ExpandedBy`, unlike `PrefixOf`, is covariant/contravariant in its
 		  * first/second parameter.
 		  */
-		@inline def extension :F ExtendedBy E = new ExtendedBy(diff)
+		@inline def expansion :F ExpandedBy E = new ExpandedBy(diff)
 
 		/** A transitive proof that if `E PrefixOf C`, then also `F PrefixOf C` (concatenation of the two witnesses). */
 		@inline def +[C <: RowProduct](next :E PrefixOf C) :F PrefixOf C =
 			new PrefixOf[F, C](diff + next.diff)
 
 		/** A transitive proof that if `E PrefixOf C`, then also `F PrefixOf C` (concatenation of the two witnesses). */
-		@inline def extend[C <: RowProduct](implicit next :E PrefixOf C) :F PrefixOf C =
+		@inline def expand[C <: RowProduct](implicit next :E PrefixOf C) :F PrefixOf C =
 			new PrefixOf[F, C](diff + next.diff)
 
-		/** A transitive proof that `F PrefixOf (E J T)` for any `Extended` subtype `J` and mapping type constructor `T`. */
-		@inline def extend[J[+L <: E, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] :F PrefixOf (E J T) =
+		/** A transitive proof that `F PrefixOf (E J T)` for any `Expanded` subtype `J` and mapping type constructor `T`. */
+		@inline def expand[J[+L <: E, R[O] <: T[O]] <: L Expanded R, T[O] <: MappingAt[O]] :F PrefixOf (E J T) =
 			new PrefixOf[F, E J T](diff + 1)
 
 		/** A transitive proof that `F` is a prefix of its any direct subselect with a ''group by'' clause. */
@@ -2850,7 +2922,7 @@ object RowProduct {
 			new PrefixOf(diff)
 
 		/** A transitive proof that `F PrefixOf D[E]` for any ''from'' clause decorator (with no change in length). */
-		@inline def wrap[D[B >: E <: E] <: ExtendingDecorator[B]] :F PrefixOf D[E] = new PrefixOf[F, D[E]](diff)
+		@inline def wrap[D[B >: E <: E] <: ExpandingDecorator[B]] :F PrefixOf D[E] = new PrefixOf[F, D[E]](diff)
 
 		override def toString :String = diff.toString + " tables"
 	}
@@ -2873,9 +2945,9 @@ object RowProduct {
 
 		implicit def itself[F <: RowProduct] :F PrefixOf F = new PrefixOf(0)
 
-		implicit def extend[F <: RowProduct, E <: RowProduct, L <: U, U <: RowProduct]
-		                    (implicit decompose :RowDecomposition[E, L, U], prefix :F PrefixOf L) :F PrefixOf E =
-			new PrefixOf[F, E](prefix.diff + decompose.extension.diff)
+		implicit def expand[F <: RowProduct, E <: RowProduct, L <: U, U <: RowProduct]
+		                   (implicit decompose :RowDecomposition[E, L, U], prefix :F PrefixOf L) :F PrefixOf E =
+			new PrefixOf[F, E](prefix.diff + decompose.expansion.diff)
 
 		implicit def group[F <: RowProduct, O <: RowProduct, E <: FromSome, R[A] <: MappingAt[A]]
 		                  (implicit outer :O OuterClauseOf E, part :F PrefixOf O) :F PrefixOf (E GroupBy R) =

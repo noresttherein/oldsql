@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.ParamQuery.{ParamCompoundSelect, ParamCompoundSelectMapping, ParamMappingQuery}
 import net.noresttherein.oldsql.sql.ParamSelect.ArbitraryParamSelect
-import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, GroundFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SelectAPI.{QueryTemplate, SelectTemplate, SetOperator}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, QuerySQL, SelectSQL, TupleSQL}

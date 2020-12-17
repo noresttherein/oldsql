@@ -5,8 +5,8 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, FromSome, GroupBy, GroupByClause, RowProduct}
-import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExtendingDecorator}
-import net.noresttherein.oldsql.sql.Extended.ExtendedDecomposition
+import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
+import net.noresttherein.oldsql.sql.Expanded.ExpandedDecomposition
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.RowProduct.As
 
@@ -41,11 +41,11 @@ object GroupedUnder {
 
 	implicit def andBy[F <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
 	                   J[+C <: U, T[A] <: R[A]] <: C AndBy T, U <: GroupByClause]
-	                  (implicit decompose :ExtendedDecomposition[G, L, R, J, U], from :F GroupedUnder L)
+	                  (implicit decompose :ExpandedDecomposition[G, L, R, J, U], from :F GroupedUnder L)
 			:F GroupedUnder G =
 		instance.asInstanceOf[F GroupedUnder G]
 
-	implicit def decorated[F <: RowProduct, G <: D[C], D[+B <: U] <: ExtendingDecorator[B], C <: U, U <: RowProduct]
+	implicit def decorated[F <: RowProduct, G <: D[C], D[+B <: U] <: ExpandingDecorator[B], C <: U, U <: RowProduct]
 	                      (implicit decompose :DecoratorDecomposition[G, C, D, U], from :F GroupedUnder C)
 			:F GroupedUnder G =
 		instance.asInstanceOf[F GroupedUnder G]

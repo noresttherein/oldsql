@@ -8,10 +8,10 @@ import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComp
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, Extended, ParamSelect, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, ComponentValue, Expanded, ParamSelect, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn.LooseColumnMatcher
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.{CaseLooseComponent, LooseComponentMatcher}
@@ -282,8 +282,8 @@ object MappingSQL {
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			)(projection.isomorphism[E])
 
-		override def extend[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+		override def expand[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:LooseComponent[E, M, V] =
 			new LooseComponent[E, M, V](mapping.asInstanceOf[M[E]], offset + ev.length,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]],
@@ -512,8 +512,8 @@ object MappingSQL {
 				projection.isomorphism
 			)
 
-		override def extend[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+		override def expand[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:LooseColumn[E, M, V] =
 			new LooseColumn[E, M, V](column.asInstanceOf[M[E]], offset + ev.length,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]])(
@@ -864,14 +864,14 @@ object MappingSQL {
 		                       (relation :JoinedRelation[P, T]) :TypedComponentSQL[P, T, R, M, V, P] =
 			relation.asInstanceOf[RelationSQL[P, T, R, P]] \ mapping.withOrigin[P]
 
-		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit extension :U PartOf E)
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit expansion :U PartOf E)
 				:TypedComponentSQL[E, T, R, M, V, _ >: E <: RowProduct] =
-			extend(base)(extension.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
+			expand(base)(expansion.asExpandedBy, implicitly[GlobalScope <:< GlobalScope])
 
-		override def extend[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+		override def expand[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:TypedComponentSQL[E, T, R, M, V, _ >: E <: RowProduct] =
-			graft(origin.extend(base).asInstanceOf[RelationSQL[E, T, R, E]])
+			graft(origin.expand(base).asInstanceOf[RelationSQL[E, T, R, E]])
 
 		override def topSelectFrom[E <: F with GroundFrom](from :E) :SelectMapping[E, M, V] =
 			SelectSQL(from, this)
@@ -1029,12 +1029,12 @@ object MappingSQL {
 
 		override def graft[P <: RowProduct](relation :JoinedRelation[P, Entity]) :ColumnComponentSQL[P, M, V]
 
-		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit extension :U PartOf E)
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit expansion :U PartOf E)
 				:ColumnComponentSQL[E, M, V] =
-			extend(base)(extension.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
+			expand(base)(expansion.asExpandedBy, implicitly[GlobalScope <:< GlobalScope])
 
-		override def extend[U <: F, E <: RowProduct]
-		                   (base :E)(implicit extension :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+		override def expand[U <: F, E <: RowProduct]
+		                   (base :E)(implicit expansion :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:ColumnComponentSQL[E, M, V]
 
 		override def selectFrom(from :F) :SelectColumnAs[from.Base, M, V] =
@@ -1195,14 +1195,14 @@ object MappingSQL {
 			relation.asInstanceOf[RelationSQL[P, T, R, P]] \ mapping.withOrigin[P]
 
 		override def basedOn[U <: F, E <: RowProduct]
-		                    (base :E)(implicit extension :U PartOf E)
+		                    (base :E)(implicit expansion :U PartOf E)
 				:TypedColumnComponentSQL[E, T, R, M, V, _ >: E <: RowProduct] =
-			extend(base)(extension.asExtendedBy, implicitly[GlobalScope <:< GlobalScope])
+			expand(base)(expansion.asExpandedBy, implicitly[GlobalScope <:< GlobalScope])
 
-		override def extend[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+		override def expand[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:TypedColumnComponentSQL[E, T, R, M, V, _ >: E <: RowProduct] =
-			graft(origin.extend(base))
+			graft(origin.expand(base))
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, V] =
 			matcher.component(this)
@@ -1348,14 +1348,14 @@ object MappingSQL {
 		/** Simply returns the given relation. */
 		override def graft[P <: RowProduct](relation :JoinedRelation[P, T]) :JoinedRelation[P, T] = relation
 
-		/** Converts this relation to an expression based on the clause `E[F]`, which extends `F` by a single relation. */
-		def asIn[E[+L <: F] <: L Extended T forSome { type T[O] <: MappingAt[O] }] :JoinedRelation[E[F], T]
+		/** Converts this relation to an expression based on the clause `E[F]`, which expands `F` by a single relation. */
+		def asIn[E[+L <: F] <: L Expanded T forSome { type T[O] <: MappingAt[O] }] :JoinedRelation[E[F], T]
 
-		/** This method is equivalent to `this.extend()`, but doesn't require the `G` clause as the parameter
-		  * and returns a `JoinedRelation`. The `extend` method cannot be overriden here to return a `JoinedRelation`
+		/** This method is equivalent to `this.expand()`, but doesn't require the `G` clause as the parameter
+		  * and returns a `JoinedRelation`. The `expand` method cannot be overriden here to return a `JoinedRelation`
 		  * as the compiler doesn't know if `T[O]#Subject =:= T[G]#Subject`.
 		  */
-		def asIn[G <: RowProduct](implicit extension :F PrefixOf G) :JoinedRelation[G, T]
+		def asIn[G <: RowProduct](implicit expansion :F PrefixOf G) :JoinedRelation[G, T]
 
 
 		/** Checks if this instance and the argument use the same [[net.noresttherein.oldsql.schema.Relation Relation]]
@@ -1446,14 +1446,14 @@ object MappingSQL {
 		/** A new `JoinedTable` identical to this one, but in ''from'' clause `E` at offset `offset`. */
 		override def moveTo[E <: RowProduct](offset :TableOffset[E, T]) :JoinedTable[E, T]
 
-		/** Converts this relation to an expression based on the clause `E[F]`, which extends `F` by a single relation. */
-		def asIn[E[+L <: F] <: L Extended T forSome { type T[O] <: MappingAt[O] }] :JoinedTable[E[F], T]
+		/** Converts this relation to an expression based on the clause `E[F]`, which expands `F` by a single relation. */
+		def asIn[E[+L <: F] <: L Expanded T forSome { type T[O] <: MappingAt[O] }] :JoinedTable[E[F], T]
 
-		/** This method is equivalent to `this.extend()`, but doesn't require the `G` clause as the parameter
-		  * and returns a `JoinedTable`. The `extend` method cannot be overriden here to return a `JoinedTable`
+		/** This method is equivalent to `this.expand()`, but doesn't require the `G` clause as the parameter
+		  * and returns a `JoinedTable`. The `expand` method cannot be overriden here to return a `JoinedTable`
 		  * as the compiler doesn't know if `T[O]#Subject =:= T[G]#Subject`.
 		  */
-		def asIn[G <: RowProduct](implicit extension :F PrefixOf G) :JoinedTable[G, T]
+		def asIn[G <: RowProduct](implicit expansion :F PrefixOf G) :JoinedTable[G, T]
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[JoinedTable.*]
 
@@ -1594,26 +1594,26 @@ object MappingSQL {
 			relation.toRelationSQL.asInstanceOf[RelationSQL[P, T, R, P]]
 
 		override def basedOn[U <: O, E <: RowProduct]
-		                    (base :E)(implicit extension :U PartOf E) :RelationSQL[E, T, R, _ >: E <: RowProduct] =
-			new RelationSQL[E, T, R, E](relation, offset + extension.diff,
+		                    (base :E)(implicit expansion :U PartOf E) :RelationSQL[E, T, R, _ >: E <: RowProduct] =
+			new RelationSQL[E, T, R, E](relation, offset + expansion.diff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			) //E is incorrect, but we lose this information anyway
 
-		override def extend[U <: O, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+		override def expand[U <: O, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:RelationSQL[E, T, R, _ >: E <: RowProduct] =
 			new RelationSQL[E, T, R, E](relation, offset + ev.length,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			) //E is incorrect, but we lose this information anyway
 
-		override def asIn[J[+L <: O] <: L Extended T forSome { type T[A] <: MappingAt[A] }] :RelationSQL[J[F], T, R, J[O]] =
+		override def asIn[J[+L <: O] <: L Expanded T forSome { type T[A] <: MappingAt[A] }] :RelationSQL[J[F], T, R, J[O]] =
 			new RelationSQL[J[F], T, R, J[O]](relation, offset + 1,
 				includes.asInstanceOf[Unique[RefinedMapping[_, J[O]]]],
 				excludes.asInstanceOf[Unique[RefinedMapping[_, J[O]]]]
 			)
 
-		override def asIn[E <: RowProduct](implicit extension :O PrefixOf E) :RelationSQL[E, T, R, E] =
-			new RelationSQL(relation, offset + extension.diff,
+		override def asIn[E <: RowProduct](implicit expansion :O PrefixOf E) :RelationSQL[E, T, R, E] =
+			new RelationSQL(relation, offset + expansion.diff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			)
 
@@ -1804,26 +1804,26 @@ object MappingSQL {
 			)
 
 		override def basedOn[U <: O, E <: RowProduct]
-		                    (base :E)(implicit extension :U PartOf E) :TableSQL[E, T, R, _ >: E <: RowProduct] =
-			new TableSQL[E, T, R, E](relation, offset + extension.diff,
+		                    (base :E)(implicit expansion :U PartOf E) :TableSQL[E, T, R, _ >: E <: RowProduct] =
+			new TableSQL[E, T, R, E](relation, offset + expansion.diff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			) //E is incorrect, but we lose this information anyway
 
-		override def extend[U <: O, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope)
+		override def expand[U <: O, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:TableSQL[E, T, R, _ >: E <: RowProduct] =
 			new TableSQL[E, T, R, E](relation, offset + ev.length,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			) //E is incorrect, but we lose this information anyway
 
-		override def asIn[J[+L <: O] <: L Extended T forSome { type T[A] <: MappingAt[A] }] :TableSQL[J[F], T, R, J[O]] =
+		override def asIn[J[+L <: O] <: L Expanded T forSome { type T[A] <: MappingAt[A] }] :TableSQL[J[F], T, R, J[O]] =
 			new TableSQL[J[F], T, R, J[O]](relation, offset + 1,
 				includes.asInstanceOf[Unique[RefinedMapping[_, J[O]]]],
 				excludes.asInstanceOf[Unique[RefinedMapping[_, J[O]]]]
 			)
 
-		override def asIn[E <: RowProduct](implicit extension :O PrefixOf E) :TableSQL[E, T, R, E] =
-			new TableSQL(relation, offset + extension.diff,
+		override def asIn[E <: RowProduct](implicit expansion :O PrefixOf E) :TableSQL[E, T, R, E] =
+			new TableSQL(relation, offset + expansion.diff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			)
 

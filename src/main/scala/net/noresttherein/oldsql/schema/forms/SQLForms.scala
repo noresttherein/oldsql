@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
 import net.noresttherein.oldsql.collection.LabeledChain.>~
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.collection.Record.|#
-import net.noresttherein.oldsql.morsels.{Contextless, Lazy}
+import net.noresttherein.oldsql.morsels.{Stateless, Lazy}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.forms.SQLForms.{AbstractChainIndexReadForm, ChainMapEntryReadForm, ChainMapEntryWriteForm, ChainMapForm, ChainReadForm, ChainSQLForm, ChainSQLWriteForm, ChainWriteForm, EmptyChainForm, IndexedChainEntryReadForm, IndexedChainEntryWriteForm, IndexedChainForm, SuperAdapterColumnForm, SuperChainForm}
@@ -791,8 +791,17 @@ object SQLForms extends ColumnFormImplicits with BasicForms with ScalaForms {
 	/** Base type for anonymous forms for natively supported JDBC types. Implements equality as class equality
 	  * (ignoring the associated `NotNull` and `toString` as `sqlType.toString`.
 	  */
-	private[schema] abstract class BasicJDBCForm[T :NullValue](jdbcType :JDBCType)
-		extends JDBCForm[T](jdbcType) with Contextless
+	private[schema] abstract class BasicJDBCForm[T :NullValue](jdbcType :JDBCType) extends JDBCForm[T](jdbcType) {
+		override def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :BasicJDBCForm[_] => other.getClass == getClass && other.nulls == nulls
+			case _ => false
+		}
+
+		override def hashCode :Int = getClass.hashCode * 31 + nulls.hashCode
+	}
 
 	private[schema] abstract class AlternateJDBCForm[T :NullValue](jdbcType :JDBCType, override val toString :String)
 		extends JDBCForm[T](jdbcType)

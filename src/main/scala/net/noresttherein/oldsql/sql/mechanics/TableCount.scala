@@ -6,9 +6,9 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndFrom, By, Dual, Extended, From, FromClause, FromSome, GroupBy, GroupByClause, GroupParam, Join, JoinParam, NonParam, RowProduct, Subselect}
-import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExtendingDecorator}
-import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndFrom, By, Dual, Expanded, From, FromClause, FromSome, GroupBy, GroupByClause, GroupParam, Join, JoinParam, NonParam, RowProduct, Subselect}
+import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
+import net.noresttherein.oldsql.sql.Expanded.{ExpandedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
 import net.noresttherein.oldsql.sql.UnboundParam.ParamAt
 
@@ -37,12 +37,12 @@ class RowProductSize[-F <: RowProduct, N <: Numeral] private (private val n :Int
 object RowProductSize {
 	implicit val DualCount :RowProductSize[Dual, 0] = new RowProductSize[Dual, 0](0)
 
-	implicit def extended[L <: RowProduct, R[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
-	                     (implicit count :RowProductSize[L, M], plus :Inc[M, N]) :RowProductSize[L Extended R, N] =
-		new RowProductSize[L Extended R, N](plus.n)
+	implicit def expanded[L <: RowProduct, R[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
+	                     (implicit count :RowProductSize[L, M], plus :Inc[M, N]) :RowProductSize[L Expanded R, N] =
+		new RowProductSize[L Expanded R, N](plus.n)
 
 	implicit def decorated[F <: RowProduct, N <: Numeral](implicit count :RowProductSize[F, N])
-			:RowProductSize[ExtendingDecorator[F], N] =
+			:RowProductSize[ExpandingDecorator[F], N] =
 		new RowProductSize(count.size)
 
 	implicit def grouped[F <: FromSome, G[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
@@ -93,14 +93,14 @@ object SubselectClauseSize {
 	implicit def aggregated[F <: FromSome] :SubselectClauseSize[Aggregated[F], 0] =
 		new SubselectClauseSize[Aggregated[F], 0](0)
 
-	implicit def extended[F <: L J R, L <: U, R[O] <: MappingAt[O],
+	implicit def expanded[F <: L J R, L <: U, R[O] <: MappingAt[O],
 	                      J[+A <: U, B[O] <: R[O]] <: A NonSubselect B, U <: RowProduct, M <: Numeral, N <: Numeral]
-	                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U],
+	                     (implicit decompose :ExpandedDecomposition[F, L, R, J, U],
 	                      prev :SubselectClauseSize[L, M], plus :Inc[M, N]) :SubselectClauseSize[F, N] =
 		new SubselectClauseSize[F, N](plus.n)
 
-	implicit def decorated[D <: ExtendingDecorator[F], F <: RowProduct, N <: Numeral]
-	             (implicit decompose :InferTypeParams[D, D, ExtendingDecorator[F]], prev :SubselectClauseSize[F, N])
+	implicit def decorated[D <: ExpandingDecorator[F], F <: RowProduct, N <: Numeral]
+	             (implicit decompose :InferTypeParams[D, D, ExpandingDecorator[F]], prev :SubselectClauseSize[F, N])
 			:SubselectClauseSize[D, N] =
 		new SubselectClauseSize[D, N](prev.n)
 
@@ -144,14 +144,14 @@ object TableCount {
 	implicit final val GroupByClauseHasZero :TableCount[GroupByClause, 0] = new TableCount[GroupByClause, 0](0)
 	implicit final val AggregateClauseHasZero :TableCount[AggregateClause, 0] = new TableCount[AggregateClause, 0](0)
 
-	implicit def extended[F <: L J R, L <: U, R[O] <: MappingAt[O],
-	                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct, M <: Numeral, N <: Numeral]
-	                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U],
+	implicit def expanded[F <: L J R, L <: U, R[O] <: MappingAt[O],
+	                      J[+A <: U, B[O] <: R[O]] <: A Expanded B, U <: RowProduct, M <: Numeral, N <: Numeral]
+	                     (implicit decompose :ExpandedDecomposition[F, L, R, J, U],
 	                      count :TableCount[L, M], inc :Inc[M, N])
 			:TableCount[F, N] =
 		new TableCount[F, N](inc.n)
 
-	implicit def decorated[E <: D[F], F <: U, D[+C <: U] <: ExtendingDecorator[C], U <: RowProduct, N <: Numeral]
+	implicit def decorated[E <: D[F], F <: U, D[+C <: U] <: ExpandingDecorator[C], U <: RowProduct, N <: Numeral]
 	                      (implicit decompose :DecoratorDecomposition[E, F, D, U], count :TableCount[F, N])
 			:TableCount[E, N] =
 		new TableCount[E, N](count.tables)
@@ -209,14 +209,14 @@ object SubselectTableCount {
 	implicit def aggregated[F <: FromSome] :SubselectTableCount[Aggregated[F], 0] =
 		new SubselectTableCount[Aggregated[F], 0](0)
 
-	implicit def extended[E <: L J R, L <: U, R[O] <: MappingAt[O],
+	implicit def expanded[E <: L J R, L <: U, R[O] <: MappingAt[O],
 	                      J[+A <: U, B[O] <: R[O]] <: A NonSubselect B, U <: RowProduct, M <: Numeral, N <: Numeral]
-	             (implicit decompose :ExtendedDecomposition[E, L, R, J, U],
+	             (implicit decompose :ExpandedDecomposition[E, L, R, J, U],
 	              prev :SubselectTableCount[E, M], inc :Inc[M, N])
 			:SubselectTableCount[E, N] =
 		new SubselectTableCount[E, N](inc.n)
 
-	implicit def decorated[E <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct, N <: Numeral]
+	implicit def decorated[E <: D[C], C <: U, D[+B <: U] <: ExpandingDecorator[B], U <: RowProduct, N <: Numeral]
 	                      (implicit decompose :DecoratorDecomposition[E, C, D, U], count :SubselectTableCount[C, N])
 			:SubselectTableCount[E, N] =
 		new SubselectTableCount[E, N](count.tables)
@@ -235,8 +235,8 @@ object SubselectTableCount {
   * and `N` is the number of relations to its right. Any relations under the scope of a `GroupBy`
   * (between the last `Subselect` or the first relation and `GroupBy`) are excluded from the count
   * and `M` must not be such a relation. The clause `F` must be in the form
-  * `L E M G1 T1 ... Gn Tn`, where `L` is the upper bound of the left side of the extension `E` and all `Gi`
-  * are extension with a definite `Generalized` form. `From[M]` can replace `L E M` in the above definition.
+  * `L E M G1 T1 ... Gn Tn`, where `L` is the upper bound of the left side of the expansion `E` and all `Gi`
+  * are expansion with a definite `Generalized` form. `From[M]` can replace `L E M` in the above definition.
   * This evidence is invariant in `F` in order to maintain the invariant of `M` being the first `Mapping` type
   * listed and preserve the correct relation count `N`. When `F` is used as the `Origin` type for the mapping `M`,
   * this allows to track back any component of `M` back to the relation it originated from.
@@ -291,15 +291,15 @@ object TableOffset {
 
 
 
-	implicit def extended[E <: L J R, L <: U, R[O] <: MappingAt[O],
-	                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct,
+	implicit def expanded[E <: L J R, L <: U, R[O] <: MappingAt[O],
+	                      J[+A <: U, B[O] <: R[O]] <: A Expanded B, U <: RowProduct,
 	                      T[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
-	                     (implicit decompose :ExtendedDecomposition[E, L, R, J, U],
+	                     (implicit decompose :ExpandedDecomposition[E, L, R, J, U],
 	                      prev :TableOffset.Of[L, T, M], inc :Inc[M, N])
 			:TableOffset.Of[E, T, N] =
 		new TableOffset[E, T](inc.n).asInstanceOf[Of[E, T, N]]
 
-	implicit def decorated[E <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct,
+	implicit def decorated[E <: D[C], C <: U, D[+B <: U] <: ExpandingDecorator[B], U <: RowProduct,
 	                       T[O] <: MappingAt[O], N <: Numeral]
 	                      (implicit decompose :DecoratorDecomposition[E, C, D, U], body :TableOffset.Of[C, T, N])
 			:TableOffset.Of[E, T, N] =

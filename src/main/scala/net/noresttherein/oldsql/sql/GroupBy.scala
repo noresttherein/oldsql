@@ -6,9 +6,9 @@ import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, GroupingOfGeneralized, NonEmptyFrom, PartOf}
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroupingOfGeneralized, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
@@ -43,8 +43,8 @@ import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SQLScribe}
   * or [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] (for the latter) as the adapter used
   * in the grouping relation of this instance.
   *
-  * This 'join' works differently than other [[net.noresttherein.oldsql.sql.Compound Compound]] subtypes in that
-  * it doesn't [[net.noresttherein.oldsql.sql.Extended extend]] the clause on its left side: all relations
+  * This 'join' works differently than other [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] subtypes in that
+  * it doesn't [[net.noresttherein.oldsql.sql.Expanded expand]] the clause on its left side: all relations
   * from the ''from'' clause `F` since the last occurrence of [[net.noresttherein.oldsql.sql.Subselect Subselect]]
   * (or [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]) become 'shadowed'
   * and unavailable through the [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]]
@@ -80,7 +80,7 @@ import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SQLScribe}
   * @author Marcin Mościcki
   */
 trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
-	extends Compound[F, M] with GroupByClause with GroupByClauseTemplate[F GroupBy M, F GroupBy M]
+	extends Adjoin[F, M] with GroupByClause with GroupByClauseTemplate[F GroupBy M, F GroupBy M]
 { thisClause =>
 
 	override type FromLast = FromSome GroupBy M
@@ -112,7 +112,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 
 	override def filter :LocalBoolean[Generalized] = condition
 
-	override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] =
+	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :LocalBoolean[E] =
 		condition.basedOn(target)
 
 
@@ -147,8 +147,8 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	override type FullRow = OuterRow ~ last.Subject
 
 	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		left.outerRow(target)(explicitSpan.extend(extension)) ~ last.extend(target)
+	                    (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
+		left.outerRow(target)(explicitSpan.expand(expansion)) ~ last.expand(target)
 
 
 	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
@@ -183,19 +183,19 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	override type Row = @~ ~ last.Subject
 
 	override def row[E <: RowProduct]
-	                (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
-		EmptyChain ~ last.extend(target)
+	                (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, Row] =
+		EmptyChain ~ last.expand(target)
 
 	override type OuterRow = left.OuterRow
 
 	override def outerRow[E <: RowProduct]
-	                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, GlobalScope, OuterRow] =
+	                     (target :E)(implicit expansion :Implicit ExpandedBy E) :ChainTuple[E, GlobalScope, OuterRow] =
 		left.outerRow(target)
 
 
 	override type AsSubselectOf[+P <: NonEmptyFrom] = WithLeft[left.AsSubselectOf[P]]
 
-	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
+	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit expansion :Implicit ExpandedBy P)
 			:AsSubselectOf[P] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 	{
 		val newLeft = left.asSubselectOf(newOuter)
@@ -203,7 +203,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 		//  this would however introduce problem with JoinLike.as: one of the relation becoming unavailable
 		val unfiltered = withLeft[newLeft.Generalized](newLeft.generalized)(True)
 		val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized GroupBy M](
-			generalized, unfiltered, extension.length, size + 1
+			generalized, unfiltered, expansion.length, size + 1
 		)
 		withLeft[newLeft.type](newLeft)(substitute(condition))
 	}
@@ -292,13 +292,13 @@ object GroupBy {
 			override def aliased[N <: Label](alias :N) =
 				GroupBy[left.type, M, S, N](left, last, Some(alias))(condition)
 
-			override def fullTableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E) =
-				last.extend(target) #:: outer.fullTableStack(target)(explicitSpan.extend(extension))
+			override def fullTableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E) =
+				last.expand(target) #:: outer.fullTableStack(target)(explicitSpan.expand(expansion))
 
 
-			override def tableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+			override def tableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
 					:LazyList[RelationSQL.AnyIn[E]] =
-				last.extend(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
+				last.expand(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
 			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.groupBy[F, M, S](this)
@@ -310,7 +310,7 @@ object GroupBy {
 	/** Matches all `GroupBy` instances, splitting them into their left (ungrouped ''from'' clause)
 	  * and right (the first column grouping) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Relation[R])] = from match {
 		case _ :GroupBy[_, _] => Some((from.left, from.right))
 		case _ => None
 	}
@@ -418,8 +418,8 @@ object GroupBy {
 
 		override def filter :LocalBoolean[Generalized] = cachedFilter.get
 
-		override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] =
-			left.filter(target)(extension.extendFront[left.Generalized, M]) && condition.basedOn(target)
+		override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :LocalBoolean[E] =
+			left.filter(target)(expansion.expandFront[left.Generalized, M]) && condition.basedOn(target)
 
 
 
@@ -464,7 +464,7 @@ object GroupBy {
   * in the grouping relation of this instance.
   *
   * This 'join' is created and provides an interface very similar to `GroupBy`, but unlike it,
-  * and like all [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] subtypes it is a true extension of the
+  * and like all [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] subtypes it is a true expansion of the
   * ''group by'' clause of its left side, as both the mapping `M` from it and all preceding mappings of
   * grouping expressions since the last `GroupBy` are normally available to the ''select'' and ''having'' clauses.
   * All relations listed in the clause between the last [[net.noresttherein.oldsql.sql.Subselect Subselect]]
@@ -477,7 +477,7 @@ object GroupBy {
   * [[net.noresttherein.oldsql.sql.AggregateFunction.Count Count]] or
   * [[net.noresttherein.oldsql.sql.AggregateFunction.Avg Avg]]). Relations preceding the last `Subselect`
   * are the relations of outer selects, not direct members of this select's ''from'' clause, and are available
-  * individually as normal. Additional `By` extensions may follow this type, adding new grouping expressions
+  * individually as normal. Additional `By` expansions may follow this type, adding new grouping expressions
   * to this ''group by'' clause.
   *
   * Universal SQL aggregate expressions for use in the ''having'' clause of this clause can be created through
@@ -537,8 +537,8 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 	override type FullRow = left.FullRow ~ last.Subject
 
 	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		left.fullRow(target)(extension.extendFront[left.Generalized, M]) ~ last.extend(target)
+	                    (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
+		left.fullRow(target)(expansion.expandFront[left.Generalized, M]) ~ last.expand(target)
 
 
 
@@ -567,13 +567,13 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 	override type Row = left.Row ~ last.Subject
 
 	override def row[E <: RowProduct]
-	                (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
-		left.row(target)(extension.extendFront[left.Generalized, M]) ~ last.extend(target)
+	                (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, Row] =
+		left.row(target)(expansion.expandFront[left.Generalized, M]) ~ last.expand(target)
 
 
 	override type AsSubselectOf[+P <: NonEmptyFrom] = WithLeft[left.AsSubselectOf[P]]
 
-	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
+	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit expansion :Implicit ExpandedBy P)
 			:AsSubselectOf[P] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 	{
 		val newLeft = left.asSubselectOf(newOuter)
@@ -581,7 +581,7 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 		//  this would however introduce problem with JoinLike.as: one of the relation becoming unavailable
 		val unfiltered = withLeft[newLeft.Generalized](newLeft.generalized)(True)
 		val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized By M](
-			generalized, unfiltered, extension.length, size + 1
+			generalized, unfiltered, expansion.length, size + 1
 		)
 		withLeft[newLeft.type](newLeft)(substitute(condition))
 	}
@@ -662,7 +662,7 @@ object By {
 	                       asOpt :Option[A])
 	                      (cond :LocalBoolean[clause.Generalized By T])
 			:G By T As A =
-		new By[clause.type, T] with AbstractExtended[clause.type, T, S] {
+		new By[clause.type, T] with AbstractExpanded[clause.type, T, S] {
 			override val left = clause
 			override val last = group
 			override val aliasOpt = asOpt
@@ -698,7 +698,7 @@ object By {
 	/** Matches all `By` instances, splitting them into their left (preceding column groupings)
 	  * and right (the last column grouping) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Relation[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Relation[R])] = from match {
 		case _ :By[_, _] => Some((from.left, from.right))
 		case _ => None
 	}
@@ -712,11 +712,11 @@ object By {
 
 	//todo: can it incorporate aliased clauses the same way join does?
 	implicit def byDecomposition[L <: GroupByClause, R[O] <: MappingAt[O]]
-			:ExtendedDecomposition[L By R, L, R, By, GroupByClause] =
-		composition.asInstanceOf[ExtendedDecomposition[L By R, L, R, By, GroupByClause]]
+			:ExpandedDecomposition[L By R, L, R, By, GroupByClause] =
+		composition.asInstanceOf[ExpandedDecomposition[L By R, L, R, By, GroupByClause]]
 
 	private[this] val composition =
-		new ExtendedDecomposition[GroupByClause By MappingAt, GroupByClause, MappingAt, By, GroupByClause]
+		new ExpandedDecomposition[GroupByClause By MappingAt, GroupByClause, MappingAt, By, GroupByClause]
 
 
 

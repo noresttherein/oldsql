@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql.ast
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql.{ast, AggregateClause, AggregateFunction, ColumnSQL, FromSome, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, PartOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL.DefaultAggregateSQL
 
@@ -71,10 +71,10 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 	override def basedOn[U <: G, E <: RowProduct](base :E)(implicit ext :U PartOf E) :AggregateSQL[F, E, X, Y] =
 		new DefaultAggregateSQL(function, arg, isDistinct)(readForm) //we could just cast ourselves and it would be fine
 
-	override def extend[U <: G, E <: RowProduct]
-	                   (base :E)(implicit extension :U ExtendedBy E, global: GlobalScope <:< LocalScope) :Nothing =
+	override def expand[U <: G, E <: RowProduct]
+	                   (base :E)(implicit expansion :U ExpandedBy E, global: GlobalScope <:< LocalScope) :Nothing =
 		throw new UnsupportedOperationException(
-			s"AggregateSQL expression cannot be extended over to a subselect clause $base."
+			s"AggregateSQL expression cannot be expanded over to a subselect clause $base."
 		)
 
 

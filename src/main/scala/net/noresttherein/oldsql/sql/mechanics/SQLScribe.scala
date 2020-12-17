@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, By, ColumnSQL,
 import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
-import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, NonEmptyFrom, PartOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
@@ -91,12 +91,12 @@ object SQLScribe {
 	  * applicable (such as `SQLTerm` and its subclasses), and recursively applies itself to both
 	  * `CompositeSQL` and `SubselectSQL`. The former uses the `rephrase` method to rebuild the composite expression
 	  * from parts transformed with this instance, while the latter creates a new instance with its
-	  * [[net.noresttherein.oldsql.sql.mechanics.SQLScribe.RecursiveScribe.extended extended]] method for the subselect's
+	  * [[net.noresttherein.oldsql.sql.mechanics.SQLScribe.RecursiveScribe.expanded expanded]] method for the subselect's
 	  * ''from'' clause. The subselect clause is then transplanted onto the result clause `G` in a way similar
 	  * to [[net.noresttherein.oldsql.sql.RowProduct.asSubselectOf RowProduct.asSubselectOf]], rewriting all
 	  * join conditions and the subselect header before creating a new `SubselectSQL`.
 	  * In order to be able to rewrite subselect expressions, it requires the output clause instance `G` to use
-	  * as their `Outer`/`Implicit` portion. This can be achieved either by using this scribe in a `Compound`
+	  * as their `Outer`/`Implicit` portion. This can be achieved either by using this scribe in a `Adjoin`
 	  * constructor and passing `this` (with uninitialized join condition), or it can be a template clause with an empty
 	  * join condition, as the join conditions from the outer portion of subselect clauses are not used in the
 	  * generation of the SQL for the subselect.
@@ -159,7 +159,7 @@ object SQLScribe {
 		  * @param oldGrouped base clause of input - either `oldClause.Discrete`, or its subselect (possibly indirect).
 		  * @param newGrouped base clause of the output. Initially, when `oldGrouped = oldClause.from`,
 		  *                   `newGrouped = newClause.from`. Afterwards, these are both arguments given to
-		  *                   `extend` - that is a clause resulting from rebasing the input subselect clause onto their
+		  *                   `expand` - that is a clause resulting from rebasing the input subselect clause onto their
 		  *                   common prefix, `this.oldClause.outer`.
 		  * @param oldOffset the index of the rightmost relation from the outer clause of `this.oldClause` (i.e., `F`),
 		  *                  but inside clause `O`.
@@ -199,10 +199,10 @@ object SQLScribe {
 						e.moveTo(new TableOffset[N, T](e.offset - oldOffset + groupings))
 
 
-				override def extended[S <: RowProduct, E <: RowProduct]
+				override def expanded[S <: RowProduct, E <: RowProduct]
 				                     (subselect :S, replacement :E)
-				                     (implicit oldExt :oldClause.Generalized ExtendedBy S,
-				                               newExt :newClause.Generalized ExtendedBy E) =
+				                     (implicit oldExt :oldClause.Generalized ExpandedBy S,
+				                      newExt :newClause.Generalized ExpandedBy E) =
 					group(subselect, replacement, oldOffset + oldExt.length, newOffset + newExt.length, groupings)
 
 			}
@@ -219,70 +219,70 @@ object SQLScribe {
 				case aggregated :Aggregated[_] =>
 					val discrete = rebaseSubselect(aggregated.clause)
 					val res = Aggregated[discrete.clause.type](discrete.clause)
-					implicit val newExtension = res.explicitSpan
-					RecursiveScribeSubselectExtension[RowProduct, newClause.Generalized](res)
+					implicit val newExpansion = res.explicitSpan
+					RecursiveScribeSubselectExpansion[RowProduct, newClause.Generalized](res)
 				case _ =>
 					throw new IllegalArgumentException(s"Unexpected FROM clause type of a subselect: ${e.from}.")
 			}
 			val newSubselect = replacement.clause.generalized
-			val oldExtension = replacement.newExtension.asInstanceOf[oldClause.Generalized ExtendedBy e.From]
-			val scribe = extended(e.from, newSubselect)(oldExtension, replacement.newExtension)
+			val oldExpansion = replacement.newExpansion.asInstanceOf[oldClause.Generalized ExpandedBy e.From]
+			val scribe = expanded(e.from, newSubselect)(oldExpansion, replacement.newExpansion)
 			scribe(e.selectClause).selectFrom(newSubselect).asInstanceOf[GlobalSQL[G, Rows[V]]]
 		}
 
 
 		//todo: rewrite it with some sort of generic dispatch, because it's fugly
-		/** Given a clause `subselect` such that `oldClause.Generalized ExtendedBy subselect.Generalized` and
-		  * the first 'join' of the extension is a `Subselect`, create a new clause, based on `newClause.Generalized`,
+		/** Given a clause `subselect` such that `oldClause.Generalized ExpandedBy subselect.Generalized` and
+		  * the first 'join' of the expansion is a `Subselect`, create a new clause, based on `newClause.Generalized`,
 		  * which applies all relations and 'joins' from `subselect` following `oldClause`, including rewriting all
 		  * join conditions (`filter` properties) in it.
 		  */
 		private def rebaseSubselect(subselect :FromSome)
-				:RecursiveScribeSubselectExtension[FromSome, newClause.Generalized] =
+				:RecursiveScribeSubselectExpansion[FromSome, newClause.Generalized] =
 			subselect match {
 				case j :Join[_, _] =>
 					val join = j.asInstanceOf[FromSome Join MappingAt]
 					val sub = rebaseSubselect(join.left)
-					val newExtension = sub.newExtension.extend[join.LastMapping]
-					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
+					val newExpansion = sub.newExpansion.expand[join.LastMapping]
+					val oldExpansion = newExpansion.asInstanceOf[oldClause.Generalized ExpandedBy join.Generalized]
 					val unfiltered = join.withLeft[sub.clause.type](sub.clause)(True) //todo: condition from a function
 
-					val scribe = extended(join.generalized, unfiltered.generalized)(oldExtension, newExtension)
+					val scribe = expanded(join.generalized, unfiltered.generalized)(oldExpansion, newExpansion)
 					val res = join.withLeft[sub.clause.type](sub.clause)(scribe(join.condition))
-					RecursiveScribeSubselectExtension(res)(newExtension)
+					RecursiveScribeSubselectExpansion(res)(newExpansion)
 
 				case j :Subselect[_, _] if newClause.nonEmpty =>
 					val join = j.asInstanceOf[(oldClause.Generalized with NonEmptyFrom) Subselect MappingAt]
 					val base = newClause.asInstanceOf[FromSome]
 					val unfiltered = join.withLeft[base.type](base)(True)
-					implicit val extension = unfiltered.explicitSpan
-						.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
-					implicit val oldExtension = extension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
-					val scribe = extended(join.generalized, unfiltered.generalized) //todo: condition from a function
+					implicit val expansion = unfiltered.explicitSpan
+						.asInstanceOf[newClause.Generalized ExpandedBy unfiltered.Generalized]
+					implicit val oldExpansion = expansion.asInstanceOf[oldClause.Generalized ExpandedBy join.Generalized]
+					val scribe = expanded(join.generalized, unfiltered.generalized) //todo: condition from a function
 					val res = join.withLeft[base.type](base)(scribe(join.condition))
 						.asInstanceOf[FromSome { type Implicit = newClause.Generalized }]
-					val resExtension = extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized]
-					RecursiveScribeSubselectExtension(res)(resExtension)
+					val resExpansion = expansion.asInstanceOf[newClause.Generalized ExpandedBy res.Generalized]
+					RecursiveScribeSubselectExpansion(res)(resExpansion)
 
 				case j :Subselect[_, _] => //newClause :Dual => subselect becomes a free select
 					val join = j.asInstanceOf[(oldClause.Generalized with FromSome) Subselect MappingOf[Any]#TypedProjection]
 					val unfiltered = From[MappingOf[Any]#TypedProjection, Any](join.right)
-					implicit val extension = unfiltered.explicitSpan
-						.asInstanceOf[newClause.Generalized ExtendedBy unfiltered.Generalized]
-					implicit val oldExtension = extension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
-					val scribe = extended(join.generalized, unfiltered.generalized)
+					implicit val expansion = unfiltered.explicitSpan
+						.asInstanceOf[newClause.Generalized ExpandedBy unfiltered.Generalized]
+					implicit val oldExpansion = expansion.asInstanceOf[oldClause.Generalized ExpandedBy join.Generalized]
+					val scribe = expanded(join.generalized, unfiltered.generalized)
 					val condition = newClause.filter.asInstanceOf[GlobalBoolean[RowProduct]] && scribe(join.condition)
 					val res = From[MappingOf[Any]#TypedProjection, Any](join.right, condition)
 						.asInstanceOf[FromSome { type Implicit = newClause.Generalized }]
-					RecursiveScribeSubselectExtension(res)(extension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized])
+					RecursiveScribeSubselectExpansion(res)(expansion.asInstanceOf[newClause.Generalized ExpandedBy res.Generalized])
 
 				case d :FromSomeDecorator[_] =>
 					val wrap = d.asInstanceOf[FromSomeDecorator[FromSome]]
 					val sub = rebaseSubselect(wrap.clause)
 					val res = wrap.withClause(sub.clause.asInstanceOf[wrap.clause.FromLast])
 						.asInstanceOf[FromSome { type Implicit = newClause.Generalized }]
-					val newExtension = sub.newExtension.asInstanceOf[newClause.Generalized ExtendedBy res.Generalized]
-					RecursiveScribeSubselectExtension(res)(newExtension)
+					val newExpansion = sub.newExpansion.asInstanceOf[newClause.Generalized ExpandedBy res.Generalized]
+					RecursiveScribeSubselectExpansion(res)(newExpansion)
 
 				//cases with From/Dual are covered by the topSelect rather than subselect and this method is not called.
 				case bogus =>
@@ -293,29 +293,29 @@ object SQLScribe {
 
 
 		private def rebaseGroupedSubselect(subselect :GroupByClause)
-				:RecursiveScribeSubselectExtension[GroupByClause, newClause.Generalized] =
+				:RecursiveScribeSubselectExpansion[GroupByClause, newClause.Generalized] =
 			subselect match {
 				case j :By[_, _] => //same as Join, really. A pity we can't implement polymorphism without implicits
 					val join = j.asInstanceOf[GroupByClause By MappingAt]
 					val sub = rebaseGroupedSubselect(join.left)
-					val newExtension = sub.newExtension.extend[join.LastMapping]
-					val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
+					val newExpansion = sub.newExpansion.expand[join.LastMapping]
+					val oldExpansion = newExpansion.asInstanceOf[oldClause.Generalized ExpandedBy join.Generalized]
 					val unfiltered = join.unsafeLeftSwap[sub.clause.type](sub.clause)(True)
 
-					val scribe = extended(join.generalized, unfiltered.generalized)(oldExtension, newExtension)
+					val scribe = expanded(join.generalized, unfiltered.generalized)(oldExpansion, newExpansion)
 					val res = join.unsafeLeftSwap[sub.clause.type](sub.clause)(scribe(join.condition))
-					RecursiveScribeSubselectExtension(res)(newExtension)
+					RecursiveScribeSubselectExpansion(res)(newExpansion)
 
 				case j :GroupBy[_, _] =>
 					val join = j.asInstanceOf[FromSome GroupBy MappingAt]
 					val sub = rebaseSubselect(join.left)
 					val unfiltered = join.unsafeLeftSwap[sub.clause.type](sub.clause)(True)
-					implicit val newExtension = unfiltered.explicitSpan //this part differs from other cases
-					implicit val oldExtension = newExtension.asInstanceOf[oldClause.Generalized ExtendedBy join.Generalized]
+					implicit val newExpansion = unfiltered.explicitSpan //this part differs from other cases
+					implicit val oldExpansion = newExpansion.asInstanceOf[oldClause.Generalized ExpandedBy join.Generalized]
 
-					val scribe = extended(join.generalized, unfiltered.generalized)
+					val scribe = expanded(join.generalized, unfiltered.generalized)
 					val res = join.unsafeLeftSwap[sub.clause.type](sub.clause)(scribe(join.condition))
-					RecursiveScribeSubselectExtension(res)
+					RecursiveScribeSubselectExpansion(res)
 
 				case bogus =>
 					throw new IllegalArgumentException(
@@ -325,7 +325,7 @@ object SQLScribe {
 
 
 
-		/** Factory method for compatible rewriters extending their implementation to subselect clauses extending
+		/** Factory method for compatible rewriters expanding their implementation to subselect clauses expanding
 		  * the input clause `F`.
 		  * @param subselectClause a subselect of `F`, that is a ''from'' clause of type `F Subselect ...`.
 		  * @param replacementClause a subselect of the output clause `G`, that is a ''from'' clause of type
@@ -333,26 +333,26 @@ object SQLScribe {
 		  *                          in its subselect span (`Inner`/`Explicit`), but with the last join condition
 		  *                          uninitialized/unchanged.
 		  */
-		protected def extended[S <: RowProduct, E <: RowProduct]
+		protected def expanded[S <: RowProduct, E <: RowProduct]
 		                      (subselectClause :S, replacementClause :E)
-		                      (implicit oldExt :oldClause.Generalized ExtendedBy S,
-		                                newExt :newClause.Generalized ExtendedBy E) :SQLScribe[S, E]
+		                      (implicit oldExt :oldClause.Generalized ExpandedBy S,
+		                       newExt :newClause.Generalized ExpandedBy E) :SQLScribe[S, E]
 
 	}
 
 
 
-	private trait RecursiveScribeSubselectExtension[+U <: RowProduct, E <: RowProduct] {
+	private trait RecursiveScribeSubselectExpansion[+U <: RowProduct, E <: RowProduct] {
 		val clause :U { type Implicit = E }
-		implicit val newExtension :E ExtendedBy clause.Generalized
+		implicit val newExpansion :E ExpandedBy clause.Generalized
 	}
 
-	private def RecursiveScribeSubselectExtension[U <: RowProduct, E <: RowProduct]
-	            (result :U { type Implicit = E })(implicit extension :E ExtendedBy result.Generalized)
-			:RecursiveScribeSubselectExtension[U, E] =
-		new RecursiveScribeSubselectExtension[U, E] {
+	private def RecursiveScribeSubselectExpansion[U <: RowProduct, E <: RowProduct]
+	            (result :U { type Implicit = E })(implicit expansion :E ExpandedBy result.Generalized)
+			:RecursiveScribeSubselectExpansion[U, E] =
+		new RecursiveScribeSubselectExpansion[U, E] {
 			override val clause :result.type = result
-			override val newExtension :E ExtendedBy clause.Generalized = extension
+			override val newExpansion :E ExpandedBy clause.Generalized = expansion
 		}
 
 
@@ -420,10 +420,10 @@ object SQLScribe {
 			(if (e.offset == relation.offset) replacement else e).asInstanceOf[ComponentSQL[G, M]]
 
 
-		protected override def extended[S <: RowProduct, H <: RowProduct]
+		protected override def expanded[S <: RowProduct, H <: RowProduct]
 		                               (subselect :S, replacement :H)
-		                               (implicit oldExt :ExtendedBy[oldClause.Generalized, S],
-		                                         newExt :ExtendedBy[newClause.Generalized, H]) =
+		                               (implicit oldExt :ExpandedBy[oldClause.Generalized, S],
+		                                newExt :ExpandedBy[newClause.Generalized, H]) =
 		{
 			val shift = RelationSQL[S, T, E, S](relation.relation, relation.offset + oldExt.length)
 			val comp = this.replacement.moveTo(new TableOffset[H, N](relation.offset + oldExt.length))
@@ -458,10 +458,10 @@ object SQLScribe {
 	                           newParam :RelationSQL[G, N, X, O], extractor :X =?> P)
 		extends RecursiveScribe[F, G]
 	{
-		protected override def extended[S <: RowProduct, E <: RowProduct]
+		protected override def expanded[S <: RowProduct, E <: RowProduct]
 		                               (subselect :S, replacement :E)
-		                               (implicit oldExt :oldClause.Generalized ExtendedBy S,
-		                                         newExt :newClause.Generalized ExtendedBy E) =
+		                               (implicit oldExt :oldClause.Generalized ExpandedBy S,
+		                                newExt :newClause.Generalized ExpandedBy E) =
 			new ReplaceParam[S, M, P, E, N, X, E](subselect, replacement)(
 				oldParam.moveTo(new TableOffset[S, M](oldParam.offset + oldExt.length)),
 				newParam.moveTo(new TableOffset[E, N](newParam.offset + newExt.length)),
@@ -545,10 +545,10 @@ object SQLScribe {
 
 
 
-		protected override def extended[S <: RowProduct, N <: RowProduct]
+		protected override def expanded[S <: RowProduct, N <: RowProduct]
 		                               (subselect :S, replacement :N)
-		                               (implicit oldExt :ExtendedBy[oldClause.Generalized, S],
-		                                         newExt :ExtendedBy[newClause.Generalized, N]) :SQLScribe[S, N] =
+		                               (implicit oldExt :ExpandedBy[oldClause.Generalized, S],
+		                                newExt :ExpandedBy[newClause.Generalized, N]) :SQLScribe[S, N] =
 			new ApplyParams[S, N](subselect, replacement, params, followingParams ++ List.fill(oldExt.length)(0))
 
 
@@ -626,10 +626,10 @@ object SQLScribe {
 		extends RecursiveScribe[F, G] //with CaseColumnComponent[F, ColumnResult[G]#T]
 	{
 
-		protected override def extended[S <: RowProduct, N <: RowProduct]
+		protected override def expanded[S <: RowProduct, N <: RowProduct]
 		                               (subselect :S, replacement :N)
-		                               (implicit oldExt :ExtendedBy[oldClause.Generalized, S],
-		                                         newExt :ExtendedBy[newClause.Generalized, N]) :SQLScribe[S, N] =
+		                               (implicit oldExt :ExpandedBy[oldClause.Generalized, S],
+		                                newExt :ExpandedBy[newClause.Generalized, N]) :SQLScribe[S, N] =
 			new ApplyParam[S, N, X](subselect, replacement, param, idx + oldExt.length)
 
 
@@ -686,13 +686,13 @@ object SQLScribe {
 
 
 	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
-	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]]
+	  * some its expansion clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.expand expand]]
 	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
 	  */
-	def rebase[F <: RowProduct, E <: RowProduct](clause :E)(implicit extension :F PartOf E) :SQLScribe[F, E] =
+	def rebase[F <: RowProduct, E <: RowProduct](clause :E)(implicit expansion :F PartOf E) :SQLScribe[F, E] =
 		new RebaseExpression[F, E](clause)
 
-	private class RebaseExpression[+F <: RowProduct, E <: RowProduct](clause :E)(implicit extension :F PartOf E)
+	private class RebaseExpression[+F <: RowProduct, E <: RowProduct](clause :E)(implicit expansion :F PartOf E)
 		extends CaseExpression[F, ExpressionResult[E]#T] with CaseColumn[F, ColumnResult[E]#T]
 		   with AbstractSQLScribe[F, E] //overrides the catch-all from the preceding traits
 	{
@@ -709,23 +709,23 @@ object SQLScribe {
 
 
 	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
-	  * some its extension clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]]
+	  * some its expansion clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.expand expand]]
 	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
 	  * For this reason it can only be applied to global expressions, i.e. those for which
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.asGlobal asGlobal]] returns `Some`. For all other expressions
 	  * it will throw an `IllegalArgumentException`
 	  */
-	def extend[F <: RowProduct, E <: RowProduct](clause :E)(implicit extension :F ExtendedBy E) :SQLScribe[F, E] =
-		new ExtendExpression[F, E](clause)
+	def expand[F <: RowProduct, E <: RowProduct](clause :E)(implicit expansion :F ExpandedBy E) :SQLScribe[F, E] =
+		new ExpandExpression[F, E](clause)
 
 
-	private class ExtendExpression[+F <: RowProduct, E <: RowProduct](clause :E)(implicit extension :F ExtendedBy E)
+	private class ExpandExpression[+F <: RowProduct, E <: RowProduct](clause :E)(implicit expansion :F ExpandedBy E)
 		extends CaseExpression[F, ExpressionResult[E]#T] with CaseColumn[F, ColumnResult[E]#T]
 		   with AbstractSQLScribe[F, E] //overrides the catch-all from the preceding traits
 	{
 		private def nonGlobal(e :SQLExpression.*) :Nothing =
 			throw new IllegalArgumentException(
-				s"Cannot extend non global expression $e by ${extension.length} relations to to clause $clause."
+				s"Cannot expand non global expression $e by ${expansion.length} relations to to clause $clause."
 			)
 
 		override def apply[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :GlobalSQL[E, V] =
@@ -743,18 +743,18 @@ object SQLScribe {
 
 		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :SQLExpression[E, S, X] =
 			e.asGlobal match {
-				case Some(global) => global.extend(clause)
+				case Some(global) => global.expand(clause)
 				case _ => nonGlobal(e)
 			}
 
 		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :ColumnSQL[E, S, X] =
 			e.asGlobal match {
-				case Some(global) => global.extend(clause)
+				case Some(global) => global.expand(clause)
 				case _ => nonGlobal(e)
 			}
 
 
-		override def toString = s"Extend[$clause]"
+		override def toString = s"Expand[$clause]"
 	}
 
 
@@ -763,33 +763,33 @@ object SQLScribe {
 
 
 	/** An SQL expression rewriter shifting back references to all relations before the last `Subselect` join
-	  * by `extension` positions. Used when a subselect clause is 'transplanted' onto another clause,
-	  * extending the `Implicit` clause of the subselect.
+	  * by `expansion` positions. Used when a subselect clause is 'transplanted' onto another clause,
+	  * expanding the `Implicit` clause of the subselect.
 	  * @param old a subselect clause serving as SQL expression base.
-	  * @param extending a new subselect clause with some additional relations inserted between `F#Implicit`
+	  * @param expanding a new subselect clause with some additional relations inserted between `F#Implicit`
 	  *                  and the mapping joined in with a `Subselect` join.
-	  * @param extension the difference in relations number between `F` and `G`.
+	  * @param expansion the difference in relations number between `F` and `G`.
 	  * @param subselectSize number of relations in the explicit ''from'' clause of subselects `F` and `G`.
 	  */
 	private[sql] def shiftBack[F <: RowProduct, G <: RowProduct]
-	                          (old :F, extending :G, extension :Int, subselectSize :Int) :SQLScribe[F, G] =
+	                          (old :F, expanding :G, expansion :Int, subselectSize :Int) :SQLScribe[F, G] =
 		new SubstituteComponents[F, G] {
 			protected[this] override val oldClause = old
-			protected[this] override val newClause = extending
+			protected[this] override val newClause = expanding
 
-			private[this] val relations = extending.fullTableStack.to(Array)
+			private[this] val relations = expanding.fullTableStack.to(Array)
 
 			override def relation[T[A] <: BaseMapping[E, A], E, O >: F <: RowProduct](e :RelationSQL[F, T, E, O])
 					:ComponentSQL[G, T] =
 				if (e.offset < subselectSize) e.asInstanceOf[RelationSQL[G, T, E, G]]
-				else relations(e.offset + extension).asInstanceOf[RelationSQL[G, T, E, G]]
+				else relations(e.offset + expansion).asInstanceOf[RelationSQL[G, T, E, G]]
 
 
-			protected override def extended[S <: RowProduct, N <: RowProduct]
+			protected override def expanded[S <: RowProduct, N <: RowProduct]
 			                               (subselect :S, replacement :N)
-			                               (implicit oldExt :oldClause.Generalized ExtendedBy S,
-			                                         newExt :newClause.Generalized ExtendedBy N) =
-				shiftBack[S, N](subselect, replacement, extension, subselectSize + oldExt.length)
+			                               (implicit oldExt :oldClause.Generalized ExpandedBy S,
+			                                newExt :newClause.Generalized ExpandedBy N) =
+				shiftBack[S, N](subselect, replacement, expansion, subselectSize + oldExt.length)
 		}
 
 

@@ -13,7 +13,7 @@ import java.time.temporal.{ChronoField, TemporalAccessor}
 
 import net.noresttherein.oldsql.collection.NaturalMap
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.Contextless
+import net.noresttherein.oldsql.morsels.Stateless
 import net.noresttherein.oldsql.schema.ColumnForm
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCObjectForm
 import net.noresttherein.oldsql.schema.SQLForm.{NonLiteralForm, NullValue}
@@ -399,7 +399,7 @@ trait BasicForms extends NotNullBasicForms {
 
 
 	def NullForm[T >: Null] :ColumnForm[T] =
-		new Basic[T](NULL)(NullValue.Null) with Contextless {
+		new Basic[T](NULL)(NullValue.Null) with Stateless {
 			override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
 				statement.setNull(position, NULL.getVendorTypeNumber)
 

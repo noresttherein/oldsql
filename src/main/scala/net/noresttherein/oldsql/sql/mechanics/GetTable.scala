@@ -7,10 +7,10 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, NegativeInc, Nume
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
-import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, Compound, DecoratedFrom, Extended, FromSome, GroupBy, GroupByClause, GroupParam, JoinedRelation, JoinedTable, JoinParam, RowProduct, Subselect, UnboundParam}
+import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, Adjoin, DecoratedFrom, Expanded, FromSome, GroupBy, GroupByClause, GroupParam, JoinedRelation, JoinedTable, JoinParam, RowProduct, Subselect, UnboundParam}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{Delegate, EvidenceTemplate, RelationEvidence}
-import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExtendingDecorator}
-import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
+import net.noresttherein.oldsql.sql.Expanded.{ExpandedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.RowProduct.{As, RowDecomposition, NonEmptyFrom, PrefixOf}
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, LabeledFromParam, ParamAt}
@@ -27,7 +27,7 @@ import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, LabeledFromParam, P
   * it will be likely instantiated based on its bounds and failing the typing. An implicit type which defines these
   * as member types instead eliminates the possibility of them being instantiated prematurely.
   * Apart from simply accessing the last relation, it also handles the mechanics of
-  * ''extending'' the relation, as defined by clause `F`, to clauses containing `F` as their
+  * ''expanding'' the relation, as defined by clause `F`, to clauses containing `F` as their
   * [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf prefix]]. For this reason, type `Last` is, potentially,
   * not reported as defined in clause `F`, but as its supertype. In practice, default implicit values exist for
   * all `F#Last` and bundled types `F <: RowProduct`. Introducing a new `RowProduct` using a relation expression
@@ -50,10 +50,10 @@ abstract class LastTableOf[-F <: NonEmptyFrom] {
 	type FromLast >: F <: NonEmptyFrom
 
 	/** The last relation in `F`, based on `F#FromLast`. */
-	def apply(from :F) :Last[FromLast] = extend[FromLast](from)(PrefixOf.itself)
+	def apply(from :F) :Last[FromLast] = expand[FromLast](from)(PrefixOf.itself)
 
-	/** The last relation in `from` based on ''from'' clause `E` extending `F#FromLast`. */
-	def extend[E <: RowProduct](from :F)(implicit prefix :FromLast PrefixOf E) :Last[E]
+	/** The last relation in `from` based on ''from'' clause `E` expanding `F#FromLast`. */
+	def expand[E <: RowProduct](from :F)(implicit prefix :FromLast PrefixOf E) :Last[E]
 }
 
 
@@ -77,7 +77,7 @@ object LastTableOf {
 		override def apply(from :NonEmptyFrom) :JoinedRelation[FromLast, LastMapping] =
 			from.last.asInstanceOf[JoinedRelation[FromLast, LastMapping]]
 
-		override def extend[E <: RowProduct](from :NonEmptyFrom)(implicit prefix :FromLast PrefixOf E) =
+		override def expand[E <: RowProduct](from :NonEmptyFrom)(implicit prefix :FromLast PrefixOf E) =
 			from.last.asInstanceOf[JoinedRelation[FromLast, LastMapping]].asIn(prefix)
 	}
 
@@ -113,7 +113,7 @@ abstract class GetTable {
 	/** The companion evidence class to this object. It is unnecessary for the subclasses
 	  * to provide a definition, but doing so introduces an implicit conversion `Get => Found`
 	  * of the lowest precedence, which allows adapting an existing implicit evidence `Get[F, X]`
-	  * for an abstract type `F` into `Get[E, X]`, where `F ExtendedBy E`.
+	  * for an abstract type `F` into `Get[E, X]`, where `F ExpandedBy E`.
 	  */
 	type Get[-F <: RowProduct, G <: RowProduct, X <: Key] <: RelationEvidence[F, G, X]
 
@@ -190,7 +190,7 @@ abstract class GetTable {
 		new EvidenceTemplate[F, G, X, last.FromLast, last.FromLast, -1, last.LastMapping, last.Last](PrefixOf.itself)
 			with Return[F, G, X]
 		{
-			override def table[E <: RowProduct](from :G)(implicit stretch :S PrefixOf E) :T[E] = last.extend(from)
+			override def table[E <: RowProduct](from :G)(implicit stretch :S PrefixOf E) :T[E] = last.expand(from)
 		}
 
 	/** Helper implementation method providing a [[net.noresttherein.oldsql.sql.mechanics.GetTable.Return Return]]
@@ -210,10 +210,10 @@ abstract class GetTable {
 		}
 
 	/** Helper implementation method providing a [[net.noresttherein.oldsql.sql.mechanics.GetTable.Return Return]]
-	  * instance returning a relation from the left side of a [[net.noresttherein.oldsql.sql.Compound Compound]] clause.
+	  * instance returning a relation from the left side of a [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] clause.
 	  */
 	protected def left[F <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
-	                   J[+A >: L <: U, B[O] <: R[O]] <: A Compound B, U <: RowProduct, X, N <: Numeral]
+	                   J[+A >: L <: U, B[O] <: R[O]] <: A Adjoin B, U <: RowProduct, X, N <: Numeral]
 	                  (get :RelationEvidence[_, L, _] { type O >: L <: U })(prefix :get.S PrefixOf (get.O J R))
 			:Return[F, G, X]
 				{ type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]; type O = get.O J R; type I = N } =
@@ -284,7 +284,7 @@ abstract class GetTable {
 				type O = get.O Subselect R; type B = get.O; type I = get.I
 			} =
 		new EvidenceTemplate[F Subselect R, G Subselect R, X, get.S, get.O Subselect R, get.I, get.M, get.T](
-			get.stretch.extend[get.O Subselect R])
+			get.stretch.expand[get.O Subselect R])
 			with GroupedTunnel[F Subselect R, G Subselect R, X]
 		{
 			override type B = get.O
@@ -299,25 +299,25 @@ abstract class GetTable {
 	implicit def tunnelJoin[F <: RowProduct, C <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
 	                        J[+A <: U, B[O] <: R[O]] <: A NonSubselect B, U <: RowProduct, X]
 	                       (implicit specific :RowDecomposition[F, C, _],
-	                        general :ExtendedDecomposition[G, L, R, J, U],
+	                        general :ExpandedDecomposition[G, L, R, J, U],
 	                        get :GroupedTunnel[C, L, X] { type O >: L <: U })
 			:GroupedTunnel[F, G, X] {
 				type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
 				type O = general.S[get.O]; type B = get.B; type I = get.I
 			} =
-		new EvidenceTemplate[F, G, X, get.S, general.S[get.O], get.I, get.M, get.T](get.stretch.extend[J, R])
+		new EvidenceTemplate[F, G, X, get.S, general.S[get.O], get.I, get.M, get.T](get.stretch.expand[J, R])
 			with GroupedTunnel[F, G, X]
 		{
 			override type B = get.B
 			override val suffix = get.suffix
-			override val outer = OuterClauseOf.extended[get.B, get.O J R, get.O, R, J, U](general.upcast[get.O], get.outer)
+			override val outer = OuterClauseOf.expanded[get.B, get.O J R, get.O, R, J, U](general.upcast[get.O], get.outer)
 
 			override def table[E <: RowProduct](from :G)(implicit stretch :get.S PrefixOf E) =
 				get.table(from.left)
 		}
 
 	implicit def tunnelDecorator[F <: D[B], B <: U, G <: D[C], C <: U,
-	                             D[+A <: U] <: ExtendingDecorator[A], U <: RowProduct, X]
+	                             D[+A <: U] <: ExpandingDecorator[A], U <: RowProduct, X]
 	                            (implicit specific :RowDecomposition[F, B, _],
 	                             general :DecoratorDecomposition[G, C, D, U],
 	                             get :GroupedTunnel[B, C, X] { type O >: C <: U })
@@ -326,7 +326,7 @@ abstract class GetTable {
 				type O = D[get.O]; type B = get.B; type I = get.I
 			} =
 		new EvidenceTemplate[F, G, X, get.S, D[get.O], get.I, get.M, get.T](
-			get.stretch.extend(general.extension[get.O]))
+			get.stretch.expand(general.expansion[get.O]))
 			with GroupedTunnel[F, G, X]
 		{
 			override type B = get.B
@@ -360,7 +360,7 @@ object GetTable {
 	  * of the link with the found relation and `O`- a suffix clause of `G` which starts with `S` followed by all
 	  * joins and relations exactly as they appear in the type `G`. The adaptation of the accessed relation
 	  * from type `S` to `O` is done based on the [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf PrefixOf]]
-	  * instance representing the extension.
+	  * instance representing the expansion.
 	  * @tparam F The input clause type which is used to match the relation. In the
 	  *           [[net.noresttherein.oldsql.sql.mechanics.GetTable.GetTableByPredicate GetTableByPredicate]]
 	  *           class, it is the type for which the
@@ -390,7 +390,7 @@ object GetTable {
 		type M[O] <: MappingAt[O]
 
 		/** The supertype of the generalized supertype `G` of the input ''from'' clause `F`, in which the search
-		  * takes place, resulting from replacing the [[net.noresttherein.oldsql.sql.Compound Compound]] link
+		  * takes place, resulting from replacing the [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] link
 		  * having the found relation as its right side with `S` - the `FromLast` type of that type.
 		  * The returned relation is thus the first relation in this type, and the number of relations listed
 		  * defines its right-based index in `F`. This type is used as
@@ -510,11 +510,11 @@ object GetTable {
 
 		//this includes Subselect, but we don't mind, because in FromClause it isn't treated differently,
 		//and in a GroupByClause we search for GroupedTunnel, not Return/Found
-		implicit def extended[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
-		                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct,
+		implicit def expanded[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
+		                      J[+A <: U, B[O] <: R[O]] <: A Expanded B, U <: RowProduct,
 		                      X, V <: Numeral, W <: Numeral]
 		                     (implicit specific :RowDecomposition[F, P, _],
-		                      general :ExtendedDecomposition[G, L, R, J, U],
+		                      general :ExpandedDecomposition[G, L, R, J, U],
 		                      get :Found[P, L, X] { type O >: L <: U; type I = W }, dec :Inc[V, W])
 				:Return[F, G, X] {
 					type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
@@ -524,7 +524,7 @@ object GetTable {
 
 
 		implicit def decorated[F <: RowProduct, B <: RowProduct, G <: D[C], C <: U,
-		                       D[+A <: U] <: ExtendingDecorator[A], U <: RowProduct, X]
+		                       D[+A <: U] <: ExpandingDecorator[A], U <: RowProduct, X]
 		                      (implicit specific :RowDecomposition[F, B, _],
 		                       general :DecoratorDecomposition[G, C, D, U],
 		                       get :Found[B, C, X] { type O >: C <: U })
@@ -590,7 +590,7 @@ object GetTable {
 	  * are statically known. Similarly, if `X < 0`, than an implicit `ByIndex[A, B, X]` can be converted under
 	  * these circumstances to `ByIndex[F, G, N]`. In both cases, `abs(N) - abs(X)` must equal the number
 	  * of relations joined in `F` since `A`, i.e.
-	  * (`A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F).length`.
+	  * (`A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F).length`.
 	  * Note that all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored:
@@ -644,7 +644,7 @@ object GetTable {
 			override type Get[-F <: RowProduct, G <: RowProduct, X <: Numeral] = ByIndex[F, G, X]
 
 			implicit def satisfies[L <: RowProduct, R[O] <: MappingAt[O], N <: Numeral]
-			                      (implicit size :RowProductSize[L, N]) :Predicate[L Extended R, N] =
+			                      (implicit size :RowProductSize[L, N]) :Predicate[L Expanded R, N] =
 				report
 
 			implicit def groupSatisfies[O <: RowProduct, L <: FromSome, R[A] <: MappingAt[A], N <: Numeral]
@@ -684,11 +684,11 @@ object GetTable {
 
 		sealed abstract class ByNegativeIndexRecursion extends ByNegativeIndexFeedback {
 
-			implicit def extended[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
-			                      J[+A <: U, B[O] <: R[O]] <: A Extended B, U <: RowProduct,
+			implicit def expanded[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
+			                      J[+A <: U, B[O] <: R[O]] <: A Expanded B, U <: RowProduct,
 			                      V <: Numeral, W <: Numeral]
 			                     (implicit specific :RowDecomposition[F, P, _],
-			                      general :ExtendedDecomposition[G, L, R, J, U],
+			                      general :ExpandedDecomposition[G, L, R, J, U],
 			                      dec :NegativeInc[V, W], get :Found[P, L, W] { type O >: L <: U })
 					:Return[F, G, V] {
 						type T[O <: RowProduct] = get.T[O]; type M[O] = get.M[O]
@@ -697,7 +697,7 @@ object GetTable {
 				forward[F, G, L, U, V, V](get, general)
 
 			implicit def decorated[F <: RowProduct, P <: RowProduct, G <: D[C], C <: U,
-			                       D[+A <: U] <: ExtendingDecorator[A], U <: RowProduct, X <: Numeral]
+			                       D[+A <: U] <: ExpandingDecorator[A], U <: RowProduct, X <: Numeral]
 			                      (implicit specific :RowDecomposition[F, P, _],
 			                       general :DecoratorDecomposition[G, C, D, U],
 			                       get :Found[P, C, X] { type O >: C <: U })
@@ -754,10 +754,10 @@ object GetTable {
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
 	  * Note that an implicit `ByLabel[A, B, N]` can be converted to a `ByLabel[F, G, N]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	@implicitNotFound("No relation with Mapping labeled ${N} in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.ByLabel[${F}, ${G}, ${N}].")
@@ -781,7 +781,7 @@ object GetTable {
 					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
 			new Delegate[F, G, A, found.O, found.I, found.M, found.T](found) with ByLabel[F, G, A]
 
-		implicit def satisfies[M[O] <: LabeledMapping[L, _, O], L <: Label] :Predicate[RowProduct Compound M, L] =
+		implicit def satisfies[M[O] <: LabeledMapping[L, _, O], L <: Label] :Predicate[RowProduct Adjoin M, L] =
 			report
 	}
 
@@ -798,10 +798,10 @@ object GetTable {
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
 	  * Note that an implicit `ByAlias[K, L, A]` can be converted to a `ByAlias[F, G, A]`
-	  * if `K `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `L ExtendedBy G`,
+	  * if `K `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `L ExpandedBy G`,
 	  * and the join types in `F` and `G` since `K` and `L` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `K, L, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	@implicitNotFound("No relation with alias ${A} appears in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.ByAlias[${F}, ${G}, ${A}].")
@@ -834,10 +834,10 @@ object GetTable {
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
 	  * Note that an implicit `BySubject[A, B, S]` can be converted to a `BySubject[F, G, S]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	@implicitNotFound("No relation with Subject type ${X} appears in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.BySubject[${F}, ${G}, ${X}].")
@@ -863,8 +863,8 @@ object GetTable {
 			new Delegate[F, G, X, found.O, found.I, found.M, found.T](found) with BySubject[F, G, X]
 
 
-		implicit def satisfies[M[O] <: RefinedMapping[S, O], S] :Predicate[RowProduct Compound M, S] =
-			report[RowProduct Compound M, S]
+		implicit def satisfies[M[O] <: RefinedMapping[S, O], S] :Predicate[RowProduct Adjoin M, S] =
+			report[RowProduct Adjoin M, S]
 
 	}
 
@@ -878,10 +878,10 @@ object GetTable {
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
 	  * Note that an implicit `ByType[A, B, N]` can be converted to a `ByType[F, G, N]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	@implicitNotFound("No relation with type constructor ${C} in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.ByType[${F}, ${G}, ${C}].")
@@ -898,10 +898,10 @@ object GetTable {
 	  * with multiple type parameters as long as all of them are fixed by using a ''type lambda'' as the argument:
 	  * `({ type M[O] = SomeMapping[X1, X2, ..., O] })#M`.
 	  * Note that an implicit `ByType[A, B, M]` can be converted to a `ByType[F, G, M]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  *  - `ExtendedBy` from a lexical scope is not sufficient.
+	  *  - `ExpandedBy` from a lexical scope is not sufficient.
 	  */
 	object ByType extends GetTableByPredicate {
 
@@ -911,7 +911,7 @@ object GetTable {
 					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
 			new Delegate[F, G, C[()], found.O, found.I, found.M, found.T](found) with ByType[F, G, C]
 
-		implicit def satisfies[M[O] <: MappingAt[O]] :Predicate[RowProduct Compound M, M[()]] = report
+		implicit def satisfies[M[O] <: MappingAt[O]] :Predicate[RowProduct Adjoin M, M[()]] = report
 
 	}
 
@@ -935,10 +935,10 @@ object GetTable {
 	  * its type as provided by this class is statically narrowed down to
 	  * [[net.noresttherein.oldsql.sql.UnboundParam.ParamAt ParamAt]].
 	  * An implicit `ByParamIndex[A, B, N]` can be converted to a `ByParamIndex[F, G, N]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  * @tparam F the input `RowProduct`.
 	  * @tparam N index of the desired parameter as a literal `Int` type.
 	  */
@@ -958,12 +958,12 @@ object GetTable {
 	  * For the purpose of this implicit, all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * If an implicit `ByParamIndex[A, B, M]` is present in the lexical scope for some `M >= 0`,
-	  * and `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * and `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * as well as the join types in `F` and `G` since `A` and `B` are known at least to their generalized
-	  * super type, it can be converted into a `ByParamIndex[F, G, N]` such that `N - M = (A ExtendedBy F).length`.
+	  * super type, it can be converted into a `ByParamIndex[F, G, N]` such that `N - M = (A ExpandedBy F).length`.
 	  * The situation for negative indices is analogous.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	object ByParamIndex {
 
@@ -1019,7 +1019,7 @@ object GetTable {
 			                   J[+A <: U, B[O] <: ParamAt[O]] <: A UnboundParam B, U <: NonEmptyFrom,
 			                   X <: Numeral, Y <: Numeral, V <: Numeral, W <: Numeral]
 			                  (implicit specific :RowDecomposition[F, P, _],
-			                   general :ExtendedDecomposition[G, L, R, J, U],
+			                   general :ExpandedDecomposition[G, L, R, J, U],
 			                   key :NegativeInc[X, Y], get :Found[P, L, Y] { type O >: L <: U; type I = W },
 			                   idx :NegativeInc[V, W])
 					:Return[F, G, X] {
@@ -1064,10 +1064,10 @@ object GetTable {
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
 	  * An implicit `ByParamName[A, B, N]` can be converted to a `ByParamName[F, G, N]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	@implicitNotFound("No parameter with name type ${N} in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.ByParamName[${F}, ${G}, ${N}].\n" +
@@ -1079,16 +1079,16 @@ object GetTable {
 
 	/** Provides implicit values of [[net.noresttherein.oldsql.sql.mechanics.GetTable.ByParamName ByParamName]],
 	  * accessing [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of a `RowProduct` based on
-	  * a given parameter name used as their label. Note that this matches parameter mappings extended from
+	  * a given parameter name used as their label. Note that this matches parameter mappings derived from
 	  * [[net.noresttherein.oldsql.schema.bits.LabeledMapping LabeledMapping]], and not a relation alias introduced
 	  * by [[net.noresttherein.oldsql.sql.RowProduct.As As]].
 	  * For the purpose of this implicit, all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * An implicit `ByParamName[A, B, N]` can be converted to a `ByParamName[F, G, N]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	object ByParamName extends GetTableByPredicate {
 		type Key = Label
@@ -1118,10 +1118,10 @@ object GetTable {
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
 	  * Note that an implicit `ByParamAlias[K, L, A]` can be converted to a `ByParamAlias[F, G, A]`
-	  * if `K `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `L ExtendedBy G`,
+	  * if `K `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `L ExpandedBy G`,
 	  * and the join types in `F` and `G` since `K` and `L` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `K, L, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	@implicitNotFound("No parameter with alias ${A} appears in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.ByParamAlias[${F}, ${G}, ${A}].")
@@ -1161,10 +1161,10 @@ object GetTable {
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
 	  * An implicit `ByParamType[A, B, X]` can be converted to a `ByParamType[F, G, X]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	@implicitNotFound("No parameter with type ${X} in the FROM clause ${F}:\n"+
 	                  "no implicit GetTable.ByParamType[${F}, ${G}, ${X}]")
@@ -1180,10 +1180,10 @@ object GetTable {
 	  * For the purpose of this implicit, all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * An implicit `ByParamType[A, B, X]` can be converted to a `ByParamType[F, G, X]`
-	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy ExtendedBy]]` F`, `B ExtendedBy G`,
+	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
 	  * This applies only when such implicits can be computed based on the static types `A, B, F, G`
-	  * - an implicit `ExtendedBy` from the lexical scope is not sufficient.
+	  * - an implicit `ExpandedBy` from the lexical scope is not sufficient.
 	  */
 	object ByParamType extends GetTableByPredicate {
 		type Key = Any

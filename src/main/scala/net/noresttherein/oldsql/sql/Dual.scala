@@ -7,7 +7,8 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
@@ -40,7 +41,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 
 	override def last :Nothing = throw new NoSuchElementException("Dual.last")
 
-	override def lastAsIn[E <: RowProduct](implicit extension :RowProduct PrefixOf E) :Nothing = last
+	override def lastAsIn[E <: RowProduct](implicit expansion :RowProduct PrefixOf E) :Nothing = last
 
 	override type Generalized = RowProduct
 	override type Dealiased = Dual
@@ -58,7 +59,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	}
 
 
-	override type FilterNext[E[+L <: FromSome] <: L Extended N, S <: RowProduct Extended N, G <: S, N[O] <: MappingAt[O]] =
+	override type FilterNext[E[+L <: FromSome] <: L Expanded N, S <: RowProduct Expanded N, G <: S, N[O] <: MappingAt[O]] =
 		Nothing
 
 	override def filterNext[F <: RowProduct AndFrom N, N[O] <: MappingAt[O]]
@@ -95,24 +96,24 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override def fullRow :ChainTuple[RowProduct, GlobalScope, @~] = ChainTuple.EmptyChain
 
 	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit extension :RowProduct ExtendedBy E) :ChainTuple[E, GlobalScope, @~] =
+	                    (target :E)(implicit expansion :RowProduct ExpandedBy E) :ChainTuple[E, GlobalScope, @~] =
 		ChainTuple.EmptyChain
 
 	override def fullTableStack :LazyList[RelationSQL.AnyIn[RowProduct]] = LazyList.empty
 
 	override def fullTableStack[E <: RowProduct]
-	                           (target :E)(implicit extension :RowProduct ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+	                           (target :E)(implicit expansion :RowProduct ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]] =
 		LazyList.empty
 
 
 
-	override type Extend[J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = From[T]
+	override type Expand[J[+L <: FromSome, R[O] <: T[O]] <: L Expanded R, T[O] <: MappingAt[O]] = From[T]
 
-	override def extend[T[O] <: BaseMapping[S, O], S]
+	override def expand[T[O] <: BaseMapping[S, O], S]
 	                   (next :Table[T], filter :GlobalBoolean[RowProduct AndFrom T], join :JoinLike.*) :From[T] =
 		From[T, S](next, filter)
 
-	protected[sql] override def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
+	protected[sql] override def expand[T[O] <: BaseMapping[S, O], S, A <: Label]
 	                                  (right :LastTable[T, S], alias :Option[A],
 	                                   filter :GlobalBoolean[RowProduct NonParam T]) :this.type NonParam T As A =
 		From.custom(this, right, alias, filter)
@@ -153,7 +154,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 
 
 
-	override def filter[E <: RowProduct](target :E)(implicit extension :RowProduct PartOf E) :GlobalBoolean[E] =
+	override def filter[E <: RowProduct](target :E)(implicit expansion :RowProduct PartOf E) :GlobalBoolean[E] =
 		filter
 
 
@@ -162,13 +163,13 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override def row :ChainTuple[RowProduct, GlobalScope, @~] = ChainTuple.EmptyChain
 
 	override def row[E <: RowProduct]
-	                (target :E)(implicit extension :RowProduct ExtendedBy E) :ChainTuple[E, GlobalScope, @~] =
+	                (target :E)(implicit expansion :RowProduct ExpandedBy E) :ChainTuple[E, GlobalScope, @~] =
 		ChainTuple.EmptyChain
 
 	override def tableStack :LazyList[RelationSQL.AnyIn[RowProduct]] = LazyList.empty
 
 	override def tableStack[E <: RowProduct]
-	             (target :E)(implicit extension :RowProduct ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+	             (target :E)(implicit expansion :RowProduct ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]] =
 		LazyList.empty
 
 
@@ -177,14 +178,14 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override def outerRow :ChainTuple[RowProduct, GlobalScope, @~] = ChainTuple.EmptyChain
 
 	override def outerRow[E <: RowProduct]
-	                     (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[RowProduct, GlobalScope, @~] =
+	                     (target :E)(implicit expansion :Implicit ExpandedBy E) :ChainTuple[RowProduct, GlobalScope, @~] =
 		ChainTuple.EmptyChain
 
 
 
 	override type AsSubselectOf[+F <: RowProduct] = Nothing
 
-	override def asSubselectOf[F <: RowProduct](outer :F)(implicit extension :RowProduct ExtendedBy F) :Nothing =
+	override def asSubselectOf[F <: RowProduct](outer :F)(implicit expansion :RowProduct ExpandedBy F) :Nothing =
 		throw new UnsupportedOperationException("Can't represent Dual as a subselect of " + outer)
 
 
@@ -197,13 +198,18 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 
 	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	                 (next :Table[M])
-//	                 (implicit cast :InferSubject[this.type, Subselect, M, T, S])
 	                 (implicit cast :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]])
 			:From[T] =
 		From(cast(next))
 
+	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label]
+	                 (next :StaticTable[A, M])
+	                 (implicit cast :InferTypeParams[StaticTable[A, M], StaticTable[A, T], Table[MappingOf[S]#TypedProjection]])
+			:From[T] As A =
+		From(cast(next))
+
 	override def fromSubselect[F <: NonEmptyFrom]
-	                          (subselect :F)(implicit extension :subselect.Implicit ExtendedBy RowProduct)
+	                          (subselect :F)(implicit expansion :subselect.Implicit ExpandedBy RowProduct)
 			:F { type Implicit = RowProduct; type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] } =
 		subselect.asInstanceOf[F { type Implicit = RowProduct; type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] }]
 

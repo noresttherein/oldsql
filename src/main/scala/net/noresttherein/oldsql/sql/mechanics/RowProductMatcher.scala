@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql._
-import net.noresttherein.oldsql.sql.DecoratedFrom.{ExtendingDecorator, FromSomeDecorator}
+import net.noresttherein.oldsql.sql.DecoratedFrom.{ExpandingDecorator, FromSomeDecorator}
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
@@ -48,14 +48,14 @@ class RowProductMatcher[Y] {
 
 
 
-	def compound[L <: RowProduct, R[O] <: BaseMapping[S, O], S](from :L Compound R) :Option[Y] = rowProduct(from)
-	def extended[L <: RowProduct, R[O] <: BaseMapping[S, O], S](from :L Extended R) :Option[Y] = compound[L, R, S](from)
-	def param[L <: NonEmptyFrom, P[O] <: FromParam[S, O], S](param :L UnboundParam P) :Option[Y] = extended[L, P, S](param)
+	def compound[L <: RowProduct, R[O] <: BaseMapping[S, O], S](from :L Adjoin R) :Option[Y] = rowProduct(from)
+	def expanded[L <: RowProduct, R[O] <: BaseMapping[S, O], S](from :L Expanded R) :Option[Y] = compound[L, R, S](from)
+	def param[L <: NonEmptyFrom, P[O] <: FromParam[S, O], S](param :L UnboundParam P) :Option[Y] = expanded[L, P, S](param)
 
 
 	def decorator[F <: RowProduct](from :DecoratedFrom[F]) :Option[Y] = rowProduct(from)
-	def extendingDecorator[F <: RowProduct](from :ExtendingDecorator[F]) :Option[Y] = decorator(from)
-	def fromSomeDecorator[F <: FromSome](from :FromSomeDecorator[F]) :Option[Y] = extendingDecorator(from)
+	def expandingDecorator[F <: RowProduct](from :ExpandingDecorator[F]) :Option[Y] = decorator(from)
+	def fromSomeDecorator[F <: FromSome](from :FromSomeDecorator[F]) :Option[Y] = expandingDecorator(from)
 
 //	def aliased[F <: FromSome, N <: Label](from :F Aliased N) :Option[Y] = fromSomeDecorator(from)
 }

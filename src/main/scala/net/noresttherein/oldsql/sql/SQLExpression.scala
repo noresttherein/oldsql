@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher, CompositeColumnSQL}
@@ -42,7 +42,7 @@ import slang._
   *           the [[net.noresttherein.oldsql.sql.RowProduct.Explicit ''explicit'']] portion of `F`).
   *           [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope Global]] scope means that the expression
   *           can be used anywhere in a ''select'' based on `F`, as well as in any of its subselects
-  *           - after rebasing with [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]].
+  *           - after rebasing with [[net.noresttherein.oldsql.sql.SQLExpression.expand expand]].
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
   * @see [[net.noresttherein.oldsql.sql.ColumnSQL]]
   */
@@ -53,10 +53,6 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 	  * (if this expression is used as the ''select'' clause of a query).
 	  */
 	def readForm :SQLReadForm[V]
-
-//	def =:[T <: RefinedMapping[O, E], C <: RefinedMapping[O, L], O, E, L, R >: V, X]
-//	      (path :ComponentPath[T, C, O, E, L])(implicit lift :SQLTypeUnification[L, R, X]) :SetComponent[F, T, C, O, E, L, R, X] =
-//		SetComponent(path, this :SQLExpression[F, R])
 
 	/** An SQL expression testing if the value of this expression is `NULL` (by the database when executing the query).
 	  * If this expression does not represent a single column, but a tuple/several inline columns, each individual
@@ -274,21 +270,21 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 		this.asInstanceOf[SQLExpression[E, S, V]]
 
 	/** Treat this expression as an expression of a ''from'' clause containing this clause as its prefix.
-	  * The extension is limited only to clauses representing the same select as this clause - no
+	  * The expansion is limited only to clauses representing the same select as this clause - no
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'joins' can occur in `E` after `F`.
 	  * This method is thus applicable to a strictly smaller set of ''from'' clauses than
-	  * [[net.noresttherein.oldsql.sql.SQLExpression.extend extend]], but is available for all expressions.
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.expand expand]], but is available for all expressions.
 	  */
 	def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V]
 
-	/** Treat this expression as an expression of a ''from'' clause extending (i.e. containing additional tables)
+	/** Treat this expression as an expression based on a ''from'' clause expanding (i.e. containing additional tables)
 	  * the clause `F` this expression is based on. This method is available only for global expressions, i.e. those
 	  * which can occur inside any subselect of a select with the ''from'' clause `F`. This method has thus a wider
 	  * range of applicable ''from'' clauses than [[net.noresttherein.oldsql.sql.SQLExpression.basedOn basedOn]],
 	  * but is limited only to expressions conforming to `SQLExpression[F, GlobalScope, V]`.
 	  */
-	def extend[U <: F, E <: RowProduct]
-	          (base :E)(implicit ext :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V]
+	def expand[U <: F, E <: RowProduct]
+	          (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V]
 
 
 	/** Answers if this expressions is applicable to the [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope global]]
@@ -479,7 +475,7 @@ object SQLExpression  {
 	/** Default scope of an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]], signifying that it can be used
 	  * solely within the ''select'' and ''having'' clauses for the [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]
 	  * serving as the base for the expression. Such expressions are illegal for subselects of the mentioned ''select'',
-	  * that is it cannot be converted to another ''from'' clause `E` extending the original clause `F`. This stands
+	  * that is it cannot be converted to another ''from'' clause `E` expanding the original clause `F`. This stands
 	  * in contrast to the [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope GlobalScope]], which is a supertype
 	  * of this type, and which permits such usage. Purely local expressions are reserved for SQL aggregate functions:
 	  * `count(*)` of an SQL ''select'' cannot be used as a part of another ''select''.
@@ -487,7 +483,7 @@ object SQLExpression  {
 	  * is a supertype of `SQLExpression[F, GlobalScope, T]`, permitting the use of non-aggregate expressions
 	  * in the local scope of a ''select'' as expected.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalSQL]]
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PartOf]]
 	  * @see [[net.noresttherein.oldsql.sql.ast.AggregateSQL]]
 	  * @see [[net.noresttherein.oldsql.sql.AggregateClause]]
@@ -497,11 +493,11 @@ object SQLExpression  {
 	/** The type used as the ''scope'' type argument `S` of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]
 	  * instances which do not contain any SQL aggregate functions as their subexpressions,
 	  * signifying that they can be converted to any [[net.noresttherein.oldsql.sql.RowProduct ''from'']] clause `E`
-	  * extending the clause `F` on which the expression is based, in particular within subselect expressions
+	  * expanding the clause `F` on which the expression is based, in particular within subselect expressions
 	  * of the SQL ''select'' containing it.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope]]
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL]]
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExtendedBy]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PartOf]]
 	  */
 	type GlobalScope
@@ -581,18 +577,18 @@ object SQLExpression  {
 
 		/** Method used in the implementation of
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.basedOn basedOn]] and
-		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.extend extend]].
+		  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.expand expand]].
 		  * It should apply `mapper` to all constituting subexpressions and reassemble them into another
 		  * composite expression of the same type as this one.
 		  */
 		def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :SQLExpression[E, S, V]
 
 		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V] =
-			rephrase(SQLScribe.extend(base))
+			rephrase(SQLScribe.expand(base))
 
-		override def extend[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V] =
-			rephrase(SQLScribe.extend(base))
+		override def expand[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :SQLExpression[E, S, V] =
+			rephrase(SQLScribe.expand(base))
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V] =
 //			matcher.composite(this)
@@ -984,7 +980,7 @@ object SQLExpression  {
 	  * against a smallest set of classes covering all concrete subclasses of ''Expr''. `ColumnSQL` subtypes
 	  * are a bit special, as they have their own hierarchy, parallel to that of plain `SQLExpression`s.
 	  * Wherever an expression type, for example `SQLLiteral`, exists in both non-column and column versions,
-	  * the non-column ''Expr''`Matcher` will extend the associated column ''Expr''`Matcher`. The `CaseLiteral` trait
+	  * the non-column ''Expr''`Matcher` will expand the associated column ''Expr''`Matcher`. The `CaseLiteral` trait
 	  * in our example will implement the callback for the column literal by delegating it to the method
 	  * for the base literal. In this way, the standard delegation chain for any column expression always starts
 	  * by delegating to the non-column method. It is however possible to change this by mixing in one or more

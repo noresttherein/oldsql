@@ -11,8 +11,8 @@ import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
 import net.noresttherein.oldsql.sql.GroupParam.ByParam
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, LocalScope}
@@ -80,7 +80,7 @@ sealed trait AggregateClause extends RowProduct with RowProductTemplate[Aggregat
 
 
 
-	override type FilterNext[E[+L <: FromSome] <: L Extended N, S <: RowProduct Extended N, G <: S, N[O] <: MappingAt[O]] =
+	override type FilterNext[E[+L <: FromSome] <: L Expanded N, S <: RowProduct Expanded N, G <: S, N[O] <: MappingAt[O]] =
 		Nothing
 
 	protected override def filterNext[F <: RowProduct AndFrom N, N[O] <: MappingAt[O]]
@@ -187,7 +187,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	override def last :Nothing = throw new NoSuchElementException(s"($this).last")
 
 	/** Throws an `NoSuchElementException`. */
-	override def lastAsIn[E <: FromSome](implicit extension :FromLast PrefixOf E) :Nothing = last
+	override def lastAsIn[E <: FromSome](implicit expansion :FromLast PrefixOf E) :Nothing = last
 
 	override type Bound = FromSome
 	override type Generalized = Aggregated[clause.Generalized]
@@ -202,7 +202,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	/** Always returns [[net.noresttherein.oldsql.sql.ast.SQLTerm.True True]]. For the actual, ungrouped ''where'' clause
 	  * use `this.clause.filter`.
 	  */
-	override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :LocalBoolean[E] = True
+	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :LocalBoolean[E] = True
 
 	/** Throws an `UnsupportedOperationException`. */
 	override def filtered[S >: GlobalScope <: GlobalScope](condition :SQLBoolean[Generalized, S]) :Nothing =
@@ -229,12 +229,12 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	override type FullRow = clause.OuterRow
 
 	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		clause.outerRow(target)(explicitSpan extend extension)
+	                    (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
+		clause.outerRow(target)(explicitSpan expand expansion)
 
-	override def fullTableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+	override def fullTableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
 			:LazyList[RelationSQL.AnyIn[E]] =
-		outer.fullTableStack(target)(explicitSpan.extend(extension))
+		outer.fullTableStack(target)(explicitSpan.expand(expansion))
 
 
 	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
@@ -263,25 +263,25 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	override type Row = @~
 
 	/** Returns an empty chain expression. */
-	override def row[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+	override def row[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
 			:ChainTuple[E, GlobalScope, @~] =
 		EmptyChain
 
 	/** Returns an empty list. */
-	override def tableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+	override def tableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
 			:LazyList[RelationSQL.AnyIn[E]] =
 		LazyList.empty
 
 	override type OuterRow = clause.OuterRow
 
-	override def outerRow[E <: RowProduct](target :E)(implicit extension :Implicit ExtendedBy E)
+	override def outerRow[E <: RowProduct](target :E)(implicit expansion :Implicit ExpandedBy E)
 			:ChainTuple[E, GlobalScope, OuterRow] =
 		clause.outerRow(target)
 
 
 	override type AsSubselectOf[+P <: NonEmptyFrom] = Aggregated[clause.AsSubselectOf[P]]
 
-	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
+	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit expansion :Implicit ExpandedBy P)
 			:Aggregated[clause.AsSubselectOf[P]] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 		withClause(clause.asSubselectOf(newOuter))
 
@@ -301,6 +301,13 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 			:Nothing =
 		throw new UnsupportedOperationException(s"($this).from($first)")
 
+	/** Throws `UnsupportedOperationException`. */
+	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label]
+	                 (first :StaticTable[A, M])
+	                 (implicit cast :InferTypeParams[StaticTable[A, M], StaticTable[A, T], Table[MappingOf[S]#TypedProjection]])
+			:Nothing =
+		throw new UnsupportedOperationException(s"($this).from($first)")
+
 	override type FromSubselect[+S <: NonEmptyFrom] = Nothing
 
 	/** Throws `UnsupportedOperationException`. */
@@ -309,7 +316,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 
 	/** Throws `UnsupportedOperationException`. */
 	override def fromSubselect[E <: NonEmptyFrom]
-	                          (subselect :E)(implicit extension :subselect.Implicit ExtendedBy Generalized) :Nothing =
+	                          (subselect :E)(implicit expansion :subselect.Implicit ExpandedBy Generalized) :Nothing =
 		throw new UnsupportedOperationException(s"($this).fromSubselect($subselect)")
 
 
@@ -434,7 +441,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	override type Paramless <: BoundParamless //because GroupParam requires a GroupByClause on the left.
 	override type BoundParamless = GroupByClause { type Params = @~ }
 
-	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :Last[E] =
+	override def lastAsIn[E <: RowProduct](implicit expansion :FromLast PrefixOf E) :Last[E] =
 		last.asIn[E]
 
 	/** The join condition joining the right side to the left side. It is used as either the ''on'' clause of the
@@ -561,7 +568,7 @@ object GroupByClause {
 
 		/** Creates a `RowProduct` of the same type as this one, but with its `filter` being the conjunction of this
 		  * instance's filter and the given `SQLBoolean`. The filter becomes the part of the ''having'' clause
-		  * of the SQL ''select'' based on this clause or some its extension. This works analogously to the
+		  * of the SQL ''select'' based on this clause or some its expansion. This works analogously to the
 		  * [[net.noresttherein.oldsql.sql.RowProduct.where where]] method with the same signature on ungrouped clauses.
 		  * @see [[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate.having]]
 		  */
@@ -596,7 +603,7 @@ object GroupByClause {
 		  * of the SQL statement. It is equivalent to `this.having(mappings => condition(mappings.last))`.
 		  * @param condition a function accepting the expression for the last relation in this clause and creating
 		  *                  an additional SQL expression for the ''having'' clause.
-		  * @return an `Extended` instance of the same kind as this one, with the same left and right sides,
+		  * @return an `Expanded` instance of the same kind as this one, with the same left and right sides,
 		  *         but with the join condition being the conjunction of the preexisting `this.condition`
 		  *         and the `LocalBoolean` returned by the passed filter function.
 		  */
@@ -637,7 +644,7 @@ object GroupByClause {
 		  *           ''group by'' clause, and `O` is its some supertype, with the origin relation of the component
 		  *           expression being the first relation following an abstract type (typically `FromSome`).
 		  * @param expr     a function accepting the facade to the grouped clause (the actual ''from'' clause without
-		  *                 the ''group by'' extensions)
+		  *                 the ''group by'' expansions)
 		  *                 [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]], which provides
 		  *                 accessors to the mappings for all relations in the scope of the group by clause
 		  *                 (that is all or all since the last [[net.noresttherein.oldsql.sql.Subselect Subselect]],

@@ -12,9 +12,9 @@ import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
-import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, NonSubselect}
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
+import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.FromSome.TopFromSome
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
@@ -45,7 +45,7 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 	  * with every unbound parameter having its own copy. Using it directly */
 	override def right :Relation[P] = last.relation //overriden for docs
 
-	override def lastAsIn[E <: RowProduct](implicit extension :FromLast PrefixOf E) :Last[E] =
+	override def lastAsIn[E <: RowProduct](implicit expansion :FromLast PrefixOf E) :Last[E] =
 		last.asIn[E]
 
 
@@ -103,8 +103,8 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 	override type FullRow = left.FullRow
 
 	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		left.fullRow(target)(extension.extendFront[left.Generalized, P])
+	                    (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
+		left.fullRow(target)(expansion.expandFront[left.Generalized, P])
 
 
 
@@ -128,13 +128,13 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 	override type Row = left.Row
 
 	override def row[E <: RowProduct]
-	             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
-		left.row(target)(extension.extendFront[left.Generalized, P])
+	             (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, Row] =
+		left.row(target)(expansion.expandFront[left.Generalized, P])
 
 
 	override type AsSubselectOf[+O <: NonEmptyFrom] = Nothing
 
-	override def asSubselectOf[O <: RowProduct](outer :O)(implicit extension :Implicit ExtendedBy O) :Nothing =
+	override def asSubselectOf[O <: RowProduct](outer :O)(implicit expansion :Implicit ExpandedBy O) :Nothing =
 		throw new UnsupportedOperationException(
 			"JoinParam.asSubselectOf: join parameters can't appear as a part of a subselect from clause. " +
 				s"$this asSubselectOf $outer"
@@ -165,7 +165,7 @@ object UnboundParam {
 	/** Matches all `UnboundParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: RowProduct, X](from :F Compound M forSome { type M[O] <: RefinedMapping[X, O] })
+	def unapply[F <: RowProduct, X](from :F Adjoin M forSome { type M[O] <: RefinedMapping[X, O] })
 			:Option[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
 			case param :UnboundParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))
@@ -230,9 +230,7 @@ object UnboundParam {
 
 	/** A special, artificial relation implementation dedicated to
 	  * the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mapping class,
-	  * representing a query parameter. Note that this class does ''not'' extend
-	  * [[net.noresttherein.oldsql.schema.Relation Relation]] to prevent its accidental usage in places
-	  * where a true relation is required, in particular as an argument to various `join` methods.
+	  * representing a query parameter.
 	  */
 	sealed class ParamRelation[X](val name :String)(implicit val form :SQLForm[X])
 		extends PseudoRelation[({ type P[O] = FromParam[X, O] })#P]
@@ -278,10 +276,10 @@ object UnboundParam {
 
 
 	/** A special, artificial relation dedicated to
-	  * the [[net.noresttherein.oldsql.sql.UnboundParam.LabeledFromParam LabeledFromParam]] mapping class, representing
-	  * a labeled query parameter. Note that this class does ''not'' extend
-	  * [[net.noresttherein.oldsql.schema.Relation Relation]] to prevent its accidental usage in places
-	  * where a true relation is required, in particular as an argument to various `join` methods.
+	  * the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mapping class, representing a query
+	  * parameter with the same name `N` as this relation. When using this relation to create
+	  * an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] instance, this name is taken for the
+	  * [[net.noresttherein.oldsql.sql.RowProduct.As as]] clause of the relation.
 	  */
 	sealed class NamedParamRelation[N <: Label, X :SQLForm](override val name :N)
 		extends ParamRelation[X](name) with StaticRelation[N, ({ type P[O] = FromParam[X, O] })#P]
@@ -633,7 +631,7 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 	extends UnboundParam[F, P] with AndFrom[F, P] with AndFromTemplate[F, P, F JoinParam P]
 { thisClause =>
 	//consider: it's tempting to have simply the parameter type as the second parameter, not the mapping,
-	// but it would require changes to RowDecomposition, ExtendedBy et al, GetTable...
+	// but it would require changes to RowDecomposition, ExpandedBy et al, GetTable...
 	override type Generalized = left.Generalized JoinParam P
 	override type Dealiased = left.Self JoinParam P
 	override type Self <: left.Self JoinParam P
@@ -645,8 +643,8 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 	override type WithLeft[+L <: FromSome] <: L JoinParam P
 
 
-	override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
-		left.filter(target)(extension.extendFront[left.Generalized, P]) && condition.basedOn(target)
+	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E] =
+		left.filter(target)(expansion.expandFront[left.Generalized, P]) && condition.basedOn(target)
 
 	override def bind(param :LastParam) :AppliedParam = {
 		val substitute = SQLScribe.applyParam(self, left.generalized, param, 0)
@@ -660,8 +658,8 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 		res.where(substitute(condition)).asInstanceOf[Paramless]
 	}
 
-	override def generalizedExtension[C <: FromSome] :C PrefixOf (C JoinParam P) =
-		PrefixOf.itself[C].extend[JoinParam, P]
+	override def generalizedExpansion[C <: FromSome] :C PrefixOf (C JoinParam P) =
+		PrefixOf.itself[C].expand[JoinParam, P]
 
 
 	override type JoinedWith[+S <: RowProduct, +J[+L <: S, R[O] <: MappingAt[O]] <: L NonParam R] =
@@ -805,7 +803,7 @@ object JoinParam {
 	private[sql] def apply[L <: FromSome, P[O] <: FromParam[X, O], X, A <: Label]
 	                      (clause :L, param :LastRelation[P, X], asOpt :Option[A])
 	                      (cond :GlobalBoolean[clause.Generalized JoinParam P]) :L JoinParam P As A =
-		new JoinParam[clause.type, P] with AbstractExtended[clause.type, P, X] {
+		new JoinParam[clause.type, P] with AbstractExpanded[clause.type, P, X] {
 			override val left = clause
 			override val last = param
 			override val aliasOpt = asOpt
@@ -831,13 +829,13 @@ object JoinParam {
 			override def aliased[N <: Label](alias :N) =
 				JoinParam[left.type, P, X, N](left, last, Some(alias))(condition)
 
-			override def extension[C <: FromSome] :C PrefixOf (C JoinParam P As A) =
-				PrefixOf.itself[C].extend[JoinParam, P].as[A]
+			override def expansion[C <: FromSome] :C PrefixOf (C JoinParam P As A) =
+				PrefixOf.itself[C].expand[JoinParam, P].as[A]
 
 
 			override def tableStack[E <: RowProduct]
-			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
-				last.extend(target) #:: left.tableStack(target)(stretch.extendFront[left.Generalized, P])
+			             (target :E)(implicit stretch :Generalized ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+				last.expand(target) #:: left.tableStack(target)(stretch.expandFront[left.Generalized, P])
 
 
 
@@ -859,7 +857,7 @@ object JoinParam {
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: RowProduct, X](from :F Compound M forSome { type M[O] <: RefinedMapping[X, O] })
+	def unapply[F <: RowProduct, X](from :F Adjoin M forSome { type M[O] <: RefinedMapping[X, O] })
 			:Option[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
 			case param :JoinParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))
@@ -878,14 +876,14 @@ object JoinParam {
 
 
 	implicit def joinParamComposition[L <: FromSome, R[O] <: ParamAt[O]]
-			:ExtendedComposition[L JoinParam R, L, R, JoinParam, FromSome, ParamAt]
+			:ExpandedComposition[L JoinParam R, L, R, JoinParam, FromSome, ParamAt]
 				{ type Generalized[+A <: FromSome, B[O] <: ParamAt[O]] = A JoinParam B } =
-		composition.asInstanceOf[ExtendedComposition[L JoinParam R, L, R, JoinParam, FromSome, ParamAt] {
+		composition.asInstanceOf[ExpandedComposition[L JoinParam R, L, R, JoinParam, FromSome, ParamAt] {
 			type Generalized[+A <: FromSome, B[O] <: ParamAt[O]] = JoinParam[A, B]
 		}]
 
 	private[this] val composition =
-		new ExtendedComposition[FromSome JoinParam ParamAt, FromSome, ParamAt, JoinParam, FromSome, ParamAt] {
+		new ExpandedComposition[FromSome JoinParam ParamAt, FromSome, ParamAt, JoinParam, FromSome, ParamAt] {
 			override def apply[C <: FromSome](template :FromSome JoinParam ParamAt, clause :C) :C JoinParam ParamAt =
 				template.withLeft(clause)(True)
 		}
@@ -923,10 +921,10 @@ object JoinParam {
 
 
 
-/** A special, artificial 'join' type which adds a statement parameter of type `X` by extending a ''group by''
+/** A special, artificial 'join' type which adds a statement parameter of type `X` by expanding a ''group by''
   * clause on its left side with a special mapping `P[O] <: FromParam[X, O]`. The parameter is unspecified at this point
   * and will need to be given to any `SQLStatement` produced from this clause. This type mirrors the functionality
-  * of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]], which adds a parameter to the same effect by extending
+  * of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]], which adds a parameter to the same effect by expanding
   * an [[net.noresttherein.oldsql.sql.FromSome ungrouped]] ''from'' clause. This duplication is required
   * for static type checking to be able to separate the artificial relations for the grouping expressions
   * of the group by clause from the real database relations: just as `JoinParam[_, _] <: FromSome`,
@@ -1108,7 +1106,7 @@ object GroupParam {
 	                      (clause :L, param :RelationSQL[GroupByClause AndBy P, P, X, GroupByClause AndBy P],
 	                       asOpt :Option[A])
 	                      (cond :LocalBoolean[clause.Generalized GroupParam P]) :L GroupParam P As A =
-		new GroupParam[clause.type, P] with AbstractExtended[clause.type, P, X] {
+		new GroupParam[clause.type, P] with AbstractExpanded[clause.type, P, X] {
 			override val left = clause
 			override val last = param
 			override val aliasOpt = asOpt
@@ -1136,8 +1134,8 @@ object GroupParam {
 
 
 			override def tableStack[E <: RowProduct]
-			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
-				last.extend(target) #:: left.tableStack(target)(stretch.extendFront[left.Generalized, P])
+			             (target :E)(implicit stretch :Generalized ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+				last.expand(target) #:: left.tableStack(target)(stretch.expandFront[left.Generalized, P])
 
 
 
@@ -1159,7 +1157,7 @@ object GroupParam {
 	/** Matches all `GroupParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: RowProduct, X](from :F Compound M forSome { type M[O] <: RefinedMapping[X, O] })
+	def unapply[F <: RowProduct, X](from :F Adjoin M forSome { type M[O] <: RefinedMapping[X, O] })
 			:Option[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
 			case param :GroupParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))
@@ -1178,14 +1176,14 @@ object GroupParam {
 
 
 	implicit def groupParamComposition[L <: GroupByClause, R[O] <: ParamAt[O]]
-			:ExtendedComposition[L GroupParam R, L, R, GroupParam, GroupByClause, ParamAt]
+			:ExpandedComposition[L GroupParam R, L, R, GroupParam, GroupByClause, ParamAt]
 				{ type Generalized[+A <: GroupByClause, B[O] <: ParamAt[O]] = A GroupParam B } =
-		composition.asInstanceOf[ExtendedComposition[L GroupParam R, L, R, GroupParam, GroupByClause, ParamAt] {
+		composition.asInstanceOf[ExpandedComposition[L GroupParam R, L, R, GroupParam, GroupByClause, ParamAt] {
 			type Generalized[+A <: GroupByClause, B[O] <: ParamAt[O]] = GroupParam[A, B]
 		}]
 
 	private[this] val composition =
-		new ExtendedComposition[GroupByClause GroupParam ParamAt, GroupByClause, ParamAt, GroupParam, GroupByClause, ParamAt] {
+		new ExpandedComposition[GroupByClause GroupParam ParamAt, GroupByClause, ParamAt, GroupParam, GroupByClause, ParamAt] {
 			override def apply[C <: GroupByClause]
 			                  (template :GroupByClause GroupParam ParamAt, clause :C) :C GroupParam ParamAt =
 				template.withLeft(clause)(True)

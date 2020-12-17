@@ -17,7 +17,7 @@ package object morsels {
 	  * The main difference lies in serialization, as even if only one instance is created directly by the application,
 	  * serialization and deserialization can introduce others.
 	  */
-	private[oldsql] trait Contextless {
+	private[oldsql] trait Stateless {
 		override def equals(that :Any) = that.getClass == getClass
 		override def hashCode :Int = getClass.hashCode
 	}

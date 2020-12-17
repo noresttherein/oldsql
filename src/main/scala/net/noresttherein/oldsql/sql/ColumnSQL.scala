@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExtendedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, FunctionSQL, LogicalSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateMatcher, CaseAggregate}
@@ -287,8 +287,8 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnSQL[E, S, V]
 
-	override def extend[U <: F, E <: RowProduct]
-	                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, V]
+	override def expand[U <: F, E <: RowProduct]
+	                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, V]
 
 
 	override def anchor(from :F) :ColumnSQL[F, S, V]
@@ -545,11 +545,11 @@ object ColumnSQL {
 		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, X]
 
 		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnSQL[E, S, X] =
-			rephrase(SQLScribe.extend(base))
+			rephrase(SQLScribe.expand(base))
 
-		override def extend[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, X] =
-			rephrase(SQLScribe.extend(base))
+		override def expand[U <: F, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, X] =
+			rephrase(SQLScribe.expand(base))
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, X] =
 //			matcher.composite(this)
@@ -561,7 +561,7 @@ object ColumnSQL {
 
 		/** Implementation-oriented base trait for `CompositeSQL` subclasses which consist of a single subexpression
 		  * column with the same value type as this trait. It is unwise to reference this type directly and rely on any
-		  * particular expression type extending it (other than in having the `value` subexpression property),
+		  * particular expression type expanding it (other than in having the `value` subexpression property),
 		  * as it is considered an implementation detail and is subject to change.
 		  */
 		trait UnaryColumnOperator[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, V]
@@ -604,7 +604,7 @@ object ColumnSQL {
 		/** Implementation oriented base trait for `CompositeSQL` subclasses which consist of two column subexpressions
 		  * with the same type (but possibly different than the value type of this trait).
 		  * It is unwise to reference this type directly and rely on any
-		  * particular expression type extending it (other than in having `left` and `right` subexpression properties),
+		  * particular expression type expanding it (other than in having `left` and `right` subexpression properties),
 		  * as it is considered an implementation detail and is subject to change.
 		  */
 		trait BinaryColumnOperator[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, V]

@@ -5,8 +5,8 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{Aggregated, Dual, From, FromSome, GroupBy, RowProduct, Subselect}
-import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExtendingDecorator}
-import net.noresttherein.oldsql.sql.Extended.{ExtendedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
+import net.noresttherein.oldsql.sql.Expanded.{ExpandedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
 
 
@@ -19,11 +19,11 @@ import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
   * differences between the type `O` provided by this implicit value and the member type `F#Outer`, stemming
   * from the fact that it is reconstructed based on the static type `F`, rather than its
   * [[net.noresttherein.oldsql.sql.RowProduct.Self Self]] type:
-  *   1. Only concrete subtypes of [[net.noresttherein.oldsql.sql.Compound Compound]] link clauses are used
+  *   1. Only concrete subtypes of [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] link clauses are used
   *      in its definition, never abstract types. Compare this with `Self`, which, for non-aliased clauses
   *      is always an abstract type with an upper bound such as `type Self <: L InnerJoin R`. This makes this implicit
   *      preferable when using `O` as an invariant type argument, especially in implicit values.
-  *   1. Any `Compound` and `DecoratedFrom` subtype is permitted in `F` and preserved in `O`,
+  *   1. Any `Adjoin` and `DecoratedFrom` subtype is permitted in `F` and preserved in `O`,
   *      as long as the definition section of `F` following `O` is at least as specific as its
   *      [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] type. This contrasts with `F#Outer`,
   *      as it is always the `Self` type of `O`.
@@ -59,13 +59,13 @@ object OuterClauseOf {
 	implicit def subselect[L <: FromSome, R[A] <: MappingAt[A]] :L OuterClauseOf (L Subselect R) =
 		dual.asInstanceOf[OuterClauseOf[L, L Subselect R]]
 
-	implicit def extended[O <: RowProduct, F <: L J R, L <: U, R[A] <: MappingAt[A],
+	implicit def expanded[O <: RowProduct, F <: L J R, L <: U, R[A] <: MappingAt[A],
 	                      J[+P <: U, T[A] <: R[A]] <: P NonSubselect T, U <: RowProduct]
-	                     (implicit decompose :ExtendedDecomposition[F, L, R, J, U], outer :O OuterClauseOf L)
+	                     (implicit decompose :ExpandedDecomposition[F, L, R, J, U], outer :O OuterClauseOf L)
 			:O OuterClauseOf F =
 		outer.asInstanceOf[OuterClauseOf[O, F]]
 
-	implicit def decorated[O <: RowProduct, F <: D[P], D[+C <: U] <: ExtendingDecorator[C], P <: U, U <: RowProduct]
+	implicit def decorated[O <: RowProduct, F <: D[P], D[+C <: U] <: ExpandingDecorator[C], P <: U, U <: RowProduct]
 	                      (implicit decompose :DecoratorDecomposition[F, P, D, U], outer :O OuterClauseOf P)
 			:O OuterClauseOf F =
 		outer.asInstanceOf[OuterClauseOf[O, F]]

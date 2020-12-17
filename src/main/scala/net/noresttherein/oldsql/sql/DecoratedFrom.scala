@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator.FromSomeDecoratorComposition
-import net.noresttherein.oldsql.sql.RowProduct.{RowComposition, RowDecomposition, ExtendedBy, ExtendingClause, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.RowProduct.{RowComposition, RowDecomposition, ExpandedBy, ExpandingClause, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
@@ -71,10 +71,10 @@ object DecoratedFrom {
 	/** A marker trait for [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] decorators which include
 	  * all relations from the decorated clause. This is the de facto real root of the decorator type hierarchy,
 	  * with only the special [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] adapter not being its subtype.
-	  * It is analogous to the [[net.noresttherein.oldsql.sql.Extended Extended]] base trait for joins and join-like
+	  * It is analogous to the [[net.noresttherein.oldsql.sql.Expanded Expanded]] base trait for joins and join-like
 	  * classes.
 	  */
-	trait ExtendingDecorator[+F <: RowProduct] extends DecoratedFrom[F] with ExtendingClause[F] {
+	trait ExpandingDecorator[+F <: RowProduct] extends DecoratedFrom[F] with ExpandingClause[F] {
 		override def isEmpty :Boolean = clause.isEmpty
 		override def fullSize :Int = clause.fullSize
 
@@ -86,9 +86,9 @@ object DecoratedFrom {
 
 
 		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] =
-			matcher.extendingDecorator(this)
+			matcher.expandingDecorator(this)
 
-		private[sql] override def concrete_ExtendingClause_subclass_must_extend_Extended_or_ExtendingDecorator :Nothing =
+		private[sql] override def concrete_ExpandingClause_subclass_must_extend_Expanded_or_ExpandedDecorator :Nothing =
 			throw new UnsupportedOperationException
 	}
 
@@ -98,7 +98,7 @@ object DecoratedFrom {
 	  * for the `Generalized` and `Self` types and implements most `RowProduct` methods by delegating to the
 	  * underlying clause. It requires all implementing classes to be applicable to any non empty clause `F`.
 	  */
-	trait FromSomeDecorator[+F <: FromSome] extends ExtendingDecorator[F] with FromSome { thisClause =>
+	trait FromSomeDecorator[+F <: FromSome] extends ExpandingDecorator[F] with FromSome { thisClause =>
 
 		override type LastMapping[O] = clause.LastMapping[O]
 
@@ -169,12 +169,12 @@ object DecoratedFrom {
 		override type FullRow = clause.FullRow
 
 		override def fullRow[E <: RowProduct]
-		             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-			clause.fullRow(target)(extension.unwrapFront)
+		             (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
+			clause.fullRow(target)(expansion.unwrapFront)
 
-		override def fullTableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def fullTableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			clause.fullTableStack(target)(extension.unwrapFront)
+			clause.fullTableStack(target)(expansion.unwrapFront)
 
 
 		override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
@@ -201,28 +201,28 @@ object DecoratedFrom {
 		override def base :Base = clause.base
 
 		override def filter[E <: RowProduct]
-		                   (target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
-			clause.filter(target)(extension.unwrapFront)
+		                   (target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E] =
+			clause.filter(target)(expansion.unwrapFront)
 
 		override type Row = clause.Row
 
-		override def row[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def row[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
 				:ChainTuple[E, GlobalScope, clause.Row] =
-			clause.row(target)(extension.unwrapFront)
+			clause.row(target)(expansion.unwrapFront)
 
-		override def tableStack[E <: RowProduct](target :E)(implicit extension :Generalized ExtendedBy E)
+		override def tableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
 				:LazyList[RelationSQL.AnyIn[E]] =
-			clause.tableStack(target)(extension.unwrapFront)
+			clause.tableStack(target)(expansion.unwrapFront)
 
 		override type OuterRow = clause.OuterRow
 
-		override def outerRow[E <: RowProduct](target :E)(implicit extension :Implicit ExtendedBy E)
+		override def outerRow[E <: RowProduct](target :E)(implicit expansion :Implicit ExpandedBy E)
 				:ChainTuple[E, GlobalScope, clause.OuterRow] =
 			clause.outerRow(target)
 
 		override type AsSubselectOf[+P <: NonEmptyFrom] = WithClause[clause.AsSubselectOf[P]]
 
-		override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit extension :Implicit ExtendedBy P)
+		override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit expansion :Implicit ExpandedBy P)
 				:WithClause[clause.AsSubselectOf[P]] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 			withClause(clause.asSubselectOf(newOuter))
 
@@ -284,14 +284,14 @@ object DecoratedFrom {
 	  */
 	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} " +
 	                  "and the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
-	class DecoratorDecomposition[-F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
+	class DecoratorDecomposition[-F <: D[C], C <: U, D[+B <: U] <: ExpandingDecorator[B], U <: RowProduct]
 		extends RowDecomposition[F, C, U]
 	{
 		override type E[+A <: U] = D[A]
 		override type S[+A >: C <: U] = D[A]
 
 		@inline final override def prefix[A >: C <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
-		@inline final override def extension[A <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
+		@inline final override def expansion[A <: U] :A PrefixOf D[A] = PrefixOf.itself[A].wrap[D]
 
 		@inline final override def unapply(decorator :F) :C = decorator.clause
 
@@ -305,7 +305,7 @@ object DecoratedFrom {
 
 	@implicitNotFound("I do not know how to decompose ${F} into a DecoratedFrom type constructor ${D} and " +
 	                  "the decorated clause ${C}.\nMissing implicit DecoratorDecomposition[${F}, ${C}, ${D}, ${U}].")
-	abstract class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: ExtendingDecorator[B], U <: RowProduct]
+	abstract class DecoratorComposition[F <: D[C], C <: U, D[+B <: U] <: ExpandingDecorator[B], U <: RowProduct]
 		extends DecoratorDecomposition[F, C, D, U] with RowComposition[F, C, U]
 
 

@@ -5,7 +5,7 @@ import java.sql.JDBCType
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.RowProduct.{AggregateOf, ExtendedBy, PartOf}
+import net.noresttherein.oldsql.sql.RowProduct.{AggregateOf, ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLNumber.SQLFraction
 import net.noresttherein.oldsql.sql.ast.AggregateSQL
@@ -86,9 +86,9 @@ object AggregateFunction {
 			override def basedOn[U <: RowProduct, E <: RowProduct]
 			                    (base :E)(implicit ext :U PartOf E) :ColumnSQL[E, LocalScope, Nothing] = this
 
-			override def extend[U <: RowProduct, E <: RowProduct]
-			                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< LocalScope) :Nothing =
-				throw new UnsupportedOperationException("Count(*) cannot be extended over to subselect clauses.")
+			override def expand[U <: RowProduct, E <: RowProduct]
+			                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< LocalScope) :Nothing =
+				throw new UnsupportedOperationException("Count(*) cannot be expanded over to subselect clauses.")
 
 			override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 			                    (matcher :ColumnMatcher[RowProduct, Y]) :Y[LocalScope, Nothing] =

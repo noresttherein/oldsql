@@ -10,7 +10,7 @@ import scala.reflect.ClassTag
 import net.noresttherein.oldsql.collection.{Chain, IndexedChain, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
-import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Contextless, Extractor}
+import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Stateless, Extractor}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -633,7 +633,7 @@ object SQLForm {
 		}
 
 
-		private class NotNull extends NullValue[Nothing] with Contextless {
+		private class NotNull extends NullValue[Nothing] with Stateless {
 			override def value :Nothing = value("This type does not allow null values.")
 			override def value(errorMessage :String) = throw new NullPointerException(errorMessage)
 			override def toOption = scala.None

@@ -5,7 +5,7 @@ import java.sql.PreparedStatement
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Contextless}
+import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Stateless}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedSQLWriteForm, CustomNullSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
@@ -378,7 +378,7 @@ object SQLWriteForm {
 	  * @param name the name of the form, used in its `toString` implementation (and thrown exceptions).
 	  */
 	def empty(name :String) :SQLWriteForm[Any] =
-		new EmptyWriteForm[Any] with Contextless {
+		new EmptyWriteForm[Any] with Stateless {
 			override def toString = name
 		}
 
@@ -534,7 +534,7 @@ object SQLWriteForm {
 	def combine[T](name :String)(forms :SQLWriteForm[T]*) :SQLWriteForm[T] = forms match {
 		case Seq() =>
 			if (name == null) empty
-			else new EmptyWriteForm[T] with Contextless {}
+			else new EmptyWriteForm[T] with Stateless {}
 		case Seq(f) =>
 			if (name == null) f
 			else new ProxyWriteForm[T] with EmptyWriteForm[T] {

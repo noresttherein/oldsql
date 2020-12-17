@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.SQLForm.FormFunction
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
 import net.noresttherein.oldsql.sql.{ast, ColumnSQL, GlobalBoolean, RowProduct, SQLBoolean, SQLExpression, SQLOrdering}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.RowProduct.{ExtendedBy, PartOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnLiteral.{CaseColumnLiteral, ColumnLiteralMatcher}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.ColumnTermMatcher
@@ -41,8 +41,8 @@ trait SQLTerm[T] extends SQLExpression[RowProduct, GlobalScope, T] {
 
 	override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLTerm[T] = this
 
-	override def extend[U <: RowProduct, E <: RowProduct]
-	                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :SQLTerm[T] =
+	override def expand[U <: RowProduct, E <: RowProduct]
+	                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :SQLTerm[T] =
 		this
 
 //	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
@@ -91,8 +91,8 @@ object SQLTerm {
 		override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnTerm[T] =
 			this
 
-		override def extend[U <: RowProduct, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExtendedBy E, global :GlobalScope <:< GlobalScope) :ColumnTerm[T] =
+		override def expand[U <: RowProduct, E <: RowProduct]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :ColumnTerm[T] =
 			this
 
 		override def anchor(from :RowProduct) :ColumnTerm[T] = this

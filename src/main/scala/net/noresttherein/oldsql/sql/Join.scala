@@ -11,11 +11,11 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExtendedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
-import net.noresttherein.oldsql.sql.Extended.{AbstractExtended, ExtendedComposition, ExtendedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedComposition, ExpandedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.Join.{AbstractJoin, JoinComposition}
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
@@ -137,8 +137,8 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
 		decorate(bind(params))
 
-	override def generalizedExtension[P <: FromSome] :P PrefixOf (P GeneralizedJoin R) =
-		PrefixOf.itself[P].extend[GeneralizedJoin, R]
+	override def generalizedExpansion[P <: FromSome] :P PrefixOf (P GeneralizedJoin R) =
+		PrefixOf.itself[P].expand[GeneralizedJoin, R]
 
 
 //todo: def using(fk :R[FromLast] => ForeignKey[FromLast]) :L LikeJoin R
@@ -211,7 +211,7 @@ object JoinLike {
 	/** Matches all `JoinLike` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
 		case join :JoinLike[L @unchecked, R @unchecked] => Some((join.left, join.right))
 		case _ => None
 	}
@@ -225,11 +225,11 @@ object JoinLike {
 
 
 	implicit def joinLikeDecomposition[L <: RowProduct, R[O] <: MappingAt[O]]
-			:ExtendedDecomposition[L JoinLike R, L, R, JoinLike, RowProduct] =
-		decomposition.asInstanceOf[ExtendedDecomposition[L JoinLike R, L, R, JoinLike, RowProduct]]
+			:ExpandedDecomposition[L JoinLike R, L, R, JoinLike, RowProduct] =
+		decomposition.asInstanceOf[ExpandedDecomposition[L JoinLike R, L, R, JoinLike, RowProduct]]
 
 	private[this] val decomposition =
-		new ExtendedDecomposition[RowProduct JoinLike MappingAt, RowProduct, MappingAt, JoinLike, RowProduct]
+		new ExpandedDecomposition[RowProduct JoinLike MappingAt, RowProduct, MappingAt, JoinLike, RowProduct]
 
 
 
@@ -297,8 +297,8 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 		right.joinedWith(left, this)
 
 	
-	override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
-		left.filter(target)(extension.extendFront[left.Generalized, R]) && condition.basedOn(target)
+	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E] =
+		left.filter(target)(expansion.expandFront[left.Generalized, R]) && condition.basedOn(target)
 
 
 	override type AppliedParam = WithLeft[left.AppliedParam] //WithLeft because it is overriden by As
@@ -334,13 +334,13 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 	override type OuterRow = left.OuterRow
 
 	override def row[E <: RowProduct]
-	                (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, Row] =
-		left.row(target)(extension.extendFront[left.Generalized, R]) ~ last.extend(target)
+	                (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, Row] =
+		left.row(target)(expansion.expandFront[left.Generalized, R]) ~ last.expand(target)
 
 
 	override type AsSubselectOf[+F <: NonEmptyFrom] = WithLeft[left.AsSubselectOf[F]]
 
-	override def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit extension :Implicit ExtendedBy F)
+	override def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit expansion :Implicit ExpandedBy F)
 			:AsSubselectOf[F] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
 	{
 		val newLeft = left.asSubselectOf(newOuter)
@@ -348,7 +348,7 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 		//  this would however introduce problem with JoinLike.as: one of the relation becoming unavailable
 		val unfiltered = withLeft[newLeft.Generalized](newLeft.generalized)(True)
 		val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized Join R](
-			generalized, unfiltered, extension.length, size + 1
+			generalized, unfiltered, expansion.length, size + 1
 		)
 		withLeft[newLeft.type](newLeft)(substitute(condition))
 	}
@@ -425,7 +425,7 @@ object Join {
 	/** Matches all `Join` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
 		case join :Join[L @unchecked, R @unchecked] => Some((join.left, join.right))
 		case _ => None
 	}
@@ -443,7 +443,7 @@ object Join {
 	class JoinComposition[L <: FromSome, R[O] <: MappingAt[O],
 	                      J[+A <: FromSome, B[O] <: MappingAt[O]] <:
 	                        (A Join B) { type LikeJoin[+X <: FromSome, Y[O] <: MappingAt[O]] <: X J Y }]
-		extends ExtendedComposition[L J R, L, R, J, FromSome, MappingAt]
+		extends ExpandedComposition[L J R, L, R, J, FromSome, MappingAt]
 	{
 		override def apply[C <: FromSome](template :L J R, left :C) :C J R = template.withLeft(left)(True)
 
@@ -482,7 +482,7 @@ object Join {
 
 
 	private[sql] trait AbstractJoin[L <: FromSome, R[O] <: BaseMapping[S, O], S]
-		extends AbstractExtended[L, R, S] with Join[L, R]
+		extends AbstractExpanded[L, R, S] with Join[L, R]
 	{ thisClause =>
 		override val last :TableSQL[FromLast, R, S, FromLast]
 		protected override def lastRelation :TableSQL[FromLast, R, S, FromLast] = last
@@ -501,8 +501,8 @@ object Join {
 //			likeJoin(left, table, None)(filter)
 
 
-		override def extension[P <: FromSome] :P PrefixOf (P LikeJoin R As Alias) =
-			PrefixOf.itself[P].extend[LikeJoin, R].as[Alias]
+		override def expansion[P <: FromSome] :P PrefixOf (P LikeJoin R As Alias) =
+			PrefixOf.itself[P].expand[LikeJoin, R].as[Alias]
 
 		override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :JoinedWith[F, firstJoin.LikeJoin] =
 			withLeft(left.joinedWith(prefix, firstJoin))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
@@ -668,7 +668,7 @@ object InnerJoin {
 	/** Matches all `InnerJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
 		case join :InnerJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
 		case _ => None
 	}
@@ -857,7 +857,7 @@ object OuterJoin {
 	/** Matches all `OuterJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
 		case join :OuterJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
 		case _ => None
 	}
@@ -1046,7 +1046,7 @@ object LeftJoin {
 	/** Matches all `LeftJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
 		case join :LeftJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
 		case _ => None
 	}
@@ -1236,7 +1236,7 @@ object RightJoin {
 	/** Matches all `RightJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
 		case join :RightJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
 		case _ => None
 	}
@@ -1286,7 +1286,7 @@ object RightJoin {
   * of the subselect's ''from'' list (the right side), starting the 'explicit' portion of this clause.
   * Joining additional relations has the effect of adding them to that 'explicit' portion, available only to the
   * subselect (and, potentially, its own subselects). This allows any SQL expressions based on the outer select's clause
-  * to be used as expressions based on this select, as it doesn't differ from any other `RowProduct` join-like extension.
+  * to be used as expressions based on this select, as it doesn't differ from any other `RowProduct` join-like expansion.
   * Note that it is possible to recursively nest subselects to an arbitrary depth, modelled by a repeated use
   * of this join type. In that case all relations/mappings to the left of the first occurrence of `Subselect`
   * in the type definition are the ''from'' clause of the most outer, independent select, while relations/mappings
@@ -1390,7 +1390,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 
 
 
-	override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E] =
+	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E] =
 		condition.basedOn(target)
 
 
@@ -1404,26 +1404,26 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	override type Row = @~ ~ last.Subject
 
 	override def row[E <: RowProduct]
-	             (target :E)(implicit extension :Generalized ExtendedBy E) :ChainTuple[E, GlobalScope, @~ ~ last.Subject] =
-		ChainTuple.EmptyChain ~ last.extend(target)(extension, implicitly[GlobalScope <:< GlobalScope])
+	             (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, @~ ~ last.Subject] =
+		ChainTuple.EmptyChain ~ last.expand(target)(expansion, implicitly[GlobalScope <:< GlobalScope])
 
 
 	override type OuterRow = left.FullRow
 
 	override def outerRow[E <: RowProduct]
-	             (target :E)(implicit extension :Implicit ExtendedBy E) :ChainTuple[E, GlobalScope, left.FullRow] =
+	             (target :E)(implicit expansion :Implicit ExpandedBy E) :ChainTuple[E, GlobalScope, left.FullRow] =
 		left.fullRow(target)
 
 
 
 	override type AsSubselectOf[+O <: NonEmptyFrom] = WithLeft[O]
 
-	override def asSubselectOf[O <: NonEmptyFrom](newOuter :O)(implicit extension :Implicit ExtendedBy O)
+	override def asSubselectOf[O <: NonEmptyFrom](newOuter :O)(implicit expansion :Implicit ExpandedBy O)
 			:WithLeft[newOuter.type] =
 	{
 		//todo: refactor joins so they take functions creating conditions and move this to the constructor
 		val unfiltered = withLeft[newOuter.type](newOuter)(True)
-		val substitute = SQLScribe.shiftBack(generalized, unfiltered.generalized, extension.length, 1)
+		val substitute = SQLScribe.shiftBack(generalized, unfiltered.generalized, expansion.length, 1)
 		withLeft[newOuter.type](newOuter)(substitute(condition))
 	}
 
@@ -1508,7 +1508,7 @@ object Subselect {
 	private[sql] def apply[L <: NonEmptyFrom, R[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Subselect R]) :L Subselect R As A =
-		new Subselect[prefix.type, R] with AbstractExtended[prefix.type, R, S] {
+		new Subselect[prefix.type, R] with AbstractExpanded[prefix.type, R, S] {
 			override val left = prefix
 			override val last = next
 			override val aliasOpt = asOpt
@@ -1535,7 +1535,7 @@ object Subselect {
 			override def aliased[N <: Label](alias :N) =
 				Subselect[left.type, R, S, N](left, last, Option(alias))(condition)
 
-			override def extension[F <: NonEmptyFrom] = PrefixOf.itself[F].extend[Subselect, R].as[A]
+			override def expansion[F <: NonEmptyFrom] = PrefixOf.itself[F].expand[Subselect, R].as[A]
 
 
 			override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) =
@@ -1549,8 +1549,8 @@ object Subselect {
 
 
 			override def tableStack[E <: RowProduct]
-			             (target :E)(implicit stretch :Generalized ExtendedBy E) :LazyList[RelationSQL.AnyIn[E]] =
-				last.extend(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
+			             (target :E)(implicit stretch :Generalized ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]] =
+				last.expand(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
 			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.subselect[L, R, S](this)
@@ -1560,7 +1560,7 @@ object Subselect {
 
 
 	/** Matches all `Subselect` instances, splitting them into their left (implicit) and right (explicit) sides. */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Compound R) :Option[(L, Table[R])] = from match {
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
 		case subselect :Subselect[L @unchecked, R @unchecked] => Some(subselect.left -> subselect.right)
 		case _ => None
 	}
@@ -1574,14 +1574,14 @@ object Subselect {
 
 
 	implicit def subselectComposition[L <: NonEmptyFrom, R[O] <: MappingAt[O]]
-			:ExtendedComposition[L Subselect R, L, R, Subselect, NonEmptyFrom, MappingAt]
+			:ExpandedComposition[L Subselect R, L, R, Subselect, NonEmptyFrom, MappingAt]
 				{ type Generalized[+A <: NonEmptyFrom, B[O] <: MappingAt[O]] = A Subselect B } =
-		composition.asInstanceOf[ExtendedComposition[L Subselect R, L, R, Subselect, NonEmptyFrom, MappingAt] {
+		composition.asInstanceOf[ExpandedComposition[L Subselect R, L, R, Subselect, NonEmptyFrom, MappingAt] {
 			type Generalized[+A <: NonEmptyFrom, B[O] <: MappingAt[O]] = A Subselect B
 		}]
 
 	private[this] val composition =
-		new ExtendedComposition[NonEmptyFrom Subselect MappingAt, NonEmptyFrom, MappingAt, Subselect, NonEmptyFrom, MappingAt] {
+		new ExpandedComposition[NonEmptyFrom Subselect MappingAt, NonEmptyFrom, MappingAt, Subselect, NonEmptyFrom, MappingAt] {
 			override def apply[C <: NonEmptyFrom](template :Subselect[NonEmptyFrom, MappingAt], clause :C) =
 				template.withLeft(clause)(True)
 		}

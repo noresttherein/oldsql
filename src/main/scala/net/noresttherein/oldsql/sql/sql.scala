@@ -41,7 +41,7 @@ package object sql {
 
 	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of Boolean value which can occur in any place
 	  * of the SQL select represented by the ''from'' clause `F` or its enclosing selects (for subselect clauses).
-	  * Such expressions can also be extended over to subselects of the clause `F` using the
+	  * Such expressions can also be expanded to subselects of the clause `F` using the
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.basedOn basedOn]] method. This is in particular the expression type
 	  * used in all ''where'' clauses.
 	  * Note that `GlobalBoolean[F] <: `[[net.noresttherein.oldsql.sql.LocalBoolean LocalBoolean]]`F`.
@@ -65,7 +65,7 @@ package object sql {
 
 	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of `String` type which can occur in any place
 	  * of the SQL select represented by the ''from'' clause `F` or its enclosing selects (for subselect clauses).
-	  * Such expressions can also be extended over to subselects of the clause `F` using the
+	  * Such expressions can also be expanded to subselects of the clause `F` using the
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.basedOn basedOn]] method. This is in particular the expression type
 	  * used in all ''where'' clauses.
 	  * Note that `GlobalString[F] <: `[[net.noresttherein.oldsql.sql.LocalString LocalString]]`F`.

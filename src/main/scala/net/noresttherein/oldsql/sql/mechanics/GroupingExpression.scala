@@ -28,9 +28,9 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL, T
   *           using [[net.noresttherein.oldsql.sql.GroupBy GroupBy]], or
   *           a [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]], in which case it will be expanded
   *           with a [[net.noresttherein.oldsql.sql.By By]] class.
-  * @tparam E the type of the expression which can be turned into a grouping extension. Predefined implicit values
-  *                           of this type exist in the companion
-  *                           [[net.noresttherein.oldsql.sql.mechanics.GroupingExpression$ object]] for:
+  * @tparam E the type of the expression which can be turned into a grouping expansion. Predefined implicit values
+  *           of this type exist in the companion [[net.noresttherein.oldsql.sql.mechanics.GroupingExpression$ object]]
+  *           for:
   *             - [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`V, O]` subtypes,
   *               where `O >: F <: RowProduct`,
   *             - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] and

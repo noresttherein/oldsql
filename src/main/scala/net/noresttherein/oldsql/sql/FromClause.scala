@@ -10,8 +10,8 @@ import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.sql.AggregateFunction.{Avg, Count, Max, Min, StdDev, Sum, Var}
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, RowProductTemplate}
@@ -41,7 +41,7 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 
 	override def filter :GlobalBoolean[Generalized] = filter(generalized)
 
-	override def filter[E <: RowProduct](target :E)(implicit extension :Generalized PartOf E) :GlobalBoolean[E]
+	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E]
 
 
 
@@ -52,7 +52,7 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	/** A join between this clause and the relation for mapping `T`. For non empty clauses, this is simply `J[Self, T]`,
 	  * but `Dual` defines it as `From[T]` instead.
 	  */
-	type Extend[+J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] <: Self Extended T
+	type Expand[+J[+L <: FromSome, R[O] <: T[O]] <: L Expanded R, T[O] <: MappingAt[O]] <: Self Expanded T
 
 	/** Joins this clause with another relation `next` for mapping `T`.
 	  * @param next the relation to add to the clause.
@@ -60,14 +60,14 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	  * @param join a template `JoinLike` instance used as a factory for the returned clause; defaults to `InnerJoin`.
 	  * @return `From(next)` if this clause is empty and `join.likeJoin(self, next)` for non empty clauses.
 	  */
-	def extend[T[O] <: BaseMapping[S, O], S]
+	def expand[T[O] <: BaseMapping[S, O], S]
 	    (next :Table[T], filter :GlobalBoolean[Generalized AndFrom T] = True, join :JoinLike.* = InnerJoin.template)
-			:Extend[join.LikeJoin, T]
+			:Expand[join.LikeJoin, T]
 
 	/** Used to add any relation to any clause, creates the clause of a type depending on this clause:
 	  * empty clauses return `From[T]`, while non empty clauses create `this.type InnerJoin T`.
 	  */ //this method serves also as a seal ensuring that every discrete clause extends either EmptyFrom or FromSome
-	protected[sql] def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
+	protected[sql] def expand[T[O] <: BaseMapping[S, O], S, A <: Label]
 	                         (right :LastTable[T, S], alias :Option[A],
 	                          filter :GlobalBoolean[Generalized NonParam T]) :this.type NonParam T As A
 
@@ -105,7 +105,7 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 //	override def tableStack :LazyList[TableSQL.AnyIn[Generalized]] = tableStack(generalized)
 //
 //	override def tableStack[E <: RowProduct]
-//	                       (target :E)(implicit extension :Generalized ExtendedBy E) :LazyList[TableSQL.AnyIn[E]]
+//	                       (target :E)(implicit expansion :Generalized ExpandedBy E) :LazyList[TableSQL.AnyIn[E]]
 
 
 
@@ -231,7 +231,7 @@ object FromClause {
 /** Common upper bound for all ''from'' clauses containing at least one relation, but no ''group by'' clause.
   * Extended by every [[net.noresttherein.oldsql.sql.FromClause FromClause]] implementations
   * other than [[net.noresttherein.oldsql.sql.Dual Dual]]. Most types do not do this directly however, but
-  * through the [[net.noresttherein.oldsql.sql.Extended Extended]], which is the base trait for recursively built
+  * through the [[net.noresttherein.oldsql.sql.Expanded Expanded]], which is the base trait for recursively built
   * clauses by adding a [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]] to a prefix
   * `RowProduct`.
   */
@@ -286,14 +286,14 @@ trait FromSome
 
 
 
-	override type FilterNext[E[+L <: FromSome] <: L Extended N, S <: RowProduct Extended N, G <: S, N[O] <: MappingAt[O]] =
+	override type FilterNext[E[+L <: FromSome] <: L Expanded N, S <: RowProduct Expanded N, G <: S, N[O] <: MappingAt[O]] =
 		                    (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => GlobalBoolean[G]
 
 	protected override def filterNext[F <: RowProduct AndFrom N, N[O] <: MappingAt[O]]
 	                       (next :F)(filter :FilterNext[next.GeneralizedLeft, next.FromLast, next.Generalized, N])
 			:next.Copy =
 	{
-		val condition = filter(last.asIn(next.generalizedExtension[FromLast]), next.last)
+		val condition = filter(last.asIn(next.generalizedExpansion[FromLast]), next.last)
 		next.filtered(condition.anchor(next.generalized))
 	}
 
@@ -302,14 +302,14 @@ trait FromSome
 	override type BoundParamless = FromSome { type Params = @~ } //only because JoinParam requires FromSome on the left
 
 
-	override type Extend[+J[+L <: FromSome, R[O] <: T[O]] <: L Extended R, T[O] <: MappingAt[O]] = Self J T
+	override type Expand[+J[+L <: FromSome, R[O] <: T[O]] <: L Expanded R, T[O] <: MappingAt[O]] = Self J T
 
-	override def extend[T[O] <: BaseMapping[S, O], S]
+	override def expand[T[O] <: BaseMapping[S, O], S]
 	                   (next :Table[T], filter :GlobalBoolean[Generalized AndFrom T], join :JoinLike.*)
 			:join.LikeJoin[Self, T] =
 		join.likeJoin[Self, T, S](self, next)(filter)
 
-	protected[sql] def extend[T[O] <: BaseMapping[S, O], S, A <: Label]
+	protected[sql] def expand[T[O] <: BaseMapping[S, O], S, A <: Label]
 	                   (right :LastTable[T, S], alias :Option[A], filter :GlobalBoolean[Generalized NonParam T])
 			:this.type NonParam T As A =
 		InnerJoin[this.type, T, S, A](this, right, alias)(filter)

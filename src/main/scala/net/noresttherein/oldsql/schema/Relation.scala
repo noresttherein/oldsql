@@ -9,8 +9,8 @@ import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, RelationTempla
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.AdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
-import net.noresttherein.oldsql.sql.Compound
-import net.noresttherein.oldsql.sql.Compound.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Adjoin
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 
 
 
@@ -116,7 +116,7 @@ object Relation {
 		@inline def as[A <: Label](alias :A) :M Aliased A = new Aliased[M, A](self, alias)
 	}
 
-	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Compound M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
+	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Adjoin M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
 	                         (source :Relation[R])
 	                         (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt]) :Relation[T] =
 		cast(source)
@@ -153,10 +153,14 @@ object Relation {
 		}
 
 		def +(component :M[this.type] => RefinedMapping[_, this.type]) :R[M] =
-			(this :RelationTemplate[M, R]).alter(Unique.single(export[this.type].export(component(row[this.type]))), Unique.empty)
+			(this :RelationTemplate[M, R]).alter(
+				Unique.single(export[this.type].export(component(row[this.type]))), Unique.empty
+			)
 
 		def -(component :M[this.type] => RefinedMapping[_, this.type]) :R[M] =
-			(this :RelationTemplate[M, R]).alter(Unique.empty, Unique.single(export[this.type].export(component(row[this.type]))))
+			(this :RelationTemplate[M, R]).alter(
+				Unique.empty, Unique.single(export[this.type].export(component(row[this.type])))
+			)
 
 		protected def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]]) :R[M]
 

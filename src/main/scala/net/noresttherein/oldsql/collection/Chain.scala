@@ -1928,7 +1928,7 @@ object IndexedChain extends IndexedChainFactory {
 		@inline def update[K <: Key, V, R <: IndexedChain](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
-		/** Appends the given index to the end of this chain. */
+		/** Appends the given index to the end of this chain. */ //fixme: ambiguity with ChainOps.++
 		@inline def ++[S <: IndexedChain](suffix :S) :suffix.IndexedCat[I] = suffix.indexedCat(self)
 
 		@inline def toMap[K, V](implicit convert :ToMap[I, K, V]) :Map[K, V] = convert(self).toMap
@@ -2103,7 +2103,7 @@ object LabeledChain extends IndexedChainFactory {
 		@inline def update[K <: Key, V, R <: LabeledChain](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
-		/** Appends the given index to the end of this chain. */
+		/** Appends the given index to the end of this chain. */ //fixme: ambiguity with ChainOps.++
 		@inline def ++[S <: LabeledChain](suffix :S) :suffix.LabeledCat[I] = suffix.labeledCat(self)
 
 	}
@@ -2277,7 +2277,7 @@ object ChainMap extends ChainMapFactory {
 		@inline def update[K <: Key, V, R <: ChainMap](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
-		/** Appends the given chain to the end of this chain. */
+		/** Appends the given chain to the end of this chain. */ //fixme: ambiguity with ChainOps.++
 		@inline def ++[S <: ChainMap](suffix :S) :suffix.MapCat[I] = suffix.mapCat(self)
 
 	}
@@ -2460,7 +2460,7 @@ object Record extends ChainMapFactory {
 		@inline def update[K <: Key, V, R <: Record](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
-		/** Appends the given record to the end of this record. */
+		/** Appends the given record to the end of this record. */ //fixme: ambiguity with ChainOps.++
 		@inline def ++[S <: Record](suffix :S) :suffix.RecordCat[I] = suffix.recordCat(self)
 
 	}
