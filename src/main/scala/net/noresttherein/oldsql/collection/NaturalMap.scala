@@ -57,9 +57,7 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 //	protected def default[X](key :K[X]) :V[X] =
 //		throw new NoSuchElementException("No value for key " + key)
 
-	def iterator :Iterator[NaturalMap.Assoc[K, V, _]]
-
-
+	override def iterator :Iterator[NaturalMap.Assoc[K, V, _]]
 
 	def map[A[_], B[_]](f :Assoc[K, V, _] => Assoc[A, B, _]) :NaturalMap[A, B] = {
 		val res = NaturalMap.newBuilder[A, B]
@@ -69,8 +67,6 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 		res.result()
 	}
 
-
-
 	def flatMap[A[_], B[_]](f :Assoc[K, V, _] => IterableOnce[Assoc[A, B, _]]) :NaturalMap[A, B] = {
 		val res = NaturalMap.newBuilder[A, B]
 		val iter = iterator
@@ -78,8 +74,6 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 			res ++= f(iter.next())
 		res.result()
 	}
-
-
 
 	override def filter(f :Assoc[K, V, _] => Boolean) :NaturalMap[K, V] = {
 		val res = NaturalMap.newBuilder[K, V]
@@ -93,11 +87,8 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 	}
 
 
-
 	protected[this] override def newSpecificBuilder :Builder[NaturalMap.Assoc[K, V, _], NaturalMap[K, V]] =
 		NaturalMap.newBuilder[K, V]
-
-
 
 	override def className :String = "NaturalMap"
 
@@ -405,6 +396,7 @@ object NaturalMap {
 
 		override def withDefault[U[T] >: V[T]](default :K =#> U) :NaturalMap[K, U] =
 			new NaturalizedMap[K, U](entries.withDefault(default.existential))
+
 	}
 
 

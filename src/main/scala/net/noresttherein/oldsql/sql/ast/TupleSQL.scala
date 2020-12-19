@@ -3,20 +3,20 @@ package net.noresttherein.oldsql.sql.ast
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
+import net.noresttherein.oldsql.collection.{Chain, Listing}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedColumnSQLMapping, IndexedMapping, IndexedSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
+import net.noresttherein.oldsql.sql.{ast, ColumnSQL, ListingColumnSQLMapping, IndexedMapping, ListingSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChain, ChainHead, ChainMatcher, EmptyChain}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedChainHead, IndexedChainMatcher, IndexedColumn, IndexedSQLExpression}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChain, ChainEntry, ChainMatcher, EmptyChain}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingEntry, ListingMatcher, ListingColumn, ListingValueSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple.{CaseSeq, SeqMatcher}
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
@@ -117,7 +117,7 @@ object TupleSQL {
 			@tailrec def rec(formula :ChainTuple[F, S, _], acc :List[SQLExpression[F, S, _]] = Nil)
 					:Seq[SQLExpression[F, S, _]] =
 				formula match {
-					case ChainHead(tail, head) => rec(tail, head::acc)
+					case ChainEntry(tail, head) => rec(tail, head::acc)
 					case _ => acc
 				}
 			rec(this)
@@ -148,8 +148,8 @@ object TupleSQL {
 			matcher.chain(this)
 
 
-		def ~[E <: F, O >: LocalScope <: S, H](head :SQLExpression[E, O, H]) :ChainHead[E, O, T, H] =
-			new ChainHead(this, head)
+		def ~[E <: F, O >: LocalScope <: S, H](head :SQLExpression[E, O, H]) :ChainEntry[E, O, T, H] =
+			new ChainEntry(this, head)
 
 		override def toString :String = inOrder.mkString("(", " ~ ", ")")
 	}
@@ -161,12 +161,12 @@ object TupleSQL {
 		def apply() :ChainTuple[RowProduct, GlobalScope, @~] = EmptyChain
 
 		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, T](e :SQLExpression[F, S, T]) :ChainTuple[F, S, @~ ~ T] =
-			new ChainHead(EmptyChain, e)
+			new ChainEntry(EmptyChain, e)
 
 
 
-		case class ChainHead[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: Chain, H]
-		                    (init :ChainTuple[F, S, T], last :SQLExpression[F, S, H])
+		case class ChainEntry[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: Chain, H]
+		                     (init :ChainTuple[F, S, T], last :SQLExpression[F, S, H])
 			extends ChainTuple[F, S, T ~ H]
 		{
 			override def size :Int = init.size + 1
@@ -184,7 +184,7 @@ object TupleSQL {
 
 			override def anchor(from :F) = (init.anchor(from), last.anchor(from)) match {
 				case (i, l) if (i eq init) && (l eq last) => this
-				case (i, l) => new ChainHead(i, l)
+				case (i, l) => new ChainEntry(i, l)
 			}
 
 			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ChainTuple[E, S, T ~ H] =
@@ -198,7 +198,7 @@ object TupleSQL {
 
 
 		case object EmptyChain extends SQLTerm[@~]
-			with ChainTuple[RowProduct, GlobalScope, @~] with IndexedChainTuple[RowProduct, GlobalScope, @~]
+			with ChainTuple[RowProduct, GlobalScope, @~] with ListingSQL[RowProduct, GlobalScope, @~]
 		{
 			override def size :Int = 0
 
@@ -237,7 +237,7 @@ object TupleSQL {
 			             (init :ChainTuple[F, S, I], last :SQLExpression[F, S, L]) :Y[S, I ~ L]
 
 			override def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X] = (e match {
-				case ChainHead(tail, head) => chainHead(tail, head)
+				case ChainEntry(tail, head) => chainHead(tail, head)
 				case _ => emptyChain
 			}).asInstanceOf[Y[S, X]]
 		}
@@ -249,66 +249,76 @@ object TupleSQL {
 
 
 
-	//does not extend ChainTuple because IndexedChainHead doesn't extend ChainHead and it would cause problems
+	//does not extend ChainTuple because ListingEntry doesn't extend ChainEntry and it would cause problems
 	// in pattern matching a ChainTuple
 	/** A variant of [[ast.TupleSQL.ChainTuple ChainTuple]] which maps
-	  * to a [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]] - a `Chain` subtype with key-value pairs
+	  * to a [[net.noresttherein.oldsql.collection.Listing Listing]] - a `Chain` subtype with key-value pairs
 	  * in the form of `K :~ V` as its only elements. The keys exist only on the type level in the `T` type parameter;
 	  * Member SQL expressions are not of the `K :~ V` type, but rather directly the value type `V`.
-	  * The indexing has no special effect on the generated SQL other than an `IndexedColumn` being a subclass of
+	  * The indexing has no special effect on the generated SQL other than an `ListingColumn` being a subclass of
 	  * [[net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn AliasedColumn]]. Instead, it allows referencing
 	  * the columns in a type safe way when mapping results of a select, if this expression appears
 	  * in the ''select'' clause. Additionally, a ''select'' clause consisting solely of this type can be matched
-	  * to any [[IndexedSchemaMapping IndexedSchemaMapping]] with a component chain
+	  * to any [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]] with a component chain
 	  * containing exactly the same key-value pairs as the `T` type parameter, regardless of their order.
 	  * Non-column components of the mapping must in that case recursively match a nested indexed tuple paired
 	  * with the same key type in this `LiteralChain` as the component's label.
-	  * An `IndexedChainTuple` can consist only of expressions implementing `IndexedSQLExpression` - a sealed type
-	  * extended only by the [[ast.TupleSQL.IndexedChainTuple.IndexedColumn IndexedColumn]]
+	  * An `ListingSQL` can consist only of expressions implementing `ListingValueSQL` - a sealed type
+	  * extended only by the [[ast.TupleSQL.ListingSQL.ListingColumn ListingColumn]]
 	  * and this trait. This ensures that every column of the whole expression is assigned a unique key,
 	  * which however may be a sequence of `Label`s, rather than a single one, if this expression contains
 	  * another indexed tuples as its subexpressions.
 	  * Note that, in order to provide clear cases when pattern matching, this type does not extend the standard
 	  * `ChainTuple`.
 	  */
-	trait IndexedChainTuple[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: IndexedChain]
-		extends TupleSQL[F, S, T] with IndexedSQLExpression[F, S, T]
+	trait ListingSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: Listing]
+		extends TupleSQL[F, S, T] with ListingValueSQL[F, S, T]
 	{
 		def size :Int
-		override def mapping[O] :IndexedSQLMapping[F, S, T, O] = IndexedSQLMapping(this)
+		override def mapping[O] :ListingSQLMapping[F, S, T, O] = ListingSQLMapping(this)
 
-		protected override def parts :Seq[SQLExpression[F, S, _]] = {
-			@tailrec def rec(e :IndexedChainTuple[F, S, _], acc :List[SQLExpression[F, S, _]] = Nil) :Seq[SQLExpression[F, S, _]] =
+		protected override def parts :Seq[ListingValueSQL[F, S, _]] = {
+			@tailrec def rec(e :ListingSQL[F, S, _], acc :List[ListingValueSQL[F, S, _]] = Nil) :Seq[ListingValueSQL[F, S, _]] =
 				e match {
-					case IndexedChainHead(tail, head) => rec(tail, head::acc)
+					case ListingEntry(tail, head) => rec(tail, head::acc)
 					case _ => acc
 				}
 			rec(this)
 		}
 
-		def toSeq :Seq[SQLExpression[F, S, _]] = parts
+		def toSeq :Seq[ListingValueSQL[F, S, _]] = parts
 
-		override def asGlobal :Option[IndexedChainTuple[F, GlobalScope, T]] =
-			if (isGlobal) Some(this.asInstanceOf[IndexedChainTuple[F, GlobalScope, T]])
+		def toMap :Map[String, ListingValueSQL[F, S, _]] = {
+			@tailrec def rec(e :ListingSQL[F, S, _], acc :Map[String, ListingValueSQL[F, S, _]])
+					:Map[String, ListingValueSQL[F, S, _]] =
+				e match {
+					case entry :ListingEntry[F, S, _, _, _] => rec(entry.init, acc.updated(entry.key, entry.last))
+					case _ => acc
+				}
+			rec(this, Map.empty)
+		}
+
+		override def asGlobal :Option[ListingSQL[F, GlobalScope, T]] =
+			if (isGlobal) Some(this.asInstanceOf[ListingSQL[F, GlobalScope, T]])
 			else None
 
-		override def anchor(from :F) :IndexedChainTuple[F, S, T]
+		override def anchor(from :F) :ListingSQL[F, S, T]
 
 		//overriden to narrow down the result type
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :IndexedChainTuple[E, S, T]
+		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ListingSQL[E, S, T]
 
 		//overriden to narrow down the result type
-		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :IndexedChainTuple[E, S, T] =
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ListingSQL[E, S, T] =
 			rephrase(SQLScribe.expand(base))
 
 		//overriden to narrow down the result type
 		override def expand[U <: F, E <: RowProduct]
-		             (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :IndexedChainTuple[E, S, T] =
+		             (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ListingSQL[E, S, T] =
 			rephrase(SQLScribe.expand(base))
 
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
-			matcher.indexedChain(this)
+			matcher.listing(this)
 
 
 		override def selectFrom(from :F) :SelectAs[from.Base, IndexedMapping.Of[T]#Projection] =
@@ -335,21 +345,21 @@ object TupleSQL {
 
 
 		def |~[E <: F, O >: LocalScope <: S, K <: Label :ValueOf, H]
-		      (head :K :~ IndexedSQLExpression[E, O, H]) :IndexedChainHead[E, O, T, K, H] =
-			new IndexedChainHead(this, head.value)
+		      (head :K :~ ListingValueSQL[E, O, H]) :ListingEntry[E, O, T, K, H] =
+			new ListingEntry(this, head.value)
 
 		def |~[E <: F, O >: LocalScope <: S, K <: Label, H]
-		      (head :IndexedColumn[E, O, K, H]) :IndexedChainHead[E, O, T, K, H] =
-			new IndexedChainHead(this, head)(new ValueOf(head.alias))
+		      (head :ListingColumn[E, O, K, H]) :ListingEntry[E, O, T, K, H] =
+			new ListingEntry(this, head)(new ValueOf(head.alias))
 
 		def |~[E <: F, O >: LocalScope <: S, K <: Label :ValueOf, H]
-		       (head :K :~ ColumnSQL[E, O, H]) :IndexedChainHead[E, O, T, K, H] =
-			new IndexedChainHead(this, new IndexedColumn(head.value, valueOf[K]))
+		       (head :K :~ ColumnSQL[E, O, H]) :ListingEntry[E, O, T, K, H] =
+			new ListingEntry(this, new ListingColumn(head.value, valueOf[K]))
 
 		override def toString :String = {
-			def rec(e :IndexedChainTuple[_, _, _], res :StringBuilder) :StringBuilder = e match {
+			def rec(e :ListingSQL[_, _, _], res :StringBuilder) :StringBuilder = e match {
 				case EmptyChain => res ++= "@~"
-				case tuple :IndexedChainHead[_, _, _, _, _] =>
+				case tuple :ListingEntry[_, _, _, _, _] =>
 					rec(tuple.init, res) ++= " |~ " ++= tuple.key ++= ":~" ++= tuple.last.toString
 			}
 			rec(this, new StringBuilder).toString
@@ -359,71 +369,71 @@ object TupleSQL {
 
 
 
-	object IndexedChainTuple {
-		final val EmptyIndexedChain = ChainTuple.EmptyChain
+	object ListingSQL {
+		final val EmptyListing = ChainTuple.EmptyChain
 
-		def apply() :IndexedChainTuple[RowProduct, GlobalScope, @~] = EmptyIndexedChain
+		def apply() :ListingSQL[RowProduct, GlobalScope, @~] = EmptyListing
 
 		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label, T]
-		         (e :IndexedColumn[F, S, N, T]) :IndexedChainTuple[F, S, @~ |~ (N :~ T)] =
-			new IndexedChainHead(EmptyChain, e)(new ValueOf(e.alias))
+		         (e :ListingColumn[F, S, N, T]) :ListingSQL[F, S, @~ |~ (N :~ T)] =
+			new ListingEntry(EmptyChain, e)(new ValueOf(e.alias))
 
 		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label :ValueOf, T]
-		         (e :N :~ ColumnSQL[F, S, T]) :IndexedChainTuple[F, S, @~ |~ (N :~ T)] =
-			new IndexedChainHead(EmptyChain, new IndexedColumn(e.value, valueOf[N]))
+		         (e :N :~ ColumnSQL[F, S, T]) :ListingSQL[F, S, @~ |~ (N :~ T)] =
+			new ListingEntry(EmptyChain, new ListingColumn(e.value, valueOf[N]))
 
 		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label, T]
-		         (key :N, value :ColumnSQL[F, S, T]) :IndexedChainTuple[F, S, @~ |~ (N :~ T)] =
-			new IndexedChainHead(EmptyChain, key @: value)(new ValueOf(key))
+		         (key :N, value :ColumnSQL[F, S, T]) :ListingSQL[F, S, @~ |~ (N :~ T)] =
+			new ListingEntry(EmptyChain, key @: value)(new ValueOf(key))
 
 
 
-		sealed trait IndexedSQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T]
+		sealed trait ListingValueSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T]
 			extends SQLExpression[F, S, T]
 		{
-			def mapping[O] :IndexedSQLMapping[F, S, T, O]
+			def mapping[O] :ListingSQLMapping[F, S, T, O]
 
-			override def asGlobal :Option[IndexedSQLExpression[F, GlobalScope, T]]
+			override def asGlobal :Option[ListingValueSQL[F, GlobalScope, T]]
 
-			override def anchor(from :F) :IndexedSQLExpression[F, S, T]
+			override def anchor(from :F) :ListingValueSQL[F, S, T]
 
 			override def basedOn[U <: F, E <: RowProduct]
-			                    (base :E)(implicit ext :U PartOf E) :IndexedSQLExpression[E, S, T]
+			                    (base :E)(implicit ext :U PartOf E) :ListingValueSQL[E, S, T]
 
 			override def expand[U <: F, E <: RowProduct]
-			             (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :IndexedSQLExpression[E, S, T]
+			             (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ListingValueSQL[E, S, T]
 
-			def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :IndexedSQLExpression[E, S, T]
+			def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ListingValueSQL[E, S, T]
 
 		}
 
 
 
-		class IndexedColumn[-F <: RowProduct, -S >: LocalScope <: GlobalScope, N <: Label, V]
+		class ListingColumn[-F <: RowProduct, -S >: LocalScope <: GlobalScope, N <: Label, V]
 		                   (override val column :ColumnSQL[F, S, V], override val alias :N)
-			extends AliasedColumn[F, S, V](column, alias) with IndexedSQLExpression[F, S, V]
+			extends AliasedColumn[F, S, V](column, alias) with ListingValueSQL[F, S, V]
 		{
-			override def mapping[O] :IndexedColumnSQLMapping[F, S, N, V, O] =
-				IndexedColumnSQLMapping(this)
+			override def mapping[O] :ListingColumnSQLMapping[F, S, N, V, O] =
+				ListingColumnSQLMapping(this)
 
-			override def asGlobal :Option[IndexedColumn[F, GlobalScope, N, V]] =
-				if (column.isGlobal) Some(this.asInstanceOf[IndexedColumn[F, GlobalScope, N, V]])
+			override def asGlobal :Option[ListingColumn[F, GlobalScope, N, V]] =
+				if (column.isGlobal) Some(this.asInstanceOf[ListingColumn[F, GlobalScope, N, V]])
 				else None
 
-			override def anchor(from :F) :IndexedColumn[F, S, N, V] = column.anchor(from) match {
+			override def anchor(from :F) :ListingColumn[F, S, N, V] = column.anchor(from) match {
 				case same if same eq column => this
-				case anchored => new IndexedColumn(anchored, alias)
+				case anchored => new ListingColumn(anchored, alias)
 			}
 
-			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :IndexedColumn[E, S, N, V] =
-				new IndexedColumn(mapper(column), alias)
+			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ListingColumn[E, S, N, V] =
+				new ListingColumn(mapper(column), alias)
 
-			override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :IndexedColumn[E, S, N, V] =
-				new IndexedColumn(column.basedOn(base), alias)
+			override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ListingColumn[E, S, N, V] =
+				new ListingColumn(column.basedOn(base), alias)
 
 			override def expand[U <: F, E <: RowProduct]
-			             (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< S) :IndexedColumn[E, S, N, V] =
-				new IndexedColumn(column.expand(base), alias)
+			             (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< S) :ListingColumn[E, S, N, V] =
+				new ListingColumn(column.expand(base), alias)
 
 
 			override def selectFrom(from :F) :SelectColumnAs[from.Base, IndexedMapping.Of[V]#Column, V] =
@@ -451,9 +461,9 @@ object TupleSQL {
 
 
 
-		case class IndexedChainHead[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: IndexedChain, K <: Label :ValueOf, H]
-		                           (init :IndexedChainTuple[F, S, T], last :IndexedSQLExpression[F, S, H])
-			extends IndexedChainTuple[F, S, T |~ (K :~ H)]
+		case class ListingEntry[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: Listing, K <: Label :ValueOf, H]
+		                       (init :ListingSQL[F, S, T], last :ListingValueSQL[F, S, H])
+			extends ListingSQL[F, S, T |~ (K :~ H)]
 		{
 			def key :K = valueOf[K]
 
@@ -462,9 +472,9 @@ object TupleSQL {
 			//todo: get rid of explicit references to SQLForms & SQLForms
 			override val readForm :SQLReadForm[T |~ (K :~ H)] = (init.readForm, last.readForm) match {
 				case (i :SQLForm[T @unchecked], l :SQLForm[H @unchecked]) =>
-					SQLForms.IndexedChainForm[T, K, H](i, implicitly[ValueOf[K]], l)
+					SQLForms.ListingForm[T, K, H](i, implicitly[ValueOf[K]], l)
 				case _ =>
-					SQLForms.IndexedChainReadForm[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
+					SQLForms.ListingReadForm[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
 			}
 
 
@@ -473,40 +483,40 @@ object TupleSQL {
 
 			override def anchor(from :F) = (init.anchor(from), last.anchor(from)) match {
 				case (i, l) if (i eq init) && (l eq last) => this
-				case (i, l) => new IndexedChainHead(i, l)
+				case (i, l) => new ListingEntry(i, l)
 			}
 
 
-			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :IndexedChainTuple[E, S, T |~ (K :~ H)] =
+			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ListingSQL[E, S, T |~ (K :~ H)] =
 				init.rephrase(mapper) |~ :~[K](last.rephrase(mapper))
 
 			override def basedOn[U <: F, E <: RowProduct]
-			                    (base :E)(implicit ext :U PartOf E) :IndexedChainTuple[E, S, T |~ (K :~ H)] =
+			                    (base :E)(implicit ext :U PartOf E) :ListingSQL[E, S, T |~ (K :~ H)] =
 				init.basedOn(base) |~ :~[K](last.basedOn(base))
 
 			override def expand[U <: F, E <: RowProduct]
 			                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S)
-					:IndexedChainTuple[E, S, T |~ (K :~ H)] =
+					:ListingSQL[E, S, T |~ (K :~ H)] =
 				init.expand(base) |~ :~[K](last.expand(base))
 		}
 
 
 
-		trait IndexedChainMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
-			def indexedChain[S >: LocalScope <: GlobalScope, X <: IndexedChain](e :IndexedChainTuple[F, S, X]) :Y[S, X]
+		trait ListingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def listing[S >: LocalScope <: GlobalScope, X <: Listing](e :ListingSQL[F, S, X]) :Y[S, X]
 		}
 
-		type CaseIndexedChain[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = IndexedChainMatcher[F, Y]
+		type CaseListing[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ListingMatcher[F, Y]
 
-		trait MatchIndexedChain[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends IndexedChainMatcher[F, Y] {
+		trait MatchListing[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ListingMatcher[F, Y] {
 			def emptyChain :Y[GlobalScope, @~]
 
-			def indexedChainHead[S >: LocalScope <: GlobalScope, I <: IndexedChain, K <: Label :ValueOf, L]
-			                    (init :IndexedChainTuple[F, S, I], last :IndexedSQLExpression[F, S, L]) :Y[S, I |~ (K :~ L)]
+			def listingEntry[S >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
+			                (init :ListingSQL[F, S, I], last :ListingValueSQL[F, S, L]) :Y[S, I |~ (K :~ L)]
 
-			override def indexedChain[S >: LocalScope <: GlobalScope, X <: IndexedChain](e :IndexedChainTuple[F, S, X]) :Y[S, X] =
+			override def listing[S >: LocalScope <: GlobalScope, X <: Listing](e :ListingSQL[F, S, X]) :Y[S, X] =
 				(e match {
-					case tuple @ IndexedChainHead(tail, head) => indexedChainHead(tail, head)(new ValueOf(tuple.key))
+					case tuple @ ListingEntry(tail, head) => listingEntry(tail, head)(new ValueOf(tuple.key))
 					case _ => emptyChain
 				}).asInstanceOf[Y[S, X]]
 		}
@@ -518,7 +528,7 @@ object TupleSQL {
 
 
 	trait TupleMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ChainMatcher[F, Y] with IndexedChainMatcher[F, Y] with SeqMatcher[F, Y]
+		extends ChainMatcher[F, Y] with ListingMatcher[F, Y] with SeqMatcher[F, Y]
 	{
 		def tuple[S >: LocalScope <: GlobalScope, X](e: TupleSQL[F, S, X]): Y[S, X]
 	}
@@ -531,7 +541,7 @@ object TupleSQL {
 
 		override def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X] = tuple(e)
 
-		override def indexedChain[S >: LocalScope <: GlobalScope, X <: IndexedChain](e :IndexedChainTuple[F, S, X]) :Y[S, X] = tuple(e)
+		override def listing[S >: LocalScope <: GlobalScope, X <: Listing](e :ListingSQL[F, S, X]) :Y[S, X] = tuple(e)
 
 		override def seq[S >: LocalScope <: GlobalScope, X](e: SeqTuple[F, S, X]): Y[S, Seq[X]] = tuple(e)
 

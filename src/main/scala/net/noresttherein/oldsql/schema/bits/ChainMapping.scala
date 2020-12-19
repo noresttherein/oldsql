@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 /** A mapping for [[net.noresttherein.oldsql.collection.Chain Chain]] heterogeneous lists which is
   * a [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]] and its own
   * [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] at the same time.
-  * @see [[net.noresttherein.oldsql.schema.bits.IndexedChainMapping]]
+  * @see [[net.noresttherein.oldsql.schema.bits.ListingMapping]]
   */
 trait ChainMapping[V <: Chain, C <: Chain, O] extends BaseChainMapping[V, C, O] {
 

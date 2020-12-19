@@ -58,8 +58,10 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 		if (op.columns(this).nonEmpty) { //this check is the fastest with columns caching the individual lists.
 			val audited = (subject /: op.audit.Audit(this)) { (s, f) => f(s) }
 			collector.add(this, audited)
-		} else
-			ColumnValues.preset(this, op.extra.Value(this))
+		} else op.extra.Value(this) match {
+			case res if res.isDefined => collector.add(this, res)
+			case _ =>
+		}
 
 	override def filterValues(subject :S) :ComponentValues[S, O] = writtenValues(FILTER, subject)
 	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UPDATE, subject)
@@ -67,29 +69,39 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 
+	/** Columns are never assembled from subcomponents; this method always returns `None`. */
 	override def assemble(pieces: Pieces): Option[S] = None
 
-	/** This method is overriden from the default implementation and does not take into account any select-related
-	  * buffs, but instead directly asks the `pieces` for a preset value (as none could possibly be assembled, columns
-	  * being the bottom components). This is done both for efficiency, by moving the behaviour to the `selectForm`,
-	  * and because this method may be called also by `ComponentValues` instances presetting values for update operations,
-	  * not only when assembling the result of an SQL select from the row data. For this reason it should not be
-	  * overriden; any modification of the values such as validation should happen through `Buff` instances attached
-	  * to this instance or, if impossible to implement, by introducing a component class wrapping the column.
-	  * @return `pieces.preset(this)`
+	/** Attempts to retrieve the value for the mapped `Subject` from the given `ComponentValues`. The behaviour for
+	  * columns is roughly equivalent to that of components, as implemented by default in
+	  * [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]. The primary reason of course is that
+	  * values are never assembled: if none is present in `pieces`, and the column has neither
+	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] nor
+	  * [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]] buff, this method will simply return `None`;
+	  * otherwise the value in the buff will be used. The second difference is that if the preset value is `null`,
+	  * and this column does not have [[net.noresttherein.oldsql.schema.Buff.Nullable Nullable]] buff, it purposefully
+	  * throws a `NullPointerException`. As in the overriden implementation,
+	  * any [[net.noresttherein.oldsql.schema.Buff.SelectAudit SelectAudit]] buffs are applied, in order,
+	  * to the returned value (but only if it comes from `pieces`, not other buffs).  Because preset values typically
+	  * come directly from this column's [[net.noresttherein.oldsql.schema.ColumnMapping.selectForm selectForm]],
+	  * implementations may opt to move some of the buff handling to that method or the form itself.
 	  * @throws `NullPointerException` if the preset value is explicitly stated as `null` (`pieces.preset(this)`
 	  *                                returned `Some(null)`), but this column does not have the `Nullable` buff.
 	  */
-	override def optionally(pieces :Pieces) :Option[S] =
-		if (isNullable)
-			pieces.preset(this)
-		else //consider: making the method final, perhaps only calling pieces.preset, so we can make some optimizations
-			pieces.preset(this) match {
-				case Some(null) =>
-					throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
-					                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
-				case res => res //don't check buffs - we do it in the form for speed
-			}
+	override def optionally(pieces :Pieces) :Option[S] = pieces.preset(this) match {
+		case res @ Some(x) => //a very common case
+			if (x == null && !isNullable)
+				throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
+				                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
+			else if (buffs.isEmpty)
+				res
+			else
+				Some((x /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
+		case _ =>
+			val res = OptionalSelect.Value(this)
+			if (res.isDefined) res
+			else ExtraSelect.Value(this)
+	}
 
 	/** @inheritdoc
 	  * @return the `NullValue` instance provided by the associated form. */
@@ -206,19 +218,13 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 	/** Adapts `this.form` by incorporating the behaviour of relevant buffs: the `ExtraXxx` and `XxxAudit`.
-	  * Only standard buffs modifying/providing the written value are applied; any buffs determining if the column
-	  * can or should be included in the given operation are ignored. The caller should use an explicit column list
-	  * rather than rely on this form to handle the case of an excluded column.
-	  * Note that `OptionalXxx` and even `NoXxx` buffs are ignored here and columns need to be explicitly
-	  * included/excluded in an operation and the burden of validating this information lies with the owning mapping.
-	  */
-	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.extra.test(buffs) match {
-		case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
-		case Some(buff) => SQLWriteForm.eval(buff.value)(form)
-		case _ =>
-			val audits = op.audit.Audit(buffs)
-			if (audits.isEmpty) form
-			else form.unmap(audits.reduce(_ andThen _))
+	  * In order to stay consistent in custom `ColumnMapping` implementations, the adapted form first calls
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.writtenValues this.writtenValues]] and,
+	  * if created [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] are not empty,
+	  * passes the value for this column to [[net.noresttherein.oldsql.schema.ColumnMapping.form this.form]].
+	  */ //fixme: inconsistency in contract with SimpleColumn - this method obeys NoXxx buffs; what's the best approach to be determined
+	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = form.flatUnmap {
+		s :S => writtenValues(op, s).preset(this)
 	}
 
 	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
@@ -317,7 +323,10 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 	/** Basic (but full) `ColumnMapping` implementation. The difference from
 	  * [[net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn StandardColumn]] is that the latter
 	  * precomputes many of its properties, storing them in `val`s. Usage of this class should be preferred when
-	  * the column (or its containing mapping) is created on demand, rather than at application initialization.
+	  * the column needs to override default `optionally`/`apply` definitions,
+	  * when inherited/overriden implementations of some methods would conflict with those from
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.StableColumn StableColumn]], or when it is created on demand,
+	  * rather than at application initialization,.
 	  */
 	class BaseColumn[S, O](override val name :String, override val buffs :Seq[Buff[S]])
 	                      (implicit override val form :ColumnForm[S])
@@ -331,10 +340,99 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 
 
 
+	/** A column implementation which is completely driven by its
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.form form]]: its
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn.optionally optionally]] and
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn.apply apply]] methods are made final
+	  * and simple check if there is a preset value for this column. All logic of handling standard
+	  * [[net.noresttherein.oldsql.schema.Buff buffs]] is instead implemented in
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn.selectForm selectForm]] and
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn.writeForm writeForm]] or the returned forms
+	  * themselves.
+	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn]]
+	  */
+	trait SimpleColumn[S, O] extends ColumnMapping[S, O] {
+
+		final override def apply(pieces: Pieces): S = optionally(pieces) match {
+			case Some(res) => res
+			case _ =>
+				throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
+				                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
+		}
+
+		/** This method is overriden from the default implementation and does not take into account any select-related
+		  * buffs, but instead directly asks the `pieces` for a preset value (as none could possibly be assembled, columns
+		  * being the bottom components). This is done both for efficiency, by moving the behaviour to the `selectForm`,
+		  * and because this method may be called also by `ComponentValues` instances presetting values for update operations,
+		  * not only when assembling the result of an SQL select from the row data. For this reason it should not be
+		  * overriden; any modification of the values such as validation should happen through `Buff` instances attached
+		  * to this instance or, if impossible to implement, by introducing a component class wrapping the column.
+		  * @return `pieces.preset(this)`
+		  * @throws `NullPointerException` if the preset value is explicitly stated as `null` (`pieces.preset(this)`
+		  *                                returned `Some(null)`), but this column does not have the `Nullable` buff.
+		  */
+		final override def optionally(pieces :Pieces) :Option[S] =
+			if (isNullable)
+				pieces.preset(this)
+			else //consider: making the method final, perhaps only calling pieces.preset, so we can make some optimizations
+				pieces.preset(this) match {
+					case Some(null) =>
+						throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
+						                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
+					case res => res //don't check buffs - we do it in the form for speed
+				}
+
+
+		/** `this.form` adapted to a `SQLReadForm` by incorporating some of behaviour modifications caused by applied buffs.
+		  * This includes default values from buffs like `OptionalSelect` and transformations from `AuditBuff`s and similar.
+		  * It doesn't verify if the column is selectable by default or at all, returning always (possibly decorated)
+		  * `this.form`, unless [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]] is present, in which case
+		  * a constant `SQLReadForm` is returned, which does not read anything from the `ResultSet`. In all other cases,
+		  * the returned form is a [[net.noresttherein.oldsql.schema.ColumnReadForm ColumnReadForm]].
+		  * Note that the `optionally`/`apply` and `assembly` methods of this mapping are ''not'' called by the returned
+		  * form. They are involved only as a part of the assembly process for owning components, provided
+		  * by the created `ComponentValues` containing the value returned by this form instead.
+		  */
+		override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
+			//these *could* be column forms, but likely we'd rather have it zero width, as there is no such column in the db.
+			case Some(ConstantBuff(x)) => SQLReadForm.const(x, 0, name + "='" + x + "'>")
+			case Some(buff) => SQLReadForm.eval(buff.value, 0, name + "=_>")
+			case _ =>
+				val audits = SelectAudit.Audit(buffs)
+				val read = //we can't enforce not null here because of artificial nulls resulting from outer joins
+					if (audits.isEmpty) form
+					else form.map(audits.reduce(_ andThen _))(form.nulls)
+				OptionalSelect.test(buffs) match {
+					case Some(ConstantBuff(x)) => read orElse ColumnReadForm.const(read.sqlType, x, name + "='" + x + "'>")
+					case Some(buff) => read orElse ColumnReadForm.eval(read.sqlType, buff.value, name + "=_>")
+					case _ => read
+				}
+
+		}
+
+		/** Adapts `this.form` by incorporating the behaviour of relevant buffs: the `ExtraXxx` and `XxxAudit`.
+		  * Only standard buffs modifying/providing the written value are applied; any buffs determining if the column
+		  * can or should be included in the given operation are ignored. The caller should use an explicit column list
+		  * rather than rely on this form to handle the case of an excluded column.
+		  * Note that `OptionalXxx` and even `NoXxx` buffs are ignored here and columns need to be explicitly
+		  * included/excluded in an operation. The burden of validating this information lies with the owning mapping.
+		  */
+		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.extra.test(buffs) match {
+			case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
+			case Some(buff) => SQLWriteForm.eval(buff.value)(form)
+			case _ =>
+				val audits = op.audit.Audit(buffs)
+				if (audits.isEmpty) form
+				else form.unmap(audits.reduce(_ andThen _))
+		}
+	}
+
+
+
 	/** Defaults `ColumnMapping` implementation. Many of the properties are overriden as `val`s for efficiency. */
 	class StandardColumn[S, O](override val name :String, override val buffs :Seq[Buff[S]])
 	                          (implicit override val form :ColumnForm[S])
-		extends StableColumn[S, O]
+		extends SimpleColumn[S, O] with StableColumn[S, O]
 
 
 
@@ -347,7 +445,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 	  */
 	class LiteralColumn[N <: String with Singleton, S, O](override val buffs :Seq[Buff[S]] = Nil)
 	                                                     (implicit label :ValueOf[N], override val form :ColumnForm[S])
-		extends LabeledColumn[N, S, O] with StableColumn[S, O]
+		extends LabeledColumn[N, S, O] with SimpleColumn[S, O] with StableColumn[S, O]
 	{
 		def this(name :N, buffs :Seq[Buff[S]])(implicit form :ColumnForm[S]) =
 			this(buffs)(new ValueOf(name), form)

@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.schema.bits.LabelPath.{/, ConcatLabelPath, Label, SplitLabelPath}
+import scala.annotation.tailrec
+
+import net.noresttherein.oldsql.schema.bits.LabelPath.{/, :/, ConcatLabelPath, Label, SplitLabelPath}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 
 
@@ -49,6 +51,13 @@ sealed trait LabelPath[P] extends Any {
 
 	@inline final def split(implicit split :SplitLabelPath[P]) :(split.First, split.Suffix) = (split.first, split.suffix)
 
+	def toSeq :Seq[String] = {
+		@tailrec def rec(path :LabelPath[_], acc :List[String]) :List[String] = path match {
+			case :/(first) => first::acc
+			case prefix / last => rec(prefix, last::acc)
+		}
+		rec(this, Nil)
+	}
 }
 
 

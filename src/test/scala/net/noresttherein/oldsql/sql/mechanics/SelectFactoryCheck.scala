@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql.mechanics
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql
@@ -12,8 +12,8 @@ import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, Index
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, IndexedChainTuple}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.IndexedColumn
+import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
 import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
@@ -73,16 +73,16 @@ class SelectFactoryCheck {{
 	expectSelect[S, ColumnComponentSQL[T, ColumnProjection, Int], SubselectColumnAs[V, ColumnProjection, Int]]
 	expectSelect[s.Self, ColumnComponentSQL[U, ColumnProjection, Int], SubselectColumnAs[V, ColumnProjection, Int]]
 
-	expectSelect[F, IndexedColumn[G, LocalScope, "boo", Int], TopSelectColumnAs[IndexedMapping.Of[Int]#Column, Int]]
-	expectSelect[f.Self, IndexedColumn[H, GlobalScope, "boo", Int], TopSelectColumnAs[IndexedMapping.Of[Int]#Column, Int]]
-	expectSelect[S, IndexedColumn[T, LocalScope, "boo", Int], SubselectColumnAs[V, IndexedMapping.Of[Int]#Column, Int]]
-	expectSelect[s.Self, IndexedColumn[U, GlobalScope, "boo", Int], SubselectColumnAs[V, IndexedMapping.Of[Int]#Column, Int]]
+	expectSelect[F, ListingColumn[G, LocalScope, "boo", Int], TopSelectColumnAs[IndexedMapping.Of[Int]#Column, Int]]
+	expectSelect[f.Self, ListingColumn[H, GlobalScope, "boo", Int], TopSelectColumnAs[IndexedMapping.Of[Int]#Column, Int]]
+	expectSelect[S, ListingColumn[T, LocalScope, "boo", Int], SubselectColumnAs[V, IndexedMapping.Of[Int]#Column, Int]]
+	expectSelect[s.Self, ListingColumn[U, GlobalScope, "boo", Int], SubselectColumnAs[V, IndexedMapping.Of[Int]#Column, Int]]
 
 	type IT = @~ |~ ("1" :~ Int) |~ ("2" :~ String)
-	expectSelect[F, IndexedChainTuple[H, LocalScope, IT], TopSelectAs[IndexedMapping.Of[IT]#Projection]]
-	expectSelect[f.Self, IndexedChainTuple.EmptyIndexedChain.type, TopSelectAs[IndexedMapping.Of[@~]#Projection]]
-	expectSelect[S, IndexedChainTuple[U, LocalScope, IT], SubselectAs[V, IndexedMapping.Of[IT]#Projection]]
-	expectSelect[s.Self, IndexedChainTuple.EmptyIndexedChain.type, SubselectAs[V, IndexedMapping.Of[@~]#Projection]]
+	expectSelect[F, ListingSQL[H, LocalScope, IT], TopSelectAs[IndexedMapping.Of[IT]#Projection]]
+	expectSelect[f.Self, ListingSQL.EmptyListing.type, TopSelectAs[IndexedMapping.Of[@~]#Projection]]
+	expectSelect[S, ListingSQL[U, LocalScope, IT], SubselectAs[V, IndexedMapping.Of[IT]#Projection]]
+	expectSelect[s.Self, ListingSQL.EmptyListing.type, SubselectAs[V, IndexedMapping.Of[@~]#Projection]]
 
 	expectSelect[F, SQLBoolean[G, LocalScope], TopSelectColumn[Boolean]]
 	expectSelect[f.Self, SQLBoolean[H, GlobalScope], TopSelectColumn[Boolean]]
@@ -125,11 +125,11 @@ class SelectFactoryCheck {{
 	expectSelect[v.Self, ColumnComponentSQL[Y, ColumnProjection, Int], SelectColumnAs[v.Base, ColumnProjection, Int]]
 	expectSelect[v.Self, ColumnComponentSQL[Z, ColumnProjection, Int], SelectColumnAs[v.Base, ColumnProjection, Int]]
 
-	expectSelect[v.Self, IndexedColumn[Y, LocalScope, "boo", Int], SelectColumnAs[v.Base, IndexedMapping.Of[Int]#Column, Int]]
-	expectSelect[v.Self, IndexedColumn[Z, GlobalScope, "boo", Int], SelectColumnAs[v.Base, IndexedMapping.Of[Int]#Column, Int]]
+	expectSelect[v.Self, ListingColumn[Y, LocalScope, "boo", Int], SelectColumnAs[v.Base, IndexedMapping.Of[Int]#Column, Int]]
+	expectSelect[v.Self, ListingColumn[Z, GlobalScope, "boo", Int], SelectColumnAs[v.Base, IndexedMapping.Of[Int]#Column, Int]]
 
-	expectSelect[v.Self, IndexedChainTuple[Y, LocalScope, IT], SelectAs[v.Base, IndexedMapping.Of[IT]#Projection]]
-	expectSelect[v.Self, IndexedChainTuple[Y, GlobalScope, IT], SelectAs[v.Base, IndexedMapping.Of[IT]#Projection]]
+	expectSelect[v.Self, ListingSQL[Y, LocalScope, IT], SelectAs[v.Base, IndexedMapping.Of[IT]#Projection]]
+	expectSelect[v.Self, ListingSQL[Y, GlobalScope, IT], SelectAs[v.Base, IndexedMapping.Of[IT]#Projection]]
 
 	expectSelect[v.Self, SQLBoolean[Y, LocalScope], SelectColumn[v.Base, Boolean]]
 	expectSelect[v.Self, SQLBoolean[Z, GlobalScope], SelectColumn[v.Base, Boolean]]
@@ -159,11 +159,11 @@ class SelectFactoryCheck {{
 	expectSelect[P, ColumnComponentSQL[Q, ColumnProjection, Int], ParamSelectAs[Params, ColumnProjection]]
 	expectSelect[p.Self, ColumnComponentSQL[R, ColumnProjection, Int], ParamSelectAs[Params, ColumnProjection]]
 
-	expectSelect[P, IndexedColumn[Q, LocalScope, "boo", Int], ParamSelectAs[Params, IndexedMapping.Of[Int]#Column]]
-	expectSelect[p.Self, IndexedColumn[R, GlobalScope, "boo", Int], ParamSelectAs[Params, IndexedMapping.Of[Int]#Column]]
+	expectSelect[P, ListingColumn[Q, LocalScope, "boo", Int], ParamSelectAs[Params, IndexedMapping.Of[Int]#Column]]
+	expectSelect[p.Self, ListingColumn[R, GlobalScope, "boo", Int], ParamSelectAs[Params, IndexedMapping.Of[Int]#Column]]
 
-	expectSelect[P, IndexedChainTuple[Q, LocalScope, IT], ParamSelectAs[Params, IndexedMapping.Of[IT]#Projection]]
-	expectSelect[p.Self, IndexedChainTuple.EmptyIndexedChain.type, ParamSelectAs[Params, IndexedMapping.Of[@~]#Projection]]
+	expectSelect[P, ListingSQL[Q, LocalScope, IT], ParamSelectAs[Params, IndexedMapping.Of[IT]#Projection]]
+	expectSelect[p.Self, ListingSQL.EmptyListing.type, ParamSelectAs[Params, IndexedMapping.Of[@~]#Projection]]
 
 	expectSelect[P, SQLBoolean[Q, LocalScope], ParamSelect[Params, Boolean]]
 	expectSelect[p.Self, SQLBoolean[R, GlobalScope], ParamSelect[Params, Boolean]]

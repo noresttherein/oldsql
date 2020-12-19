@@ -385,7 +385,7 @@ object ColumnForm {
 	  * method and in most cases can be omitted.
 	  */
 	class JDBCObjectForm[T](private val cls :Class[T], override val sqlType :JDBCType = JDBCType.JAVA_OBJECT)
-	                       (implicit nulls :NullValue[T])
+	                       (implicit override val nulls :NullValue[T])
 		extends JDBCForm[T](sqlType)
 	{
 		def this(sqlType :JDBCType)(implicit nulls :NullValue[T], tag :ClassTag[T]) =
@@ -402,7 +402,8 @@ object ColumnForm {
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
-			case form :JDBCObjectForm[_] if form canEqual this => cls == form.cls && sqlType == form.sqlType
+			case form :JDBCObjectForm[_] if form canEqual this =>
+				cls == form.cls && sqlType == form.sqlType && nulls == form.nulls
 			case _ => false
 		}
 

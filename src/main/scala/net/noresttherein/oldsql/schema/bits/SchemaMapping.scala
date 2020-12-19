@@ -5,9 +5,9 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainContains, ChainGet, ItemExists}
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
@@ -338,7 +338,7 @@ object SchemaMapping {
 	  *           of the component at the same position in the component chain `C`.
 	  *           However, in [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema IndexedMappingSchema]] and
 	  *           [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]],
-	  *           it is an [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]], where every entry
+	  *           it is an [[net.noresttherein.oldsql.collection.Listing Listing]], where every entry
 	  *           is the `L :~ S` pair, with `L` being the label type of the corresponding component,
 	  *           and `S` its subject type. It is also the `Subject` type of the containing `MappingSchema`.
 	  * @tparam C the component chain, with every entry being a subtype of `|-|`. It lists all the ''included''
@@ -420,7 +420,7 @@ object SchemaMapping {
 	  *           of the component at the same position in the component chain `C`.
 	  *           However, in [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema IndexedMappingSchema]] and
 	  *           [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]],
-	  *           it is an [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]], where every entry
+	  *           it is an [[net.noresttherein.oldsql.collection.Listing Listing]], where every entry
 	  *           is the `L :~ S` pair, with `L` being the label type of the corresponding component,
 	  *           and `S` its subject type. It is also the `Subject` type of the containing `MappingSchema`.
 	  * @tparam C the component chain, with every entry being a subtype of `|-|`. It lists all the ''included''
@@ -490,7 +490,7 @@ object SchemaMapping {
 	  *           of the component at the same position in the component chain `C`.
 	  *           However, in [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema IndexedMappingSchema]] and
 	  *           [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]],
-	  *           it is an [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]], where every entry
+	  *           it is an [[net.noresttherein.oldsql.collection.Listing Listing]], where every entry
 	  *           is the `L :~ S` pair, with `L` being the label type of the corresponding component,
 	  *           and `S` its subject type. It is also the `Subject` type of the containing `MappingSchema`.
 	  * @tparam C the component chain, with every entry being a subtype of `|-|`. It lists all the ''included''
@@ -533,7 +533,7 @@ object SchemaMapping {
 	  *           of the component at the same position in the component chain `C`.
 	  *           However, in [[net.noresttherein.oldsql.schema.bits.IndexedMappingSchema IndexedMappingSchema]] and
 	  *           [[net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping IndexedSchemaMapping]],
-	  *           it is an [[net.noresttherein.oldsql.collection.IndexedChain IndexedChain]], where every entry
+	  *           it is an [[net.noresttherein.oldsql.collection.Listing Listing]], where every entry
 	  *           is the `L :~ S` pair, with `L` being the label type of the corresponding component,
 	  *           and `S` its subject type. It is also the `Subject` type of the containing `MappingSchema`.
 	  * @tparam C the component chain, with every entry being a subtype of `|-|`. It lists all the ''included''
@@ -576,6 +576,7 @@ object SchemaMapping {
 				:ExactProjection[@||[L, S]] { type WithOrigin[O] = LabeledSchemaColumn[L, S, O] } =
 			OriginProjection.projectAs[L @|| S, ({ type M[O] = LabeledSchemaColumn[L, S, O] })#M]
 	}
+
 //consider: an adapter labeling type to get rid of all the labeled special component types
 //	trait @:[L <: Label, M <: MappingSchemaComponents]
 //		extends SchemaMapping[M#Subject, M#Unpacked, M#Components, M#Origin] with LabeledMapping[L, M#Subject, M#Origin]
@@ -1119,16 +1120,16 @@ object SchemaMapping {
 			schema => prefix(schema.prev).col(schema.last, schema.lastExtract)
 
 
-		implicit def includeInIndexedSchema[S, V <: IndexedChain, C <: Chain, N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain],
-		                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: IndexedChain, FC <: Chain, O]
+		implicit def includeInIndexedSchema[S, V <: Listing, C <: Chain, N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain],
+		                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: Listing, FC <: Chain, O]
 		                            (implicit prefix :FilterSchema[IndexedMappingSchema[S, V, C, O], E, I,
 			                                                       ExtensibleIndexedSchema[S, FV, FC, O]])
 				:FilterSchema[IndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J,
 				              ExtensibleIndexedSchema[S, FV |~ (N :~ T), FC ~ M, O]] =
 			schema => prefix(schema.prev).append(schema.last, schema.lastExtract)
 
-		implicit def includeInFlatIndexedSchema[S, V <: IndexedChain, C <: Chain, N <: Label, T, M <: @||[N, T],
-			                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: IndexedChain, FC <: Chain, O]
+		implicit def includeInFlatIndexedSchema[S, V <: Listing, C <: Chain, N <: Label, T, M <: @||[N, T],
+			                                    E <: Chain, I <: Numeral, J <: Numeral, FV <: Listing, FC <: Chain, O]
 		                                       (implicit prefix :FilterSchema[FlatIndexedMappingSchema[S, V, C, O], E, I,
 			                                                                  ExtensibleFlatIndexedSchema[S, FV, FC, O]])
 				:FilterSchema[FlatIndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J,
@@ -1205,16 +1206,16 @@ object SchemaMapping {
 				:FilterSchema[FlatMappingSchema[S, V ~ T, C ~ M, O], E, J, ExtensibleFlatMappingSchema[S, FV, FC, O]] =
 			schema => prefix(schema.prev)
 
-		implicit def excludeFromIndexedSchema[S, V <: IndexedChain, C <: Chain, N <: Label, T, M <: @|-|[N, T, _, _],
-			                                  E <: Chain, I <: Numeral, J <: Numeral, FV <: IndexedChain, FC <: Chain, O]
+		implicit def excludeFromIndexedSchema[S, V <: Listing, C <: Chain, N <: Label, T, M <: @|-|[N, T, _, _],
+			                                  E <: Chain, I <: Numeral, J <: Numeral, FV <: Listing, FC <: Chain, O]
 		                                     (implicit prefix :FilterSchema[IndexedMappingSchema[S, V, C, O], E, I,
 			                                                                ExtensibleIndexedSchema[S, FV, FC, O]],
 		                                      inc :Inc[I, J], exclude :ExcludeComponent[M, I, E])
 				:FilterSchema[IndexedMappingSchema[S, V |~ (N :~ T), C ~ M, O], E, J, ExtensibleIndexedSchema[S, FV, FC, O]] =
 			schema => prefix(schema.prev)
 
-		implicit def excludeFromFlatIndexedSchema[S, V <: IndexedChain, C <: Chain, N <: Label, T, M <: @||[N, T],
-			                                      E <: Chain, I <: Numeral, J <: Numeral, FV <: IndexedChain, FC <: Chain, O]
+		implicit def excludeFromFlatIndexedSchema[S, V <: Listing, C <: Chain, N <: Label, T, M <: @||[N, T],
+			                                      E <: Chain, I <: Numeral, J <: Numeral, FV <: Listing, FC <: Chain, O]
 		                                         (implicit prefix :FilterSchema[FlatIndexedMappingSchema[S, V, C, O], E, I,
 			                                                                    ExtensibleFlatIndexedSchema[S, FV, FC, O]],
 		                                          inc :Inc[I, J], exclude :ExcludeComponent[M, I, E])

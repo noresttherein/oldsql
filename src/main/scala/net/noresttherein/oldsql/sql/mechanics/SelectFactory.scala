@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql.mechanics
 
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
+import net.noresttherein.oldsql.collection.{Chain, Listing}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection}
@@ -13,8 +13,8 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL, LooseComponent}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.IndexedColumn
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
 import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 
 
@@ -228,7 +228,7 @@ sealed abstract class ForthChoiceSelectFactories extends DefaultSelectFactories 
 
 
 /** Default implicit [[net.noresttherein.oldsql.sql.mechanics.SelectFactory SelectFactory]] for individual supported
-  * ''select'' clause column expression types and `IndexedChainTuple`, based on ''from'' clauses with arbitrary
+  * ''select'' clause column expression types and `ListingSQL`, based on ''from'' clauses with arbitrary
   * [[net.noresttherein.oldsql.sql.RowProduct.Base Base]] types.
   * This trait contains also a factory for parameterized [[net.noresttherein.oldsql.sql.ParamSelect selects]]
   * of single columns.
@@ -261,17 +261,17 @@ sealed abstract class ThirdChoiceSelectFactories extends ForthChoiceSelectFactor
 	implicit def selectIndexedColumn[F <: G { type Generalized <: G; type Base = B }, G <: RowProduct, B <: RowProduct,
 	                                 S >: LocalScope <: GlobalScope, A <: Label, V]
 	                                (implicit base :F <:< RowProduct { type Base = B })
-			:SelectFactory[F, IndexedColumn[G, S, A, V]]
+			:SelectFactory[F, ListingColumn[G, S, A, V]]
 				{ type Select = SelectColumnAs[B, IndexedMapping.Of[V]#Column, V] } =
-		new SelectFactory[F, IndexedColumn[G, S, A, V]] {
+		new SelectFactory[F, ListingColumn[G, S, A, V]] {
 			override type Select = SelectColumnAs[B, IndexedMapping.Of[V]#Column, V]
 
-			override def apply(from :F, expr :IndexedColumn[G, S, A, V]) = expr.selectFrom(from)
+			override def apply(from :F, expr :ListingColumn[G, S, A, V]) = expr.selectFrom(from)
 		}
 
 	implicit def selectIndexedTuple[F <: G { type Generalized <: G; type Base = B },
 	                                G <: RowProduct, B <: RowProduct,
-	                                E <: IndexedChainTuple[G, LocalScope, X], X <: IndexedChain]
+	                                E <: ListingSQL[G, LocalScope, X], X <: Listing]
 	                               (implicit base :F <:< RowProduct { type Base = B },
 	                                         typer :E <:< TupleSQL[G, LocalScope, X])
 			:SelectFactory[F, E] { type Select = SelectAs[B, IndexedMapping.Of[X]#Projection] } =
@@ -310,18 +310,18 @@ sealed abstract class ThirdChoiceSelectFactories extends ForthChoiceSelectFactor
 	implicit def parameterizedSelectIndexedColumn[F <: G with TopFrom { type Params = P; type Generalized <: G },
 	                                              G <: RowProduct, P <: Chain, S >: LocalScope <: GlobalScope, A <: Label, V]
 	                                             (implicit params :F <:< RowProduct { type Params = P })
-			:SelectFactory[F, IndexedColumn[G, S, A, V]]
+			:SelectFactory[F, ListingColumn[G, S, A, V]]
 				{ type Select = ParamSelectAs[P, IndexedMapping.Of[V]#Column] } =
-		new SelectFactory[F, IndexedColumn[G, S, A, V]] {
+		new SelectFactory[F, ListingColumn[G, S, A, V]] {
 			override type Select = ParamSelectAs[P, IndexedMapping.Of[V]#Column]
 
-			override def apply(from :F, expr :IndexedColumn[G, S, A, V]) =
+			override def apply(from :F, expr :ListingColumn[G, S, A, V]) =
 				expr.paramSelectFrom(from)
 		}
 
 	implicit def parameterizedSelectIndexedTuple[F <: G with TopFrom { type Params = P; type Generalized <: G },
 	                                             G <: RowProduct, P <: Chain,
-	                                             E <: IndexedChainTuple[G, LocalScope, T], T <: IndexedChain]
+	                                             E <: ListingSQL[G, LocalScope, T], T <: Listing]
 	                                            (implicit params :F <:< RowProduct { type Params = P },
 	                                                      typer :E <:< TupleSQL[G, LocalScope, T])
 			:SelectFactory[F, E] { type Select = ParamSelectAs[P, IndexedMapping.Of[T]#Projection] } =
@@ -517,18 +517,18 @@ object SelectFactory extends SecondChoiceSelectFactories {
 
 	implicit def topSelectIndexedColumn[F <: GroundFrom { type Generalized <: G }, G >: F <: RowProduct,
 	                                    S >: LocalScope <: GlobalScope, A <: Label, V]
-			:SelectFactory[F, IndexedColumn[G, S, A, V]]
+			:SelectFactory[F, ListingColumn[G, S, A, V]]
 				{ type Select = TopSelectColumnAs[IndexedMapping.Of[V]#Column, V] } =
-		new SelectFactory[F, IndexedColumn[G, S, A, V]] {
+		new SelectFactory[F, ListingColumn[G, S, A, V]] {
 			override type Select = TopSelectColumnAs[IndexedMapping.Of[V]#Column, V]
 
-			override def apply(from :F, expr :IndexedColumn[G, S, A, V]) = SelectSQL(from, expr)
+			override def apply(from :F, expr :ListingColumn[G, S, A, V]) = SelectSQL(from, expr)
 		}
 
 
 
 	implicit def topSelectIndexedTuple[F <: G with GroundFrom { type Generalized <: G }, G <: RowProduct,
-	                                   E <: IndexedChainTuple[G, LocalScope, T], T <: IndexedChain]
+	                                   E <: ListingSQL[G, LocalScope, T], T <: Listing]
 	                                  (implicit typer :E <:< TupleSQL[G, LocalScope, T])
 			:SelectFactory[F, E] { type Select = TopSelectAs[IndexedMapping.Of[T]#Projection] } =
 		new SelectFactory[F, E] {
@@ -567,19 +567,19 @@ object SelectFactory extends SecondChoiceSelectFactories {
 	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              G <: RowProduct, B <: NonEmptyFrom, S >: LocalScope <: GlobalScope, A <: Label, V]
 	             (implicit typer :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I })
-			:SelectFactory[F, IndexedColumn[G, S, A, V]]
+			:SelectFactory[F, ListingColumn[G, S, A, V]]
 				{ type Select = SubselectColumnAs[B, IndexedMapping.Of[V]#Column, V] } =
-		new SelectFactory[F, IndexedColumn[G, S, A, V]] {
+		new SelectFactory[F, ListingColumn[G, S, A, V]] {
 			override type Select = SubselectColumnAs[B, IndexedMapping.Of[V]#Column, V]
 
-			override def apply(from :F, expr :IndexedColumn[G, S, A, V]) =
+			override def apply(from :F, expr :ListingColumn[G, S, A, V]) =
 				SelectSQL.subselect(from, expr)
 		}
 
 
 	implicit def subselectIndexedTuple
 	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
-	              G <: RowProduct, B <: NonEmptyFrom, E <: IndexedChainTuple[G, LocalScope, X], X <: IndexedChain]
+	              G <: RowProduct, B <: NonEmptyFrom, E <: ListingSQL[G, LocalScope, X], X <: Listing]
 	             (implicit base :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              typer :E <:< TupleSQL[G, LocalScope, X])
 			:SelectFactory[F, E] { type Select = SubselectAs[B, IndexedMapping.Of[X]#Projection] } =

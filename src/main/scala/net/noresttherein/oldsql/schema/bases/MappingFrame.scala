@@ -10,10 +10,10 @@ import scala.reflect.runtime.universe.TypeTag
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.model.PropertyPath
+import net.noresttherein.oldsql.model.{Kin, PropertyPath}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, ComponentValues, MappingExtract, PrimaryKeyOf, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
@@ -23,6 +23,8 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
 import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.schema.PrimaryKeyOf.PrimaryKeyColumnOf
+import net.noresttherein.oldsql.schema.Relation.Table
 
 
 
@@ -677,7 +679,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 		synchronized {
 			initPreceding()
 			if (initExtracts contains component)
-				throw new IllegalArgumentException(s"Can't embed the component $component in $this for the second time.")
+				throw new IllegalArgumentException(s"Can't embed the component $component in $this for a second time.")
 
 			val export = new ExportComponent[T](component, extractor, fullPrefix, fullBuffs)
 			initComponents += export
@@ -761,7 +763,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 	  * be automatically annotated with the `ReadOnly` buff.
 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
 	  * @tparam T the value type of the embedded component.
-	  * @return the `component` argument.
+	  * @return the `mapping` argument.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ReadOnly$ Buff.ReadOnly]]
 	  */
 	protected def component[T](implicit mapping :Component[T]) :mapping.type =
@@ -771,6 +773,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] { frame =>
 
 
 
+
+//	protected def kin[M[A] <: RefinedMapping[T, A], T](name :String, value :S => Kin[T], buffs :Buff[Kin[T]]*)
+//	                 (implicit referenced :Table[M], pk :PrimaryKeyColumnOf[M]) :Column[Kin[T]] =
+//		column(name, value, buffs:_*)(SQLForm.map)
 
 	/** A builder adapting a given column template to a column of this `MappingFrame`. */
 	protected class ColumnCopist[T] private[MappingFrame]

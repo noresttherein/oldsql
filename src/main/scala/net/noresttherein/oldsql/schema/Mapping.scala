@@ -341,16 +341,23 @@ trait Mapping {
 	  * Additionally, any `AuditBuff`s present can modify the returned value and subclasses are free to
 	  * handle other buffs or implement additional behaviour directly.
 	  *
-	  * Returning `None` signifies that the value of this mapping was not available in `pieces`, and is different
-	  * from a 'null' value explicitly retrieved by the query. The two sometimes will get conflated in practice
-	  * (which can be unavoidable). It is generally used for cases such as outer joins, or missing columns from
-	  * the select clause. It is therefore perfectly possible for `Some(null)` (or some other representation of the
-	  * `null` value for type `Subject`) to be returned. This approach is discouraged however, as it can possibly
-	  * cause `NullPointerException`s higher up the stack by mappings/forms not prepared to handle `null` values
-	  * (which is most common). Likewise, even if data for this mapping is missing, it may decide to return here some
-	  * default 'missing' value; it is ultimately always up to the mapping implementation to handle the matter.
-	  * The above distinction is complicated further by the fact that the mapped type `Subject` itself can be
-	  * an `Option` type, used to signify either or both of these cases.
+	  * Returning `None` signifies that neither the value of this mapping nor its required components were available
+	  * in `pieces`, but, while there is an overlap, doesn't signify that the corresponding columns in the `ResultSet`
+	  * were `null`. First, a `null` column generally means that the datatype (as implemented by
+	  * [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]) supports `null` values, be it directly as
+	  * Scala `null` or by mapping to some special value: typically, such a column would be mapped to an `Option[_]`
+	  * type, and `null` values to `None` (and this method would return `Some(None)`). Second, it is possible,
+	  * although discouraged, for a composite mapping to return `null` despite some or all of its columns being
+	  * not null, if validation fails or the result cannot be assembled for other reasons. The most common cases
+	  * for returning `None` are:
+	  *   - outer joins, where normally not-null columns hold null values, which are treated as 'unavailable
+	  *     in this query', rather than 'unavailable in general',
+	  *   - when mapping a table with a class hierarchy, for components of classes other than that for a particular row,
+	  *   - sometimes, missing optional columns, for components which are not included in all queries.
+	  * Ultimately, exact semantics will be defined by applications and custom mapping implementations.
+	  * Bundled classes never throw an (accidental)  `NullPointerException` as a result of some mapping returning
+	  * `Some(null)` here (or, equivalently, `null` from
+	  * [[net.noresttherein.oldsql.schema.Mapping.apply(pieces:Pieces) apply]]`(pieces)`.)
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
 	def optionally(pieces: Pieces): Option[Subject]

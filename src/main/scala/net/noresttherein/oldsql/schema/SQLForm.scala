@@ -7,9 +7,9 @@ import scala.annotation.implicitNotFound
 import scala.collection.Factory
 import scala.reflect.ClassTag
 
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain, Opt}
+import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Stateless, Extractor}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
@@ -398,9 +398,9 @@ object SQLForm {
 	implicit class ChainFormConstructor[I <: Chain](private val self :SQLForm[I]) extends AnyVal {
 		def ~[L](implicit next :SQLForm[L]) :SQLForm[I ~ L] = SQLForms.ChainForm(self, next)
 	}
-	implicit class IndexedChainFormConstructor[I <: IndexedChain](private val self :SQLForm[I]) extends AnyVal {
+	implicit class ListingFormConstructor[I <: Listing](private val self :SQLForm[I]) extends AnyVal {
 		def |~[K :ValueOf, V](entry :K :~ SQLForm[V]) :SQLForm[I |~ (K :~ V)] =
-			SQLForms.IndexedChainForm(self, implicitly[ValueOf[K]], entry.value)
+			SQLForms.ListingForm(self, implicitly[ValueOf[K]], entry.value)
 	}
 
 

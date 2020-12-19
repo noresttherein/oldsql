@@ -3,17 +3,17 @@ package net.noresttherein.oldsql.schema.forms
 import java.sql.{CallableStatement, JDBCType, PreparedStatement, ResultSet}
 import java.util.Optional
 
-import net.noresttherein.oldsql.collection.{Chain, ChainMap, IndexedChain, LabeledChain, Opt, Record}
+import net.noresttherein.oldsql.collection.{Chain, ChainMap, Listing, LabeledChain, Opt, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.LabeledChain.>~
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.collection.Record.|#
 import net.noresttherein.oldsql.morsels.{Stateless, Lazy}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.forms.SQLForms.{AbstractChainIndexReadForm, ChainMapEntryReadForm, ChainMapEntryWriteForm, ChainMapForm, ChainReadForm, ChainSQLForm, ChainSQLWriteForm, ChainWriteForm, EmptyChainForm, IndexedChainEntryReadForm, IndexedChainEntryWriteForm, IndexedChainForm, SuperAdapterColumnForm, SuperChainForm}
+import net.noresttherein.oldsql.schema.forms.SQLForms.{AbstractListingReadForm, ChainMapEntryReadForm, ChainMapEntryWriteForm, ChainMapForm, ChainReadForm, ChainSQLForm, ChainSQLWriteForm, ChainWriteForm, EmptyChainForm, ListingItemReadForm, ListingItemWriteForm, ListingForm, SuperAdapterColumnForm, SuperChainForm}
 import net.noresttherein.oldsql.schema.ColumnForm.JDBCForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{ReadFormAdapter, ReadFormNullValue}
@@ -69,18 +69,28 @@ sealed trait SQLRWFormsLevel2Implicits {
 	implicit def ChainReadForm[I <: Chain, L](implicit i :SQLReadForm[I], l :SQLReadForm[L]) :SQLReadForm[I ~ L] =
 		new SuperChainForm[SQLReadForm[I], SQLReadForm[L]](i, l) with ChainReadForm[I, L]
 
-	implicit def readFormChainToChainReadForm[P <: Chain, I <: Chain, L]
-	             (forms :P ~ SQLReadForm[L])(implicit prefix :P => SQLReadForm[I]) :SQLReadForm[I ~ L] =
-		ChainReadForm(prefix(forms.init), forms.last)
-
 	implicit def ChainWriteForm[I <: Chain, L](implicit t :SQLWriteForm[I], h :SQLWriteForm[L]) :SQLWriteForm[I ~ L] =
 		new SuperChainForm[SQLWriteForm[I], SQLWriteForm[L]](t, h) with ChainWriteForm[~, I, L] {
 			override protected def symbol = "~"
 		}
 
+	
+	implicit def readFormChainToChainReadForm[P <: Chain, I <: Chain, L]
+	             (forms :P ~ SQLReadForm[L])(implicit prefix :P => SQLReadForm[I]) :SQLReadForm[I ~ L] =
+		ChainReadForm(prefix(forms.init), forms.last)
+
 	implicit def writeFormChainToChainWriteForm[P <: Chain, I <: Chain, L]
 	            (chain :P ~ SQLWriteForm[L])(implicit prefix :P => SQLWriteForm[I]) :SQLWriteForm[I ~ L] =
 		ChainWriteForm(prefix(chain.init), chain.last)
+
+	
+	implicit class ChainReadFormExtension[C <: Chain](private val self :SQLReadForm[C]) { //todo: AnyVal
+		def ~[L](item :SQLReadForm[L]) :SQLReadForm[C ~ L] = ChainReadForm(self, item)
+	}
+	
+	implicit class ChainWriteFormExtension[C <: Chain](private val self :SQLWriteForm[C]) {
+		def ~[L](item :SQLWriteForm[L]) :SQLWriteForm[C ~ L] = ChainWriteForm(self, item)
+	}
 }
 
 
@@ -93,7 +103,7 @@ sealed trait SQLRWFormsLevel1Implicits extends SQLRWFormsLevel2Implicits {
 	  */
 	implicit def ChainMapReadForm[I <: ChainMap :SQLReadForm, K <: ChainMap.Key :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I &~ (K, V)] =
-		new AbstractChainIndexReadForm[&~, Tuple2, Singleton, I, K, V](ChainMapEntryReadForm[K, V]) {
+		new AbstractListingReadForm[&~, Tuple2, Singleton, I, K, V](ChainMapEntryReadForm[K, V]) {
 			protected[this] override def cons(init :I, value :V) = init &~ (key -> value)
 			protected override def symbol = "&~"
 		}
@@ -110,30 +120,55 @@ sealed trait SQLRWFormsLevel1Implicits extends SQLRWFormsLevel2Implicits {
 	             (chain :P &~ (K, SQLWriteForm[V]))(implicit prefix :P => SQLWriteForm[I]) :SQLWriteForm[I &~ (K, V)] =
 		ChainMapWriteForm(prefix(chain.init), chain.last._2)
 
+	implicit class ChainMapReadFormExtension[I <: ChainMap](private val self :SQLReadForm[I]) {
+		def &~[K <: ChainMap.Key, V](item :(K, SQLReadForm[V])) :SQLReadForm[I &~ (K, V)] = 
+			ChainMapReadForm(self, new ValueOf[K](item._1), item._2)
+		
+		def &~[K <: ChainMap.Key :ValueOf, V](value :SQLReadForm[V]) :SQLReadForm[I &~ (K, V)] =
+			ChainMapReadForm(self, implicitly[ValueOf[K]], value)
+	}
+
+	implicit class ChainMapWriteFormExtension[I <: ChainMap](private val self :SQLWriteForm[I]) {
+		def &~[K <: ChainMap.Key, V](item :(K, SQLWriteForm[V])) :SQLWriteForm[I &~ (K, V)] = 
+			ChainMapWriteForm(self, item._2)
+		
+		def &~[K <: ChainMap.Key, V](value :SQLWriteForm[V]) :SQLWriteForm[I &~ (K, V)] =
+			ChainMapWriteForm(self, value)
+	}
 
 
-	/** Provides an implicit form for the heterogeneous map indexed by types (`IndexedChain`) `I |~ L`
+	/** Provides an implicit form for the heterogeneous map indexed by types (`Listing`) `I |~ L`
 	  * as long as implicit forms bor both `L` and `I` and `ValueOf[K]` are available.
 	  */
-	implicit def IndexedChainReadForm[I <: IndexedChain :SQLReadForm, K <: IndexedChain.Key :ValueOf, V :SQLReadForm]
+	implicit def ListingReadForm[I <: Listing :SQLReadForm, K <: Listing.Key :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I |~ (K :~ V)] =
-		new AbstractChainIndexReadForm[|~, :~, IndexedChain.Key, I, K, V](IndexedChainEntryReadForm[K, V]) {
+		new AbstractListingReadForm[|~, :~, Listing.Key, I, K, V](ListingItemReadForm[K, V]) {
 			protected[this] override def cons(init :I, value :V) = init |~ key :~ value
 			protected override def symbol = "|~"
 		}
 
-	implicit def readFormIndexedChainToIndexedChainReadForm[P <: IndexedChain, I <: IndexedChain, K <: IndexedChain.Key, V]
+	implicit def readFormListingToListingReadForm[P <: Listing, I <: Listing, K <: Listing.Key, V]
 	             (forms :P |~ (K :~ SQLReadForm[V]))(implicit prefix :P => SQLReadForm[I], key :ValueOf[K])
 			:SQLReadForm[I |~ (K :~ V)] =
-		IndexedChainReadForm(prefix(forms.init), key, forms.last.value)
+		ListingReadForm(prefix(forms.init), key, forms.last.value)
 
-	implicit def IndexedChainWriteForm[I <: IndexedChain :SQLWriteForm, K <: IndexedChain.Key, V :SQLWriteForm]
+	implicit def ListingWriteForm[I <: Listing :SQLWriteForm, K <: Listing.Key, V :SQLWriteForm]
 			:SQLWriteForm[I |~ (K :~ V)] =
-		new ChainSQLWriteForm(SQLWriteForm[I], IndexedChainEntryWriteForm[K, V], "|~")
+		new ChainSQLWriteForm(SQLWriteForm[I], ListingItemWriteForm[K, V], "|~")
 
-	implicit def writeFormIndexedChainToIndexedChainWriteForm[P <: IndexedChain, I <: IndexedChain, K <: IndexedChain.Key, V]
+	implicit def writeFormListingToListingWriteForm[P <: Listing, I <: Listing, K <: Listing.Key, V]
 	             (chain :P |~ (K :~ SQLWriteForm[V]))(implicit prefix :P => SQLWriteForm[I]) :SQLWriteForm[I |~ (K :~ V)] =
-		IndexedChainWriteForm(prefix(chain.init), chain.last.value)
+		ListingWriteForm(prefix(chain.init), chain.last.value)
+
+	implicit class ListingReadFormExtension[I <: Listing](private val self :SQLReadForm[I]) {
+		def |~[K <: Listing.Key :ValueOf, V](item :K :~ SQLReadForm[V]) :SQLReadForm[I |~ (K :~ V)] =
+			ListingReadForm(self, implicitly[ValueOf[K]], item.value)
+	}
+
+	implicit class ListingWriteFormExtension[I <: Listing](private val self :SQLWriteForm[I]) {
+		def |~[K <: Listing.Key, V](item :K :~ SQLWriteForm[V]) :SQLWriteForm[I |~ (K :~ V)] =
+			ListingWriteForm(self, item.value)
+	}
 
 }
 
@@ -288,7 +323,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	  */
 	implicit def LabeledChainReadForm[I <: LabeledChain :SQLReadForm, K <: Label :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I >~ (K :~ V)] =
-		new AbstractChainIndexReadForm[>~, :~, Label, I, K, V](IndexedChainEntryReadForm[K, V]) {
+		new AbstractListingReadForm[>~, :~, Label, I, K, V](ListingItemReadForm[K, V]) {
 			protected[this] override def cons(init :I, value :V) = init >~ key :~ value
 			protected override def symbol = ">~"
 		}
@@ -300,11 +335,21 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 	implicit def LabeledChainWriteForm[I <: LabeledChain :SQLWriteForm, K <: Label, V :SQLWriteForm]
 			:SQLWriteForm[I >~ (K :~ V)] =
-		new ChainSQLWriteForm(SQLWriteForm[I], IndexedChainEntryWriteForm[K, V], ">~")
+		new ChainSQLWriteForm(SQLWriteForm[I], ListingItemWriteForm[K, V], ">~")
 
 	implicit def writeFormLabeledChainToLabeledChainWriteForm[P <: LabeledChain, I <: LabeledChain, K <: Label, V]
 	             (chain :P >~ (K :~ SQLWriteForm[V]))(implicit prefix :P => SQLWriteForm[I]) :SQLWriteForm[I >~ (K :~ V)] =
 		LabeledChainWriteForm(prefix(chain.init), chain.last.value)
+
+	implicit class LabeledChainReadFormExtension[I <: LabeledChain](private val self :SQLReadForm[I]) {
+		def >~[K <: LabeledChain.Key :ValueOf, V](item :K :~ SQLReadForm[V]) :SQLReadForm[I >~ (K :~ V)] =
+			LabeledChainReadForm(self, implicitly[ValueOf[K]], item.value)
+	}
+
+	implicit class LabeledChainWriteFormExtension[I <: LabeledChain](private val self :SQLWriteForm[I]) {
+		def >~[K <: LabeledChain.Key, V](item :(K, SQLWriteForm[V])) :SQLWriteForm[I >~ (K :~ V)] =
+			LabeledChainWriteForm(self, item._2)
+	}
 
 
 	/** Provides an implicit form for the heterogeneous map indexed by string literals (`Record`) `I |# L`
@@ -312,7 +357,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	  */
 	implicit def RecordReadForm[I <: Record :SQLReadForm, K <: Label :ValueOf, V :SQLReadForm]
 			:SQLReadForm[I |# (K, V)] =
-		new AbstractChainIndexReadForm[|#, Tuple2, Label, I, K, V](ChainMapEntryReadForm[K, V]) {
+		new AbstractListingReadForm[|#, Tuple2, Label, I, K, V](ChainMapEntryReadForm[K, V]) {
 			protected[this] override def cons(init :I, value :V) = init |# (key -> value)
 			protected override def symbol = "|#"
 		}
@@ -329,12 +374,28 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	             (chain :I |# (K, SQLWriteForm[V]))(implicit prefix :I => SQLWriteForm[I]) :SQLWriteForm[I |# (K, V)] =
 		RecordWriteForm(prefix(chain.init), chain.last._2)
 
+	implicit class RecordReadFormExtension[I <: Record](private val self :SQLReadForm[I]) {
+		def |#[K <: Record.Key, V](item :(K, SQLReadForm[V])) :SQLReadForm[I |# (K, V)] =
+			RecordReadForm(self, new ValueOf[K](item._1), item._2)
+
+		def |#[K <: Record.Key :ValueOf, V](value :SQLReadForm[V]) :SQLReadForm[I |# (K, V)] =
+			RecordReadForm(self, implicitly[ValueOf[K]], value)
+	}
+
+	implicit class RecordWriteFormExtension[I <: Record](private val self :SQLWriteForm[I]) {
+		def |#[K <: Record.Key, V](item :(K, SQLWriteForm[V])) :SQLWriteForm[I |# (K, V)] =
+			RecordWriteForm(self, item._2)
+
+		def |#[K <: Record.Key, V](value :SQLWriteForm[V]) :SQLWriteForm[I |# (K, V)] =
+			RecordWriteForm(self, value)
+	}
 
 
-	implicit def IndexedChainEntryReadForm[K <: IndexedChain.Key :ValueOf, V :SQLReadForm] :SQLReadForm[K :~ V] =
+
+	implicit def ListingItemReadForm[K <: Listing.Key :ValueOf, V :SQLReadForm] :SQLReadForm[K :~ V] =
 		SQLReadForm.map(s"(${valueOf[K]}:~${SQLReadForm[V]}") { :~[K](_:V) }
 
-	implicit def IndexedChainEntryWriteForm[K <: IndexedChain.Key, V :SQLWriteForm] :SQLWriteForm[K :~ V] =
+	implicit def ListingItemWriteForm[K <: Listing.Key, V :SQLWriteForm] :SQLWriteForm[K :~ V] =
 		SQLWriteForm(s"(:~${SQLWriteForm[V]})") { e :(K :~ V) => e.value }
 
 	private[forms] def ChainMapEntryReadForm[K <: ChainMap.Key :ValueOf, V :SQLReadForm] :SQLReadForm[(K, V)] =
@@ -448,7 +509,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 
 
-	private[forms] abstract class AbstractChainIndexReadForm
+	private[forms] abstract class AbstractListingReadForm
 	                              [C[+A <: I, +B <: E[K, V]] <: A ~ B, E[+A <: U, +B], U,
 	                               I <: Chain, K <: U, V]
 	                              (last :SQLReadForm[E[K, V]])
@@ -545,6 +606,10 @@ sealed trait SQLFormLevel2Implicits extends SQLRWFormsImplicits {
 	implicit def formChainToChainForm[I <: Chain, L](chain :I ~ SQLForm[L])(implicit prefix :I => SQLForm[I])
 			:SQLWriteForm[I ~ L] =
 		ChainForm(prefix(chain.init), chain.last)
+
+	implicit class ChainFormExtension[C <: Chain](private val self :SQLForm[C]) { //todo: AnyVal
+		def ~[L](item :SQLForm[L]) :SQLForm[C ~ L] = ChainForm(self, item)
+	}
 }
 
 
@@ -558,14 +623,28 @@ sealed trait SQLFormLevel1Implicits extends SQLFormLevel2Implicits {
 	             (chain :I &~ (K, SQLForm[V]))(implicit prefix :I => SQLForm[I]) :SQLForm[I &~ (K, V)] =
 		ChainMapForm(prefix(chain.init), new ValueOf[K](chain.last._1), chain.last._2)
 
+	implicit class ChainMapFormExtension[I <: ChainMap](private val self :SQLForm[I]) {
+		def &~[K <: ChainMap.Key, V](item :(K, SQLForm[V])) :SQLForm[I &~ (K, V)] =
+			new ChainMapForm(self, item._1, item._2)
 
-	implicit def IndexedChainForm[I <: IndexedChain :SQLForm, K <: IndexedChain.Key :ValueOf, V :SQLForm]
+		def &~[K <: ChainMap.Key :ValueOf, V](value :SQLForm[V]) :SQLForm[I &~ (K, V)] =
+			new ChainMapForm(self, valueOf[K], value)
+	}
+
+
+	implicit def ListingForm[I <: Listing :SQLForm, K <: Listing.Key :ValueOf, V :SQLForm]
 			:SQLForm[I |~ (K :~ V)] =
-		new IndexedChainForm(SQLForm[I], valueOf[K], SQLForm[V])
+		new ListingForm(SQLForm[I], valueOf[K], SQLForm[V])
 
-	implicit def formIndexedChainToIndexedChainForm[I <: IndexedChain, K <: IndexedChain.Key, V]
+	implicit def formListingToListingForm[I <: Listing, K <: Listing.Key, V]
 	             (chain :I |~ (K:~SQLForm[V]))(implicit prefix :I => SQLForm[I], key :ValueOf[K]) :SQLForm[I|~(K:~V)] =
-		IndexedChainForm(prefix(chain.init), key, chain.last.value)
+		ListingForm(prefix(chain.init), key, chain.last.value)
+
+	implicit class ListingFormExtension[I <: Listing](private val self :SQLForm[I]) {
+		def |~[K <: Listing.Key :ValueOf, V](item :K :~ SQLForm[V]) :SQLForm[I |~ (K :~ V)] =
+			new ListingForm(self, valueOf[K], item.value)
+	}
+
 }
 
 
@@ -618,6 +697,12 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 	             (chain :I >~ (K:~SQLForm[V]))(implicit prefix :I => SQLForm[I], key :ValueOf[K]) :SQLForm[I>~(K:~V)] =
 		LabeledChainForm(prefix(chain.init), key, chain.last.value)
 
+	implicit class LabeledChainFormExtension[I <: LabeledChain](private val self :SQLForm[I]) {
+		def >~[K <: LabeledChain.Key :ValueOf, V](item :K :~ SQLForm[V]) :SQLForm[I >~ (K :~ V)] =
+			new LabeledChainForm(self, valueOf[K], item.value)
+	}
+
+	
 	implicit def RecordForm[I <: Record :SQLForm, K <: Label :ValueOf, V :SQLForm] :SQLForm[I |# (K, V)] =
 		new RecordForm(SQLForm[I], valueOf[K], SQLForm[V])
 
@@ -625,8 +710,16 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 	             (chain :I |# (K, SQLForm[V]))(implicit prefix :I => SQLForm[I]) :SQLForm[I |# (K, V)] =
 		RecordForm(prefix(chain.init), new ValueOf[K](chain.last._1), chain.last._2)
 
+	implicit class RecordFormExtension[I <: Record](private val self :SQLForm[I]) {
+		def |#[K <: Record.Key, V](item :(K, SQLForm[V])) :SQLForm[I |# (K, V)] =
+			RecordForm(self, new ValueOf[K](item._1), item._2)
 
-	implicit def IndexedChainEntryForm[K <: IndexedChain.Key :ValueOf, V :SQLForm] :SQLForm[K :~ V] =
+		def |#[K <: Record.Key :ValueOf, V](value :SQLForm[V]) :SQLForm[I |# (K, V)] =
+			RecordForm(self, implicitly[ValueOf[K]], value)
+	}
+
+
+	implicit def ListingItemForm[K <: Listing.Key :ValueOf, V :SQLForm] :SQLForm[K :~ V] =
 		SQLForm.map(s"(${valueOf[K]}:~${SQLForm[V]})")(:~[K](_:V))(_.value)
 
 	private[forms] def ChainMapEntryForm[K <: ChainMap.Key :ValueOf, V :SQLForm] :SQLForm[(K, V)] =
@@ -642,10 +735,10 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 	}
 
 
-	private[forms] class IndexedChainForm[I <: IndexedChain, K <: IndexedChain.Key, V]
-	                      (override val init :SQLForm[I], override val key :K, val value :SQLForm[V])
-		extends SuperChainForm[SQLForm[I], SQLForm[K:~V]](init, IndexedChainEntryForm(new ValueOf[K](key), value))
-		   with ChainWriteForm[|~, I, K:~V] with ChainIndexReadForm[|~, :~, IndexedChain.Key, I, K, V]
+	private[forms] class ListingForm[I <: Listing, K <: Listing.Key, V]
+	                     (override val init :SQLForm[I], override val key :K, val value :SQLForm[V])
+		extends SuperChainForm[SQLForm[I], SQLForm[K:~V]](init, ListingItemForm(new ValueOf[K](key), value))
+		   with ChainWriteForm[|~, I, K:~V] with ChainIndexReadForm[|~, :~, Listing.Key, I, K, V]
 		   with SQLForm[I |~ (K :~ V)]
 	{
 		override def symbol = "|~"
@@ -654,7 +747,7 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 
 	private[forms] class LabeledChainForm[I <: LabeledChain, K <: LabeledChain.Key, V]
 	                      (override val init :SQLForm[I], override val key :K, val value :SQLForm[V])
-		extends SuperChainForm[SQLForm[I], SQLForm[K:~V]](init, IndexedChainEntryForm(new ValueOf[K](key), value))
+		extends SuperChainForm[SQLForm[I], SQLForm[K:~V]](init, ListingItemForm(new ValueOf[K](key), value))
 		   with ChainWriteForm[>~, I, K :~ V] with ChainIndexReadForm[>~, :~, LabeledChain.Key, I, K, V]
 		   with SQLForm[I >~ (K :~ V)]
 	{

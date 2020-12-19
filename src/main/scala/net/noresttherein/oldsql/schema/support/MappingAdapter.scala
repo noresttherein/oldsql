@@ -82,7 +82,7 @@ trait MappingAdapter[+M <: Mapping, S, O]
 	private def fail :Nothing =
 		throw new NotImplementedError("This method should have been overriden by MappingAdapter.BaseAdapter and inaccessible.")
 
-	protected[oldsql] def everyConcreteMappingAdapterMustExtendBaseAdapter :Nothing
+	protected[oldsql] def every_concrete_MappingAdapter_must_extend_BaseAdapter :Nothing
 }
 
 
@@ -139,13 +139,13 @@ object MappingAdapter {
 			MappedMapping.adapter(this, there, back)
 
 
-		protected[oldsql] override def everyConcreteMappingAdapterMustExtendBaseAdapter :Nothing =
+		protected[oldsql] override def every_concrete_MappingAdapter_must_extend_BaseAdapter :Nothing =
 			throw new UnsupportedOperationException
 	}
 
 
 
-	/** A `MappingAdapter` mix-in implementation for `DelegateMapping` subclasses, exposing its `backer`
+	/** A `MappingAdapter` mixin implementation for `DelegateMapping` subclasses, exposing its `backer`
 	  * as the `body` property. For this reason, it should be mixed-in after the implementation `DelegateMapping`
 	  * subtypes.
 	  * @tparam M the adapted mapping type.
@@ -236,7 +236,7 @@ object MappingAdapter {
 
 
 		/** A strange beast, being both a `ColumnMapping` (normally a value-oriented class with little polymorphism) and
-		  * an `MappingAdapter`, containing some other column as a component (which columns normally can't).
+		  * a `MappingAdapter`, containing some other column as a component (which columns normally can't).
 		  * While this breaks the column contract as documented (a column is its only component,
 		  * present on the columns lists, but not `components`/`subcomponents`), with careful hiding of this fact
 		  * it can remain compatible. This is done by including the adapted column `body` only in the `extracts`

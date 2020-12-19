@@ -27,7 +27,7 @@ import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumn, SubselectColumn
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.IndexedColumn
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 
@@ -59,13 +59,13 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(this, alias) //todo: precise semantics of name conflicts
 
 	/** Attaches a label to this column in the form of a `String` literal type `N` for the purpose of indexing it
-	  * inside an indexed SQL [[net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple tuple]], allowing to access
+	  * inside an indexed SQL [[net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL tuple]], allowing to access
 	  * it later in a type safe manner. At the same time, the label is used as an alias for the column
 	  * (replacing any previous alias) for the `as` clause appended to this column as in
 	  * [[net.noresttherein.oldsql.sql.ColumnSQL.as as]] method.
 	  */
-	def @:[N <: Label](alias :N) :IndexedColumn[F, S, N, V] =
-		new IndexedColumn(this, alias)
+	def @:[N <: Label](alias :N) :ListingColumn[F, S, N, V] =
+		new ListingColumn(this, alias)
 
 
 	/** Joins this expression and another expression in a logical conjunction represented by the `AND` operator in SQL.
@@ -478,8 +478,8 @@ object ColumnSQL {
 
 		override def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(column, alias)
 
-		override def @:[N <: Label](alias :N) :IndexedColumn[F, S, N, V] =
-			new IndexedColumn(column, alias)
+		override def @:[N <: Label](alias :N) :ListingColumn[F, S, N, V] =
+			new ListingColumn(column, alias)
 
 		override def isGlobal :Boolean = column.isGlobal
 

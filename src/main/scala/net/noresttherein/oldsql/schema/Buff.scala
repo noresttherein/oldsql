@@ -311,7 +311,7 @@ object Buff {
 	case object WriteAudit extends ComboBuffType(UpdateAudit, InsertAudit) with AuditBuffType
 
 	/** Any read or written value `S` of a column/component annotated with this buff is first passed
-	  * through the function `S => S` provided by the buff. This buff type thus makes a good extension point
+	  * through a `S => S` function provided by the buff. This buff type thus makes a good extension point
 	  * for consistency validation, both of data already in the database and that being written. If you wish to limit
 	  * the check only to insert and update operations, use
 	  * the [[net.noresttherein.oldsql.schema.Buff.WriteAudit$ WriteAudit]] buff instead (or those specifically dedicated

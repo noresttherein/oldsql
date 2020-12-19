@@ -6,9 +6,9 @@ import scala.reflect.runtime.universe.TypeTag
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
@@ -21,7 +21,6 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LabelPath./
 import net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
-import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.schema.support.{AlteredMapping, DelegateMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 
@@ -1170,8 +1169,8 @@ object MappingSchema {
 					concat(prefix(schema.prev), flatten(schema.last.schema.withOrigin[O]) compose schema.lastExtract)
 			}
 
-		implicit def appendFlattenedIndexedComponent[V <: IndexedChain, C <: Chain, PV <: Chain, PC <: Chain,
-		                                             K <: IndexedChain.Key, T, MV <: Chain, MC <: Chain, M <: |-|[T, MV, MC],
+		implicit def appendFlattenedIndexedComponent[V <: Listing, C <: Chain, PV <: Chain, PC <: Chain,
+		                                             K <: Listing.Key, T, MV <: Chain, MC <: Chain, M <: |-|[T, MV, MC],
 		                                             SV <: Chain,  SC <: Chain, FV <: Chain, FC <: Chain]
 		                                            (implicit prefix :SchemaFlattening[V, C, PV, PC],
 		                                             hint :InferTypeParams[M, M, |-|[T, MV, MC]],
@@ -1193,7 +1192,7 @@ object MappingSchema {
 					init(schema.prev).col(schema.last, schema.lastExtract)
 			}
 
-		implicit def appendIndexedColumn[V <: IndexedChain, C <: Chain, K <: IndexedChain.Key, T,
+		implicit def appendIndexedColumn[V <: Listing, C <: Chain, K <: Listing.Key, T,
 		                                 M <: ||[T], FV <: Chain, FC <: Chain]
 		                                (implicit init :SchemaFlattening[V, C, FV, FC])
 				:SchemaFlattening[V |~ (K :~ T), C ~ M, FV ~ T, FC ~ M] =
@@ -1224,7 +1223,7 @@ object MappingSchema {
 					schema.lastExtract
 			}
 
-		implicit def lastIndexed[N <: Label, V <: IndexedChain, C <: Chain, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain]]
+		implicit def lastIndexed[N <: Label, V <: Listing, C <: Chain, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain]]
 				:GetLabeledComponent[N, V |~ (N :~ T), C ~ M, T, M] =
 			last[N, V, C, T, M].asInstanceOf[GetLabeledComponent[N, V |~ (N :~ T), C ~ M, T, M]]
 
@@ -1240,7 +1239,7 @@ object MappingSchema {
 					get.extract(schema.prev, label)
 			}
 
-		implicit def previousIndexed[N <: Label, V <: IndexedChain, C <: Chain, X <: (_ <: Label) :~ _,
+		implicit def previousIndexed[N <: Label, V <: Listing, C <: Chain, X <: (_ <: Label) :~ _,
 			                         T, M <: @|-|[N, T, _ <: Chain, _ <: Chain], L <: Mapping]
 		                            (implicit get :GetLabeledComponent[N, V, C, T, M])
 				:GetLabeledComponent[N, V |~ X, C ~ L, T, M] =
@@ -1295,7 +1294,7 @@ object MappingSchema {
 				:GetSchemaComponent[J, V ~ T, C ~ M, T, M] =
 			singleton[T, M].asInstanceOf[GetSchemaComponent[J, V ~ T, C ~ M, T, M]]
 
-		implicit def lastIndexed[I <: Numeral, J <: Numeral, V <: IndexedChain, C <: Chain,
+		implicit def lastIndexed[I <: Numeral, J <: Numeral, V <: Listing, C <: Chain,
 			                     N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain]]
 		                        (implicit inc :Inc[I, J], size :GetSchemaComponent[I, V, C, _, _])
 				:GetSchemaComponent[J, V |~ (N :~ T), C ~ M, T, M] =
@@ -1313,7 +1312,7 @@ object MappingSchema {
 					get.extract(schema.prev, idx)
 			}
 
-		implicit def previousIndexed[I <: Numeral, V <: IndexedChain, C <: Chain, X <: (_ <: Label) :~ _, L <: Mapping,
+		implicit def previousIndexed[I <: Numeral, V <: Listing, C <: Chain, X <: (_ <: Label) :~ _, L <: Mapping,
 		                             N <: Label, T, M <: @|-|[N, T, _ <: Chain, _ <: Chain]]
 		                            (implicit get :GetSchemaComponent[I, V, C, T, M])
 				:GetSchemaComponent[I, V |~ X, C ~ L, T, M] =
@@ -2532,12 +2531,12 @@ object MappingSchema {
 	                                         get :MappingExtract[S, T, O])
 		extends NonEmptySchema[S, V, C, T, M, O](init, next, get)
 		   with BaseNonEmptyFlatSchema[Chain, Any, ~, S, V, C, T, T, M, O]
-	{ //todo: get rid of explicit references to SQLForms
+	{
 		//these shortcut implementations work because column mappings moved their buff handling to their forms.
-		override val selectForm = SQLForms.ChainReadForm(init.selectForm, last.selectForm)
-		override val filterForm = SQLForms.ChainWriteForm(init.filterForm, last.filterForm)
-		override val updateForm = SQLForms.ChainWriteForm(init.updateForm, last.updateForm)
-		override val insertForm = SQLForms.ChainWriteForm(init.insertForm, last.insertForm)
+		override val selectForm = init.selectForm ~ last.selectForm
+		override val filterForm = init.filterForm ~ last.filterForm
+		override val updateForm = init.updateForm ~ last.updateForm
+		override val insertForm = init.insertForm ~ last.insertForm
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V ~ T] = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyFlatSchema[X, V, C, T, M, O] =

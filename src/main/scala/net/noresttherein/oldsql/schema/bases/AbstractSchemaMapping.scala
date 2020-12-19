@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
+import net.noresttherein.oldsql.collection.{Chain, Listing}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.{AlteredMapping, PrefixedMapping, AdjustedMapping}
@@ -134,7 +134,7 @@ abstract class AbstractFlatSchemaMapping[S, V <: Chain, C <: Chain, O]
 
 
 
-abstract class AbstractFlatIndexedSchemaMapping[S, V <: IndexedChain, C <: Chain, O]
+abstract class AbstractFlatIndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
                                                (protected override val backer :FlatIndexedMappingSchema[S, V, C, O])
 	extends MappingSchemaDelegate[FlatIndexedMappingSchema[S, V, C, O], S, V, C, O]
 	   with FlatIndexedSchemaMapping[S, V, C, O]

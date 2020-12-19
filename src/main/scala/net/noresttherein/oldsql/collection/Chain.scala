@@ -4,7 +4,7 @@ import scala.annotation.{implicitNotFound, tailrec}
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, UpperBound}
 import net.noresttherein.oldsql.collection.ChainMap.&~
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, method_:~, |~}
+import net.noresttherein.oldsql.collection.Listing.{:~, method_:~, |~}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Positive}
 import net.noresttherein.oldsql.morsels.generic.{Const, GenericFun, Self}
 import net.noresttherein.oldsql.morsels.LUB
@@ -31,7 +31,7 @@ import net.noresttherein.oldsql.morsels.LUB
   * bounds, making possible enforcing a desired invariant without resorting to implicit witnesses.
   * @see [[net.noresttherein.oldsql.collection.Chain.@~]]
   * @see [[net.noresttherein.oldsql.collection.Chain.~]]
-  * @see [[net.noresttherein.oldsql.collection.IndexedChain]]
+  * @see [[net.noresttherein.oldsql.collection.Listing]]
   * @see [[net.noresttherein.oldsql.collection.Record]]
   * @author Marcin Mościcki
   */
@@ -200,19 +200,19 @@ object Chain extends ChainFactory {
 		override def length = 0
 
 		override type Cat[+P <: Chain] = P
-		override type IndexedCat[+P <: IndexedChain] = P
+		override type IndexedCat[+P <: Listing] = P
 		override type LabeledCat[+P <: LabeledChain] = P
 		override type MapCat[+P <: ChainMap] = P
 		override type RecordCat[+P <: Record] = P
 
 		def ~[N](next :N): @~ ~ N = new link(this, next)
-		def |~[N <: IndexedChain.Item](next :N) = new IndexedChain.link(this, next)
+		def |~[N <: Listing.Item](next :N) = new Listing.link(this, next)
 		def >~[N <: LabeledChain.Item](next :N) = new LabeledChain.link(this, next)
 		def &~[N <: ChainMap.Item](next :N) = new ChainMap.link(this, next)
 		def |#[N <: Record.Item](next :N) = new Record.link(this, next)
 
 		protected[collection] override def cat[P <: Chain](prefix :P) :P = prefix
-		protected[collection] override def indexedCat[P <: IndexedChain](prefix :P) :P = prefix
+		protected[collection] override def indexedCat[P <: Listing](prefix :P) :P = prefix
 		protected[collection] override def labeledCat[P <: LabeledChain](prefix :P) :P = prefix
 		protected[collection] override def mapCat[P <: ChainMap](prefix :P) :P = prefix
 		protected[collection] override def recordCat[P <: Record](prefix :P) :P = prefix
@@ -1083,15 +1083,15 @@ object Chain extends ChainFactory {
 
 
 
-/** Base class for the companion object of the `IndexedChain` implementation of `Chain` as well as companion objects
+/** Base class for the companion object of the `Listing` implementation of `Chain` as well as companion objects
   * of its subclasses. Contains implicit witnesses which form the basis of implementation of most operations shared
-  * by all classes in the `IndexedChain` type hierarchy and which need access to the factory method for the particular
-  * implementation, preventing their declaration in a static context. A `IndexedChain` is a `Chain` consisting
+  * by all classes in the `Listing` type hierarchy and which need access to the factory method for the particular
+  * implementation, preventing their declaration in a static context. A `Listing` is a `Chain` consisting
   * of pairs, which first element is always a singleton type (with the intention of it being a literal type),
   * forming a specialized but limited ''shapeless'' `HMap` variant.
-  * @see [[net.noresttherein.oldsql.collection.IndexedChain]]
+  * @see [[net.noresttherein.oldsql.collection.Listing]]
   */
-sealed abstract class IndexedChainFactory extends ChainFactory {
+sealed abstract class ListingFactory extends ChainFactory {
 	type Type >: @~ <: Chain
 	type Link[+I <: Type, +L <: Item] <: (I ~ L) with Type
 
@@ -1201,7 +1201,7 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
 
 	@implicitNotFound("Type (${K}, ${V}) is not an upper bound of elements in chain ${C}")
 	/** A specialized `UpperBound` implementation existing to force ''scalac'' to infer singleton types when needed. */
-	final class UpperIndexBound[C <: Type, +K, +V] private[IndexedChainFactory]() extends UpperBound[C, (K, V)]
+	final class UpperIndexBound[C <: Type, +K, +V] private[ListingFactory]() extends UpperBound[C, (K, V)]
 
 	implicit final val EmptyIndexBound = new UpperIndexBound[@~, Nothing, Nothing]
 
@@ -1721,27 +1721,27 @@ sealed abstract class IndexedChainFactory extends ChainFactory {
   * the keys, their type must be known to leverage the implicit `ValueOf[K]`.
   * Note that, like `Chain`, but unlike `List`, it is left-associative, thus being built
   * 'from left to right', with the easy access to the last element rather than the first.
-  * An empty `IndexedChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$ @~]].
-  * @see [[net.noresttherein.oldsql.collection.IndexedChain.|~]]
+  * An empty `Listing` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$ @~]].
+  * @see [[net.noresttherein.oldsql.collection.Listing.|~]]
   * @see [[net.noresttherein.oldsql.collection.LabeledChain]]
   */
-sealed trait IndexedChain extends Chain {
-	type IndexedCat[+P <: IndexedChain] <: IndexedChain
-	protected[collection] def indexedCat[P <: IndexedChain](prefix :P) :IndexedCat[P]
+sealed trait Listing extends Chain {
+	type IndexedCat[+P <: Listing] <: Listing
+	protected[collection] def indexedCat[P <: Listing](prefix :P) :IndexedCat[P]
 }
 
 
 
 
 
-object IndexedChain extends IndexedChainFactory {
+object Listing extends ListingFactory {
 
 	/** The upper bound type of the first member of each tuple in the index. */
 	override type Key = Any
 	/** The upper bound for the second member of each tuple in the index */
 	override type Value = Any
 	override type Entry[+K <: Key, +V] = K :~ V
-	override type Type = IndexedChain
+	override type Type = Listing
 	override type Link[+I <: Type, +L <: Item] = I |~ L
 
 	/** Non-singleton lowest upper bound of `Item`, or `Item` if it is not a singleton type nor does it contain one. */
@@ -1750,19 +1750,19 @@ object IndexedChain extends IndexedChainFactory {
 	/** Factory method for non-empty chains of type `Type`.  */
 	protected override def link[I <: Type, L <: Item](init :I, last :L) = new link[I, L](init, last)
 
-	protected override def get[K <: Key, V <: Value](index :IndexedChain |~ (K :~ V)) :V = index.last.value
+	protected override def get[K <: Key, V <: Value](index :Listing |~ (K :~ V)) :V = index.last.value
 
-	protected override def get[K <: Key, V <: Value](index: IndexedChain |~ (K :~ V), key :K) :V = index.last.value
+	protected override def get[K <: Key, V <: Value](index: Listing |~ (K :~ V), key :K) :V = index.last.value
 
-	protected override def set[I <: IndexedChain, K <: Key, V <: Value](i :I |~ (K :~ V), key :K, v :V) :I |~ (K :~ V) =
+	protected override def set[I <: Listing, K <: Key, V <: Value](i :I |~ (K :~ V), key :K, v :V) :I |~ (K :~ V) =
 		new link(i.init, new :~[K, V](v))
 
-	protected override def append[I <: IndexedChain, K <: Key, V <: Any](index :I, key :K, value :V) :I |~ (K :~ V) =
+	protected override def append[I <: Listing, K <: Key, V <: Any](index :I, key :K, value :V) :I |~ (K :~ V) =
 		new link(index, new :~[K, V](value))
 
 
 
-	/** An entry of `IndexedChain`, indexed solely on the type level by the singleton type `K` and storing only
+	/** An entry of `Listing`, indexed solely on the type level by the singleton type `K` and storing only
 	  * the value `V`.
 	  */
 	class :~[+K, +V](val value :V) extends AnyVal {
@@ -1780,8 +1780,8 @@ object IndexedChain extends IndexedChainFactory {
 
 
 
-	/** An extractor for pairs being elements of a `IndexedChain`. Aside from introducing an infix format for the tuple,
-	  * it declares also an `unapply` method accepting a `IndexedChain` itself, matching it ''iff'' it contains
+	/** An extractor for pairs being elements of a `Listing`. Aside from introducing an infix format for the tuple,
+	  * it declares also an `unapply` method accepting a `Listing` itself, matching it ''iff'' it contains
 	  * exactly one element. This allows to write extractors without the initial `@~`:
 	  * {{{
 	  *     val record = "silver" :~ "monsters |# "steel" :~ humans
@@ -1795,7 +1795,7 @@ object IndexedChain extends IndexedChainFactory {
 		  */
 		@inline def apply[K <: Key] :constructor_:~[K] = new constructor_:~[K] {}
 
-		/** Creates an entry `K :~ V` of a `IndexedChain`. Only the value is stored in the entry, with the key
+		/** Creates an entry `K :~ V` of a `Listing`. Only the value is stored in the entry, with the key
 		  * existing solely in the type signature.
 		  */
 		@inline def apply[K <: Key, V](key :K, value :V) :K :~ V = new :~(value)
@@ -1804,16 +1804,16 @@ object IndexedChain extends IndexedChainFactory {
 			Some(valueOf[K] -> entry.value)
 
 
-		def unapply[K <: Key :ValueOf, V](index: IndexedChain |~ (K :~ V)) :Option[(K, V)] =
+		def unapply[K <: Key :ValueOf, V](index: Listing |~ (K :~ V)) :Option[(K, V)] =
 			if (index.init eq @~) Some(valueOf[K] -> index.last.value) else None
 
-		def unapply(index :IndexedChain) :Option[Value] = index match {
+		def unapply(index :Listing) :Option[Value] = index match {
 			case @~ |~ value => Some(value)
 			case _ => None
 		}
 
 
-		/** A factory creating entries of a `IndexedChain` with the type parameter as their key */
+		/** A factory creating entries of a `Listing` with the type parameter as their key */
 		trait constructor_:~[K <: Key] extends Any {
 			@inline def apply[V](value :V): K :~ V = new :~(value)
 		}
@@ -1825,15 +1825,15 @@ object IndexedChain extends IndexedChainFactory {
 
 
 
-	/*** A non-empty `IndexedChain`, consisting of another (possibly empty) `IndexedChain` `init`, followed by
+	/*** A non-empty `Listing`, consisting of another (possibly empty) `Listing` `init`, followed by
 	  * the entry `last`. The entry is a value type `K :~ V` wrapping only its the value `V` - neither the key
 	  * nor the wrapper itself is really stored in this instance, only the value.
 	  * @tparam I the type of the chain with all elements but the last element of this type.
 	  * @tparam L the type of the last element in the chain.
 	  */
-	sealed trait |~[+I <: Type, +L <: Item] extends (I ~ L) with IndexedChain {
+	sealed trait |~[+I <: Type, +L <: Item] extends (I ~ L) with Listing {
 
-		override type IndexedCat[+P <: IndexedChain] <: init.IndexedCat[P] |~ L
+		override type IndexedCat[+P <: Listing] <: init.IndexedCat[P] |~ L
 
 		@inline final def values[O <: Chain](implicit chain :ToValueChain[I |~ L, O]) :O =
 			this.asInstanceOf[O] //last is erased to last.value, so it will work in the bytecode!
@@ -1853,15 +1853,15 @@ object IndexedChain extends IndexedChainFactory {
 	protected[collection] class link[I <: Type, L <: Item](override val init :I, override val last :L)
 		extends Chain.link[I, L](init, last) with |~[I, L]
 	{
-		override type IndexedCat[+P <: IndexedChain] = init.IndexedCat[P] |~ L
+		override type IndexedCat[+P <: Listing] = init.IndexedCat[P] |~ L
 
-		protected[collection] override def indexedCat[P <: IndexedChain](prefix :P) :IndexedCat[P] =
+		protected[collection] override def indexedCat[P <: Listing](prefix :P) :IndexedCat[P] =
 			init.indexedCat(prefix) |~ last
 	}
 
 
 
-	/** A factory and extractor of non-empty `IndexedChain` instances.
+	/** A factory and extractor of non-empty `Listing` instances.
 	  * The extractor part is designed to be used in the infix notation, following the same order as the type `|~`
 	  * appears in the index's definition:
 	  * {{{
@@ -1870,7 +1870,7 @@ object IndexedChain extends IndexedChainFactory {
 	  *     }
 	  * }}}
 	  * Note that in the above example we also use the feature of the `:~` entry extractor which matches also
-	  * any singleton `IndexedChain` (that is, any value of type `@~ |~ E`).
+	  * any singleton `Listing` (that is, any value of type `@~ |~ E`).
 	  * Importing this symbol imports also implicit conversion extending all types `K` with a method `:~` for creating
 	  * `K :~ V` entries, as well as a conversion extending any `K :~ V` with a `|~` method for creating two-element
 	  * chains. Both of these features together allow omitting of `@~` when creating records and starting
@@ -1879,19 +1879,19 @@ object IndexedChain extends IndexedChainFactory {
 	object |~ {
 		@inline def apply[K <: Key] :constructor_|~[K] = new constructor_|~[K] {}
 
-		@inline def apply[I <: IndexedChain, L <: Singleton :~ Any](tail :I, head :L) :I |~ L = new link(tail, head)
+		@inline def apply[I <: Listing, L <: Singleton :~ Any](tail :I, head :L) :I |~ L = new link(tail, head)
 
 
 		trait constructor_|~[K <: Key] extends Any {
-			@inline def apply[I <: IndexedChain, V](init :I, value :V) :I |~ (K :~ V) =
+			@inline def apply[I <: Listing, V](init :I, value :V) :I |~ (K :~ V) =
 				new link[I, K :~ V](init, new :~(value))
 		}
 
 
 
-		@inline def unapply[I <: IndexedChain, L <: Item](index :I |~ L) :I |~ L = index
+		@inline def unapply[I <: Listing, L <: Item](index :I |~ L) :I |~ L = index
 
-		@inline def unapply(index :IndexedChain) :Option[(IndexedChain, Any)] = index match {
+		@inline def unapply(index :Listing) :Option[(Listing, Any)] = index match {
 			case nonEmpty: |~[_, _] => Some(nonEmpty.init -> nonEmpty.last.value)
 			case _ => None
 		}
@@ -1899,21 +1899,21 @@ object IndexedChain extends IndexedChainFactory {
 
 
 
-	@inline implicit def |~[K <: Key, V](entry :K :~ V) :IndexedChainOps[@~ |~ (K :~ V)] = @~ |~ entry
+	@inline implicit def |~[K <: Key, V](entry :K :~ V) :ListingOps[@~ |~ (K :~ V)] = @~ |~ entry
 
 	@inline implicit def |~[K <: Key](key :K) :method_:~[K] = new method_:~(key)
 
 
 
 	/** Operations on the index `I` */
-	implicit class IndexedChainOps[I <: IndexedChain](private val self :I) extends AnyVal {
+	implicit class ListingOps[I <: Listing](private val self :I) extends AnyVal {
 
 		/** Extends the index with another entry `N`, becoming the new last entry. */
 		@inline def |~[N <: Key :~ Value](next :N) :I |~ N = new link(self, next)
 
 		/** Retrieves the value of associated with the given key. The key comparison
 		  * is made based on the static types, rather than values, which are not stored. For this reason only entries
-		  * in the non-abstract part of type `I` (i.e., following the abstract `IndexedChain`, if present) can
+		  * in the non-abstract part of type `I` (i.e., following the abstract `Listing`, if present) can
 		  * be accessed this way.
 		  * @tparam K the type of the key (often a literal type).
 		  * @tparam V the type of the value associated with the key `K`.
@@ -1923,13 +1923,13 @@ object IndexedChain extends IndexedChainFactory {
 		/** Puts the given `(key, value)` pair in this index. If the key `K` is part of this index's type definition as
 		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
 		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
-		  * (it starts with `@~` rather than `IndexedChain`), it returns a new index with the new pair at the end.
+		  * (it starts with `@~` rather than `Listing`), it returns a new index with the new pair at the end.
 		  */
-		@inline def update[K <: Key, V, R <: IndexedChain](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
+		@inline def update[K <: Key, V, R <: Listing](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
 		/** Appends the given index to the end of this chain. */ //fixme: ambiguity with ChainOps.++
-		@inline def ++[S <: IndexedChain](suffix :S) :suffix.IndexedCat[I] = suffix.indexedCat(self)
+		@inline def ++[S <: Listing](suffix :S) :suffix.IndexedCat[I] = suffix.indexedCat(self)
 
 		@inline def toMap[K, V](implicit convert :ToMap[I, K, V]) :Map[K, V] = convert(self).toMap
 
@@ -1940,7 +1940,7 @@ object IndexedChain extends IndexedChainFactory {
 
 
 
-	sealed abstract class ToMap[I <: IndexedChain, K, +V] {
+	sealed abstract class ToMap[I <: Listing, K, +V] {
 		def apply(index :I) :List[(K, V)]
 	}
 
@@ -1948,7 +1948,7 @@ object IndexedChain extends IndexedChainFactory {
 		def apply(monkey: @~) = Nil
 	}
 
-	implicit def toMap[I <: IndexedChain, K <: U, L <: U :ValueOf, U <: Key, V]
+	implicit def toMap[I <: Listing, K <: U, L <: U :ValueOf, U <: Key, V]
 	                  (bounds :ToMap[I, K, V]) :ToMap[I |~ (L :~ V), U, V]  =
 		new ToMap[I |~ (L :~ V), U, V] {
 			def apply(index :I |~ (L :~ V)) = (valueOf[L], index.last.value)::bounds(index.init)
@@ -1972,7 +1972,7 @@ object IndexedChain extends IndexedChainFactory {
   * An empty `LabeledChain` is simply the empty chain [[net.noresttherein.oldsql.collection.Chain.@~$ @~]].
   * @see [[net.noresttherein.oldsql.collection.LabeledChain.>~]]
   */
-sealed trait LabeledChain extends IndexedChain {
+sealed trait LabeledChain extends Listing {
 	type LabeledCat[+P <: LabeledChain] <: LabeledChain
 	protected[collection] def labeledCat[P <: LabeledChain](prefix :P) :LabeledCat[P]
 }
@@ -1981,7 +1981,7 @@ sealed trait LabeledChain extends IndexedChain {
 
 
 
-object LabeledChain extends IndexedChainFactory {
+object LabeledChain extends ListingFactory {
 
 	/** The upper bound type of the first member of each tuple in the index. */
 	override type Key = String with Singleton
@@ -2024,7 +2024,7 @@ object LabeledChain extends IndexedChainFactory {
 	}
 
 	protected[collection] class link[I <: Type, L <: Item](override val init :I, override val last :L)
-		extends IndexedChain.link[I, L](init, last) with >~[I, L]
+		extends Listing.link[I, L](init, last) with >~[I, L]
 	{
 		override type LabeledCat[+P <: LabeledChain] = init.LabeledCat[P] >~ L
 
@@ -2115,7 +2115,7 @@ object LabeledChain extends IndexedChainFactory {
 
 
 
-sealed trait ChainMapFactory extends IndexedChainFactory {
+sealed trait ChainMapFactory extends ListingFactory {
 	override type Type >: @~ <: ChainMap
 	override type Key <: Singleton
 	override type Entry[+K <: Key, +V <: Value] = (K, V)
@@ -2434,7 +2434,7 @@ object Record extends ChainMapFactory {
 
 		/** Retrieves the value of associated with the given key. This assumes that the keys in this index are
 		  * literal types (or at least, they where in the context in which it was created) and the key comparison
-		  * is made based on the types, rather than values. As `IndexedChain` is covariant regarding both
+		  * is made based on the types, rather than values. As `Listing` is covariant regarding both
 		  * of its type parameters, it is possible to break the implicit entry resolution mechanism by upcasting
 		  * an entry to `Singleton` (or some `I with Singleton`), in which case `K =:= Singleton` (alternatively,
 		  * the same `I with Singleton`) would resolve the first of such entries. If the key of the found entry
@@ -2450,8 +2450,8 @@ object Record extends ChainMapFactory {
 		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
 		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
 		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
-		  * (it starts with `@~` rather than `IndexedChain`), it returns a new index with the new pair at the end.
-		  * Note that, as `IndexedChain` is covariant regarding both of its type arguments, it is possible to break
+		  * (it starts with `@~` rather than `Listing`), it returns a new index with the new pair at the end.
+		  * Note that, as `Listing` is covariant regarding both of its type arguments, it is possible to break
 		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
 		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
 		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an

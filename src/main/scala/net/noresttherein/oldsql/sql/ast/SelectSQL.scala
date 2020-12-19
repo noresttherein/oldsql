@@ -1,19 +1,19 @@
 package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ChainApplication}
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain}
+import net.noresttherein.oldsql.collection.{Chain, Listing}
 import net.noresttherein.oldsql.schema.{AbstractRelation, ColumnMapping, ColumnReadForm, Relation, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.{ColumnSQL, ColumnSQLMapping, Dual, FromSome, GroupByClause, IndexedColumnSQLMapping, IndexedMapping, IndexedSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
+import net.noresttherein.oldsql.sql.{ColumnSQL, ColumnSQLMapping, Dual, FromSome, GroupByClause, ListingColumnSQLMapping, IndexedMapping, ListingSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, SubselectOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, LocalScope, LocalSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, MappingQuery, Rows}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedColumn, IndexedSQLExpression}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
 import net.noresttherein.oldsql.sql.mechanics.{SQLScribe, TableOffset}
 import net.noresttherein.oldsql.sql.SelectAPI.SelectTemplate
 
@@ -110,11 +110,11 @@ object SelectSQL {
 	def apply[F <: GroundFrom, V](from :F, header :TupleSQL[F, LocalScope, V]) :TopSelectSQL[V] =
 		new ArbitraryTopSelect[F, V](from, header.anchor(from), false)
 
-	def apply[F <: GroundFrom, V <: IndexedChain](from :F, header :IndexedChainTuple[F, LocalScope, V])
+	def apply[F <: GroundFrom, V <: Listing](from :F, header :ListingSQL[F, LocalScope, V])
 			:TopSelectAs[IndexedMapping.Of[V]#Projection] =
 		new TopIndexedSelect(from, header.anchor(from), false)
 
-	def apply[F <: GroundFrom, A <: Label, V](from :F, header :IndexedColumn[F, LocalScope, A, V])
+	def apply[F <: GroundFrom, A <: Label, V](from :F, header :ListingColumn[F, LocalScope, A, V])
 			:TopSelectColumnAs[IndexedMapping.Of[V]#Column, V] =
 		new TopSelectIndexedColumn(from, header.anchor(from), false)
 
@@ -139,13 +139,13 @@ object SelectSQL {
 	             (from :S, header :TupleSQL[S, LocalScope, V]) :SubselectSQL[F, V] =
 		new ArbitrarySubselect[F, S, V](from, header.anchor(from), false)
 
-	def subselect[F <: NonEmptyFrom, S <: SubselectOf[F], V <: IndexedChain]
-	             (from :S, header :IndexedChainTuple[S, LocalScope, V])
+	def subselect[F <: NonEmptyFrom, S <: SubselectOf[F], V <: Listing]
+	             (from :S, header :ListingSQL[S, LocalScope, V])
 			:SubselectAs[F, IndexedMapping.Of[V]#Projection] =
 		new IndexedSubselect(from, header.anchor(from), false)
 
 	def subselect[F <: NonEmptyFrom, S <: SubselectOf[F], A <: Label, V]
-	             (from :S, header :IndexedColumn[S, LocalScope, A, V])
+	             (from :S, header :ListingColumn[S, LocalScope, A, V])
 			:SubselectColumnAs[F, IndexedMapping.Of[V]#Column, V] =
 		new SubselectIndexedColumn(from, header.anchor(from), false)
 
@@ -724,11 +724,11 @@ object SelectSQL {
 
 
 	private abstract class IndexedSelect[-F <: RowProduct, S <: SubselectOf[F], V]
-	                       (from :S, override val mapping :IndexedSQLMapping[S, LocalScope, V, ()])
+	                       (from :S, override val mapping :ListingSQLMapping[S, LocalScope, V, ()])
 		extends ArbitrarySelect[F, S, V](from, mapping)
 		   with ArbitrarySelectTemplate[F, S, IndexedMapping.Of[V]#Projection, V]
 	{
-		def this(from :S, expression :IndexedSQLExpression[S, LocalScope, V]) =
+		def this(from :S, expression :ListingValueSQL[S, LocalScope, V]) =
 			this(from, expression.mapping[()])
 
 		override val selectClause = mapping.expr
@@ -737,7 +737,7 @@ object SelectSQL {
 
 
 	private class TopIndexedSelect[F <: GroundFrom, V]
-	              (clause :F, select :IndexedSQLExpression[F, LocalScope, V], override val isDistinct :Boolean)
+	              (clause :F, select :ListingValueSQL[F, LocalScope, V], override val isDistinct :Boolean)
 		extends IndexedSelect[RowProduct, F, V](clause, select)
 		   with TopSelectAs[IndexedMapping.Of[V]#Projection]
 	{
@@ -748,7 +748,7 @@ object SelectSQL {
 
 
 	private class IndexedSubselect[-F <: RowProduct, S <: SubselectOf[F], V]
-	              (subclause :S, select :IndexedSQLExpression[S, LocalScope, V], override val isDistinct :Boolean)
+	              (subclause :S, select :ListingValueSQL[S, LocalScope, V], override val isDistinct :Boolean)
 		extends IndexedSelect[F, S, V](subclause, select)
 		   with SubselectAs[F, IndexedMapping.Of[V]#Projection]
 	{
@@ -764,11 +764,11 @@ object SelectSQL {
 					implicit val expansion = ext.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
-					val indexed = substitute(selectClause).asInstanceOf[IndexedSQLExpression[Ext, LocalScope, V]]
+					val indexed = substitute(selectClause).asInstanceOf[ListingValueSQL[Ext, LocalScope, V]]
 					new IndexedSubselect[E, Ext, V](stretched, indexed, isDistinct)
 
 				case empty :Dual =>
-					val cast = selectClause.asInstanceOf[IndexedSQLExpression[Dual, LocalScope, V]]
+					val cast = selectClause.asInstanceOf[ListingValueSQL[Dual, LocalScope, V]]
 					new IndexedSubselect[E, Dual, V](empty, cast, isDistinct)
 
 				case _ =>
@@ -781,13 +781,13 @@ object SelectSQL {
 
 
 	private abstract class SelectIndexedColumn[-F <: RowProduct, S <: SubselectOf[F], A <: Label, V]
-	                       (override val from :S, override val mapping :IndexedColumnSQLMapping[S, LocalScope, A, V, ()])
+	                       (override val from :S, override val mapping :ListingColumnSQLMapping[S, LocalScope, A, V, ()])
 		extends ArbitrarySelect[F, S, V](from, mapping)
 		   with ArbitrarySelectTemplate[F, S, IndexedMapping.Of[V]#Column, V]
 		   with SelectColumn[F, V]
 	{
-		def this(from :S, expression :IndexedColumn[S, LocalScope, A, V]) =
-			this(from, IndexedColumnSQLMapping[S, LocalScope, A, V, ()](expression))
+		def this(from :S, expression :ListingColumn[S, LocalScope, A, V]) =
+			this(from, ListingColumnSQLMapping[S, LocalScope, A, V, ()](expression))
 
 		override val selectClause = mapping.expr
 	}
@@ -795,7 +795,7 @@ object SelectSQL {
 
 
 	private class TopSelectIndexedColumn[F <: GroundFrom, A <: Label, V]
-	              (override val from :F, override val selectClause :IndexedColumn[F, LocalScope, A, V],
+	              (override val from :F, override val selectClause :ListingColumn[F, LocalScope, A, V],
 	               override val isDistinct :Boolean)
 		extends SelectIndexedColumn[RowProduct, F, A, V](from, selectClause)
 		   with TopSelectColumnAs[IndexedMapping.Of[V]#Column, V]
@@ -807,7 +807,7 @@ object SelectSQL {
 
 
 	private class SubselectIndexedColumn[-F <: RowProduct, S <: SubselectOf[F], A <: Label, V]
-	              (clause :S, override val selectClause :IndexedColumn[S, LocalScope, A, V], override val isDistinct :Boolean)
+	              (clause :S, override val selectClause :ListingColumn[S, LocalScope, A, V], override val isDistinct :Boolean)
 		extends SelectIndexedColumn[F, S, A, V](clause, selectClause) with SubselectColumn[F, V]
 		   with SubselectColumnAs[F, IndexedMapping.Of[V]#Column, V]
 	{
@@ -823,11 +823,11 @@ object SelectSQL {
 					implicit val expansion = ext.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
-					val shift = selectClause.alias @: substitute(selectClause.column) :IndexedColumn[Ext, LocalScope, A, V]
+					val shift = selectClause.alias @: substitute(selectClause.column) :ListingColumn[Ext, LocalScope, A, V]
 					new SubselectIndexedColumn[E, Ext, A, V](stretched, shift, isDistinct)
 
 				case empty :Dual =>
-					val castHeader = selectClause.asInstanceOf[IndexedColumn[Dual, LocalScope, A, V]]
+					val castHeader = selectClause.asInstanceOf[ListingColumn[Dual, LocalScope, A, V]]
 					new SubselectIndexedColumn[E, Dual, A, V](empty, castHeader, isDistinct)
 			}
 	}

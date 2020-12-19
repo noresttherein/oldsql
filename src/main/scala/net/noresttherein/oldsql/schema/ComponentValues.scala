@@ -86,8 +86,8 @@ trait ComponentValues[S, O] extends Cloneable {
 	/** Procure a value for the root mapping, either using a preset value or delegating to the mapping's assembly
 	  * method. It is not the top-level function - use either `mapping.apply()` or  `this.root()` as the mapping
 	  * should always have the last say on the result. This is implemented by a triple
-	  * dispatch process - `mapping.apply()/optionally()` invokes this method and performs any validation or modification,
-	  * such as providing a default value if none could be obtained. This method in turn will first check
+	  * dispatch process - `mapping.apply()/optionally()` invokes this method and performs any validation or
+	  * modification, such as providing a default value if none could be obtained. This method in turn will first check
 	  * if `preset()` will return a result, and resorts to `mapping.assemble()` if nothing was set.
 	  * @param mapping the root mapping associated with this instance. Note that ComponentValues should be always
 	  *                statically typed for the singleton type of the associated (this) mapping and passing it to other

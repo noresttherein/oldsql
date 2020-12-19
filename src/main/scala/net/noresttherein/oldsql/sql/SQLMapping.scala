@@ -1,10 +1,10 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.collection.{Chain, IndexedChain, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.IndexedChain.{:~, |~}
+import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.generic.=#>
+import net.noresttherein.oldsql.morsels.generic.{=#>, Const}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.OperationType
@@ -18,14 +18,16 @@ import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
+import net.noresttherein.oldsql.schema.bits.LabelPath
+import net.noresttherein.oldsql.schema.bits.LabelPath.{$this, /, :/}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
-import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, IndexedChainTuple, SeqTuple}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL, SeqTuple}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChain
-import net.noresttherein.oldsql.sql.ast.TupleSQL.IndexedChainTuple.{IndexedColumn, IndexedSQLExpression, MatchIndexedChain}
-import net.noresttherein.oldsql.sql.IndexedSQLMapping.GetIndexedExpressionComponent
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL, MatchListing}
+import net.noresttherein.oldsql.sql.ListingSQLMapping.GetListingComponent
 
 
 
@@ -48,7 +50,7 @@ import net.noresttherein.oldsql.sql.IndexedSQLMapping.GetIndexedExpressionCompon
   *   - [[net.noresttherein.oldsql.sql.ast.ConversionSQL conversion]] nodes,
   *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
   *   - [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuples]] and
-  *     [[ast.TupleSQL.IndexedChainTuple indexed tuples]].
+  *     [[ast.TupleSQL.ListingSQL indexed tuples]].
   *
   * The expression is traversed recursively descending to leaf expressions:
   *   - all column expressions are used directly;
@@ -152,7 +154,7 @@ object SQLMapping {
 	type Project[F <: RowProduct, S >: LocalScope <: GlobalScope, X] = {
 		type Expression[O] = SQLMapping[F, S, X, O]
 		type Column[O] = ColumnSQLMapping[F, S, X, O]
-		type IndexedExpression[O] = IndexedSQLMapping[F, S, X, O]
+		type IndexedExpression[O] = ListingSQLMapping[F, S, X, O]
 	}
 
 
@@ -176,7 +178,7 @@ object SQLMapping {
 		  */
 		private class ExtractsCollector extends ExpressionMatcher[F, Extractors]
 			with CaseExpression[F, Extractors] with CaseColumn[F, Extractors] with MatchChain[F, Extractors]
-			with MatchIndexedChain[F, Extractors]
+			with MatchListing[F, Extractors]
 		{
 			private[this] var names :Set[String] = Set("") //used column names, disallowing ""
 
@@ -231,8 +233,8 @@ object SQLMapping {
 				headExs ++: tailExs
 			}
 
-			override def indexedChainHead[C >: LocalScope <: GlobalScope, I <: IndexedChain, K <: Label :ValueOf, L]
-			                             (init :IndexedChainTuple[F, C, I], last :IndexedSQLExpression[F, C, L]) = {
+			override def listingEntry[C >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
+			                         (init :ListingSQL[F, C, I], last :ListingValueSQL[F, C, L]) = {
 				val tailExs = apply(init).map(composeColumnExtractAssoc(Chain.init[I] _)(_))
 				val headExs = apply(last).map(composeColumnExtractAssoc((_:(I |~ (K :~ L))).last.value)(_))
 				headExs ++: tailExs
@@ -282,7 +284,7 @@ object SQLMapping {
 		  */
 		private class AssemblerComposer extends ExpressionMatcher[F, Assembler]
 			with CaseExpression[F, Assembler] with CaseColumn[F, Assembler] with MatchChain[F, Assembler]
-			with MatchIndexedChain[F, Assembler]
+			with MatchListing[F, Assembler]
 		{
 			/** The stack is in the exact order of individual column appearance, as returned by `ExtractsCollector`. */
 			private[this] var columnStack = columns.toList
@@ -340,8 +342,8 @@ object SQLMapping {
 				pieces => for (t <- tl(pieces); h <- hd(pieces)) yield t ~ h
 			}
 
-			override def indexedChainHead[C >: LocalScope <: GlobalScope, I <: IndexedChain, K <: Label :ValueOf, L]
-			                             (init :IndexedChainTuple[F, C, I], last :IndexedSQLExpression[F, C, L]) =
+			override def listingEntry[C >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
+			                         (init :ListingSQL[F, C, I], last :ListingValueSQL[F, C, L]) =
 			{
 				val tl = apply(init)
 				val hd = apply(last)
@@ -504,8 +506,13 @@ object ColumnSQLMapping {
 
 
 
-//todo: move to schema
+
+//todo: move to schema; this trait defines nothing new; we could just as well define future indexing as extension methods
 sealed trait IndexedMapping[S, O] extends BaseMapping[S, O] {
+	def apply[N <: Label](label :N)(implicit get :GetListingComponent[S, N]) :IndexedMapping[get.Value, O]
+
+	def apply[P](path :LabelPath[P])(implicit get :GetListingComponent[S, P]) :IndexedMapping[get.Value, O]
+
 	override def components :Unique[IndexedMapping[_, O]]
 	override def subcomponents :Unique[IndexedMapping[_, O]]
 
@@ -553,6 +560,12 @@ sealed trait IndexedColumnMapping[S, O] extends IndexedMapping[S, O] with Column
 	override def filteredByDefault :Unique[IndexedColumnMapping[S, O]] = columns
 	override def updatedByDefault :Unique[IndexedColumnMapping[S, O]] = Unique.empty
 	override def insertedByDefault :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+
+	override def apply[N <: Label](label :N)(implicit get :GetListingComponent[S, N]) :IndexedMapping[get.Value, O] =
+		this.asInstanceOf[IndexedColumnMapping[get.Value, O]]
+
+	override def apply[P](path :LabelPath[P])(implicit get :GetListingComponent[S, P]) :IndexedMapping[get.Value, O] =
+		this.asInstanceOf[IndexedColumnMapping[get.Value, O]]
 }
 
 
@@ -572,50 +585,52 @@ object IndexedMapping {
 
 
 
-trait IndexedSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
+trait ListingSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 	extends SQLMapping[F, S, X, O] with IndexedMapping[X, O]
 {
-	override val expr :IndexedSQLExpression[F, S, X]
+	override val expr :ListingValueSQL[F, S, X]
 
-	//todo: indexing of components
-	def apply[N <: Label](label :N)(implicit get :GetIndexedExpressionComponent[F, S, X, N]) :get.Component[O] =
-		get(this, label)
+	override def apply[N <: Label](label :N)
+	                              (implicit get :GetListingComponent[X, N]) :ListingSQLMapping[F, S, get.Value, O]
+
+	override def apply[P](path :LabelPath[P])
+	                     (implicit get :GetListingComponent[X, P]) :ListingSQLMapping[F, S, get.Value, O]
 
 
-	override def components :Unique[IndexedSQLMapping[F, S, _, O]]
-	override def subcomponents :Unique[IndexedSQLMapping[F, S, _, O]]
+	override def components :Unique[ListingSQLMapping[F, S, _, O]]
+	override def subcomponents :Unique[ListingSQLMapping[F, S, _, O]]
 
-	override def columns(op :OperationType) :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = op match {
+	override def columns(op :OperationType) :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = op match {
 		case SELECT => selectable
 		case FILTER => filterable
 		case INSERT => insertable
 		case UPDATE => updatable
 	}
 
-	override def columns :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]]
-	override def selectable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoSelect)
-	override def filterable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoFilter)
-	override def updatable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoUpdate)
-	override def autoUpdated :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoUpdate)
-	override def insertable :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoInsert)
-	override def autoInserted :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoInsert)
+	override def columns :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]]
+	override def selectable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoSelect)
+	override def filterable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoFilter)
+	override def updatable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoUpdate)
+	override def autoUpdated :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoUpdate)
+	override def insertable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoInsert)
+	override def autoInserted :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoInsert)
 
-	override def selectedByDefault :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] =
+	override def selectedByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columnsWithout(NoSelectByDefault)
 
-	override def filteredByDefault :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] =
+	override def filteredByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columnsWithout(NoFilterByDefault)
 
-	override def updatedByDefault :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] =
+	override def updatedByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columnsWithout(NoUpdateByDefault)
 
-	override def insertedByDefault :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] =
+	override def insertedByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columnsWithout(NoInsertByDefault)
 
-	override def columnsWith(buff :BuffType) :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] =
+	override def columnsWith(buff :BuffType) :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columns.filter(buff.enabled)
 
-	override def columnsWithout(buff :BuffType) :Unique[IndexedColumnSQLMapping[F, S, _ <: Label, _, O]] =
+	override def columnsWithout(buff :BuffType) :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columns.filter(buff.disabled)
 }
 
@@ -624,65 +639,66 @@ trait IndexedSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 
 
 
-object IndexedSQLMapping {
-	type IndexedSQLExtract[-F <: RowProduct, -S >: LocalScope <: GlobalScope, -X, Y, O] =
-		GenericExtract[IndexedSQLMapping[F, S, Y, O], X, Y, O]
+object ListingSQLMapping {
+	type ListingSQLExtract[-F <: RowProduct, -S >: LocalScope <: GlobalScope, -X, Y, O] =
+		GenericExtract[ListingSQLMapping[F, S, Y, O], X, Y, O]
 
-	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: IndexedChain, O](expr :IndexedChainTuple[F, S, X])
-			:IndexedSQLMapping[F, S, X, O] =
-		new IndexedTupleMapping(expr)
-
-
-
-	trait GetIndexedExpressionComponent[+F <: RowProduct, +S >: LocalScope <: GlobalScope, X, N <: Label] {
-		type Component[O] <: SQLMapping[_, LocalScope, _, O]
-		def apply[O](mapping :IndexedSQLMapping[F, S, X, O], label :N) :Component[O]
-	}
+	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: Listing, O](expr :ListingSQL[F, S, X])
+			:ListingSQLMapping[F, S, X, O] =
+		new ListingTupleMapping(expr)
 
 
 
-	private class IndexedTupleMapping[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: IndexedChain, O]
-	                                 (override val expr :IndexedChainTuple[F, S, X])
-		extends IndexedSQLMapping[F, S, X, O]
+	private class ListingTupleMapping[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: Listing, O]
+	                                 (override val expr :ListingSQL[F, S, X])
+		extends ListingSQLMapping[F, S, X, O]
 	{ outer =>
-		private type Expression[V] = IndexedSQLMapping[F, S, V, O]
-		private type ColumnExpression[N <: Label, V] = IndexedColumnSQLMapping[F, S, N, V, O]
-		private type IndexedExtract[W, P] = GenericExtract[IndexedSQLMapping[F, S, P, O], W, P, O]
-		private type MyExtract[V] = IndexedExtract[X, V]
+		private type Expression[V] = SQLExpression[F, LocalScope, V]
+		private type ColumnExpression[N <: Label, V] = ListingColumnSQLMapping[F, S, N, V, O]
+		private type Subcomponent[V] = ListingSQLMapping[F, S, V, O]
 
-		private type Extracts[-C >: LocalScope <: GlobalScope, V] = List[IndexedSQLExtract[F, C, V, _, O]]
+		private def subcomponent[T](e :ListingValueSQL[F, S, T]) :Assoc[Expression, Subcomponent, T] =
+			Assoc[Expression, Subcomponent, T](e, e.mapping[O])
+
+		private[this] val subexpressions = NaturalMap(expr.toSeq.map(subcomponent(_)):_*)
+		private[this] val index = expr.toMap.map { case (label, e) => (label, subexpressions(e)) }
+
+		private def at(path :Seq[String]) :ListingSQLMapping[F, S, _, O] = path match {
+			case hd +: tail =>
+				if (tail.isEmpty) index(hd)
+				else index(hd).asInstanceOf[ListingTupleMapping[F, S, _, O]].at(tail)
+			case _ =>
+				this
+		}
+
+		override def apply[N <: Label](label :N)(implicit get :GetListingComponent[X, N]) :ListingSQLMapping[F, S, get.Value, O] =
+			index(label).asInstanceOf[ListingSQLMapping[F, S, get.Value, O]]
+
+		override def apply[P](path :LabelPath[P])(implicit get :GetListingComponent[X, P]) :ListingSQLMapping[F, S, get.Value, O] =
+			at(path.toSeq).asInstanceOf[ListingSQLMapping[F, S, get.Value, O]]
 
 
-		private class ComponentsCollector extends BaseExpressionMatcher[F, Extracts] with MatchIndexedChain[F, Extracts] {
 
-			override def indexedChainHead[C >: LocalScope <: GlobalScope, I <: IndexedChain, K <: Label :ValueOf, L]
-			                             (init :IndexedChainTuple[F, C, I], last :IndexedSQLExpression[F, C, L]) =
+		private type Extracts[-C >: LocalScope <: GlobalScope, V] = List[ListingSQLExtract[F, C, V, _, O]]
+
+		private class ComponentsCollector extends BaseExpressionMatcher[F, Extracts] with MatchListing[F, Extracts] {
+
+			override def listingEntry[C >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
+			                         (init :ListingSQL[F, C, I], last :ListingValueSQL[F, C, L]) =
 			{
 				val extracts = apply(init).map(_ compose Chain.init[I] _) :Extracts[C, I |~ (K :~ L)]
-				val extract = GenericExtract.req(last.mapping[O])((_:(I |~ (K :~ L))).last.value)
+				val extract = GenericExtract.req(subexpressions(last).asInstanceOf[ListingSQLMapping[F, C, L, O]]) {
+					(_ :(I |~ (K :~ L))).last.value
+				}
 				extract::extracts
 			}
 
 			override def emptyChain = Nil
 		}
 
-		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Option[T]
-
-		private class AssemblerComposer extends BaseExpressionMatcher[F, Assembler] with MatchIndexedChain[F, Assembler] {
-			override def emptyChain = { val res = Some(@~); _ => res }
-
-			override def indexedChainHead[C >: LocalScope <: GlobalScope, I <: IndexedChain, K <: Label :ValueOf, L]
-			             (init :IndexedChainTuple[F, C, I], last :IndexedSQLExpression[F, C, L]) =
-			{
-				val tl = apply(init)
-				val hd = apply(last)
-				pieces => for (t <- tl(pieces); h <- hd(pieces)) yield t |~ :~[K](h)
-			}
-		}
-
 		override val (components, subcomponents, extracts) = {
 			val collected = (new ComponentsCollector)(expr)
-			def assoc[V](extract :IndexedSQLExtract[F, S, X, V, O]) =
+			def assoc[V](extract :ListingSQLExtract[F, S, X, V, O]) =
 				Assoc[Component, Extract, V](extract.export, extract)
 			val all = collected.flatMap { composeExtracts(_) } ++ collected.map(assoc(_))
 			val map = NaturalMap((all :Seq[Assoc[Component, Extract, _]]) :_*)
@@ -706,9 +722,50 @@ object IndexedSQLMapping {
 		override def insertedByDefault :Unique[ColumnExpression[_ <: Label, _]] = insertable
 
 
+		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Option[T]
+
+		private class AssemblerComposer extends BaseExpressionMatcher[F, Assembler] with MatchListing[F, Assembler] {
+			override def emptyChain = { val res = Some(@~); _ => res }
+
+			override def listingEntry[C >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
+			                         (init :ListingSQL[F, C, I], last :ListingValueSQL[F, C, L]) :Assembler[C, I |~ (K :~ L)] =
+			{
+				val tl = apply(init)
+				val hd = subexpressions(last)
+				pieces => for (t <- tl(pieces); h <- pieces.get(hd)) yield t |~ :~[K](h)
+			}
+		}
+
 		private[this] val assembler = (new AssemblerComposer)(expr)
 
 		override def assemble(pieces :Pieces) = assembler(pieces)
+
+
+	}
+
+
+
+
+
+
+	class GetListingComponent[X, N] private[ListingSQLMapping] {
+		type Value
+	}
+
+	object GetListingComponent {
+		def last[I <: Listing, K, V, N <: Label] :GetListingComponent[I |~ (K :~ V), N] { type Value = V } =
+			instance.asInstanceOf[GetListingComponent[I |~ (K :~ V), N] { type Value = V }]
+
+		def previous[I <: Listing, K, V, P](implicit prefix :GetListingComponent[I, P])
+				:GetListingComponent[I |~ (K :~ P), P] { type Value = prefix.Value } =
+			instance.asInstanceOf[GetListingComponent[I |~ (K :~ P), P] { type Value = prefix.Value }]
+
+		def nested[I <: Listing, T, P, N <: Label]
+		          (implicit prefix :GetListingComponent[I, P] { type Value = T }, last :GetListingComponent[T, N])
+				:GetListingComponent[I, P / N] { type Value = last.Value } =
+			instance.asInstanceOf[GetListingComponent[I, P / N] { type Value = last.Value }]
+
+		private[this] val instance = new GetListingComponent[Any, Any] {}
 	}
 
 }
@@ -718,22 +775,28 @@ object IndexedSQLMapping {
 
 
 
-trait IndexedColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, N <: Label, X, O]
-	extends ColumnSQLMapping[F, S, X, O] with IndexedSQLMapping[F, S, X, O] with IndexedColumnMapping[X, O]
+trait ListingColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, N <: Label, X, O]
+	extends ColumnSQLMapping[F, S, X, O] with ListingSQLMapping[F, S, X, O] with IndexedColumnMapping[X, O]
 {
-	override val expr :IndexedColumn[F, S, N, X]
+	override val expr :ListingColumn[F, S, N, X]
 
-	override val columns :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.single(this)
-	override def selectable :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = columns
-	override def filterable :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = columns
-	override def updatable :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
-	override def autoUpdated :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
-	override def insertable :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
-	override def autoInserted :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
-	override def selectedByDefault :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = columns
-	override def filteredByDefault :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = columns
-	override def updatedByDefault :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
-	override def insertedByDefault :Unique[IndexedColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override val columns :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.single(this)
+	override def selectable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
+	override def filterable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
+	override def updatable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def autoUpdated :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def insertable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def autoInserted :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def selectedByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
+	override def filteredByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
+	override def updatedByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def insertedByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+
+	override def apply[K <: Label](label :K)(implicit get :GetListingComponent[X, K]) :ListingSQLMapping[F, S, get.Value, O] =
+		this.asInstanceOf[ListingSQLMapping[F, S, get.Value, O]] //these shouldn't be possible to call, but to guard against a future refactor
+
+	override def apply[P](path :LabelPath[P])(implicit get :GetListingComponent[X, P]) :ListingSQLMapping[F, S, get.Value, O] =
+		this.asInstanceOf[ListingSQLMapping[F, S, get.Value, O]]
 }
 
 
@@ -741,12 +804,12 @@ trait IndexedColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope,
 
 
 
-object IndexedColumnSQLMapping {
+object ListingColumnSQLMapping {
 
 	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label, X, O]
-	         (column :IndexedColumn[F, S, N, X])
-			:IndexedColumnSQLMapping[F, S, N, X, O] =
-		new IndexedColumnSQLMapping[F, S, N, X, O] {
+	         (column :ListingColumn[F, S, N, X])
+			:ListingColumnSQLMapping[F, S, N, X, O] =
+		new ListingColumnSQLMapping[F, S, N, X, O] {
 			override val expr = column
 			override val name :String = column.alias
 			override val form = super.form
@@ -754,14 +817,14 @@ object IndexedColumnSQLMapping {
 		}
 
 
-	def unapply[X, O](mapping :MappingOf[X]) :Option[IndexedColumn[_ <: RowProduct, LocalScope, _ <: Label, X]] =
+	def unapply[X, O](mapping :MappingOf[X]) :Option[ListingColumn[_ <: RowProduct, LocalScope, _ <: Label, X]] =
 		mapping match {
-			case indexed :IndexedColumnSQLMapping[f, LocalScope @unchecked, n, X @unchecked, _] => Some(indexed.expr)
+			case indexed :ListingColumnSQLMapping[f, LocalScope @unchecked, n, X @unchecked, _] => Some(indexed.expr)
 			case _ => None
 		}
 
 	type Column[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label, X] = {
-		type Projection[O] = IndexedColumnSQLMapping[F, S, N, X, O] //consider: renaming to P
+		type Projection[O] = ListingColumnSQLMapping[F, S, N, X, O] //consider: renaming to P
 	}
 
 }

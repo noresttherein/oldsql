@@ -793,7 +793,7 @@ object GroupByClause {
 		  *   - [[net.noresttherein.oldsql.sql.ast.ConversionSQL conversion]] nodes,
 		  *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
 		  *   - [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuples]] and
-		  *     [[ast.TupleSQL.IndexedChainTuple indexed tuples]].
+		  *     [[ast.TupleSQL.ListingSQL indexed tuples]].
 		  */
 		def by[V](expr :GlobalSQL[U, V]) :G ByVal V =
 			ByVal[U, thisClause.type, V](thisClause, expr)

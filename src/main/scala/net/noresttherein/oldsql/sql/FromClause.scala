@@ -917,7 +917,7 @@ object FromSome {
 		  *   - [[net.noresttherein.oldsql.sql.ast.ConversionSQL conversion]] nodes,
 		  *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
 		  *   - [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuples]] and
-		  *     [[ast.TupleSQL.IndexedChainTuple indexed tuples]].
+		  *     [[ast.TupleSQL.ListingSQL indexed tuples]].
 		  */
 		def groupBy[V](expr :GlobalSQL[Generalized, V]) :F GroupByVal V =
 			GroupByVal[Generalized, thisClause.type, V](thisClause, expr)
