@@ -218,4 +218,5 @@ class PropertyPathSpec extends AnyFlatSpec with Suite with Matchers {
 		chain.name should equal("head.get")
 	}
 
+
 }

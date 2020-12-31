@@ -8,14 +8,13 @@ import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy.ForDefaultCon
 import net.bytebuddy.implementation.MethodDelegation.to
 import net.bytebuddy.ByteBuddy
 import net.bytebuddy.description.method.MethodDescription
-import net.bytebuddy.dynamic.loading.ClassLoadingStrategy
+import net.bytebuddy.dynamic.loading.{ByteArrayClassLoader, ClassLoadingStrategy}
 import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy.Default.NO_CONSTRUCTORS
 import net.bytebuddy.implementation.bind.annotation.{Origin, RuntimeType, This}
 import net.bytebuddy.implementation.FixedValue
 import net.bytebuddy.implementation.MethodCall.invoke
 import net.bytebuddy.matcher.ElementMatchers.{isConstructor, not}
 import net.noresttherein.oldsql.model.PropertyPath.{IdentityProperty, PropertyReflectionException}
-
 import scala.annotation.tailrec
 import scala.reflect.runtime.universe.{runtimeMirror, typeOf, Symbol, TermName, Type, TypeTag}
 import scala.collection.concurrent.{Map => ConcurrentMap, TrieMap => ConcurrentTrieMap}
@@ -44,7 +43,7 @@ private[model] object InvocationReflection {
 	  *                                     - passed function calls two methods on the same object
 	  *                                     - passed function doesn't return the value returned by the last recorded call frame.
 	  */
-	def apply[S :TypeTag, T](property :S=>T) :List[Trace] = {
+	def apply[S :TypeTag, T](property :S => T) :List[Trace] = {
 		var root :Any = null
 		def errorMsg(msg :String) =
 			s"""Failed to trace a property call on ${typeOf[S]} starting with "${tracedPropertyName(root)}" ($property):\n$msg"""
@@ -159,7 +158,7 @@ private[model] object InvocationReflection {
 	private def mock(subjectType :Type) :Any = {
 		val subjectClass = classFor(subjectType)
 		if (!subjectClass.isPrimitive && (subjectClass.getModifiers & FINAL) == 0)
-			tracer(subjectType, subjectClass)
+			tracer(subjectType.dealias, subjectClass)
 		else
 			createInstance(subjectClass)
 	}
@@ -181,7 +180,10 @@ private[model] object InvocationReflection {
 
 
 	private def createTracerClass(tpe :Type, clazz :Class[_]) :Class[_] = {
-		val name = clazz.getName + TracerClassNameSuffix + tpe.typeSymbol.fullName.replace('.', '_')
+//		val name = clazz.getName + TracerClassNameSuffix + tpe.typeSymbol.fullName.replace('.', '_')
+		val tpeSuffix = tpe.toString.replace('.', '_')
+			.replace("[", "$q$").replace("]", "$p$") //
+		val name = clazz.getName + TracerClassNameSuffix + tpeSuffix
 		val builder =
 			if (clazz.isInterface) //todo: implement abstract methods!!!
 				ByteBuddy.subclass(clazz, new ForDefaultConstructor).name(name)
@@ -203,7 +205,7 @@ private[model] object InvocationReflection {
 			.method(not(isConstructor[MethodDescription]())).intercept(to(new MethodInterceptor()))
 			.defineMethod(TypeMethodName, classOf[AnyRef], PUBLIC).intercept(FixedValue.value(tpe))
 			.defineField(TraceFieldName, classOf[Trace], PUBLIC) //todo: my own loader and INJECTION strategy
-			.make().load(clazz.getClassLoader, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT).getLoaded
+			.make().load(classLoader, ClassLoadingStrategy.Default.INJECTION).getLoaded
 	}
 
 
@@ -223,7 +225,7 @@ private[model] object InvocationReflection {
 			preset //todo: mark for the future if we failed to provide a result.
 		else if (clazz.isInterface) //todo: abstract methods!!!
 		     new ByteBuddy().subclass(clazz).name(clazz.getName + MockClassNameSuffix)
-			     .make().load(getClass.getClassLoader).getLoaded
+			     .make().load(classLoader).getLoaded
 		else if ((clazz.getModifiers & ABSTRACT) != 0)
 		     instrumentedInstance(clazz)
 		else { //the class is not abstract, so we'll just try all constructors to see if one works
@@ -261,7 +263,7 @@ private[model] object InvocationReflection {
 								.name(clazz.getName + MockClassNameSuffix)
 								.defineConstructor(PUBLIC).intercept(
 								invoke(cons).onSuper.`with`(cons.getParameterTypes.map(createInstance) :_*)
-							).make().load(clazz.getClassLoader, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT).getLoaded
+							).make().load(classLoader, ClassLoadingStrategy.Default.INJECTION).getLoaded
 							MockCache.put(clazz, subclass)
 							subclass
 						}.orNull
@@ -332,7 +334,9 @@ private[model] object InvocationReflection {
 	private val runtime = runtimeMirror(getClass.getClassLoader)
 	private def classFor(tpe :Type) :Class[_] = runtime.runtimeClass(tpe.dealias.erasure.typeSymbol.asClass)
 
-
+	private[this] val classLoader = new ByteArrayClassLoader(
+		getClass.getClassLoader, false, java.util.Map.of[String, Array[Byte]]()
+	)
 
 	@inline private[this] final val TracerClassNameSuffix = "$$oldsql_tracer$$"
 	@inline private[this] final val MockClassNameSuffix = "$$_oldsql_mock"
