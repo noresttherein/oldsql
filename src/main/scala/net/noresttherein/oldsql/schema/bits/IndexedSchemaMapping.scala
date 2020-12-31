@@ -5,6 +5,7 @@ import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.{Chain, Listing, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~, UniqueKey}
+import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{cascadeBuffs, Buff, ColumnExtract, ColumnForm, MappingExtract}
@@ -14,12 +15,12 @@ import net.noresttherein.oldsql.schema.bits.IndexedMappingSchema.{AlteredFlatInd
 import net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedIndexedSchema, MappedIndexedSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{AlteredSchema, BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema, FlatMappingSchemaProxy, MappingSchemaProxy, SubjectConstructor}
-import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, AlteredSchemaMapping, CustomizeSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
-import net.noresttherein.oldsql.schema.bits.SchemaMapping.CustomizeSchema.{ComponentsExist, FilterSchema}
-import net.noresttherein.oldsql.schema.support.{AlteredMapping, DelegateMapping, MappedMapping, MappingFactoryMethods, PrefixedMapping, AdjustedMapping}
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, AlteredSchemaMapping, AlterSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.AlterSchema.{ComponentsExist, FilterSchema}
+import net.noresttherein.oldsql.schema.forms.SQLForms
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, DelegateMapping, MappedMapping, MappingFactoryMethods, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.support.AdjustedMapping.{AdjustedMappingMerger, SpecificAdjustedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{ComposedAdapter, DelegateAdapter}
-import net.noresttherein.oldsql.schema.forms.SQLForms
 
 
 
@@ -455,7 +456,7 @@ object IndexedMappingSchema {
 		  * from the chain. This allows direct passing of factory methods from companion objects as arguments
 		  * to this method. The keys of the index chain will however be completely ignored in that case.
 		  * Note that the values of components are accessed 'forcibly'
-		  * from the [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] passed for assembly rather than
+		  * from the [[ComponentValues ComponentValues]] passed for assembly rather than
 		  * by the `Option` returning `get` method and, instead, `NoSuchElementException` exceptions are caught
 		  * and translated to a `None` result in the [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 		  * method. The created `Mapping`, regardless if by mapping the value chain or using direct component access,
@@ -733,6 +734,9 @@ trait IndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
 		else
 			new PrefixedMapping[this.type, S, O](prefix, this) with DelegateIndexedSchemaMapping[S, V, C, O]
 
+	override def renamed(naming :String => String) :IndexedSchemaMapping[S, V, C, O] =
+		new RenamedMapping[this.type, S, O](this, naming) with DelegateIndexedSchemaMapping[S, V, C, O]
+
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :IndexedSchemaMapping[X, V, C, O] =
 		new MappedIndexedSchemaMapping[IndexedSchemaMapping[S, V, C, O], S, X, V, C, O](this, there, back)
@@ -867,6 +871,8 @@ object IndexedSchemaMapping {
 			else
 				new PrefixedMapping[this.type, S, O](prefix, this) with DelegateFlatIndexedSchemaMapping[S, V, C, O]
 
+		override def renamed(naming :String => String) :FlatIndexedSchemaMapping[S, V, C, O] =
+			new RenamedMapping[this.type, S, O](this, naming) with DelegateFlatIndexedSchemaMapping[S, V, C, O]
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 				:FlatIndexedSchemaMapping[X, V, C, O] =
@@ -881,9 +887,9 @@ object IndexedSchemaMapping {
 		             (implicit filter :FilterSchema[FlatIndexedMappingSchema[S, V, C, O], E, _,
                                                     FlatIndexedMappingSchema[S, FV, FC, O]],
 		                       allExist :ComponentsExist[C, E])
-				:CustomizeSchema[A, FlatIndexedSchemaMapping[S, V, C, O], S, O, E]
+				:AlterSchema[A, FlatIndexedSchemaMapping[S, V, C, O], S, O, E]
 					{ type Values = FV; type Components = FC; type Result = FlatIndexedOperationSchema[A, S, FV, FC, O] } =
-			new CustomizeSchema[A, FlatIndexedSchemaMapping[S, V, C, O], S, O, E] {
+			new AlterSchema[A, FlatIndexedSchemaMapping[S, V, C, O], S, O, E] {
 				override type Values = FV
 				override type Components = FC
 				override type Result = FlatIndexedOperationSchema[A, S, FV, FC, O]
@@ -934,6 +940,10 @@ object IndexedSchemaMapping {
 					with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
 					with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
+		override def renamed(naming :String => String) :IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
+			new RenamedMapping[this.type, S, O](this, naming)
+				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
+				with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
@@ -986,6 +996,10 @@ object IndexedSchemaMapping {
 					with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
 					with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
+		override def renamed(naming :String => String) :FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
+			new RenamedMapping[this.type, S, O](this, naming)
+				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
+				with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 				:FlatIndexedSchemaMappingAdapter[M, T, X, V, C, O] =
@@ -1050,9 +1064,9 @@ object IndexedSchemaMapping {
 	                                            E <: Chain, FV <: Listing, FC <: Chain, O]
 	             (implicit filter :FilterSchema[IndexedMappingSchema[S, V, C, O], E, _, IndexedMappingSchema[S, FV, FC, O]],
 	                       allExist :ComponentsExist[C, E])
-			:CustomizeSchema[A, IndexedSchemaMapping[S, V, C, O], S, O, E]
+			:AlterSchema[A, IndexedSchemaMapping[S, V, C, O], S, O, E]
 				{ type Values = FV; type Components = FC; type Result = IndexedOperationSchema[A, S, FV, FC, O] } =
-		new CustomizeSchema[A, IndexedSchemaMapping[S, V, C, O], S, O, E] {
+		new AlterSchema[A, IndexedSchemaMapping[S, V, C, O], S, O, E] {
 			override type Values = FV
 			override type Components = FC
 			override type Result = IndexedOperationSchema[A, S, FV, FC, O]
@@ -1162,6 +1176,10 @@ abstract class AbstractIndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
 
 	override def prefixed(prefix :String) :IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
 		new PrefixedMapping[this.type, S, O](prefix, this)
+			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
+
+	override def renamed(naming :String => String) :IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		new RenamedMapping[this.type, S, O](this, naming)
 			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])

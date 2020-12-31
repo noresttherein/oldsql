@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
-import net.noresttherein.oldsql.model.Kin.{KinFactory, Present}
+import net.noresttherein.oldsql.model.Kin.{KinFactory, MandatoryKinFactory, Nonexistent, Present}
 import net.noresttherein.oldsql.model.Kin.Lazy.LazyKin
 import net.noresttherein.oldsql.model.MappedKin.{CompositeMapper, KinMapper}
 import net.noresttherein.oldsql.slang._
@@ -64,7 +64,7 @@ object CompositeKin {
 		def items :T ComposedOf E
 		def composer :T ComposableFrom E = items.composer
 		def decomposer :T DecomposableTo E = items.decomposer
-		def decompose :Option[Iterable[E]] = toOpt.map(items(_))
+		def decompose :Option[Iterable[E]] = toOption.map(items(_))
 //		def decompose = items(get)
 
 		def mapItems[X, XS](map :KinMapper[E, X])(implicit as :XS ComposedOf X) :Kin[XS] =
@@ -75,14 +75,14 @@ object CompositeKin {
 	}
 
 	class BaseCompositeKin[T, E](implicit val items :T ComposedOf E) extends AbstractCompositeKin[T, E] {
-		override def toOpt: Option[T] = None
+		override def toOption: Option[T] = None
 	}
 
 	private class KinDecorator[T, E](private val kin :Kin[T])(implicit val items :T ComposedOf E)
 		extends AbstractCompositeKin[T, E]
 	{
 		override def get :T = kin.get
-		override def toOpt :Option[T] = kin.toOpt
+		override def toOption :Option[T] = kin.toOption
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[KinDecorator[_, _]]
 
@@ -98,9 +98,11 @@ object CompositeKin {
 	}
 
 	private case class SingletonKinWrapper[T](single :Kin[T]) extends BaseCompositeKin[T, T] {
-		override def isEmpty :Boolean = single.isEmpty
+		override def isPresent :Boolean = single.isPresent
+		override def isMissing :Boolean = single.isMissing
+		override def isNonexistent :Boolean =  single.isNonexistent
 		override def get :T = single.get
-		override def toOpt :Option[T] = single.toOpt
+		override def toOption :Option[T] = single.toOption
 		override def toString = s"($single)[1]"
 	}
 
@@ -113,6 +115,8 @@ object CompositeKin {
 	  * is absent), contain a collection `KC ` of absent kin, or present kin. This `Kin` is present ''iff'' 
 	  * `key` is present and all kin inside it are also present.
 	  * @tparam T exposed collection type with elements of type `E`.
+	  * @tparam E the entity type mapped to the table being the other side of the relationship and the item type
+	  *           of this type.
 	  * @tparam KC a collection type with `Kin[C]` as its elements, representing references to rows in the relationship table.
 	  * @tparam C a type composed of `E` (typically simply `E`) representing the reference from the relationship table
 	  *           to the referenced table with `E`.
@@ -130,9 +134,9 @@ object CompositeKin {
 		  */
 		def targets :C DecomposableTo E
 
-		override lazy val toOpt :Option[T] =
-			key.toOpt.map(links(_)).flatMap { references =>
-				val values = references.flatMap(_.toOpt)
+		override lazy val toOption :Option[T] =
+			key.toOption.map(links(_)).flatMap { references =>
+				val values = references.flatMap(_.toOption)
 				values.size == references.size ifTrue composer(values.flatMap(targets(_)))
 			}
 
@@ -196,12 +200,10 @@ object CompositeKin {
 
 	object PluralKin {
 		def apply[X, E](kin :Seq[Kin[E]], as :X ComposedOf E) :CompositeKin[X, E] =
-			FlattenedKin(kin, DecomposableTo.Subclass[E]())(as)
+			FlattenedKin(kin, DecomposableTo.Self[E]())(as)
 
 		def apply[E](kin :Seq[Kin[E]]) :CompositeKin[Seq[E], E] =
-			FlattenedKin(kin, DecomposableTo.Subclass[E]())(ComposedOf[Seq[E], E])
-
-
+			FlattenedKin(kin, DecomposableTo.Self[E]())(ComposedOf[Seq[E], E])
 	}
 
 
@@ -213,13 +215,15 @@ object CompositeKin {
 	{ factory =>
 		override def present(value: T): Kin[T] = Present(value)
 
-		override def absent(key: Kin[HC]): Kin[T] =
+		override def missing(key: Kin[HC]): Kin[T] =
 			FlattenedKin[T, HC, TC, E](key, head.result.decomposer, tail.result.decomposer)
 
-		override def keyFor(item: E): Option[Kin[HC]] =
-			tail.keyFor(item).map(tail.absent).flatMap(head.keyFor).map(head.absent)
+		override def nonexistent :Kin[T] = Nonexistent()
 
-		override def keyOf[F >: Kin[T] <: Kin[T]](ref: F): Option[Kin[HC]] =
+		override def keyFor(item: E): Option[Kin[HC]] =
+			tail.keyFor(item).map(tail.missing).flatMap(head.keyFor).map(head.missing)
+
+		override def keyOf(ref: Kin[T]): Option[Kin[HC]] =
 			ref match {
 				case FlattenedKin(khc @ head(_, _), _, _) =>
 					Some(khc)
@@ -231,14 +235,19 @@ object CompositeKin {
 				case _ => None
 			}
 
-		override def delayed(keyRef: Kin[HC], value: => T): Kin[T] =
-			new LazyKin[T](()=>Some(value)) with AbstractCompositeKin[T, E] with FlattenedKin[T, HC, TC, E] {
+		override def delayed(keyRef: Kin[HC], value: => Option[T]): Kin[T] =
+			new LazyKin[T](() => value) with AbstractCompositeKin[T, E] with FlattenedKin[T, HC, TC, E] {
+				override def isPresent = true
 				override def items = factory.result
 				override def links = head.result.decomposer
 				override def targets = tail.result.decomposer
 				override def key = keyRef
-
 			}
+
+		override def isRequired :Boolean = false
+
+		override def required :KinFactory[Kin[HC], E, T] =
+			new FlattenedKinFactory[HK, HC, TK, TC, E, T](head, tail) with MandatoryKinFactory[Kin[HC], E, T, Kin[T]]
 
 		override def as[Y](implicit composition: ComposedOf[Y, E]): KinFactory[Kin[HC], E, Y] =
 			new FlattenedKinFactory(head, tail)(composition)

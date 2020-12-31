@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Buff
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DeepProxy, ShallowProxy}
 
 
 
@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.{EagerDeepProxy, Sha
   * @author Marcin Mościcki
   */
 class BuffedMapping[+M <: RefinedMapping[S, O], S, O](protected override val backer :M, override val buffs :Seq[Buff[S]])
-	extends EagerDeepProxy[S, O](backer) with DelegateMapping[M, S, O]
+	extends DeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
 	protected override def adapt[T](component :backer.Component[T]) :Component[T] =
 		new BuffedMapping[Component[T], T, O](component, schema.cascadeBuffs(this)(backer(component)))

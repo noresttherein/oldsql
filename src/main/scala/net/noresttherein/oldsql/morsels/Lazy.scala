@@ -1,12 +1,21 @@
 package net.noresttherein.oldsql.morsels
 
+import java.io.ObjectOutputStream
+
+
+
+
+
+
 /**
   * @author Marcin Mościcki
   */
-trait Lazy[+T] {
+trait Lazy[+T] extends Serializable {
 	def get :T
 
 	def isInitialized :Boolean
+
+	private def writeReplace = Lazy.eager(get)
 
 	override def toString :String = if (isInitialized) get.toString else "Lazy(?)"
 }
@@ -16,7 +25,7 @@ trait Lazy[+T] {
 object Lazy {
 
 	def apply[T](init: => T) :Lazy[T] = new Lazy[T] {
-		@volatile private[this] var f = () => init
+		@volatile @transient private[this] var f = () => init
 		@volatile private[this] var value :T = _
 		private[this] var cache :T = _
 
@@ -38,6 +47,13 @@ object Lazy {
 			}
 			cache
 		}
+	}
+
+
+
+	def eager[T](value :T) :Lazy[T] = new Lazy[T] {
+		override def get = value
+		override def isInitialized = true
 	}
 
 

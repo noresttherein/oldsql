@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.model
 
-import java.{lang => j}
+import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}
+import scala.reflect.{classTag, ClassTag}
 
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.Compares.{GT, GTE, LT, LTE}
@@ -8,12 +9,8 @@ import net.noresttherein.oldsql.model.Restraint.{Compares, Equal, Exists, False,
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, Collection, ComposedRestrictive, ConcatRestrictive, Literal, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
 import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{DIV, MINUS, MULT, Operator, PLUS, REM}
 import net.noresttherein.oldsql.model.types.{ArithmeticSupport, OrderingSupport}
-import net.noresttherein.oldsql.model.PropertyPath
-import net.noresttherein.oldsql.slang._
 
-import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}
-import scala.reflect.{classTag, ClassTag}
-import scala.reflect.runtime.universe
+
 
 
 
@@ -221,7 +218,7 @@ object Restrictive {
 		/** A constrainable expression representing a property with value type V of type T specified by the given function.
 		  * @param property a function returning some property of T, for example `_.address.street`.
 		  */
-		@inline def apply[T :TypeTag, V](property :T=>V) :Restrictive[T, V] = apply(PropertyPath(property))
+		@inline def apply[T :TypeTag, V](property :T => V) :Restrictive[T, V] = apply(PropertyPath(property))
 
 		/** Check if the given expression represents a property of T (is an instance created by this factory). */
 		def unapply[T, V](restrictive :Restrictive[T, V]) :Option[PropertyPath[T, V]] = restrictive match {
@@ -255,10 +252,10 @@ object Restrictive {
 	  */
 	object Literal {
 
-		/** A literal expression of type V, seen as a function `T=>V` */
+		/** A literal expression of type V, seen as a function `T => V` */
 		@inline private[model] def apply[T, V](value :V) :Restrictive[T, V] = new LiteralRestrictive[T, V](value)
 
-		/** Check if the given constrainee is a literal expression. */
+		/** Check if the given restrictive is a literal expression. */
 		def unapply[V](restrictive :Restrictive[_, V]) :Option[V] = restrictive match {
 			case literal :LiteralRestrictive[_, V] => Some(literal.value)
 			case _ => None
@@ -314,7 +311,8 @@ object Restrictive {
 	object Arithmetic {
 		//todo: having ArithmeticSupport should mean we also have support for literals
 
-		def apply[T, N :ArithmeticSupport](left :Restrictive[T, N], op :Operator, right :TranslableTerm[T, N]) :Restrictive[T, N] =
+		def apply[T, N :ArithmeticSupport]
+		         (left :Restrictive[T, N], op :Operator, right :TranslableTerm[T, N]) :Restrictive[T, N] =
 			new ArithmeticRestrictive(left, op, right.toRestrictive)
 
 		def apply[T, N :ArithmeticSupport](left :N, op :Operator, right :Restrictive[T, N]) :Restrictive[T, N] =
@@ -322,10 +320,11 @@ object Restrictive {
 
 
 
-		def unapply[T, N](term :Restrictive[T, N]) :Option[(Restrictive[T, N], Operator, Restrictive[T, N])] = term match {
-			case ArithmeticRestrictive(left, op, right) => Some((left, op, right))
-			case _ => None
-		}
+		def unapply[T, N](term :Restrictive[T, N]) :Option[(Restrictive[T, N], Operator, Restrictive[T, N])] =
+			term match {
+				case ArithmeticRestrictive(left, op, right) => Some((left, op, right))
+				case _ => None
+			}
 
 
 
@@ -343,19 +342,24 @@ object Restrictive {
 
 
 		final val PLUS :Operator = new Operator("+") {
-			override def apply[T :ArithmeticSupport](left :T, right :T) = implicitly[ArithmeticSupport[T]].plus(left, right)
+			override def apply[T :ArithmeticSupport](left :T, right :T) :T =
+				implicitly[ArithmeticSupport[T]].plus(left, right)
 		}
 		final val MINUS :Operator = new Operator("-") {
-			override def apply[T :ArithmeticSupport](left :T, right :T) = implicitly[ArithmeticSupport[T]].minus(left, right)
+			override def apply[T :ArithmeticSupport](left :T, right :T) :T =
+				implicitly[ArithmeticSupport[T]].minus(left, right)
 		}
 		final val MULT :Operator = new Operator("*") {
-			override def apply[T :ArithmeticSupport](left :T, right :T) = implicitly[ArithmeticSupport[T]].times(left, right)
+			override def apply[T :ArithmeticSupport](left :T, right :T) :T =
+				implicitly[ArithmeticSupport[T]].times(left, right)
 		}
 		final val DIV :Operator = new Operator("/") {
-			override def apply[T :ArithmeticSupport](left :T, right :T) = implicitly[ArithmeticSupport[T]].div(left, right)
+			override def apply[T :ArithmeticSupport](left :T, right :T) :T =
+				implicitly[ArithmeticSupport[T]].div(left, right)
 		}
 		final val REM :Operator = new Operator("%") {
-			override def apply[T :ArithmeticSupport](left :T, right :T) = implicitly[ArithmeticSupport[T]].rem(left, right)
+			override def apply[T :ArithmeticSupport](left :T, right :T) :T =
+				implicitly[ArithmeticSupport[T]].rem(left, right)
 		}
 
 

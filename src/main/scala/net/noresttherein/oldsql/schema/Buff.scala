@@ -136,6 +136,15 @@ object Buff {
 
 
 
+	/** A default value which will be returned by annotated component mapping if none is preset and none can
+	  * be assembled from subcomponents. This can be used for example with nullable columns, but will also
+	  * come into play if the column is missing from the ''select'' clause or in case of 'null' values
+	  * coming from outer joins.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.OptionalSelect]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Default]]
+	  */
+	case object SelectDefault extends ComboValueBuffType
+
 	/** A factory for buffs marking that a given column/component can be omitted from the select clause.
 	  * It is still included by default and needs to be excluded explicitly. Created values carry a placeholder
 	  * value to assign to the annotated component on assembly if the component is excluded.
@@ -149,7 +158,7 @@ object Buff {
 	  * [[net.noresttherein.oldsql.schema.Relation.exclude exclude]] and
 	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation(...)]].
 	  */
-	case object OptionalSelect extends ComboValueBuffType
+	case object OptionalSelect extends ComboValueBuffType(SelectDefault)
 
 	/** A factory for buffs marking that a given column/component is omitted by default from the select clause
 	  * and needs to be included explicitly. When not included, the value stored in the buff will be used
@@ -169,7 +178,7 @@ object Buff {
 	  * This can be used in particular for 'virtual' columns - components which take part in the mapping, but
 	  * aren't present in the database at all.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual$]]
-	  */
+	  */ //todo: this should probably imply SelectDefault
 	case object ExtraSelect extends ComboValueBuffType(NoSelect)
 
 
@@ -217,6 +226,13 @@ object Buff {
 
 
 
+	/** Provides a default value which will be inserted into the table
+	  * if the [[net.noresttherein.oldsql.schema.MappingExtract extract]] for the annotated component returns no value.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Default]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.WriteDefault]]
+	  */
+	case object InsertDefault extends ComboValueBuffType
+
 	/** A buff marking that a given column/component can be omitted from the insert statement.
 	  * It is still included by default and needs to be excluded explicitly.
 	  */
@@ -227,9 +243,17 @@ object Buff {
 	case object ExplicitInsert extends ComboFlag(OptionalInsert, NoInsertByDefault)
 
 	/** Marks a column/component as having its value initialized by the expression provided by the buff
-	  * rather than the entity. Used particularly for 'created on' or 'created by' type of columns. */
-	case object ExtraInsert extends ComboValueBuffType(NoInsert)
+	  * rather than the entity. Used particularly for 'created on' or 'created by' type of columns.
+	  */ //todo: this should probably imply InsertDefault
+	case object ExtraInsert extends ComboValueBuffType(NoInsert) //fixme: currently unused!
 
+
+	/** Provides a default value which will be included in the update for the mapped table
+	  * if the [[net.noresttherein.oldsql.schema.MappingExtract extract]] for the annotated component returns no value.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Default]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.WriteDefault]]
+	  */
+	case object UpdateDefault extends ComboValueBuffType
 
 	/** A buff marking that a given column/component can be omitted from the update statement.
 	  * It is still included by default and needs to be excluded explicitly. */
@@ -240,10 +264,19 @@ object Buff {
 	case object ExplicitUpdate extends ComboFlag(OptionalUpdate, NoUpdateByDefault)
 
 	/** Marks a column/component as being updated with the value of the expression provided by the buff
-	  * rather than some property of the mapped entity. Useful for particularly for 'update timestamp' columns. */
-	case object ExtraUpdate extends ComboValueBuffType(NoUpdate)
+	  * rather than some property of the mapped entity. Useful for particularly for 'update timestamp' columns.
+	  */ //todo: this should probably imply UpdateDefault
+	case object ExtraUpdate extends ComboValueBuffType(NoUpdate) //fixme: currently unused!
 
 
+
+	/** Provides a default value which will be used when inserting or updating the rows of the mapped table
+	  * if the [[net.noresttherein.oldsql.schema.MappingExtract extract]] for the annotated component returns no value.
+	  * Implies [[net.noresttherein.oldsql.schema.Buff.InsertDefault InsertDefault]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.UpdateDefault UpdateDefault]].
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Default]]
+	  */
+	case object WriteDefault extends ComboValueBuffType(InsertDefault, UpdateDefault)
 
 	/** Marks a column/component as not mandatory for insert and update statements. */
 	case object OptionalWrite extends ComboFlag(OptionalInsert, OptionalUpdate)
@@ -252,9 +285,21 @@ object Buff {
 	case object ExplicitWrite extends ComboFlag(ExplicitInsert, ExplicitUpdate, OptionalWrite)
 
 	/** Marks a column/component as having its value set by this buff rather than a property of the entity
-	  * at every write to the database. Implies `ReadOnly`, `ExtraInsert` and `ExtraUpdate`. */
+	  * at every write to the database. Implies `ReadOnly`, `ExtraInsert` and `ExtraUpdate`.
+	  */ //todo: this should probably imply WriteDefault
 	case object ExtraWrite extends ComboValueBuffType(ReadOnly, ExtraInsert, ExtraUpdate)
 
+
+	/** Provides a default value which will be returned if the value for the component is not present in the ''select''
+	  * as well as when inserting or updating the rows of the mapped table
+	  * if the [[net.noresttherein.oldsql.schema.MappingExtract extract]] for the annotated component returns no value.
+	  * This has the effect of not only mapping `null` columns to the given value, but also replacing any `null` values
+	  * with the value extracted from the provided default.
+	  * Implies [[net.noresttherein.oldsql.schema.Buff.SelectDefault]],
+	  * [[net.noresttherein.oldsql.schema.Buff.InsertDefault InsertDefault]]
+	  * and [[net.noresttherein.oldsql.schema.Buff.UpdateDefault UpdateDefault]].
+	  */
+	case object Default extends ComboValueBuffType(SelectDefault, WriteDefault)
 
 	/** Signifies that a column/component can be excluded from all types of database operations.
 	  * It is a shortcut for marking it with `OptionalSelect`, `OptionalFilter`, `OptionalWrite`. */
@@ -277,7 +322,10 @@ object Buff {
 	/** A buff marking a component or column which does not exist in the database and will not be used as part
 	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,
 	  * the provided expression is used as its value. This can be useful during schema migrations, when a mapping
-	  * might need to cover several versions of the schema, or if it is reused for several similar tables. */
+	  * might need to cover several versions of the schema, or if it is reused for several similar tables.
+	  * Alternatively, it can be used for mapping's which components are already included as subcomponents
+	  * of some other component of the same table.
+	  */
 	case object Virtual extends ComboValueBuffType(ExtraSelect, ReadOnly, NoFilter)
 
 

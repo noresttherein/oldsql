@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.{PseudoRelation, StaticRelation, Table}
+import net.noresttherein.oldsql.schema.Relation.{NamedRelation, PseudoRelation, StaticRelation, Table}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
@@ -233,7 +233,7 @@ object UnboundParam {
 	  * representing a query parameter.
 	  */
 	sealed class ParamRelation[X](val name :String)(implicit val form :SQLForm[X])
-		extends PseudoRelation[({ type P[O] = FromParam[X, O] })#P]
+		extends PseudoRelation[({ type P[O] = FromParam[X, O] })#P] with NamedRelation[({ type P[O] = FromParam[X, O] })#P]
 	{
 		type Param[O] = FromParam[X, O]
 

@@ -2,14 +2,15 @@ package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.collection.NaturalMap
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
+import net.noresttherein.oldsql.haul.ComponentValues
+import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
 
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
+
 
 
 
@@ -43,7 +44,7 @@ package object schema {
 	  * the most generic [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping[T, O] ]].
 	  * @see [[net.noresttherein.oldsql.schema.GenericExtract]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](RefinedMapping[T]) ]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]]
+	  * @see [[ComponentValues ComponentValues]]
 	  * @tparam S the subject type of the parent mapping.
 	  * @tparam T the subject type of the component mapping.
 	  * @tparam O the origin type of the parent and child mappings.
@@ -145,27 +146,31 @@ package object schema {
 
 
 
-	@inline private[oldsql] def composeExtracts[S, X, O]
-	                            (extract :MappingExtract[S, X, O]) :RefinedMapping[S, O]#ExtractMap =
+	private[oldsql] def composeExtracts[S, X, O](extract :MappingExtract[S, X, O])
+			:RefinedMapping[S, O]#ExtractMap =
 		composeExtracts(extract.export, extract)
 
-	@inline private[oldsql] def composeExtracts[S, X, O]
-	                            (extracts :RefinedMapping[X, O]#ExtractMap, extractor :MappingExtract[S, X, O])
+	private[oldsql] def composeExtracts[S, X, O]
+	                    (extracts :RefinedMapping[X, O]#ExtractMap, extractor :MappingExtract[S, X, O])
 			:RefinedMapping[S, O]#ExtractMap =
 		extracts.map(composeExtractAssoc(extractor)(_))
 
-	@inline private[oldsql] def composeExtracts[S, X, O](mapping :RefinedMapping[X, O], extractor :S =?> X)
+	private[oldsql] def composeExtracts[S, X, O](mapping :RefinedMapping[X, O], extractor :S =?> X)
 			:RefinedMapping[S, O]#ExtractMap =
 		mapping.extracts.map(composeExtractAssoc(mapping, extractor)(_))
 
 
 
-	@inline private[oldsql] def composeColumnExtracts[S, X, O]
-	                            (extracts :RefinedMapping[X, O]#ColumnExtractMap, extractor :MappingExtract[S, X, O])
+	private[oldsql] def composeColumnExtracts[S, X, O](extract :MappingExtract[S, X, O])
+			:RefinedMapping[S, O]#ColumnExtractMap =
+		composeColumnExtracts(extract.export, extract)
+
+	private[oldsql] def composeColumnExtracts[S, X, O]
+	                    (extracts :RefinedMapping[X, O]#ColumnExtractMap, extractor :MappingExtract[S, X, O])
 			:RefinedMapping[S, O]#ColumnExtractMap =
 		extracts.map(composeColumnExtractAssoc(extractor)(_))
 
-	@inline private[oldsql] def composeColumnExtracts[S, X, O](mapping :RefinedMapping[X, O], extractor :S =?> X)
+	private[oldsql] def composeColumnExtracts[S, X, O](mapping :RefinedMapping[X, O], extractor :S =?> X)
 			:RefinedMapping[S, O]#ColumnExtractMap =
 		mapping.columnExtracts.map(composeColumnExtractAssoc(mapping, extractor)(_))
 

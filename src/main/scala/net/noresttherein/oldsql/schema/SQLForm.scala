@@ -10,7 +10,8 @@ import scala.reflect.ClassTag
 import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
-import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Stateless, Extractor}
+import net.noresttherein.oldsql.model.Kin
+import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Extractor, Stateless}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -419,7 +420,15 @@ object SQLForm {
 	  * component - or, more often, `None`, which is the default `NullValue[Option[X]]` - can translate to multiple
 	  * null columns, including when used as SQL literals or in the ''select'' clause. Last but not least,
 	  * it can also be used to enforce not-null semantics by throwing an exception as in `NullValue.NotNull`.
-	  * Ultimately, the exact semantics of handling `null` values - both in Scala and SQL - will depend on the form;
+	  * Ultimately, the exact semantics of handling `null` values - both in Scala and SQL - will depend on the form.
+	  *
+	  * `NullValue` comes to play primarily in [[net.noresttherein.oldsql.schema.SQLReadForm.apply apply]] method
+	  * of [[net.noresttherein.oldsql.schema.SQLReadForm SQLReadForm]], returned when
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]] would return `None`; it is not used by the latter,
+	  * so `NullValue` should not be used to provide business logic defaults, as this would result in a discrepancy
+	  * between the two methods. This use case can be implemented instead in
+	  * [[net.noresttherein.oldsql.schema.Mapping Mapping]], either manually, or by the use of
+	  * [[net.noresttherein.oldsql.schema.Buff.SelectDefault SelectDefault]] buff.
 	  *
 	  * With very few exceptions (mentioned `Option` case is one), this type class doesn't have any implicit definitions
 	  * for the base types (not derived from some other type class instance). This is to allow the applications
@@ -566,7 +575,7 @@ object SQLForm {
 		/** Scala `None` as the null value for `Option[T]`. */
 		implicit final val None :NullValue[Option[Nothing]] = NullValue(scala.None)
 
-		implicit final val Miss :NullValue[Opt[Nothing]] = NullValue(Opt.Miss)
+		implicit final val Miss :NullValue[Opt[Nothing]] = NullValue(Opt.Blank)
 
 		implicit def NullOptional[T] :NullValue[Optional[T]] = NullValue(Optional.empty[T])
 
@@ -576,24 +585,29 @@ object SQLForm {
 		  * @see [[net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull NullValue.NotNull]]
 		  */
 		object Defaults {
-			/** `null` itself as the value used by nullable types `T >: scala.Null`. */
+			/** Specifies `null` itself as the 'null' value used by nullable types `T >: scala.Null`. */
 			implicit final val NullRef :NullValue[Null] = NullValue(null)
-			/** Sets zero as the 'null' value. */
+			/** Specifies zero as the 'null' value. */
 			implicit final val NullInt = NullValue(0)
-			/** Sets zero as the 'null' value. */
+			/** Specifies zero as the 'null' value. */
 			implicit final val NullLong = NullValue(0L)
-			/** Sets zero as the 'null' value. */
+			/** Specifies zero as the 'null' value. */
 			implicit final val NullShort = NullValue(0.toShort)
-			/** Sets zero as the 'null' value. */
+			/** Specifies zero as the 'null' value. */
 			implicit final val NullByte = NullValue(0.toByte)
-			/** Sets `false` as the 'null' value. */
+			/** Specifies `false` as the 'null' value. */
 			implicit final val NullBoolean = NullValue[Boolean](false)
-			/** Sets zero as the 'null' value. */
+			/** Specifies zero as the 'null' value. */
 			implicit final val NullChar = NullValue(0.toChar)
-			/** Sets zero as the 'null' value. */
+			/** Specifies zero as the 'null' value. */
 			implicit final val NullFloat = NullValue(0.0f)
-			/** Sets zero as the 'null' value. */
+			/** Specifies zero as the 'null' value. */
 			implicit final val NullDouble = NullValue(0.0)
+
+			/** Specifies [[net.noresttherein.oldsql.model.Kin Kin]]`.`[[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]]
+			  * as the 'null' value.
+			  */
+			implicit final val NullKin = NullValue(Kin.Nonexistent())
 		}
 
 		object Collections { //consider: constants. Lots of mini classes to change precedence
@@ -680,6 +694,36 @@ object SQLForm {
 		override def hashCode :Int = clazz.runtimeClass.hashCode
 
 		override val toString :String = innerNameOf[T]
+	}
+
+
+
+	abstract class AbstractMappedForm[S, T](implicit form :SQLForm[S], override val nulls :NullValue[T])
+		extends SQLForm[T] with ReadFormNullValue[T]
+	{
+		protected def map(s :S) :T
+		protected def unmap(t :T) :S
+
+		override def opt(res :ResultSet, position :Int) :Option[T] = form.opt(res, position) match {
+			case Some(s) => Some(map(s))
+			case _ => None
+		}
+
+		override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
+			form.set(statement, position, unmap(value))
+
+		override def setNull(statement :PreparedStatement, position :Int) :Unit =
+			form.setNull(statement, position)
+
+		override def literal(value :T) :String = form.literal(unmap(value))
+		override def inlineLiteral(value :T) :String = form.inlineLiteral(unmap(value))
+		override def nullLiteral :String = form.nullLiteral
+		override def inlineNullLiteral :String = form.inlineNullLiteral
+
+		override def writtenColumns :Int = form.writtenColumns
+		override def readColumns :Int = form.readColumns
+
+		override def toString :String = "<=" + form + "=>"
 	}
 
 

@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.collection.{Chain, Listing}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, RefinedMapping}
-import net.noresttherein.oldsql.schema.support.{AlteredMapping, PrefixedMapping, AdjustedMapping}
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.support.AdjustedMapping.SpecificAdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -85,6 +85,10 @@ abstract class AbstractSchemaMapping[S, V <: Chain, C <: Chain, O]
 		new PrefixedMapping[this.type, S, O](prefix, this)
 			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
 
+	override def renamed(naming :String => String) :SchemaMappingAdapter[this.type, S, S, V, C, O] =
+		new RenamedMapping[this.type, S, O](this, naming)
+			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
+
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 			:SchemaMappingAdapter[this.type, S, X, V, C, O] =
 		new MappedSchemaMapping[this.type, S, X, V, C, O](this, there, back)
@@ -121,6 +125,10 @@ abstract class AbstractFlatSchemaMapping[S, V <: Chain, C <: Chain, O]
 		new PrefixedMapping[this.type, S, O](prefix, this)
 			with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
 
+	override def renamed(naming :String => String) :FlatSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		new RenamedMapping[this.type, S, O](this, naming)
+			with DelegateAdapter[this.type, S, O] with FlatSchemaMappingProxy[this.type, S, V, C, O]
+
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 			:FlatSchemaMappingAdapter[this.type, S, X, V, C, O] =
@@ -153,6 +161,10 @@ abstract class AbstractFlatIndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
 
 	override def prefixed(prefix :String) :FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
 		new PrefixedMapping[this.type, S, O](prefix, this)
+			with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
+
+	override def renamed(naming :String => String) :FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		new RenamedMapping[this.type, S, O](this, naming)
 			with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])

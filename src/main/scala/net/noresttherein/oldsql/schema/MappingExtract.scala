@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.schema
 
+import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
@@ -117,6 +118,13 @@ object MappingExtract {
 
 
 
+/** Generic interface of [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]]
+  * and [[net.noresttherein.oldsql.schema.ColumnMappingExtract ColumnMappingExtract]], parameterized
+  * with the type of the ''export'' mapping. Both of the above types are type aliases to this trait, so as long as
+  * the export mapping is a column, a `MappingExtract` can be cast down to a `ColumnMappingExtract`, even if it was
+  * created as a `MappingExtract` (using the more generic `MappingExtract` factory). Several places in the codebase
+  * take advantage of this type.
+  */
 trait GenericExtract[+M <: RefinedMapping[T, O], -S, T, O] extends Extractor[S, T] {
 
 	val export :M

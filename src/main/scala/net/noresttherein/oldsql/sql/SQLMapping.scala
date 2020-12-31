@@ -1,33 +1,34 @@
 package net.noresttherein.oldsql.sql
 
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.generic.{=#>, Const}
+import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, ComponentValues, GenericExtract, MappingExtract, Relation, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
+import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, GenericExtract, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, ReadOnly}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.bits.LabelPath
+import net.noresttherein.oldsql.schema.bits.LabelPath./
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
+import net.noresttherein.oldsql.sql.ListingSQLMapping.GetListingComponent
 import net.noresttherein.oldsql.sql.SQLExpression.{BaseExpressionMatcher, CaseExpression, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
-import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
-import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
-import net.noresttherein.oldsql.schema.bits.LabelPath
-import net.noresttherein.oldsql.schema.bits.LabelPath.{$this, /, :/}
-import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL}
+import net.noresttherein.oldsql.sql.ast.ConversionSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL, SeqTuple}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChain
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL, MatchListing}
-import net.noresttherein.oldsql.sql.ListingSQLMapping.GetListingComponent
 
 
 
@@ -299,7 +300,7 @@ object SQLMapping {
 			                      (e :TypedComponentSQL[F, T, E, M, V, A]) =
 			{
 				val table = e.entity
-				val component = e.mapping //fixme: this doesn't take into account include/exclude
+				val component = e.export
 				val exported = component.columns.view.map(table.export(_)).filter(NoSelectByDefault.disabled).toList
 				val count = exported.length
 				val (selected, tail) = columnStack.splitAt(count)
@@ -448,8 +449,9 @@ trait ColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 
 	override def format :String = name
 
-
-	override def columns :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.single(this)
+	override def components :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
+	override def subcomponents :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
+	override val columns :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.single(this)
 	override def selectable :Unique[ColumnSQLMapping[F, S, X, O]] = columns
 	override def filterable :Unique[ColumnSQLMapping[F, S, X, O]] = columns
 	override def updatable :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
@@ -485,7 +487,6 @@ object ColumnSQLMapping {
 		new ColumnSQLMapping[F, S, X, O] {
 			override val expr = column
 			override val name :String = if (alias != null) alias else super.name
-			override val columns :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.single(this)
 			override val form = super.form
 			override val selectForm :ColumnReadForm[X] = expr.readForm
 		}
@@ -549,6 +550,8 @@ sealed trait IndexedMapping[S, O] extends BaseMapping[S, O] {
 
 
 sealed trait IndexedColumnMapping[S, O] extends IndexedMapping[S, O] with ColumnMapping[S, O] {
+	override def components :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def subcomponents :Unique[IndexedColumnMapping[S, O]] = Unique.empty
 	override def columns :Unique[IndexedColumnMapping[S, O]] = Unique.single(this)
 	override def selectable :Unique[IndexedColumnMapping[S, O]] = columns
 	override def filterable :Unique[IndexedColumnMapping[S, O]] = columns
@@ -780,6 +783,8 @@ trait ListingColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope,
 {
 	override val expr :ListingColumn[F, S, N, X]
 
+	override def components :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def subcomponents :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
 	override val columns :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.single(this)
 	override def selectable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
 	override def filterable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns

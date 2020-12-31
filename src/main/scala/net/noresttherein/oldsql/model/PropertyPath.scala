@@ -49,7 +49,7 @@ import slang._
   * @tparam X type of accepted argument (property owner).
   * @tparam Y return type of the property.
   * @author Marcin Mościcki
-  */
+  */ //todo: in Scala 3, this should become serializable
 sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val definedFor :Type, final val fun :X => Y)  {
 
 	/** Concatenated names of all methods called by fun/this instance on its argument, separated by '.'. */

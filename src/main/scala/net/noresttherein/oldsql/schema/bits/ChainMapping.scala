@@ -5,11 +5,12 @@ import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, MappingExtract}
+import net.noresttherein.oldsql.schema.bases.ExportMapping
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{EmptySchema, FlatMappingSchema, NonEmptyFlatSchema, NonEmptySchema}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
-import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ExportProxy}
 
 
 
@@ -84,19 +85,10 @@ object ChainMapping {
 
 
 
-	trait BaseChainMapping[V <: Chain, C <: Chain, O] extends SchemaMapping[V, V, C, O] with MappingSchema[V, V, C, O] {
-
+	trait BaseChainMapping[V <: Chain, C <: Chain, O]
+		extends SchemaMapping[V, V, C, O] with MappingSchema[V, V, C, O]
+	{
 		override val schema :MappingSchema[V, V, C, O] = this
-
-		override def export[T](component :Component[T]) :Component[T] = component
-
-		override def export[T](column :Column[T]) :Column[T] = column
-
-
-//		abstract override val extracts :NaturalMap[Component, Extract] = packedExtracts
-//
-//		abstract override val columnExtracts :NaturalMap[Column, ColumnExtract] = packedColumnExtracts
-
 	}
 
 
@@ -167,16 +159,13 @@ object ChainMapping {
 	  */
 	private[schema] class ChainPrefixSchema[S <: V ~ Any, V <: Chain, C <: Chain, O]
 	                                       (protected val backer :MappingSchema[V, V, C, O])
-		extends MappingSchema[S, V, C, O] with DirectProxy[V, O]
+		extends MappingSchema[S, V, C, O] with ExportProxy[V, O]
 	{
-
-		override def optionally(pieces :Pieces) :Option[V] = backer.optionally(pieces)
-
+		override def optionally(pieces :Pieces) :Option[V] = pieces.assemble(this)
 
 		override def unapply(subject :S) :Option[V] = backer.unapply(subject.init)
 
 		override def disassemble(subject :S) :V = backer.disassemble(subject.init)
-
 
 
 		override def members :C = backer.members
@@ -188,13 +177,11 @@ object ChainMapping {
 			backer.prev compose Chain.init[V] _
 
 
-
 		override def extract[X](component :Component[X]) :MappingExtract[S, X, O] =
 			backer.extract(component) compose Chain.init[V] _
 
 		override def extract[X](column :Column[X]) :ColumnMappingExtract[S, X, O] =
 			backer.extract(column) compose Chain.init[V] _
-
 
 
 		override val packedExtracts :NaturalMap[Component, PackedExtract] =
@@ -204,16 +191,13 @@ object ChainMapping {
 			backer.packedColumnExtracts.map(oldsql.schema.composeColumnExtractAssoc(this, Chain.init[V] _)(_))
 
 
-
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
 			backer compose (extractor andThen Chain.init[V] _)
-
 
 
 		override protected[schema] def componentsReversed :List[Component[_]] = backer.componentsReversed
 		override protected[schema] def subcomponentsReversed :List[Component[_]] = backer.subcomponentsReversed
 		override protected[schema] def columnsReversed :List[Column[_]] = backer.columnsReversed
-
 	}
 
 

@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnReadFor
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, Subselect}
 import net.noresttherein.oldsql.sql.RowProduct.As
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
@@ -26,17 +26,16 @@ import slang._
   */
 object playground extends App {
 
-
-	class A[O] extends FormMapping[Int, O]
-	class B[O] extends FormMapping[Int, O]
-	class C[O] extends FormMapping[Int, O]
-	class D[O] extends FormMapping[Int, O]
-	class E[O] extends FormMapping[Int, O]
-	val A :Relation[A] = Relation("A", new A[Any])
-	val B :Relation[B] = Relation("B", new B[Any])
-	val C :Relation[C] = Relation("C", new C[Any])
-	val D :Relation[D] = Relation("D", new D[Any])
-	val E :Relation[E] = Relation("E", new E[Any])
+//	class A[O] extends FormMapping[Int, O]
+//	class B[O] extends FormMapping[Int, O]
+//	class C[O] extends FormMapping[Int, O]
+//	class D[O] extends FormMapping[Int, O]
+//	class E[O] extends FormMapping[Int, O]
+//	val A :Relation[A] = Relation("A", new A[Any])
+//	val B :Relation[B] = Relation("B", new B[Any])
+//	val C :Relation[C] = Relation("C", new C[Any])
+//	val D :Relation[D] = Relation("D", new D[Any])
+//	val E :Relation[E] = Relation("E", new E[Any])
 
 //	type With[T[O] <: MappingAt[O]] = RowProduct
 //	type AndWith[+L <: RowProduct, T[O] <: MappingAt[O]] = RowProduct
@@ -48,11 +47,12 @@ object playground extends App {
 //	type Def2 = Select With A With B With C From A
 
 //	val f = From(A) as "A" param[Int] "int" param[Long] "long" param[String] "string"
-	val f :From[A] As "A" WithParam Int WithParam Long WithParam String = null
+//	val f :From[A] As "A" WithParam Int WithParam Long WithParam String = null
 //	val res = f("string")(1L)(1)
 //	res :From[A]
 	println(scala.reflect.runtime.universe.reify(
-		f.apply("A")
+//		f.apply("A")
+//		refined.withOrigin["X"]
 	).tree)
 
 //	val a = f("A")

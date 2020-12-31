@@ -2,18 +2,18 @@ package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit}
-import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit, SelectDefault}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.OptionMapping
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
-import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, MappedMapping, PrefixedMapping}
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 
 
 
@@ -55,7 +55,10 @@ trait BaseMapping[S, O] extends Mapping { self =>
 			def componentValues[X](comp :Component[X]) :Unit = {
 				apply(comp).get(audited) match {
 					case Some(value) => comp.writtenValues(op, value, collector)
-					case _ =>
+					case _ => op.default.Value(comp) match {
+						case Some(value) => comp.writtenValues(op, value, collector)
+						case _ =>
+					}
 				}
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -71,7 +74,7 @@ trait BaseMapping[S, O] extends Mapping { self =>
 		case res if buffs.isEmpty => res //a very common case
 		case Some(res) => Some((res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
 		case _ =>
-			val res = OptionalSelect.Value(this)
+			val res = SelectDefault.Value(this)
 			if (res.isDefined) res
 			else ExtraSelect.Value(this)
 	}
@@ -170,6 +173,9 @@ trait BaseMapping[S, O] extends Mapping { self =>
 		if (prefix.length == 0) this
 		else PrefixedMapping[BaseMapping[S, O], S, O](prefix, this)
 
+	override def renamed(naming :String => String) :Component[S] =
+		RenamedMapping[this.type, S, O](this :this.type, naming)
+
 
 
 	override def inOption :Optional[this.type] = OptionMapping.singleton(this)
@@ -208,28 +214,5 @@ object BaseMapping {
 		OriginProjection.isomorphism[M, S, O]
 
 }
-
-
-
-
-
-
-/** A `Mapping` subclass which, in its `optionally` (and indirectly `apply`) method, declares aliasing
-  * of its components on the passed `Pieces`. Some mappings (and possibly their components) allow
-  * declaring a column prefix to be added to all its columns, as well as additional buffs, which should be inherited
-  * by all of its subcomponents (including columns), so a component, as defined, can be a different instance from its
-  * final representation included on the mapping's component/column lists. As it is the latter version of the component
-  * which is used by the framework to create any SQL statements, and thus also by the `Pieces`, but typically
-  * the former is used in the assembly process, there is a need to introduce a mapping step in which the `Pieces`
-  * implementation substitutes any component passed to it with its export representation before looking for its value.
-  *
-  */
-trait RootMapping[S, O] extends BaseMapping[S, O] {
-
-	override def optionally(pieces :Pieces) :Option[S] =
-		super.optionally(pieces.aliased(this))
-
-}
-
 
 

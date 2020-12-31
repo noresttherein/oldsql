@@ -2,8 +2,9 @@ package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.model.Restraint.{BooleanRestraint, False, True}
 import net.noresttherein.oldsql.model.Restrictive.{Collection, Literal, TranslableTerm}
-
 import scala.reflect.runtime.universe.TypeTag
+
+import net.noresttherein.oldsql.model.types.LiteralSupport
 
 /** A trait extended by various model classes in order to include the implicits inside its companion object
   * in the search of implicit conversions. This allows one to both use automatic implicit resolution
@@ -63,17 +64,7 @@ object implicits extends StandardFallbackImplicits {
 		Collection(collection)
 
 
-	@inline implicit def literalRestrictive(byte :Byte) :Restrictive[Any, Byte] = Literal(byte)
-	@inline implicit def literalRestrictive(short :Short) :Restrictive[Any, Short] = Literal(short)
-	@inline implicit def literalRestrictive(int :Int) :Restrictive[Any, Int] = Literal(int)
-	@inline implicit def literalRestrictive(long :Long) :Restrictive[Any, Long] = Literal(long)
-	@inline implicit def literalRestrictive(float :Float) :Restrictive[Any, Float] = Literal(float)
-	@inline implicit def literalRestrictive(double :Double) :Restrictive[Any, Double] = Literal(double)
-	@inline implicit def literalRestrictive(char :Char) :Restrictive[Any, Char] = Literal(char)
-	@inline implicit def literalRestrictive(boolean :Boolean) :Restrictive[Any, Boolean] = Literal(boolean)
-	
-	@inline implicit def literalRestrictive(big :BigInt) :Restrictive[Any, BigInt] = Literal(big)
-	@inline implicit def literalRestrictive(big :BigDecimal) :Restrictive[Any, BigDecimal] = Literal(big)
+	@inline implicit def literalRestrictive[T :LiteralSupport](literal :T) :Restrictive[Any, T] = Literal(literal)
 	@inline implicit def literalRestrictive[T](string :String) :Restrictive[T, String] = Literal(string)
 	
 

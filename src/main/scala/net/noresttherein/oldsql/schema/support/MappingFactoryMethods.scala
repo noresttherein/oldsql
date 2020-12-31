@@ -81,7 +81,9 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 	override def qualified(prefix :String) :A[S] =
 		if (prefix.length == 0) prefixed("") else prefixed(prefix + ".")
 
-	override def prefixed(prefix :String) :A[S]
+	override def prefixed(prefix :String) :A[S] = renamed(prefix + _)
+
+	override def renamed(naming :String => String) :A[S]
 
 
 
@@ -203,6 +205,9 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 
 	/** A column with exactly the same components, buffs and implementation as this one, but the new `name`. */
 	def rename(name :String) :A[S] = copy(name, buffs)
+
+	/** A column with exactly the same components, buffs and implementation as this one, but the new `name`. */
+	override def renamed(naming :String => String) :A[S] = copy(naming(name), buffs)
 
 	override def prefixed(prefix :String) :A[S] =
 		if (prefix.length == 0) thisColumn else rename(prefix + name)

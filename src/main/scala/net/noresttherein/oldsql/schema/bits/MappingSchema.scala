@@ -10,19 +10,20 @@ import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
-import net.noresttherein.oldsql.schema.{bits, cascadeBuffs, composeExtractAssoc, filterColumnExtracts, Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, ComponentValues, Mapping, MappingExtract, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{bits, cascadeBuffs, composeExtractAssoc, filterColumnExtracts, Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, Mapping, MappingExtract, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
+import net.noresttherein.oldsql.schema.bases.{BaseMapping, ExportMapping, LazyMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.LabelPath./
 import net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
 import net.noresttherein.oldsql.schema.support.{AlteredMapping, DelegateMapping}
-import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ExportProxy}
 
 
 
@@ -497,10 +498,6 @@ object MappingSchema {
 
 		private[MappingSchema] final def columnPrefix :String = prefix
 
-
-		override def export[T](component :Component[T]) :Component[T] = component
-		override def export[T](column :Column[T]) :Column[T] = column
-
 		protected[schema] def conveyBuffs[T](extractor :S => T, buffs :Seq[Buff[T]]) :Seq[Buff[T]] =
 			if (buffs.isEmpty) packedBuffs.flatMap(_.cascade(extractor))
 			else if (packedBuffs.isEmpty) buffs
@@ -964,7 +961,7 @@ object MappingSchema {
 		  * avoids assembling the value chain by this schema altogether, as well as the linear access tax of elements
 		  * from the chain. This allows direct passing of factory methods from companion objects as arguments
 		  * to this method. Note that the values of components are accessed 'forcibly'
-		  * from the [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] passed for assembly rather than
+		  * from the [[ComponentValues ComponentValues]] passed for assembly rather than
 		  * by the `Option` returning `get` method and, instead, `NoSuchElementException` exceptions are caught
 		  * and translated to a `None` result in the [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 		  * method. The created `Mapping`, regardless if by mapping the value chain or using direct component access,
@@ -2293,9 +2290,7 @@ object MappingSchema {
 		private[this] val result = Some(@~)
 
 		override def unapply(subject :S): Option[@~] = result
-
 		override def disassemble(subject :S): @~ = @~
-
 
 
 		override def prev[I <: Chain, P <: Chain](implicit vals: @~ <:< (I ~ Any), comps: @~ <:< (P ~ Any))
@@ -2306,13 +2301,16 @@ object MappingSchema {
 			throw new NoSuchElementException("EmptySchema.last")
 
 
-
 		override def members: @~ = @~
 
-		private[this] val extractor :MappingExtract[S, @~, O] = MappingExtract.const(this)(@~)
+		private[this] val extractor :MappingExtract[Any, @~, O] = MappingExtract.const(this)(@~)
 
-		override def packedExtracts :NaturalMap[Component, PackedExtract] = NaturalMap.empty
-//			NaturalMap.single[Component, PackedExtract, @~](this, extractor)
+		private[this] val extractMap = NaturalMap.single[Component, Extract, @~](this, extractor)
+		override def extracts = extractMap
+		override def columnExtracts = NaturalMap.empty[Column, ColumnExtract]
+
+		override val packedExtracts :NaturalMap[Component, PackedExtract] =
+			NaturalMap.single[Component, PackedExtract, @~](this, extractor)
 
 		override def packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] = NaturalMap.empty
 
@@ -2327,10 +2325,8 @@ object MappingSchema {
 			throw new IllegalArgumentException(s"Column $column is not a part of this empty mapping schema.")
 
 
-
 		override def compose[X](extractor :X =?> S) :EmptySchema[X, O] =
 			this.asInstanceOf[EmptySchema[X, O]]
-
 
 
 		protected[schema] override def componentsReversed :List[Nothing] = Nil
@@ -2407,7 +2403,7 @@ object MappingSchema {
 
 		protected def link(init :V, last :T) :V L E
 
-		override def assemble(pieces :Pieces) :Option[V L E] =
+		override def assemble(pieces :Pieces) :Option[V L E] = //todo: the dillema of null values
 			for (i <- pieces.get(initExtract); l <- pieces.get(componentExtract)) yield link(i, l)
 
 
@@ -2593,12 +2589,20 @@ object MappingSchema {
 
 	/** Result of filtering the components of the schema `original`,
 	  * adding the components removed from the `members` chain as well as synthetic components specific to `original`.
-	  * Used as the backing mapping of `AlteredSchema`.
+	  * Used as the backing mapping of `AlteredSchema`: because the `SchemaMapping` owning `original` may refer
+	  * to its synthetic components (i.e., other than those listed in members - in particular `original` itself),
+	  * and almost certainly uses the components from `original.members` which were excluded in `backer`,
+	  * these components need to be present in the schema of the altered mapping. This schema therefore adds empty
+	  * extracts for all those missing components. No buffs are changed by this class: only the `members` and other
+	  * component/column lists are altered to reflect to contain only 'public' components, that is those
+	  * of the filtered `backer`.
+	  * @param original the mapping schema which is being altered for some operation
+	  * @param backer a mapping schema recreated from `original` by filtering its `members` chain.
 	  */
-	private[schema] class FilteredSchema[S, V <: Chain, C <: Chain, O]
-	                                    (original :MappingSchema[S, _ <: Chain, _ <: Chain, O],
-	                                     protected override val backer :MappingSchema[S, V, C, O])
-		extends DirectProxy[V, O] with MappingSchemaProxy[S, V, C, O]
+	private class FilteredSchema[S, V <: Chain, C <: Chain, O]
+	                            (original :MappingSchema[S, _ <: Chain, _ <: Chain, O],
+	                             protected override val backer :MappingSchema[S, V, C, O])
+		extends ExportProxy[V, O] with MappingSchemaProxy[S, V, C, O]
 	{
 		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
 		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
@@ -2650,7 +2654,7 @@ object MappingSchema {
 	                                    include :Iterable[RefinedMapping[_, O]],
 	                                    exclude :Iterable[RefinedMapping[_, O]])
 		extends AlteredMapping[MappingSchema[S, V, C, O], V, O](
-		                          new FilteredSchema[S, V, C, O](original, filtered), op, include, exclude)
+				new FilteredSchema[S, V, C, O](original, filtered), op, include, exclude)
 		   with MappingSchemaProxy[S, V, C, O]
 	{
 		def this(original :MappingSchema[S, _ <: Chain, _ <: Chain, O], filtered :MappingSchema[S, V, C, O],

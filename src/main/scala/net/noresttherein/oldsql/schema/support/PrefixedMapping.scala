@@ -2,28 +2,85 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
-import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy
 
 
 
 
 
 
-class PrefixedMapping[M <: RefinedMapping[S, O], S, O](val prefix :String, protected override val backer :M)
-	extends EagerDeepProxy[S, O](backer) with DelegateMapping[M, S, O]
+class RenamedMapping[M <: RefinedMapping[S, O], S, O](protected override val backer :M, rename :String => String)
+	extends DeepProxy[S, O](backer) with DelegateMapping[M, S, O]
+{
+	override protected def adapt[T](component :backer.Component[T]) :Component[T] = component.renamed(rename)
+	override protected def adapt[T](column :backer.Column[T]) :Column[T] = column.renamed(rename)
+
+	override def qualified(prefix :String) :Component[S] =
+		if (prefix.length == 0) this else prefixed(prefix + ".")
+
+	override def prefixed(prefix :String) :Component[S] =
+		if (prefix.length == 0) this else renamed(prefix + _)
+
+	override def renamed(naming :String => String) :Component[S] =
+		new RenamedMapping[M, S, O](backer, rename andThen naming)
+
+	override def toString :String = backer.toString + ".renamed"
+}
+
+
+
+object RenamedMapping {
+
+	def apply[M <: RefinedMapping[S, O], S, O](component :M, rename :String => String) :Adapted[M] =
+		new RenamedMapping[M, S, O](component, rename) with DelegateAdapter[M, S, O] {
+
+			override def qualified(prefix :String) :Adapted[M] =
+				if (prefix.length == 0) this else prefixed(prefix + ".")
+
+			override def prefixed(prefix :String) :Adapted[M] =
+				if (prefix.length == 0) this else renamed(prefix + _)
+
+			override def renamed(naming :String => String) :Adapted[M] =
+				RenamedMapping[M, S, O](backer, rename andThen naming)
+		}
+
+
+	def apply[M <: MappingAt[O], S, O](adapter :MappingAdapter[M, S, O], rename :String => String)
+			:MappingAdapter[M, S, O] =
+		new RenamedMapping[MappingAdapter[M, S, O], S, O](adapter, rename) with ComposedAdapter[M, S, S, O] {
+
+			override def qualified(prefix :String) :MappingAdapter[M, S, O] =
+				if (prefix.length == 0) this else prefixed(prefix + ".")
+
+			override def prefixed(prefix :String) :MappingAdapter[M, S, O] =
+				if (prefix.length == 0) this else renamed(prefix + _)
+
+			override def renamed(naming :String => String) :MappingAdapter[M, S, O] =
+				RenamedMapping[M, S, O](backer, rename andThen naming)
+		}
+
+}
+
+
+
+
+
+
+class PrefixedMapping[M <: RefinedMapping[S, O], S, O](protected val prefix :String, protected override val backer :M)
+	extends DeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
 	protected override def adapt[T](component :Component[T]) :Component[T] = component.prefixed(prefix)
-
 	protected override def adapt[T](column :Column[T]) :Column[T] = column.prefixed(prefix)
 
 	override def qualified(prefix :String) :Component[S] =
-		if (prefix.length == 0) this
-		else new PrefixedMapping[M, S, O](prefix + "." + this.prefix, backer)
+		if (prefix.length == 0) this else prefixed(prefix + ".")
 
 	override def prefixed(prefix :String) :Component[S] =
 		if (prefix.length == 0) this
 		else new PrefixedMapping[M, S, O](prefix + this.prefix, backer)
 
+	override def renamed(naming :String => String) :Component[S] =
+		new RenamedMapping[M, S, O](backer, name => naming(prefix + name))
 
 
 	override def toString :String = prefix + backer
@@ -37,13 +94,14 @@ object PrefixedMapping {
 		new PrefixedMapping[M, S, O](prefix, component) with DelegateAdapter[M, S, O] {
 
 			override def qualified(prefix :String) :Adapted[M] =
-				if (prefix.length == 0) this
-				else PrefixedMapping[M, S, O](prefix + "." + this.prefix, backer)
+				if (prefix.length == 0) this else prefixed(prefix + ".")
 
 			override def prefixed(prefix :String) :Adapted[M] =
 				if (prefix.length == 0) this
 				else PrefixedMapping[M, S, O](prefix + this.prefix, backer)
 
+			override def renamed(naming :String => String) :Adapted[M] =
+				RenamedMapping[M, S, O](backer, name => naming(prefix + name))
 		}
 
 
@@ -51,13 +109,14 @@ object PrefixedMapping {
 		new PrefixedMapping[MappingAdapter[M, S, O], S, O](prefix, adapter) with ComposedAdapter[M, S, S, O] {
 
 			override def qualified(prefix :String) :MappingAdapter[M, S, O] =
-				if (prefix.length == 0) this
-				else PrefixedMapping[M, S, O](prefix + "." + this.prefix, backer)
+				if (prefix.length == 0) this else prefixed(prefix + ".")
 
 			override def prefixed(prefix :String) :MappingAdapter[M, S, O] =
 				if (prefix.length == 0) this
 				else PrefixedMapping[M, S, O](prefix + this.prefix, backer)
 
+			override def renamed(naming :String => String) :MappingAdapter[M, S, O] =
+				RenamedMapping[M, S, O](backer, name => naming(prefix + name))
 		}
 
 

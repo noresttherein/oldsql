@@ -1,5 +1,11 @@
 package net.noresttherein.oldsql.model
 
+import net.noresttherein.oldsql.model.EntityIdentity.NoPrimaryKeyException
+import net.noresttherein.oldsql.schema.SQLForm
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+
+
+
 
 
 
@@ -136,4 +142,6 @@ object PK {
 	}
 
 
+	implicit def KeyForm[T, K :SQLForm] :SQLForm[Key[T, K]] =
+		SQLForm.map[K, Key[T, K]]("Key[" + SQLForm[K] + "]")(PersistentPK.apply[T, K])(_.key)
 }

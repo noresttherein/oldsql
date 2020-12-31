@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.Buff.{AuditBuffType, BuffType, ExplicitFilter, ExplicitInsert, ExplicitSelect, ExplicitUpdate, ExtraFilter, ExtraInsert, ExtraSelect, ExtraUpdate, FilterAudit, FlagBuffType, InsertAudit, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalFilter, OptionalInsert, OptionalSelect, OptionalUpdate, SelectAudit, UpdateAudit, ValueBuffType}
-import net.noresttherein.oldsql.schema.{ColumnMapping, ComponentValues, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.haul.ComponentValues
+import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.Buff.{AbstractValueBuff, AuditBuffType, BuffType, ExplicitFilter, ExplicitInsert, ExplicitSelect, ExplicitUpdate, ExtraFilter, ExtraInsert, ExtraSelect, ExtraUpdate, FilterAudit, FlagBuffType, InsertAudit, InsertDefault, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalFilter, OptionalInsert, OptionalSelect, OptionalUpdate, SelectAudit, SelectDefault, UpdateAudit, UpdateDefault, ValueBuffType}
+import net.noresttherein.oldsql.schema.{ColumnMapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 
 
@@ -65,6 +66,10 @@ sealed trait OperationType {
 	  */
 	val audit :AuditBuffType
 
+	/** A buff carrying a default value which should be inserted/updated if the written entity is missing one
+	  * for the component (in write operations) or returned if none can be assembled (when selecting). */
+	val default :ValueBuffType
+
 	/** All columns, direct or indirect, of the given mapping which are applicable to this operation type. 
 	  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
 	  * the [[net.noresttherein.oldsql.OperationType.prohibited prohibited]] buff.
@@ -122,6 +127,7 @@ object OperationType {
 		override val explicit = ExplicitSelect
 		override val optional = OptionalSelect
 		override val audit = SelectAudit
+		override val default = SelectDefault
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.selectable
 
@@ -149,6 +155,7 @@ object OperationType {
 		override val explicit = ExplicitFilter
 		override val optional = OptionalFilter
 		override val audit = FilterAudit
+		override val default = AbstractValueBuff
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.filterable
 
@@ -183,6 +190,7 @@ object OperationType {
 		override val explicit = ExplicitUpdate
 		override val optional = OptionalUpdate
 		override val audit = UpdateAudit
+		override val default = UpdateDefault
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatable
 
@@ -217,6 +225,7 @@ object OperationType {
 		override val explicit = ExplicitInsert
 		override val optional = OptionalInsert
 		override val audit = InsertAudit
+		override val default = InsertDefault
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.insertable
 

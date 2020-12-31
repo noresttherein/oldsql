@@ -2,18 +2,21 @@ package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.haul.ColumnValues
+import net.noresttherein.oldsql.haul.ComponentValues
+import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraSelect, FilterAudit, InsertAudit, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalSelect, SelectAudit, UpdateAudit}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ConstantBuff, ExtraFilter, ExtraInsert, ExtraSelect, ExtraUpdate, FilterAudit, InsertAudit, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, Nullable, OptionalSelect, SelectAudit, SelectDefault, UpdateAudit, ValueBuffType}
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.ComponentValues.{ColumnValues, ComponentValuesBuilder}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.support.ColumnMappingFactoryMethods
+import net.noresttherein.oldsql.schema.bases.{BaseMapping, ExportMapping}
+import net.noresttherein.oldsql.schema.support.{ColumnMappingFactoryMethods, MappedMapping}
+import net.noresttherein.oldsql.schema.support.MappingProxy.ExportColumnProxy
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn
@@ -24,18 +27,32 @@ import net.noresttherein.oldsql.sql.mechanics.TableCount
 
 
 
-/** A `Mapping` representing a single SQL column of a table or select result.
-  * It is special in that it is atomic, the smallest building block in the `Mapping` component hierarchy.
-  * Columns are never assembled (their `assemble` method returns `None`) but must be present in `ComponentValues`
-  * for the mapping to produce a value. Additionally, it can never have any components (or subcomponents),
-  * but it is its own column to maintain the invariant that the `columns` property always returns the complete list
-  * of columns comprising any mapping. As follows, the rest of the column lists are either empty or contain
-  * this sole instance itself, depending on the presence of specific buffs. Unlike other mapping implementations,
-  * which are adaptable by operations such as mapping and prefixing, transformation methods on columns
-  * return a new instance, using the form (and, where suitable, the name and buffs) of the original as their basis.
+/** A `Mapping` representing a single SQL column of a table or select result. They behave in principle just like
+  * all other [[net.noresttherein.oldsql.schema.Mapping Mapping]] implementations, but are the bottom components
+  * in the whole mapping hierarchy, as they typically contain no other subcomponents and can always be used
+  * in ''select'' clauses of an SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL select]]. Their value is not in general
+  * assembled like the subjects of other mappings, but read by their
+  * [[net.noresttherein.oldsql.schema.ColumnMapping.form form]] and preset in
+  * [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]] for every `ResultSet` row.
+  * If their [[net.noresttherein.oldsql.schema.ColumnMapping.components components]]
+  * and [[net.noresttherein.oldsql.schema.ColumnMapping.subcomponents subcomponents]] lists are empty,
+  * they must always contain themselves in their [[net.noresttherein.oldsql.schema.ColumnMapping.columns columns]] list
+  * (and other column lists, depending on attached buffs). Most columns extend
+  * from [[net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn SimpleColumn]] or its subclass,
+  * [[net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn StandardColumn]], having an empty
+  * [[net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn.assemble assemble]] method, rather than this trait
+  * directly. Relying solely on their `form`, they are often treated as value types: various transformation methods
+  * which for other mappings would create adapters serving as proxies to the original mapping, simply create
+  * a new column instance, with possibly modified name/buffs/form. Otherwise, if the column is an adapter
+  * to another column, their [[net.noresttherein.oldsql.schema.ColumnMapping.columns columns]] list (and its specific
+  * variants) must contain the single export version of the actual bottom column, reported recursively
+  * by the adapted column. The presence of that bottom column on `components` and `subcomponents` is optional,
+  * but no other column should be included. As always, however,
+  * [[net.noresttherein.oldsql.schema.ColumnMapping.columnExtracts columnExtracts]] should contain extracts
+  * for all intermediate columns as well.
   */
-trait ColumnMapping[S, O] extends BaseMapping[S, O]
-	with ColumnMappingFactoryMethods[({ type A[X] = ColumnMapping[X, O] })#A, S, O]
+trait ColumnMapping[S, O]
+	extends BaseMapping[S, O] with ColumnMappingFactoryMethods[({ type A[X] = ColumnMapping[X, O] })#A, S, O]
 { column =>
 
 	/** The name of this column, as seen from the containing table if it is a table/view column.
@@ -45,7 +62,6 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	  * applied.
 	  */
 	def name :String
-
 
 
 	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
@@ -69,18 +85,17 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 
-	/** Columns are never assembled from subcomponents; this method always returns `None`. */
+	/** Columns are not typically assembled from subcomponents; this method by default returns `None`
+	  * and there should be little need to override it.
+	  */
 	override def assemble(pieces: Pieces): Option[S] = None
 
 	/** Attempts to retrieve the value for the mapped `Subject` from the given `ComponentValues`. The behaviour for
 	  * columns is roughly equivalent to that of components, as implemented by default in
-	  * [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]. The primary reason of course is that
-	  * values are never assembled: if none is present in `pieces`, and the column has neither
-	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] nor
-	  * [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]] buff, this method will simply return `None`;
-	  * otherwise the value in the buff will be used. The second difference is that if the preset value is `null`,
-	  * and this column does not have [[net.noresttherein.oldsql.schema.Buff.Nullable Nullable]] buff, it purposefully
-	  * throws a `NullPointerException`. As in the overriden implementation,
+	  * [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]. The difference is that columns without
+	  * [[net.noresttherein.oldsql.schema.Buff.Nullable Nullable]] buff will never return `Some(null)`,
+	  * but throw a `NullPointerException` with an appropriate message. As with other mappings, this behaviour
+	  * can however be overriden. As in the overriden implementation,
 	  * any [[net.noresttherein.oldsql.schema.Buff.SelectAudit SelectAudit]] buffs are applied, in order,
 	  * to the returned value (but only if it comes from `pieces`, not other buffs).  Because preset values typically
 	  * come directly from this column's [[net.noresttherein.oldsql.schema.ColumnMapping.selectForm selectForm]],
@@ -88,19 +103,39 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	  * @throws `NullPointerException` if the preset value is explicitly stated as `null` (`pieces.preset(this)`
 	  *                                returned `Some(null)`), but this column does not have the `Nullable` buff.
 	  */
-	override def optionally(pieces :Pieces) :Option[S] = pieces.preset(this) match {
+	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
 		case res @ Some(x) => //a very common case
 			if (x == null && !isNullable)
 				throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
 				                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
 			else if (buffs.isEmpty)
 				res
-			else
-				Some((x /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
-		case _ =>
-			val res = OptionalSelect.Value(this)
-			if (res.isDefined) res
-			else ExtraSelect.Value(this)
+			else selectAudit match {
+				case Some(audit) => Some(audit(x))
+				case _ => res
+			}
+		case _ => defaultValue
+	}
+
+	/** Functions from all [[net.noresttherein.oldsql.schema.Buff.SelectAudit SelectAudit]] buffs
+	  * composed with each other. It is applied to every value returned by the form or
+	  * [[net.noresttherein.oldsql.schema.ColumnMapping.assemble assemble]] method.
+	  */
+	protected def selectAudit :Option[S => S] = {
+		val audits = SelectAudit.Audit(this)
+		if (audits.isEmpty) None
+		else Some(audits.reduce(_ andThen _))
+	}
+
+	/** The value returned by [[net.noresttherein.oldsql.schema.ColumnMapping.optionally optionally]]
+	  * if no actual value is present in [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]],
+	  * nor can one be assembled from subcolumns.
+	  * @return [[net.noresttherein.oldsql.schema.Buff.SelectDefault SelectDefault]]`.`[[net.noresttherein.oldsql.schema.Buff.ValueBuffType.Value Value]]`(this)`
+	  *         `orElse` [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]]`.Value(this)`.
+	  */
+	protected def defaultValue :Option[S] = {
+		val res = SelectDefault.Value(this)
+		if (res.isDefined) res else ExtraSelect.Value(this)
 	}
 
 	/** @inheritdoc
@@ -117,24 +152,6 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 
 
 
-	override def apply[T](component :Component[T]) :Extract[T] =
-		if (component == this)
-			ColumnExtract.ident[S, O](this).asInstanceOf[Extract[T]]
-		else
-			throw new IllegalArgumentException(
-				s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
-			)
-
-	override def apply[T](column :Column[T]) :ColumnExtract[T] =
-		if (column == this)
-			ColumnExtract.ident[S, O](this).asInstanceOf[ColumnExtract[T]]
-		else
-			throw new IllegalArgumentException(
-				s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
-			)
-
-
-
 	override def columnExtracts :NaturalMap[Column, ColumnExtract] =
 		NaturalMap.single[Column, ColumnExtract, S](this, ColumnExtract.ident(this))
 
@@ -142,38 +159,31 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 		NaturalMap.single[Component, ColumnExtract, S](this, ColumnExtract.ident(this))
 
 
-
-	override def export[T](component :Component[T]) :Component[T] = component
-
-	override def export[T](column :Column[T]) :Column[T] = column
-
-
-
 	/** Returns `Unique.empty`. */
-	final override def components :Unique[Nothing] = Unique.empty
+	override def components :Unique[Column[_]] = Unique.empty
 	/** Returns `Unique.empty`. */
-	final override def subcomponents :Unique[Nothing] = Unique.empty
+	override def subcomponents :Unique[Column[_]] = Unique.empty
 
 	/** Returns `Unique(this)`. */
-	override def columns :Unique[Column[S]] = Unique.single(this)
+	override def columns :Unique[Column[_]] = Unique.single(this)
 
-	override def selectable :Unique[Column[S]] = selfUnless(NoSelect)
-	override def filterable :Unique[Column[S]] = selfUnless(NoFilter)
-	override def updatable :Unique[Column[S]] = selfUnless(NoUpdate)
-	override def autoUpdated :Unique[Column[S]] = selfIf(AutoUpdate)
- 	override def insertable :Unique[Column[S]] = selfUnless(NoInsert)
-	override def autoInserted :Unique[Column[S]] = selfIf(AutoInsert)
-	override def selectedByDefault :Unique[Column[S]] = selfUnless(NoSelectByDefault)
-	override def filteredByDefault :Unique[Column[S]] = selfUnless(NoFilterByDefault)
-	override def updatedByDefault :Unique[Column[S]] = selfUnless(NoUpdateByDefault)
-	override def insertedByDefault :Unique[Column[S]] = selfUnless(NoInsertByDefault)
+	override def selectable :Unique[Column[_]] = selfUnless(NoSelect)
+	override def filterable :Unique[Column[_]] = selfUnless(NoFilter)
+	override def updatable :Unique[Column[_]] = selfUnless(NoUpdate)
+	override def autoUpdated :Unique[Column[_]] = selfIf(AutoUpdate)
+ 	override def insertable :Unique[Column[_]] = selfUnless(NoInsert)
+	override def autoInserted :Unique[Column[_]] = selfIf(AutoInsert)
+	override def selectedByDefault :Unique[Column[_]] = selfUnless(NoSelectByDefault)
+	override def filteredByDefault :Unique[Column[_]] = selfUnless(NoFilterByDefault)
+	override def updatedByDefault :Unique[Column[_]] = selfUnless(NoUpdateByDefault)
+	override def insertedByDefault :Unique[Column[_]] = selfUnless(NoInsertByDefault)
 
 	/** An empty `Unique` if the given buff is ''disabled'' (not attached), or a singleton `Unique(this)` otherwise. */
-	@inline protected final def selfUnless(buff :BuffType) :Unique[Column[S]] =
+	@inline protected final def selfUnless(buff :BuffType) :Unique[Column[_]] =
 		if (buff.enabled(buffs)) Unique.empty else columns
 
 	/** An empty `Unique` if the given buff is ''enabled'' (attached), or a singleton `Unique(this)` otherwise. */
-	@inline protected final def selfIf(buff :BuffType) :Unique[Column[S]] =
+	@inline protected final def selfIf(buff :BuffType) :Unique[Column[_]] =
 		if (buff.disabled(buffs)) Unique.empty else columns
 
 
@@ -184,32 +194,20 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	  */
 	def form :ColumnForm[S]
 
-	/** `this.form` adapted to a `SQLReadForm` by incorporating some of behaviour modifications caused by applied buffs.
-	  * This includes default values from buffs like `OptionalSelect` and transformations from `AuditBuff`s and similar.
-	  * It doesn't verify if the column is selectable by default or at all, returning always (possibly decorated)
-	  * `this.form`, unless [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]] is present, in which case
-	  * a constant `SQLReadForm` is returned, which does not read anything from the `ResultSet`. In all other cases,
-	  * the returned form is a [[net.noresttherein.oldsql.schema.ColumnReadForm ColumnReadForm]].
-	  * Note that the `optionally`/`apply` and `assembly` methods of this mapping are ''not'' called by the returned
-	  * form. They are involved only as a part of the assembly process for owning components, provided
-	  * by the created `ComponentValues` containing the value returned by this form instead.
+	/** Default form for this column to use in SQL ''selects''. Unlike other mappings, which implement their
+	  * read forms by delegating to their assembly methods, the dependency is in a way reversed for columns.
+	  * These forms do not rely on the [[net.noresttherein.oldsql.schema.ColumnMapping.optionally optionally]]
+	  * or [[net.noresttherein.oldsql.schema.ColumnMapping.assemble assemble]], as most columns cannot be assembled.
+	  * Instead, this form is used by enclosing mappings and framework to read and preset a value for this column
+	  * in [[net.noresttherein.oldsql.schema.Mapping.Pieces Pieces]] used to assemble a `ResultSet` row.
+	  * Subclasses are free to move some buff handling from `optionally` to the form or this method in process
+	  * of optimisation. This method will always however ignore any buffs controlling if a column should be read
+	  * (included in the ''select'' clause) and the returned form must always attempt to read the value
+	  * for this column from the `ResultSet` at the given position. It is the enclosing mapping's responsibility
+	  * to pick the columns which will be read in a query.
+	  * @return `this.`[[net.noresttherein.oldsql.schema.ColumnMapping.form form]].
 	  */
-	override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
-		//these *could* be column forms, but likely we'd rather have it zero width, as there is no such column in the db.
-		case Some(ConstantBuff(x)) => SQLReadForm.const(x, 0, name + "='" + x + "'>")
-		case Some(buff) => SQLReadForm.eval(buff.value, 0, name + "=_>")
-		case _ =>
-			val audits = SelectAudit.Audit(buffs)
-			val read = //we can't enforce not null here because of artificial nulls resulting from outer joins
-				if (audits.isEmpty) form
-				else form.map(audits.reduce(_ andThen _))(form.nulls)
-			OptionalSelect.test(buffs) match {
-				case Some(ConstantBuff(x)) => read orElse ColumnReadForm.const(read.sqlType, x, name + "='" + x + "'>")
-				case Some(buff) => read orElse ColumnReadForm.eval(read.sqlType, buff.value, name + "=_>")
-				case _ => read
-			}
-
-	}
+	override def selectForm :SQLReadForm[S] = form
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 		if (components.size == 1 && components.head == this) selectForm
@@ -220,12 +218,10 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	/** Adapts `this.form` by incorporating the behaviour of relevant buffs: the `ExtraXxx` and `XxxAudit`.
 	  * In order to stay consistent in custom `ColumnMapping` implementations, the adapted form first calls
 	  * [[net.noresttherein.oldsql.schema.ColumnMapping.writtenValues this.writtenValues]] and,
-	  * if created [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] are not empty,
+	  * if created [[ComponentValues ComponentValues]] are not empty,
 	  * passes the value for this column to [[net.noresttherein.oldsql.schema.ColumnMapping.form this.form]].
-	  */ //fixme: inconsistency in contract with SimpleColumn - this method obeys NoXxx buffs; what's the best approach to be determined
-	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = form.flatUnmap {
-		s :S => writtenValues(op, s).preset(this)
-	}
+	  */
+	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = form
 
 	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
 		if (components.size == 1 && components.contains(this)) op.form(this)
@@ -237,8 +233,7 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	protected override def thisColumn :ColumnMapping[S, O] = this
 
 	protected override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnMapping[S, O] =
-		new StandardColumn(name, buffs)(form)
-
+		new ExportColumnProxy[S, O](this, name, buffs)
 
 
 	/** Attaches a label to this column, transforming it into a `LabeledColumn`.
@@ -246,11 +241,11 @@ trait ColumnMapping[S, O] extends BaseMapping[S, O]
 	  * but is otherwise an independent instance not retaining a direct reference to `this`.
 	  */
 	def labeled[N <: Label](label :Label) :LabeledColumn[N, S, O] =
-		new StandardColumn[S, O](name, buffs)(form) with LabeledColumn[N, S, O]
+		new ExportColumnProxy[S, O](this, name, buffs) with LabeledColumn[N, S, O]
 
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :ColumnMapping[X, O] =
-		new StandardColumn[X, O](name, schema.mapBuffs(this)(there, back))(form.as(there)(back))
+		MappedMapping.column(this, there, back)
 
 
 
@@ -351,7 +346,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 	  * themselves.
 	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn]]
 	  */
-	trait SimpleColumn[S, O] extends ColumnMapping[S, O] {
+	trait SimpleColumn[S, O] extends ColumnMapping[S, O] with ExportMapping {
 
 		final override def apply(pieces: Pieces): S = optionally(pieces) match {
 			case Some(res) => res
@@ -371,7 +366,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		  * @throws `NullPointerException` if the preset value is explicitly stated as `null` (`pieces.preset(this)`
 		  *                                returned `Some(null)`), but this column does not have the `Nullable` buff.
 		  */
-		final override def optionally(pieces :Pieces) :Option[S] =
+		override def optionally(pieces :Pieces) :Option[S] =
 			if (isNullable)
 				pieces.preset(this)
 			else //consider: making the method final, perhaps only calling pieces.preset, so we can make some optimizations
@@ -383,7 +378,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 				}
 
 
-		/** `this.form` adapted to a `SQLReadForm` by incorporating some of behaviour modifications caused by applied buffs.
+		/** `this.form` adapted to an `SQLReadForm` by incorporating some of behaviour modifications caused by applied buffs.
 		  * This includes default values from buffs like `OptionalSelect` and transformations from `AuditBuff`s and similar.
 		  * It doesn't verify if the column is selectable by default or at all, returning always (possibly decorated)
 		  * `this.form`, unless [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]] is present, in which case
@@ -402,13 +397,29 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 				val read = //we can't enforce not null here because of artificial nulls resulting from outer joins
 					if (audits.isEmpty) form
 					else form.map(audits.reduce(_ andThen _))(form.nulls)
-				OptionalSelect.test(buffs) match {
+				SelectDefault.test(buffs) match {
 					case Some(ConstantBuff(x)) => read orElse ColumnReadForm.const(read.sqlType, x, name + "='" + x + "'>")
 					case Some(buff) => read orElse ColumnReadForm.eval(read.sqlType, buff.value, name + "=_>")
 					case _ => read
 				}
 
 		}
+
+		override def apply[T](component :Component[T]) :Extract[T] =
+			if (component == this)
+				ColumnExtract.ident[S, O](this).asInstanceOf[Extract[T]]
+			else
+				throw new IllegalArgumentException(
+					s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
+				)
+
+		override def apply[T](column :Column[T]) :ColumnExtract[T] =
+			if (column == this)
+				ColumnExtract.ident[S, O](this).asInstanceOf[ColumnExtract[T]]
+			else
+				throw new IllegalArgumentException(
+					s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
+				)
 
 		/** Adapts `this.form` by incorporating the behaviour of relevant buffs: the `ExtraXxx` and `XxxAudit`.
 		  * Only standard buffs modifying/providing the written value are applied; any buffs determining if the column
@@ -425,6 +436,16 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 				if (audits.isEmpty) form
 				else form.unmap(audits.reduce(_ andThen _))
 		}
+
+
+		protected override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnMapping[S, O] =
+			new StandardColumn[S, O](name, buffs)(form)
+
+		override def labeled[N <: Label](label :Label) :LabeledColumn[N, S, O] =
+			new StandardColumn[S, O](name, buffs)(form) with LabeledColumn[N, S, O]
+
+		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :ColumnMapping[X, O] =
+			new StandardColumn[X, O](name, mapBuffs(this)(there, back))(form.as(there)(back))
 	}
 
 
@@ -485,50 +506,101 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 
 
 
-	/** A late mix-in trait overriding all benefiting `ColumnMapping` methods with `val`s. Needs to be placed
-	  * in the linearization order after declarations of `name`, `buffs` and `form`.
-	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping.ColumnSupport]]
+	/** A mix-in trait providing optimized `writtenValues` family of methods by caching buff information in fields,
+	  * as well as fields for [[net.noresttherein.oldsql.schema.ColumnMapping.isNullable isNullable]]
+	  * and all column lists, initialized by calls to `super`.
 	  */
-	trait StableColumn[S, O] extends ColumnMapping[S, O] {
+	trait OptimizedColumn[S, O] extends ColumnMapping[S, O] {
 		final override val isNullable :Boolean = super.isNullable
 
-		private[this] val isFilterable = NoFilter.disabled(this)
-		private[this] val isUpdatable = NoUpdate.disabled(this)
-		private[this] val isInsertable = NoInsert.disabled(this)
+		protected val isFilterable = NoFilter.disabled(this)
+		protected val isUpdatable = NoUpdate.disabled(this)
+		protected val isInsertable = NoInsert.disabled(this)
 
-		private[this] val queryAudit = FilterAudit.fold(this)
-		private[this] val updateAudit = UpdateAudit.fold(this)
-		private[this] val insertAudit = InsertAudit.fold(this)
+		protected val filterAudit = FilterAudit.fold(this)
+		protected val updateAudit = UpdateAudit.fold(this)
+		protected val insertAudit = InsertAudit.fold(this)
+
+		protected val extraFilter = ExtraFilter.Value(this)
+		protected val extraUpdate = ExtraUpdate.Value(this)
+		protected val extraInsert = ExtraInsert.Value(this)
+
+		protected val extraFilterValues = extraWrite(extraFilter)
+		protected val extraUpdateValues = extraWrite(extraUpdate)
+		protected val extraInsertValues = extraWrite(extraInsert)
+
+		protected def extraWrite(extra :Option[S]) = extra match {
+			case Some(value) => ColumnValues.preset[S, S, O](this, value)
+			case _ => ColumnValues.empty[S, O]
+		}
+
+		protected override val selectAudit = super.selectAudit
+		protected override val defaultValue = super.defaultValue
 
 		override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
 			op.writtenValues(this, subject)
 
 		override def filterValues(subject :S) :ComponentValues[S, O] =
-			if (isFilterable) ColumnValues.preset(this, queryAudit(subject))
-			else ColumnValues.empty
+			if (isFilterable) ColumnValues.preset(this, filterAudit(subject))
+			else extraFilterValues.asInstanceOf[ColumnValues[S, O]]
 
 		override def updateValues(subject :S) :ComponentValues[S, O] =
 			if (isUpdatable) ColumnValues.preset(this, updateAudit(subject))
-			else ColumnValues.empty
+			else extraUpdateValues.asInstanceOf[ColumnValues[S, O]]
 
 		override def insertValues(subject :S) :ComponentValues[S, O] =
 			if (isInsertable) ColumnValues.preset(this, insertAudit(subject))
-			else ColumnValues.empty
+			else extraInsertValues.asInstanceOf[ColumnValues[S, O]]
 
 
 		override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			op.writtenValues(this, subject, collector)
 
 		override def filterValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
-			if (isFilterable) collector.add(this, queryAudit(subject))
+			if (isFilterable) collector.add(this, filterAudit(subject))
+			else collector.add(this, extraFilter)
 
 		override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			if (isUpdatable) collector.add(this, updateAudit(subject))
+			else collector.add(this, extraUpdate)
 
 		override def insertValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			if (isInsertable) collector.add(this, insertAudit(subject))
+			else collector.add(this, extraInsert)
 
 
+		protected val defaultColumns = Unique.single(this)
+		protected val superSelectable = super.selectable
+		protected val superFilterable = super.filterable
+		protected val superUpdatable = super.updatable
+		protected val superAutoUpdated = super.autoUpdated
+		protected val superinsertable = super.insertable
+		protected val superAutoInserted = super.autoInserted
+		protected val superSelectedByDefault = super.selectedByDefault
+		protected val superFilteredByDefault = super.filteredByDefault
+		protected val superUpdatedByDefault = super.updatedByDefault
+		protected val superInsertedByDefault = super.insertedByDefault
+
+		override def columns :Unique[Column[_]] = defaultColumns
+		override def selectable :Unique[Column[_]] = superSelectable
+		override def filterable :Unique[Column[_]] = superFilterable
+		override def updatable :Unique[Column[_]] = superUpdatable
+		override def autoUpdated :Unique[Column[_]] = superAutoUpdated
+		override def insertable :Unique[Column[_]] = superinsertable
+		override def autoInserted :Unique[Column[_]] = superAutoInserted
+		override def selectedByDefault :Unique[Column[_]] = superSelectedByDefault
+		override def filteredByDefault :Unique[Column[_]] = superFilteredByDefault
+		override def updatedByDefault :Unique[Column[_]] = superUpdatedByDefault
+		override def insertedByDefault :Unique[Column[_]] = superInsertedByDefault
+	}
+
+
+
+	/** A late mix-in trait overriding all benefiting `ColumnMapping` methods with `val`s. Needs to be placed
+	  * in the linearization order after declarations of `name`, `buffs` and `form`.
+	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping.ColumnSupport]]
+	  */
+	trait StableColumn[S, O] extends OptimizedColumn[S, O] {
 
 		override def apply[T](component :Component[T]) :Extract[T] =
 			if (component == this)
@@ -546,33 +618,25 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 					s"Mapping $column is not a column of column $this. The only subcomponent of a column is the column itself."
 				)
 
+		protected val selfExtract = ColumnExtract.ident(this)
 
-		private[this] val selfExtract = ColumnExtract.ident(this)
+		private val defaultExtracts = NaturalMap.single[Column, ColumnExtract, S](this, selfExtract)
 
-		override val extracts :NaturalMap[Component, ColumnExtract] =
-			NaturalMap.single[Component, ColumnExtract, S](this, selfExtract)
+		override def extracts :NaturalMap[Component, ColumnExtract] =
+			defaultExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
 
-		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
-			extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
+		override def columnExtracts :NaturalMap[Column, ColumnExtract] = defaultExtracts
 
 
-		override val columns :Unique[Column[S]] = Unique.single(this)
+		protected val superSelectForm = super.selectForm
+		protected val superFilterForm = super.writeForm(FILTER)
+		protected val superUpdateForm = super.writeForm(UPDATE)
+		protected val superInsertForm = super.writeForm(INSERT)
 
-		override val selectable :Unique[Column[S]] = super.selectable
-		override val filterable :Unique[Column[S]] = super.filterable
-		override val updatable :Unique[Column[S]] = super.updatable
-		override val autoUpdated :Unique[Column[S]] = super.autoUpdated
-		override val insertable :Unique[Column[S]] = super.insertable
-		override val autoInserted :Unique[Column[S]] = super.autoInserted
-		override val selectedByDefault :Unique[Column[S]] = super.selectedByDefault
-		override val filteredByDefault :Unique[Column[S]] = super.filteredByDefault
-		override val updatedByDefault :Unique[Column[S]] = super.updatedByDefault
-		override val insertedByDefault :Unique[Column[S]] = super.insertedByDefault
-
-		override val selectForm :SQLReadForm[S] = super.selectForm
-		override val filterForm :SQLWriteForm[S] = super.filterForm
-		override val updateForm :SQLWriteForm[S] = super.updateForm
-		override val insertForm :SQLWriteForm[S] = super.insertForm
+		override def selectForm :SQLReadForm[S] = superSelectForm
+		override def filterForm :SQLWriteForm[S] = superFilterForm
+		override def updateForm :SQLWriteForm[S] = superUpdateForm
+		override def insertForm :SQLWriteForm[S] = superInsertForm
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 	}

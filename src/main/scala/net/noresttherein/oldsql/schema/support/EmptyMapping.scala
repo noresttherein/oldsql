@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
-import net.noresttherein.oldsql.schema.{ComponentValues, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.haul.ComponentValues
+import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.{SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 
 
@@ -29,6 +30,17 @@ trait EmptyMapping[S, O] extends BaseMapping[S, O] {
 	override def optionally(pieces :Pieces) :Option[S] = pieces.preset(this)
 
 
+
+	override def export[T](component :Component[T]) :Component[T] =
+		if (component eq this) component
+		else throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")
+
+	override def export[T](column :Column[T]) :Column[T] =
+		if (column eq this) column
+		else throw new IllegalArgumentException(s"Column $column is not a part of this empty mapping :$this.")
+
+	override def exportOrNot[T](component :Component[T]) :Component[T] = component
+	override def exportOrNot[T](column :Column[T]) :Column[T] = column
 
 	override def apply[T](component :Component[T]) :Extract[T] =
 		throw new IllegalArgumentException(s"Component $component is not a part of this empty mapping: $this.")

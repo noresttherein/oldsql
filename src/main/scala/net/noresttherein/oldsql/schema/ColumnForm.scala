@@ -386,7 +386,7 @@ object ColumnForm {
 	  */
 	class JDBCObjectForm[T](private val cls :Class[T], override val sqlType :JDBCType = JDBCType.JAVA_OBJECT)
 	                       (implicit override val nulls :NullValue[T])
-		extends JDBCForm[T](sqlType)
+		extends JDBCForm[T](sqlType) with NullSafeColumnForm[T]
 	{
 		def this(sqlType :JDBCType)(implicit nulls :NullValue[T], tag :ClassTag[T]) =
 			this(tag.runtimeClass.asInstanceOf[Class[T]], sqlType)

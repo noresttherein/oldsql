@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.model
 
-import net.noresttherein.oldsql.model.PrimaryKey.NoPrimaryKeyException
+import net.noresttherein.oldsql.model.EntityIdentity.NoPrimaryKeyException
 
 
 trait Entity[T, K <: PK[T]] { this :T =>
@@ -8,7 +8,7 @@ trait Entity[T, K <: PK[T]] { this :T =>
 }
 
 
-trait PrimaryKey[T, PK] extends (T => PK) {
+trait EntityIdentity[T, PK] extends (T => PK) {
 	def apply(entity :T) :PK
 
 	def transient :PK
@@ -22,10 +22,10 @@ trait PrimaryKey[T, PK] extends (T => PK) {
 
 
 
-object PrimaryKey {
+object EntityIdentity {
 
 
-	abstract class EntityPK[T <: Entity[T, K], K <: PK[T]] extends PrimaryKey[T, K] {
+	abstract class EntityPK[T <: Entity[T, K], K <: PK[T]] extends EntityIdentity[T, K] {
 		override def apply(entity :T) :K = entity.pk
 
 		override def transient :K
@@ -38,7 +38,7 @@ object PrimaryKey {
 	}
 
 
-	abstract class OptionKey[T, PK] extends PrimaryKey[T, Option[PK]] {
+	abstract class OptionKey[T, PK] extends EntityIdentity[T, Option[PK]] {
 
 		def get(entity :T) :PK = apply(entity) getOrElse {
 			throw new NoPrimaryKeyException(entity)

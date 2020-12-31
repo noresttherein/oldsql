@@ -165,6 +165,7 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 		new ProxyWriteForm[T] with WriteFormNullGuard[T] {
 			override def form :SQLWriteForm[T] = outer
 		}
+	//todo: notNull
 
 
 	/** A proxy to this instance which directs all calls to its null-specific methods to their general
@@ -630,6 +631,23 @@ object SQLWriteForm {
 
 
 
+	/** An `SQLWriteForm` mixin trait which throws a `NullPointerException` from
+	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]] method and from
+	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]] if the argument given is `null` and from
+	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt setOpt]] if the argument given is `None`.
+	  * It still allows null literals.
+	  */
+	trait NotNullWriteForm[-T] extends SQLWriteForm[T] {
+		abstract override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
+			if (value == null) setNull(statement, position)
+			else super.set(statement, position, value)
+
+		override def setNull(statement :PreparedStatement, position :Int) :Unit =
+			throw new NullPointerException("Null values not allowed for " + this + ".")
+	}
+
+
+
 	/** A late mix-in trait for `SQLWriteForm[T]` implementations which overrides all methods accepting a value of `T`
 	  * and calls the super method only if the argument is not null. For `null` values it delegates the call
 	  * to the null-specific counterpart method. It is an easy way for a class to achieve null safety if the application
@@ -916,7 +934,7 @@ object SQLWriteForm {
 		override def literal(value :T, inline :Boolean) :String = form.literal(unmap(value), inline)
 		override def nullLiteral(inline :Boolean) :String = form.nullLiteral(inline)
 
-		//map/flatMap not override to preserve potentially overriden toString.
+		//map/flatMap not overriden to preserve potentially overriden toString.
 
 		override def toString :String = "<=" + form
 	}

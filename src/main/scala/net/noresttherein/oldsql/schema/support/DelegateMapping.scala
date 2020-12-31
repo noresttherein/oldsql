@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.{ComponentValues, Mapping}
+import net.noresttherein.oldsql.schema.Mapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.schema.bases.BaseMapping
@@ -51,11 +51,15 @@ object DelegateMapping {
 
 	/** Base trait for mappings which adapt another proxy from the same source `O`. Declares a single component,
 	  * the embedded `backer` mapping, with all its components and subcomponents (and columns in particular)
-	  * becoming directly the subcomponents of this mapping. As the adapted mapping `M` may have a different subject
-	  * type to this mapping's subject, it serves in particular as a root for all mappings which map the subject of
-	  * the nested mapping, but also simple decorators providing additional functionality or information, but leaving
-	  * all mapping details of the `backer` intact.
-	  * @tparam O a discriminator tag marking components from the same source.
+	  * becoming directly the subcomponents of this mapping. The backing mapping is considered a 'hidden' component
+	  * of this mapping: it is not included (mainly for efficiency) in any component/column lists,
+	  * but like all its components, is considered the ''export'' version of itself (from the point of view of this
+	  * mapping). Both of the above properties can be changed in subclasses, though. This trait serves as a base type
+	  * for simple decorators which provide additional features, leaving all mapping details of `backer` intact,
+	  * but also, as the adapted mapping `M` may have a different subject type to this mapping's subject,
+	  * for all mappings which map the subject of the nested mapping.
+	  * @tparam O the mapping's [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type:
+	  *           a discriminator tag marking components from the same source.
 	  * @tparam S the subject type of this mapping.
 	  */
 	trait ShallowDelegate[S, O] extends DelegateMapping[MappingAt[O], S, O] {
@@ -79,20 +83,36 @@ object DelegateMapping {
 		/** Refers to the adapted mapping `backer` to export the passed component to its final representation,
 		  * unless `component` is the `backer` itself, in which it is returned as-is.
 		  */
-		override def export[X](component :Component[X]) :Component[X] =
-			if ((component eq backer) | (component eq this)) component
-			else backer.export(component)
+		override def export[T](component :Component[T]) :Component[T] =
+			if (component eq this) component else backer.export(component)
 
 		/** Refers to the adapted mapping `backer` to export the passed component to its final representation,
 		  * unless `column` is the `backer` itself, in which it is returned as-is.
 		  */
-		override def export[X](column :Column[X]) :Column[X] =
-			if ((column eq backer) | (column eq this)) column
-			else backer.export(column)
+		override def export[T](column :Column[T]) :Column[T] = backer.export(column)
 
+		override def exportOrNot[T](component :Component[T]) :Component[T] =
+			if (component eq this) component else backer.exportOrNot(component)
+
+		override def exportOrNot[T](column :Column[T]) :Column[T] = backer.exportOrNot(column)
+
+		override def contains[T](component :Component[T]) :Boolean =
+			(component eq backer) || backer.contains(component)
 	}
 
 
+
+	/** A mapping having a single direct component, its `backer` and treating its subcomponents as subcomponents
+	  * of this instance. The `subcomponents` list consists of all `backer.subcomponents` and `backer` itself,
+	  * but in all other ways this trait acts the same way as `ShallowDelegate`.
+	  * @tparam O the mapping's [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type:
+	  *           a discriminator tag marking components from the same source.
+	  * @tparam S the subject type of this mapping.
+	  */
+	trait WrapperDelegate[S, O] extends ShallowDelegate[S, O] with DelegateMapping[RefinedMapping[_, O], S, O] {
+		override def components :Unique[Component[_]] = Unique.single(backer)
+		override def subcomponents :Unique[Component[_]] = backer +: backer.subcomponents
+	}
 
 }
 

@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.model
 
 import scala.util.matching.Regex
-
 import scala.reflect.runtime.universe.TypeTag
 import scala.collection.Iterable
+
 import net.noresttherein.oldsql.model.ComposedOf.{DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False, NestedRestraint, Not, True}
-import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, MappedRestrainer, NestedRestrainer}
+import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, FlattenedRestrainer, MappedRestrainer, NestedRestrainer}
 import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Self, TranslableTerm}
 import net.noresttherein.oldsql.model.types.OrderingSupport
 import net.noresttherein.oldsql.slang._
@@ -25,7 +25,7 @@ import net.noresttherein.oldsql.slang._
   * treated as a result set of values of `T`, because then it would have to be covariant with regards to `T` -
   * a set of values of `S` is of course a set of values of `T>:S`. This becomes an issue when used inside a
   * `Kin[T]`, which is covariant with regards to `T` and care has to be taken when dealing with such cases.
-  */ //consider: renaming to Selection
+  */ //consider: renaming to Selection/Specification
 trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable with implicits {
 
 	/** Creates a restraint implementing the negated condition of this restraint (i.e. selecting a value ''iff''
@@ -101,6 +101,10 @@ object Restraint {
 	  */
 	trait Restrainer[-T, P] extends (P => Restraint[T]) {
 		//todo: combining restrainers into logical formulas
+		/** Must every key correspond to to a value? This doesn't guarantee that values of `T` exist for
+		  * all values of `P`, but makes a missing value an error.
+		  */
+		def isCertain :Boolean = true
 
 		/** Constrained part of target type equals the given value - same as `===` */
 		def apply(key :P) :Restraint[T]
@@ -127,11 +131,17 @@ object Restraint {
 
 
 		/** Represent the underlying restraint factory as a function of a new key type `K`. */
-		def compose[K](oldKey :P=>K, newKey :K=>P) :Restrainer[T, K] =
+		def compose[K](oldKey :P => K, newKey :K => P) :Restrainer[T, K] =
 			new MappedRestrainer[T, P, K](this)(oldKey, newKey)
 
+		/** Represents an optional constrained part as non optional by wrapping all key arguments of the returned
+		  * restrainer in `Some` and flattening all `Option[P]` with keys returned by this instance to `Option[K]`.
+		  */
+		def flatten[K](implicit keyIsOpt :P =:= Option[K]) :Restrainer[T, K] =
+			new FlattenedRestrainer(keyIsOpt.liftCo[({ type R[X] = Restrainer[T, X] })#R](this))
+
 		/** Create a restrainer working on some other, larger type `X` from which values of `S <: T` can be derived. */
-		def derive[X, S<:T](nest :Restrictive[X, S]) :Restrainer[X, P] = new NestedRestrainer(this, nest)
+		def derive[X, S <: T](nest :Restrictive[X, S]) :Restrainer[X, P] = new NestedRestrainer(this, nest)
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[Restrainer[_, _]]
 	}
@@ -146,7 +156,7 @@ object Restraint {
 		  * @tparam V the key type, which is derived from the constrained type `T` by the member `Term`.
 		  */
 		abstract class AbstractTermRestrainer[-T, V] extends Restrainer[T, V] {
-			protected val Term :Restrictive[T, V]
+			protected def Term :Restrictive[T, V]
 
 			override def from(value :T) :Option[V] = Option(Term.derive(value))
 
@@ -193,7 +203,7 @@ object Restraint {
 		}
 
 
-		private case class MappedRestrainer[-T, X, Y](backing :Restrainer[T, X])(back :X=>Y, there :Y=>X)
+		private class MappedRestrainer[-T, X, Y](val backing :Restrainer[T, X])(back :X => Y, there :Y => X)
 			extends Restrainer[T, Y]
 		{
 			override def apply(value: Y): Restraint[T] = backing(there(value))
@@ -207,6 +217,21 @@ object Restraint {
 			override def as(value: T): Restraint[T] = backing.as(value)
 
 			override def toString :String = backing.toString + ".compose(" + back + ", "+ there +")"
+		}
+
+
+		private case class FlattenedRestrainer[-T, K](backing :Restrainer[T, Option[K]])
+			extends Restrainer[T, K]
+		{
+			override def apply(value :K) :Restraint[T] = backing(Some(value))
+
+			override def from(value :T) = backing.from(value).flatten
+			override def from[X <: T](restraint :Restraint[X]) = backing.from(restraint).flatten
+
+			override def in :Restrainer[T, Set[K]] = backing.in.compose(_.flatten, _.map(Some.apply))
+			override def as(value :T) = backing.as(value)
+
+			override def toString :String = backing.toString + ".flatten"
 		}
 
 	}
@@ -248,7 +273,7 @@ object Restraint {
 		Equal(property)
 
 	/** A Restrainer constraining the value of the given property of T */
-	@inline def Property[T :TypeTag, P](property :T=>P) :Restrainer[T, P] =
+	@inline def Property[T :TypeTag, P](property :T => P) :Restrainer[T, P] =
 		Equal(PropertyPath(property))
 
 
@@ -920,7 +945,7 @@ object Restraint {
 
 		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, Option[E]], Restraint[E]) forSome { type E }] =
 			restraint match {
-				case Exists(option, condition, deco @ DecomposableTo.Optional()) =>
+				case Exists(option, condition, deco @ DecomposableTo.Option()) =>
 					Some((option.asInstanceOf[Restrictive[T, Option[Any]]], condition.asInstanceOf[Restraint[Any]]))
 				case _ => None
 			}

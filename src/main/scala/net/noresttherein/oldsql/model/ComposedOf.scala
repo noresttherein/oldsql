@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.model
 
-import scala.collection.Factory
+import scala.collection.{immutable, EvidenceIterableFactory, Factory, IterableFactory, MapFactory}
 
 import net.noresttherein.oldsql.model.ComposedOf.{Arity, ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.{Collection, Custom}
@@ -79,7 +79,7 @@ trait ComposedOf[C, E] {
 		case _ => false
 	}
 
-	override def hashCode :Int = (composer, decomposer).hashCode
+	override def hashCode :Int = composer.hashCode * 31 + decomposer.hashCode
 
 //	override def toString :String =
 
@@ -125,7 +125,7 @@ object ComposedOf {
 	/** Creates a custom composition from the passed functions. Note that unless the functions provided
 	  * override equals in a meaningful way, subsequent calls to this method will yield objects which won't be equal.
 	  */
-	def apply[C, E](compose :Iterable[E] => C, decompose :C=>Iterable[E]) :C ComposedOf E =
+	def apply[C, E](compose :Iterable[E] => C, decompose :C => Iterable[E]) :C ComposedOf E =
 		new Hybrid(ComposableFrom(compose), DecomposableTo(decompose))
 
 	/** Create a `C ComposedOf E` using the provided composer and decomposer. */
@@ -153,8 +153,12 @@ object ComposedOf {
 	/** A witness that `Option[E]` is composed of `E` and can be converted to and from a (singleton) `Iterable[E]`. */
 	implicit def option[T] :Option[T] CollectionOf T = opt.asInstanceOf[Option[T] CollectionOf T]
 
-	/** An implicit value witnessing that `Iterable[E]` is composed of values of `E`. */
-	implicit def iterable[E] :Iterable[E] CollectionOf E = CollectionOf(ComposableFrom.iterable[E], DecomposableTo.iterable[E])
+//	/** An implicit value witnessing that `Iterable[E]` is composed of values of `E`. */
+//	implicit def iterable[E] :Iterable[E] CollectionOf E =
+//		CollectionOf(ComposableFrom.iterable[E], DecomposableTo.iterable[E])
+
+	implicit def collection[C[X] <: Iterable[X], E](implicit factory :Factory[E, C[E]]) :C[E] CollectionOf E =
+		CollectionOf(ComposableFrom.collection, DecomposableTo.iterable)
 
 	/** An implicit value witnessing that `Map[K, V]` can be converted to and from a collection of `K->V`. */
 	implicit def map[K, V] :Map[K, V] CollectionOf (K -> V) = mapInstance.asInstanceOf[Map[K, V] CollectionOf (K -> V)]
@@ -166,9 +170,18 @@ object ComposedOf {
 	  * builder factory instance, resulting in the desired behaviour of two instances created by this method
 	  * for the same pair of types being equal.
 	  */
-	implicit def combine[C, E](implicit compose :ComposableFrom[C, E], decompose :DecomposableTo[C, E]) :C ComposedOf E =
+	implicit def composedOf[C, E](implicit compose :ComposableFrom[C, E], decompose :DecomposableTo[C, E]) :C ComposedOf E =
 		new Hybrid[C, E](compose, decompose)
 
+	/** Combines implicitly available constructor and extractor for the type pair `C`, `E` into a `C CollectionOf E`.
+	  * Returned instance overrides equality in terms of equality of its constituents. This may potentially lead to
+	  * issues with custom collection classes, as the default implicit value for `C ComposableFrom E` is based on
+	  * an implicit `CanBuildFrom[_, E, C]`. Currently all standard scala collections however return always the same
+	  * builder factory instance, resulting in the desired behaviour of two instances created by this method
+	  * for the same pair of types being equal.
+	  */
+	implicit def collectionOf[C, E](implicit compose :C ConstructFrom E, decompose :C ExtractAs E) :C CollectionOf E =
+		CollectionOf(compose, decompose)
 
 
 
@@ -184,11 +197,9 @@ object ComposedOf {
 		override def toString :String = composer.toString
 	}
 
+
 	/** A factory for `C CollectionOf E` objects responsible for converting between `C` and `Iterable[E]`. */
 	object CollectionOf {
-		@inline implicit def combined[C, E](implicit compose :C ConstructFrom E, decompose :C ExtractAs E) :C CollectionOf E =
-			apply(compose, decompose)
-
 		/** Summon an implicitly available instance of `C CollectionOf E`. */
 		def apply[C, E](implicit composition :C CollectionOf E) :C CollectionOf E = composition
 
@@ -203,7 +214,8 @@ object ComposedOf {
 				override val decomposer = decompose
 			}
 
-
+		def apply[C <: Iterable[E], E](factory :Factory[E, C]) :C CollectionOf E =
+			apply(ComposableFrom.Collection(factory), DecomposableTo.Iterable())
 
 		def unapply[T](reference :Kin[T]) :Option[CollectionOf[_<:T, _]] = reference match {
 			case c :CompositeKin[_, _] if c.items.isInstanceOf[CollectionOf[_, _]] =>
@@ -211,7 +223,6 @@ object ComposedOf {
 			case _ =>
 				None
 		}
-
 	}
 
 
@@ -259,8 +270,8 @@ object ComposedOf {
 
 
 	private[this] val identity = ComposedOf[Any, Any](ComposableFrom.itself[Any], DecomposableTo.itself[Any])
-	private[this] val opt = CollectionOf(ComposableFrom.Optional[Any](), DecomposableTo.Optional[Any]())
-	private[this] val mapInstance = CollectionOf(ComposableFrom.Map[Any, Any](), DecomposableTo.Map[Any, Any]())
+	private[this] val opt = CollectionOf(ComposableFrom.option[Any], DecomposableTo.option[Any])
+	private[this] val mapInstance = CollectionOf(ComposableFrom.map[Any, Any], DecomposableTo.map[Any, Any])
 
 	private class Hybrid[C, E](val composer :ComposableFrom[C, E], val decomposer :DecomposableTo[C, E])
 		extends ComposedOf[C, E]
@@ -285,7 +296,6 @@ object ComposedOf {
 			throw new IllegalArgumentException(s"Can't perform composition $this for $items.")
 		}
 
-
 		def attempt(items :Iterable[E]) :Option[C]
 
 		def decomposeWith[W>:C, T<:E](decomposition :DecomposableTo[W, T]) :ComposedOf[W, T] =
@@ -293,8 +303,7 @@ object ComposedOf {
 
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[ComposableFrom[_, _]]
 
-		def compatibleWith[X>:C](other :ComposableFrom[X, _]) :Boolean = this eq other
-
+		def compatibleWith[X >: C](other :ComposableFrom[X, _]) :Boolean = this eq other
 	}
 
 
@@ -333,8 +342,8 @@ object ComposedOf {
 		implicit def factory[C, T](implicit factory :Factory[T, C]) :C ComposableFrom T =
 			new Custom(items => (factory.newBuilder ++= items).result())
 
-		implicit def collection[C<:Iterable[T], T](implicit factory :Factory[T, C]) :C ConstructFrom T =
-			Collection[C, T]()
+		implicit def collection[C <: Iterable[T], T](implicit factory :Factory[T, C]) :C ConstructFrom T =
+			Collection[C, T](factory)
 
 	}
 
@@ -349,7 +358,7 @@ object ComposedOf {
 		def apply[C, E](implicit ev :C ComposableFrom E) : C ComposableFrom E = ev
 
 		/** Creates a custom composer backed by the given function. */
-		def apply[C, E](compose :Iterable[E]=>C) :ComposableFrom[C, E] = new Custom(compose)
+		def apply[C, E](compose :Iterable[E] => C) :ComposableFrom[C, E] = new Custom(compose)
 
 
 		def unapply[T](kin :Kin[T]) :Option[ComposableFrom[T, _]] = kin match {
@@ -359,15 +368,15 @@ object ComposedOf {
 
 
 		/** A composition for type `Map[K, V]` out of `Iterable[(K->V)]`. */
-		implicit def map[K, V] :Map[K, V] ConstructFrom (K -> V) = MapComposer.asInstanceOf[Map[K, V] ConstructFrom (K->V)]
+		implicit def map[K, V] :Map[K, V] ConstructFrom (K -> V) = ConstructMap.asInstanceOf[Map[K, V] ConstructFrom (K->V)]
 
 		/** A composition for type `Iterable[T]` itself using an identity function. */
-		implicit def iterable[T] :Iterable[T] ConstructFrom T = Iter.asInstanceOf[ConstructFrom[Iterable[T], T]]
+		implicit def iterable[T] :Iterable[T] ConstructFrom T = ConstructIterable.asInstanceOf[ConstructFrom[Iterable[T], T]]
 
 		/** Composition of `Option[T]` out of an `Iterable[T]`. If the input iterable contains more than one element,
 		  * an exception is thrown.
 		  */
-		implicit def optional[T] :Option[T] ConstructFrom T = Opt.asInstanceOf[ConstructFrom[Option[T], T]]
+		implicit def option[T] :Option[T] ConstructFrom T = ConstructOption.asInstanceOf[ConstructFrom[Option[T], T]]
 
 		/** Identity composition available for all types witnessing that a singleton `Iterable[T]` can be converted to
 		  * the type `T` itself. This instance will always throw an exception if the input collection contains
@@ -379,7 +388,7 @@ object ComposedOf {
 
 
 		/** A factory and matcher for identity compositions witnessing that `S ComposedOf T` for any type `S >: T`. */
-		object Superclass {
+		object Self {
 			def apply[T]() :T ComposableFrom T = Super.asInstanceOf[T ComposableFrom T]
 
 			def unapply[T, E](composition :T ComposableFrom E) :Boolean =
@@ -395,15 +404,15 @@ object ComposedOf {
 		}
 
 		/** A factory and matcher for the composition of `Option[T]` out of one or zero values of `T`. */
-		object Optional {
-			def apply[T](): Option[T] ConstructFrom T = Opt.asInstanceOf[Option[T] ConstructFrom T]
+		object Option {
+			def apply[T](): Option[T] ConstructFrom T = ConstructOption.asInstanceOf[Option[T] ConstructFrom T]
 
-			def unapply[T, E](composition :T ComposableFrom E) :Boolean = composition == Opt
+			def unapply[T, E](composition :T ComposableFrom E) :Boolean = composition == ConstructOption
 
-			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.composer == Opt
+			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.composer == ConstructOption
 
 			def unapply[T](kin :Kin[T]) :Boolean = kin match {
-				case ComposedOf(ComposableFrom(Opt)) => true
+				case ComposedOf(ComposableFrom(ConstructOption)) => true
 				case _ => false
 			}
 
@@ -411,15 +420,14 @@ object ComposedOf {
 
 		/** A factory and matcher for the composition of the type `Iterable[T]` itself. */
 		object Iterable {
-			def apply[T](): Iterable[T] ConstructFrom T = Iter.asInstanceOf[Iterable[T] ConstructFrom T]
+			def apply[T](): Iterable[T] ConstructFrom T = ConstructIterable.asInstanceOf[Iterable[T] ConstructFrom T]
 
+			def unapply[T, E](composition :T ComposableFrom E) :Boolean = composition == ConstructIterable
 
-			def unapply[T, E](composition :T ComposableFrom E) :Boolean = composition == Iter
-
-			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.composer == Iter
+			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.composer == ConstructIterable
 
 			def unapply[T](kin :Kin[T]) :Boolean = kin match {
-				case ComposedOf(ComposableFrom(Iter)) => true
+				case ComposedOf(ComposableFrom(ConstructIterable)) => true
 				case _ => false
 			}
 		}
@@ -428,23 +436,28 @@ object ComposedOf {
 		  * implicitly available `CanBuildFrom[_, E, C]`.
 		  */
 		object Collection {
+
+			def apply[T <: Iterable[E], E](factory :Factory[E, T]) :T ConstructFrom E =
+				new Collection[T, E](factory)
+
 			/** Returns a factory of instances `_ ComposedOf E`, allowing a possibly shorter syntax of
 			  * `Collection[E].in[Seq]` rather than `Collection[Seq[E], E]()`.
 			  */
 			@inline def apply[E] :CollectionComposer[E] = new CollectionComposer[E] {}
 
 			trait CollectionComposer[E] extends Any {
-				def as[T <: Iterable[E]](implicit factory :Factory[E, T]) :T ConstructFrom E =
-					new Collection[T, E]
+				def as[T <: Iterable[E]](factory :Factory[E, T]) :T ConstructFrom E =
+					new Collection[T, E](factory)
 
-				def in[C[X] <: Iterable[X]](implicit cbf :Factory[E, C[E]]) :C[E] ConstructFrom E =
-					new Collection[C[E], E]
+				def in[C[X] <: Iterable[X]](implicit factory :Factory[E, C[E]]) :C[E] ConstructFrom E =
+					new Collection[C[E], E](factory)
+
+				def in[C[X]](factory :IterableFactory[C]) :C[E] ConstructFrom E =
+					new Collection[C[E], E](factory)
+
+				def in[C[X], P[X]](factory :EvidenceIterableFactory[C, P])(implicit ev :P[E]) :C[E] ConstructFrom E =
+					new Collection[C[E], E](factory)
 			}
-
-
-			def apply[T <: Iterable[E], E]()(implicit factory :Factory[E, T]) :T ConstructFrom E =
-				new Collection[T, E]
-
 
 			def unapply[T, E](composition :T ComposableFrom E) :Option[Factory[E, T]] = composition match {
 				case col :Collection[T, E] => Some(col.factory)
@@ -460,18 +473,20 @@ object ComposedOf {
 				case ComposedOf(comp) => unapply(comp)
 				case _ => None
 			}
-
 		}
 
 		/** A factory and matcher for composition of `Map[K, V]` from instances of `K -> V`.
 		  * @see [[net.noresttherein.oldsql.model.-> ->]]
 		  */
 		object Map {
-			def apply[K, V]() :Map[K, V] ConstructFrom (K -> V) = MapComposer.asInstanceOf[Map[K, V] ConstructFrom (K->V)]
+			def apply[K, V]() :Map[K, V] ConstructFrom (K -> V) = ConstructMap.asInstanceOf[Map[K, V] ConstructFrom (K->V)]
 
-			def unapply[T, E](composition :T ComposableFrom E) :Boolean = MapComposer == composition
+			def apply[M[_, _], K, V](factory :MapFactory[M]) :M[K, V] ConstructFrom (K -> V) =
+				new ConstructMap[M, K, V](factory)
 
-			def unapply[T, E](composition :T ComposedOf E) :Boolean = MapComposer == composition.composer
+			def unapply[T, E](composition :T ComposableFrom E) :Boolean = ConstructMap == composition
+
+			def unapply[T, E](composition :T ComposedOf E) :Boolean = ConstructMap == composition.composer
 
 			def unapply[T](kin :Kin[T]) :Boolean = kin match {
 				case ComposedOf(comp) => unapply(comp)
@@ -482,7 +497,7 @@ object ComposedOf {
 
 
 		/** A custom `C ComposableFrom E` instance backed by the provided function. */
-		case class Custom[C, E](private val compose :Iterable[E]=>C, arity :Arity = Arity._0_n)
+		class Custom[C, E](private val compose :Iterable[E]=>C, override val arity :Arity = Arity._0_n)
 			extends ComposableFrom[C, E]
 		{
 			override def apply(items: Iterable[E]): C = compose(items)
@@ -503,7 +518,7 @@ object ComposedOf {
 		}
 
 
-		private case object Opt extends ConstructFrom[Option[Any], Any] {
+		private case object ConstructOption extends ConstructFrom[Option[Any], Any] {
 			def arity :Arity = Arity._0_1
 
 			override def attempt(items: Iterable[Any]) :Option[Option[Any]] =
@@ -513,26 +528,16 @@ object ComposedOf {
 		}
 
 
-		private[ComposedOf] class Collection[C, E](implicit val factory :Factory[E, C])
+		private[ComposedOf] case class Collection[C, E](factory :Factory[E, C])
 			extends Custom[C, E](iter => (factory.newBuilder ++= iter).result()) with ConstructFrom[C, E]
-		{   //cbf is often a reusable, single instance
-			override def canEqual(that :Any) :Boolean = that.isInstanceOf[Collection[_, _]]
-
-			override def equals(that :Any) :Boolean = that match {
-				case self :AnyRef if self eq this => true
-				case col :Collection[_, _] if col canEqual this => col.factory == factory
-				case _ => false
-			}
-
-			override def hashCode :Int = factory.hashCode
-
+		{
 			override def compatibleWith[X >: C](other: ComposableFrom[X, _]): Boolean = canEqual(other)
 
 			override def toString :String = factory.innerClassName
 		}
 
 
-		private object Iter extends Collection[Iterable[Any], Any] {
+		private object ConstructIterable extends Collection[Iterable[Any], Any](scala.Iterable) {
 			override def apply(items :Iterable[Any]) :Iterable[Any] = items
 			override def attempt(items :Iterable[Any]) :Option[Iterable[Any]] = Some(items)
 
@@ -540,21 +545,17 @@ object ComposedOf {
 		}
 
 
-		private case object MapComposer extends ConstructFrom[Map[Any, Any], Any->Any] {
-			def arity :Arity = Arity._0_n
-
-			override def apply(items :Iterable[Any -> Any]) :Map[Any, Any] =
-				items.map { case _1 -> _2 => _1 -> _2 }.toMap
-
-			override def attempt(items :Iterable[Any -> Any]) :Option[Map[Any, Any]] =
-				Some(items.map { case _1 -> _2 => _1 -> _2 }.toMap)
-
-			override def toString = "Map"
+		private case class ConstructMap[M[_, _], K, V](factory :MapFactory[M])
+			extends Custom[M[K, V], K -> V](
+				map => factory(map.view.map { case _1 -> _2 => _1 -> _2 }.toSeq :_*), Arity._0_n)
+			   with ConstructFrom[M[K, V], K -> V]
+		{
+			override def toString = factory.innerClassName
 		}
 
+		private object ConstructMap extends ConstructMap[Map, Any, Any](immutable.Map)
+
 	}
-
-
 
 
 
@@ -577,13 +578,12 @@ object ComposedOf {
 		def canEqual(that :Any) :Boolean = that.isInstanceOf[DecomposableTo[_, _]]
 
 		def compatibleWith[X <: C](other: DecomposableTo[X, _]): Boolean = other eq this
-
 	}
 
 
 
 	/** A narrowed down version of `C DecomposableTo E` which attests that the created composite can constitute
-	  * out of variable/multiple number of values of `E`. This specifically excludes `E DecomposableTo E` to make
+	  * of variable/multiple number of values of `E`. This specifically excludes `E DecomposableTo E` to make
 	  * some operations available only for actual collection types as well as eliminate the risk associated with
 	  * an always available implicit value for the identity decomposition.
 	  */
@@ -613,7 +613,6 @@ object ComposedOf {
 
 
 
-
 	/** Factory and container of implicit values for disassemblers converting a composite type `C` into an `Iterable[E]`. */
 	object DecomposableTo {
 
@@ -631,43 +630,43 @@ object ComposedOf {
 		}
 
 		/** A decomposer of type `Map[K, V]` into an `Iterable[K -> V]`. */
-		implicit def map[K, V] :Map[K, V] ExtractAs (K->V) = MapDecomposer.asInstanceOf[ExtractAs[Map[K, V], K->V]]
+		implicit def map[K, V] :Map[K, V] ExtractAs (K->V) = FromMap.asInstanceOf[ExtractAs[Map[K, V], K->V]]
 
 		/** A decomposer of `Iterable[T]` - and, by extension, any of its subtypes - returning it as-is. */
-		implicit def iterable[T] :Iterable[T] ExtractAs T = Iter.asInstanceOf[ExtractAs[Iterable[T], T]]
+		implicit def iterable[T] :Iterable[T] ExtractAs T = FromIterable.asInstanceOf[ExtractAs[Iterable[T], T]]
 
 		/** A decomposer of `Option[T]` into an `Iterable[T]`. */
-		implicit def optional[T] :Option[T] ExtractAs T = Opt.asInstanceOf[ExtractAs[Option[T], T]]
+		implicit def option[T] :Option[T] ExtractAs T = FromOption.asInstanceOf[ExtractAs[Option[T], T]]
 
 		/** A decomposer of type `T` into a singleton `Iterable[T]`. */
-		implicit def itself[T] :T DecomposableTo T = Sub.asInstanceOf[DecomposableTo[T, T]]
+		implicit def itself[T] :T DecomposableTo T = FromSelf.asInstanceOf[DecomposableTo[T, T]]
 
 
 
 		/** A factory and matcher for the identity decomposition witnessing that values of `T` can be extracted from `T` itself. */
-		object Subclass {
-			def apply[T]() :T DecomposableTo T = Sub.asInstanceOf[T DecomposableTo T]
+		object Self {
+			def apply[T]() :T DecomposableTo T = FromSelf.asInstanceOf[T DecomposableTo T]
 
-			def unapply[T, E](decomposition :DecomposableTo[T, E]) :Boolean = decomposition == Sub
+			def unapply[T, E](decomposition :DecomposableTo[T, E]) :Boolean = decomposition == FromSelf
 
-			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.decomposer == Sub
+			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.decomposer == FromSelf
 
 			def unapply[T](kin :Kin[T]) :Boolean = kin match {
-				case ComposedOf(DecomposableTo(Sub)) => true
+				case ComposedOf(DecomposableTo(FromSelf)) => true
 				case _ => false
 			}
 		}
 
 		/** A factory and matcher for the decomposition of `Option[T]` into zero or one values of `T`. */
-		object Optional {
-			def apply[T]() :Option[T] ExtractAs T = Opt.asInstanceOf[Option[T] ExtractAs T]
+		object Option {
+			def apply[T]() :Option[T] ExtractAs T = FromOption.asInstanceOf[Option[T] ExtractAs T]
 
-			def unapply[T, E](decomposition :DecomposableTo[T, E]) :Boolean = decomposition == Opt
+			def unapply[T, E](decomposition :DecomposableTo[T, E]) :Boolean = decomposition == FromOption
 
-			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.decomposer == Opt
+			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.decomposer == FromOption
 
 			def unapply[T](kin :Kin[T]) :Boolean = kin match {
-				case ComposedOf(DecomposableTo(Opt)) => true
+				case ComposedOf(DecomposableTo(FromOption)) => true
 				case _ => false
 			}
 		}
@@ -676,14 +675,14 @@ object ComposedOf {
 		  * of elements.
 		  */
 		object Iterable {
-			def apply[T]() :Iterable[T] ExtractAs T = Iter.asInstanceOf[Iterable[T] ExtractAs T]
+			def apply[T]() :Iterable[T] ExtractAs T = FromIterable.asInstanceOf[Iterable[T] ExtractAs T]
 
-			def unapply[T, E](decomposition :DecomposableTo[T, E]) :Boolean = decomposition == Iter
+			def unapply[T, E](decomposition :DecomposableTo[T, E]) :Boolean = decomposition == FromIterable
 
-			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.decomposer == Iter
+			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.decomposer == FromIterable
 
 			def unapply[T](kin :Kin[T]) :Boolean = kin match {
-				case ComposedOf(DecomposableTo(Iter)) => true
+				case ComposedOf(DecomposableTo(FromIterable)) => true
 				case _ => false
 			}
 		}
@@ -692,14 +691,14 @@ object ComposedOf {
 		  * @see [[net.noresttherein.oldsql.model.-> ->]]
 		  */
 		object Map {
-			def apply[K, V]() :Map[K, V] ExtractAs (K->V) = MapDecomposer.asInstanceOf[Map[K, V] ExtractAs (K->V)]
+			def apply[K, V]() :Map[K, V] ExtractAs (K->V) = FromMap.asInstanceOf[Map[K, V] ExtractAs (K->V)]
 
-			def unapply[T, E](decomposer :T DecomposableTo E) :Boolean = decomposer == MapDecomposer
+			def unapply[T, E](decomposer :T DecomposableTo E) :Boolean = decomposer == FromMap
 
-			def unapply[T, E](composition :T ComposedOf E) :Boolean = composition.decomposer == MapDecomposer
+			def unapply[T, E](composition :T ComposedOf E) :Boolean = composition.decomposer == FromMap
 
 			def unapply[T](kin :Kin[T]) :Boolean = kin match {
-				case ComposedOf(DecomposableTo(MapDecomposer)) => true
+				case ComposedOf(DecomposableTo(FromMap)) => true
 				case _ => false
 			}
 		}
@@ -707,7 +706,7 @@ object ComposedOf {
 
 
 		/** A custom decomposer using the provided function. */
-		case class Custom[C, E](decompose :C=>Iterable[E], arity :Arity = Arity._0_n) extends DecomposableTo[C, E] {
+		case class Custom[C, E](decompose :C => Iterable[E], arity :Arity = Arity._0_n) extends DecomposableTo[C, E] {
 			override def apply(composite: C): Iterable[E] = decompose(composite)
 
 			override def first(composite :C) :E = decompose(composite).head
@@ -716,18 +715,17 @@ object ComposedOf {
 		}
 
 
+		private case object FromSelf extends DecomposableTo[Any, Any] {
+			override def arity = Arity._1
 
-		private case object Sub extends DecomposableTo[Any, Any] {
-			def arity = Arity._1
-
-			override def apply(composite: Any): Iterable[Any] = Seq(composite)
+			override def apply(composite: Any): Iterable[Any] = composite::Nil
 			override def first(composite :Any) :Any = composite
 
 			override def toString = "One" //">:"
 		}
 
-		private case object Opt extends ExtractAs[Option[Any], Any] {
-			def arity = Arity._0_1
+		private case object FromOption extends ExtractAs[Option[Any], Any] {
+			override def arity = Arity._0_1
 
 			override def apply(composite :Option[Any]) :Iterable[Any] = composite.toSeq
 			override def first(composite :Option[Any]) :Any = composite.get
@@ -735,8 +733,8 @@ object ComposedOf {
 			override def toString = "Option"
 		}
 
-		private case object Iter extends ExtractAs[Iterable[Any], Any] {
-			def arity = Arity._0_n
+		private case object FromIterable extends ExtractAs[Iterable[Any], Any] {
+			override def arity = Arity._0_n
 
 			override def apply(composite: Iterable[Any]): Iterable[Any] = composite
 			override def first(composite :Iterable[Any]) :Any = composite.head
@@ -744,7 +742,7 @@ object ComposedOf {
 			override def toString = "Iterable"
 		}
 
-		private case object MapDecomposer extends ExtractAs[Map[Any, Any], Any->Any] {
+		private case object FromMap extends ExtractAs[Map[Any, Any], Any->Any] {
 			override def arity :Arity = Arity._0_n
 
 			override def apply(composite :Map[Any, Any]) :Iterable[Any -> Any] =

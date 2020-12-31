@@ -5,14 +5,15 @@ import java.sql.{CallableStatement, PreparedStatement, ResultSet}
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.ArraySeq
 
-import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.{slang, OperationType}
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
+import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect}
-import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingBound, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -22,7 +23,6 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals
-import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent
@@ -159,11 +159,14 @@ trait Mapping {
 	  * This type should ''not'' be used for other purposes, to keep values or be interpreted in any way, such as actual
 	  * alias names for joined tables. All concrete `Mapping` implementations are expected to take `Origin`
 	  * as a type parameter (by convention, and to leverage Scala's partial kind unification, the last one) for
-	  * seamless use in SQL expressions.
+	  * seamless use in SQL expressions. All components of a mapping must have the same `Origin` type as their
+	  * enclosing mapping. By induction, this means that for any 'root' mapping (normally, a mapping for a database
+	  * table), the whole subcomponent tree shares the same origin, which provides type safety by disallowing
+	  * the use of mappings with other `Origin` types in methods of this trait.
 	  *
 	  * Casting a `Mapping` to a different `Origin` should be safe. In order to abbreviate the code and provide
-	  * better type safety, direct casting to that effect should be avoided, and instead the implicitly available
-	  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector.withOrigin withOrigin]] method
+	  * better type safety, direct casting to that effect should be avoided, and instead
+	  * [[net.noresttherein.oldsql.schema.Mapping.MappingOriginProjector.withOrigin withOrigin]] extension method
 	  * should be used. It relies on the existence of an implicit
 	  * [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] which defines the result type
 	  * of such a cast. If the type inferer can unify a mapping type `X` with some
@@ -185,7 +188,7 @@ trait Mapping {
 	  */
 	type Origin
 
-	/** A type alias for a generic `Mapping` with the same subject type as this mapping and the origin provided as
+	/** A type alias for a generic `Mapping` with the same `Subject` type as this mapping and the `Origin` provided as
 	  * the type parameter. Used in particular in expressions like `MappingOf[S]#Projection` to obtain a type
 	  * constructor for mappings with definitions of both the `Subject` and the `Origin` types.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping]]
@@ -197,8 +200,9 @@ trait Mapping {
 	@inline final def refine :RefinedMapping[Subject, Origin] = this
 
 	/** A type alias for the [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]] with the provided
-	  * `Origin` type and `Subject` type bound from above by the subject of  this mapping. Used primarily
-	  * in the expression `MappingOf[S]#BoundProjection` as a sort of a curried type constructor.
+	  * `Origin` type and `Subject` type bound from above by the subject of this mapping. Used primarily
+	  * in the expression `MappingOf[S]#BoundProjection` as a sort of a curried type constructor. This allows type
+	  * unification of multiple mappings to a mapping for the LUB type of their subjects.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Projection]]
 	  */
 	type BoundProjection[O] = MappingBound[Subject, O]
@@ -208,7 +212,7 @@ trait Mapping {
 	  * `MappingOf[S]#TypedProjection` as a sort of a curried type constructor for the `BaseMapping` trait.
 	  * @see [[net.noresttherein.oldsql.schema.bases.BaseMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.TypedComponent]]
-	  */
+	  */ //todo: get rid of it in Scala 3, when BaseMapping will not be arguments of any methods
 	type TypedProjection[O] = BaseMapping[Subject, O]
 
 	/** A type alias for the [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] trait with the provided
@@ -220,24 +224,29 @@ trait Mapping {
 	type ColumnProjection[O] = ColumnMapping[Subject, O]
 
 	/** A container with values for components of this mapping required to assemble the subject.
-	  * It is a [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] instance parameterized with
-	  * the subject of this mapping. Each `Pieces` instance is, at least in theory, dedicated
-	  * to a particular component instance (its class and position in the larger mapping structure).
-	  * From the type safety point of view however it is sufficient that the subject type of this mapping matches
-	  * the subject type of the `Pieces`'s type parameter.
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues]]
+	  * It is a [[ComponentValues ComponentValues]] instance parameterized with
+	  * the subject and origin of this mapping. It is used by methods
+	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and
+	  * [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] when assembling the subject of this mapping
+	  * from individual column values returned by a `ResultSet`, or by explicitly preset values from another source.
+	  * Each `Pieces` instance is, at least in theory, dedicated to a particular component instance (its class
+	  * and position in the larger mapping structure). From the type safety point of view however it is sufficient that
+	  * the subject and origin types of this mapping matches the type parameters of the `Pieces`'s.
+	  * @see [[ComponentValues]]
 	  */
 	type Pieces = ComponentValues[Subject, Origin]
 
-	/** An extract of the value for some component of this mapping with the subject type `T`, which carries
-	  * additionally the export version of that component (from the point of view of this mapping).
+	/** An extract for the value of some component of this mapping, with the subject type `T`, which carries
+	  * additionally the ''export'' version of that component (from the point of view of this mapping).
 	  * @see [[net.noresttherein.oldsql.schema.MappingExtract]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.export]]
 	  */
 	type Extract[T] = MappingExtract[Subject, T, Origin]
 
-	/** An extract of the value for some column of this mapping with the subject type `T`, which carries
-	  * additionally the export version of that column (from the point of view of this mapping).
+	/** An extract for the value of some column of this mapping, with the subject type `T`, which carries
+	  * additionally the ''export'' version of that column (from the point of view of this mapping).
 	  * @see [[net.noresttherein.oldsql.schema.ColumnExtract]]
+	  * @see [[net.noresttherein.oldsql.schema.Mapping.export]]
 	  */
 	type ColumnExtract[T] = ColumnMappingExtract[Subject, T, Origin]
 
@@ -246,7 +255,17 @@ trait Mapping {
 	/** Any mapping with the same origin marker type, making it a supertype of all valid component types of this mapping.
 	  * It is also occasionally used as a part of the expression `MappingOf[S]#Component` as a sort of a curried type
 	  * constructor for the narrowed down `RefinedMapping`, not necessarily in the context of components
-	  * of any particular mapping instance.
+	  * of any particular mapping instance. The relation of being a component is transitive: all components of
+	  * components of a mapping are considered components of that mapping, and must be correctly handled when passed
+	  * as an argument to any of its methods. A single 'logical' component - a mapping for a particular column subset
+	  * of a table - can exist in multiple copies, as separate components of a mapping, differing in the declared
+	  * column names or buffs. This is because a mapping is allowed to adapt any component class by changing these
+	  * properties. One of these components is however considered the ''export'', operative version and is used
+	  * for assembly. This aliasing of multiple versions is handled by
+	  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method and
+	  * [[net.noresttherein.oldsql.schema.Mapping.Extract extracts]] for these components. The relation of being
+	  * an export component of a mapping is not transitive: an export component of an export component of a mapping
+	  * is not necessarily an export component of that mapping.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Column]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Projection]]
@@ -256,7 +275,9 @@ trait Mapping {
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin marker type
 	  * as this instance and thus a valid subcomponent type of this mapping. It is also occasionally used as a part
 	  * of the expression `MappingOf[S]#Column` as a sort of a curried type constructor for the `ColumnMapping` trait,
-	  * which doesn't necessarily describe columns of any particular mapping instance.
+	  * which doesn't necessarily describe columns of any particular mapping instance. All comments regarding
+	  * different versions of the same logical [[net.noresttherein.oldsql.schema.Mapping.Component component]]
+	  * and their ''export'' version apply also to columns.
 	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Component]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.ColumnProjection]]
@@ -264,7 +285,7 @@ trait Mapping {
 	type Column[T] = ColumnMapping[T, Origin]
 
 	/** Any `Mapping` with the same `Origin` type as this mapping and an unspecified `Subject` type.
-	  * Note that it is not the same as `Component[_]`, as the latter is narrowing mandating that the mapping
+	  * Note that it is not the same as `Component[_]`, as the latter is a narrowing mandating that the mapping
 	  * has the definition for the `Subject` type (which is of an unknown type). It is also not a direct
 	  * analogue of `AnyColumn`, as the `ColumnMapping` trait, extending `BaseMapping` defines both
 	  * the `Origin` and the `Subject` types.
@@ -289,7 +310,7 @@ trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Component]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.TypedProjection]]
 	  * @see [[net.noresttherein.oldsql.schema.bases.BaseMapping]]
-	  */
+	  */ //todo: remove it together with references to BaseMapping in the API
 	type TypedComponent[T] = BaseMapping[T, Origin]
 
 	/** A type alias for a dictionary mapping all components (and subcomponents) of this mapping, both their export,
@@ -317,8 +338,16 @@ trait Mapping {
 	  * a ready value present for this mapping in the `pieces`, assembling the result from subcomponents and, finally,
 	  * a default coming from an attached `OptionalSelect` (or related). By default it forwards to
 	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] and should stay consistent with it.
-	  * Mapping implementations for concrete domain model classes should typically override `assemble` instead of
-	  * this method directly.
+	  *
+	  * This method should not, as a rule, be called directly by other mappings from their `assemble` method,
+	  * as it can interfere with aliasing of the components to their ''export'' versions performed by `Pieces`.
+	  * Instead, mappings should obtain the values of subcomponents through the overloaded
+	  * [[net.noresttherein.oldsql.haul.ComponentValues.get get]] method of `ComponentValues`. While subclasses
+	  * can override this method, especially in order to handle custom `buffs` or perform some other validation,
+	  * in most cases required logic can and should be implemented in `assemble`, as in some cases - such as,
+	  * for example, in altered mappings (which are adapters changing the effective buffs), this method (or
+	  * `optionally`) might not be called at all. It is though safe to call by adapters from their `optionally` method.
+	  *
 	  * @throws NoSuchElementException if no value can be provided (`optionally` returns `None`).
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
@@ -328,18 +357,28 @@ trait Mapping {
 			case _ => throw new NoSuchElementException(s"Can't assemble $this from $pieces.")
 		}
 
-	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given `ComponentValues`.
-	  * This is the top-level method which can, together with passed `pieces`, produce the result in several ways.
-	  * By default it forwards the call to the [[net.noresttherein.oldsql.schema.ComponentValues.assemble assemble]]
-	  * method of `ComponentValues` (which, by default, will first check if it has a predefined value stored
-	  * for this mapping, and, only if not, forward to this instance's
-	  * [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] method which is responsible for the actual
-	  * assembly of the subject from the values of the subcomponents, recursively obtained from `pieces`.
-	  *
-	  * If all of the above fails, this method will check for a predefined value stored in an attached
-	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect$ OptionalSelect]] (or related) buff if it exists.
-	  * Additionally, any `AuditBuff`s present can modify the returned value and subclasses are free to
+	/** Attempts to retrieve or assemble the value for the mapped `Subject` from the given
+	  * [[ComponentValues ComponentValues]]. This is the top-level method which can,
+	  * together with passed `pieces`, produce the result in several ways. By default it forwards the call
+	  * to the [[net.noresttherein.oldsql.haul.ComponentValues.assemble assemble]] method of `ComponentValues`,
+	  * which, again by default, will first check if it has a predefined value stored for this mapping, and,
+	  * only if not, dispatch back to this instance's [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
+	  * method, which is responsible for the actual assembly of the subject from the values of the subcomponents,
+	  * recursively obtained from `pieces`. If all of the above fails, this method will check for a predefined value
+	  * stored in an attached [[net.noresttherein.oldsql.schema.Buff.OptionalSelect$ OptionalSelect]] (or related) buff
+	  * if it exists. Additionally, any `AuditBuff`s present can modify the returned value and subclasses are free to
 	  * handle other buffs or implement additional behaviour directly.
+	  *
+	  * Mapping implementations should generally prefer of overloaded
+	  * [[net.noresttherein.oldsql.haul.ComponentValues.get get]] methods of `ComponentValues` over calling this
+	  * method directly. This method should not, as a rule, be called directly by other mappings from their `assemble` method,
+	  * as it can interfere with aliasing of the components to their ''export'' versions performed by `Pieces`.
+	  * Instead, mappings should obtain the values of subcomponents through the overloaded
+	  * [[net.noresttherein.oldsql.haul.ComponentValues.get get]] method of `ComponentValues`. While subclasses
+	  * can override this method, especially in order to handle custom `buffs` or perform some other validation,
+	  * in most cases required logic can and should be implemented in `assemble`, as in some cases - such as,
+	  * for example, in altered mappings (which are adapters changing the effective buffs), this method might not be
+	  * called at all. It is however safe to call by adapter mappings from their `optionally` method.
 	  *
 	  * Returning `None` signifies that neither the value of this mapping nor its required components were available
 	  * in `pieces`, but, while there is an overlap, doesn't signify that the corresponding columns in the `ResultSet`
@@ -364,11 +403,16 @@ trait Mapping {
 
 	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
 	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
-	  * in [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]] and should not be called directly.
+	  * in [[ComponentValues ComponentValues]] and should not be called directly.
+	  *
+	  * The values of components should be collected using overloaded
+	  * [[net.noresttherein.oldsql.haul.ComponentValues.get get]] method of `ComponentValues`, and never by
+	  * directly calling `optionally`/`apply` on the components, as it can interfere with aliasing of components
+	  * to their ''export'' versions and, in some cases, can even lead to infinite recursion.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply apply]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.subject ComponentValues.subject]]
-	  * @see [[net.noresttherein.oldsql.schema.ComponentValues.optionally ComponentValues.optionally]]
+	  * @see [[net.noresttherein.oldsql.haul.ComponentValues.subject ComponentValues.subject]]
+	  * @see [[net.noresttherein.oldsql.haul.ComponentValues.optionally ComponentValues.optionally]]
 	  */
 	def assemble(pieces :Pieces) :Option[Subject]
 
@@ -395,7 +439,7 @@ trait Mapping {
 	  * This method should always produce results consistent with those of the sibling methods specific
 	  * to each operation type.
 	  * @return a `ComponentValues` instance build by the builder passed to the overloaded sibling method.
-	  */
+	  */ //fixme: all writtenValues method should take Option[Subject] to allow default values
 	def writtenValues[T](op :WriteOperationType, subject :Subject) :ComponentValues[Subject, Origin] = {
 		val res = ComponentValues(refine).newBuilder
 		writtenValues(op, subject, res)
@@ -538,7 +582,7 @@ trait Mapping {
 	/** A dictionary mapping all subcomponents of this mapping to extracts with their ''export'' versions.
 	  * It is used during the assembly process to alias all components to their operative versions, in order to make sure
 	  * that even if a subcomponent implementation asks for a value of one of its components which have been modified
-	  * by some enclosing component, the mapping passed to its [[net.noresttherein.oldsql.schema.ComponentValues Pieces]]
+	  * by some enclosing component, the mapping passed to its [[ComponentValues Pieces]]
 	  * is substituted with the export version as defined by this mapping (the root). This is both to alias all versions
 	  * to the same instance for the purpose of presetting a value, as well as using possibly overriden
 	  * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method, modifying the assembly process
@@ -615,8 +659,18 @@ trait Mapping {
 	  * is guaranteed to return `this` if `column eq this` (that is, this mapping is considered the export component
 	  * of itself by this method).
 	  */
+	@throws[NoSuchElementException]("if the component is not a subcomponent of this instance.")
 	def export[T](component :Component[T]) :Component[T] =
 		if (component eq this) component else apply(component).export //extra check in order to not create a MappingExtract
+
+	/** Same as [[net.noresttherein.oldsql.schema.Mapping.export export]]`(component)`, but instead of throwing
+	  * `NoSuchElementException`, it instead simply returns the argument itself.
+	  * @return `extracts.getOrElse(component, component)`.
+	  */
+	def exportOrNot[T](component :Component[T]) :Component[T] = {
+		val extract = extracts.getOrElse[Extract, T](component, null)
+		if (extract != null) extract.export else component
+	}
 
 	/** Adapts the given column of one of the transitive subcomponents of this instance to the form present
 	  * in the `columns` list (and others). For every column of every subcomponent of this instance, there is
@@ -628,8 +682,16 @@ trait Mapping {
 	  * is guaranteed to return `this` if `column eq this` (that is, this mapping is considered the export component
 	  * of itself by this method).
 	  */ //consider: renaming it to operative perhaps? it can easily conflict with an `export` column in client apps
-	def export[T](column :Column[T]) :Column[T] =
-		if (column eq this) column else apply(column).export
+	def export[T](column :Column[T]) :Column[T] = apply(column).export //columns contain themselves in extractMaps
+
+	/** Same as [[net.noresttherein.oldsql.schema.Mapping.export export]]`(column)`, but instead of throwing
+	  * `NoSuchElementException`, it instead simply returns the argument itself.
+	  * @return `extracts.getOrElse(column, column)`.
+	  */
+	def exportOrNot[T](column :Column[T]) :Column[T] = {
+		val extract = columnExtracts.getOrElse[ColumnExtract, T](column, null) //todo: make sure there is no object allocation here
+		if (extract != null) extract.export else column
+	}
 
 	/** Verifies if the given mapping is a (sub)component of this mapping. If this method returns `true`,
 	  * [[net.noresttherein.oldsql.schema.Mapping.export export]] and
@@ -645,20 +707,24 @@ trait Mapping {
 
 	/** Direct component mappings of this mapping, including any top-level columns. Always empty for columns.
 	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
-	  * or mapped components and aliases for other components of the `Mapping`. For all non-column components however
-	  * this list will cover all columns defined directly by the mapping. The components on the list are always
-	  * the ''export'' versions, but their subcomponents are not, generally, the ''export'' versions from the point
-	  * of view of this mapping.
+	  * or mapped components and aliases for other components of the `Mapping`. For example, if a foreign key
+	  * consists of columns with a business meaning by themselves, a mapping could include these columns directly
+	  * as normal and create an 'ephemeral' component for the foreign key, being a mapping assembling its subject
+	  * from these columns in the normal way, but which is not featured on any components list. For all non-column
+	  * components however this list will cover all columns defined directly by the mapping. The components on the list
+	  * are always the ''export'' versions, but their subcomponents are not, generally, the ''export'' versions
+	  * from the point of view of this mapping.
 	  */ //todo: subcomponents of these should have 'export' names, just not buffs
 	def components :Unique[Component[_]]
 
-	/** All transitive components of this mapping (i.e. components/columns declared by it's components or
-	  * other subcomponents), or all that this mapping cares to expose, as instances of this.Component[_].
-	  * It is typically defined by recursive ''flat mapping'' over the `components` list and including
-	  * the direct components themselves. This list is always empty for columns, thus ending any similar recursion.
-	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
-	  * or mapped components and aliases for other components of the `Mapping`. For all non-column components however
-	  * this list will cover all columns defined by the mapping. The components on the list are always
+	/** All transitive components of this mapping (i.e. components/columns declared directly by this mapping,
+	  * by it's components or other subcomponents), or all that this mapping cares to expose, as instances
+	  * of `this.`[[net.noresttherein.oldsql.schema.Mapping.Component Component]]`[_]`. It is typically defined
+	  * by recursive ''flat mapping'' over the [[net.noresttherein.oldsql.schema.Mapping.components components]] list
+	  * and including the direct components themselves. This list is always empty for columns, thus ending any similar
+	  * recursion. Some mappings may wish not to expose some of the components they define, primarily in the case
+	  * of adapted or mapped components and aliases for other components of the `Mapping`. For all non-column components
+	  * however this list will cover all columns defined by the mapping. The components on the list are always
 	  * the ''export'' versions, but their subcomponents are not, generally, the ''export'' versions from the point
 	  * of view of this mapping.
 	  *///todo: subcomponents of these should have 'export' names, just not buffs
@@ -742,7 +808,8 @@ trait Mapping {
 
 
 	/** All columns (in their operative versions) of this mapping which can be used as part of the given SQL statement type.
-	  * Delegates to the property specific to this operation type.
+	  * Delegates to the property specific to this operation type. Subclasses can reverse the order of delegation,
+	  * but it should always remain consistent with these methods.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.selectable]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.filterable]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.updatable]]
@@ -793,6 +860,23 @@ trait Mapping {
 	  */
 	def apply(adjustments :ComponentSelection[_, Origin]*) :RefinedMapping[Subject, Origin]
 
+	/** A modified version this mapping with the given components included/excluded ''by default''
+	  * from all applicable database operations. This method is similar to
+	  * [[net.noresttherein.oldsql.schema.Mapping.forSelect forSelect]],
+	  * [[net.noresttherein.oldsql.schema.Mapping.forFilter forFilter]],
+	  * [[net.noresttherein.oldsql.schema.Mapping.forUpdate forUpdate]],
+	  * [[net.noresttherein.oldsql.schema.Mapping.forInsert forInsert]] in that it creates a mapping
+	  * with copies or adapters of these components having certain buffs added and removed. Where it differs
+	  * is that, primarily, ''all'' operation types are affected and, secondarily, in case a component cannot
+	  * be included/excluded for some - or even all - operations types, these changes will not affect said operations
+	  * with regard to that component. This differs from individual methods in that they throw
+	  * an `IllegalArgumentException` if the change cannot be made for some of the listed components.
+	  * The easiest way to obtain arguments for this method is to call one of
+	  * [[net.noresttherein.oldsql.schema.Mapping.+ +]] and [[net.noresttherein.oldsql.schema.Mapping.- -]] methods
+	  * on a component of this mapping.
+	  * @param include a collection of components of this mapping which should be included in every operation, if possible.
+	  * @param exclude a collection of components of this mapping which should be excluded from every operation, if possible.
+	  */
 	def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :RefinedMapping[Subject, Origin]
 
 	/** A modified version of this mapping with the given components included/excluded ''by default''
@@ -1013,6 +1097,9 @@ trait Mapping {
 
 	/** An adapter of this mapping with the names of all its ''export'' columns prefixed with the given string. */
 	def prefixed(prefix :String) :Component[Subject]
+
+	/** An adapter of this mapping with the names of all its ''export'' columns replaced with the given function. */
+	def renamed(naming :String => String) :Component[Subject]
 
 
 
@@ -1646,7 +1733,7 @@ object Mapping extends LowPriorityMappingImplicits {
 		override def opt(res: ResultSet, position: Int): Option[S] = {
 			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
 			val columnValues = forms.map { f => i += 1; f.opt(res, i - 1) }
-			val pieces = ComponentValues(mapping)(ArraySeq.unsafeWrapArray(columnValues))(columns.indexOf)
+			val pieces = ColumnValues(mapping)(ArraySeq.unsafeWrapArray(columnValues))(columns.indexOf)
 			mapping.optionally(pieces)
 		}
 
@@ -1699,7 +1786,7 @@ object Mapping extends LowPriorityMappingImplicits {
 				throw new IllegalArgumentException(
 					s"Can't create a select form for $mapping using $components: NoSelect buff present among the selection."
 				)
-			val columns = exports.flatMap(
+			val columns = exports.flatMap( //fixme: this excludes columns with ExplicitSelect which were included in `components`
 				_.columns.view.map(mapping.export(_)).filter(NoSelectByDefault.disabled)
 			).to(Unique)
 			val mandatory = mapping.selectable.filter(OptionalSelect.disabled(_))
@@ -1741,7 +1828,7 @@ object Mapping extends LowPriorityMappingImplicits {
 	                      (private val op :WriteOperationType,
 	                       private val mapping :RefinedMapping[S, O], private val columns :Unique[ColumnMapping[_, O]])
 		extends SQLWriteForm[S] with WriteFormLiterals[S]
-	{
+	{ //todo: non-nullable columns should throw an early exception and not leave it to the database.
 //		def this(op :WriteOperationType, mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]]) =
 //			this(mapping, columns, op.extra, op.form(_))
 
@@ -1889,13 +1976,13 @@ object Mapping extends LowPriorityMappingImplicits {
 		private def custom[S, O](op :WriteOperationType,
 		                         mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]])
 				:SQLWriteForm[S] =
-		{
+		{ //fixme: hey, this should use Mapping.writtenValues!
 			val exports = components.view.map(mapping.export(_))
 			if (exports.exists(op.prohibited.enabled))
 				throw new IllegalArgumentException(
 					s"Can't create a $op write form for $mapping using $exports: ${op.prohibited} buff present among selection."
 				)
-			val columns = exports.flatMap { //fixme: adding an ExplicitXxx buff to excluded columns with the OptionalXxx
+			val columns = exports.flatMap { //fixme: this excludes ExplicitXxx components/columns even if present in `components`
 				c => c.columns.view.map(mapping.export(_)).filter(op.nonDefault.disabled)
 			}.to(Unique)
 			val mandatory = mapping.columns.filter(op.optional.disabled)

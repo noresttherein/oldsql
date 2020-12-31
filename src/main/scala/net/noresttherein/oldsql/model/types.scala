@@ -76,16 +76,34 @@ object types {
 
 	/** Type class for types which have a predefined translation to SQL expressions for atomic values. */
 	sealed trait LiteralSupport[V] extends Serializable with implicits {
-		@inline def imap[O](f :O=>V) :LiteralSupport[O] = new MappedLiteral[V, O](f)(this)
+		@inline def imap[O](f :O => V) :LiteralSupport[O] = new MappedLiteral[V, O](f)(this)
 	}
 
 
 
 	object LiteralSupport {
-		def map[X :LiteralSupport, Y](down :Y=>X) :LiteralSupport[Y] = new MappedLiteral(down)
+		def map[X :LiteralSupport, Y](down :Y => X) :LiteralSupport[Y] = new MappedLiteral(down)
 
-		private class MappedLiteral[X, Y](down :Y=>X)(implicit literal :LiteralSupport[X])
+		private class MappedLiteral[X, Y](down :Y => X)(implicit literal :LiteralSupport[X])
 			extends LiteralSupport[Y]
+
+		private class StandardLiteral[V](override val toString :String) extends LiteralSupport[V]
+
+		private def standard[V](name :String) :LiteralSupport[V] = new StandardLiteral[V](name)
+
+		implicit val ForByte = standard[Byte]("Byte")
+		implicit val ForShort = standard[Short]("Short")
+		implicit val ForInt = standard[Int]("Int")
+		implicit val ForLong = standard[Long]("Long")
+		implicit val ForFloat = standard[Float]("Float")
+		implicit val ForDouble = standard[Double]("Double")
+		implicit val ForChar = standard[Char]("Char")
+		implicit val ForBoolean = standard[Boolean]("Boolean")
+		implicit val ForString = standard[String]("String")
+
+		implicit def ForOption[T](some :LiteralSupport[T]) :LiteralSupport[Option[T]] =
+			standard("Option[" + some + "]")
+
 	}
 
 
@@ -94,7 +112,7 @@ object types {
 	  * Implicit values are provided for all standard numeric types and `String`.
 	  */ //todo: this is just a stub
 	trait OrderingSupport[V] extends LiteralSupport[V] with Ordering[V] {
-		override def imap[O](down :O=>V) :OrderingSupport[O] = new MappedOrdering[V, O](down)(this)
+		override def imap[O](down :O => V) :OrderingSupport[O] = new MappedOrdering[V, O](down)(this)
 	}
 
 	object OrderingSupport {

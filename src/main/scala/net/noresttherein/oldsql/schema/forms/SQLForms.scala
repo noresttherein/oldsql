@@ -3,18 +3,18 @@ package net.noresttherein.oldsql.schema.forms
 import java.sql.{CallableStatement, JDBCType, PreparedStatement, ResultSet}
 import java.util.Optional
 
-import net.noresttherein.oldsql.collection.{Chain, ChainMap, Listing, LabeledChain, Opt, Record}
+import net.noresttherein.oldsql.collection.{Chain, ChainMap, LabeledChain, Listing, Opt, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.LabeledChain.>~
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.collection.Record.|#
-import net.noresttherein.oldsql.morsels.{Stateless, Lazy}
+import net.noresttherein.oldsql.morsels.{Lazy, Stateless}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.forms.SQLForms.{AbstractListingReadForm, ChainMapEntryReadForm, ChainMapEntryWriteForm, ChainMapForm, ChainReadForm, ChainSQLForm, ChainSQLWriteForm, ChainWriteForm, EmptyChainForm, ListingItemReadForm, ListingItemWriteForm, ListingForm, SuperAdapterColumnForm, SuperChainForm}
-import net.noresttherein.oldsql.schema.ColumnForm.JDBCForm
+import net.noresttherein.oldsql.schema.forms.SQLForms.{AbstractListingReadForm, ChainMapEntryReadForm, ChainMapEntryWriteForm, ChainMapForm, ChainReadForm, ChainSQLForm, ChainSQLWriteForm, ChainWriteForm, EmptyChainForm, ListingForm, ListingItemReadForm, ListingItemWriteForm, SuperAdapterColumnForm, SuperChainForm}
+import net.noresttherein.oldsql.schema.ColumnForm.{JDBCForm, NullSafeColumnForm}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{ReadFormAdapter, ReadFormNullValue}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{WriteFormAdapter, WriteFormLiterals}
@@ -884,7 +884,9 @@ object SQLForms extends ColumnFormImplicits with BasicForms with ScalaForms {
 	/** Base type for anonymous forms for natively supported JDBC types. Implements equality as class equality
 	  * (ignoring the associated `NotNull` and `toString` as `sqlType.toString`.
 	  */
-	private[schema] abstract class BasicJDBCForm[T :NullValue](jdbcType :JDBCType) extends JDBCForm[T](jdbcType) {
+	private[forms] abstract class BasicJDBCForm[T :NullValue](jdbcType :JDBCType)
+		extends JDBCForm[T](jdbcType) with NullSafeColumnForm[T]
+	{
 		override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
 		override def equals(that :Any) :Boolean = that match {
@@ -896,8 +898,8 @@ object SQLForms extends ColumnFormImplicits with BasicForms with ScalaForms {
 		override def hashCode :Int = getClass.hashCode * 31 + nulls.hashCode
 	}
 
-	private[schema] abstract class AlternateJDBCForm[T :NullValue](jdbcType :JDBCType, override val toString :String)
-		extends JDBCForm[T](jdbcType)
+	private[forms] abstract class AlternateJDBCForm[T :NullValue](jdbcType :JDBCType, override val toString :String)
+		extends JDBCForm[T](jdbcType) with NullSafeColumnForm[T]
 	{
 		def this(jdbcType :JDBCType) = this(jdbcType, "J" + jdbcType)
 	}

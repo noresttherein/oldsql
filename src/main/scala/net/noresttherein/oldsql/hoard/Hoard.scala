@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.hoard
 
 import net.noresttherein.oldsql.hoard
-import net.noresttherein.oldsql.model.{ComposedOf, Kin, PrimaryKey, Restraint}
+import net.noresttherein.oldsql.model.{ComposedOf, Kin, EntityIdentity, Restraint}
 import net.noresttherein.oldsql.model.PropertyPath
 
 import scala.collection.immutable

@@ -1,12 +1,38 @@
 package net.noresttherein.oldsql.schema.support
 
-import scala.collection.mutable
-
+import net.noresttherein.oldsql.haul.{TableCache, TableIndex}
+import net.noresttherein.oldsql.haul.TableCache.EntityTableCache
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
-import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
-import net.noresttherein.oldsql.schema.{MappingExtract, PrimaryKeyOf}
-import net.noresttherein.oldsql.schema.support.IndexedMapping.MappingIndex
+import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
+import net.noresttherein.oldsql.schema.MappingExtract
+
+
+
+
+
+
+class IndexedMapping[S, O](protected override val backer :RefinedMapping[S, O], indices :Iterable[TableIndex[_, S]])
+	extends DirectProxy[S, O]
+{
+	def this(table :TableCache[S]) = this(table.table[O], table.indices)
+
+	private[this] val fastIndices = indices.toArray
+
+	override def optionally(pieces :Pieces) :Option[S] = pieces.get(backer) match {
+		case res @ Some(value) =>
+			var i = fastIndices.length - 1
+			while (i >= 0) {
+				fastIndices(i) += value
+				i -= 1
+			}
+			res
+		case none => none
+	}
+
+	override def assemble(pieces :Pieces) :Option[S] = None //backer.assemble(pieces)
+
+	override def toString :String = "Indexed(" + backer + ")"
+}
 
 
 
@@ -16,19 +42,17 @@ import net.noresttherein.oldsql.schema.support.IndexedMapping.MappingIndex
 /**
   * @author Marcin Mościcki
   */
-class IndexedMapping[S, K, O] private (protected override val backer :RefinedMapping[S, O], pk :MappingIndex[S, K, O],
-                                       indices :Iterable[MappingIndex[S, _, O]])
-	extends ShallowProxy[S, O] with DelegateAdapter[RefinedMapping[S, O], S, O]
+class IndexedEntityMapping[K, S, O] private (protected override val backer :RefinedMapping[S, O],
+                                             pk :TableIndex[K, S], indices :Iterable[TableIndex[_, S]])
+	extends DirectProxy[S, O]
 {
-	def this(pk :MappingIndex[S, K, O], indices :Iterable[MappingIndex[S, _, O]] = Nil) = this(pk.mapping, pk, indices)
-	def this(pk :MappingIndex[S, K, O]) = this(pk.mapping, pk, Nil)
+	def this(table :EntityTableCache[K, S]) = this(table.table[O], table.pk, table.indices)
 
-	private[this] val extract = pk.property
-	private[this] val index = pk.values
+	private[this] val extract = MappingExtract(pk.component[O])(pk.property)
 	private[this] val fastIndices = indices.toArray
 
 	override def optionally(pieces :Pieces) :Option[S] = pieces.get(extract) match {
-		case Some(k) =>	index.get(k) match {
+		case Some(k) =>	pk.unique(k) match {
 			case res @ Some(_) => res
 			case _ => pieces.get(backer) match {
 				case res @ Some(s) => put(k, s); res
@@ -44,8 +68,10 @@ class IndexedMapping[S, K, O] private (protected override val backer :RefinedMap
 		}
 	}
 
+	override def assemble(pieces :Pieces) :Option[S] = None //backer.assemble(pieces)
+
 	private def put(key :K, value :S) :Unit = {
-		index.put(key, value)
+		pk.add(key, value)
 		var i = fastIndices.length - 1
 		while (i >= 0) {
 			fastIndices(i) += value
@@ -53,7 +79,8 @@ class IndexedMapping[S, K, O] private (protected override val backer :RefinedMap
 		}
 	}
 
-	override def toString :String = "Indexed(" + backer + ")#" + pk.property.export
+	override def toString :String =
+		indices.view.map(_.component).mkString("Indexed(" + backer + "#" + pk.component + "; ", ", ",  ")")
 }
 
 
@@ -63,37 +90,15 @@ class IndexedMapping[S, K, O] private (protected override val backer :RefinedMap
 
 object IndexedMapping {
 
-	def apply[S, K, O](pk :MappingIndex[S, K, O], indices :MappingIndex[S, _, O]*) :IndexedMapping[S, K, O] =
-		new IndexedMapping[S, K, O](pk, indices)
+	def apply[S, O](cache :TableCache[S]) :IndexedMapping[S, O] = new IndexedMapping[S, O](cache)
+	def apply[K, S, O](cache :EntityTableCache[K, S]) :IndexedEntityMapping[K, S, O] = new IndexedEntityMapping(cache)
 
-	def apply[M[X] <: RefinedMapping[S, X], S, K, O](mapping :M[O])(implicit key :PrimaryKeyOf[M] { type Key = K })
-			:IndexedMapping[S, K, O] =
-		new IndexedMapping[S, K, O](new MappingIndex[S, K, O](mapping, key(mapping)))
-
-
-
-	class MappingIndex[S, K, O](
-		val mapping :RefinedMapping[S, O], key :RefinedMapping[K, O], index :mutable.Map[K, S] = mutable.Map.empty[K, S]
-	){
-		private[this] val extract = mapping(key)
-		def property :MappingExtract[S, K, O] = extract
-		def values :mutable.Map[K, S] = index
-
-		def += (value :S) :Unit = extract.get(value) match {
-			case Some(key) => index.put(key, value)
-			case _ =>
-		}
-
-		def get(key :K) :Option[S] = index.get(key)
-
-		def apply(key :K) :S = index(key)
-
-		override def toString :String =
-			index.view.map {
-				case (key, value) => key.toString + "->" + value
-			}.mkString(mapping.mappingName + "#" + key + "(", ", ", ")")
-	}
 }
+
+
+
+
+
 
 
 

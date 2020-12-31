@@ -1,17 +1,19 @@
 package net.noresttherein.oldsql.schema.bases
 
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
+import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, MappedTo}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, RefinedMapping}
-import net.noresttherein.oldsql.slang._
-import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
 import net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate
-import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, MappedMapping, MappingAdapter, PrefixedMapping}
-import net.noresttherein.oldsql.schema.{ComponentValues, Mapping, MappingExtract}
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, MappedMapping, MappingAdapter, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.MappingExtract
 
 
+//here be implicits
+import net.noresttherein.oldsql.slang._
 
 
 
@@ -41,6 +43,8 @@ trait StaticMapping[S, O] extends BaseMapping[S, O]
 	override def prefixed(prefix :String) :Adapted[this.type] =
 		PrefixedMapping[this.type, S, O](prefix, this :this.type)
 
+	override def renamed(naming :String => String) :Adapted[this.type] =
+		RenamedMapping[this.type, S, O](this :this.type, naming)
 
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X] = null) :this.type MappedTo X =
@@ -193,7 +197,7 @@ object StaticMapping {
 
 		override def prefixed(prefix :String) :A[this.type, S]
 
-//		override def renamed(name :String) :A[this.type, S]
+		override def renamed(naming :String => String) :A[this.type, S]
 
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :A[this.type, X]
@@ -209,7 +213,7 @@ object StaticMapping {
 
 
 	/** Extends any `Component[T]` of some `RefinedMapping[S, O]` with an `apply()` method returning the value
-	  * of the component from implicit [[net.noresttherein.oldsql.schema.ComponentValues ComponentValues]].
+	  * of the component from implicit [[ComponentValues ComponentValues]].
 	  */
 	class GetComponentValue[S, T, O](private val extract :MappingExtract[S, T, O]) extends AnyVal {
 

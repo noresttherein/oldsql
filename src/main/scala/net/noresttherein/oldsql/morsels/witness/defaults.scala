@@ -27,13 +27,13 @@ object Maybe extends MaybeNoImplicit {
 
 	def unapply[T](maybe :Maybe[T]) :Option[T] = maybe.opt
 
-	implicit def maybeYes[T](implicit e :T) :Maybe[T] = new Maybe(Some(e))
+	implicit def maybeYes[T](implicit e :T) :Maybe[T] = new Maybe(Option(e))
 
 	def some[T](implicit e :T) :Maybe[T] = new Maybe(Some(e))
 
 	val none :Maybe[Nothing] = new Maybe[Nothing](None)
 
-	implicit def explicit[T](value :T) :Maybe[T] = new Maybe(Some(value))
+	implicit def explicit[T](value :T) :Maybe[T] = new Maybe(Option(value))
 
 }
 

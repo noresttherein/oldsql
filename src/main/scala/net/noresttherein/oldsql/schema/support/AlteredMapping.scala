@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, DelegateAdapter}
 import net.noresttherein.oldsql.schema.support.AlteredMapping.{overrides, Override, Overrides}
-import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
+import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy
 
 
 
@@ -33,7 +33,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.EagerDeepProxy
 class AlteredMapping[+M <: RefinedMapping[S, O], S, O]
                     (protected override val backer :M,
                      substitutions :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component])
-	extends EagerDeepProxy[S, O](backer) with DelegateMapping[M, S, O]
+	extends DeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
 	def this(original :M, op :OperationType,
 	         includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]]) =

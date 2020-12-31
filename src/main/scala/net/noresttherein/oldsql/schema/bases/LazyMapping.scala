@@ -1,12 +1,12 @@
 package net.noresttherein.oldsql.schema.bases
 
+import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.{Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, FilterAudit, InsertAudit, NoFilter, NoInsert, NoUpdate, OptionalSelect, SelectAudit, UpdateAudit}
-import net.noresttherein.oldsql.schema.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.schema.{Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, FilterAudit, InsertAudit, InsertDefault, NoFilter, NoInsert, NoUpdate, OptionalSelect, SelectAudit, SelectDefault, UpdateAudit, UpdateDefault}
 
 
 
@@ -17,6 +17,19 @@ import net.noresttherein.oldsql.OperationType.WriteOperationType
   * and disassembly taking advantage of these flags.
   */
 trait OptimizedMappingAssembly extends Mapping {
+
+	override def optionally(pieces :Pieces) :Option[Subject] = pieces.assemble(refine) match {
+		case res if buffs.isEmpty => res
+		case res :Some[Subject] => selectAudit.get match {
+			case Some(audit) => Some(audit(res.get))
+			case _ => res
+		}
+		case _ => selectDefault.get
+	}
+
+	private val selectAudit = Lazy { if (SelectAudit.enabled(refine)) Some(SelectAudit.fold(refine)) else None }
+	private val selectDefault = Lazy { SelectDefault.Value(refine) orElse ExtraSelect.Value(refine) }
+
 
 	override def writtenValues[T](op :WriteOperationType, subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
 		op.writtenValues(refine, subject, collector)
@@ -57,22 +70,8 @@ trait OptimizedMappingAssembly extends Mapping {
 	private val filterAudit = Lazy(FilterAudit.fold(refine))
 	private val updateAudit = Lazy(UpdateAudit.fold(refine))
 	private val insertAudit = Lazy(InsertAudit.fold(refine))
-
-
-
-	override def optionally(pieces :Pieces) :Option[Subject] = pieces.assemble(refine) match {
-		case res if buffs.isEmpty => res
-		case res :Some[Subject] =>
-			if (isAuditable) Some(selectAudit(res.get)) else res
-		case _ =>
-			val res = default.get
-			if (res.isDefined) res else explicit
-	}
-
-	private val isAuditable = Lazy(SelectAudit.enabled(refine))
-	private val selectAudit = Lazy(SelectAudit.fold(refine))
-	private val default = Lazy(OptionalSelect.Value(refine))
-	private val explicit = Lazy(ExtraSelect.Value(refine))
+	private val updateDefault = Lazy(UpdateDefault.Value(refine))
+	private val insertDefault = Lazy(InsertDefault.Value(refine))
 
 }
 
@@ -158,6 +157,15 @@ trait StableMapping extends Mapping {
 	//todo: this should extend BaseMapping but currently it is extended by some traits with conflicting (narrowed)
 	// declarations of methods implemented in BaseMapping
 
+	override def optionally(pieces :Pieces) :Option[Subject] = pieces.assemble(refine) match {
+		case res if noBuffs => res
+		case res :Some[Subject] =>
+			if (noSelectAudit) res else Some(selectAudit(res.get))
+		case _ =>
+			if (default.isDefined) default else explicit
+	}
+
+
 	override def writtenValues[T](op :WriteOperationType, subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
 		op.writtenValues(refine, subject, collector)
 
@@ -199,19 +207,10 @@ trait StableMapping extends Mapping {
 	private val insertAudit = InsertAudit.fold(refine)
 
 
-
-	override def optionally(pieces :Pieces) :Option[Subject] = pieces.assemble(refine) match {
-		case res if noBuffs => res
-		case res :Some[Subject] =>
-			if (noSelectAudit) res else Some(selectAudit(res.get))
-		case _ =>
-			if (default.isDefined) default else explicit
-	}
-
 	private val noBuffs = buffs.isEmpty
 	private val noSelectAudit = SelectAudit.disabled(this)
 	private val selectAudit = SelectAudit.fold(refine)
-	private val default = OptionalSelect.Value(refine)
+	private val default = SelectDefault.Value(refine)
 	private val explicit = ExtraSelect.Value(refine)
 
 

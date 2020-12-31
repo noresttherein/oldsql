@@ -11,9 +11,11 @@ trait MappedKin[S, +T] extends Kin[T] {
 	def source :Kin[S]
 	def fun :KinMapper[S, T]
 
-	override def isEmpty :Boolean = source.isEmpty
+	override def isPresent :Boolean = source.isPresent
+	override def isMissing :Boolean = source.isMissing
+	override def isNonexistent :Boolean = source.isNonexistent
 
-	override lazy val toOpt :Option[T] = source.toOpt.map(fun)
+	override lazy val toOption :Option[T] = source.toOption.map(fun)
 
 	override def toString = s"$source.map($fun)"
 }

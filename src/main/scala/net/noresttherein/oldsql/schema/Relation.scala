@@ -9,6 +9,7 @@ import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, RelationTempla
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.AdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
+import net.noresttherein.oldsql.schema.Relation.BaseTable.TableFactory
 import net.noresttherein.oldsql.sql.Adjoin
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 
@@ -102,7 +103,7 @@ object Relation {
 	type * = Relation[M] forSome { type M[O] <: MappingAt[O] }
 
 
-	def apply[M <: Mapping, S](name :String, template :M)
+	def apply[M <: Mapping, S](name :String, template : => M)
 	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
 		new ProjectingRelation[projection.WithOrigin, S](projection[()](template), name)(projection.isomorphism)
 
@@ -168,11 +169,23 @@ object Relation {
 
 
 
+	/** Base class for most `Relation` implementations, which relies on a prototype
+	  * [[net.noresttherein.oldsql.schema.Mapping mapping]] instance `M[_]` and
+	  * an [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] in order to cast it for every
+	  * [[net.noresttherein.oldsql.schema.Relation.apply apply]]/[[net.noresttherein.oldsql.schema.Relation.row row]]
+	  * call. The prototype must be specified as a lazy expression value as there is a cycle of dependencies:
+	  * this `Relation` requires a mapping, which might contain foreign key components referencing relation fields
+	  * before they are initialized. It is simpler to break it here, and the `lazy val` overhead doesn't hurt,
+	  * comparing to each `assemble` call. The downside is that one must still be careful to not refer to
+	  * relation `val`s before they are initialized - either have everything declared in a singleton object, or declare
+	  * relations as `lazy val`s (or `object`s themselves).
+	  */
 	private class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
-	                                (protected[this] val template :M[()], override val sql :String)
+	                                (prototype: => M[()], override val sql :String)
 	                                (implicit projection :IsomorphicProjection[M, S, ()])
 		extends Relation[M]
 	{
+		protected[this] lazy val template = prototype
 		override def row[O] :M[O] = projection(template)
 		override def apply[O] :M[O] = projection(template)
 		override def export[O] :M[O] = projection(template)
@@ -185,18 +198,18 @@ object Relation {
 	  * not only static elements of a table schema. In particular, this includes local views of ''with'' clauses
 	  * as well as query parameters.
 	  */
-	trait RelVar[+M[O] <: MappingAt[O]] extends Relation[M] {
+	trait NamedRelation[+M[O] <: MappingAt[O]] extends Relation[M] {
 		def name :String
 		override def sql :String = name
 	}
 
 	/** A relation with a static name, typically (but not necessarily) representing a permament element
-	  * of a table schema. It is a [[net.noresttherein.oldsql.schema.Relation.RelVar relvar]] with its name displayed
-	  * as `String` literal type parameter `N`, which allows it to be more easily identified or referred to.
-	  * It is by implicit relation values in a schema, which can be then summoned by their names, in particular
-	  * when resolving foregin key targets.
+	  * of a table schema. It is a [[net.noresttherein.oldsql.schema.Relation.NamedRelation NamedRelation]]
+	  * with its name displayed as `String` literal type parameter `N`, which allows it to be more easily identified
+	  * or referred to. It is extended by implicit relation values in a schema, which can be then summoned
+	  * by their names, in particular when resolving foreign key targets.
 	  */
-	trait StaticRelation[N <: String with Singleton, +M[O] <: MappingAt[O]] extends RelVar[M]
+	trait StaticRelation[N <: String with Singleton, +M[O] <: MappingAt[O]] extends NamedRelation[M]
 
 	/** A marker trait for `Relation` implementations which do not represent any SQL object or language element,
 	  * but are synthetic instances used by the SQL DSL, such as query parameters or grouping expressions.
@@ -227,17 +240,36 @@ object Relation {
 
 
 	object Table {
-
-		def apply[M <: Mapping, S](tableName :String, template :M)
-		                          (implicit project :OriginProjection[M, S]) :Table[project.WithOrigin] =
+		def apply[M <: Mapping, S](tableName :String, template : => M)
+		                          (implicit project :OriginProjection[M, S]) :BaseTable[project.WithOrigin] =
 			BaseTable[M, S](tableName, template)
 
+		def apply[S] :TableFactory[S] = new TableFactory[S] {}
+
 		trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
-			def name :N
+			override def name :N
 		}
 
 		type * = Table[M] forSome { type M[O] <: MappingAt[O] }
+	}
 
+
+
+
+	trait RelVar[+M[O] <: MappingAt[O]] extends Table[M] with NamedRelation[M] with RelationTemplate[M, RelVar] {
+		outer =>
+
+		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+				:RelVar[M] =
+			new AlteredRelation[M](this, includes, excludes) with RelVar[M] {
+				override def name = outer.name
+
+				override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]]) =
+					outer.alter(
+						(this.includes.view ++ includes).filterNot(excludes.contains(_)).to(Unique),
+						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
+					)
+			}
 	}
 
 
@@ -248,7 +280,9 @@ object Relation {
 	  * [[net.noresttherein.oldsql.sql.ast.QuerySQL.QueryRelation selects]] used in ''from'' and ''with'' clauses.
 	  */
 	trait DerivedTable[+M[O] <: MappingAt[O]] extends Table[M] with RelationTemplate[M, DerivedTable] { outer =>
-		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]]) :DerivedTable[M] =
+
+		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+				:DerivedTable[M] =
 			new AlteredRelation[M](this, includes, excludes) with DerivedTable[M] {
 				override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]]) =
 					outer.alter(
@@ -262,6 +296,7 @@ object Relation {
 	object DerivedTable {
 		type * = DerivedTable[M] forSome { type M[O] <: MappingAt[O] }
 	}
+
 
 
 
@@ -285,7 +320,7 @@ object Relation {
 
 	object View {
 
-		def apply[M <: Mapping, S](tableName :String, template :M)
+		def apply[M <: Mapping, S](tableName :String, template : => M)
 		                          (implicit project :OriginProjection[M, S]) :View[project.WithOrigin] =
 			new ProjectingRelation[project.WithOrigin, S](project[()](template), tableName)(project.isomorphism)
 				with View[project.WithOrigin]
@@ -293,6 +328,14 @@ object Relation {
 				override val sql = tableName
 				override def name = sql
 			}
+
+		def apply[S] :ViewFactory[S] = new ViewFactory[S] {}
+
+		trait ViewFactory[S] extends Any { //fixme: lazy implicit
+			def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
+					:View[project.WithOrigin] =
+				View(tableName, mapping)
+		}
 
 		trait StaticView[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
 			override def name :N
@@ -326,7 +369,7 @@ object Relation {
 
 	object BaseTable {
 
-		def apply[M <: Mapping, S](tableName :String, template :M)
+		def apply[M <: Mapping, S](tableName :String, template : => M)
 		                          (implicit project :OriginProjection[M, S]) :BaseTable[project.WithOrigin] =
 			new ProjectingRelation[project.WithOrigin, S](project[()](template), tableName)(project.isomorphism)
 				with BaseTable[project.WithOrigin]
@@ -334,6 +377,14 @@ object Relation {
 				override val sql = tableName
 				override def name = sql
 			}
+
+		def apply[S] :TableFactory[S] = new TableFactory[S] {}
+
+		trait TableFactory[S] extends Any { //fixme: lazy implicit
+			def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
+					:BaseTable[project.WithOrigin] =
+				BaseTable(tableName, mapping)
+		}
 
 
 		trait StaticBaseTable[N <: String with Singleton, M[O] <: MappingAt[O]]

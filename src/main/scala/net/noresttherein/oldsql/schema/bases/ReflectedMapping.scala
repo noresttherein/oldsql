@@ -17,10 +17,10 @@ trait ReflectedMapping[S, O] extends MappingFrame[S, O] { composite =>
 
 
 	override protected def extractFor[T](component :FrameComponent[T]) :ComponentProperty[S, T, O] =
-		ComponentProperty(component)(component.extractor)
+		ComponentProperty(component)(component.componentSelector)
 
 	protected override def extractFor[T](column :FrameColumn[T]) :ColumnProperty[S, T, O] =
-		ComponentProperty(column)(column.extractor)
+		ComponentProperty(column)(column.componentSelector)
 
 
 
