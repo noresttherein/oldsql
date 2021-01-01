@@ -8,9 +8,10 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, Empty
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{ConstSQLReadForm, EvalSQLReadForm, FallbackSQLReadForm, FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NullSQLReadForm}
+import net.noresttherein.oldsql.schema.SQLReadForm.{ConstSQLReadForm, CustomOptSQLReadForm, CustomSQLReadForm, EvalSQLReadForm, FallbackSQLReadForm, FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NotNullReadForm, NotNullSQLReadForm, NullSQLReadForm, ReadFormNullGuard}
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperColumnForm}
 import net.noresttherein.oldsql.schema.forms.SQLForms.SuperAdapterColumnForm
+import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
 
 
 
@@ -69,6 +70,11 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
 
 	override def toOpt :ColumnReadForm[Option[T]] = SQLForms.OptionColumnReadForm(this)
 
+	override def notNull :ColumnReadForm[T] =
+		new NotNullSQLReadForm[T]()(this) with ColumnReadForm[T] {
+			override def notNull :this.type = this
+			override def sqlType = form.asInstanceOf[ColumnReadForm[_]].sqlType
+		}
 
 	override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
 		case atom :ColumnReadForm[S] => this orElse atom
@@ -130,14 +136,7 @@ object ColumnReadForm {
 	  * @param reader a function taking an SQL `ResultSet`, a column index, and reads the column as a value of `T`.
 	  */
 	def apply[T :NullValue](columnType :JDBCType, name :String)(reader :(ResultSet, Int) => T) :ColumnReadForm[T] =
-		new AbstractColumnReadForm[T] with DirectColumnReadForm[T] {
-			protected override def read(res :ResultSet, position :Int) = reader(res, position)
-			override val sqlType = columnType
-
-			override val toString =
-				if (name != null) name
-				else "ColumnReadForm[" + columnType + "]@" + hashCode
-		}
+		new CustomColumnReadForm[T](columnType, name)(reader)
 
 	/** Creates a new `ColumnReadForm` using the given function to read an optional value from the result set.
 	  * @param columnType JDBC code for the SQL type of the read column.
@@ -146,12 +145,7 @@ object ColumnReadForm {
 	  */
 	def opt[T :NullValue](columnType :JDBCType, name :String = null)
 	                     (read :(ResultSet, Int) => Option[T]) :ColumnReadForm[T] =
-		new AbstractColumnReadForm[T] {
-			override def opt(res :ResultSet, position :Int) = read(res, position)
-			override val sqlType = columnType
-
-			override val toString = if (name != null) name else "SQLReadForm[" + columnType + "]@" + hashCode
-		}
+		new CustomOptColumnReadForm[T](columnType, name)(read)
 
 
 
@@ -167,7 +161,13 @@ object ColumnReadForm {
 	  * to which the `apply` method delegates when the former yields `None`. The expression must be thread safe.
 	  */
 	def evalopt[T :NullValue](jdbcType :JDBCType, value: => Option[T], name :String = "=_>") :ColumnReadForm[T] =
-		new EvalSQLReadForm[T](value, 1, name) with ColumnReadForm[T] {
+		new EvalSQLReadForm[T](value, 1, name) with ColumnReadForm[T] { outer =>
+			override def notNull :ColumnReadForm[T] =
+				new EvalSQLReadForm[T](value, 1, name)(NotNull)
+					with ColumnReadForm[T] with ReadFormNullGuard[T]
+				{
+					override val sqlType = outer.sqlType
+				}
 			override val sqlType = jdbcType
 		}
 
@@ -186,6 +186,13 @@ object ColumnReadForm {
 	  */
 	def constopt[T :NullValue](jdbcType :JDBCType, value :Option[T], name :String = null) :ColumnReadForm[T] =
 		new ConstSQLReadForm[T](value, 1, name) with ColumnReadForm[T] {
+			override def notNull :ColumnReadForm[T] = value match {
+				case Some(null) => error(sqlType, toString + ".notNull") {
+					throw new NullPointerException("Cannot return a null value from " + this + ".opt.")
+				}
+				case _ if nulls == NotNull => this
+				case _ => constopt[T](sqlType, value, name)(NotNull)
+			}
 			override val sqlType = jdbcType
 		}
 
@@ -237,6 +244,12 @@ object ColumnReadForm {
 
 			protected override def errorMessage(position :Int, res :ResultSet) :String =
 				res.getMetaData.getColumnName(position) + ":" + this + " does not allow null values."
+
+			override def notNull :ColumnReadForm[T] = try {
+				if (nullValue == null) error(sqlType, toString + ".notNull") {
+					throw new NullPointerException("Cannot return null from " + this + ".notNull.")
+				} else this
+			} catch { case _ :Exception => this }
 
 			override val sqlType = jdbcType
 			override val toString = if (name != null) name else "NULL:" + sqlType + ">"
@@ -436,44 +449,68 @@ object ColumnReadForm {
 
 
 
-
-
-
-	private[schema] trait LazyColumnReadForm[T] extends LazySQLReadForm[T] with ColumnReadForm[T] {
-		protected override def form :ColumnReadForm[T] = super.form.asInstanceOf[ColumnReadForm[T]]
-
-		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] = form.map(fun)
-		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] = form.flatMap(fun)
-
-		override def toOpt :ColumnReadForm[Option[T]] = form.toOpt
-		override def orElse[S >: T](fallback :ColumnReadForm[S]) :ColumnReadForm[S] = form orElse fallback
-		override def <>[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = form <> write
-
-		override def toString :String =
-			if (isInitialized) "Lazy(" + form + ")" else "Lazy>"
-	}
-
-
-
-
-
-
 	trait FlatMappedColumnReadForm[S, +T] extends FlatMappedSQLReadForm[S, T] with ColumnReadForm[T] {
 		private def form :ColumnReadForm[S] = source.asInstanceOf[ColumnReadForm[S]]
-
 		override def sqlType :JDBCType = form.sqlType
+
+		override def notNull :ColumnReadForm[T] =
+			new FlatMappedSQLReadForm[S, T](map, toString + ".notNull")(form, NotNull)
+				with ColumnReadForm[T] with ReadFormNullGuard[T]
+			{
+				override def sqlType = source.asInstanceOf[ColumnReadForm[_]].sqlType
+			}
 	}
-
-
 
 	trait MappedColumnReadForm[S, +T] extends MappedSQLReadForm[S, T] with ColumnReadForm[T] {
 		private def form :ColumnReadForm[S] = source.asInstanceOf[ColumnReadForm[S]]
-
 		override def sqlType :JDBCType = form.sqlType
+
+		override def notNull :ColumnReadForm[T] =
+			new MappedSQLReadForm[S, T](map, toString + ".notNull")(form, NotNull)
+				with ColumnReadForm[T] with ReadFormNullGuard[T]
+			{
+				override def sqlType = source.asInstanceOf[ColumnReadForm[_]].sqlType
+			}
 	}
 
 
 
+
+
+
+	private[schema] class CustomColumnReadForm[+T :NullValue](override val sqlType :JDBCType, name :String = null)
+	                                                         (reader :(ResultSet, Int) => T)
+		extends CustomSQLReadForm[T](1, name)(reader) with DirectColumnReadForm[T]
+	{
+		protected override def read(res :ResultSet, position :Int) = reader(res, position)
+
+		override def notNull :ColumnReadForm[T] =
+			new CustomColumnReadForm[T](sqlType, toString + ".notNull")(reader)(NotNull) with NotNullReadForm[T] {
+				override val nulls = NotNull
+				override def apply(res :ResultSet, position :Int) :T = {
+					val t = reader(res, position)
+					if (res.wasNull) throw new NullPointerException("Cannot return null from " + this + ".")
+					else t
+				}
+			}
+
+		override val toString =
+			if (name != null) name
+			else "ColumnReadForm[" + sqlType + "]@" + hashCode
+	}
+
+
+	private[schema] class CustomOptColumnReadForm[+T :NullValue](override val sqlType :JDBCType, name :String = null)
+	                                                            (reader :(ResultSet, Int) => Option[T])
+		extends CustomOptSQLReadForm[T](1, name)(reader) with ColumnReadForm[T]
+	{
+		override def notNull :ColumnReadForm[T] =
+			new CustomOptColumnReadForm[T](sqlType, toString + ".notNull")(reader)(NotNull) with ReadFormNullGuard[T]
+
+		override val toString =
+			if (name != null) name
+			else "ColumnReadForm[" + sqlType + "]@" + hashCode
+	}
 
 
 
@@ -481,6 +518,8 @@ object ColumnReadForm {
 		extends FallbackSQLReadForm[T](first, second) with ColumnReadForm[T]
 	{
 		override val sqlType :JDBCType = first.sqlType
+
+		override def notNull :ColumnReadForm[T] = first.notNull orElse second.notNull
 
 		override def orElse[S >: T](fallback :SQLReadForm[S]) :SQLReadForm[S] = fallback match {
 			case atom :ColumnReadForm[S] => orElse(atom)
@@ -496,6 +535,20 @@ object ColumnReadForm {
 	}
 
 
+	private[schema] trait LazyColumnReadForm[T] extends LazySQLReadForm[T] with ColumnReadForm[T] {
+		protected override def form :ColumnReadForm[T] = super.form.asInstanceOf[ColumnReadForm[T]]
+
+		override def map[X :NullValue](fun :T => X) :ColumnReadForm[X] = form.map(fun)
+		override def flatMap[X :NullValue](fun :T => Option[X]) :ColumnReadForm[X] = form.flatMap(fun)
+
+		override def toOpt :ColumnReadForm[Option[T]] = form.toOpt
+		override def notNull :ColumnReadForm[T] = form.notNull
+		override def orElse[S >: T](fallback :ColumnReadForm[S]) :ColumnReadForm[S] = form orElse fallback
+		override def <>[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = form <> write
+
+		override def toString :String =
+			if (isInitialized) "Lazy(" + form + ")" else "Lazy>"
+	}
 
 }
 

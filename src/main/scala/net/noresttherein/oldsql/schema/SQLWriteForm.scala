@@ -8,7 +8,7 @@ import scala.collection.immutable.Seq
 import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Stateless}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedSQLWriteForm, CustomNullSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CombinedSQLWriteForm, CustomNullSQLWriteForm, NotNullSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperSQLForm}
 
 
@@ -116,14 +116,12 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 	  */
 	def unmap[X](fun :X => T) :SQLWriteForm[X] = SQLWriteForm.map(fun)(this)
 
-
 	/** Create a write form for `X` which will try to map received values to `T` and pass them to this form.
 	  * If the given function yields `None`, this form's `setNull` method is used instead of `set`.
 	  * The arguments are not tested for `null` values before being passed to `fun`, which should handle `null`s
 	  * gracefully if they are considered a valid value for the adapted form's use case.
 	  */
 	def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] = SQLWriteForm.flatMap(fun)(this)
-
 
 	/** Creates a write form for `X` which will use this form after extracting a value from `X` with the given
 	  * extractor. This is equivalent to `unmap` or `flatUnmap`, depending on whether the extractor is
@@ -133,7 +131,6 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.flatUnmap]]
 	  */
 	def from[X](extractor :X =?> T) :SQLWriteForm[X] = compose(extractor)
-
 
 	/** Creates a write form for `X` which will use this form after extracting a value from `X` with the given
 	  * extractor. This is equivalent to `unmap` or `flatUnmap`, depending on whether the extractor is
@@ -165,8 +162,12 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 		new ProxyWriteForm[T] with WriteFormNullGuard[T] {
 			override def form :SQLWriteForm[T] = outer
 		}
-	//todo: notNull
 
+	/** An adapter or modification of this form which ensures that `null` values will never be set
+	  * as statement parameters. In cases where form would write a `null` value, the returned form will throw
+	  * a `NullPointerException`. Literal methods are unaffected.
+	  */
+	def notNull :SQLWriteForm[T] = new NotNullSQLWriteForm[T](this)
 
 	/** A proxy to this instance which directs all calls to its null-specific methods to their general
 	  * counterparts in this form, in particular [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]] to
@@ -257,24 +258,7 @@ object SQLWriteForm {
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.NonLiteralWriteForm]]
 	  */
 	def apply[T :NullValue](columns :Int, name :String)(write :(PreparedStatement, Int, T) => Unit) :SQLWriteForm[T] =
-		new NonLiteralWriteForm[T] {
-			override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
-				write(statement, position, value)
-
-			override def setNull(statement :PreparedStatement, position :Int) :Unit =
-				try {
-					write(statement, position, NullValue.value)
-				} catch {
-					case e :NullPointerException =>
-						throw new NullPointerException(this.toString + " does not support null values.").initCause(e)
-					case e :NoSuchElementException =>
-						throw new NoSuchElementException(this.toString + ": " + e.getMessage).initCause(e)
-				}
-
-			override def writtenColumns = columns
-
-			override val toString = if (name != null) name else "SQLlWriteForm@" + System.identityHashCode(this)
-		}
+		new CustomSQLWriteForm[T](columns, name)(write)
 
 
 
@@ -472,11 +456,7 @@ object SQLWriteForm {
 	  * @param name the name for the created form, used in its `toString` implementation.
 	  */
 	def map[S :SQLWriteForm, T](name :String)(map :T => S) :SQLWriteForm[T] =
-		new MappedWriteForm[S, T] {
-			override val form = SQLWriteForm[S]
-			override val unmap = map
-			override def toString = if (name != null) name else super.toString
-		}
+		new MappedSQLWriteForm[S, T](map, name)
 
 
 
@@ -497,11 +477,7 @@ object SQLWriteForm {
 	  * @param name the name for the created form, used in its `toString` implementation.
 	  */
 	def flatMap[S :SQLWriteForm, T](name :String)(map :T => Option[S]) :SQLWriteForm[T] =
-		new FlatMappedWriteForm[S, T] {
-			override val form = SQLWriteForm[S]
-			override val unmap = map
-			override def toString = if (name != null) name else super.toString
-		}
+		new FlatMappedSQLWriteForm[S, T](map, name)
 
 
 
@@ -644,6 +620,8 @@ object SQLWriteForm {
 
 		override def setNull(statement :PreparedStatement, position :Int) :Unit =
 			throw new NullPointerException("Null values not allowed for " + this + ".")
+
+		override def notNull :this.type = this
 	}
 
 
@@ -707,6 +685,8 @@ object SQLWriteForm {
 		override def nullLiteral: String = ""
 		final override def writtenColumns: Int = 0
 
+		override def notNull :SQLWriteForm[T] = this
+
 		override def toString = "<EMPTY"
 	}
 
@@ -766,6 +746,16 @@ object SQLWriteForm {
 
 
 
+
+
+	/** A wrapper over any write form which will throw a `NullPointerException` instead of setting a `null` parameter. */
+	private[schema] class NotNullSQLWriteForm[-T](protected override val form :SQLWriteForm[T])
+		extends ProxyWriteForm[T] with NotNullWriteForm[T]
+	{
+		override val toString = form.toString + ".notNull"
+	}
+
+
 	/** A simple mix-in trait for write forms which ignore passed arguments when setting parameters.
 	  * It directs [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]] method
 	  * to [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]].
@@ -776,16 +766,16 @@ object SQLWriteForm {
 	}
 
 
-
 	private[schema] class NullSQLWriteForm[T](name :String = null)
 	                                         (implicit protected override val form :SQLWriteForm[T])
 		extends WriteFormAdapter[Any] with IgnoringWriteForm[Any] with NullableWriteFormLiterals[Any]
 	{
 		override def literal(value :Any, inline :Boolean) :String = form.nullLiteral(inline)
 
+		override def notNull :SQLWriteForm[Any] = new NullSQLWriteForm[T]()(form.notNull)
+
 		override val toString = if (name != null) name else form.toString + ":NULL"
 	}
-
 
 
 	private[schema] class NullValueSQLWriteForm[T](name :String = null)
@@ -798,12 +788,42 @@ object SQLWriteForm {
 
 		override def literal(value :Any, inline :Boolean) :String = form.literal(nulls.value, inline)
 
+		override def notNull :SQLWriteForm[Any] = new NullValueSQLWriteForm[T]()(form.notNull, nulls)
+
 		override val toString =
 			try {
 				if (name != null) name else form.toString + ":NULL=" + nulls.value
 			} catch {
 				case e :Exception => form.toString + ":NULL=" + e
 			}
+	}
+
+
+
+	private[schema] class CustomSQLWriteForm[-T :NullValue](columns :Int, name :String = null)
+	                                                       (write :(PreparedStatement, Int, T) => Unit)
+		extends NonLiteralWriteForm[T]
+	{
+		override def writtenColumns = columns
+
+		override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
+			write(statement, position, value)
+
+		override def setNull(statement :PreparedStatement, position :Int) :Unit =
+			try {
+				write(statement, position, NullValue.value)
+			} catch {
+				case e :NullPointerException =>
+					throw new NullPointerException(this.toString + " does not support null values.").initCause(e)
+				case e :NoSuchElementException =>
+					throw new NoSuchElementException(this.toString + ": " + e.getMessage).initCause(e)
+			}
+
+		override def notNull :SQLWriteForm[T] =
+			new CustomSQLWriteForm[T](writtenColumns, toString + ".notNull")(write)
+				with NotNullWriteForm[T]
+
+		override val toString = if (name != null) name else "SQLWriteForm@" + System.identityHashCode(this)
 	}
 
 
@@ -816,6 +836,9 @@ object SQLWriteForm {
 			form.set(statement, position, value)
 
 		override def literal(ignored: Any, inline :Boolean): String = form.literal(value, inline)
+
+		override def notNull :SQLWriteForm[Any] =
+			new ConstSQLWriteForm[T](value, toString + ".notNull")(form.notNull)
 
 		override def equals(that :Any) :Boolean = that match {
 			case const :ConstSQLWriteForm[_] =>
@@ -842,6 +865,8 @@ object SQLWriteForm {
 			case _ => form.nullLiteral(inline)
 		}
 
+		override def notNull :SQLWriteForm[Any] = new EvalSQLWriteForm(value, toString + ".notNull")(form.notNull)
+
 		override val toString = if (name != null) name else s"$form=_"
 	}
 
@@ -862,6 +887,8 @@ object SQLWriteForm {
 			case _ => form.literal(orElse.value, inline)
 		}
 
+		override def notNull :SQLWriteForm[Any] = new EvalOrNullSQLWriteForm[T](value)(form.notNull, orElse)
+
 		override val toString =
 			try { form.toString + "=_:NULL='" + orElse.value + "'"}
 			catch { case e :Exception => form.toString + "=_:NULL=" + e }
@@ -878,6 +905,7 @@ object SQLWriteForm {
 		override def literal(value :T, inline :Boolean) :String = error
 		override def nullLiteral(inline :Boolean) :String = error
 		override def writtenColumns = columns
+		override def notNull :SQLWriteForm[T] = this
 		override def toString = if (name == null) "<ERROR" else name
 	}
 
@@ -891,6 +919,8 @@ object SQLWriteForm {
 		extends ProxyWriteForm[T] with WriteFormNullValue[T]
 	{
 		override def nullValue :T = nulls.value
+
+		override def notNull :SQLWriteForm[T] = new CustomNullSQLWriteForm[T](form.notNull)
 
 		override def withNull(implicit nulls :NullValue[T]) :SQLWriteForm[T] = new CustomNullSQLWriteForm(form)(nulls)
 
@@ -922,6 +952,16 @@ object SQLWriteForm {
 		override def toString :String = "<=" + form
 	}
 
+	private[schema] class FlatMappedSQLWriteForm[S, -T](protected override val unmap :T => Option[S], name :String = null)
+	                                                   (implicit protected override val form :SQLWriteForm[S])
+		extends FlatMappedWriteForm[S, T]
+	{
+		override def notNull :SQLWriteForm[T] =
+			new FlatMappedSQLWriteForm[S, T](unmap, toString + ".notNull") with NotNullWriteForm[T]
+
+		override val toString = if (name == null) "<=" + form else name
+	}
+
 
 
 	private[schema] trait MappedWriteForm[S, -T] extends WriteFormAdapter[T] with WriteFormLiterals[T] {
@@ -937,6 +977,16 @@ object SQLWriteForm {
 		//map/flatMap not overriden to preserve potentially overriden toString.
 
 		override def toString :String = "<=" + form
+	}
+
+	private[schema] class MappedSQLWriteForm[S, -T](protected override val unmap :T => S, name :String = null)
+	                                               (implicit protected override val form :SQLWriteForm[S])
+		extends MappedWriteForm[S, T]
+	{
+		override def notNull :SQLWriteForm[T] =
+			new MappedSQLWriteForm(unmap, toString + ".notNull") with NotNullWriteForm[T]
+
+		override val toString = if (name == null) "<=" + form else name
 	}
 
 
@@ -975,6 +1025,7 @@ object SQLWriteForm {
 
 		override def toOpt = form.toOpt
 		override def nullSafe = form.nullSafe
+		override def notNull = form.notNull
 		override def withNull(implicit nulls :NullValue[T]) = form.withNull
 		override def withNull(nullValue :T) = form.withNull(nullValue)
 
@@ -1017,6 +1068,9 @@ object SQLWriteForm {
 
 		override def inlineNullLiteral: String = forms.map(_.inlineNullLiteral).mkString("", ", ", "")
 
+
+		override def notNull :SQLWriteForm[T] =
+			new CombinedSQLWriteForm[T](forms.map(_.notNull), toString + ".notNull")
 
 		override def +[S <: T](next :SQLWriteForm[S]) :SQLWriteForm[S] = next match {
 			case seq :CombinedSQLWriteForm[S @unchecked] =>
@@ -1101,6 +1155,8 @@ object SQLWriteForm {
 	private case class SeqSQLWriteForm[-T](form :SQLWriteForm[T], repeats :Int) extends SeqWriteForm[T] {
 		def this(count :Int)(implicit form :SQLWriteForm[T]) = this(form, count)
 
+		override def notNull :SQLWriteForm[Seq[T]] = new SeqSQLWriteForm[T](form.notNull, repeats)
+
 		override val writtenColumns :Int = super.writtenColumns
 		override val toString :String = super.toString
 	}
@@ -1151,6 +1207,8 @@ object SQLWriteForm {
 			if (inline) literals.mkString(", ")
 			else literals.mkString("(", ", ", ")")
 		}
+
+		override def notNull :SQLWriteForm[Seq[T]] = new SQLWriteFormSeq[T](forms.map(_.notNull))
 
 		private val string :String = forms.iterator.map(_.toString).mkString("::")
 		override def toString :String = string

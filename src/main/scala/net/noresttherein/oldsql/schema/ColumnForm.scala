@@ -9,10 +9,11 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.ColumnReadForm.{DirectColumnReadForm, FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
-import net.noresttherein.oldsql.schema.SQLForm.{FlatMappedSQLForm, JoinedForms, LazyForm, MappedSQLForm, NullValue, ReifiedSQLForm}
+import net.noresttherein.oldsql.schema.SQLForm.{FlatMappedSQLForm, JoinedForms, LazyForm, MappedSQLForm, NotNullForm, NotNullSQLForm, NullValue, ReifiedSQLForm}
 import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.schema.ColumnWriteForm.{DirectColumnWriteForm, LazyColumnWriteForm}
-import net.noresttherein.oldsql.schema.SQLReadForm.{NullableReadForm, ProxyReadForm, ReadFormNullValue}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
+import net.noresttherein.oldsql.schema.SQLReadForm.{NullableReadForm, ProxyReadForm, ReadFormNullGuard, ReadFormNullValue}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, NullableWriteForm, ProxyWriteForm, WriteFormNullGuard}
 import net.noresttherein.oldsql.slang
 
@@ -96,6 +97,12 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 			override def nullSafe = this
 		}
 
+	override def notNull :ColumnForm[T] =
+		new NotNullSQLForm[T]()(this) with ColumnForm[T] {
+			override def notNull :this.type = this
+			override val sqlType = outer.sqlType
+		}
+
 	override def withNull(implicit nullVal :NullValue[T]) :ColumnForm[T] =
 		new CustomNullSQLWriteForm[T](this) with ProxyReadForm[T] with ColumnForm[T] {
 			override val form = outer
@@ -151,6 +158,7 @@ object ColumnForm {
 			)
 		else
 			new JoinedForms[T](read, write, name) with ColumnForm[T] {
+				override def notNull = join(toString + ".notNull")(write.notNull, read.notNull)
 				override val sqlType = r.asInstanceOf[ColumnReadForm[T]].sqlType
 			}
 
@@ -290,6 +298,7 @@ object ColumnForm {
 
 			override def toOpt = form.toOpt
 			override def nullSafe = form.nullSafe
+			override def notNull = form.notNull
 			override def withNull(implicit nulls :NullValue[T]) = form.withNull
 			override def withNull(nullValue :T) = form.withNull(nullValue)
 			override def *(repeat :Int) = form.*(repeat)
@@ -400,6 +409,17 @@ object ColumnForm {
 		protected override def read(res :ResultSet, position :Int) :T =
 			res.getObject(position, cls)
 
+		override def notNull :ColumnForm[T] =
+			new JDBCObjectForm[T](cls, sqlType)(NotNull) {
+				override def apply(res :ResultSet, position :Int) :T = {
+					val t = super.apply(res, position)
+					if (res.wasNull) throw new NullPointerException("Cannot return null from " + this + ".")
+					t
+				}
+
+				override val toString :String = innerNameOf(cls) + ".notNull"
+			}
+
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
 			case form :JDBCObjectForm[_] if form canEqual this =>
@@ -418,16 +438,24 @@ object ColumnForm {
 
 
 
-	private[schema] class MappedColumnForm[S :ColumnForm, T :NullValue](map :S => T, unmap :T => S, name :String = null)
-		extends MappedSQLForm(map, unmap, name) with MappedColumnReadForm[S, T] with ColumnForm[T]
+	private[schema] class MappedColumnForm[S :ColumnForm, T :NullValue](f :S => T, g :T => S, name :String = null)
+		extends MappedSQLForm(f, g, name) with MappedColumnReadForm[S, T] with ColumnForm[T]
 	{
+		override def notNull :ColumnForm[T] =
+			new MappedColumnForm[S, T](map, unmap, toString + ".notNull")(form.asInstanceOf[ColumnForm[S]], NotNull)
+				with NotNullForm[T] with ReadFormNullGuard[T]
+
 		override val toString :String = if (name != null) name else "<=" + ColumnForm[S] + "=>"
 	}
 
 	private[schema] class FlatMappedColumnForm[S :ColumnForm, T :NullValue]
-	                                          (map :S => Option[T], unmap :T => Option[S], name :String = null)
-		extends FlatMappedSQLForm(map, unmap, name) with FlatMappedColumnReadForm[S, T] with ColumnForm[T]
+	                                          (f :S => Option[T], g :T => Option[S], name :String = null)
+		extends FlatMappedSQLForm(f, g, name) with FlatMappedColumnReadForm[S, T] with ColumnForm[T]
 	{
+		override def notNull :ColumnForm[T] =
+			new FlatMappedColumnForm[S, T](map, unmap, toString + ".notNull")(form.asInstanceOf[ColumnForm[S]], NotNull)
+				with NotNullForm[T] with ReadFormNullGuard[T]
+
 		override val toString :String = if (name != null) name else "<=" + ColumnForm[S] + "=>"
 	}
 
