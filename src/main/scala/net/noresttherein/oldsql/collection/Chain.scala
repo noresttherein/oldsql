@@ -1815,7 +1815,7 @@ object Listing extends ListingFactory {
 
 		/** A factory creating entries of a `Listing` with the type parameter as their key */
 		trait constructor_:~[K <: Key] extends Any {
-			@inline def apply[V](value :V): K :~ V = new :~(value)
+			@inline final def apply[V](value :V): K :~ V = new :~(value)
 		}
 	}
 
@@ -1883,7 +1883,7 @@ object Listing extends ListingFactory {
 
 
 		trait constructor_|~[K <: Key] extends Any {
-			@inline def apply[I <: Listing, V](init :I, value :V) :I |~ (K :~ V) =
+			@inline final def apply[I <: Listing, V](init :I, value :V) :I |~ (K :~ V) =
 				new link[I, K :~ V](init, new :~(value))
 		}
 
@@ -2056,7 +2056,7 @@ object LabeledChain extends ListingFactory {
 
 
 		trait constructor_>~[K <: Key] extends Any {
-			@inline def apply[I <: LabeledChain, V](init :I, value :V) :I >~ (K :~ V) =
+			@inline final def apply[I <: LabeledChain, V](init :I, value :V) :I >~ (K :~ V) =
 				new link[I, K :~ V](init, new :~(value))
 		}
 

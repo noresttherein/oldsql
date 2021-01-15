@@ -99,6 +99,7 @@ trait Relation[+M[O] <: MappingAt[O]] extends AbstractRelation with RelationTemp
 
 
 
+//consider: how me might preserve equality after serialization
 object Relation {
 	type * = Relation[M] forSome { type M[O] <: MappingAt[O] }
 
@@ -332,7 +333,7 @@ object Relation {
 		def apply[S] :ViewFactory[S] = new ViewFactory[S] {}
 
 		trait ViewFactory[S] extends Any { //fixme: lazy implicit
-			def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
+			final def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
 					:View[project.WithOrigin] =
 				View(tableName, mapping)
 		}
@@ -381,7 +382,7 @@ object Relation {
 		def apply[S] :TableFactory[S] = new TableFactory[S] {}
 
 		trait TableFactory[S] extends Any { //fixme: lazy implicit
-			def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
+			final def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
 					:BaseTable[project.WithOrigin] =
 				BaseTable(tableName, mapping)
 		}

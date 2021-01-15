@@ -5,10 +5,10 @@ import java.lang.reflect.{Method, Modifier}
 import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe._
 
+import net.noresttherein.oldsql.exceptions.OldSQLException
 import net.noresttherein.oldsql.model.InvocationReflection.Trace
 import net.noresttherein.oldsql.model.PropertyPath.UpdatableProperty
 import net.noresttherein.oldsql.slang
-
 import slang._
 
 
@@ -38,6 +38,8 @@ import slang._
   * This decision was made as it was designed to facilitate the creation of property mappings where such coalescence
   * is performed, rather than be a generic reflection mechanism. If this might be an issue, check the `definedFor`
   * property which returns reflected static type of the argument of the function used to create this instance.
+  * Additionally, [[net.noresttherein.oldsql.model.PropertyPath.=:= =:=]] is the stricter equality which implies
+  * both normal equality and equality of the argument types for which the properties where reflected.
   * Do not assume that it is safe to cast a property path to a given argument type because it equals an instance
   * which static type would guarantee a safe call on this type. Instead, use them as keys - given a 'safe' instance
   * computed beforehand based on a function which is known to properly represent the property in question, compare it
@@ -51,7 +53,7 @@ import slang._
   * @author Marcin Mościcki
   */ //todo: in Scala 3, this should become serializable
 sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val definedFor :Type, final val fun :X => Y)  {
-
+//consider: renaming back to PropertyChain
 	/** Concatenated names of all methods called by fun/this instance on its argument, separated by '.'. */
 	def name :String
 
@@ -98,6 +100,18 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
 	/** Is this an empty property reflecting an identity function? */
 	def isIdentity :Boolean = false
 
+	/** Checks if the other `PropertyPath` is equal to this instance (represents the same chain of method calls)
+	  * and that its argument type as specified by [[net.noresttherein.oldsql.model.PropertyPath.definedFor definedFor]]
+	  * is a subtype of the argument type of this property, making `other` strictly more generic than `this`.
+	  */
+	def <:<(other :PropertyPath[_, _]) :Boolean = this == other && other.definedFor <:< definedFor
+
+	/** Tests if the two properties are indistinguishable. This holds if they are both equal ''and'' the argument
+	  * types for which they were reflected are also equal. Standard equality is defined only in terms of
+	  * equality of the overriden methods.
+	  */
+	def =:=(other :PropertyPath[_, _]) :Boolean = this == other && definedFor == other.definedFor
+
 	/** Given a function which clones it's argument and substitutes the value of this property to its second argument,
 	  * create an instance which can be used to both get and set the value of the represented property.
 	  * No check is performed if this function represents calls which are in any way related to the chain calls represented by this instance!
@@ -105,9 +119,7 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
 	def updatable[LX <: X :TypeTag, UY >: Y](set: (LX, UY) => LX): UpdatableProperty[LX, UY]
 
 
-
 	override def toString :String = name
-
 }
 
 
@@ -168,9 +180,9 @@ sealed abstract class PropertyPath[-X, +Y] private[PropertyPath](final val defin
   * model for which it is intended as a replacement of traditional `String` literals.
   */
 object PropertyPath {
+
 	/** Shortcut for optional infix notation for PropertyPath: val property :X===>Y. */
 	type ==>[-X, +Y] = PropertyPath[X, Y]
-
 
 
 	/** PropertyPath enriched by a copy function which clones the argument and substitutes the value of the property for
@@ -190,46 +202,43 @@ object PropertyPath {
 
 
 
-
-
-
 	/** Factory for property paths */
 	trait PropertyTracer[X] extends Any {
 
 		/** Discover what properties are accessed by function `property` and create their reflection.
 		  * @param property a function constituting of chained property calls on its argument.
 		  */
-		@inline def apply[Y](property :X => Y)(implicit tag :TypeTag[X]) :ReflectedPropertyPath[X, Y] =
+		@inline final def apply[Y](property :X => Y)(implicit tag :TypeTag[X]) :ReflectedProperty[X, Y] =
 			PropertyPath.property(property)
 
 		/** Check if this function represents a chained property call (i.e. `_.department.director.favoritePony`),
 		  * and if so, return their reflected representation as an option.
 		  */
-		@inline def maybe[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[ReflectedPropertyPath[X, Y]] =
+		@inline final def maybe[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[ReflectedProperty[X, Y]] =
 			PropertyPath.maybe(property)
 
 		/** Assuming the given function represents a simple property or a non-empty property path of its argument,
 		  * return its reflected representation.
 		  */
-		@inline def proper[Y](property :X => Y)(implicit tag :TypeTag[X]) :ProperPropertyPath[X, Y] =
+		@inline final def proper[Y](property :X => Y)(implicit tag :TypeTag[X]) :Property[X, Y] =
 			PropertyPath.proper(property)
 
 		/** Checks if this function represents an non-empty chain of property calls on its argument and,
 		  * if so, return its reflected representation as an option.
 		  */
-		@inline def ifProper[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[ProperPropertyPath[X, Y]] =
+		@inline final def ifProper[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[Property[X, Y]] =
 			PropertyPath.ifProper(property)
 
 		/** Assuming the given function is equivalent to a single zero-argument method call on the argument,
 		  * return its reflected representation.
 		  */
-		@inline def simple[Y](property :X => Y)(implicit tag :TypeTag[X]) :SimpleProperty[X, Y] =
+		@inline final def simple[Y](property :X => Y)(implicit tag :TypeTag[X]) :SimpleProperty[X, Y] =
 			PropertyPath.simple(property)
 
 		/** Check if this function represents a single zero-argument method call on its argument,
 		  * and if so, return its reflected representation as an option.
 		  */
-		@inline def ifSimple[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[SimpleProperty[X, Y]] =
+		@inline final def ifSimple[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[SimpleProperty[X, Y]] =
 			PropertyPath.ifSimple(property)
 
 		/** Return a hacked, manually created instance representing the given property '''without''' performing any
@@ -237,19 +246,17 @@ object PropertyPath {
 		  * @param property backing function returning the value of the represented property
 		  * @param name the name of the represented property, or names of chained properties separated by '.'.
 		  */
-		def hacked[Y](property :X => Y, name :String)(implicit tag :TypeTag[X]) :PropertyPath[X, Y] =
-			new HackedPropertyPath[X, Y](name, property, typeOf[X])
+		final def hacked[Y](property :X => Y, name :String)(implicit tag :TypeTag[X]) :PropertyPath[X, Y] =
+			new HackedProperty[X, Y](name, property, typeOf[X])
 
 		/** Reflect the property and return its name. */
-		@inline def name[Y](property :X => Y)(implicit tag :TypeTag[X]) :String =
+		@inline final def name[Y](property :X => Y)(implicit tag :TypeTag[X]) :String =
 			PropertyPath.property(property).name
 
 		/** Try to reflect the property given the function and return its name in an option if successful. */
-		@inline def nameOpt[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[String] =
+		@inline final def nameOpt[Y](property :X => Y)(implicit tag :TypeTag[X]) :Option[String] =
 			PropertyPath.nameOpt(property)
-
 	}
-
 
 	/** Convenience factory for property paths (reflected representations of chained zer-argument method calls),
 	  * which takes a single type parameter of the argument type (class type declaring the properties we want to reflect).
@@ -263,23 +270,23 @@ object PropertyPath {
 	/** Check if this function represents a chained property call (i.e. _.department.director.favoritePony),
 	  * and if so, return their reflected representation as an option.
 	  */
-	def maybe[X :TypeTag, Y](property :X => Y) :Option[ReflectedPropertyPath[X, Y]] =
+	def maybe[X :TypeTag, Y](property :X => Y) :Option[ReflectedProperty[X, Y]] =
 		scala.util.Try { this.property(property) }.toOption
 
 	/** Assuming the given function represents a simple property or a non-empty property path of its argument,
 	  * return its reflected representation.
 	  */
-	def proper[X :TypeTag, Y](property :X => Y) :ProperPropertyPath[X, Y] =
+	def proper[X :TypeTag, Y](property :X => Y) :Property[X, Y] =
 		this.property(property) match {
-			case p :ProperPropertyPath[X @unchecked, Y @unchecked] => p
+			case p :Property[X @unchecked, Y @unchecked] => p
 			case p => throw new IllegalArgumentException(s"Passed function is an identity property: '$p'")
 		}
 
 	/** Checks if this function represents an non-empty chain of property calls on its argument and,
 	  * if so, return its reflected representation as an option.
 	  */
-	def ifProper[X :TypeTag, Y](property :X => Y) :Option[ProperPropertyPath[X, Y]] =
-		this.property(property).asSubclass[ProperPropertyPath[X, Y]]
+	def ifProper[X :TypeTag, Y](property :X => Y) :Option[Property[X, Y]] =
+		this.property(property).asSubclass[Property[X, Y]]
 
 	/** Assuming the given function is a single zero-argument method call on the argument,
 	  * return its reflected representation.
@@ -297,15 +304,15 @@ object PropertyPath {
 		this.property(property).asSubclass[SimpleProperty[X, Y]]
 
 	/** Equivalent to apply(property) */
-	def property[X :TypeTag, Y](property :X => Y) :ReflectedPropertyPath[X, Y] =
-		property.asSubclassOf[ReflectedPropertyPath[X, Y]] getOrElse trace(property)
+	def property[X :TypeTag, Y](property :X => Y) :ReflectedProperty[X, Y] =
+		property.asSubclassOf[ReflectedProperty[X, Y]] getOrElse trace(property)
 
 	/** Assuming property constitutes of chained calls of zero-argument methods starting with type X,
 	  * create a reflected representation which can be compared, composed and even subtracted in type safer manner
 	  * with other property path instances.
 	  */
-	def apply[X :TypeTag, Y](property :X => Y) :ReflectedPropertyPath[X, Y] =
-		property.asSubclassOf[ReflectedPropertyPath[X, Y]] getOrElse trace(property)
+	def apply[X :TypeTag, Y](property :X => Y) :ReflectedProperty[X, Y] =
+		property.asSubclassOf[ReflectedProperty[X, Y]] getOrElse trace(property)
 
 
 	/** Return a hacked, manually created instance representing the given property '''without''' performing
@@ -314,10 +321,10 @@ object PropertyPath {
 	  * @param name the name of the represented property, or names of chained properties separated by '.'.
 	  */
 	def apply[X :TypeTag, Y](property :X => Y, name :String) :PropertyPath[X, Y] =
-		new HackedPropertyPath[X, Y](name, property, typeOf[X])
+		new HackedProperty[X, Y](name, property, typeOf[X])
 
 	/** An empty property path representing an identity function. */
-	def identity[X :TypeTag] :ReflectedPropertyPath[X, X] = new IdentityProperty[X](typeOf[X])
+	def identity[X :TypeTag] :ReflectedProperty[X, X] = new IdentityProperty[X](typeOf[X])
 
 	/** Reflect the property, creating a property path and return its name. */
 	def nameOf[X :TypeTag, Y](property :X => Y) :String = apply(property).name
@@ -328,10 +335,8 @@ object PropertyPath {
 
 
 
-
-
-	private def trace[X :TypeTag, Y](property :X => Y) :ReflectedPropertyPath[X, Y] = {
-		def rec[T](ownerType :Type, stack :List[Trace]) :ProperPropertyPath[T, Y] = stack match {
+	private def trace[X :TypeTag, Y](property :X => Y) :ReflectedProperty[X, Y] = {
+		def rec[T](ownerType :Type, stack :List[Trace]) :Property[T, Y] = stack match {
 			case Trace(_, method, _)::Nil =>
 				new SimpleProperty[T, Y](ownerType, PropertyCall(method))
 			case Trace(_, method, resultType)::tail =>
@@ -341,7 +346,7 @@ object PropertyPath {
 					s"Reflected call of $property for ${typeOf[X]} didn't call any methods on the argument.")
 		}
 		InvocationReflection(property) match {
-			case Nil => identity[X].asInstanceOf[ReflectedPropertyPath[X, Y]]
+			case Nil => identity[X].asInstanceOf[ReflectedProperty[X, Y]]
 			case frames => rec(typeOf[X], frames)
 		}
 	}
@@ -349,20 +354,20 @@ object PropertyPath {
 
 
 
-
-
 	/** Automatic reflection didn't work? Try using this stand-in instead. It will equal (symmetrically) any
-	  * other `PropertyPath`, reflected or manually created, based solely on the name.
-	  * Be warned that drop function will always return None, as without reflection we have no means of
+	  * other `PropertyPath`, reflected or manually created, based solely on the name. Note that this formally makes
+	  * equality a non-transitive relation, as two equally named properties of different classes will both
+	  * equal a corresponding `HackedProperty`, but will not compare equal.
+	  * Be warned that drop function will always return `None`, as without reflection we have no means of
 	  * decomposing the associated function into the dropped prefix and suffix functions.
 	  */
-	class HackedPropertyPath[-X, +Y] private[PropertyPath](val name :String, getter :X => Y, argType :Type)
+	class HackedProperty[-X, +Y] private[PropertyPath](val name :String, getter :X => Y, argType :Type)
 		extends PropertyPath[X, Y](argType, getter)
 	{
 		def this(name :String, fun :X => Y)(implicit argTag :TypeTag[X]) = this(name, fun, typeOf[X])
 
 		if (name.length==0 || name(0).isWhitespace || name(name.length-1).isWhitespace)
-			throw new IllegalArgumentException(s"Illegal property name: '$name'")
+			throw new IllegalArgumentException(s"Illegal property name: '$name'.")
 
 		override def isSimple :Boolean = !name.contains('.')
 
@@ -370,7 +375,7 @@ object PropertyPath {
 
 		/** Returns a hacked, updatable instance. */
 		override def updatable[LX <: X : TypeTag, UY >: Y](set: (LX, UY) => LX): UpdatableProperty[LX, UY] =
-			new HackedPropertyPath[LX, UY](name, fun, definedFor) with UpdatableProperty[LX, UY] {
+			new HackedProperty[LX, UY](name, fun, definedFor) with UpdatableProperty[LX, UY] {
 				override def update(x: LX, value: UY): LX = set(x, value)
 			}
 
@@ -384,17 +389,16 @@ object PropertyPath {
 		/** Return a hacked instance with a name being the concatenation of both names separated by a '.'
 		  * and function this.fun andThen suffix.fun. */
 		override def andThen[Z](suffix: PropertyPath[Y, Z]): PropertyPath[X, Z] =
-			new HackedPropertyPath[X, Z](name + '.' +suffix.name, fun andThen suffix.fun, definedFor)
+			new HackedProperty[X, Z](name + '.' +suffix.name, fun andThen suffix.fun, definedFor)
 
 		/** Return a hacked instance with a name being the concatenation of both names separated by a '.'
 		  * and function prefix.fun adnThen this.fun.
 		  */
 		def prepend[S, LX <: X](prefix :PropertyPath[S, LX]) :PropertyPath[S, Y] =
-			new HackedPropertyPath[S, Y](prefix.name + "." + name, prefix.fun andThen fun, prefix.definedFor)
+			new HackedProperty[S, Y](prefix.name + "." + name, prefix.fun andThen fun, prefix.definedFor)
 
 		override def equals(that :Any) :Boolean = that match {
-			case p :PropertyPath[_, _] =>
-				(definedFor <:< p.definedFor || p.definedFor <:< definedFor) && name == p.name
+			case p :PropertyPath[_, _] => name == p.name
 			case _ => false
 		}
 
@@ -404,41 +408,36 @@ object PropertyPath {
 
 
 
-
-
-	sealed abstract class ReflectedPropertyPath[-X, +Y] private[PropertyPath]
+	sealed abstract class ReflectedProperty[-X, +Y] private[PropertyPath]
 			(argType :Type, fun :X => Y)
 		extends PropertyPath[X, Y](argType, fun)
 	{
-
-		override def drop[XX <: X, Z](property: PropertyPath[XX, Z]): Option[ReflectedPropertyPath[Z, Y]]
+		override def drop[XX <: X, Z](property: PropertyPath[XX, Z]): Option[ReflectedProperty[Z, Y]]
 
 		/** Return a proper reflected instance representing composition of this function followed by the invocation of
 		  * the given function.
 		  */
-		def andThen[Z](suffix: ReflectedPropertyPath[Y, Z]): ReflectedPropertyPath[X, Z]
+		def andThen[Z](suffix: ReflectedProperty[Y, Z]): ReflectedProperty[X, Z]
 
-		def andThen[Z](suffix :ProperPropertyPath[Y, Z]) :ProperPropertyPath[X, Z]
+		def andThen[Z](suffix :Property[Y, Z]) :Property[X, Z]
 	}
 
 
 
 
-
-
 	sealed class IdentityProperty[X] private[PropertyPath] (tpe :Type)
-		extends ReflectedPropertyPath[X, X](tpe, Predef.identity[X])
+		extends ReflectedProperty[X, X](tpe, Predef.identity[X])
 	{
 		override def name :String = ""
 
-		override def drop[LX <: X, Z](property :LX ==> Z) :Option[ReflectedPropertyPath[Z, X]] = property match {
-			case _ :IdentityProperty[_] => Some(this.asInstanceOf[ReflectedPropertyPath[Z, X]])
+		override def drop[LX <: X, Z](property :LX ==> Z) :Option[ReflectedProperty[Z, X]] = property match {
+			case _ :IdentityProperty[_] => Some(this.asInstanceOf[ReflectedProperty[Z, X]])
 			case _ => None
 		}
 
-		override def andThen[Z](suffix :ReflectedPropertyPath[X, Z]) :ReflectedPropertyPath[X, Z] = suffix
+		override def andThen[Z](suffix :ReflectedProperty[X, Z]) :ReflectedProperty[X, Z] = suffix
 
-		override def andThen[Z](suffix :ProperPropertyPath[X, Z]) :ProperPropertyPath[X, Z] = suffix
+		override def andThen[Z](suffix :Property[X, Z]) :Property[X, Z] = suffix
 
 		override def andThen[Z](suffix :X ==> Z) :X ==> Z = suffix
 
@@ -450,10 +449,9 @@ object PropertyPath {
 			throw new UnsupportedOperationException("IdentityProperty.updatable")
 
 
-
 		override def equals(that :Any) :Boolean = that match {
 			case _ :IdentityProperty[_] => true
-			case p :HackedPropertyPath[_, _] if p.name == "" => true
+			case p :HackedProperty[_, _] => p == (this :PropertyPath[_, _])
 			case _ => false
 		}
 
@@ -463,59 +461,53 @@ object PropertyPath {
 
 
 
-
-
 	/** Base class for the reflected, proper instances of the `PropertyPath`. */
-	sealed abstract class ProperPropertyPath[-X, +Y] private[PropertyPath]
+	sealed abstract class Property[-X, +Y] private[PropertyPath]
 			(argType :Type, private[PropertyPath] val method :PropertyCall, fun :X => Y)
-		extends ReflectedPropertyPath[X, Y](argType, fun)
+		extends ReflectedProperty[X, Y](argType, fun)
 	{
-		override def andThen[Z](suffix :ReflectedPropertyPath[Y, Z]) :ProperPropertyPath[X, Z]
+		override def andThen[Z](suffix :ReflectedProperty[Y, Z]) :Property[X, Z]
 
-		override def andThen[Z](suffix :ProperPropertyPath[Y, Z]) :ProperPropertyPath[X, Z] =
-			andThen(suffix :ReflectedPropertyPath[Y, Z])
+		override def andThen[Z](suffix :Property[Y, Z]) :Property[X, Z] =
+			andThen(suffix :ReflectedProperty[Y, Z])
 	}
 
 
 
 
-
 	/** PropertyPath consisting of a single property call. */
-	sealed class SimpleProperty[-X, +Y] private[PropertyPath](tpe :Type, _method :PropertyCall, _property :X=>Y)
-		extends ProperPropertyPath[X, Y](tpe, _method, _property)
+	sealed class SimpleProperty[-X, +Y] private[PropertyPath](tpe :Type, _method :PropertyCall, _property :X =>Y)
+		extends Property[X, Y](tpe, _method, _property)
 	{
-
 		private[PropertyPath] def this(tpe :Type, method :PropertyCall) =
 			this(tpe, method, x => method.method.invoke(x).asInstanceOf[Y])
 
 		final val name = method.name
 
-
 		final override def andThen[Z](suffix: PropertyPath[Y, Z]): PropertyPath[X, Z] = suffix match {
 			case _ :IdentityProperty[_] =>
 				this.asInstanceOf[PropertyPath[X, Z]]
-			case p :HackedPropertyPath[_, _] =>
-				p.asInstanceOf[HackedPropertyPath[Y, Z]] prepend this
-			case r :ReflectedPropertyPath[_, _] =>
-				this andThen r.asInstanceOf[ReflectedPropertyPath[Y, Z]]
+			case p :HackedProperty[_, _] =>
+				p.asInstanceOf[HackedProperty[Y, Z]] prepend this
+			case r :ReflectedProperty[_, _] =>
+				this andThen r.asInstanceOf[ReflectedProperty[Y, Z]]
 		}
 
-
-		final override def andThen[Z](suffix: ReflectedPropertyPath[Y, Z]): ProperPropertyPath[X, Z] = suffix match {
-			case _ :IdentityProperty[_] => this.asInstanceOf[ProperPropertyPath[X, Z]]
-			case next :ProperPropertyPath[Y @unchecked, Z @unchecked] =>
+		final override def andThen[Z](suffix: ReflectedProperty[Y, Z]): Property[X, Z] = suffix match {
+			case _ :IdentityProperty[_] => this.asInstanceOf[Property[X, Z]]
+			case next :Property[Y @unchecked, Z @unchecked] =>
 				new ChainedProperty[X, Z](definedFor, this.method, fun andThen suffix.fun, next)
 		}
 
 		final override def prefixOf[LX <: X, Z](property: PropertyPath[LX, Z]): Boolean = property match {
 			case p :ChainedProperty[_, _] => method == p.method
-			case p :HackedPropertyPath[_, _] => p == this
+			case p :HackedProperty[_, _] => p == this
 			case _ => false
 		}
 
-		final override def drop[LX <: X, Z](property: PropertyPath[LX, Z]): Option[ReflectedPropertyPath[Z, Y]] =
+		final override def drop[LX <: X, Z](property: PropertyPath[LX, Z]): Option[ReflectedProperty[Z, Y]] =
 			property match {
-				case _ :IdentityProperty[_] => Some(this.asInstanceOf[ReflectedPropertyPath[Z, Y]])
+				case _ :IdentityProperty[_] => Some(this.asInstanceOf[ReflectedProperty[Z, Y]])
 				case _ => None
 			}
 
@@ -529,47 +521,40 @@ object PropertyPath {
 			}
 
 
-
-
 		override def equals(that :Any) :Boolean = that match {
-			case s :SimpleProperty[_,_] =>
-				(this eq s) || method == s.method
-			case _ :HackedPropertyPath[_, _] => that == this
+			case s :SimpleProperty[_,_] => (this eq s) || method == s.method
+			case _ :HackedProperty[_, _] => that == this
 			case _ => false
 		}
 
 		override def hashCode :Int = name.hashCode
-
 	}
 
 
 
 
-
-
 	private class ChainedProperty[-X, +Y]
-			(tpe :Type, _method :PropertyCall, _property :X=>Y, private final val tail :ProperPropertyPath[_, Y])
-		extends ProperPropertyPath[X, Y](tpe, _method, _property)
+			      (tpe :Type, _method :PropertyCall, _property :X=>Y, private final val tail :Property[_, Y])
+		extends Property[X, Y](tpe, _method, _property)
 	{
-		private[PropertyPath] def this(tpe :Type, method :PropertyCall, tail :ProperPropertyPath[Any, Y]) =
+		private[PropertyPath] def this(tpe :Type, method :PropertyCall, tail :Property[Any, Y]) =
 			this(tpe, method, x => tail.fun(method.method.invoke(x)), tail)
 
 		final val name = method.name + "." + tail.name
 
 
-
 		final override def andThen[Z](suffix: PropertyPath[Y, Z]): PropertyPath[X, Z] = suffix match {
 			case _ :IdentityProperty[_] => this.asInstanceOf[PropertyPath[X, Z]]
-			case p :HackedPropertyPath[_, _] =>
-				p.asInstanceOf[HackedPropertyPath[Y, Z]] prepend this
-			case p :ReflectedPropertyPath[_, _] =>
-				andThen(p.asInstanceOf[ReflectedPropertyPath[Y, Z]])
+			case p :HackedProperty[_, _] =>
+				p.asInstanceOf[HackedProperty[Y, Z]] prepend this
+			case p :ReflectedProperty[_, _] =>
+				andThen(p.asInstanceOf[ReflectedProperty[Y, Z]])
 		}
 
-		final override def andThen[Z](suffix: ReflectedPropertyPath[Y, Z]): ProperPropertyPath[X, Z] =
+		final override def andThen[Z](suffix: ReflectedProperty[Y, Z]): Property[X, Z] =
 			suffix match {
-				case _ :IdentityProperty[_] => this.asInstanceOf[ProperPropertyPath[X, Z]]
-				case next :ProperPropertyPath[Y @unchecked, Z @unchecked] =>
+				case _ :IdentityProperty[_] => this.asInstanceOf[Property[X, Z]]
+				case next :Property[Y @unchecked, Z @unchecked] =>
 					new ChainedProperty[X, Z](definedFor, method, fun andThen suffix.fun, tail andThen next)
 			}
 
@@ -580,25 +565,24 @@ object PropertyPath {
 		}
 
 
-		final override def drop[LX <: X, Z](property: PropertyPath[LX, Z]): Option[ReflectedPropertyPath[Z, Y]] =
+		final override def drop[LX <: X, Z](property: PropertyPath[LX, Z]): Option[ReflectedProperty[Z, Y]] =
 			property match {
-				case p :HackedPropertyPath[_, _] =>
+				case p :HackedProperty[_, _] =>
 					val next = p.name.indexOf('.')
 					if (next >= 0)
 						if (p.name.substring(0, next) == this.method.name)
-							tail.drop(new HackedPropertyPath[Nothing, Z](p.name.substring(next+1), _ => ???, tail.definedFor))
+							tail.drop(new HackedProperty[Nothing, Z](p.name.substring(next+1), _ => ???, tail.definedFor))
 						else None
 					else
-						tail.asInstanceOf[ReflectedPropertyPath[Z, Y]] providing p.name == method.name
-				case _ :IdentityProperty[_] => Some(this.asInstanceOf[ReflectedPropertyPath[Z, Y]])
-				case p :ProperPropertyPath[_, _] if method != p.method => None
-				case p :SimpleProperty[_, _] => Some(tail.asInstanceOf[ReflectedPropertyPath[Z, Y]])
+						tail.asInstanceOf[ReflectedProperty[Z, Y]] providing p.name == method.name
+				case _ :IdentityProperty[_] => Some(this.asInstanceOf[ReflectedProperty[Z, Y]])
+				case p :Property[_, _] if method != p.method => None
+				case _ :SimpleProperty[_, _] => Some(tail.asInstanceOf[ReflectedProperty[Z, Y]])
 				case p :ChainedProperty[_, _] => tail.drop(p.tail)
 				case _ => None
 			}
 
 		final override def isSimple: Boolean = false
-
 
 
 		override def updatable[LX <: X : TypeTag, UY >: Y](set: (LX, UY) => LX): UpdatableProperty[LX, UY] =
@@ -607,12 +591,9 @@ object PropertyPath {
 			}
 
 
-
-
 		override def equals(that :Any) :Boolean = that match {
-			case p :ChainedProperty[_, _] =>
-				(this eq p) || (method == p.method && tail == p.tail)
-			case _ :HackedPropertyPath[_, _] => that == this
+			case p :ChainedProperty[_, _] => (this eq p) || (method == p.method && tail == p.tail)
+			case _ :HackedProperty[_, _] => that == this
 			case _ => false
 		}
 
@@ -625,7 +606,9 @@ object PropertyPath {
 
 
 	/** A wrapper for all exceptions thrown during the reflection */
-	class PropertyReflectionException(msg :String, cause :Throwable) extends RuntimeException(msg, cause) {
+	class PropertyReflectionException(msg :String, cause :Throwable)
+		extends RuntimeException(msg, cause) with OldSQLException
+	{
 		def this(msg :String) = this(msg, null)
 		def this(cause :Throwable) = this(null, cause)
 	}
@@ -636,10 +619,9 @@ object PropertyPath {
 		def name :String = method.getName
 
 		private lazy val supers = {
-			def declarations(clazz :Class[_], method :Method, res :ListBuffer[Method]=ListBuffer()) :ListBuffer[Method] = {
+			def declarations(clazz :Class[_], method :Method, res :ListBuffer[Method] = ListBuffer()) :ListBuffer[Method] = {
 				def overridden(m :Method) =
-					!Modifier.isPrivate(m.getModifiers) &&
-						m.getName == method.getName &&
+					m.getParameterCount == 0 && m.getName == method.getName && !Modifier.isPrivate(m.getModifiers) &&
 						m.getReturnType.isAssignableFrom(method.getReturnType)
 
 				clazz.getDeclaredMethods.filter(overridden).foreach(res += _)
@@ -651,17 +633,17 @@ object PropertyPath {
 		}
 
 		override def equals(that :Any) :Boolean = that match {
-			case p:PropertyCall =>
-				(this eq p) || (method == p.method) || (method.getName==p.method.getName && (supers & p.supers).nonEmpty)
+			case self :AnyRef if self eq this => true
+			case p :PropertyCall =>
+				method == p.method || method.getName == p.method.getName && (supers & p.supers).nonEmpty
 			case _ => false
 		}
 
-		override def hashCode :Int = method.hashCode
+		override def hashCode :Int = method.getName.hashCode
 
 		override def toString :String = method.toString
 
 	}
-
 
 
 	private[PropertyPath] def PropertyCall(method :Method) :PropertyCall = {
@@ -678,14 +660,9 @@ object PropertyPath {
 
 
 
-
-
-
-
 	private[this] val MaxPropertyCallCacheSize = 4000
 	private[this] val PropertyCallCache =
 		new java.util.concurrent.ConcurrentHashMap[Method, PropertyCall](MaxPropertyCallCacheSize)
-
 
 }
 

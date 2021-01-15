@@ -283,7 +283,7 @@ object ColumnForm {
 	  * If you wish them to remain lazy, invoke them directly on the backing form in the evaluation expression instead.
 	  * This is useful when the initialization expression cannot be successfully evaluated at this time,
 	  * but the form must be passed by-reference to some method. In other cases a `lazy val` or
-	  * [[net.noresttherein.oldsql.morsels.Lazy Lazy]] wrapper are preferable, as they do not incur the penalty
+	  * [[net.noresttherein.oldsql.morsels.Lazy Delayed]] wrapper are preferable, as they do not incur the penalty
 	  * of checking for initialization and delegation at every call.
 	  */
 	def delayed[T](delayed: => ColumnForm[T]) :ColumnForm[T] =

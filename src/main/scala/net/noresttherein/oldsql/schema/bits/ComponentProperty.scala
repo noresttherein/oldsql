@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.model.PropertyPath
-import net.noresttherein.oldsql.model.PropertyPath.ReflectedPropertyPath
+import net.noresttherein.oldsql.model.PropertyPath.ReflectedProperty
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.{ColumnMapping, GenericExtract, Mapping}
@@ -253,7 +253,7 @@ object ComponentProperty {
 		extends RequisiteExtract[M, S, T, O](component, f) with GenericComponentProperty[M, S, T, O]
 	{
 
-		override val property :ReflectedPropertyPath[S, T] = PropertyPath.property(getter)
+		override val property :ReflectedProperty[S, T] = PropertyPath.property(getter)
 		override val argumentType :Type = typeOf[S]
 
 		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
@@ -293,7 +293,7 @@ object ComponentProperty {
 	                                                                (implicit protected[this] val tag :TypeTag[T])
 		extends IdentityExtract[M, T, O](component) with GenericComponentProperty[M, T, T, O]
 	{
-		override val property :ReflectedPropertyPath[T, T] = PropertyPath.identity[T]
+		override val property :ReflectedProperty[T, T] = PropertyPath.identity[T]
 		override val argumentType :Type = typeOf[T]
 
 		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
@@ -320,7 +320,7 @@ object ComponentProperty {
 	{
 		protected[this] implicit override def tag :TypeTag[Any] = typeTag[Any]
 
-		override val property :ReflectedPropertyPath[Any, T] = PropertyPath.property(getter)
+		override val property :ReflectedProperty[Any, T] = PropertyPath.property(getter)
 		override val argumentType :Type = typeOf[Any]
 
 

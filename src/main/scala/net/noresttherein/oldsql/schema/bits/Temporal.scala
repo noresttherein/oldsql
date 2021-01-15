@@ -3,14 +3,15 @@ package net.noresttherein.oldsql.schema.bits
 import java.{sql, time, util}
 import java.time.{Clock, Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime, ZoneId, ZoneOffset}
 
-import scala.compat.Platform
 
 
 
 
 
-
-/**
+/** A type class for various standard classes describing moments in time. Used by various timestamp-related buffs
+  * in order to automatically provide current values. It covers all appropriate classes from the `java.time`
+  * and `java.sql` packages, and if an implicit [[java.time.Clock]] is present, it will be used to generate 'current'
+  * timestamps instead of the jvm time.
   * @author Marcin Mościcki
   */
 final class Temporal[T](val now :()=>T)

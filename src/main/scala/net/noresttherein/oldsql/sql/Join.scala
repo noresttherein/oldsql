@@ -68,7 +68,7 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 		type OuterRow = thisClause.OuterRow
 	}
 
-	protected override def narrow :left.type JoinLike R
+	override def narrow :left.type JoinLike R
 
 	override type GeneralizedLeft[+F <: FromSome] = F GeneralizedJoin R
 	override type DealiasedLeft[+F <: FromSome] = F LikeJoin R
@@ -281,7 +281,7 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 	override type Dealiased = left.Self LikeJoin R
 	override type Self <: left.Self LikeJoin R
 
-	protected override def narrow :WithLeft[left.type]
+	override def narrow :WithLeft[left.type]
 
 //	override type GeneralizedRight[T[O] <: MappingAt[O]] >: WithRight[T] <: L GeneralizedJoin T
 //	override type WithRight[T[O] <: MappingAt[O]] <: L LikeJoin T
@@ -650,7 +650,7 @@ object InnerJoin {
 			override type DealiasedCopy = left.type InnerJoin R
 			override type Copy = left.type InnerJoin R As A
 
-			protected override def narrow :left.type InnerJoin R As A = this.asInstanceOf[left.type InnerJoin R As A]
+			override def narrow :left.type InnerJoin R As A = this.asInstanceOf[left.type InnerJoin R As A]
 
 			//needs to be private because the result is This
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
@@ -838,7 +838,7 @@ object OuterJoin {
 			override type DealiasedCopy = left.type OuterJoin R
 			override type Copy = left.type OuterJoin R As A
 
-			protected override def narrow :left.type OuterJoin R As A = this.asInstanceOf[left.type OuterJoin R As A]
+			override def narrow :left.type OuterJoin R As A = this.asInstanceOf[left.type OuterJoin R As A]
 
 			//needs to be private because the result is This
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
@@ -1029,7 +1029,7 @@ object LeftJoin {
 			override type DealiasedCopy = left.type LeftJoin R
 			override type Copy = left.type LeftJoin R As A
 
-			protected override def narrow :left.type LeftJoin R As A = this.asInstanceOf[left.type LeftJoin R As A]
+			override def narrow :left.type LeftJoin R As A = this.asInstanceOf[left.type LeftJoin R As A]
 
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
 				LeftJoin[left.type, R, S, A](left, last, aliasOpt)(filter)
@@ -1219,7 +1219,7 @@ object RightJoin {
 			override type DealiasedCopy = left.type RightJoin R
 			override type Copy = left.type RightJoin R As A
 
-			protected override def narrow = this.asInstanceOf[left.type RightJoin R As A]
+			override def narrow :left.type RightJoin R As A = this.asInstanceOf[left.type RightJoin R As A]
 
 			override def withCondition(filter :GlobalBoolean[Generalized]) =
 				RightJoin[left.type, R, S, A](left, last, aliasOpt)(filter)

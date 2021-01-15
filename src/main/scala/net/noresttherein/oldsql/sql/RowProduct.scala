@@ -23,7 +23,7 @@ import net.noresttherein.oldsql.sql.Expanded.NonSubselect
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL
-import net.noresttherein.oldsql.sql.mechanics.{GroupedUnder, LastTableOf, OuterClauseOf, RowProductMatcher, SelectFactory}
+import net.noresttherein.oldsql.sql.mechanics.{GroupedUnder, LastTableOf, OuterClauseOf, RowProductMatcher, SelectFactory, TableCount}
 import net.noresttherein.oldsql.sql.FromSome.GroundFromSome
 import net.noresttherein.oldsql.sql.mechanics.LastTableOf.LastBound
 
@@ -1452,6 +1452,9 @@ object RowProduct {
 	trait NonEmptyFrom extends RowProduct with NonEmptyFromTemplate[NonEmptyFrom, NonEmptyFrom] { thisClause =>
 		override type Last[F <: RowProduct] <: JoinedRelation[F, LastMapping]
 		override type FromLast >: Generalized <: NonEmptyFrom
+
+		/** Implicit evidence witnessing that `this.FromLast` lists exactly one mapping. */
+		implicit def lastTableOffset :TableCount[FromLast, 1] = new TableCount[FromLast, 1](1)
 
 		/** The string literal `A` used as the alias for this relation if it conforms to
 		  * `F `[[net.noresttherein.oldsql.sql.RowProduct.As As]]` A` and an undefined type for non-aliased clauses.

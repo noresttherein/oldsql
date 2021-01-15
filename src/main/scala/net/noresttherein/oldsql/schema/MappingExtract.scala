@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.GenericExtract.{ConstantExtract, EmptyExt
 
 
 
-object ColumnExtract {
+object ColumnExtract { //todo: unify the name with ColumnMappingExtract
 
 
 	def apply[S, T, O](column :ColumnMapping[T, O], pick :S => Option[T], surepick :Option[S => T])

@@ -90,7 +90,7 @@ trait AndFrom[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 
 
-	protected override def narrow :left.type AndFrom R
+	override def narrow :left.type AndFrom R
 
 
 
@@ -320,7 +320,7 @@ trait NonParam[+L <: RowProduct, R[O] <: MappingAt[O]] extends AndFrom[L, R] wit
 //	def withRight[T[O] <: BaseMapping[S, O], S]
 //	             (table :LastTable[T, S])(filter :GlobalBoolean[GeneralizedRight[T]]) :WithRight[T]
 
-	protected override def narrow :left.type NonParam R
+	override def narrow :left.type NonParam R
 
 
 	override type FullRow = left.FullRow ~ last.Subject

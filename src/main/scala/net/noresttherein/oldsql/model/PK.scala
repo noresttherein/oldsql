@@ -33,7 +33,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
   * @author Marcin Mościcki
   */
 trait PK[T] extends Any {
-	def isPersistent :Boolean = !isTransient
+	@inline final def isPersistent :Boolean = !isTransient
 	def isTransient :Boolean = false
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[PK[_]]
 }

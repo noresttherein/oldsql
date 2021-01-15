@@ -109,6 +109,8 @@ trait Pile[T] { pile =>
 	class QueryPropertyBinder[P](filter :Restraint[T], property :Restrictive[T, P]) {
 		def ===(value :P) :QueryBuilder = new QueryBuilder(filter && property === value)
 
+		def =/=(value :P) :QueryBuilder = new QueryBuilder(filter && property =/= value)
+
 		def is(value :P) :QueryBuilder =
 			if (value == null) isNull
 			else this === value

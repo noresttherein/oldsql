@@ -151,13 +151,13 @@ package object schema {
 		composeExtracts(extract.export, extract)
 
 	private[oldsql] def composeExtracts[S, X, O]
-	                    (extracts :RefinedMapping[X, O]#ExtractMap, extractor :MappingExtract[S, X, O])
+	                    (extracts :RefinedMapping[X, O]#ExtractMap, extract :MappingExtract[S, X, O])
 			:RefinedMapping[S, O]#ExtractMap =
-		extracts.map(composeExtractAssoc(extractor)(_))
+		extracts.map(composeExtractAssoc(extract)(_))
 
-	private[oldsql] def composeExtracts[S, X, O](mapping :RefinedMapping[X, O], extractor :S =?> X)
+	private[oldsql] def composeExtracts[S, X, O](mapping :RefinedMapping[X, O], extract :S =?> X)
 			:RefinedMapping[S, O]#ExtractMap =
-		mapping.extracts.map(composeExtractAssoc(mapping, extractor)(_))
+		mapping.extracts.map(composeExtractAssoc(mapping, extract)(_))
 
 
 
@@ -182,7 +182,7 @@ package object schema {
 			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
 		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)
 
-	@inline private[oldsql] def composeExtractAssoc[S, X, T, O](mapping :MappingAt[O], extractor :S =?> X)
+	@inline private[oldsql] def composeExtractAssoc[S, X, T, O](mapping :RefinedMapping[X, O], extractor :S =?> X)
 	                            (entry :Assoc[RefinedMapping[X, O]#Component, RefinedMapping[X, O]#Extract, T])
 			:Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T] =
 		Assoc[RefinedMapping[S, O]#Component, RefinedMapping[S, O]#Extract, T](entry._1, entry._2 compose extractor)

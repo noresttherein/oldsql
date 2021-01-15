@@ -2,11 +2,12 @@ package net.noresttherein.oldsql.haul
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.haul.ColumnValues.{AliasedColumnValues, DedicatedColumnValues, EmptyValues, FallbackColumnValues}
-import net.noresttherein.oldsql.haul.ComponentValues.{aliasing, selectiveAliasing, AliasedComponentValues, ChosenDisassembledValues, ComponentValuesAliasing, ComponentValuesMap, ComponentValuesNaturalMap, DedicatedComponentValues, DisassembledValues, FallbackValues, GlobalComponentValues, IndexedValues, LazyComponentValuesProxy, MappingAliasing, PresetComponentValues, TypedValues, UntypedValues}
+import net.noresttherein.oldsql.haul.ComponentValues.{aliasing, selectiveAliasing, AliasedComponentValues, ChosenDisassembledValues, ComponentValuesAliasing, ComponentValuesMap, ComponentValuesNaturalMap, DedicatedComponentValues, DisassembledValues, FallbackValues, GlobalComponentValues, IndexedValues, LazyComponentValuesProxy, MappingAliasing, SimpleComponentValues, TypedValues, UntypedValues}
 import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.schema.ColumnMapping
-import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
+import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 
 
 
@@ -505,11 +506,9 @@ object ColumnValues {
 
 
 	//this trait is currently unused, as we'd need to make column's optionally and assemble final
-	trait PresetColumnValues[S, O] extends PresetComponentValues[S, O] with GlobalColumnValues[S, O] {
-		protected def defined[T](component :ColumnMapping[T, O]) :Option[T]
-
+	trait SimpleColumnValues[S, O] extends SimpleComponentValues[S, O] {
 		override def preset(root :RefinedMapping[S, O]) :Option[S] = root match {
-			case column :ColumnMapping[S @unchecked, O @unchecked] => defined(column)
+			case column :SimpleColumn[S @unchecked, O @unchecked] => defined(column)
 			case _ => None
 		}
 	}
@@ -617,6 +616,16 @@ object ColumnValues {
 
 
 		override def tiedTo[T](mapping :RefinedMapping[S, O]) :ColumnValues[T, O] = this.asColumnsOf[T]
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnValue[_, _, _]]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :ColumnValue[_, _, _] if other canEqual this => other.column == column && other.value == value
+			case _ => false
+		}
+
+		override def hashCode :Int = column.hashCode * 31 + value.hashCode
 	}
 
 
@@ -832,12 +841,12 @@ object ColumnValues {
 		override def aliased(root :RefinedMapping[S, O]) :ColumnValues[S, O] = this
 		override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValues[S, O] = this
 		override def aliased[T](extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[T, O]#Extract])
-		:ColumnValues[S, O] =
+				:ColumnValues[S, O] =
 			this
 
 		override def selectivelyAliased(root :RefinedMapping[S, O]) :ColumnValues[S, O] = this
 		override def selectivelyAliased[T](extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[T, O]#Extract])
-		:ColumnValues[S, O] =
+				:ColumnValues[S, O] =
 			this
 
 		override def orElse(values: ComponentValues[S, O]): ComponentValues[S, O] = values
@@ -851,6 +860,12 @@ object ColumnValues {
 			if (name == "Empty") ColumnValues.empty[S, O]
 			else new EmptyValues(name)
 		}
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[EmptyValues[_, _]]
+
+		override def equals(that :Any) :Boolean = that.isInstanceOf[EmptyValues[_, _]]
+
+		override def hashCode :Int = getClass.hashCode
 
 		override def toString :String = source
 	}

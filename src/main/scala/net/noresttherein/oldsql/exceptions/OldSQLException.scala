@@ -9,7 +9,10 @@ import scala.collection.mutable
 
 
 
-
+/** Base ''trait'' of all exceptions thrown directly the framework, which either describe a specific situation,
+  * or are thrown due to caller error (rather than an internal error). It is a trait so it can be mixed in to
+  * standard Scala/Java exception classes, such as `NoSuchElementException`.
+  */
 trait OldSQLException extends Throwable {
 
 	def suppressed :Seq[Throwable] = ArraySeq.unsafeWrapArray(getSuppressed)

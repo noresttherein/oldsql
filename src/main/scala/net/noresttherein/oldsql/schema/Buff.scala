@@ -17,6 +17,7 @@ import scala.reflect.ClassTag
   * certain columns from select/insert/update statements. Each `Buff` is associated with a single `BuffType`, which
   * serves as a factory, matcher and a virtual 'class'. These factories can be used to test if a component is
   * annotated with a buff of a particular type and retrieve its information, if present.
+  *
   * See [[net.noresttherein.oldsql.schema.Buff.BuffType BuffType]] for more information.
   * @see [[net.noresttherein.oldsql.schema.Buff.FlagBuff FlagBuff]]
   * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]
@@ -26,6 +27,7 @@ import scala.reflect.ClassTag
 trait Buff[T] {
 	//todo: contradictory buffs
 	//todo: dedicated buffs collection handling duplicates and implications
+	//todo: semantics of use in SQL DSL
 	//consider: Buff for column prefix
 
 	/** If `true`, export versions of subcomponents of the annotated component should inherit this buff.
@@ -178,8 +180,8 @@ object Buff {
 	  * This can be used in particular for 'virtual' columns - components which take part in the mapping, but
 	  * aren't present in the database at all.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual$]]
-	  */ //todo: this should probably imply SelectDefault
-	case object ExtraSelect extends ComboValueBuffType(NoSelect)
+	  */
+	case object ExtraSelect extends ComboValueBuffType(SelectDefault, NoSelect)
 
 
 
@@ -221,13 +223,14 @@ object Buff {
 	  * the value provided by the buff. It implies `NoSelect` and `NoFilter` and is used to artificially limit the number
 	  * of mapped entities.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Unmapped$]]
-	  */
+	  */ //is it really the best to make it imply NoFilter? It is necessary in ExtraSelect, but here may create confusion
 	case object ExtraFilter extends ComboValueBuffType(NoSelect, NoFilter)
 
 
 
 	/** Provides a default value which will be inserted into the table
 	  * if the [[net.noresttherein.oldsql.schema.MappingExtract extract]] for the annotated component returns no value.
+	  * This in particular includes columns not mapped to properties of the entity class.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Default]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.WriteDefault]]
 	  */
@@ -244,8 +247,8 @@ object Buff {
 
 	/** Marks a column/component as having its value initialized by the expression provided by the buff
 	  * rather than the entity. Used particularly for 'created on' or 'created by' type of columns.
-	  */ //todo: this should probably imply InsertDefault
-	case object ExtraInsert extends ComboValueBuffType(NoInsert) //fixme: currently unused!
+	  */
+	case object ExtraInsert extends ComboValueBuffType(InsertDefault, NoInsert) //fixme: currently unused!
 
 
 	/** Provides a default value which will be included in the update for the mapped table
@@ -265,8 +268,8 @@ object Buff {
 
 	/** Marks a column/component as being updated with the value of the expression provided by the buff
 	  * rather than some property of the mapped entity. Useful for particularly for 'update timestamp' columns.
-	  */ //todo: this should probably imply UpdateDefault
-	case object ExtraUpdate extends ComboValueBuffType(NoUpdate) //fixme: currently unused!
+	  */
+	case object ExtraUpdate extends ComboValueBuffType(UpdateDefault, NoUpdate) //fixme: currently unused!
 
 
 
@@ -286,8 +289,8 @@ object Buff {
 
 	/** Marks a column/component as having its value set by this buff rather than a property of the entity
 	  * at every write to the database. Implies `ReadOnly`, `ExtraInsert` and `ExtraUpdate`.
-	  */ //todo: this should probably imply WriteDefault
-	case object ExtraWrite extends ComboValueBuffType(ReadOnly, ExtraInsert, ExtraUpdate)
+	  */
+	case object ExtraWrite extends ComboValueBuffType(ReadOnly, WriteDefault, ExtraInsert, ExtraUpdate)
 
 
 	/** Provides a default value which will be returned if the value for the component is not present in the ''select''
@@ -317,7 +320,7 @@ object Buff {
 	  * of its rows. It implies both `ExtraFilter` and `ExtraWrite`, meaning that all queries against the table will
 	  * include the annotated column in the filter and all inserts and updates will set its value based on this buff.
 	  */
-	case object Unmapped extends ComboValueBuffType(ExtraFilter, ExtraWrite)
+	case object Unmapped extends ComboValueBuffType(NoSelect, ExtraFilter, ExtraWrite) //SelectDefault?
 
 	/** A buff marking a component or column which does not exist in the database and will not be used as part
 	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,

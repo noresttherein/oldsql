@@ -5,8 +5,10 @@ import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
@@ -21,10 +23,10 @@ import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL,
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNull}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.{CaseFunction, FunctionMatcher}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, MappingMatcher}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, LooseComponent, MappingMatcher}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, SQLLiteral, SQLNull, SQLParameter, TermMatcher}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
-import net.noresttherein.oldsql.sql.mechanics.{implicitSQLLiterals, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.{implicitSQLLiterals, SQLScribe, TableCount}
 
 //here be implicits
 import slang._
@@ -85,8 +87,8 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal,
-	  *         than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]]
+	  *         literal, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
 	  *         of which is the intersection of the scopes of the two expressions.
@@ -98,8 +100,44 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extend
 			case _ => EqualitySQL(lift.left(this), lift.right(that))
 		}
 
+	/** An SQL expression comparing if this expression equals a given value.
+	  * @param that a scala value of a type which can be promoted to the same type `U` as the value type
+	  *             of this expression. It will translate to an SQL literal.
+	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
+	  *             to some unspecified type `U` for the purpose of the comparison by the database.
+	  *             Implicit values provided in its companion object depend on the existence of
+	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
+	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal
+	  *         oor `that == null`, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
+	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
+	  */
 	def ===[X, U](that :X)(implicit form :SQLForm[X], lift :SQLTypeUnification[V, X, U]) :ColumnSQL[F, S, Boolean] =
 		this === SQLLiteral(that)
+
+	/** An SQL expression comparing the value of this expression with the value of a given relation component.
+	  * @param component a mapping object for a table, component or column, with the same subject type as the value type
+	  *                  of this expression. Its origin type must be the greatest upper bound of
+	  *                  the [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] it came from, which retains
+	  *                  the table from which the mapping originated, and which is in
+	  *                  its [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form. In other words,
+	  *                  it is the source ''from'' clause type with all tables to the left of the table of mapping `M`
+	  *                  replaced with an appropriate wildcard type and all join types upcast to their generalized form.
+	  *                  Such instances can be obtained using various accessor methods of
+	  *                  [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]], which in turn
+	  *                  is a common argument to functions creating SQL expressions and which can be always explicitly
+	  *                  created with `from.`[[net.noresttherein.oldsql.sql.RowProduct.RowProductExtension.mappings mappings]].
+	  * @param cast evidence that the given mapping has `E` as its `Origin` type, which helps the type inferer.
+	  * @param project implicit type class for `M` which provides its type constructor accepting the origin type,
+	  *                required for use in `RowProduct` subtypes.
+	  * @param offset implicit evidence specifying the number of known tables in the argument's origin type `E`.
+	  *               It equals the length of type `E` counted in joined relations, starting with either a wildcard type
+	  *               or `From/Dual`.
+	  * @return a Boolean expression comparing this expression with an SQL expression representing the given component.
+	  */
+	def ===[M <: MappingOf[V], E <: F]
+	       (component :M)(implicit cast :M <:< RefinedMapping[V, E], project :OriginProjection[M, V],
+	                               offset :TableCount[E, _ <: Numeral]) :ColumnSQL[E, S, Boolean] =
+		this === LooseComponent(component)
 
 
 	/** An SQL expression checking if the value of this expression and another expression are not equal.

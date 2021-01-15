@@ -62,7 +62,7 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	  */
 	implicit override val nullValue :NullValue[S] =
 		if (nulls != null) nulls
-		else if (mapFun == null) backer.nullValue.flatMap(map.optional)
+		else if (mapFun == null) backer.nullValue.flatMap(flatMapFun)
 		else backer.nullValue.map(mapFun)
 
 
@@ -79,14 +79,19 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	private[this] val backerExtract :Extract[T] = MappingExtract(backer)(unmap)
 	private[this] val selfExtract :Extract[S] = MappingExtract.ident(this)
 
-	override val extracts :NaturalMap[Component, Extract] =
+	private val composedExtracts :NaturalMap[Component, Extract] =
 		schema.composeExtracts(backer, backerExtract).updated(backer, backerExtract)
 
-	override val columnExtracts :NaturalMap[Column, ColumnExtract] = //we could shortcut it if backer is a column,
+	private val composedColumnExtracts :NaturalMap[Column, ColumnExtract] = //we could shortcut it if backer is a column,
 		schema.composeColumnExtracts(backer, backerExtract)          //but for the ColumnLabel which has *two* components
 
-	override val components :Unique[Component[_]] = Unique.single(backer)
-	override val subcomponents :Unique[Component[_]] = backer +: backer.subcomponents
+	override def extracts :NaturalMap[Component, Extract] = composedExtracts
+	override def columnExtracts :NaturalMap[Column, ColumnExtract] = composedColumnExtracts
+
+	private val singletonComponent = Unique.single(backer)
+	private val backerComponents = backer +: backer.subcomponents
+	override def components :Unique[Component[_]] = singletonComponent
+	override def subcomponents :Unique[Component[_]] = backerComponents
 
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
@@ -102,13 +107,18 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 		form.from(unmap)
 	}
 
-	override val selectForm :SQLReadForm[S] =
+	private val defaultSelectForm :SQLReadForm[S] =
 		if (nulls == null) backer.selectForm.nullTo(map)
 		else backer.selectForm.to(map)
 
-	override val filterForm :SQLWriteForm[S] = backer.filterForm.from(unmap)
-	override val updateForm :SQLWriteForm[S] = backer.updateForm.from(unmap)
-	override val insertForm :SQLWriteForm[S] = backer.insertForm.from(unmap)
+	private val defaultFilterForm :SQLWriteForm[S] = backer.filterForm.from(unmap)
+	private val defaultUpdateForm :SQLWriteForm[S] = backer.updateForm.from(unmap)
+	private val defaultInsertForm :SQLWriteForm[S] = backer.insertForm.from(unmap)
+
+	override def selectForm :SQLReadForm[S] = defaultSelectForm
+	override def filterForm :SQLWriteForm[S] = defaultFilterForm
+	override def updateForm :SQLWriteForm[S] = defaultUpdateForm
+	override def insertForm :SQLWriteForm[S] = defaultInsertForm
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 
@@ -222,8 +232,6 @@ object MappedMapping {
 		override def columnExtracts = mappedExtracts
 		//this cast can possibly fail with custom NaturalMap implementations!
 		override def extracts = columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
-//		override def components :Unique[Column[_]] = Unique.empty
-//		override def subcomponents :Unique[Column[_]] = Unique.empty
 	}
 
 

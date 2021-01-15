@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.morsels.generic.=#>
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
@@ -14,7 +15,7 @@ import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, GenericExtract, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, ReadOnly}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
+import net.noresttherein.oldsql.schema.bases.{BaseMapping, ExportMapping, LazyMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.LabelPath
 import net.noresttherein.oldsql.schema.bits.LabelPath./
@@ -654,7 +655,7 @@ object ListingSQLMapping {
 
 	private class ListingTupleMapping[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: Listing, O]
 	                                 (override val expr :ListingSQL[F, S, X])
-		extends ListingSQLMapping[F, S, X, O]
+		extends ListingSQLMapping[F, S, X, O] with ExportMapping
 	{ outer =>
 		private type Expression[V] = SQLExpression[F, LocalScope, V]
 		private type ColumnExpression[N <: Label, V] = ListingColumnSQLMapping[F, S, N, V, O]
@@ -724,6 +725,12 @@ object ListingSQLMapping {
 		override def updatedByDefault :Unique[ColumnExpression[_ <: Label, _]] = updatable
 		override def insertedByDefault :Unique[ColumnExpression[_ <: Label, _]] = insertable
 
+		private val columnMap = columns.view.map { c => (c.name, c) }.toMap
+
+		override def columnNamed(name :String) :Column[_] = columnMap.getOrElse(name, null) match {
+			case null => throw new NoSuchComponentException("No column '" + name + "' in " + this + ".")
+			case res => res
+		}
 
 		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Option[T]
 

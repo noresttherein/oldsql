@@ -7,6 +7,7 @@ import net.noresttherein.oldsql.morsels.generic.{=#>, GenericFun}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, MappingExtract}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
+import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
 import net.noresttherein.oldsql.schema.Relation.Table
 
 //here be implicits
@@ -75,12 +76,19 @@ import net.noresttherein.oldsql.slang._
   *
   * @tparam S the subject type of the target mapping defining the components for which this instance contains values.
   * @tparam O the origin type of the target mapping and all components with values in this instance.
-  */ //consider: moving it to haul
+  */
 trait ComponentValues[S, O] extends Cloneable {
-	
+
+	/** The type of components from the associated mapping (sharing the origin type with this instance). */
 	type Component[T] = RefinedMapping[T, O]
+
+	/** The type of columns from the associated mapping (sharing the origin type with this instance). */
 	type Column[T] = ColumnMapping[T, O]
+
+	/** The type of the mapping extract for a `Component[T]` of the associated mapping. */
 	type Extract[T] = MappingExtract[S, T, O]
+
+	/** The type of the column extract for a `Component[T]` of the associated mapping. */
 	type ColumnExtract[T] = ColumnMappingExtract[S, T, O]
 
 
@@ -273,11 +281,19 @@ trait ComponentValues[S, O] extends Cloneable {
 		path.end.optionally(this / path)
 
 
+	/** Return the value for the given component or `default`, if none can be obtained in any way
+	  * (preset, assembly, mapping defaults).
+	  * @see [[net.noresttherein.oldsql.haul.ComponentValues.get(extract:Extract[T]) get]]
+	  */
 	def getOrElse[T, U >: T](extract :Extract[T], default: => U) :U = get(extract) match {
 		case Some(res) => res
 		case _ => default
 	}
 
+	/** Return the value for the given component or `default`, if none can be obtained in any way
+	  * (preset, assembly, mapping defaults).
+	  * @see [[net.noresttherein.oldsql.haul.ComponentValues.get(component:Component[T]) get]]
+	  */
 	def getOrElse[T, U >: T](component :Component[T], default: => U) :U = get(component) match {
 		case Some(res) => res
 		case _ => default
@@ -514,6 +530,8 @@ trait ComponentValues[S, O] extends Cloneable {
 
 	override def clone() :ComponentValues[S, O] = super.clone().asInstanceOf[ComponentValues[S, O]]
 
+	def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentValues[_, _]]
+
 	protected def publicClassName = "ComponentValues"
 }
 
@@ -589,7 +607,7 @@ object ComponentValues {
 	  * @param values preset values for selected components of the target mapping, in any order consistent with `index`.
 	  * @param index A function returning the index of the value for the component in the given sequence.
 	  *              If the component has no preset value, it should return a negative number.
-	  */
+	  */ //todo: use Opt instead of Option
 	def apply[S, O](values :IndexedSeq[Option[Any]])(index :MappingAt[O] => Int) :ComponentValues[S, O] =
 		new IndexedValues(values, index)
 
@@ -676,10 +694,7 @@ object ComponentValues {
 	  * @param value the result, top-level value.
 	  */
 	def preset[S, O](mapping :RefinedMapping[S, O], value :S) :ComponentValues[S, O] =
-		new DisassembledValues[S, S, O](mapping, value) with PresetComponentValues[S, O] {
-			protected override def defined[T](column :ColumnMapping[T, O]) = mapping(column).get(value)
-			protected override def defined[T](extract :ColumnExtract[T]) :Option[T] = extract.get(value)
-		}
+		new DisassembledValues[S, S, O](mapping, value)
 
 	/** Create `ComponentValues` for the given mapping and its subject. All values returned by this instance will use
 	  * the `MappingExtract` provided by their owning mapping to extract the value from the given argument.
@@ -962,27 +977,26 @@ object ComponentValues {
 
 
 
-	/** Base trait for `ComponentValues` implementations which include preset values for an arbitrary set
-	  * of components, in particular columns. Each call for a value for a component of `M` results in this instance
-	  * first checking if the `defined` method returns a value for the component and, if so, simply returns it.
-	  * If no preset value for the component is available, it will be assembled. Calls for `ComponentValues` instances
-	  * for subcomponents work similarly: if this instance contains a preset value `x`, `preset(x)` is
-	  * returned; otherwise this instance simply casts itself to the component type. A non obvious implication
-	  * of this algorithm is that this instance's `preset` method ''always'' returns `None` and `assemble`
-	  * delegates straight to `mapping.assemble`, as the check for the preset value occurred earlier.
+	/** Optimisation of `ComponentValues` which introduces a shortcut path for value lookup if the component
+	  * is a [[net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn SimpleColumn]], which uses always the default
+	  * implementations of [[net.noresttherein.oldsql.schema.Mapping.optionally, optionally]] and
+	  * [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]. In that case, instead of going through
+	  * the process of creating a new instance for the column (or casting itself) and invoking `optionally`,
+	  * it straight calls `defined` method on itself and returns the result without passing over control to the column.
+	  * Method [[net.noresttherein.oldsql.haul.ComponentValues.preset preset]] is not used for this purpose as
+	  * implementations may still opt to have preset values for components other than columns.
 	  */ //this trait is currently unused, as we'd need to make column's optionally and assemble final
-	trait PresetComponentValues[S, O] extends GlobalComponentValues[S, O] {
-		//todo: the docs are not up to date
+	trait SimpleComponentValues[S, O] extends ComponentValues[S, O] {
 		protected def defined[T](extract :ColumnExtract[T]) :Option[T] = defined(extract.export)
 		protected def defined[T](column :ColumnMapping[T, O]) :Option[T]
 
 		override def apply[T](component :Component[T]) :T = component match {
-			case column :ColumnMapping[T @unchecked, O @unchecked] => defined(column).get
+			case column :SimpleColumn[T @unchecked, O @unchecked] => defined(column).get
 			case _ => component(this.asComponentsOf[T])
 		}
 
 		override def get[T](component :Component[T]) :Option[T] = component match {
-			case column :ColumnMapping[T @unchecked, O @unchecked] => defined(column)
+			case column :SimpleColumn[T @unchecked, O @unchecked] => defined(column)
 			case _ => component.optionally(this.asComponentsOf[T])
 		}
 	}
@@ -1072,6 +1086,21 @@ object ComponentValues {
 			override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) :ComponentValues[S, O] =
 				outer.aliased(export).aliasing
 
+			override def canEqual(that :Any) :Boolean = that match { //isInstanceOf angered the compiler
+				case _ :ComponentValuesAliasing[_, _]#AliasingValues => true
+				case _ => false
+			}
+
+			private def values = outer
+
+			override def equals(that :Any) :Boolean = that match {
+				case self :AnyRef if self eq this => true
+				case aliasing :ComponentValuesAliasing[_, _]#AliasingValues => outer == aliasing.values
+				case _ => false
+			}
+
+			override def hashCode :Int = outer.hashCode * 31 + getClass.hashCode
+
 			override def toString :String = outer.toString + ".aliases"
 		}
 
@@ -1119,6 +1148,7 @@ object ComponentValues {
 				override def toString = outer.toString + ".aliased"
 			}
 
+		//this should somehow check for equality or void super.equals if the argument isn't aliased
 		override def toString :String = "~" + super.toString
 	}
 
@@ -1135,6 +1165,15 @@ object ComponentValues {
 
 		protected override def alias[T](component :Component[T]) :Component[T] =
 			mapping.export(component)
+
+		override def canEqual(that :Any) :Boolean =
+			that.isInstanceOf[MappingAliasing[_, _]] && super.canEqual(that)
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case vals :MappingAliasing[_, _] if vals canEqual this => mapping == vals.mapping && super.equals(that)
+			case _ => false
+		}
 	}
 
 
@@ -1152,14 +1191,12 @@ object ComponentValues {
 	                    (values :ComponentValues[S, O], alias :MappingAt[O]#Component =#> RefinedMapping[_, O]#Component)
 		extends ComponentValues[S, O]
 	{ outer =>
-
 		def this(values :ComponentValues[S, O],
 		         extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[_, O]#Extract]) =
 			this(values, aliasing(extracts))
 
 		def this(values :ComponentValues[S, O], root :RefinedMapping[_, O]) =
 			this(values, aliasing(root))
-
 
 		protected def aliases = alias
 		protected def contents :ComponentValues[S, O] = values
@@ -1223,6 +1260,17 @@ object ComponentValues {
 		}
 
 
+		override def canEqual(other: Any): Boolean = other.getClass == getClass
+
+		override def equals(other: Any): Boolean = other match {
+			case self :AnyRef if self eq this => true
+			case that: AliasedComponentValues[_, _] if that canEqual this =>
+				aliases == that.aliases && contents == that.contents
+			case _ => false
+		}
+
+		override def hashCode(): Int = aliases.hashCode * 31 + contents.hashCode
+
 		override def toString :String = "~{" + values.toString + "}"
 	}
 
@@ -1261,6 +1309,20 @@ object ComponentValues {
 
 		override def clone() :ComponentValues[S, O] =
 			decorate(overrides.clone(), fallback.clone())
+
+		private def first = overrides
+		private def second = fallback
+
+		override def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :FallbackValues[_, _] if other canEqual this =>
+				first == other.first && second == other.second
+			case _ => false
+		}
+
+		override def hashCode :Int = first.hashCode * 31 + second.hashCode
 
 		override def toString = s"$overrides orElse $fallback"
 	}
@@ -1326,6 +1388,17 @@ object ComponentValues {
 		override def tiedTo[X](mapping :RefinedMapping[S, O]) :ComponentValues[X, O] = asComponentsOf[X]
 
 
+		override def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :DedicatedComponentValues[_, _] if other canEqual this =>
+				presets == other.presets && defaults == other.defaults
+			case _ => false
+		}
+
+		override def hashCode :Int = presets.hashCode * 31 + defaults.hashCode
+
 		override def toString :String = values.to(Array).map(v => v._1.toString + "->" + v._2).mkString("{", ",", "}")
 	}
 
@@ -1383,9 +1456,23 @@ object ComponentValues {
 	private[haul] class DisassembledValues[R, S, O](root :RefinedMapping[R, O], subject :R)
 		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O]
 	{
+		private def mapping = root
+		private def value = subject
+
 		override def preset(mapping :RefinedMapping[S, O]) =
 			if (mapping eq root) Some(subject.asInstanceOf[S])
 			else root(mapping).get(subject)
+
+		override def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :DisassembledValues[_, _, _] if other canEqual this =>
+				mapping == other.mapping && value == other.value
+			case _ => false
+		}
+
+		override def hashCode :Int = mapping.hashCode * 31 + subject.hashCode
 
 		override def toString = "DisassembledValues(" + subject + ")"
 	}
@@ -1437,7 +1524,7 @@ object ComponentValues {
 
 	private[haul] class ChosenDisassembledValues[R, S, O]
 	                    (root :RefinedMapping[R, O], value :R, components :Unique[MappingAt[O]])
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O]
+		extends DisassembledValues[R, S, O](root, value)
 	{
 		override def preset(mapping :RefinedMapping[S, O]) :Option[S] =
 			if (mapping eq root) Some(value.asInstanceOf[S])
@@ -1456,6 +1543,17 @@ object ComponentValues {
 		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O]
 	{
 		override def preset(component :RefinedMapping[S, O]) :Option[S] = values(component)
+		override def canEqual(that :Any) = that.getClass == getClass
+
+		private def fun = values
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :TypedValues[_, _] if other canEqual this => fun == other.fun
+			case _ => false
+		}
+
+		override def hashCode :Int = values.hashCode
 
 		override def toString :String = publicClassName + "(" + values + ")"
 	}
@@ -1486,6 +1584,16 @@ object ComponentValues {
 	{
 		override def preset(component :RefinedMapping[S, O]) :Option[S] =
 			values(component).asInstanceOf[Option[S]]
+
+		private def fun = values
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :UntypedValues[_, _] if other canEqual this => fun == other.fun
+			case _ => false
+		}
+
+		override def hashCode :Int = values.hashCode
 
 		override def toString :String = publicClassName + "(" + values + ")"
 	}
@@ -1524,6 +1632,17 @@ object ComponentValues {
 				case None => "_"
 			}.mkString(publicClassName + "(", ", ", ")")
 
+
+		private def seq = values
+		private def idx = index
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :IndexedValues[_, _] if other canEqual this => seq == other.seq && idx == other.idx
+			case _ => false
+		}
+
+		override def hashCode :Int = values.hashCode * 31 + index.hashCode
 	}
 
 }

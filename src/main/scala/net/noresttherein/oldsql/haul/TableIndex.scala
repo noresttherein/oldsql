@@ -4,6 +4,7 @@ import scala.collection.mutable
 
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.MappingExtract
 import net.noresttherein.oldsql.schema.Relation.Table
 
 
@@ -26,6 +27,11 @@ trait TableIndex[K, E] {
 
 	def +=(value :E) :Unit
 	def add(key :K, value :E) :Unit
+
+	def add[O](value :E, pieces :ComponentValues[E, O]) :Unit = pieces.get(component[O]) match {
+		case Some(key) => add(key, value)
+		case _ => this += value
+	}
 }
 
 
@@ -36,7 +42,7 @@ object TableIndex {
 		extends TableIndex[K, E]
 	{
 		private[this] val idx = mutable.Map.empty[K, E]
-		private[this] val extract = table[this.type](keyMapping.asInstanceOf[RefinedMapping[K, this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[K, this.type]])
 
 		override def component[O] :RefinedMapping[K, O] = keyMapping.asInstanceOf[RefinedMapping[K, O]]
 		protected def index :mutable.Map[K, E] = idx
@@ -51,10 +57,8 @@ object TableIndex {
 
 		override def unique(key :K) :Option[E] = idx.get(key)
 
-		override def all(key :K) :Set[E] = {
-			val res = idx.getOrElse(key, null.asInstanceOf[E])
-			if (res == null) Set.empty[E] else Set.empty[E] + res
-		}
+		override def all(key :K) :Iterable[E] =
+			Option(idx.getOrElse(key, null.asInstanceOf[E]))
 
 		override def +=(value :E) :Unit =
 			if (value != null)
@@ -67,7 +71,13 @@ object TableIndex {
 			if (key != null)
 				if (value == null)
 					throw new NullPointerException(s"Attempted to add null value with key $key to index $this.")
-				else idx.addOne(key, value)
+				else idx.update(key, value)
+
+		override def add[O](value :E, pieces :ComponentValues[E, O]) :Unit =
+			pieces.get(extract.asInstanceOf[MappingExtract[E, K, O]]) match {
+				case Some(k) => add(k, value)
+				case _ =>
+			}
 
 		override def toString :String = "Unique(" + table + " on " + keyMapping + ")"
 	}
@@ -78,7 +88,7 @@ object TableIndex {
 	                                     keyMapping :MappingOf[Option[K]])
 		extends UniqueTableIndex[Option[K], E](table, keyMapping)
 	{
-		private[this] val extract = table[this.type](keyMapping.asInstanceOf[RefinedMapping[Option[K], this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[Option[K], this.type]])
 
 		override def +=(value :E) :Unit =
 			if (value != null)
@@ -91,7 +101,7 @@ object TableIndex {
 			if (key != null && !(key eq None))
 				if (value == null)
 					throw new NullPointerException(s"Attempted to add null value with key $key to index $this.")
-				else index.addOne(key, value)
+				else index.update(key, value)
 
 		override def toString :String = "Opt" + super.toString
 	}
@@ -102,10 +112,10 @@ object TableIndex {
 		extends TableIndex[K, E]
 	{
 		private[this] val idx = mutable.Map.empty[K, mutable.Set[E]]
-		private[this] val extract = table[this.type](keyMapping.asInstanceOf[RefinedMapping[K, this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[K, this.type]])
 
 		override def component[O] :RefinedMapping[K, O] = keyMapping.asInstanceOf[RefinedMapping[K, O]]
-		protected def index :mutable.Map[K, mutable.Set[E]] = idx
+		protected def cache :mutable.Map[K, mutable.Set[E]] = idx
 		override def property :E =?> K = extract
 
 		override def apply(key :K) :E = {         //we don't have to check if key==null because default mutable.Map
@@ -122,7 +132,7 @@ object TableIndex {
 			if (res == null || res.isEmpty) None
 			else if (res.size > 1)
 				throw new IllegalStateException(s"Non unique results for key $key in $this.")
-			res.headOption
+			else res.headOption
 		}
 
 		override def all(key :K) :collection.Set[E] = {
@@ -155,6 +165,12 @@ object TableIndex {
 				res += value
 			}
 
+		override def add[O](value :E, pieces :ComponentValues[E, O]) :Unit =
+			pieces.get(extract.asInstanceOf[MappingExtract[E, K, O]]) match {
+				case Some(k) => add(k, value)
+				case _ =>
+			}
+
 
 		override def toString :String = "Index(" + table + " on " + keyMapping + ")"
 	}
@@ -165,16 +181,16 @@ object TableIndex {
 	                                    keyMapping :MappingOf[Option[K]])
 		extends TableMultiIndex[Option[K], E](table, keyMapping)
 	{
-		private[this] val extract = table[this.type](keyMapping.asInstanceOf[RefinedMapping[Option[K], this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[Option[K], this.type]])
 
 		override def +=(value :E) :Unit =
 			if (value != null)
 				extract.get(value) match {
 					case Some(key) if key != null && !(key eq None) =>
-						var res = index.getOrElse(key, null)
+						var res = cache.getOrElse(key, null)
 						if (res == null) {
 							res = mutable.Set.empty[E]
-							index.update(key, res)
+							cache.update(key, res)
 						}
 						res += value
 					case _ =>
@@ -184,15 +200,105 @@ object TableIndex {
 			if (key != null && !(key eq None)) {
 				if (value == null)
 					throw new NullPointerException(s"Attempted to add a null value with key $key to index $this.")
-				var res = index.getOrElse(key, null)
+				var res = cache.getOrElse(key, null)
 				if (res == null) {
 					res = mutable.Set.empty[E]
-					index.update(key, res)
+					cache.update(key, res)
 				}
 				res += value
 			}
 
-		override def toString = "Opt" + super.toString
+		override def toString :String = "Opt" + super.toString
+	}
+
+
+
+	class OrderedTableIndex[I, K, E](override val table :Table[MappingOf[E]#Projection],
+	                                 index :MappingOf[I], keyMapping :MappingOf[K])
+	                                (implicit ordering :Ordering[I])
+		extends TableIndex[K, E]
+	{
+		implicit private[this] val entryOrdering = Ordering.by { e :(I, E) => e._1 }
+		private[this] val indexProperty = table.row[this.type](index.asInstanceOf[RefinedMapping[I, this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[K, this.type]])
+		private[this] val idx = mutable.Map.empty[K, mutable.ListBuffer[(I, E)]]
+
+		override def component[O] :RefinedMapping[K, O] = keyMapping.asInstanceOf[RefinedMapping[K, O]]
+		protected def cache :mutable.Map[K, mutable.ListBuffer[(I, E)]] = idx
+		override def property :E =?> K = extract
+
+		override def apply(key :K) :E = {         //we don't have to check if key==null because default mutable.Map
+			val res = idx.getOrElse(key, null)  //handles null keys gracefully and we never add null keys
+			if (res == null || res.isEmpty)
+				throw new NoSuchElementException(s"No entity for key $key in $this.")
+			if (res.size > 1)
+				throw new IllegalStateException(s"Non unique results for key $key in $this.")
+			res.head._2
+		}
+
+		override def unique(key :K) :Option[E] = {
+			val res = idx.getOrElse(key, null)
+			if (res == null || res.isEmpty) None
+			else if (res.size > 1)
+				throw new IllegalStateException(s"Non unique results for key $key in $this.")
+			else Some(res.head._2)
+		}
+
+		override def all(key :K) :Iterable[E] = {
+			val res = idx.getOrElse(key, null)
+			if (res == null) Nil else res.sorted.view.map(_._2)
+		}
+
+		override def +=(value :E) :Unit =
+			if (value != null)
+				indexProperty.get(value) match {
+					case Some(i) if i != null => extract.get(value) match {
+						case Some(key) if key != null =>
+							var res = idx.getOrElse(key, null)
+							if (res == null) {
+								res = mutable.ListBuffer.empty[(I, E)]
+								idx.update(key, res)
+							}
+							res += ((i, value))
+						case _ =>
+					}
+					case _ =>
+				}
+
+		override def add(key :K, value :E) :Unit =
+			if (key != null) {
+				if (value == null)
+					throw new NullPointerException(s"Attempted to add a null value with key $key to index $this.")
+				indexProperty.get(value) match {
+					case Some(i) if i != null =>
+						var res = idx.getOrElse(key, null)
+						if (res == null) {
+							res = mutable.ListBuffer.empty[(I, E)]
+							idx.update(key, res)
+						}
+						res += ((i, value))
+					case _ =>
+				}
+			}
+
+		override def add[O](value :E, pieces :ComponentValues[E, O]) :Unit =
+			pieces.get(indexProperty.asInstanceOf[MappingExtract[E, I, O]]) match {
+				case Some(i) if i != null =>
+					pieces.get(extract.asInstanceOf[MappingExtract[E, K, O]]) match {
+						case Some(key) if key != null =>
+							var res = idx.getOrElse(key, null)
+							if (res == null) {
+								res = mutable.ListBuffer.empty[(I, E)]
+								idx.update(key, res)
+							}
+							res += ((i, value))
+						case _ =>
+					}
+				case _ =>
+			}
+
+
+		override def toString :String = "Index(" + table + " on " + keyMapping + " #" + index +")"
 	}
 
 }

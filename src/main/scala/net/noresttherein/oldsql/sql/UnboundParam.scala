@@ -470,6 +470,9 @@ object UnboundParam {
 		{
 			override def extract :ParamColumnExtract[P, T, O] = GenericExtract(this)(pick)
 			override def name :String = This.name
+
+			override def columnNamed(name :String) :Column[_] =
+				if (name == this.name) this else super.columnNamed(name)
 		}
 
 
@@ -636,7 +639,7 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 	override type Dealiased = left.Self JoinParam P
 	override type Self <: left.Self JoinParam P
 
-	protected override def narrow :left.type JoinParam P
+	override def narrow :left.type JoinParam P
 
 	override type GeneralizedLeft[+L <: FromSome] = L JoinParam P
 	override type DealiasedLeft[+L <: FromSome] = L JoinParam P
@@ -789,11 +792,11 @@ object JoinParam {
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
 	trait ParamFactory[X] extends Any {
-		def apply[F <: TopFromSome](from :F)(implicit form :SQLForm[X]) :F WithParam X =
+		final def apply[F <: TopFromSome](from :F)(implicit form :SQLForm[X]) :F WithParam X =
 			JoinParam[F, ParamRelation[X]#Param, X, Nothing](
 				from, LastRelation(ParamRelation[X]()), None)(True)
 
-		def apply[F <: TopFromSome](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
+		final def apply[F <: TopFromSome](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
 			JoinParam[F, ParamRelation[X]#Param, X, Nothing](
 				from, LastRelation(ParamRelation[X](name)), None)(True)
 	}
@@ -1089,12 +1092,12 @@ object GroupParam {
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
 	trait ParamFactory[X] extends Any {
-		def apply[F <: GroupByClause with TopFrom](from :F)(implicit form :SQLForm[X]) :F ByParam X =
+		final def apply[F <: GroupByClause with TopFrom](from :F)(implicit form :SQLForm[X]) :F ByParam X =
 			GroupParam[F, ParamRelation[X]#Param, X, Nothing](
 				from, RelationSQL(ParamRelation[X](), 0), None
 			)(True)
 
-		def apply[F <: GroupByClause with TopFrom](from :F, name :String)(implicit form :SQLForm[X]) :F ByParam X =
+		final def apply[F <: GroupByClause with TopFrom](from :F, name :String)(implicit form :SQLForm[X]) :F ByParam X =
 			GroupParam[F, ParamRelation[X]#Param, X, Nothing](
 				from, RelationSQL(ParamRelation[X](name), 0), None
 			)(True)

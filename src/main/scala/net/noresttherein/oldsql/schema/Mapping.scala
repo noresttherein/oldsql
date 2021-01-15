@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComp
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.bits.{LabeledMapping, OptionMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
@@ -150,7 +150,6 @@ trait Mapping {
 	/** The mapped entity type. */
 	type Subject
 
-
 	/** A phantom marker type identifying the origin of this mapping. It is used to statically distinguish between
 	  * different instances of the same mapping class, but mapping different portions of the result set -
 	  * in particular, they work like aliases for repeated occurrences of a table and its components in a joined query.
@@ -249,7 +248,6 @@ trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.export]]
 	  */
 	type ColumnExtract[T] = ColumnMappingExtract[Subject, T, Origin]
-
 
 
 	/** Any mapping with the same origin marker type, making it a supertype of all valid component types of this mapping.
@@ -556,8 +554,6 @@ trait Mapping {
 
 
 
-
-
 	/** Retrieves the [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]]
 	  * for the given component. Default implementation performs lookup in
 	  * [[net.noresttherein.oldsql.schema.Mapping.extracts extracts]], but if no extract is found
@@ -627,7 +623,6 @@ trait Mapping {
 	  */
 	def extracts :NaturalMap[Component, Extract]
 
-
 	/** A dictionary mapping all columns of this mapping, direct and indirect, to extracts with their ''export'' versions.
 	  * It is used during the assembly process to alias all components to their operative versions, in order to make sure
 	  * that even if a subcomponent implementation asks for a value of one of its columns which have been modified
@@ -645,7 +640,6 @@ trait Mapping {
 	  *     about implementation.
 	  */
 	def columnExtracts :NaturalMap[Column, ColumnExtract]
-
 
 
 	/** Adapts the given subcomponent (a component being the end of some path of components starting with this instance)
@@ -703,8 +697,6 @@ trait Mapping {
 
 
 
-
-
 	/** Direct component mappings of this mapping, including any top-level columns. Always empty for columns.
 	  * Some mappings may wish not to expose some of the components they define, primarily in the case of adapted
 	  * or mapped components and aliases for other components of the `Mapping`. For example, if a foreign key
@@ -729,7 +721,6 @@ trait Mapping {
 	  * of view of this mapping.
 	  *///todo: subcomponents of these should have 'export' names, just not buffs
 	def subcomponents :Unique[Component[_]]
-
 
 	/** All direct and transitive columns declared within this mapping. This will include columns which are read-only,
 	  * write-only and so on. Column mappings returns a singleton list containing themselves. All columns on the list
@@ -821,6 +812,8 @@ trait Mapping {
 		case INSERT => insertable
 		case UPDATE => updatable
 	}
+
+	def columnNamed(name :String) :Column[_]
 
 
 
@@ -1066,7 +1059,6 @@ trait Mapping {
 
 
 
-
 	/** Optional flags and annotations modifying the way this mapping is used. They are primarily used
 	  * to include or exclude columns from a given type of SQL statements. For this reason they typically appear
 	  * only on columns. If a larger component declares a buff, it is typically inherited by all its subcomponents
@@ -1102,7 +1094,6 @@ trait Mapping {
 	def renamed(naming :String => String) :Component[Subject]
 
 
-
 	/** Lifts this mapping by encapsulating the subject values in an `Option`. The created mapping will
 	  * always return `Some(x)` from its `optionally` and `assemble` methods, where `x` is the value returned by
 	  * the method of this instance. This means that `Some(None)` is returned when this component has no value
@@ -1111,7 +1102,6 @@ trait Mapping {
 	  * access to any components definitions in this mapping.
 	  */
 	def inOption :Optional[this.type]
-
 
 
 	/** Transform this mapping to a new subject type `X` by mapping all values before writing and after reading them
@@ -1144,7 +1134,6 @@ trait Mapping {
 	  * the `override` keyword.
 	  */
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[Mapping]
-
 
 
 	def mappingName :String  = this.localClassName
@@ -1256,12 +1245,19 @@ object Mapping extends LowPriorityMappingImplicits {
 		LooseComponent(mapping)
 
 
+	implicit class MappingExtension[M <: Mapping](private val self :M) extends AnyVal {
+		def toSQL[F <: RowProduct, S](implicit origin :M <:< MappingAt[F], offset :TableCount[F, _ <: Numeral],
+		                                       projection :OriginProjection[M, S])
+				:LooseComponent[F, projection.WithOrigin, S] =
+			LooseComponent(self)
+	}
+
 
 
 	/** Adds a right-associative method `@:` to any `Mapping` with defined `Origin` and `Subject` types,
 	  * which attaches a label type to it by wrapping it in `L @: M`.
 	  */
-	implicit class MappingLabeling[M <: RefinedMapping[_, _]](private val self :M) extends AnyVal {
+	implicit class RefinedMappingExtension[M <: RefinedMapping[_, _]](private val self :M) extends AnyVal {
 		/** Attaches a label (a string literal) to this mapping, transforming it into a `LabeledMapping` with the
 		  * literal type included as its type parameter.
 		  */
@@ -1271,10 +1267,16 @@ object Mapping extends LowPriorityMappingImplicits {
 		  * literal type included as its type parameter.
 		  */
 		@inline def :@[L <: Label :ValueOf] :L @: M = LabeledMapping[L, M, M#Subject, M#Origin](valueOf[L], self)
+
+//		/** Lifts this mapping by encapsulating the subject values in an `Option`. The created mapping will
+//		  * always return `Some(x)` from its `optionally` and `assemble` methods, where `x` is the value returned by
+//		  * the method of this instance. This means that `Some(None)` is returned when this component has no value
+//		  * associated in a given `Pieces` instance, and that `apply(Pieces)` method of the returned mapping will
+//		  * never fail. This instance is exposed as the public `get` field of the returned mapping, allowing direct
+//		  * access to any components definitions in this mapping.
+//		  */
+//		@inline def asOption :Optional[M] = OptionMapping(self)
 	}
-
-
-
 
 
 
@@ -1309,9 +1311,7 @@ object Mapping extends LowPriorityMappingImplicits {
 		  */
 		@inline def selfProjection(implicit projection :OriginProjection[M, S]) :projection.WithOrigin[M#Origin] =
 			self.asInstanceOf[projection.WithOrigin[M#Origin]]
-
 	}
-
 
 
 	/** Converts a mapping `M` with `type Origin = A forSome { type A }` to a mapping with `type Origin = B`, where `B`
@@ -1383,7 +1383,6 @@ object Mapping extends LowPriorityMappingImplicits {
 		  */
 		@inline final def apply[O](mapping :M) :WithOrigin[O] = mapping.asInstanceOf[WithOrigin[O]]
 
-
 		/** A projection from any `WithOrigin[O]` to `WithOrigin[X]`. */
 		@inline def isomorphism[O] :IsomorphicProjection[WithOrigin, S, O] =
 			this.asInstanceOf[IsomorphicProjection[WithOrigin, S, O]]
@@ -1392,7 +1391,6 @@ object Mapping extends LowPriorityMappingImplicits {
 		@inline def superProjection[U[O] >: WithOrigin[O] <: BaseMapping[S, O]]
 				:OriginProjection[M, S] { type WithOrigin[O] = U[O] } =
 			this.asInstanceOf[ArbitraryProjection[M, U, S]]
-
 
 		/** Lifts a projection of a mapping type `M` to one casting from mapping `A[M, _]` to `A[WithOrigin[O], O]`.
 		  * It is the responsibility of the caller to make sure that type `A` does not reference directly
@@ -1436,7 +1434,6 @@ object Mapping extends LowPriorityMappingImplicits {
 		/** Summon an implicit instance of `ExactProjection[M]`. */
 		@inline def apply[M <: Mapping](implicit projection :ExactProjection[M]) :projection.type =
 			projection
-
 
 
 		/** An subtype of `OriginProjection` invariant in the projected mapping type. It serves as the implementation
@@ -1486,10 +1483,7 @@ object Mapping extends LowPriorityMappingImplicits {
 			@inline def adapt[A[B <: Mapping, T, Q] <: BaseMapping[T, Q], S, O]
 					:ExactProjection[A[M, S, O]] { type WithOrigin[X] = A[self.WithOrigin[X], S, X] } =
 				this.asInstanceOf[ExactProjection[A[M, S, O]] { type WithOrigin[X] = A[self.WithOrigin[X], S, X] }]
-
 		}
-
-
 
 
 		/** A straightforward alias for [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]
@@ -1562,7 +1556,6 @@ object Mapping extends LowPriorityMappingImplicits {
 		private[this] final val CastingProjection = new ExactProjection[MappingOf[Any]] {
 			override type WithOrigin[O] = BaseMapping[Any, O]
 		}
-
 	}
 
 
@@ -1619,8 +1612,6 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-
-
 	/** A thin wrapper over a component of some mapping `MappingAt[O]` which selects it to be included or
 	  * excluded from some database operation, depending on which of the two subclasses of this type is the class
 	  * of this object. Instances of this trait are typically created by calling either
@@ -1671,7 +1662,6 @@ object Mapping extends LowPriorityMappingImplicits {
 			}
 
 
-
 		class WithBuff(buff :BuffType) extends ColumnFilter {
 			def components[S](mapping :MappingOf[S]) :Unique[mapping.Component[_]] =
 				mapping.components.filter(test)
@@ -1695,7 +1685,6 @@ object Mapping extends LowPriorityMappingImplicits {
 			override def read[S](mapping: MappingOf[S]) =
 				SQLReadForm.unsupported(s"$this: read for $mapping")
 		}
-
 
 
 		case object ForSelect extends ReadFilter(NoSelectByDefault) {
@@ -1768,14 +1757,11 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-
-
 	object MappingReadForm {
 
 		def apply[S, O](mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]],
 		                forms :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm) :SQLReadForm[S] =
 			new MappingReadForm[S, O](mapping, columns, forms)
-
 
 
 		def select[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLReadForm[S] = {
@@ -1800,15 +1786,14 @@ object Mapping extends LowPriorityMappingImplicits {
 			new MappingReadForm[S, O](mapping, extra, _.selectForm)
 		}
 
+
 		def defaultSelect[S](mapping :MappingOf[S]) :SQLReadForm[S] = {
 			val columns = mapping.selectedByDefault ++ ExtraSelect.Enabled(mapping)
 			new MappingReadForm[S, mapping.Origin](mapping, columns, _.selectForm)
 		}
 
-
 		def fullSelect[S](mapping :MappingOf[S]) :SQLReadForm[S] =
 			new MappingReadForm[S, mapping.Origin](mapping, mapping.selectable ++ ExtraSelect.Enabled(mapping))
-
 
 
 		def autoInsert[S](mapping :MappingOf[S]) :SQLReadForm[S] =
@@ -1950,7 +1935,6 @@ object Mapping extends LowPriorityMappingImplicits {
 			full(FILTER, mapping)
 
 
-
 		def update[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]]) :SQLWriteForm[S] =
 			custom(UPDATE, mapping, components)
 
@@ -1959,7 +1943,6 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		def fullUpdate[S](mapping :MappingOf[S]) :SQLWriteForm[S] =
 			full(UPDATE, mapping)
-
 
 
 		def insert[S, O](mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]]) :SQLWriteForm[S] =

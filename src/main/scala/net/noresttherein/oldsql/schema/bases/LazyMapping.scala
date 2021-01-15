@@ -2,11 +2,13 @@ package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.{Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, FilterAudit, InsertAudit, InsertDefault, NoFilter, NoInsert, NoUpdate, OptionalSelect, SelectAudit, SelectDefault, UpdateAudit, UpdateDefault}
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 
 
 
@@ -77,6 +79,9 @@ trait OptimizedMappingAssembly extends Mapping {
 
 
 
+
+
+
 /** A convenience base trait for simple mappings which overrides a selection of `Mapping` methods for efficiency,
   * storing often used values in member fields. The fields are declared as
   * [[net.noresttherein.oldsql.morsels.Lazy Lazy]] values, which are evaluated at most once, when first used,
@@ -94,23 +99,27 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 		if (component eq this) lazySelfExtract.get.asInstanceOf[Extract[T]]
 		else extracts(component)
 
-	private val lazySelfExtract = Lazy(MappingExtract.ident(this))
-	private val lazyColumnExtracts = Lazy(schema.filterColumnExtracts(this)(extracts))
+	protected[schema] val lazySelfExtract :Lazy[MappingExtract[S, S, O]] = Lazy(MappingExtract.ident(this))
+	protected[schema] val lazyColumnExtracts :Lazy[ColumnExtractMap] =
+		Lazy(schema.filterColumnExtracts(this)(extracts))
 
 	override def columnExtracts :NaturalMap[Column, ColumnExtract] = lazyColumnExtracts
 
-	private val lazySubcomponents :Unique[Component[_]] = Lazy(components.flatMap { c => c +: c.components })
-	private val lazyColumns = Lazy(components.flatMap(_.columns)) //columns of a column is the column itself, so works for direct columns, too
-	private val lazySelectable = Lazy(super.selectable)
-	private val lazyFilterable = Lazy(super.filterable)
-	private val lazyUpdatable = Lazy(super.updatable)
-	private val lazyAutoUpdated = Lazy(super.autoUpdated)
-	private val lazyInsertable = Lazy(super.insertable)
-	private val lazyAutoInserted = Lazy(super.autoInserted)
-	private val lazySelectedByDefault = Lazy(super.selectedByDefault)
-	private val lazyFilteredByDefault = Lazy(super.filteredByDefault)
-	private val lazyUpdatedByDefault = Lazy(super.updatedByDefault)
-	private val lazyInsertedByDefault = Lazy(super.insertedByDefault)
+	protected[schema] val lazySubcomponents :Unique[Component[_]] =
+		Lazy(components.flatMap { c => export(c) +: c.components.map(export(_)) })
+
+	//columns of a column is the column itself, so works for direct columns, too
+	protected[schema] val lazyColumns :Lazy[Unique[Column[_]]] = Lazy(components.flatMap(_.columns).map(export(_)))
+	protected[schema] val lazySelectable :Lazy[Unique[Column[_]]] = Lazy(super.selectable)
+	protected[schema] val lazyFilterable :Lazy[Unique[Column[_]]] = Lazy(super.filterable)
+	protected[schema] val lazyUpdatable :Lazy[Unique[Column[_]]] = Lazy(super.updatable)
+	protected[schema] val lazyAutoUpdated :Lazy[Unique[Column[_]]] = Lazy(super.autoUpdated)
+	protected[schema] val lazyInsertable :Lazy[Unique[Column[_]]] = Lazy(super.insertable)
+	protected[schema] val lazyAutoInserted :Lazy[Unique[Column[_]]] = Lazy(super.autoInserted)
+	protected[schema] val lazySelectedByDefault :Lazy[Unique[Column[_]]] = Lazy(super.selectedByDefault)
+	protected[schema] val lazyFilteredByDefault :Lazy[Unique[Column[_]]] = Lazy(super.filteredByDefault)
+	protected[schema] val lazyUpdatedByDefault :Lazy[Unique[Column[_]]] = Lazy(super.updatedByDefault)
+	protected[schema] val lazyInsertedByDefault :Lazy[Unique[Column[_]]] = Lazy(super.insertedByDefault)
 
 	override def subcomponents :Unique[Component[_]] = lazySubcomponents
 	override def columns :Unique[Column[_]] = lazyColumns
@@ -125,10 +134,18 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 	override def updatedByDefault :Unique[Column[_]] = lazyUpdatedByDefault
 	override def insertedByDefault :Unique[Column[_]] = lazyInsertedByDefault
 
-	private val lazySelectForm = Lazy(super.selectForm)
-	private val lazyFilterForm = Lazy(super.filterForm)
-	private val lazyUpdateForm = Lazy(super.updateForm)
-	private val lazyInsertForm = Lazy(super.insertForm)
+	protected[schema] val lazyColumnMap :Lazy[Map[String, Column[_]]] =
+		Lazy(columns.view.map { c => (c.name, c) }.toMap)
+
+	override def columnNamed(name :String) :Column[_] = lazyColumnMap.getOrElse(name, null) match {
+		case null => throw new NoSuchComponentException("No column '" + name + "' in " + this + ".")
+		case res => res
+	}
+
+	protected[schema] val lazySelectForm :Lazy[SQLReadForm[S]] = Lazy(super.selectForm)
+	protected[schema] val lazyFilterForm :Lazy[SQLWriteForm[S]] = Lazy(super.filterForm)
+	protected[schema] val lazyUpdateForm :Lazy[SQLWriteForm[S]] = Lazy(super.updateForm)
+	protected[schema] val lazyInsertForm :Lazy[SQLWriteForm[S]] = Lazy(super.insertForm)
 
 	override def selectForm: SQLReadForm[S] = lazySelectForm
 	override def filterForm: SQLWriteForm[S] = lazyFilterForm
@@ -239,6 +256,13 @@ trait StableMapping extends Mapping {
 	override val filteredByDefault :Unique[Column[_]] = super.filteredByDefault
 	override val updatedByDefault :Unique[Column[_]] = super.updatedByDefault
 	override val insertedByDefault :Unique[Column[_]] = super.insertedByDefault
+
+	private val columnMap = columns.view.map { c => (c.name, c) }.toMap
+
+	override def columnNamed(name :String) :Column[_] = columnMap.getOrElse(name, null) match {
+		case null => throw new NoSuchComponentException("No column '" + name + "' in " + this + ".")
+		case res => res
+	}
 
 	abstract override val selectForm: SQLReadForm[Subject] = super.selectForm
 	abstract override val filterForm :SQLWriteForm[Subject] = super.filterForm

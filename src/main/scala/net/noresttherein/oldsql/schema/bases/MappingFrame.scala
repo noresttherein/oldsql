@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.schema.bases
 
 import java.sql.{CallableStatement, ResultSet}
 
+import scala.annotation.tailrec
 import scala.collection.AbstractSeq
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable.ListBuffer
@@ -14,19 +15,20 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.model.{PropertyPath, RelatedEntityFactory}
-import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, RequisiteExtractor}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly, SelectDefault}
-import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
+import net.noresttherein.oldsql.schema.{cascadeBuffs, Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly}
+import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
-import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{ForeignKeyRelationColumnMapping, ForeignKeyRelationMapping}
-import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy
+import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{ForeignKeyEntityColumnMapping, ForeignKeyEntityMapping, InverseForeignKeyMapping}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DeepProxy, OpaqueColumnProxy}
 import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping}
+import net.noresttherein.oldsql.schema.support.EffectivelyEmptyMapping
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -55,7 +57,7 @@ import net.noresttherein.oldsql.slang._
   *           aliases for a table occurring more then once in a join). At the same time, it adds additional type safety
   *           by ensuring that only components of mappings included in a query can be used in creation
   *           of SQL expressions used by that query.
-  * @see [[net.noresttherein.oldsql.schema.bases.ContainedMapping]]
+  * @see [[net.noresttherein.oldsql.schema.bases.FlatMapping]]
   */
 trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] { frame =>
 
@@ -146,6 +148,15 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 			extractFor(this)
 		}
 
+		protected[MappingFrame] def delayInit() :Unit = frame synchronized {
+			if (isInitialized)
+				throw new IllegalStateException(
+					s"Cannot initialize component $this of $frame: components have already been exported."
+				)
+			else
+				initQueue += this
+		}
+
 
 		/** Lifts ('exports') a column of this component to the column of the enclosing composite `MappingFrame`.
 		  * This method is called both during delayed initialization of standard components, and eagerly
@@ -230,7 +241,31 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		protected def columnPrefix :String = inheritedPrefix
 
 		//enlist ourselves on the list of uninitialized components of the enclosing mapping
-		delayInit(this)
+		delayInit()
+	}
+
+
+
+	/** A mixin trait marking components which should be initialized at the last moment, when
+	  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.initialize initialize]] is called for the enclosing
+	  * `MappingFrame`. These components will be initialized - that is, put on the enclosing mapping's column and
+	  * component lists, together with its subcomponents - after all components not extending this trait have
+	  * been initialized. Calling [[net.noresttherein.oldsql.schema.bases.MappingFrame.initPreceding initPreceding]]
+	  * after creation of this component will not trigger its initialization.
+	  * This feature is useful for any components which feature lazily evaluated members, in particular subcomponents.
+	  * It allows to break infinite initialization loop between several mappings referencing each other - the intent
+	  * is that the initialization of these late init components triggers once all tables have been created, albeit
+	  * potentially without some minor subcomponents.
+	  */
+	trait LateInitComponent[T] extends FrameComponent[T] {
+		protected[MappingFrame] override def delayInit() :Unit = {
+			if (isInitialized)
+				throw new IllegalStateException(
+					s"Cannot initialize component $this of $frame: components have already been exported."
+				)
+			else
+				lateInit += this
+		}
 	}
 
 
@@ -446,19 +481,32 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	private class FKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
 	                         (override val componentSelector :S =?> R, rename :String => String, opts :Seq[Buff[R]])
 	                         (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => C[X])
-	extends ForeignKeyRelationMapping[M, C, K, E, T, R, X, O](rename, opts, factory)(table, pk)
-	   with FrameComponent[R]
+		extends ForeignKeyEntityMapping[M, C, K, E, T, R, X, O](rename, opts, factory)(table, pk)
+           with LateInitComponent[R]
 	{
 		def this(selector :S =?> R, prefix :String, buffs :Seq[Buff[R]])
 		        (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => C[X]) =
 			this(selector, prefix + _, buffs)(factory, table, pk)
 
-		override val buffs = opts ++: inheritedBuffs
-		include()
+		override val buffs = super.buffs
 	}
 
-
-
+	private class InverseFKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
+	                                (override val componentSelector :S =?> R, key :C[O], opts :Seq[Buff[R]])
+	                                (factory :RelatedEntityFactory[K, E, T, R],
+	                                 table :RelVar[M], fk :M[X] => ForeignKeyMapping[MappingAt, C, K, _, X])
+		extends InverseForeignKeyMapping[M, C, K, E, T, R, X, O](key, factory, opts)(table, fk)
+		   with FrameComponent[R] with EffectivelyEmptyMapping[R, O]
+	{
+		key match {
+			case comp :MappingFrame[_, _]#FrameComponent[_] if comp belongsTo frame =>
+			case _ =>
+				throw new IllegalArgumentException(
+					s"Mapping $key given as the local referenced key for a foreign key inverse is not a component of $frame."
+				)
+		}
+		override val buffs = super.buffs
+	}
 
 
 
@@ -529,13 +577,55 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 	private class FKColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, X]
-	                      (override val componentSelector :S =?> R, name :String, opts :Seq[Buff[R]])
+	                      (override val componentSelector :S =?> R, suffix :String, opts :Seq[Buff[R]])
 	                      (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => ColumnMapping[K, X])
-		extends ForeignKeyRelationColumnMapping[M, K, E, T, R, X, O](name, opts, factory)(table, pk)
-		   with FrameColumn[R]
-	{
-		override val buffs = opts ++: inheritedBuffs
+		extends ForeignKeyEntityColumnMapping[M, K, E, T, R, X, O](verifiedPrefix + suffix, opts, factory)(table, pk)
+		   with FrameColumn[R] with LateInitComponent[R]
+	{ fk =>
+		override val buffs = super.buffs
+
+		private[this] val lazyKey = Lazy {
+			val selector = Extractor.opt(factory.keyOf)
+			val buffs = cascadeBuffs(this.buffs, toString)(selector)
+			if (target.isInstanceOf[SimpleColumn[_, _]])
+				new DirectColumn[K](componentSelector andThen selector, name, buffs)(target.form)
+			else
+				new OpaqueColumnProxy[K, O](target, name, buffs)
+					with FrameColumn[K] with LateInitComponent[K]
+				{
+					override val componentSelector = fk.componentSelector andThen selector
+					override val buffs = super.buffs
+				}
+		}
+		override def key :Column[K] = lazyKey
+
+		override lazy val columns = Unique(key)
+
+		protected[MappingFrame] override def init() :frame.ColumnExtract[R] = frame synchronized {
+			initComponents += this
+			initSubcomponents += this
+			lazyKey.get //trigger construction and registration in the initQueue
+			extractFor(this)
+		}
 	}
+
+//	private class InverseFKColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, X]
+//	                             (override val componentSelector :S =?> R, opts :Seq[Buff[R]])
+//	                             (key :ColumnMapping[K, O], factory :RelatedEntityFactory[K, E, T, R])
+//	                             (table :RelVar[M], fk :M[X] => ForeignKeyColumnMapping[MappingAt, K, _, X])
+//		extends InverseForeignKeyColumnMapping[M, K, E, T, R, X, O](key, factory, opts)(table, fk)
+//		   with FrameColumn[R]
+//	{
+//		key match {
+//			case col :MappingFrame[_, _]#FrameColumn[_] if col belongsTo frame =>
+//			case _ =>
+//				throw new IllegalArgumentException(
+//					s"Column $key given as the local referenced key for a foreign key inverse is not a component of $frame."
+//				)
+//
+//		}
+//		override val buffs = super.buffs
+//	}
 
 
 
@@ -776,11 +866,16 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	protected override def fkimpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
 	                             (value :S => R, buffs :Buff[R]*)
 	                             (table :RelVar[M], pk :M[_] => C[_], reference :RelatedEntityFactory[K, E, T, R])
-	                             (rename :String => String) :ForeignKeyMapping[C, K, R, O] =
-		new FKComponent(value, rename, buffs)(reference, table, pk.asInstanceOf[M[()] => C[()]])
+	                             (rename :String => String) :ForeignKeyMapping[M, C, K, R, O] =
+		initPreceding(new FKComponent(value, rename, buffs)(reference, table, pk.asInstanceOf[M[()] => C[()]]))
 
-
-
+	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
+	                       (value :S => R, key :C[O], reference :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
+	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
+			:ForeignKeyMapping[M, C, K, R, O] =
+		initPreceding(new InverseFKComponent[M, C, K, E, T, R, ()](value, key, buffs)(
+			reference, table, fk.asInstanceOf[M[()] => ForeignKeyMapping[MappingAt, C, K, _, ()]]
+		))
 
 
 
@@ -998,9 +1093,18 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	protected override def fkimpl[M[A] <: RefinedMapping[E, A], K, E, T, R]
 	                             (name :String, value :S => R, buffs :Buff[R]*)
 	                             (table :RelVar[M], pk :M[_] => ColumnMapping[K, _],
-	                              reference :RelatedEntityFactory[K, E, T, R]) :ForeignKeyColumnMapping[K, R, O] =
-		new FKColumn(value, name, buffs)(reference, table, pk.asInstanceOf[M[()] => ColumnMapping[K, ()]])
+	                              reference :RelatedEntityFactory[K, E, T, R]) :ForeignKeyColumnMapping[M, K, R, O] =
+		initPreceding(new FKColumn(value, name, buffs)(reference, table, pk.asInstanceOf[M[()] => ColumnMapping[K, ()]]))
 
+
+//	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], K, E, X, R]
+//	                                    (value :S => R, key :ColumnMapping[K, O],
+//	                                     reference :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
+//	                                    (table :RelVar[M], fk :M[_] => ForeignKeyColumnMapping[MappingAt, K, _, _])
+//			:ForeignKeyColumnMapping[M, K, R, O] =
+//		initPreceding(new InverseFKColumn(value, buffs)(key, reference)(
+//			table, fk.asInstanceOf[M[()] => ForeignKeyColumnMapping[MappingAt, K, _, ()]]
+//		))
 
 
 
@@ -1151,24 +1255,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  */
 	protected def extractFor[T](column :FrameColumn[T]) :ColumnExtract[T] =
 		ColumnExtract[S, T, O](column)(column.componentSelector)
-/*
-	private[this] var initExtracts = MutableNaturalMap.freezable[Component, Extract]
-	private[this] var initColumnExtracts = MutableNaturalMap.freezable[Column, ColumnExtract]
-
-
-	override def extracts :NaturalMap[Component, Extract] = {
-		if (!isInitialized)
-			initialize()
-		initExtracts
-	}
-
-	override def extracts :NaturalMap[Column, ColumnExtract] = {
-		if (!isInitialized)
-			initialize()
-		initColumnExtracts
-	}
-*/
-
 
 
 
@@ -1242,9 +1328,11 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	private def delayInit(c :FrameComponent[_]) :Unit = synchronized {
 		if (isInitialized)
-			throw new IllegalStateException(s"Cannot initialize mapping component $c on $this: components have already been exported.")
+			throw new IllegalStateException(
+				s"Cannot initialize mapping component $c on $this: components have already been exported."
+			)
 		else
-			delayedInits += c
+			initQueue += c
 	}
 
 	/** Initializes all already instantiated components of this instance which haven't been yet initialized in the
@@ -1265,16 +1353,19 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.include() FrameComponent.include()]]
 	  */
 	protected final def initPreceding() :Unit = synchronized {
-		if (initializationState == 2)
-			throw new IllegalStateException(
-				s"Cannot initialize component lists of $this: the mapping initialization is completed.")
-		if (initializationState == 1)
-			throw new IllegalStateException(
-				s"Cannot initialize component lists of $this: initPreceding is already in progress.")
-		initializationState = 1
-		delayedInits.foreach(_.include())
-		delayedInits.clear()
-		initializationState = 0
+		while (initQueue.nonEmpty) { //initialized components may enqueue new components for initialization
+			if (initializationState == 2)
+				throw new IllegalStateException(
+					s"Cannot initialize component lists of $this: the mapping initialization is completed.")
+			if (initializationState == 1)
+				throw new IllegalStateException(
+					s"Cannot initialize component lists of $this: initPreceding is already in progress.")
+			initializationState = 1
+			val elems = initQueue //guard against ConcurrentModificationException
+			initQueue = ListBuffer.empty
+			elems.foreach(_.include())
+			initializationState = 0
+		}
 	}
 
 	/** An ease-of-life variant of no-argument `initPreceding()` which returns the given argument after finishing
@@ -1291,7 +1382,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * and needs to be initialized, in order to preserve relative order of declarations in the column/component
 	  * lists.
 	  */
-	private[this] val delayedInits = new ListBuffer[FrameComponent[_]]
+	private[this] var initQueue = new ListBuffer[FrameComponent[_]]
+	private[this] var lateInit = new ListBuffer[FrameComponent[_]]
 
 	//0 - uninitialized; 1 (temporary) initPreceding in progress; 2 - initialized
 	@volatile private[this] var initializationState = 0
@@ -1329,6 +1421,12 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		if (!isInitialized) synchronized {
 			if (!isInitialized) {
 				initPreceding()
+				while (lateInit.nonEmpty) {
+					val elems = lateInit
+					lateInit = ListBuffer.empty
+					elems.foreach(_.include())
+					initPreceding()
+				}
 
 				initComponents.initialize()
 				initColumns.initialize()

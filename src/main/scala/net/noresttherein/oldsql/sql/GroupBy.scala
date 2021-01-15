@@ -98,7 +98,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 
 	protected def withLeft[L <: FromSome](left :L)(condition :LocalBoolean[left.Generalized GroupBy M]) :WithLeft[L]
 
-	protected override def narrow :WithLeft[left.type]
+	override def narrow :WithLeft[left.type]
 
 	/** A copy of this clause with the `condition` being replaced with the given `filter`.
 	  * This does not replace the whole ''having'' filter, as the conditions (if present) of the left clause remain
@@ -388,7 +388,7 @@ object GroupBy {
 		}
 
 
-		protected override def narrow :WithLeft[left.type]
+		override def narrow :WithLeft[left.type]
 
 
 		type GeneralizedLeft[+L <: GroupByClause] <: (L AndBy M)

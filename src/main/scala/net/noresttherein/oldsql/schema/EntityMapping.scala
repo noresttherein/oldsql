@@ -15,13 +15,14 @@ trait EntityMappingTemplate[+C[A] <: RefinedMapping[PK, A], PK, S, O] extends Ba
 
 
 object EntityMappingTemplate {
-	implicit def primaryKeyOf[M[A] <: EntityMappingTemplate[C, PK, S, A], C[A] <: RefinedMapping[PK, A], PK, S]
-			:PrimaryKeyOf[M] { type Key = PK; type PKMapping[O] = C[O] } =
-		new PrimaryKeyOf[M] {
+	implicit def primaryKeyOf[C[A] <: RefinedMapping[PK, A], PK, S]
+			:PrimaryKeyOf[({ type M[O] = EntityMappingTemplate[C, PK, S, O] })#M]
+				{ type Key = PK; type PKMapping[O] = C[O] } =
+		new PrimaryKeyOf[({ type M[O] = EntityMappingTemplate[C, PK, S, O] })#M] {
 			override type Key = PK
 			override type PKMapping[O] = C[O]
 
-			override def apply[O](entity :M[O]) = entity.pk
+			override def apply[O](entity :EntityMappingTemplate[C, PK, S, O]) = entity.pk
 		}
 }
 

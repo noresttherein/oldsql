@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.collection
 
 import scala.reflect.ClassTag
 
-import net.noresttherein.oldsql.collection.Opt.{EmptyToken, Blank}
+import net.noresttherein.oldsql.collection.Opt.{EmptyToken, Lack}
 import net.noresttherein.oldsql.slang.raise
 
 
@@ -26,11 +26,11 @@ import net.noresttherein.oldsql.slang.raise
   * [[net.noresttherein.oldsql.collection.Opt.Got$ Got]] matching pattern, which should by modern compilers be translated
   * to non-boxing byte code.
   * @see [[net.noresttherein.oldsql.collection.Opt.Got$]]
-  * @see [[net.noresttherein.oldsql.collection.Opt.Blank]]
+  * @see [[net.noresttherein.oldsql.collection.Opt.Lack]]
   */
 final class Opt[+T] private[Opt] (private val ref :AnyRef) extends AnyVal with Serializable {
 
-	/** Tests if this `Opt` does not contain a value (is equal to [[net.noresttherein.oldsql.collection.Opt.Blank Blank]]). */
+	/** Tests if this `Opt` does not contain a value (is equal to [[net.noresttherein.oldsql.collection.Opt.Lack Lack]]). */
 	@inline def isEmpty: Boolean = ref eq EmptyToken
 
 	/** Tests if this `Opt` contains a value. If true, `get` will not throw an exception. */
@@ -96,17 +96,17 @@ final class Opt[+T] private[Opt] (private val ref :AnyRef) extends AnyVal with S
 	@inline def ifEmpty[O >: T](alt: Opt[O]) :Opt[O] =
 		if (ref eq EmptyToken) alt else this
 
-	/** Returns this `Opt` if the condition is false and `Blank` if it is true. This is equivalent
+	/** Returns this `Opt` if the condition is false and `Lack` if it is true. This is equivalent
 	  * to `this.filterNot(_ => condition)`, but avoids creating a function and arguably conveys the intent better.
 	  */
 	@inline def orEmptyIf(condition :Boolean) :Opt[T] =
-		if (condition) Blank else this
+		if (condition) Lack else this
 
-	/** Returns this `Opt` if the condition is true and `Blank` if it is false. This is equivalent
+	/** Returns this `Opt` if the condition is true and `Lack` if it is false. This is equivalent
 	  * to `this.filter(_ => condition)`, but avoids creating a function and arguably conveys the intent better.
 	  */
 	@inline def orEmptyUnless(condition :Boolean) :Option[T] =
-		if (condition) this else Blank
+		if (condition) this else Lack
 
 
 
@@ -130,7 +130,7 @@ final class Opt[+T] private[Opt] (private val ref :AnyRef) extends AnyVal with S
 	@inline def contains[O >: T](o :O): Boolean = ref == o
 
 	/** Returns a new `Opt` containing this value if it is not empty and its value satisfies the given predicate,
-	  * or [[net.noresttherein.oldsql.collection.Opt.Blank Blank]] otherwise. */
+	  * or [[net.noresttherein.oldsql.collection.Opt.Lack Lack]] otherwise. */
 	@inline def filter(p :T => Boolean) :Opt[T] =
 		if (!(ref eq EmptyToken) && p(ref.asInstanceOf[T])) this else new Opt(EmptyToken)
 
@@ -197,7 +197,7 @@ final class Opt[+T] private[Opt] (private val ref :AnyRef) extends AnyVal with S
 
 
 /** Companion object providing factory methods and extractors working with [[net.noresttherein.oldsql.collection.Opt Opt]]s.
-  * @see [[net.noresttherein.oldsql.collection.Opt.Blank]]
+  * @see [[net.noresttherein.oldsql.collection.Opt.Lack]]
   * @see [[net.noresttherein.oldsql.collection.Opt.Got$]]
   */
 object Opt {
@@ -217,10 +217,10 @@ object Opt {
 	  * @see [[net.noresttherein.oldsql.collection.Opt]]
 	  */
 	@inline final def apply[T](value :T) :Opt[T] =
-		if (value == null) Blank else new Opt(value.asInstanceOf[AnyRef])
+		if (value == null) Lack else new Opt(value.asInstanceOf[AnyRef])
 
-	/** Returns [[net.noresttherein.oldsql.collection.Opt.Blank Blank]] - an empty `Opt`. */
-	@inline final def empty[T] :Opt[T] = Blank
+	/** Returns [[net.noresttherein.oldsql.collection.Opt.Lack Lack]] - an empty `Opt`. */
+	@inline final def empty[T] :Opt[T] = Lack
 
 
 	/** Factory and a matching pattern for non empty values of [[net.noresttherein.oldsql.collection.Opt Opt]]. */
@@ -236,7 +236,7 @@ object Opt {
 	  * applications.
 	  * @see [[net.noresttherein.oldsql.collection.Opt.empty]]
 	  */
-	@inline final val Blank = new Opt[Nothing](EmptyToken)
+	@inline final val Lack = new Opt[Nothing](EmptyToken)
 
 	//extends Any => AnyRef out of laziness, allowing it to pass as the argument to applyOrElse
 	private[Opt] object EmptyToken extends (Any => AnyRef) with Serializable {

@@ -305,7 +305,7 @@ private[model] object InvocationReflection {
 		else {
 			val traceField = try {
 				mock.getClass.getField(TraceFieldName)
-			} catch { //this method is used solely for the error messsage; we can't swallow the original exception
+			} catch { //this method is used solely for the error message; we can't swallow the original exception
 				case _ :Exception => null
 			}
 			if (traceField == null)

@@ -137,6 +137,8 @@ class TableCount[F <: RowProduct, N <: Numeral] private[sql] (private val n :Int
 
 
 object TableCount {
+	//todo:
+	//type Of[F <: RowProduct, Num <: Numeral] = TableCount[F] { type N = Num }
 	implicit final val RowProductHasZero :TableCount[RowProduct, 0] = new TableCount[RowProduct, 0](0)
 	implicit final val FromClauseHasZero :TableCount[FromClause, 0] = new TableCount[FromClause, 0](0)
 	implicit final val FromSomeHasZero :TableCount[FromSome, 0] = new TableCount[FromSome, 0](0)

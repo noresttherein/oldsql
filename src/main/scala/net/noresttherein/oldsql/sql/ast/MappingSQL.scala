@@ -1656,10 +1656,10 @@ object MappingSQL {
 		def apply[F <: RowProduct] :RelationSQLFactory[F] = new RelationSQLFactory[F] {}
 
 		trait RelationSQLFactory[F <: RowProduct] extends Any {
-			def apply[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-			         (relation :Relation[M])
-			         (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]],
-			                   shift :TableOffset[F, T]) :RelationSQL[F, T, S, F] =
+			final def apply[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+			          (relation :Relation[M])
+			          (implicit cast :InferTypeParams[Relation[M], Relation[T], Relation[MappingOf[S]#TypedProjection]],
+			                    shift :TableOffset[F, T]) :RelationSQL[F, T, S, F] =
 				new RelationSQL[F, T, S, F](cast(relation), shift.tables, Unique.empty, Unique.empty)
 		}
 
@@ -1842,10 +1842,10 @@ object MappingSQL {
 		def apply[F <: RowProduct] :TableSQLFactory[F] = new TableSQLFactory[F] {}
 
 		trait TableSQLFactory[F <: RowProduct] extends Any {
-			def apply[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-			         (table :Table[M])
-			         (implicit cast :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]],
-			          offset :TableOffset[F, T]) :RelationSQL[F, T, S, F] =
+			final def apply[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+			               (table :Table[M])
+			               (implicit cast :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]],
+			                         offset :TableOffset[F, T]) :RelationSQL[F, T, S, F] =
 				new TableSQL[F, T, S, F](cast(table), offset.tables, Unique.empty, Unique.empty)
 		}
 

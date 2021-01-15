@@ -14,7 +14,7 @@ import scala.util.Try
 package object slang {
 
 	private[oldsql] object && {
-		def unapply[T](value :T) = Some(value, value)
+		def unapply[T](value :T) :Option[(T, T)] = Some(value, value)
 	}
 
 
@@ -22,7 +22,7 @@ package object slang {
 	/** An implicit conversion extending Int with a method 'repeat' which executes a block the given number of times. */
 	private[oldsql] implicit class repeat(private val count :Int) extends AnyVal {
 		/** Execute the given block the number of times specified by 'this' argument. */
-		def times(block : =>Unit): Unit =
+		@inline def times(block : => Unit): Unit =
 			for (_ <- 0 until count) block
 
 	}
@@ -121,7 +121,7 @@ package object slang {
 	  * quoted in backticks. Finally, for the obvious reason, the name of the anonymous class is synthetic and the same
 	  * for all anonymous inner classes of the same enclosing class/object.
 	  */
-	@inline def innerClassNameOf(o :Any) :String = innerNameOf(o.getClass)
+	@inline private[oldsql] def innerClassNameOf(o :Any) :String = innerNameOf(o.getClass)
 
 	/** An approximation of the imported type symbol of the given class, as it would be referenced
 	  * in code. First, the whole package prefix and all trailing '$' characters are dropped. Then, all escape sequences
@@ -139,7 +139,7 @@ package object slang {
 	  * quoted in backticks. Finally, for the obvious reason, the name of the anonymous class is synthetic and the same
 	  * for all anonymous inner classes of the same enclosing class/object.
 	  */
-	@inline def innerNameOf[C :ClassTag] :String = innerNameOf(classTag[C].runtimeClass)
+	@inline private[oldsql] def innerNameOf[C :ClassTag] :String = innerNameOf(classTag[C].runtimeClass)
 
 	/** An approximation of the imported type symbol of the given class, as it would be referenced
 	  * in code. First, the whole package prefix and all trailing '$' characters are dropped. Then, all escape sequences
@@ -157,7 +157,7 @@ package object slang {
 	  * quoted in backticks. Finally, for the obvious reason, the name of the anonymous class is synthetic and the same
 	  * for all anonymous inner classes of the same enclosing class/object.
 	  */
-	def innerNameOf(clazz :Class[_]) :String = clazz.getComponentType match {
+	private[oldsql] def innerNameOf(clazz :Class[_]) :String = clazz.getComponentType match {
 		case _ if clazz == java.lang.Void.TYPE => "Unit"
 
 		case null =>
@@ -209,7 +209,7 @@ package object slang {
 	  * of specialized classes will be shown. Use of '$' in a demangled name will throw it off, as will identifiers
 	  * quoted in backticks. Finally, for the obvious reason, the name of the anonymous class is synthetic.
 	  */
-	@inline def localClassNameOf(obj :Any): String = localNameOf(obj.getClass)
+	@inline private[oldsql] def localClassNameOf(obj :Any): String = localNameOf(obj.getClass)
 
 	/** An approximation of the type name of the given class, as it would appear in code.
 	  * It doesn't include the package prefix, but includes the demangled names of all enclosing classes/objects.
@@ -226,7 +226,7 @@ package object slang {
 	  * of specialized classes will be shown. Use of '$' in a demangled name will throw it off, as will identifiers
 	  * quoted in backticks. Finally, for the obvious reason, the name of the anonymous class is synthetic.
 	  */
-	@inline def localNameOf[C :ClassTag] :String = localNameOf(classTag[C].runtimeClass)
+	@inline private[oldsql] def localNameOf[C :ClassTag] :String = localNameOf(classTag[C].runtimeClass)
 
 	/** An approximation of the type name of the given class, as it would appear in code.
 	  * It doesn't include the package prefix, but includes the demangled names of all enclosing classes/objects.
@@ -243,7 +243,7 @@ package object slang {
 	  * of specialized classes will be shown. Use of '$' in a demangled name will throw it off, as will identifiers
 	  * quoted in backticks. Finally, for the obvious reason, the name of the anonymous class is synthetic.
 	  */
-	def localNameOf(clazz :Class[_]) :String = clazz.getComponentType match {
+	private[oldsql] def localNameOf(clazz :Class[_]) :String = clazz.getComponentType match {
 		case _ if clazz == java.lang.Void.TYPE => "Unit"
 
 		case null =>
@@ -275,7 +275,7 @@ package object slang {
 	  * will be shown. Use of '$' in a demangled name will throw it off, as will identifiers quoted in backticks.
 	  * Finally, anonymous classes receive synthetic names for the obvious reason.
 	  */
-	@inline def abbrevClassNameOf(obj :Any) :String = abbrevNameOf(obj.getClass)
+	@inline private[oldsql] def abbrevClassNameOf(obj :Any) :String = abbrevNameOf(obj.getClass)
 
 	/** An abbreviated qualified name of the given class, demangled to an approximation of how it would
 	  * appear in code. All package names are replaced with their first letters, while the class name is demangled
@@ -292,7 +292,7 @@ package object slang {
 	  * will be shown. Use of '$' in a demangled name will throw it off, as will identifiers quoted in backticks.
 	  * Finally, anonymous classes receive synthetic names for the obvious reason.
 	  */
-	@inline def abbrevNameOf[C :ClassTag] :String = abbrevNameOf(classTag[C].runtimeClass)
+	@inline private[oldsql] def abbrevNameOf[C :ClassTag] :String = abbrevNameOf(classTag[C].runtimeClass)
 
 	/** An abbreviated qualified name of the given class, demangled to an approximation of how it would
 	  * appear in code. All package names are replaced with their first letters, while the class name is demangled
@@ -309,7 +309,7 @@ package object slang {
 	  * will be shown. Use of '$' in a demangled name will throw it off, as will identifiers quoted in backticks.
 	  * Finally, anonymous classes receive synthetic names for the obvious reason.
 	  */
-	def abbrevNameOf(clazz :Class[_]) :String = clazz.getComponentType match {
+	private[oldsql] def abbrevNameOf(clazz :Class[_]) :String = clazz.getComponentType match {
 		case _ if clazz == java.lang.Void.TYPE => "Unit"
 
 		case null =>
@@ -358,7 +358,7 @@ package object slang {
 	  * will throw it off, as will identifiers quoted in backticks. Finally, anonymous classes receive synthetic names
 	  * for the obvious reason.
 	  */
-	@inline def classNameOf(obj :Any) :String = fullNameOf(obj.getClass)
+	@inline private[oldsql] def classNameOf(obj :Any) :String = fullNameOf(obj.getClass)
 
 	/** An approximation of the full, qualified and demangled name of the given class, as it would
 	  * appear in code. Demangling proceeds as follows: first, all trailing '$' are dropped and escape sequences
@@ -374,7 +374,7 @@ package object slang {
 	  * will be shown. Use of '$' in a demangled name will throw it off, as will identifiers quoted in backticks.
 	  * Finally, anonymous classes receive synthetic names for the obvious reason.
 	  */
-	@inline def fullNameOf[T :ClassTag] :String = fullNameOf(classTag[T].runtimeClass)
+	@inline private[oldsql] def fullNameOf[T :ClassTag] :String = fullNameOf(classTag[T].runtimeClass)
 
 	/** An approximation of the full, qualified and demangled name of the given class, as it would
 	  * appear in code. Demangling proceeds as follows: first, all trailing '$' are dropped and escape sequences
@@ -390,7 +390,7 @@ package object slang {
 	  * will be shown. Use of '$' in a demangled name will throw it off, as will identifiers quoted in backticks.
 	  * Finally, anonymous classes receive synthetic names for the obvious reason.
 	  */
-	def fullNameOf(clazz :Class[_]) :String = clazz.getComponentType match {
+	private[oldsql] def fullNameOf(clazz :Class[_]) :String = clazz.getComponentType match {
 		case _ if clazz == java.lang.Void.TYPE => "Unit"
 
 		case null =>
@@ -505,13 +505,13 @@ package object slang {
 		/** Returns Some(this) if passed condition is true, None otherwise;
 		  * `this` is passed by name and evaluated only if condition is true!
 		  */
-		def providing(condition :Boolean) :Option[T] =
+		@inline def providing(condition :Boolean) :Option[T] =
 			if (condition) Some(expr) else None
 
 		/** Returns Some(this) if passed condition is true for this, None otherwise;
 		  * `this` is evaluated once, before passing its value to the condition!
 		  */
-		def providing(condition :T => Boolean) :Option[T] = {
+		@inline def providing(condition :T => Boolean) :Option[T] = {
 			val x = expr
 			if (condition(x)) Some(x) else None
 		}
@@ -520,14 +520,14 @@ package object slang {
 		/** Returns Some(this) if passed condition is false, None otherwise;
 		  * `this` is passed by name and evaluated only if condition is false!
 		  */
-		def unless(condition :Boolean) :Option[T] =
+		@inline def unless(condition :Boolean) :Option[T] =
 			if (!condition) Some(expr) else None
 
 
 		/** Returns Some(this) if passed condition is false for this, None otherwise;
 		  * `this` is evaluated once, before passing its value to the condition!
 		  */
-		def unless(condition :T => Boolean) :Option[T] = {
+		@inline def unless(condition :T => Boolean) :Option[T] = {
 			val x = expr
 			if (!condition(x)) Some(x) else None
 		}
@@ -537,27 +537,27 @@ package object slang {
 
 
 	private[oldsql] implicit class IfTrueAndIfFalse(private val condition :Boolean) extends AnyVal {
-		def ifTrue[T](expr: => T) :Option[T] = if (condition) Some(expr) else None
+		@inline def ifTrue[T](expr: => T) :Option[T] = if (condition) Some(expr) else None
 
-		def ifFalse[T](expr: => T) :Option[T] = if (!condition) Some(expr) else None
+		@inline def ifFalse[T](expr: => T) :Option[T] = if (!condition) Some(expr) else None
 
-		def thenMaybe[T](expr : => Option[T]) :Option[T] = if (condition) expr else None
+		@inline def thenMaybe[T](expr : => Option[T]) :Option[T] = if (condition) expr else None
 
-		def otherwiseMaybe[T](expr : => Option[T]) :Option[T] = if (!condition) expr else None
+		@inline def otherwiseMaybe[T](expr : => Option[T]) :Option[T] = if (!condition) expr else None
 	}
 
 
 
 	private[oldsql] implicit class OptionGuardExtension[T](opt : => Option[T]) {
-		def orNoneIf(expr :Boolean) :Option[T] =
+		@inline def orNoneIf(expr :Boolean) :Option[T] =
 			if (expr) None else opt
 
-		def orNoneUnless(expr :Boolean) :Option[T] =
+		@inline def orNoneUnless(expr :Boolean) :Option[T] =
 			if (expr) opt else None
 
-		def mapOrElse[X](expr : T => X, default : => X) :X = opt match {
+		@inline def mapOrElse[X](expr : T => X, default : => X) :X = opt match {
 			case Some(t) => expr(t)
-			case none => default
+			case _ => default
 		}
 	}
 
@@ -566,14 +566,14 @@ package object slang {
 
 
 	private[oldsql] implicit class CastingExtension[T](private val value :T) extends AnyVal {
-		def downcast[S<:T] :S = value.asInstanceOf[S]
+		def downcast[S <: T] :S = value.asInstanceOf[S]
 //		def upcast[S>:T] :S = value.asInstanceOf[S]
 
 
 		@inline def castTo[S](implicit S :ClassTag[S]) :S =
 			castTo[S](new ClassCastException(s"expected class ${S.runtimeClass}; got $value :${value.getClass}"))
 
-		@inline def castTo[S](excp : =>Exception)(implicit S :ClassTag[S]) :S = value match {
+		@inline def castTo[S](excp : => Exception)(implicit S :ClassTag[S]) :S = value match {
 			case S(s) => s
 			case _ => throw excp
 		}
@@ -626,7 +626,7 @@ package object slang {
 
 
 
-	final def raise[E <: Throwable :ClassTag](msg :String) :Nothing =
+	private[oldsql] final def raise[E <: Throwable :ClassTag](msg :String) :Nothing =
 		throw (Try {
 			classTag[E].runtimeClass.getConstructor(classOf[String]).newInstance(msg).asInstanceOf[Throwable]
 		} orElse Try {
@@ -638,7 +638,7 @@ package object slang {
 			)
 		}).get
 
-	final def raise[E <: Throwable :ClassTag] :Nothing =
+	private[oldsql] final def raise[E <: Throwable :ClassTag] :Nothing =
 		throw (Try {
 			classTag[E].runtimeClass.getDeclaredConstructor().newInstance().asInstanceOf[Throwable]
 		} orElse Try {

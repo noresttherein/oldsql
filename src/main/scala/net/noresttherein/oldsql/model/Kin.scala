@@ -2,41 +2,88 @@ package net.noresttherein.oldsql.model
 
 import java.io.ObjectOutputStream
 
-import scala.collection.{Factory, IterableFactory}
+import scala.collection.{EvidenceIterableFactory, Factory, IterableFactory, IterableOps}
+import scala.reflect.runtime.universe.{typeOf, TypeTag}
 
-import net.noresttherein.oldsql.exceptions.MissingKeyException
-import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, ComposableFrom, DecomposableTo}
-import net.noresttherein.oldsql.model.Kin.Unknown
-import net.noresttherein.oldsql.model.MappedKin.{KinMapper, PropertyMapper}
+import net.noresttherein.oldsql.exceptions.{AbsentKinException, IncompatibleElementTypeException}
+import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, ComposableFrom, ConstructFrom, DecomposableTo}
+import net.noresttherein.oldsql.model.Kin.{Derived, Property, Recomposed, Unknown}
+import net.noresttherein.oldsql.model.Kin.Derived.{AbsentBase, PresentBase}
+import net.noresttherein.oldsql.model.Kin.Restrained.RestrainedKinFactory
 import net.noresttherein.oldsql.model.Restraint.{Restrainer, True}
-import net.noresttherein.oldsql.model.types.ValueTypes
-import net.noresttherein.oldsql.model.RelatedEntityFactory.EquivalencyTokenWrapper
-import net.noresttherein.oldsql.morsels
+import net.noresttherein.oldsql.model.KinFactory.{BaseDerivedKinFactory, BaseKinFactory, DerivedKinFactory, HigherKindKinFactory, RequiredKinFactory}
+import net.noresttherein.oldsql.morsels.generic.Self
+
+
+
 
 
 
 /** A value of type `T` or an identification of such a value. A kin can be either
-  * [[net.noresttherein.oldsql.model.Kin.Present Present]] - contain a value or be able to compute it
-  * without a significant cost and outside resources - or [[net.noresttherein.oldsql.model.Kin.Absent Absent]],
-  * in which case it should contain information required to locate and compute the given value. An exception
-  * to this case is [[net.noresttherein.oldsql.model.Kin.Unknown Unknown]], which is neither present nor does it contain
-  * any information about the value. It but should be used sparingly as most operations won't be able to do anything
-  * useful with it and may result in an error. If a member of an updated entity, `Unknown` means unchanged -
-  * the relationship will not be updated. Absent kin can be either [[net.noresttherein.oldsql.model.Kin.Missing Missing]]
-  * (if the value exists, in the logical sense - a corresponding entity is expected to exist in the database)
-  * or [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]] - if it is known to not exist. It is possible
-  * however, that the information about the distinction is unavailable, and thus checking only for these two cases
-  * can miss some absent kin. Belonging to any of the above groups isn't determined by the class, but rather whether
-  * a value is present and what additional information is known. This allows a single class to serve in all the above
-  * roles, depending on given parameters, which is of particular importance for lazily evaluated instances.
+  * [[net.noresttherein.oldsql.model.Kin.Present$ Present]] - contain a value or be able to compute it
+  * without a significant cost and outside resources - or [[net.noresttherein.oldsql.model.Kin.Absent$ Absent]],
+  * in which case it should contain information required to locate and compute the given value. Absent kin can be either
+  * [[net.noresttherein.oldsql.model.Kin.Missing$ Missing]] (if the value exists, in the logical sense - a corresponding
+  * entity is expected to exist in the database) or [[net.noresttherein.oldsql.model.Kin.Nonexistent$ Nonexistent]] -
+  * if it is known to not exist. Nonexistent kin typically carry no 'key', but it need not always be the case.
+  * It is possible that the information about the distinction is unavailable, and thus checking only for these two cases
+  * can miss some absent kin. In particular, a special [[net.noresttherein.oldsql.model.Kin.Unknown$ Unknown]] kin
+  * is neither present nor does it contain any information about the value. It should be used sparingly
+  * as most operations won't be able to do anything useful with it and may result in an error. However, if a member
+  * of an updated entity, `Unknown` means unchanged - the relationship will not be updated.
+  * Belonging to any of the above groups isn't determined by the class, but rather whether a value is present
+  * and what additional information is known. This allows a single class to serve in all the above roles, depending
+  * on given parameters, which is of particular importance for lazily evaluated instances.
   *
-  * `Kin` are particularly useful to represent associations between different database entities or
-  * resources which can be otherwise expensive to compute and shouldn't be fetched by default - they shield model classes
-  * from the implementation details about how those associations are implemented and resolved.
+  * Independent of the above, an absent kin can, instead of some 'key'/specification of the referenced value, contain
+  * one or more kin, the joint values of which comprise the referenced value. This allows adding a new element
+  * to a collection without loading it to memory first. Additionally, ''many to many'' relationships implemented
+  * with join tables can produce such kin if the rows of the join table are loaded, but not the related entities
+  * referenced by their foreign keys. This allows kin to be 'partially loaded' - containing both absent and present kin
+  * as their part. They are called ''collective'' kin and can be created and matched using
+  * [[net.noresttherein.oldsql.model.Kin.Collective$ Collective]] object.
+  *
+  * All of the above statuses are defined in terms of appropriate polymorphic methods of this trait -
+  * `isXxx` for status `Xxx` and not the actual implementation subclass. In particular, both present and absent
+  * instances can be modeled using the same class, and the exact status may even be not known at creation time,
+  * such as with [[net.noresttherein.oldsql.model.Kin.Lazy$ lazy]] kin. The hidden specification of the referenced values
+  * is however class/implementation dependent, and mapping components can typically handle directly only kin
+  * constrained in a specific way (such as the mapped foreign key) and compatible implementation class.
+  *
+  * `Kin` are particularly useful to represent relationships between different database entities or
+  * resources which can be otherwise expensive to compute and shouldn't be fetched by default - they shield model
+  * classes from the implementation details about how those associations are implemented and resolved.
   * An instance thus might contain an associated, pre-fetched entity, or a foreign key to it.
-  * They can be used for any type, including collections, and an empty `Kin` for a to-many relationship
+  * They can be used for any type, including collections, and an absent `Kin` for a to-many relationship
   * can for example specify a reverse foreign key (foreign key on the target entity and the primary key on this entity).
   * They can also serve as actual search filters - queries are after all only a filter specification on a table.
+  *
+  * This trait, for reasons of clarity, uniformity and conciseness, specifies only the composite value type, providing
+  * no information about the actual entity type from which it is derived. All operations which are dependent on
+  * this element type in their definition require an implicit
+  * [[net.noresttherein.oldsql.model.ComposedOf.DecomposableTo DecomposableTo]] (or
+  * [[net.noresttherein.oldsql.model.ComposedOf ComposedOf ComposedOf]]), which might sometimes be inconvenient.
+  * Similarly, an absent instance without any information about the composition type cannot be used to create
+  * a present instance.  Whenever decomposition of the value type `T` is needed for a kin, it might be more practical
+  * to use [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[E, T]` subtype, which knows both how to derive
+  * the value type `T` from the element/entity type `E`, and how to extract all element values from kin value
+  * if present. In order to avoid the inconvenience of providing both type arguments (likely repeating type `E`
+  * as part of type `T`), one of specific type aliases can be used:
+  *   - [[net.noresttherein.oldsql.model.Kin.One One]]`[E]` is a kin for a single entity (a ''to-one'' relationship);
+  *   - [[net.noresttherein.oldsql.model.Kin.Supposed Supposed]]`[E]` is a kin for `Option[E]` (a ''to-zero-or-one''
+  *     relationship);
+  *   - [[net.noresttherein.oldsql.model.Kin.Many Many]]`[E]` is a derived kin for `Iterable[E]`;
+  *   - [[net.noresttherein.oldsql.model.Kin.KinSeq KinSeq]] and [[net.noresttherein.oldsql.model.Kin.KinSet KinSet]]
+  *     are `Many` subtypes for `Seq[E]` and `Set[E]` as expected;
+  *   - finally, [[net.noresttherein.oldsql.model.Kin.Of Of]]`[C, E]` is a type alias for `Derived[C[E], E]`, allowing
+  *     shorter and cleaner type signatures: `Set Of Swords`.
+  *
+  * When creating kin for collection types, prefer using the appropriate interface type, rather than one specifying
+  * a single, default Scala implementation: `Seq[E]` instead of `List[E]`, `Map[K, E]` instead of `HashMap[K, E]`.
+  * This allows loaded kin to use special tracking implementations, allowing optimisations when the kin for the
+  * new collection is saved. For the same reason, prefer, where possible, to use the methods of the present collection
+  * to create derived collections, rather than creating new collections from scratch and filling them with
+  * elements manually.
   *
   * As a kin is immutable (at least in the interface - implementations may use mutable state as long as the client
   * will never see different results for the same call on the `Kin`), it is covariant in regards to the value type -
@@ -50,25 +97,14 @@ import net.noresttherein.oldsql.morsels
   * @see [[net.noresttherein.oldsql.model.Kin.Present$ Present]]
   * @see [[net.noresttherein.oldsql.model.Kin.Absent$ Absent]]
   * @see [[net.noresttherein.oldsql.model.Kin.Unknown$ Unknown]]
-  * @see [[net.noresttherein.oldsql.model.Kin.OptKin OptKin]]
   * @see [[net.noresttherein.oldsql.model.Kin.Nonexistent$ Nonexistent]]
+  * @see [[net.noresttherein.oldsql.model.Kin.Collective$ Collective]]
+  * @author Marcin Mościcki
   */
-trait Kin[@specialized(ValueTypes) +T] extends Serializable {
-//	type Item
-//
-//	def composer :T ComposableFrom Item
-//	def decompose :(_<:T) DecomposableTo Item = ???
-//	def decompose :Iterable[Item]
-
-	/** Same as [[net.noresttherein.oldsql.model.Kin.isAbsent isAbsent]]. */
-	@inline final def isEmpty :Boolean = isAbsent
-	/** Same as [[net.noresttherein.oldsql.model.Kin.isPresent isPresent]]. */
-	@inline final def nonEmpty :Boolean = isPresent
-
-//	@inline final def isDefined :Boolean = !isEmpty
+trait Kin[+T] extends Serializable {
 
 	/** A `Kin` is absent if it doesn't contain a value. */
-	@inline final def isAbsent :Boolean = !isPresent //isEmpty
+	@inline final def isAbsent :Boolean = !isPresent //isAbsent
 
 	/** Is this `Kin` absent and known to not exist at all? Not all implementations support this level of information;
 	  * this method can still return `false`, even if the entity (or entities) does not exist, but the fact could not
@@ -87,22 +123,24 @@ trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 	  */
 	def isMissing :Boolean = false
 
+	/** Is this `Kin` the [[net.noresttherein.oldsql.model.Kin.Unknown Unknown]] instance? Unknown kin are absent
+	  * and feature not information at all about the referenced values. It is used to indicate 'no change'
+	  * to a kin property of an entity and sometimes as a temporary value.
+	  */
+	def isUnknown :Boolean = false
+
 	/** Does this `Kin` contain a value? */
 	def isPresent :Boolean = toOption.isDefined
 
 
+	/** The referenced value in `Some` if this kin is present, or `None` if it is absent. */
 	def toOption :Option[T]
 
-	def get :T = toOption.get
-
-	@inline final def getOrElse[U >: T](default: => U): U =
-		if (isEmpty) default else get
-
-	@inline final def default[U >: T](default :U) :U =
-		if (isEmpty) default else get
-
-//	@inline final def orNull[U >: T](implicit ev: Null <:< U): U = this getOrElse ev(null)
-
+	/** Returns the value of this kin, if present, or throws
+	  * [[net.noresttherein.oldsql.exceptions.AbsentKinException AbsentKinException]] (a `NoSuchElementException`
+	  * subclass) otherwise.
+	  */
+	def get :T = if (isPresent) toOption.get else throw new AbsentKinException(this)
 
 	/** Returns the first element of the contents, in the sense and order appropriate to its type.
 	  *   - For collections, this is the `this.get.head` element;
@@ -112,87 +150,239 @@ trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 	  *  The primary purpose of this method is use in lambda functions used as descriptors
 	  *  specifying which relationships should be fetched together with a queried entity, providing a clearer
 	  *  view and a uniform access to the related entity's properties.
-	  *  @throws NoSuchElementException if this kin is empty
+	  *  @throws NoSuchElementException if this kin is absent
+	  */ //fixme: this won't work for k->v, as it doesn't return the result a no-arg method on this
+	def fetch[E](implicit decomposition :T DecomposableTo E) :E = decomposition.first(get)
+
+
+	/** Decomposes this kin value to individual elements `E` based on the implicit
+	  * [[net.noresttherein.oldsql.model.ComposedOf.DecomposableTo DecomposableTo]]`[T, E]`.
+	  * It is equivalent to `toOption.map(decomposition(_))`.
 	  */
-	def fetch[E](implicit composite :T DecomposableTo E) :E = composite.first(get)
+	def decompose[E](implicit decomposition :T DecomposableTo E) :Option[Iterable[E]] =
+		if (isPresent) Some(decomposition(get)) else None
 
-
-	def map[X](fun :KinMapper[T, X]) :Kin[X] = MappedKin(this, fun)
-
-	def map[X](property :PropertyPath[T, X]) :Kin[X] = map(PropertyMapper(property))
-
-//	@inline final def map[O](f: T => O): Kin[O] =
-//		if (isEmpty) Unknown else Present(f(this.get))
-//
-	@inline final def flatMap[O](f: T => Kin[O]): Kin[O] =
-		if (isEmpty) Unknown else f(this.get)
-
-	def flatten[O](implicit ev: T <:< Kin[O]): Kin[O] =
-		if (isEmpty) Unknown else ev(this.get)
-
-	/** If the given condition is false, return an `Unknown` instance. Otherwise return `this`.
-	  * Note that importing implicit conversion [[net.noresttherein.oldsql.model.Kin.?: ?:]] will patch any type
-	  * with the same method, creating a conditional expression producing a `Kin` instance.
+	/** If this kin is an instance of [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, E]`
+	  * (with composition compatible element type-wise with implicit decomposition of `T to E`), returns
+	  * kin for all parts of the referenced collection. By default, this will be simply `this::Nil`, but
+	  * [[net.noresttherein.oldsql.model.Kin.Collective$ Collective]] kin return all listed constituents.
+	  * instances of classes not derived from `Derived`, or using incompatible decomposition return `None`.
 	  */
-//	@inline final def ?:(condition :Boolean) :Kin[T] =
-//		if (condition && !isEmpty) this
-//		else Unknown
-	@inline final def presentIf(condition :Boolean) :Kin[T] =
-		if (condition && !isEmpty) this else Unknown
-
-	@inline final def absentIf(condition :Boolean) :Kin[T] =
-		if (condition || isEmpty) Unknown else this
-
-	@inline final def filter(p: T => Boolean): Kin[T] =
-		if (isEmpty || p(this.get)) this else Unknown
-
-	@inline final def filterNot(p: T => Boolean): Kin[T] =
-		if (isEmpty || !p(this.get)) this else Unknown
+	def explode[E](implicit decomposition :T DecomposableTo E) :Option[Iterable[Derived[E, _]]] = None
 
 
-	@inline final def withFilter(p: T => Boolean): Kin[T] =
-		if (isEmpty || p(this.get)) this else Unknown
+	@inline final def getOrElse[U >: T](default: => U): U = if (isPresent) get else default
+
+	@inline final def default[U >: T](default :U) :U = if (isPresent) get else default
 
 
-
-	@inline final def contains[U >: T](elem: U): Boolean =
-		!isEmpty && this.get == elem
-
-	@inline final def exists(p: T => Boolean): Boolean =
-		!isEmpty && p(this.get)
-
-	@inline final def forall(p: T => Boolean): Boolean = isEmpty || p(this.get)
-
-	@inline final def foreach[O](f: T => O) :Unit =
-		if (!isEmpty) f(this.get)
-
-
-	@inline final def collect[O](pf: PartialFunction[T, O]): Kin[O] =
-		if (!isEmpty) pf.lift(this.get) else Unknown
-
-	@inline final def orElse[U >: T](alternative: => Kin[U]): Kin[U] =
-		if (isEmpty) alternative else this
+	@inline final def orElse[U >: T](alternative: => Kin[U]) :Kin[U] = if (isPresent) this else alternative
 
 	/** Returns `this` if it contains a value or `alternative` otherwise. The difference from
 	  * [[net.noresttherein.oldsql.model.Kin.orElse orElse]] is that
 	  * the argument is evaluated eagerly, guaranteeing that no closure will be created and should have better performance
 	  * if the alternative value was computed beforehand.
 	  */
-	@inline final def ifEmpty[U >: T](alternative :Kin[U]) :Kin[U] =
-		if (isEmpty) alternative else this
+	@inline final def ifAbsent[U >: T](alternative :Kin[U]) :Kin[U] = if (isAbsent) alternative else this
+
+	@inline final def ifUnknown[U >: T](alternative :Kin[U]) :Kin[U] = if (isUnknown) alternative else this
+
+	@inline final def ifNonexistent[U >: T](alternative :Kin[U]) :Kin[U] = if (isNonexistent) alternative else this
+
+
+	/** Lifts this kin to a [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Iterable[T]]`
+	  * for a singleton collection. Returned instance will retain this kin's status and contain `this.get::Nil` if
+	  * it is present. Useful when including kin for a single entity
+	  * in a [[net.noresttherein.oldsql.model.Kin.Collective$ Collective]] kin.
+	  */
+	def singleton :Kin[Iterable[T]] = singleton(Iterable)
+
+	/** Lifts this kin to a [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, C[T]]`
+	  * for a singleton collection. Returned instance will retain this kin's status and contain `factory(his.get)` if
+	  * it is present. Useful when including kin for a single entity
+	  * in a [[net.noresttherein.oldsql.model.Kin.Collective$ Collective]] kin.
+	  */
+	def singleton[C[+X] <: Iterable[X]](factory :IterableFactory[C]) :Kin[C[T]] =
+		Recomposed(this)(DecomposableTo.Self(), ComposableFrom.Collection.of[T](factory))
+
+	/** Converts this instance to [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[E, U]`.
+	  * If it already derives from `Derived` and uses the same composition as the one provided implicitly,
+	  * it returns itself. Otherwise the returned instance will be an adapter wrapping this instance.
+	  * The latter case can be matched using `Derived`'s
+	  * [[net.noresttherein.oldsql.model.Kin.Derived.unapply unapply]] method.
+	  */
+	def recompose[E, U >: T](implicit composition :U ComposedOf E) :Derived[E, U] =
+		Recomposed(this)(composition.decomposer, composition.composer)
+
+
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Derived derived]] kin encompassing all values of `E`
+	  * referenced by this instance and the given instance. This is semantically equivalent to adding the given element
+	  * to the logical collection referenced by this instance. Present kin may opt to eagerly add the element
+	  * to the collection instead of creating a collective proxy.
+	  * @return `this ++ Derived.present(item::Nil)`.
+	  */
+	def +[E, U >: T](item :E)(implicit composition :U CollectionOf E) :Kin[U] =
+		this ++[E, List[E], U] Derived.many(item::Nil)
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin encompassing all values of `E`
+	  * referenced by this instance and the value of the given kin. This is semantically equivalent to adding the given
+	  * element to the logical collection referenced by this instance. Present kin may opt to eagerly add
+	  * the new element (if present) instead of creating a collective proxy.
+	  * @return `this ++ item.singleton`.
+	  */
+	def +[E, U >: T](item :Kin[E])(implicit composition :U CollectionOf E) :Kin[U] =
+		this ++[E, List[E], U] item.singleton(List)
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Derived derived]] kin encompassing all values of `E`
+	  * referenced by this instance and the given value. This is semantically equivalent to prepending
+	  * (in the sense defined by implicit `composition.composer.builder`) the given element to the logical collection
+	  * referenced by this instance. For most collection types without an imposed order, this is equivalent
+	  * to `this + item`. Present kin may opt to eagerly add the new element instead of creating a collective proxy.
+	  * @return `Derived.present(item::Nil) ++: this`.
+	  */
+	def +:[E, U >: T](item :E)(implicit composition :U CollectionOf E) :Kin[U] =
+		Derived.many(item::Nil) ++:[E, List[E], U] this
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin encompassing all values of `E`
+	  * referenced by this instance and the value of the given kin. This is semantically equivalent to prepending
+	  * (in the sense defined by implicit `composition.composer.builder`) the given element to the logical collection
+	  * referenced by this instance. For most collection types without an imposed order, this is equivalent
+	  * * to `this + item`. Present kin may opt to eagerly add the new element (if present)
+	  * instead of creating a collective proxy.
+	  * @return `item.singleton ++: this`.
+	  */
+	def +:[E, U >: T](item :Kin[E])(implicit composition :U CollectionOf E) :Kin[U] =
+		item.singleton(List) ++:[E, List[E], U] this
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Derived derived]] kin including all elements of
+	  * this and the given kin. This is semantically equivalent to creating a union of the two referenced logical
+	  * collections (in the sense defined by implicit `composition.composer.builder`). Present kin may opt to eagerly
+	  * add the new element instead of creating a collective proxy.
+	  * @return `this ++ Derived.present(items)`.
+	  */
+	def ++[E, U >: T](items :Iterable[E])(implicit composition :U CollectionOf E) :Kin[U] =
+		this ++[E, Iterable[E], U] Derived.many(items)
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
+	  * this and the given kin. This is semantically equivalent to creating a union of the two referenced logical
+	  * collections (in the sense defined by implicit `composition.composer.builder`). Present kin may opt
+	  * to eagerly add the new element (if Present) instead of creating a collective proxy.
+	  */
+	def ++[E, X, U >: T](items :Kin[X])
+	                    (implicit composition :U CollectionOf E, decomposition :X DecomposableTo E) :Kin[U] =
+		items match {
+			case composite :Derived[E @unchecked, X @unchecked]
+				if composite.composition compatibleWith decomposition => this ++[E, X, U] composite
+			case _ => this ++[E, U, U] Recomposed(items)(decomposition, composition.composer)
+		}
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
+	  * this and the given kin. This is semantically equivalent to creating a union of the two referenced logical
+	  * collections (in the sense defined by implicit `composition.composer.builder`). Present kin may opt
+	  * to eagerly add the new element (if Present) instead of creating a collective proxy.
+	  */
+	def ++[E, X, U >: T](items :Kin.Derived[E, X])(implicit composition :U CollectionOf E) :Kin[U] =
+		Recomposed(this)(composition.decomposer, composition.composer) ++[E, X, U] items
+
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
+	  * this and the given kin. This is semantically equivalent to prepending the given collection to the one referenced
+	  * by this kin (in the sense defined by implicit `composition.composer.builder`). For most collection types
+	  * without an imposed order, this is equivalent to `this ++ items`. Present kin may opt to eagerly
+	  * add the new element (if Present) instead of creating a collective proxy.
+	  * @return `Derived.present(items) ++: this`.
+	  */
+	def ++:[E, U >: T](items :Iterable[E])(implicit composition :U CollectionOf E) :Kin[U] =
+		Derived.many(items) ++:[E, Iterable[E], U] this
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
+	  * this and the given kin. This is semantically equivalent to prepending the given logical collection
+	  * to the one referenced by this kin (in the sense defined by implicit `composition.composer.builder`).
+	  * For most collection types without an imposed order, this is equivalent to `this ++ items`.
+	  * Present kin may opt to eagerly add the new element (if Present) instead of creating a collective proxy.
+	  */
+	def ++:[E, X, U >: T](items :Kin[X])
+	                     (implicit composition :U CollectionOf E, decomposition :X DecomposableTo E) :Kin[U] =
+		items match {
+			case composite :Derived[E @unchecked, X @unchecked]
+				if composite.composition compatibleWith decomposition => composite ++:[E, X, U] this
+			case _ => Recomposed(items)(decomposition, composition.composer) ++:[E, U, U] this
+		}
+
+	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
+	  * this and the given kin. This is semantically equivalent to prepending the given logical collection
+	  * to the one referenced by this kin (in the sense defined by implicit `composition.composer.builder`).
+	  * For most collection types without an imposed order, this is equivalent to `this ++ items`.
+	  * Present kin may opt to eagerly add the new element (if Present) instead of creating a collective proxy.
+	  */
+	def ++:[E, X, U >: T](items :Kin.Derived[E, X])(implicit composition :U CollectionOf E) :Kin[U] =
+		items ++:[E, X, U] Recomposed(this)(composition.decomposer, composition.composer)
+
+	//todo: -
+
+	def property[X, U >: T](property :PropertyPath[U, X]) :Kin[X] = Property.one(this, property)
+
+	def properties[E, X, C[_]](property :PropertyPath[E, X], in :IterableFactory[C])
+	                          (implicit decomposition :T DecomposableTo E) :Kin[C[X]] =
+		properties(property, ComposableFrom.Collection.of[X](in))
+
+	def properties[E, X, C[_], Ev[_]](property :PropertyPath[E, X], in :EvidenceIterableFactory[C, Ev])
+	                                 (implicit decomposition :T DecomposableTo E, ev :Ev[X]) :Kin[C[X]] =
+		properties(property, ComposableFrom.Collection.of[X](in))
+
+	def properties[E, X, C](property :PropertyPath[E, X], as :C ComposableFrom X)
+	                       (implicit decomposition :T DecomposableTo E) :Kin[C] //=
+//		Property(this, property)(decomposition, as)
+
+
+//	@inline final def map[O](f: T => O): Kin[O] =
+//		if (isAbsent) Unknown else Present(f(this.get))
+//
+	@inline final def flatMap[O](f: T => Kin[O]): Kin[O] =
+		if (isPresent) f(this.get) else Unknown
+
+	@inline final def filter(p: T => Boolean): Kin[T] =
+		if (isAbsent || p(this.get)) this else Unknown
+
+	@inline final def filterNot(p: T => Boolean): Kin[T] =
+		if (isPresent && p(this.get)) Unknown else this
+
+
+	@inline final def withFilter(p: T => Boolean): Kin[T] =
+		if (isAbsent || p(this.get)) this else Unknown
+
+
+
+	@inline final def contains[U >: T](elem: U): Boolean =
+		!isAbsent && this.get == elem
+
+	@inline final def exists(p: T => Boolean): Boolean =
+		!isAbsent && p(this.get)
+
+	@inline final def forall(p: T => Boolean): Boolean = isAbsent || p(this.get)
+
+	@inline final def foreach[O](f: T => O) :Unit =
+		if (!isAbsent) f(this.get)
 
 
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[Kin[_]]
 
+	/** Kin equality is determined primarily as equality on the value type `T`. Implementation classes which
+	  * include additional information - the specification needed to load the absent value - can override it,
+	  * adding the 'key' value equality to the condition. Equality does not take into account various specific
+	  * cases of being absent - kin instances differing only in their `isMissing` properties will compare equal.
+	  * The exception is [[net.noresttherein.oldsql.model.Kin.Unknown Unknown]] which is equal to no other kin.
+	  */
 	override def equals(that :Any) :Boolean = that match {
 		case self :AnyRef if self eq this => true
 		case other :Kin[_] if other canEqual this =>
-			toOption == other.toOption && isMissing == other.isMissing && isNonexistent == other.isNonexistent
+			if (isPresent) other.isPresent && get == other.get else other.isAbsent
 		case _ => false
 	}
 
-	override def hashCode :Int = if (isEmpty) Unknown.hashCode else get.hashCode
+	override def hashCode :Int = if (isAbsent) Unknown.hashCode else get.hashCode
 
 	override def toString :String = toOption match {
 		case Some(x) => "Present(" + x + ")"
@@ -210,169 +400,6 @@ trait Kin[@specialized(ValueTypes) +T] extends Serializable {
 
 object Kin {
 
-	@inline final implicit def optionToKin[T](opt :Option[T]) :Kin[T] =  opt match {
-		case None => Unknown
-		case Some(x) => Present(x)
-	}
-
-	@inline final implicit def kinToOption[T](kin :Kin[T]) :Option[T] = kin.toOption
-
-//	/** Implicit conversion adding a conditional factory method for `Kin` instances to any value.
-//	  * Importing it allows to write: `condition ?: value` to produce a `Present(value)` if `condition` is true
-//	  * or a blank otherwise.
-//	  */
-//	@inline final implicit def ?:[T](value :T) :KinConditional[T] =
-//		new KinConditional(Kin(value))
-//
-//	class KinConditional[T](private val kin :Kin[T]) extends AnyVal {
-//		/** Returns this value as `Present(value)` if the left-hand condition evaluates to `true` or `Unknown` otherwise. */
-//		@inline def ?:(condition :Boolean) :Kin[T] =
-//			if (!condition || kin.isEmpty) Unknown
-//			else kin
-//	}
-
-	/** Implicit conversion adding a conditional factory method for `Kin` instances to `Boolean`.
-	  * Importing it allows to write: `value presentIf condition` and `value absentIf condition`
-	  * to produce a `Present(value)` if `condition` is true or `Unknown` otherwise.
-	  */
-	@inline final implicit def presentIf[T](value :T) :KinConditional[T] =
-		new KinConditional(Kin(value))
-
-	class KinConditional[T](private val kin :Kin[T]) extends AnyVal {
-		/** Returns this value as `Present(value)` if the condition evaluates to `true` or `Unknown` otherwise. */
-		@inline def presentIf(condition :Boolean) :Kin[T] =
-			if (!condition || kin.isEmpty) Unknown else kin
-
-		/** Returns this value as `Present(value)` if the condition evaluates to `false` or `Unknown` otherwise. */
-		@inline def absentIf(condition :Boolean) :Kin[T] =
-			if (condition || kin.isEmpty) Unknown else kin
-	}
-
-
-
-
-	/** Factory and matcher for present `Kin`, i.e. those with an associated, computed value.
-	  * @see [[net.noresttherein.oldsql.model.Kin Kin]]
-	  */
-	object Present {
-		/** Create a present `Kin` containing the given value and no other information. */
-		@inline def apply[@specialized(ValueTypes) T](value :T) :Kin[T] = new Present(value)
-
-		/** Check if this `Kin` has a present value associated with it.
-		  * It will always return the value of the passed reference, regardless of any other information about it
-		  * and whether it was created by this object or not.
-		  */
-		@inline def unapply[T](kin :Kin[T]) :Kin[T] = kin
-
-	}
-
-	private[oldsql] class Present[@specialized(ValueTypes) +T] private[oldsql] (override val get :T) extends Kin[T] {
-		override def isPresent = true
-
-		final override def toOption :Some[T] = Some(get)
-
-
-		override def map[X](fun :KinMapper[T, X]) :Kin[X] = Present(fun(get))
-
-		override def map[X](property :PropertyPath[T, X]) :Kin[X] = Present(property(get))
-
-		override def equals(that :Any) :Boolean = that match {
-			case x :AnyRef if x eq this => true
-			case kin :Kin[_] if kin.nonEmpty && (kin canEqual this) => get == kin.get
-			case _ => false
-		}
-
-		final override def hashCode :Int = get.hashCode
-	}
-
-
-
-	/** Check if a `Kin` is absent, i.e. contains no value.
-	  * @see [[net.noresttherein.oldsql.model.Kin Kin]]
-	  */
-	object Absent {
-		/** Creates an absent instance. */
-		@inline def apply[T] :Kin[T] = Unknown
-
-		/** Checks if kin.toOption.isEmpty */
-		@inline def unapply[T](kin :Kin[T]) :Boolean = kin.isEmpty
-	}
-
-
-
-	/** `Kin` about which values' we don't know anything or don't care.
-	  * It should be used very sparingly, as in most cases nothing sensible can be done with such an instance
-	  * and passing it in a query will produce an error, but it can be useful to mean 'not changed' in updated values,
-	  * or save defining otherwise expensive to compute ''to-many'' relationships as `Option[Kin[T]]` - assuming
-	  * this practice is shared by the whole codebase.
-	  * @see [[net.noresttherein.oldsql.model.Kin Kin]]
-	  */
-	object Unknown extends Kin[Nothing] {
-		def apply[X] :Kin[X] = this
-
-		override def isPresent = false
-		override def get :Nothing = throw new NoSuchElementException("Unknown")
-		override def toOption :Option[Nothing] = None
-
-		override def map[X](fun :KinMapper[Nothing, X]) :Kin[X] = this
-		override def map[X](property :PropertyPath[Nothing, X]) :Kin[X] = this
-
-		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
-
-		override def equals(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
-
-		override def hashCode :Int = java.lang.System.identityHashCode(this)
-
-		override def toString = "Unknown"
-	}
-
-
-
-	/** A factory and matcher for a special type of absent `Kin`: those which specify that the value is not merely
-	  * absent in this instance, but does not exist at all.
-	  */
-	object Nonexistent {
-		def apply() :Kin[Nothing] = instance
-
-		def as[T] :Kin[T] = instance
-
-		def unapply(kin :Kin[_]) :Boolean = kin.isNonexistent
-
-		private[this] final val instance = new Nonexistent
-	}
-
-	private[oldsql] class Nonexistent extends Kin[Nothing] {
-		final override def isPresent = false
-		final override def isNonexistent = true
-		final override def toOption :Option[Nothing] = None
-		override def toString = "Nonexistent"
-	}
-
-
-
-	/** A factory and matcher for a special type of absent `Kin`: those which specify that the value is merely
-	  * missing from this instance, but does exist in the logical sense.
-	  */
-	object Missing {
-		def apply() :Kin[Nothing] = instance
-
-		def as[T] :Kin[T] = instance
-
-		def unapply(kin :Kin[_]) :Boolean = kin.isMissing
-
-		private[this] final val instance = new Missing
-	}
-
-	private[oldsql] class Missing extends Kin[Nothing] {
-		final override def isPresent = false
-		final override def isMissing = true
-		final override def toOption :Option[Nothing] = None
-		override def toString = "Missing"
-	}
-
-
-
-
 	/** Converts the option to a present or absent kin based on whether it is defined or empty. */
 	@inline final def some_?[T](value :Option[T]) : Kin[T] =
 		if (value.isEmpty) Unknown else Present(value.get)
@@ -381,28 +408,97 @@ object Kin {
 	@inline final def apply[T](value :T) :Kin[T] =
 		if (value == null) Unknown else Present(value)
 
-	/** Create a `Kin[T]` in a two step process - the first step (this one) returns a `KinComposer` containing
+
+
+
+	implicit def singleResult[T](composer :KinCollector[T]) :Kin[T] = composer.one
+	implicit def optionalResult[T](composer :KinCollector[T]) :Kin[Option[T]] = composer.option
+	implicit def multipleResults[C <: Iterable[T], T](composer :KinCollector[T])
+	                                                 (implicit factory :Factory[T, C]) :Kin[C] =
+		composer.as[C]
+
+	/** Container for a specification of a filter on type `T`, which can request to force the view of the result set
+	  * to a different type, depending on expected amount of values - it can be a single value
+	  * (simply [[net.noresttherein.oldsql.model.Kin Kin]]`[T]`), a `Kin[Option[T]]`, or of a collection.
+	  * Resolving a `Kin` for which the number of results cannot be coerced into the requested type will result
+	  * in an error, rather than omitting extraneous results.
+	  * @tparam T the element type returned by a query from which the values of the `Kin` created by this instance
+	  *           are composed.
+	  */
+	trait KinCollector[T] {
+		/** Return the result as a single element. If the result set is empty or has more elements,
+		  * a `KinCompositionException` will be thrown when the returned `Kin` is resolved.
+		  */
+		def apply() :Kin[T] = one
+
+		/** Return the result as a single element. If the result set is empty or has more elements,
+		  * a `KinCompositionException` will be thrown when the returned `Kin` is resolved.
+		  */
+		def one :Kin[T]
+
+		/** Return the result set as zero or one elements. Note that `Kin[Option[T]]` is conceptually different than
+		  * `Option[Kin[T]]` - in the latter case the number of results is known before hand, while in the former
+		  * only when resolving the Kin. If the result set has more than one element, a `KinCompositionException`
+		  * will be thrown when the returned `Kin` is result
+		  */
+		def option :Kin[Option[T]] = as[Option[T]]
+
+		/** the Return result set as zero or one elements. Note that `Kin[Option[T]]` is conceptually different than
+		  * `Option[Kin[T]]` - in the latter case the number of results is known before hand, while in the former
+		  * only when resolving the `Kin`. If the result set has more than one element, a `KinCompositionException`
+		  * will be thrown when the returned `Kin` is result
+		  */
+		def supposed :Kin[Option[T]] = as[Option[T]]
+
+		/** Return the result in an `Iterable[T]` of unspecified order and without duplicate removal. */
+		def many :Kin[Iterable[T]] = as[Iterable[T]]
+
+		/** Return the result as a hash set. */
+		def set :Kin[Set[T]] = as[Set[T]]
+
+		/** Return the result as a sequence. */
+		def seq :Kin[Seq[T]] = as[Seq[T]]
+
+		/** Return the result set as composite type `C`. A composite type is a type which can be constructed
+		  * and deconstructed to `Iterable[T]` (possibly with limitations to its size). The main examples for
+		  * composites of `T` are: just `T`, `Option[T]`, `_ <: Iterable[T]`.
+		  * @param expand implicit definition of how the result is mapped into a collection of T values.
+		  * @tparam C `Kin` value type.
+		  */
+		def as[C](implicit expand :C ComposableFrom T) :Kin[C]
+
+		/** A shorthand for `as[C[T]]` - you can write just Kin.in[Seq] to obtain a `Kin[Seq[T]]`. */
+		def in[C[X]](implicit expand :C[T] ComposableFrom T) :Kin[C[T]] = as[C[T]]
+
+		/** Return the result set as a collection `C[E]` produced by the given factory (collection companion object). */
+		def in[C[X] <: Iterable[X]](factory :IterableFactory[C]) :Kin[C[T]] =
+			as(ComposableFrom.Collection.of[T](factory))
+	}
+
+
+
+	/** Create a `Kin[T]` in a two step process - the first step (this one) returns a `KinCollector` containing
 	  * all information required to compute the target value. In a second step, a call on the returned instance
 	  * will specify the expected result type for the found values (single value, `Seq`, `Set`, etc).
-	  * Implicit conversion exists converting a `KinComposer[T]` to a `Kin[T]`.
+	  * Implicit conversion exists converting a `KinCollector[T]` to a `Kin[T]`.
 	  *
 	  * Example: `Kin[Familiar](Equal(_.name, "boo")).one`.
 	  *
-	  * This call delegates to `AllWhere(Restraint)`.
+	  * This call delegates to `AllWhere(restraint)`.
 	  *
 	  * @tparam T value type on which the given filter operates.
 	  * @return A factory for `Kin` of different types that can be built from a collection of `T` values.
 	  * @param restraint a filter with all parameters on the universe of values for `T`.
 	  */
-	def apply[T](restraint :Restraint[T]) :KinComposer[T] = AllWhere(restraint)
+	def apply[T](restraint :Restraint[T]) :KinCollector[T] = AllWhere(restraint)
 
 	/** Create a `Kin` in a three step process - the first stop (this one) accepts a definition of how to look for
 	  * the value(s) (for example, by a primary key) and returns a `KinFactory`. The second, optional step
 	  * defines the result type carried by the returned Kin, if it should be something else than the entity type `T`
 	  * itself. It is done with one of the methods of the factory which return new factories for derived type,
 	  * such as `Kin[Option[T]]` or `Kin[Set[T]]`; for example:
-	  * [[net.noresttherein.oldsql.model.Kin.GenericKinFactory.as as]]`Option[T]` or
-	  * [[net.noresttherein.oldsql.model.Kin.GenericKinFactory.in in]]`[Set]`.
+	  * [[net.noresttherein.oldsql.model.GenericKinFactory.as as]]`Option[T]` or
+	  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]]`[Set]`.
 	  * The final step specifies the value for the key parameter `K` from the first step and returns a `Kin` carrying
 	  * that key together with all information needed to find the value(s) - for example, the property of the queried
 	  * entity with a value of `K` - and construct the return type from the collection of matching entities.
@@ -430,7 +526,7 @@ object Kin {
 		  * Example: `All.of[E].in[Seq]`.
 		  * @see [[net.noresttherein.oldsql.model.Kin.All.apply[T] apply]]`[T]`
 		  */
-		def of[T] :KinComposer[T] = composer.asInstanceOf[KinComposer[T]]
+		def of[T] :KinCollector[T] = composer.asInstanceOf[KinCollector[T]]
 
 		/** Create an 'All' kin as `Kin[X]` - exact interpretation will depend on the client code
 		  * and may not always make sense, i.e. `All[Int]()` doesn't mean 'all integers', but 'all of an integer'.
@@ -440,24 +536,22 @@ object Kin {
 		@inline def apply[T] :AllKinAs[T] = new AllKinAs[T] {}
 
 		/** Create a `Kin` referencing all available values of `E`, returned as `T`. */
-		def apply[T, E]()(implicit composite :T ComposedOf E) :Kin[T] =
-			RestrainedKin[T, E](True)
-
+		def apply[T, E]()(implicit composition :T ComposableFrom E) :Kin[T] = Restrained[E, T](True)
 
 		/** Was this Kin explicitly created as 'All' by this object? */
 		def unapply[T](kin :Kin[T]) :Boolean = kin match {
-			case RestrainedKin(True, _) => true
+			case Restrained(True, _) => true
 			case _ => false
 		}
 
 
 		trait AllKinAs[T] extends Any {
-			@inline def apply[E]()(implicit composite :T ComposedOf E) :Kin[T] = All[T, E]()
+			@inline final def apply[E]()(implicit composition :T ComposableFrom E) :Kin[T] = All[T, E]()
 		}
 
-		private val composer = new KinComposer[Any] {
-			override def one: Kin[Any] = All[Any, Any]()
-			override def as[C](implicit expand: C ComposedOf Any): Kin[C] = All[C, Any]()
+		private val composer = new KinCollector[Any] {
+			override def one: Kin[Any] = All[Any, Any]()(ComposableFrom.itself)
+			override def as[C](implicit expand: C ComposableFrom Any): Kin[C] = All[C, Any]()
 		}
 	}
 
@@ -484,335 +578,993 @@ object Kin {
 		  * @tparam T filtered type
 		  * @return a factory of Kins with values being various collections of T
 		  */
-		def apply[T](restraint :Restraint[T]) :KinComposer[T] = new RestrainedComposer(restraint)
+		def apply[T](restraint :Restraint[T]) :KinCollector[T] = new RestrainedCollector(restraint)
 
 		/** Check if the given `Kin` is a restrained `Kin` created by this instance and return the `Restraint` held by it.
 		  * Even if this `Kin` was in fact created by this object, a check is performed if the composition used to
 		  * create it is the same as the one passed implicitly, to assert that the element type parameter for the `Restraint`
 		  * stored in this `Kin` is actually compatible with the one specified implicitly. If they are not, this method
 		  * will not match. The check is performed using the compatibility comparison method for `ComposedOf`,
-		  * so it is not 100% bullet proof. Note that the domain for the returned `Restrained` is a subtype of `T`
-		  * rather than `T`, as due to `Kin` being covariant, it is possible that `C` is a supertype of the type
+		  * so it is not 100% bullet proof. Note that the domain for the returned `Restrained` is a subtype of `E`
+		  * rather than `E`, as due to `Kin` being covariant, it is possible that `T` is a supertype of the type
 		  * provided when the instance was created.
 		  *
 		  * @param kin `Kin` to match.
-		  * @param composition specification on what type `T` type `C` should be decomposed to and how.
+		  * @param decomposition specification of what type `E` type `T` should be decomposed to and how.
 		  * @return the restraint stored in this instance if it exists and is compatible with `composition`.
 		  */
-		def unapply[C, T](kin :Kin[C])(implicit composition :C ComposedOf T) :Option[Restraint[_<:T]] =
+		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Option[Restraint[_ <: E]] =
 			kin match {
-				case r :RestrainedKin[C, e] if r.as.decomposer == composition.decomposer =>
+				case r :Restrained[e, T] if r.composition compatibleWith decomposition =>
 					Some(r.where)
 				case _ => None
 			}
 
+		private class RestrainedCollector[T](restraint :Restraint[T]) extends KinCollector[T] {
+			override def one: Kin[T] = Restrained.missing[T, T](restraint)
 
-		private class RestrainedComposer[T](restraint :Restraint[T]) extends KinComposer[T] {
-			override def one: Kin[T] = new RestrainedKin[T, T](restraint)
-
-			override def as[C](implicit composition: C ComposedOf T): Kin[C] =
-				new RestrainedKin[C, T](restraint)
+			override def as[C](implicit composition: C ComposableFrom T): Kin[C] =
+				Restrained.missing[T, C](restraint)
 		}
 	}
 
 
 
-	/** A factory and extractor for `Kin` referencing single entities (''to-one'' relationships). */
-	object Single {
-		def apply[K, T](restrainer :Restrainer[T, K]) :KinFactory[K, T, T] =
-			new RestrainedKinFactory[K, T, T](restrainer)
 
-		def apply[T](restraint :Restraint[T]) :Kin[T] = AllWhere(restraint)
 
-		def apply[T](value :T) :Kin[T] = Present[T](value)
 
-		def unapply[T](Kin :Kin[T]) :Option[Restraint[_<:T]] = Kin match {
-			case AllWhere(restraint) => Some(restraint) //this will check if Kin uses ComposedOf.itself
+	/** A factory for [[net.noresttherein.oldsql.model.Kin.Derived Derived]] kin with the value type being
+	  * the result of application of a specific type constructor.
+	  * @define Ref
+	  * @define Val
+	  */
+	sealed trait SpecificKinType[C[_]] extends Any {
+		protected implicit def composition[T] :C[T] ComposedOf T
+		@inline protected implicit final def decomposer[T] :C[T] DecomposableTo T = composition[T].decomposer
+
+		type Ref[T] = Derived[T, C[T]]
+
+		/** A factory creating present and absent `$Ref[T]` kin in several configurations and providing some operations
+		  * on them, using [[net.noresttherein.oldsql.model.Restraint Restraint]]`[T]` as a hidden filter to identify
+		  * the referenced value. All absent instances created by this factory are automatically
+		  * [[net.noresttherein.oldsql.model.Kin.isMissing missing]], as there is no support for
+		  * [[net.noresttherein.oldsql.model.Kin.isNonexistent nonexistent]]
+		  * [[net.noresttherein.oldsql.model.Kin.Derived Derived]] values.
+		  */
+		def apply[K, T](restrainer :Restrainer[T, K]) :DerivedKinFactory[K, T, C[T]] =
+			Restrained(restrainer).in[C]
+
+		/** An absent (and [[net.noresttherein.oldsql.model.Kin.isMissing missing]]) `$Ref[T]`, specifying
+		  * a filtering expression on `T`, carried by `restraint`. Note that it is possible to create such references
+		  * for any type, including those not mapped and completely unrelated to the domain model;
+		  * if the type information included is insufficient for unique identification of a data source for `T`
+		  * (i.e., table), an exception will be thrown when an attempt of resolving it takes place.
+		  */
+		def apply[T](restraint :Restraint[T]) :Ref[T] = Restrained.missing[T, C[T]](restraint)(composition.composer)
+
+		/** A present `$Ref[T]` without any specific, external information about its key(s) or identifier(s).
+		  * The appropriate data must be carried by the contents of `value`; whether they are treated jointly,
+		  * having a common key, or individually, depends on the mapping of the component it is used for.
+		  * Maintaining data integrity of all objects in the reachable graph is the responsibility of the application;
+		  * Inconsistencies involving bidirectional relationships may result in exceptions being thrown
+		  * when discovered, or in unexpected behaviour. Note that a kin for an empty collection or option is still
+		  * considered ''present'' according to the established semantics, as there is typically no distinction
+		  * in SQL databases between undefined and zero number of results.
+		  */
+		def apply[T](value :C[T]) :Ref[T] = Derived.present[T, C[T]](value)
+
+		/** A present `$Ref[T]` carrying both the `$Val` value and a filter expression `restraint` which
+		  * specifies the restrictions that all returned values of `T` must satisfy in order to be selected.
+		  * This constructor is more often used by the framework than the client code, after loading a value
+		  * from the database and thus having both the entity and the specification provided in order to fetch it,
+		  * or derived from read column data. If the specific query parameters present in `restraint` are inconsistent
+		  * with `value`, the behaviour depends on the mapping implementation, which may report an error,
+		  * attempt some reconciliation, or simply always pick one of the two sources as the source of effective values.
+		  */
+		def apply[T](restraint :Restraint[T], value :C[T]) :Ref[T] = Restrained(restraint, Some(value))
+
+		/** A composite `$Ref[T]` carrying a filter condition `restraint` serving as a specification of
+		  * referenced values or their source. The value of the created kin is given as a by-name initializing
+		  * expression which will be invoked at most once: after first access to
+		  * [[net.noresttherein.oldsql.model.Kin.toOption toOption]],
+		  * [[net.noresttherein.oldsql.model.Kin.isPresent isPresent]] or a related method, all future calls
+		  * will work on the cached results. This laziness allows introducing cyclic relationships by referencing
+		  * other entities captured in a closure only after all model objects are constructed.
+		  * It is application's responsibility to assure that `value` is consistent with `restraint` and with itself.
+		  * Mismatched keys or sides of bidirectional relationships may result in an error when the kin is resolved
+		  * or written to the database, or in erroneous behaviour. The general policy is to always prefer the
+		  * information from `value` and interpret `restraint` as the original ''source'' of the value.
+		  */
+		def delay[T](restraint :Restraint[T], value: => Option[C[T]]) :Ref[T] = Restrained.delay(restraint, value)
+
+		/** A present [[net.noresttherein.oldsql.model.Kin.Derived derived]] kin which value will be lazily computed
+		  * on demand and which carries no external key/id information in the form of the query filter
+		  * [[net.noresttherein.oldsql.model.Restraint Restraint]], but which must be extracted from `value` itself
+		  * by the mapping responsible for this component.
+		  */
+		def delay[T](value: => C[T]) :Ref[T] = Derived.delay(value)
+
+		/** Matches stock `Derived` implementations carrying a [[net.noresttherein.oldsql.model.Restraint Restraint]]
+		  * and using [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.Collection ComposableFrom.Collection]],
+		  * [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.Iterable ComposableFrom.Iterable]],
+		  * composition. This includes all instances created by this object as well as sibling factories under
+		  * [[net.noresttherein.oldsql.model.Kin Kin]], if that composition type was provided explicitly.
+		  */
+		def unapply[T](kin :Kin[C[T]]) :Option[Restraint[_ <: T]] = kin match {
+			case AllWhere(restraint) => Some(restraint)
 			case _ => None
 		}
 	}
 
 
 
-
-	implicit def singleResult[T](composer :KinComposer[T]) :Kin[T] = composer.one
-	implicit def optionalResult[T](composer :KinComposer[T]) :Kin[Option[T]] = composer.optional
-	implicit def multipleResults[C <: Iterable[T], T](composer :KinComposer[T])
-	                                                 (implicit factory :Factory[T, C]) :Kin[C] =
-		composer.as[C]
-
-	/** Container for a specification of a filter on type `T`, which can request to force the view of the result set
-	  * to a different type, depending on expected amount of values - it can be a single value
-	  * (simply [[net.noresttherein.oldsql.model.Kin Kin]]`[T]`), a `Kin[Option[T]]`, or of a collection.
-	  * Resolving a `Kin` for which the number of results cannot be coerced into the requested type will result
-	  * in an error, rather than omitting extraneous results.
-	  * @tparam T the element type returned by a query from which the values of the `Kin` created by this instance
-	  *           are composed.
+	/** A type alias for [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, T]`, that is a 'to-one'
+	  * relationship with entity `T`. Aside from carrying this decomposition explicitly as part of its type,
+	  * without a need for implicit `ComposableFrom` at usage point, it has one additional subtle difference
+	  * from the simple [[net.noresttherein.oldsql.model.Kin Kin]]`[T]`: it can only reference a single entity,
+	  * disallowing [[net.noresttherein.oldsql.model.Kin.isNonexistent nonexistent]] instances.
+	  * While creating a class violating this restriction is technically possible, it cannot be done by any API method
+	  * and the framework never returns such instances to the application, throwing a `NonexistentEntityException`.
+	  * @see [[net.noresttherein.oldsql.model.Kin.One$]]
 	  */
-	trait KinComposer[T] {
-		/** Return result set as a single element. */
-		def one :Kin[T]
+	type One[T] = Derived[T, T]
 
-		/** Return result set as zero or one elements. Note that `Kin[Option[T]]` is conceptually different than
-		  * `Option[Kin[T]]` - in the latter case the number of results is known before hand, while in the former
-		  * only when resolving the Kin.
-		  */
-		def optional :Kin[Option[T]] = as[Option[T]]
-
-		/** Return result set as zero or one elements. Note that `Kin[Option[T]]` is conceptually different than
-		  * `Option[Kin[T]]` - in the latter case the number of results is known before hand, while in the former
-		  * only when resolving the Kin.
-		  */
-		def opt :Kin[Option[T]] =  as[Option[T]]
-
-		/** Return the result set as a composite type `C`. A composite type is a type which can be constructed
-		  * and deconstructed to `Iterable[T]` (possibly with limitations to its size). The main examples for
-		  * composites of `T` are: just `T`, `Option[T]`, `_ <: Iterable[T]`.
-		  * @param expand implicit definition of how the result is mapped into a collection of T values.
-		  * @tparam C `Kin` value type.
-		  */
-		def as[C](implicit expand :C ComposedOf T) :Kin[C]
-
-		/** A shorthand for `as[C[T]]` - you can write just Kin.in[Seq] to obtain a `Kin[Seq[T]]`. */
-		def in[C[X]](implicit expand :C[T] ComposedOf T) :Kin[C[T]] = as[C[T]]
-
-		/** Return the result set as a collection `C[E]` produced by the given factory (collection companion object). */
-		def in[C[X] <: Iterable[X]](factory :IterableFactory[C]) :Kin[C[T]] =
-			as(CollectionOf(ComposableFrom.Collection[C[T], T](factory), DecomposableTo.Iterable[T]()))
+	/** A factory and an extractor for `Kin` referencing single entities (''to-one'' relationships).
+	  * The referenced entity is mandatory: all absent kin created by this instance or factories it returns
+	  * are [[net.noresttherein.oldsql.model.Kin.isMissing missing]] instances. Additionally, all factories are
+	  * [[net.noresttherein.oldsql.model.KinFactory.RequiredKinFactory RequiredKinFactory]] instances,
+	  * for which `isRequired == true`.
+	  * The kin produced here wrap [[net.noresttherein.oldsql.model.Restraint Restraint]]`[T]` instances
+	  * and can be matched with other extractors defined in [[net.noresttherein.oldsql.model.Kin$ Kin]] object.
+	  * This match pattern is not however considered exhaustive for the `One[T]` type, as other (in particular
+	  * lower level) implementations of `Derived` exist.
+	  * @define Ref One
+	  * @define Val T
+	  */
+	object One extends SpecificKinType[Self] {
+		override protected implicit def composition[T] :T ComposedOf T = ComposedOf.self
+		override type Ref[T] = One[T]
 	}
 
 
 
+	/** A [[net.noresttherein.oldsql.model.Kin Kin]] which might resolve to at most a single result, the existence
+	  * of which cannot be determined beforehand. This is a type alias for
+	  * [[net.noresttherein.oldsql.model.Derived Derived]]`[T, Option[T]]` which, in addition to the standard
+	  * `Kin[Option[T]]` interface, carries information about the decomposition and composition of the value type
+	  * to the underlying referenced entities. This makes it friendlier to use in generic code,
+	  * as no implicit `Option[T] `[[net.noresttherein.oldsql.model.ComposedOf ComposedOf]]` T` is required.
+	  * Note that `Derived` class doesn't support referencing not existing values naturally
+	  * (there is no [[net.noresttherein.oldsql.model.Kin.Nonexistent$ Nonexistent]] kin implementation provided for it),
+	  * so all ''to-at-most-one'' relationships must be declared as either `Supposed[T]`
+	  * or `Option[`[[net.noresttherein.oldsql.model.Kin.One One]]`[T]]` (typically the latter for foreign keys).
+	  * Due to the information about the data existence being unavailable beforehand in the `restraint`,
+	  * but determined only after executing a dedicated query, this type isn't normally used for foreign keys,
+	  * but for their inverses (in one-to-one relationships) and arbitrary queries specified using
+	  * [[net.noresttherein.oldsql.model.Restraint Restraint]] API and passed for execution to the framework.
+	  * While there are no technical limitations preventing its existence, no nonexistent `Derived` kin can be created
+	  * with the provided API or are ever returned to the application.
+	  * @see [[net.noresttherein.oldsql.model.Kin.Supposed$]]
+	  */
+	type Supposed[T] = Derived[T, Option[T]]
 
-	/** A shorthand for a `GenericKinFactory` producing `Kin[E]` based on key type `K`. */
-	type SingletonKinFactory[K, E] = GenericKinFactory[K, E, E, Kin[E]]
+	/** A factory and a matching pattern for [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Option[T]]`
+	  * instances. The kin produced here wrap [[net.noresttherein.oldsql.model.Restraint Restraint]]`[T]` instances
+	  * and can be matched with other extractors defined in [[net.noresttherein.oldsql.model.Kin$ Kin]] object.
+	  * Other implementations - in particular lower level ones, using more specific information - exist and will
+	  * be matched by neither this object nor the kin factories it creates.
+	  * @define Ref Supposed
+	  * @define Val Option[T]
+	  */
+	object Supposed extends SpecificKinType[Option] {
+		implicit protected override def composition[T] :Option[T] ComposedOf T = ComposedOf.option
+		override type Ref[T] = Supposed[T]
 
-	/** Shorthand type for a `GenericKinFactory` returning just `Kin[X]` */
-	type KinFactory[K, E, X] = GenericKinFactory[K, E, X, Kin[X]]
+		/** Equivalent to `Supposed[T](None)`. */
+		def none[T] :Supposed[T] = Derived.present[T, Option[T]](None)
+
+		/** Equivalent to `Supposed[T](Some(value))`. */
+		def some[T](value :T) :Supposed[T] = Derived.present[T, Option[T]](Some(value))
+	}
 
 
-	/** A factory of references `R <: Kin[X]` to an entity or entities of type `E`, collected as type `X`,
-	  * based on some sort of 'key' `K`.
-	  * Generally, [[net.noresttherein.oldsql.model.Kin.Present present]] [[net.noresttherein.oldsql.model.Kin Kin]]
-	  * created by this instance will contain a value of type `X` (from which the value of `K` could be deduced),
-	  * while [[net.noresttherein.oldsql.model.Kin.Absent absent]] `Kin` will hold the value of the key `K`.
-	  * This may mean something simple like 'all entities of type `E` where a given property of value type `K`
-	  * has the given value' or something more complex.
+
+	/** A representation of a ''to-many'' relationship with entity `T`. This includes both the inverse sides
+	  * of foreign keys, as well as true ''many-to-many'' relationships - values for both cases behave in the same way,
+	  * the implementation details being transparent, and can be used interchangeably. The framework will perform
+	  * required load and cascade operations behind the scenes when it encounters a reference which cannot be written
+	  * directly to the underlying table(s).
 	  *
-	  * Instances should implement a sensible equals method - two instances of a given factory class should be equal
-	  * if and only if they return equal `Kin` from their respective factory methods for all
-	  * arguments (especially `absent(key)`). Similarly, `equivalencyToken` method should implement a less strict
-	  * equality, abstracting over the composite type `X` of created `Kin`, where equivalency tokens for two factories
-	  * are equal if the same value of `K` refers to the same set of entities.
-	  * @tparam K 'key' type - type of value used to create absent `Kin`, for example a value type
-	  *           of a foreign key property.
-	  * @tparam E type of the underlying referenced entities.
-	  * @tparam X type parameter of returned `Kin` - should satisfy
-	  *           `X `[[net.noresttherein.oldsql.model.ComposedOf ComposedOf]]` E`.
-	  * @tparam R a specific subclass of `Kin` being the result type of all factory methods.
-	  * @see [[net.noresttherein.oldsql.model.Kin]]
+	  * It is a type alias for a generic [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Iterable[T]]`,
+	  * which is the default collection type for value-based model classes which do not specify any particular ordering
+	  * or explicitly require uniqueness. The added benefit over its `Kin[Iterable[T]]` supertype is that this type
+	  * carries information about the (de)composition of its value type (which, as `Derived` is covariant,
+	  * might have been specified originally as any concrete collection type), making it possible to use in contexts
+	  * where no exact information about it are available. No implicit
+	  * [[net.noresttherein.oldsql.model.ComposedOf.DecomposableTo DecomposableTo]] is required by its methods
+	  * and gone is the risk of incompatible decompositions (for example, with an `IndexedSeq[E]` to `(Int, E)`).
+	  * The drawback, aside from a less clean and fixed type, is that it enforces natural decomposition of
+	  * collections into their elements (excluding decompositions with additional information, such as indices of
+	  * elements from an `IndexedSeq`) and is limited to `Iterable` itself.
+	  * @see [[net.noresttherein.oldsql.model.Kin.Many$]]
+	  * @see [[net.noresttherein.oldsql.model.Kin.KinSeq]]
+	  * @see [[net.noresttherein.oldsql.model.Kin.KinSet]]
+	  * @see [[net.noresttherein.oldsql.model.Kin.Of]]
 	  */
-	trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E, X, Kin[X]] {
-		//overrides for scaladocs
-		/** Composition definition for `Kin` type `X` and the target entity type `E`. */
-		override def result :X ComposedOf E
+	type Many[T] = Derived[T, Iterable[T]]
 
-		/** Create a lazy `Kin`, which value will be evaluated lazily only when `toOption` or `get` is called. */
-		override def delayed(key :K, value : => Option[X]) :R
+	/** A factory and a matching pattern for [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Iterable[T]]`
+	  * kin. The kin produced here wrap [[net.noresttherein.oldsql.model.Restraint Restraint]]`[T]` instances
+	  * and can be matched with other extractors defined in [[net.noresttherein.oldsql.model.Kin$ Kin]] object.
+	  * The expressiveness of that API should be sufficient for most cases, as it allows filters on joined tables
+	  * (if the relationship is mapped to a property in the domain model), but do not translate directly to
+	  * more complex ''many-to-many'' and non binary relationships, requiring either resolving, or generating additional
+	  * DML statements when saved as parts of enclosing entities. All `Restraint` subexpressions are accepted
+	  * by all method handling references, as long as the restraint domain - the entity type the filter works on -
+	  * uniquely identifies underlying storage through the defined mapping schema.
+	  * Other implementations - in particular lower level ones, using more specific information - exist and will
+	  * be matched by neither this object nor the kin factories it creates.
+	  * @define Ref Many
+	  * @define Val Iterable[T]
+	  */
+	object Many extends SpecificKinType[Iterable] {
+		implicit protected override def composition[T] :Iterable[T] ComposedOf T =
+			cmp.asInstanceOf[Iterable[T] ComposedOf T]
 
-		/** Create an absent (missing) or present instance, depending on whether `value` is defined. Same as `apply`. */
-		override def create(key :K, value :Option[X]) :R = apply(key, value)
+		def empty[T] :Many[T] = none.asInstanceOf[Many[T]]
 
-		/** Create an absent (missing) or present instance, depending on whether `value` is defined. */
-		override def apply(key :K, value :Option[X]) :R = value.map(present) getOrElse missing(key)
+		private[this] val cmp = ComposedOf[Iterable[Any], Any]
+		private[this] val none = Derived.empty[Any, Iterable[Any]]
 
-		/** Create a present `Kin` with the given value. */
-		override def present(value :X) :R
-
-		/** Create an absent instance with a missing value, referencing all entities of type `E` with the specific value
-		  * as the key, as understood by this factory.
-		  */
-		override def missing(key :K) :R
-
-		/** Create an absent instance for a value which simply does not exist. */
-		override def nonexistent :R
-
-		/** Create an absent instance, referencing all entities of type `E` with the specific value as the key,
-		  * as understood by this factory. Same as `missing`
-		  */
-		override def absent(key :K) :R = missing(key)
-
-		/** Create an absent instance referencing al entities of type `E` with the specific value as the key,
-		  * as understood by this factory. Same as `absent`.
-		  */
-		override def apply(key :K) :R = missing(key)
-
-		/** Create a present instance based on a (assumed complete) collection of elements.
-		  * Equivalent to `present(composition.attempt(_))`.
-		  */
-		override def forItems(items :Iterable[E]) :Option[R] = result.composer.attempt(items).map(present)
-
-		/** Create a present instance based on a (assumed complete) collection of elements and the key pointing to them.
-		  * Equivalent to `apply(key, composition(items))`.
-		  */
-		override def forItems(key :K, items :Iterable[E]) :Option[R] =
-			result.composer.attempt(items).map(x => create(key, Some(x)))
-
-
-		/** Try to retrieve the key out of the given target item. */
-		override def keyFor(item :E) :Option[K]
-
-		/** Try to retrieve the key out of the given `Kin`. In case of a non-empty result, `absent(key)` should return
-		  * a `Kin` equal to the argument.
-		  */
-		def keyOf(kin :Kin[X]) :Option[K]
-
-		/** Retrieve the key out of the given `Kin` or throw an exception if not possible. Relies on the `keyOf()` implementation. */
-		override def forceKeyOutOf(kin :Kin[X]) :K =
-			keyOf(kin) getOrElse { throw new IllegalArgumentException(s"$this: can't find a key in $kin") }
-
-		/** Returns `kin.toOption`. */
-		override def valueOf(kin :Kin[X]) :Option[X] = kin.toOption
-
-		/** Tries to retrieve both the key and the value from a `Kin`. Returned `Option` is non-empty if and only if
-		  * the call to `keyOf` succeeds in retrieving the key. The second value in the pair is simply `kin.toOption`
-		  */
-		override def unapply(kin :Kin[X]) :Option[(K, Option[X])] = keyOf(kin).map(_ -> kin.toOption)
-
-		override def required :GenericKinFactory[K, E, X, R] =
-			if (isRequired) this else new RequiredKinFactory(this)
-
-		//new methods
-		/** Attempts to convert a given `Kin` to the specific `Kin` type `R` produced by this factory.
-		  * Returned option is non-empty if the key can be retrieved from `kin`. The `Kin` itself inside the
-		  * option will be absent or present based on whether `kin` is present.
-		  */
-		def adapt(kin :Kin[X]) :Option[R] = unapply(kin) map { case (key, value) => apply(key, value) }
-
-
-		/** Return a factory creating `Kin` for type `Y`, where `Y` is another composite type for the target entity `E`. */
-		def as[Y](implicit composition :Y ComposedOf E) :KinFactory[K, E, Y]
-
-		/** A shorthand for `as[Y[E]]`, working on higher kinded single-param generic result type `Y`.
-		  * Thus, writing `in[Seq]` will create an instance returning `Kin[Seq[E]]`.
-		  */
-		def in[Y[V]](implicit composition: Y[E] ComposedOf E) :KinFactory[K, E, Y[E]] = as[Y[E]]
-
-
-		override def canEqual(that :Any) :Boolean = that.isInstanceOf[GenericKinFactory[_, _, _, _]]
+		override type Ref[T] = Many[T]
 	}
 
 
 
-	trait HigherKindKinFactory[K, E, X, R[T] <: Kin[T]] extends GenericKinFactory[K, E, X, R[X]] {
+	/** A representation of a ''to-many'' relationship with entity `T`, mapped to `Seq[T]`. This includes both
+	  * the inverse sides of foreign keys, as well as true ''many-to-many'' relationships - values for both cases behave
+	  * in the same way, the implementation details being transparent, and can be used interchangeably. The framework
+	  * will perform required load and cascade operations behind the scenes when it encounters a reference which cannot
+	  * be written directly to the underlying table(s). The order in the sequence may be persistent, or undefined
+	  * and different between application runs, depending on the details of the mapping producing the references
+	  * and writing them to the database.
+	  *
+	  * It is a type alias for [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Seq[T]]`
+	  * and subtype of the more generic [[net.noresttherein.oldsql.model.Kin.Many! Many]]`[T]`. It is provided
+	  * for convenience as one of the most common choices for plural relationship collections.
+	  * The added benefit over its `Kin[Seq[T]]` supertype is that this type carries information about
+	  * the (de)composition of its value type (which, as `Derived` is covariant,
+	  * might have been specified originally as any concrete sequence type), making it possible to use in contexts
+	  * where no exact information about it are available. This will be the default implicit
+	  * [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.Collection.apply Collection()]], but custom
+	  * implementations can also be used, for example to sort the elements when reading/writing. This also means
+	  * that different implicit composition type classes present at creation and usage point will not result
+	  * in discrepancies.
+	  * @see [[net.noresttherein.oldsql.model.Kin.Many]]
+	  * @see [[net.noresttherein.oldsql.model.Kin.KinSeq$]]
+	  * @see [[net.noresttherein.oldsql.model.Kin.KinSet]]
+	  */
+	type KinSeq[E] = Derived[E, Seq[E]]
 
-		override def as[Y](implicit composition :Y ComposedOf E): HigherKindKinFactory[K, E, Y, R]
+	/** A factory and a matching pattern for [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Seq[T]]`
+	  * kin. The kin produced here wrap [[net.noresttherein.oldsql.model.Restraint Restraint]]`[T]` instances
+	  * and can be matched with other extractors defined in [[net.noresttherein.oldsql.model.Kin$ Kin]] object.
+	  * Other implementations - in particular lower level ones, using more specific information - exist and will
+	  * be matched by neither this object nor the kin factories it creates.
+	  * As this type may be used to reflect many types of relationships between underlying tables,
+	  * many of the handling details - in particular transient, present instances - are left to the mapping
+	  * implementation used for this value type. All information required to update or create the referenced entities
+	  * must be carried by the elements of the sequence; whether they are treated jointly,
+	  * having a common key, or individually, depends again on the mapping of the component it is used for.
+	  * The same goes for the order of elements in the sequence: it can be preserved, changed according
+	  * to a predefined sorting comparisons, or completely ignored, with future reads returning the elements
+	  * in any order. Maintaining data integrity of all objects in the reachable graph is the responsibility
+	  * of the application; Inconsistencies involving bidirectional relationships may result in exceptions
+	  * being thrown when discovered, or in unexpected behaviour. Note that a kin for an empty collection is still
+	  * considered ''present'' according to the established semantics, as it is the whole `Seq[T]`
+	  * which is the value type of the `KinSeq` kin, not the individual elements.
+	  */
+	object KinSeq extends SpecificKinType[Seq] {
+		implicit protected override def composition[T] :Seq[T] ComposedOf T = cmp.asInstanceOf[Seq[T] ComposedOf T]
+		def empty[T] :KinSeq[T] = none.asInstanceOf[KinSeq[T]]
 
-		override def in[Y[V]](implicit composition :Y[E] ComposedOf E): HigherKindKinFactory[K, E, Y[E], R] =
-			as[Y[E]]
+		private[this] val cmp = ComposedOf[Seq[Any], Any]
+		private[this] val none = Derived.empty[Any, Seq[Any]]
+
+		override type Ref[T] = Derived[T, Seq[T]]
 	}
 
 
 
-	trait BaseKinFactory[K, E, X] extends KinFactory[K, E, X] {
-		override def delayed(key :K, value : => Option[X]) :Kin[X] = Lazy(value)
+	/** A representation of a ''to-many'' relationship with entity `T`, mapped to `Set[T]`. This includes both
+	  * the inverse sides of foreign keys, as well as true ''many-to-many'' relationships - values for both cases behave
+	  * in the same way, the implementation details being transparent, and can be used interchangeably. The framework
+	  * will perform required load and cascade operations behind the scenes when it encounters a reference which cannot
+	  * be written directly to the underlying table(s). The order of elements in the sequence is unspecified and will
+	  * possibly be different for different reads of the same collection, especially for different application runs.
+	  * While the exact `Set` implementation returned is left to the mapping for the relationship, it should be
+	  * compatible with any `Set` subclasses. Without any extra information, this will almost always result in
+	  * some form of a hash set being used. For this reason it is paramount that `equals` stays consistent with
+	  * row equality of the underlying table; while this is generally not an issue for entity classes having
+	  * a unique primary key/identifier, value-based classes must compare the values of all columns, and in the
+	  * same manner as the database engine; this might come into play with international `String` characters,
+	  * values which are mapped with a loss of precision or automatic corrections, and more complex types derived
+	  * from the basic SQL types (for example, `URL` equality is not isomorphic with equality on `String`s passed
+	  * to their constructors).
+	  *
+	  * It is a type alias for [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Set[T]]`
+	  * and subtype of the more generic [[net.noresttherein.oldsql.model.Kin.Many! Many]]`[T]`. It is provided
+	  * for convenience as one of the most common choices for plural relationship collections.
+	  * The added benefit over its `Kin[Set[T]]` supertype is that this type carries information about
+	  * the (de)composition of its value type (which, as `Derived` is covariant,
+	  * might have been specified originally as any concrete set type), making it possible to use in contexts
+	  * where no exact information about it are available. This will be the default implicit
+	  * [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.Collection.apply Collection()]], but custom
+	  * implementations can also be used, for example to sort the elements when reading/writing. This also means
+	  * that different implicit composition type classes present at creation and usage point will not result
+	  * in discrepancies.
+	  * @see [[net.noresttherein.oldsql.model.Kin.Many]]
+	  * @see [[net.noresttherein.oldsql.model.Kin.KinSeq]]
+	  * @see [[net.noresttherein.oldsql.model.Kin.KinSet$]]
+	  */
+	type KinSet[E] = Derived[E, Set[E]]
 
-		override def present(value :X) :Kin[X] = Present(value)
+	/** A factory and a matching pattern for [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Set[T]]`
+	  * kin. The kin produced here wrap [[net.noresttherein.oldsql.model.Restraint Restraint]]`[T]` instances
+	  * and can be matched with other extractors defined in [[net.noresttherein.oldsql.model.Kin$ Kin]] object.
+	  * Other implementations - in particular lower level ones, using more specific information - exist and will
+	  * be matched by neither this object nor the kin factories it creates. Applications will often deal with
+	  * the simplest present implementations when creating new kin from scratch and using them to update
+	  * relationship status between entities. The appropriate data must be carried by the set elements;
+	  * whether they are treated jointly, having a common key, or individually, depends on the mapping of the component
+	  * it is used for. Maintaining data integrity of all objects in the reachable graph is the responsibility
+	  * of the application; Inconsistencies involving bidirectional relationships may result in exceptions
+	  * being thrown when discovered, or in unexpected behaviour. Note that a kin for an empty collection is still
+	  * considered ''present'' according to the established semantics, as it is the whole `Set[T]`
+	  * which is the value type of the `KinSet` kin, not the individual elements.
+	  */
+	object KinSet extends SpecificKinType[Set] {
+		implicit protected override def composition[T] :Set[T] ComposedOf T = cmp.asInstanceOf[Set[T] ComposedOf T]
+		override type Ref[T] = Derived[T, Set[T]]
 
-		override def nonexistent :Kin[X] = Nonexistent()
+		def empty[T] :KinSet[T] = none.asInstanceOf[KinSet[T]]
+
+		private[this] val cmp = ComposedOf[Set[Any], Any]
+		private[this] val none = Derived.empty[Any, Set[Any]]
 	}
 
 
-	trait MandatoryKinFactory[K, E, X, +R <: Kin[X]] extends GenericKinFactory[K, E, X, R] {
-		override def nonexistent :R = throw new MissingKeyException(toString + "no key value found.")
-		override def required :MandatoryKinFactory[K, E, X, R] = this
-		override def isRequired :Boolean = true
+
+
+
+
+	/** Factory and matcher for present `Kin`, i.e. those with an associated, computed value.
+	  * @see [[net.noresttherein.oldsql.model.Kin Kin]]
+	  */
+	object Present {
+
+		/** Create a present `Kin` containing the given value and no other information. */
+		@inline def apply[T](value :T) :Kin[T] = new Present[T] {
+			override val get = value
+		}
+
+		/** Create a present `Kin` for a ''to-one'' relationship. Returned kin decomposes its value to itself,
+		  * declaring the argument type as the source entity.
+		  */
+		@inline def one[T](value :T) :One[T] = Derived.one(value)
+
+		/** Create a present `Kin` containing the given collection. Returned object will be an instance
+		  * of [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[E, T[E]]`, carrying the composition
+		  * and decomposition information.
+		  */
+		def apply[T[X] <: Iterable[X] with IterableOps[X, T, T[X]], E](value :T[E]) :T Of E =
+			Derived.many[E, T](value)(
+				ComposableFrom.Collection.of[E]((value :IterableOps[E, T, T[E]]).iterableFactory)
+			)
+
+		/** Create a present, [[net.noresttherein.oldsql.model.Kin.Derived derived]] kin containing the given
+		  * value, decomposable using the implicit `T CollectionOf E`.
+		  */
+		@inline def many[E, T](items :T)(implicit composition :T ComposedOf E) :Derived[E, T] =
+			Derived.present(items)
+
+		/** Create a ''present'' kin for an empty collection `T[_]` based on its companion object. */
+		def empty[T[X]](collection :IterableFactory[T]) :T Of Nothing =
+			Derived.empty[Nothing, T[Nothing]](ComposableFrom.Collection.of[Nothing](collection))
+
+		/** Create a ''present'' kin for an empty collection type `T` consisting of entities `E`. */
+		@inline def empty[E, T](implicit constructor :T ConstructFrom E) :Kin[T] = Derived.empty[E, T]
+
+		/** Check if this `Kin` has a present value associated with it.
+		  * @return `kin.toOption`.
+		  */
+		@inline def unapply[T](kin :Kin[T]) :Option[T] = kin.toOption
+	}
+
+
+	private[oldsql] trait Present[+T] extends Kin[T] { outer => //consider: having toOption as a val
+		override def isPresent = true
+
+		final override def toOption :Some[T] = Some(get)
+
+		override def +[E, U >: T](item :E)(implicit composition :U CollectionOf E) =
+			Derived.present((composition.composer.builder ++= composition.decomposer(get) += item).result())
+
+		override def +:[E, U >: T](item :E)(implicit composition :U CollectionOf E) =
+			Derived.present((composition.composer.builder += item ++= composition.decomposer(get)).result())
+
+		override def ++[E, U >: T](items :Iterable[E])(implicit composition :U CollectionOf E) =
+			if (items.isEmpty) this
+			else Derived.present((composition.composer.builder ++= composition.decomposer(get) ++= items).result())
+
+		override def ++:[E, U >: T](items :Iterable[E])(implicit composition :U CollectionOf E) =
+			if (items.isEmpty) this
+			else Derived.present((composition.composer.builder ++= items ++= composition.decomposer(get)).result())
+
+
+		override def property[X, U >: T](property :PropertyPath[U, X]) :Kin[X] = Present(property(get))
+
+		override def properties[E, X, C](prop :PropertyPath[E, X], as :ComposableFrom[C, X])
+		                                (implicit decomposition :DecomposableTo[T, E]) :Derived[E, C] =
+			new Derived[E, C] with Present[C] {
+				implicit override def composition = ComposableFrom.Properties(prop)(as)
+				override val items = Some(decomposition(outer.get))
+				override val get = as(items.get.map(prop.fun))
+				override lazy val hashCode = get.hashCode * 31 + composition.hashCode
+
+				override def ++[I, U >: C](items :Iterable[I])(implicit composition :U CollectionOf I) =
+					Derived.present((composition.composer.builder ++= composition.decomposer(get) ++= items).result())
+
+				override def ++:[I, U >: C](items :Iterable[I])(implicit composition :U CollectionOf I) =
+					Derived.present((composition.composer.builder ++= items ++= composition.decomposer(get)).result())
+
+				override def property[Z, U >: C](property :PropertyPath[U, Z]) :Derived[U, Z] =
+					Property.one(this, property)
+			}
+
 	}
 
 
 
 
-	private case class RestrainedKin[T, E](where :Restraint[E], toOption :Option[T] = None)
-	                                      (implicit val as :T ComposedOf E)
-		extends Kin[T]
-	{
-		override def isPresent :Boolean = toOption.isDefined
+	/** Check if a `Kin` is absent, i.e. contains no value.
+	  * There are two special absent kin types: [[net.noresttherein.oldsql.model.Kin.Unknown Unknown]], which is
+	  * used when no information about the referenced value is known, particularly during updates, in order to
+	  * exclude said kin from the updated columns, and [[net.noresttherein.oldsql.model.Kin.Nonexistent$ Nonexistent()]],
+	  * which is used to signify that the referenced value does not exist. Other absent instances, particularly
+	  * [[net.noresttherein.oldsql.model.Kin.Missing$ missing]] - as determined by
+	  * their [[net.noresttherein.oldsql.model.Kin.isAbsent isAbsent]] and
+	  * [[net.noresttherein.oldsql.model.Kin.isMissing isMissing]] methods - should contain information uniquely
+	  * identifying the referenced value. The nature of this information is implementation dependent.
+	  * Such absent instances can be created using [[net.noresttherein.oldsql.model.Kin.AllWhere AllWhere]]
+	  * and [[net.noresttherein.oldsql.model.Kin.One One]].
+	  * @see [[net.noresttherein.oldsql.model.Kin Kin]]
+	  */
+	object Absent {
+		/** Checks if the matched kin doesn't contain a value.
+		  * @return `kin.isAbsent`.
+		  */
+		@inline def unapply[T](kin :Kin[T]) :Boolean = kin.isAbsent
+	}
 
-		override def get :T = toOption match {
-			case None => throw new NoSuchElementException(toString + ".get")
-			case Some(item) => item
+	private[oldsql] trait Absent extends Kin[Nothing] {
+		override def isPresent = false
+		override def toOption = None
+		override def toString = "Absent"
+	}
+
+
+
+	/** `Kin` about which values we don't know anything or don't care.
+	  * It should be used very sparingly, as in most cases nothing sensible can be done with such an instance
+	  * and passing it in a query will produce an error, but it can be useful to signify 'unchanged' in updated values,
+	  * or save defining otherwise expensive to compute ''to-many'' relationships as `Option[Kin[T]]` - assuming
+	  * this practice is shared by the whole codebase. All `Unknown` instances, including those extending
+	  * [[net.noresttherein.oldsql.model.Kin.Derived Derived]] are equal.
+	  * @see [[net.noresttherein.oldsql.model.Kin Kin]]
+	  */
+	final val Unknown :Unknown = new DerivedUnknown[Nothing]
+
+	sealed trait Unknown extends Kin[Nothing] { this :Derived[_, Nothing] =>
+		/** Casts this instance to `Derived[E, X]`. */
+		def apply[E]() :Derived[E, Nothing] = this.asInstanceOf[Derived[E, Nothing]]
+
+		override def isPresent = false
+		override def isUnknown = true
+		override def get :Nothing = throw new NoSuchElementException("Unknown")
+		override def toOption :Option[Nothing] = None
+
+		override def singleton[C[+X] <: Iterable[X]](factory :IterableFactory[C]) :Kin[Nothing] = this
+
+		override def ++[E, X, U](items :Derived[E, X])(implicit composition :U CollectionOf E) :Nothing =
+			throw new UnsupportedOperationException("Cannot combine Unknown kin with " + items + " into a single instance.")
+
+		override def ++:[E, X, U](items :Derived[E, X])(implicit composition :U CollectionOf E) :Nothing =
+			throw new UnsupportedOperationException("Cannot combine Unknown kin with " + items + " into a single instance.")
+
+		override def property[X, U](property :PropertyPath[U, X]) :Kin[Nothing] = this
+		override def properties[E, X, C](property :PropertyPath[E, X], as :C ComposableFrom X)
+		                                (implicit decomposition :DecomposableTo[Nothing, E]) :Kin[Nothing] = this
+
+		override def canEqual(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
+		override def equals(that :Any) :Boolean = that.asInstanceOf[AnyRef] eq this
+		override lazy val hashCode :Int = java.lang.System.identityHashCode(this)
+
+	}
+
+	private final class DerivedUnknown[E] extends Derived[E, Nothing] with Unknown {
+		override def composition :Nothing ComposableFrom E =  ComposableFrom.Nothing()
+		override def items = None
+
+		override def property[X, U](property :PropertyPath[U, X]) :Derived[U, Nothing] = this()
+		override def properties[I, X, C](property :PropertyPath[I, X], as :ComposableFrom[C, X])
+		                                (implicit decomposition :DecomposableTo[Nothing, I]) :Derived[I, Nothing] =
+			this()
+
+		private def readResolve() :Unknown = Unknown
+
+		override def toString = "Unknown"
+	}
+
+
+
+	/** A factory and matcher for a special type of absent `Kin`: those which specify that the value is not merely
+	  * absent in this instance, but does not exist at all. This special value allows model classes to do away
+	  * with properties `Option[Kin[X]]` and `Kin[Option[X]]`, if they so wish.
+	  * The ''absent''/''missing''/''nonexistent'' division allows to implement all these cases as simply `Kin[X]`.
+	  * In the first case, all [[net.noresttherein.oldsql.model.Kin.Absent$ absent]] kin would always be either
+	  * [[net.noresttherein.oldsql.model.Kin.Missing$ missing]] or nonexistent. In the latter, values would be
+	  * initially defined simply as absent, and only substituted with nonexistent during their resolution.
+	  * Note that, by default, [[net.noresttherein.oldsql.model.Kin.Derived Derived]] are never nonexistent,
+	  * only [[net.noresttherein.oldsql.model.Kin.Derived$.empty empty]] (carrying an empty collection),
+	  * as the distinction is rarely modeled in database schemas. This can however be changed with a custom
+	  * [[net.noresttherein.oldsql.model.KinFactory KinFactory]].
+	  * @see [[net.noresttherein.oldsql.model.Kin Kin]]
+	  */
+	object Nonexistent {
+		/** A reusable kin instance signifying that the value in question does not exist.*/
+		def apply() :Kin[Nothing] = instance
+
+		/** A ''nonexistent'' kin, upcast to an arbitrary type `T`. */
+		def as[T] :Kin[T] = instance
+
+		/** Checks if the logical value referenced by the argument kin is known to not exist.
+		  * @return `kin.isNonexistent`.
+		  */
+		def unapply(kin :Kin[_]) :Boolean = kin.isNonexistent
+
+		private[this] final val instance = new Nonexistent[Nothing] {}
+	}
+
+	private[oldsql] trait Nonexistent[+T] extends Kin[T] {
+		final override def isPresent = false
+		final override def isNonexistent = true
+		final override def toOption :Option[T] = None
+
+		override def singleton[C[+X] <: Iterable[X]](factory :IterableFactory[C]) :Kin[C[T]] =
+			Derived.empty[T, C[T]](ComposableFrom.Collection.of[T](factory))
+
+		override def ++[E, X, U >: Nothing](items :Derived[E, X])(implicit composition :U CollectionOf E) :Derived[E, U] =
+			if (items.composition == composition.composer)
+				items.asInstanceOf[Derived[E, U]] //this will always be false unless we override compatibleWith with a heuristic
+			else Collective(items.parts.toList :_*)(composition.composer)
+
+		override def ++:[E, X, U >: T](items :Derived[E, X])(implicit composition :U CollectionOf E) :Derived[E, U] =
+			this ++ items
+
+		override def properties[E, X, C](property :PropertyPath[E, X], as :ComposableFrom[C, X])
+		                                (implicit decomposition :DecomposableTo[T, E]) :Kin[C] =
+			Nonexistent()
+
+		override def toString = "Nonexistent"
+	}
+
+
+
+
+	/** A matcher for a special type of absent `Kin`: those which specify that the value is merely
+	  * missing from this instance, but does exist in the logical sense.
+	  * Together with [[net.noresttherein.oldsql.model.Kin.Nonexistent$ Nonexistent]], it can model both
+	  * `Option[Kin[T]]` and `Kin[Option[T]]` as simply `Kin[T]`, representing the cases of `Some[Kin[T]]`
+	  * and `Kin[Some[T]]`. Missing kin are created in implementation dependent ways, typically by
+	  * [[net.noresttherein.oldsql.model.KinFactory factories]], and should contain information sufficient
+	  * for locating and loading the referenced value. For this reason, no factory method is present here.
+	  */
+	object Missing {
+		/** Checks if the value referenced by the argument kin is known to exist, and only missing from this instance
+		  * (that is, it simply isn't loaded).
+		  * @return `kin.isMissing`.
+		  */
+		def unapply(kin :Kin[_]) :Boolean = kin.isMissing
+	}
+
+	private[oldsql] trait Missing extends Absent {
+		final override def isMissing = true
+		override def toString = "Missing"
+	}
+
+
+
+
+	/** A type alias for kin of a composite type `C[E]` derived from individual entities `E`.
+	  * Due to accepting a type constructor for the collection type as its parameter in place of the whole,
+	  * parameterized type (and a short name) it considerably declutters declaration of ''to-many'' collections,
+	  * especially when written in the infix notation: compare `Derived[Spells, Seq[Spells]` with `Seq Of Spells`.
+	  * @see [[net.noresttherein.oldsql.model.Kin.Derived]]
+	  */
+	type Of[C[_], E] = Derived[E, C[E]]
+
+	/** A lower level [[net.noresttherein.oldsql.model.Kin Kin]] interface which is aware of how the referenced value `T`
+	  * is composed of entities `E`. This of course applies to all collection types, but also `Option[E]` and `E` itself;
+	  * it cannot be assumed that a composite kin can handle an arbitrary number of entities. Most, if not all,
+	  * kin returned to the application will be actually `Derived`, and a `Derived` may be required
+	  * to build the referenced value. It is however not intended to be used as a public interface, yielding that
+	  * function to the simpler and cleaner `Kin[T]`. This is of course with an exception of use cases where this
+	  * information is required, but it is recommended that argument `Kin` are instead either cast down
+	  * (i.e., pattern matched for implementing this trait), or converted to this type. In particular,
+	  * [[net.noresttherein.oldsql.model.Kin.recompose recompose]] method will return `this` instance if called
+	  * on a `Derived` and its composition matches the one provided implicitly.
+	  *
+	  * Unlike properties/statuses mentioned in the documentation of `Kin`, all 'composite' kin are in fact
+	  * instances of this trait.
+	  * @tparam E referenced entity type. This can be both an application model class, and a tuple - for example
+	  *           when referencing a `Map` or an `IndexedSeq`.
+	  * @tparam T the value type of this kin, which can be assembled from individual values of `E` using its
+	  *           [[net.noresttherein.oldsql.model.Kin.Derived.composition composition]].
+	  * @see [[net.noresttherein.oldsql.model.Kin.Of]]
+	  */
+	trait Derived[E, +T] extends Kin[T] {
+		/** Derived kin do not have `Nonexistent` instances (at least by default). Instead, one should use
+		  * either `Derived[E, Option[E]]` ([[net.noresttherein.oldsql.model.Kin.Supposed Supposed]]`[E]`)
+		  * or `Option[Derived[E, E]]` (`Option[`[[net.noresttherein.oldsql.model.Kin.One One]]`[E]]`).
+		  * @return `false`.
+		  */
+		override def isNonexistent :Boolean = false
+
+		/** All derived kin are assumed missing, but existing.
+		  * @return `isAbsent`.
+		  */
+		override def isMissing :Boolean = !isPresent
+
+		/** The element type - a type alias for the `E` type parameter. */
+		type Element = E
+
+		/** The factory and specification of how to create the referenced composite type `T` from values of some
+		  * entity type `E`.
+		  */
+		def composition :T ComposableFrom E
+
+		/** For present kin, convert (if required) their value `T` to a collection of `E`. Absent kin return `None`. */
+		def items :Option[Iterable[E]]
+
+		/** All kin, the combined values of which are used to create the value of this kin. Equivalent to calling
+		  * [[net.noresttherein.oldsql.model.Kin.explode explode]] with a compatible decomposition type:
+		  * by default it returns a singleton collection with this instance as its element, but
+		  * [[net.noresttherein.oldsql.model.Kin.Collective$ Collective]] kin override it to return its constituents.
+		  */
+		def parts :Iterable[Derived[E, _]] = this::Nil
+
+		/** Returns this kin if it uses `composition` compatible with the implicitly provided one, or an adapter
+		  * performing the conversion by decomposing this instance and composing the result (if present).
+		  */
+		override def recompose[X, U >: T](implicit composition :U ComposedOf X) :Derived[X, U] =
+			if (this.composition == composition.composer) this.asInstanceOf[Derived[X, U]]
+			else Recomposed(this)(composition.decomposer, composition.composer)
+
+		override def explode[X](implicit decomposition :T DecomposableTo X) :Option[Iterable[Derived[X, _]]] =
+			if (decomposition compatibleWith composition) Some(parts.asInstanceOf[Iterable[Derived[X, _]]])
+			else None
+
+
+		override def +[I, U >: T](item :I)(implicit composition :U CollectionOf I) :Derived[I, U] =
+			this ++[I, List[I], U] Derived.many(item::Nil)
+
+		override def +[I, U >: T](item :Kin[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
+			this ++[I, List[I], U] item.singleton(List)
+
+		override def +:[I, U >: T](item :I)(implicit composition :U CollectionOf I) :Derived[I, U] =
+			Derived.many(item::Nil) ++:[I, List[I], U] this
+
+		override def +:[I, U >: T](item :Kin[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
+			item.singleton(List) ++:[I, List[I], U] this
+
+		override def ++[I, U >: T](items :Iterable[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
+			this ++[I, Iterable[I], U] Derived.many(items)
+
+		override def ++[I, X, U >: T](items :Kin[X])
+		                             (implicit composition :U CollectionOf I, decomposition :X DecomposableTo I) :Derived[I, U] =
+			items match {
+				case composite :Derived[I @unchecked, X @unchecked]
+					if composite.composition compatibleWith decomposition => this ++[I, X, U] composite
+				case _ => this ++[I, U, U] Recomposed(items)(decomposition, composition.composer)
+			}
+
+		override def ++[I, X, U >: T](items :Derived[I, X])(implicit composition :U CollectionOf I) :Derived[I, U] = {
+			val self =
+				if (this.composition compatibleWith composition.decomposer)
+					parts.asInstanceOf[Iterable[Derived[I, _]]]
+				else
+					Recomposed(this)(composition.decomposer, composition.composer)::Nil
+			Collective(self ++: items.parts.toSeq :_*)(composition.composer)
+		}
+
+		override def ++:[I, U >: T](items :Iterable[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
+			Derived.many(items) ++:[I, Iterable[I], U] this
+
+		override def ++:[I, X, U >: T](items :Kin[X])
+		                              (implicit composition :U CollectionOf I, decomposition :X DecomposableTo I) :Derived[I, U] =
+			items match {
+				case composite :Derived[I @unchecked, X @unchecked]
+					if composite.composition compatibleWith decomposition => composite ++:[I, X, U] this
+				case _ => Recomposed(items)(decomposition, composition.composer) ++:[I, U, U] this
+			}
+
+		override def ++:[I, X, U >: T](items :Derived[I, X])(implicit composition :U CollectionOf I) :Derived[I, U] = {
+			val self =
+				if (this.composition compatibleWith composition.decomposer)
+					parts.toSeq.asInstanceOf[Seq[Derived[I, _]]]
+				else
+					Recomposed(this)(composition.decomposer, composition.composer)::Nil
+			Collective(items.parts ++: self :_*)(composition.composer)
 		}
 
 
-		private def name :String = where match {
-			case True => "All[" + as.arity + "]"
-//			case Where(True, as) => "All[" + as.arity + "]"
-//			case Where(_, _) => restraint.toString
-			case _ if toOption.isEmpty => "Absent{" + where + "}"
-			case _ => "Present{" + where + "}"
-		}
+		override def property[X, U >: T](property :PropertyPath[U, X]) :Derived[U, X] =
+			Property.one(this, property)
 
-		override def toString :String = toOption match {
-			case None => name
-			case Some(x) => s"$name($x)"
-		}
-	}
+		override def properties[I, X, C[_]](property :PropertyPath[I, X], in :IterableFactory[C])
+		                                   (implicit decomposition :T DecomposableTo I) :Derived[I, C[X]] =
+			properties(property, ComposableFrom.Collection.of[X](in))
 
+		override def properties[I, X, C[_], Ev[_]](property :PropertyPath[I, X], in :EvidenceIterableFactory[C, Ev])
+		                                          (implicit decomposition :T DecomposableTo I, ev :Ev[X])
+				:Derived[I, C[X]] =
+			properties(property, ComposableFrom.Collection.of[X](in))
 
-
-	private class RestrainedKinFactory[K, E, X](private val Restrainer :Restrainer[E, K])
-	                                           (implicit val result :X ComposedOf E)
-		extends HigherKindKinFactory[K, E, X, Kin]
-	{
-		override def delayed(key :K, value: => Option[X]): Kin[X] = Lazy(value)
-
-		override def apply(key :K, value :Option[X]) :Kin[X] = new RestrainedKin(Restrainer(key), value)
-		override def present(value: X): Kin[X] = Present(value)
-		override def absent(key :K) :Kin[X] = AllWhere(Restrainer(key)).as[X](result)
-		override def missing(key: K): Kin[X] = AllWhere(Restrainer(key)).as[X](result)
-		override def nonexistent :Kin[X] = Nonexistent()
-
-		override def keyFor(item: E): Option[K] = Restrainer.from(item)
-
-		override def keyOf(ref: Kin[X]): Option[K] = ref match {
-			case AllWhere(Restrainer(key)) => Some(key)
-			case result.Present(values) =>
-				if (values.isEmpty) None
-				else Restrainer.from(values.head).filter(v => values.tail.forall(v == _))
-			case _ => None
-		}
-
-		override def unapply(kin :Kin[X]) :Option[(K, Option[X])] =
-			keyOf(kin).map((_, kin.toOption))
-
-		override def required :GenericKinFactory[K, E, X, Kin[X]] =
-			new RestrainedKinFactory[K, E, X](Restrainer) with MandatoryKinFactory[K, E, X, Kin[X]]
-
-		override def isRequired :Boolean = false
-
-		override def as[Y](implicit composition: ComposedOf[Y, E]): RestrainedKinFactory[K, E, Y] =
-			new RestrainedKinFactory[K, E, Y](Restrainer)(composition)
-
-		override def in[Y[V]](implicit composition: Y[E] ComposedOf E) :RestrainedKinFactory[K, E, Y[E]] = as[Y[E]]
+		override def properties[I, X, C](property :PropertyPath[I, X], as :C ComposableFrom X)
+		                                (implicit decomposition :T DecomposableTo I) :Derived[I, C] =
+			if (decomposition compatibleWith composition)
+				Property(this.asInstanceOf[Derived[I, T]], property)(as)
+			else
+				throw new IncompatibleElementTypeException(
+					s"Cannot create a Kin for property $property of elements of $this: decomposition $decomposition " +
+					"doesn't match this kin's composition."
+				)
 
 
-		def equivalencyToken :Any = Restrainer
-
-
-		override def canEqual(that: Any): Boolean = that.isInstanceOf[RestrainedKinFactory[_,_,_]]
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[Derived[_, _]]
 
 		override def equals(that :Any) :Boolean = that match {
-			case c:RestrainedKinFactory[_, _, _] =>
-				(this eq c) || c.canEqual(this) && c.Restrainer == Restrainer && c.result == result
+			case self :AnyRef if self eq this => true
+			case other :Derived[_, _] if other canEqual this =>
+				composition == other.composition &&
+					(if (isPresent) other.isPresent && get == other.get else other.isAbsent)
 			case _ => false
 		}
 
-		override def hashCode :Int = Restrainer.hashCode * 31 + result.hashCode
+		override lazy val hashCode :Int =
+			if (isAbsent) composition.hashCode else get.hashCode * 31 + composition.hashCode
 
-		override def toString = s"$result($Restrainer)"
+		override def toString :String = toOption match {
+			case Some(x) => "Present[" + composition + "](" + x + ")"
+			case _ if isMissing => "Missing[" + composition + "]"
+			case _ if isNonexistent => "Nonexistent[" + composition + "]"
+			case _ => "Absent[" + composition + "]"
+		}
 	}
 
 
+	/** A factory and matcher of [[net.noresttherein.oldsql.model.Kin.Derived Derived]]:
+	  * [[net.noresttherein.oldsql.model.Kin Kin]] subtype carrying information about the composition of its value
+	  * from individual entities.
+	  * @see [[net.noresttherein.oldsql.model.Kin.Collective$]]
+	  */
+	object Derived {
+		type Of[E] = { type Kin[T] = Derived[E, T] }
+
+		/** A ''present'', composite kin for an empty collection type `T` using the given implicit composition. */
+		def empty[E, T](implicit constructor :T ConstructFrom E) :Derived[E, T] = new EmptyKin[E, T]
+
+		/** A present kin for the given standard collection type and its natural decomposition into its elements. */
+		def many[E, T[X] <: Iterable[X]](items :T[E])(implicit constructor :T[E] ConstructFrom E)
+				:Derived[E, T[E]] =
+			new PresentIterable(items)
+
+		/** A present kin for an arbitrary composite type `T` using the implicit composition `T CollectionOf E`. */
+		def present[E, T](items :T)(implicit composition :T ComposedOf E) :Derived[E, T] =
+			new PresentBase[E, T](items)(composition.decomposer, composition.composer) with PresentOverrides[E, T]
+
+		/** A present kin for a singular composite kin - a kin which value is decomposed to itself. */
+		def one[T](item :T) :Derived[T, T] = present(item)
+
+		/** A lazy, present `Derived` instance with the value of the given by-name parameter. */
+		def delay[E, T](value: => T)(implicit composite :T ComposedOf E) :Derived[E, T] =
+			new LazyDerived(value)
+
+
+		/** Matches `Derived[E, T]` instances, checking that it's `composition` is compatible with the implicit
+		  * `decomposition`. If you wish to match all `Derived` instances instead, you should do so by its type instead.
+		  */
+		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Option[Derived[E, T]] =
+			kin match {
+				case derived :Derived[E @unchecked, T @unchecked] if derived.composition compatibleWith decomposition =>
+					Some(derived)
+				case _ => None
+			}
+
+
+
+		private[oldsql] class PresentBase[E, +T](override val get :T)(implicit decomposition :T DecomposableTo E,
+		                                                              override val composition :T ComposableFrom E)
+			extends Derived[E, T]
+		{
+			override def items :Some[Iterable[E]] = Some(decomposition(get))
+			override def toOption :Option[T] = Some(get)
+		}
+
+		private trait PresentOverrides[E, +T] extends Derived[E, T] with Present[T] {
+			override def ++[I, U >: T](items :Iterable[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
+				if (items.isEmpty && (composition.decomposer compatibleWith this.composition))
+					this.asInstanceOf[Derived[I, U]]
+				else Derived.present((composition.composer.builder ++= composition.decomposer(get) ++= items).result())
+
+			override def ++:[I, U >: T](items :Iterable[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
+				if (items.isEmpty && (composition.decomposer compatibleWith this.composition))
+					this.asInstanceOf[Derived[I, U]]
+				else Derived.present((composition.composer.builder ++= items ++= composition.decomposer(get)).result())
+
+			override def property[X, U >: T](property :PropertyPath[U, X]) :Derived[U, X] =
+				Property.one(this, property)
+		}
+
+		private class PresentIterable[E, +T <: Iterable[E]]
+		                             (override val get :T)(implicit override val composition :T ConstructFrom E)
+			extends Derived[E, T] with PresentOverrides[E, T]
+		{
+			override def items :Option[T] = Some(get)
+		}
+
+		private class EmptyKin[E, +T](implicit override val composition :T ConstructFrom E) extends Derived[E, T] {
+			def this(factory :Factory[E, T]) = this()(ComposableFrom.Collection()(factory))
+
+			override def isPresent = true
+			override val toOption = Some(composition(None))
+			override val items = Some(None)
+			override def parts :Iterable[Derived[E, _]] = Nil
+		}
+
+		private[oldsql] class AbsentBase[E, +T](override val isMissing :Boolean = false)
+		                                       (implicit override val composition :T ComposableFrom E)
+			extends Derived[E, T]
+		{
+			override def isPresent = false
+			override def toOption :Option[T] = None
+			override def items :Option[Iterable[E]] = None
+		}
+
+		private class RecomposedKin[E, X, +T](val kin :Kin[X])(implicit val decomposition :X DecomposableTo E,
+		                                                       override val composition :T ComposableFrom E)
+			extends Derived[E, T]
+		{
+			override def isMissing = kin.isMissing
+			override def isPresent = kin.isPresent
+			override def items :Option[Iterable[E]] = kin.toOption.map(decomposition.apply)
+			override lazy val toOption = kin.toOption.map(x => composition(decomposition(x)))
+		}
+
+		private[oldsql] class LazyDerived[E, +T](value: => T)(implicit composite :T ComposedOf E)
+			extends Delayed(() => Some(value)) with Derived[E, T]
+		{
+			override def composition = composite.composer
+			override def items = Some(composite.decomposer(get))
+		}
+
+	}
+
+
+
+	/** Factory and matchers of `Kin` adapters which optionally map its value by decomposing it into individual
+	  * elements and composing using a new [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom composition]].
+	  */
+	object Recomposed {
+
+		/** An adapter of an arbitrary kin for a value decomposable to values of `E` to a `Derived[E, T]`. */
+		def apply[E, X, T](kin :Kin[X])(implicit decomposition :X DecomposableTo E, constructor :T ComposableFrom E)
+				:Derived[E, T] =
+			if (kin.isUnknown)
+				throw new IllegalArgumentException("Unknown kin cannot be recomposed.")
+			else if (kin.isNonexistent)
+				throw new IllegalArgumentException(s"Nonexistent kin $kin cannot be recomposed.")
+			else new Recomposed(kin)
+
+		/** Matches kin adapter created by [[net.noresttherein.oldsql.model.Kin.Recomposed.apply Recomposed(kin)]].
+		  * @return the adapted kin, with its decomposition to the element type and the composition used for creating
+		  *         the desired value.
+		  */
+		def unapply[E, T](kin :Derived[E, T]) :Option[(Kin[X], X DecomposableTo E, T ComposableFrom E) forSome { type X }] =
+			kin match {
+				case adapter :Recomposed[E, x, T] => Some((adapter.kin, adapter.decomposition, adapter.composition))
+				case _ => None
+			}
+
+		/** Matches kin adapter created by [[net.noresttherein.oldsql.model.Kin.Recomposed.apply Recomposed(kin)]].
+		  * @return the adapted kin, with its decomposition to the element type and the composition used for creating
+		  *         the desired value.
+		  */
+		def unapply[T](kin :Kin[T]) :Option[(Kin[X], X DecomposableTo E, T ComposableFrom E) forSome { type X; type E }] =
+			kin match {
+				case adapter :Recomposed[e, x, T] => Some((adapter.kin, adapter.decomposition, adapter.composition))
+				case _ => None
+			}
+
+	}
+
+	private class Recomposed[E, X, +T](val kin :Kin[X])(implicit val decomposition :X DecomposableTo E,
+	                                                    override val composition :T ComposableFrom E)
+		extends Derived[E, T]
+	{
+//			override def isNonexistent :Boolean = kin.isNonexistent
+		override def isMissing = kin.isMissing
+		override def isPresent = kin.isPresent
+		override def items :Option[Iterable[E]] = kin.toOption.map(decomposition.apply)
+		override lazy val toOption = kin.toOption.map(x => composition(decomposition(x)))
+	}
+
+
+
+	/** A factory and matcher of 'collective' kin: [[net.noresttherein.oldsql.model.Kin.Derived Derived]]
+	  * which constitute of other - typically more than one - kin.
+	  */
+	object Collective {
+		//		def apply(kin :Iterable[Kin[E]])
+		/** A composite kin for `T`, built from all the elements of the decomposed values of the argument kin. */
+		def apply[E, T](kin :Derived[E, _]*)(implicit composition :T ConstructFrom E) :Derived[E, T] =
+			if (kin.exists(_.isUnknown))
+				throw new IllegalArgumentException(
+					"Unknown cannot be combined with other kin to form a collective kin: "+kin + "."
+				)
+			else new Collective(kin)
+
+		/** Extracts the [[net.noresttherein.oldsql.model.Kin.Derived.parts parts]] of the argument kin,
+		  * matching all `Derived`.
+		  * @return `Some(kin.parts)`.
+		  */
+		def unapply[E, T](kin :Derived[E, T]) :Option[Iterable[Derived[E, _]]] = Some(kin.parts)
+
+		/** Matches all [[net.noresttherein.oldsql.model.Kin.Derived Derived]] with composition matching
+		  * the implicit decomposition, extracting its [[net.noresttherein.oldsql.model.Kin.Derived.parts parts]].
+		  * Most derived kin yield themselves as a singleton collection,
+		  * but [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin
+		  * result in all their individual constituents instead.
+		  * @return `kin.`[[net.noresttherein.oldsql.model.Kin.explode explode]].
+		  */
+		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Option[Iterable[Derived[E, _]]] =
+			kin.explode
+	}
+
+
+	private class Collective[E, +T](kin :Iterable[Derived[E, _]])
+	                               (implicit override val composition :T ConstructFrom E)
+		extends Derived[E, T]
+	{
+		override def isPresent = kin.forall(_.isPresent)
+		override def toOption :Option[T] = if (isAbsent) None else Some(composition(kin.flatMap(_.items.get)))
+		override def items :Option[Iterable[E]] = if (isAbsent) None else Some(kin.flatMap(_.items.get))
+		override def parts :Iterable[Derived[E, _]] = kin
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[Collective[_, _]]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case collective :Collective[_, _] if collective canEqual this =>
+				collective.composition == composition && collective.toOption == toOption && collective.parts == parts
+			case _ => false
+		}
+
+		override lazy val hashCode :Int = kin.hashCode * 31 + composition.hashCode
+
+		override def toString = kin.mkString("Kin[" + composition + "](", ", ", ")")
+	}
 
 
 
@@ -821,160 +1573,431 @@ object Kin {
 	  * Passed expressions should be thread safe and idempotent, as there is no guarantee they'll be executed at most once
 	  * when the returned instance is evaluated.
 	  */
-	object Lazy {
-
+	object Delayed {
 		/** Create a present `Kin` with a lazy value. Argument will be evaluated when `toOption` (or `get`) method
 		  * of the returned `Kin` as called.
 		  * @param value a pass-by-name expression evaluating to the value of the `Kin`, which should be idempotent and thread safe.
 		  */
-		def apply[T](value: => Option[T]) :Kin[T] = new LazyKin(() => value)
-
-		/** Create a `Kin` factory delegating all calls to the specified target `Kin` factory. Expression will be evaluated
-		  * when any of the returned factory methods are called. This is useful when the cycles between `Kin` would make
-		  * initialization otherwise impossible.
-		  * @param factory a pass-by-name expression evaluating to a factory - should be idempotent and thread safe.
-		  */
-		def factory[K, T, C, R <: Kin[C]](factory: => GenericKinFactory[K, T, C, R]) :GenericKinFactory[K, T, C, R] =
-			new LazyKinFactory(() => factory)
+		def apply[T](value: => T) :Kin[T] = new Delayed(() => Some(value))
+	}
 
 
+	private[oldsql] class Delayed[+T](resolve : () => Option[T]) extends Kin[T] {
+		if (resolve == null) throw new NullPointerException("Null initializer of a LazyKin.")
 
-		private[oldsql] class LazyKin[+T](resolve : () => Option[T]) extends Kin[T] {
-//			type Item = T
-//			override def composer :T ComposableFrom T = ComposableFrom.itself
-//			override def decompose :Iterable[T] = toOption.toIterable
-			if (resolve == null) throw new NullPointerException("Null initializer of a LazyKin.")
-			@volatile @transient private[this] var eval = resolve
-			@volatile private[this] var value :Option[T] = _
-			private[this] var cache :Option[T] = _
+		@volatile @transient private[this] var eval = resolve
+		@volatile private[this] var value :Option[T] = _
+		private[this] var cache :Option[T] = _
 
-			def toOption :Option[T] = {
-				if (cache != null) {
-					val v = value
-					if (v != null)
-						cache = v
-					else {
-						val init = eval
-						if (init == null) {
-							if (cache == null)
-								cache = value
-						} else {
-							val res = init()
-							cache = if (res == null) None else res
-							value = cache
-							eval = null
-						}
+		def toOption :Option[T] = {
+			if (cache != null) {
+				val v = value
+				if (v != null)
+					cache = v
+				else {
+					val init = eval
+					if (init == null) {
+						if (cache == null)
+							cache = value
+					} else {
+						val res = init()
+						cache = if (res == null) None else res
+						value = cache
+						eval = null
 					}
 				}
-				cache
+			}
+			cache
+		}
+
+		override def properties[E, X, C](property :PropertyPath[E, X], as :ComposableFrom[C, X])
+		                                (implicit decomposition :DecomposableTo[T, E]) :Kin[C] =
+			toOption match {
+				case Some(t) => Present(as(decomposition(t).view.map(property.fun)))
+				case _ if isMissing => Unknown
 			}
 
-			private def writeObject(oos :ObjectOutputStream) :Unit = {
-				toOption
-				oos.defaultWriteObject()
+		private def writeObject(oos :ObjectOutputStream) :Unit = {
+			toOption
+			oos.defaultWriteObject()
+		}
+
+		override def toString :String = if (value == null) "Delayed(?)" else super.toString
+	}
+
+
+
+
+
+
+	/** A factory and matcher for [[net.noresttherein.oldsql.model.Kin kin]] for values of properties of other kin.
+	  * It uses [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.Property Property]] and
+	  * [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.Properties Properties]] compositions which
+	  * simply apply the given property function to another entity, or to all individual elements the argument kin
+	  * decomposes to, collecting the result. It is unique in that this process is obviously not reversible and
+	  * there is no matching [[net.noresttherein.oldsql.model.ComposedOf.DecomposableTo DecomposableTo]]. This means
+	  * that having a value of a certain property typically tells one nothing about which entity it came from,
+	  * and some methods of the [[net.noresttherein.oldsql.model.Kin.Derived Derived]] and
+	  * [[net.noresttherein.oldsql.model.GenericKinFactory GenericKinFactory]] come with restrictions.
+	  * Instances created by this factory (and, indirectly, by [[net.noresttherein.oldsql.model.Kin.property property]]
+	  * and [[net.noresttherein.oldsql.model.Kin.properties properties]] methods of `Kin`) retain a reference to
+	  * the kin of the owning entity (the function argument), which can be extracted by this object's
+	  * [[net.noresttherein.oldsql.model.Kin.Property.unapply unapply]] method.
+	  */
+	object Property {
+		/** Create a kin for a collection of values of property `property :P` of all individual elements `E`
+		  * comprising the composite type `X` from kin `owners`.
+		  */
+		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
+		def apply[E, X, P, T](owners :Kin[X], property :PropertyPath[E, P])
+		                     (implicit decomposition :X ComposedOf E, composition :T ComposableFrom P)
+				:Derived[E, T] =
+			apply(owners.recompose, property)
+
+		/** Create a kin for a collection of values of property `property :P` of all individual elements `E`
+		  * comprising the composite type `X` from kin `owners`.
+		  */
+		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
+		def apply[E, X, P, T](owners :Derived[E, X], property :PropertyPath[E, P])
+		                     (implicit composition :T ComposableFrom P) :Derived[E, T] =
+			new Property[E, X, P, T](owners, property)
+
+		/** Create a kin for the value of property `property` of the value `E` of kin `owner`. */
+		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
+		def one[E, T](owner :Kin[E], property :PropertyPath[E, T]) :Derived[E, T] =
+			new SingularPropertyKin(owner.recompose[E, E], property)
+
+		/** Create a lazy kin for a collection of values of property `property :P` of all individual elements `E`
+		  * comprising the composite type `X` from kin `owners`.
+		  */
+		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
+		def delay[E, X, P, T](owners :Derived[E, X], property :PropertyPath[E, P], value: => Option[T])
+		                     (implicit composition :T ComposableFrom P) :Derived[E, T] =
+			new Property(owners, property) {
+				override lazy val toOption = value orElse owner.items.map {
+					items => propertyComposition(items.view.map(property.fun))
+				}
 			}
 
-			override def toString :String = if (value == null) "Lazy(?)" else super.toString
+		/** Create a lazy kin for the value of property `property` of the value `E` of kin `owner`. */
+		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
+		def delay[E, T](owner :Kin[E], property :PropertyPath[E, T], value: => Option[T]) :Derived[E, T] =
+			if (owner.isUnknown)
+				throw new IllegalArgumentException(s"Cannot create a kin for property $property of Unknown.")
+			else
+				new SingularPropertyKin[E, T](owner.recompose, property) {
+					override lazy val toOption = value orElse owner.items.map {
+						items => propertyComposition(items.view.map(property.fun))
+					}
+				}
+
+		/** Matches kin instances created by this factory (or, indirectly,
+		  * by [[net.noresttherein.oldsql.model.Kin.property property]] and
+		  * [[net.noresttherein.oldsql.model.Kin.properties properties]] methods of `Kin`).
+		  * Returns the kin for the owner(s) of the property, the property itself, and composition type class
+		  * for assembling the result type ''from the value(s) of the property'' (which is not the same as
+		  * [[net.noresttherein.oldsql.model.Kin.Derived.composition composition]] property of `Derived`).
+		  */
+		def unapply[E, T](kin :Derived[E, T])
+				:Option[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P)] forSome { type X; type P } =
+			kin match {
+				case prop :Property[E, x, p, T] => Some((prop.owner, prop.property, prop.propertyComposition))
+				case _ => None
+			}
+
+		/** Matches kin instances created by this factory (or, indirectly,
+		  * by [[net.noresttherein.oldsql.model.Kin.property property]] and
+		  * [[net.noresttherein.oldsql.model.Kin.properties properties]] methods of `Kin`).
+		  * Returns the kin for the owner(s) of the property, the property itself, and composition type class
+		  * for assembling the result type ''from the value(s) of the property'' (which is not the same as
+		  * [[net.noresttherein.oldsql.model.Kin.Derived.composition composition]] property of `Derived`).
+		  */
+		def unapply[T](kin :Kin[T])
+				:Option[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P) forSome { type E; type P }] =
+			kin match {
+				case prop :Property[e, x, p, T] => Some((prop.owner, prop.property, prop.propertyComposition))
+				case _ => None
+			}
+
+
+		def apply[K, E :TypeTag, P, Y](factory :DerivedKinFactory[K, E, Y], property :E => P)
+		                              (implicit composition :Y ComposableFrom P)
+				:DerivedKinFactory[K, E, P] =
+			new PropertyKinFactory(factory, PropertyPath(property))
+
+
+		private class SingularPropertyKin[E, T](kin :Derived[E, E], prop :PropertyPath[E, T])
+			extends Property[E, E, T, T](kin, prop)
+		{
+			override val composition = ComposableFrom.Property(property)
+			override lazy val toOption = kin.toOption.map(prop.fun)
+			override def toString = kin.toString + "." + prop
 		}
 
 
-		private class LazyKinFactory[K, E, X, +R <: Kin[X]](factory : () => GenericKinFactory[K, E, X, R])
-			extends GenericKinFactory[K, E, X, R]
-		{
-			private[this] val lazyBacking = morsels.Lazy(factory())
+		private class PropertyKinFactory[K, E :TypeTag, X, P, T]
+		                                (entities :DerivedKinFactory[K, E, X], property :PropertyPath[E, P],
+		                                 implicit override val composition :T ComposableFrom E)
+		                                (implicit propertyComposer :T ComposableFrom P)
+			extends DerivedKinFactory[K, E, T] with RequiredKinFactory[K, E, T, Derived[E, T]]
+		{ factory =>
+			private final val argType = typeOf[E]
 
-			protected def backing :GenericKinFactory[K, E, X, R] = lazyBacking
+			def this(entities :DerivedKinFactory[K, E, X], property :PropertyPath[E, P])
+			        (implicit propertyComposer :T ComposableFrom P) =
+				this(entities, property, ComposableFrom.Properties(property))
 
-			override def result :X ComposedOf E = backing.result
+			override def delay(key :K, value: => Option[T]) :Derived[E, T] =
+				Property.delay(entities.absent(key), property, value)
 
-			override def delayed(key: K, value: => Option[X]): R = backing.delayed(key, value)
-			override def apply(key: K, value: Option[X]): R = backing(key, value)
+			override def apply(key :K, value: Option[T]) :Derived[E, T] = delay(key, value)
 
-			override def present(value: X): R = backing.present(value)
-			override def absent(key :K) :R = backing.absent(key)
-			override def missing(key: K): R = backing.missing(key)
-			override def nonexistent :R = backing.nonexistent
+			override def present(value :T) =
+				new Present[T] with Derived[E, T] {//fixme: many places assume isPresent -> items.isDefined
+					implicit override val composition = factory.composition
+					override val get = value
+					override def items = Some(Iterable.empty)
+					override def property[Y, U >: T](property :PropertyPath[U, Y]) :Derived[U, Y] =
+						Property.one(this, property)
+				}
 
-			override def keyFor(item: E): Option[K] = backing.keyFor(item)
-			override def keyOf(ref: Kin[X]): Option[K] = backing.keyOf(ref)
-			override def forceKeyOutOf(kin :Kin[X]) :K = backing.forceKeyOutOf(kin)
-			override def unapply(kin :Kin[X]) :Option[(K, Option[X])] = backing.unapply(kin)
+			override def missing(key :K) = Property(entities.missing(key), property)
 
-			override def isRequired :Boolean = backing.isRequired
+			override def decompose(value :T) = None
+			override def itemsOf(kin :Kin[T]) :Option[Iterable[E]] = None
 
-			override def required :GenericKinFactory[K, E, X, R] =
-				if (lazyBacking.isInitialized) backing.required else new LazyKinFactory(() => backing.required)
+			override def keyFor(value :T) :Option[K] = None
+			override def keyFrom(item :E) :Option[K] = entities.keyFrom(item)
+			override def keyFrom(items :Iterable[E]) :Option[K] = entities.keyFrom(items)
 
-			override def as[Y](implicit composition :Y ComposedOf E): KinFactory[K, E, Y] =
-				if (lazyBacking.isInitialized) backing.as[Y]
-				else new LazyKinFactory[K, E, Y, Kin[Y]](() => backing.as[Y])
+			override def keyOf(kin :Kin[T]) :Option[K] = kin match {
+				//owner.Element <:< prop.definedFor, so elements are safe to pass of as E even if owner is not (invariance)
+				case Property(owner :Derived[E @unchecked, _], prop, _) //unchecked type not necessarily true, but^
+					if prop.definedFor <:< argType && property == prop => owner.items.flatMap(entities.keyFrom)
+				case _ => None
+			}
 
-			override def equivalencyToken: Any = backing.equivalencyToken
+			override def as[Y](implicit composition :Y ComposedOf E) = entities.as[Y]
 
+			override def equivalencyToken :Any = (entities, property, propertyComposer)
+
+			final private def friendEntities = entities
+			final private def friendProperty = property
+			final private def friendPropertyComposer = propertyComposer
+
+			override def canEqual(that :Any) :Boolean = that.isInstanceOf[PropertyKinFactory[_, _, _, _, _]]
 
 			override def equals(that :Any) :Boolean = that match {
-				case lazyfac :LazyKinFactory[_, _, _, _] => (this eq lazyfac) || this.backing == lazyfac.backing
-				case fac :GenericKinFactory[_, _, _, _] => backing == fac
+				case self :AnyRef if self eq this => true
+				case other :PropertyKinFactory[_, _, _, _, _] if other canEqual this =>
+					argType =:= other.argType && property == other.friendProperty &&
+						propertyComposer == other.friendPropertyComposer && entities == other.friendEntities
 				case _ => false
 			}
 
-			override def hashCode :Int = backing.hashCode
+			override def hashCode :Int = (property.hashCode * 31 + propertyComposer.hashCode) * 31 + entities.hashCode
 
 			override def toString :String =
-				if (lazyBacking.isInitialized) lazyBacking.get.toString else "LazyFactory(?)"
+				propertyComposer.toString + (if (isRequired) "(" else "?(") + entities + "." + property + ")"
+		}
+	}
 
+
+
+	/** A kin for a property `T` (possibly a chained one) of an entity `E` referenced by another kin. */
+	private class Property[E, X, P, +T](val owner :Derived[E, X], val property :PropertyPath[E, P])
+	                                   (implicit val propertyComposition :T ComposableFrom P)
+		extends Derived[E, T]
+	{ //consider: having a TypeTag[E]
+		override def isPresent :Boolean = owner.isPresent
+		override def isMissing :Boolean = owner.isMissing
+		override def isNonexistent :Boolean = owner.isNonexistent
+		override val composition :T ComposableFrom E = ComposableFrom.Properties(property)
+		override def parts :Iterable[Derived[E, _]] = owner.parts
+		override def items :Option[Iterable[E]] = owner.items
+
+		override lazy val toOption :Option[T] = owner.items.map {
+			items => propertyComposition(items.view.map(property.fun))
+		}
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[Property[_, _, _, _]]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case prop :Property[_, _, _, _] if prop canEqual this =>
+				prop.propertyComposition == prop.propertyComposition && prop.property == property && prop.owner == owner
+			case _ => false
+		}
+
+		override lazy val hashCode :Int = (owner.hashCode * 31 + property.hashCode) * 31 + propertyComposition.hashCode
+
+		override def toString :String = owner.toString + ".properties[" + propertyComposition + "](_." + property + ")"
+	}
+
+
+
+
+
+
+	/** A kin for a collection `T` of entities `E` satisfying
+	  * a given [[net.noresttherein.oldsql.model.Restraint Restraint]]`[E]`.
+	  * @author Marcin Mościcki
+	  */
+	private[oldsql] trait Restrained[E, +T] extends Derived[E, T] {
+		val where :Restraint[E]
+
+		override def get :T = toOption match {
+			case Some(item) => item
+			case _ => throw new AbsentKinException(this)
+		}
+
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[Restrained[_, _]]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :Restrained[_, _] if other canEqual this =>
+				composition == other.composition && where == other.where && toOption == other.toOption
+			case _ => false
+		}
+
+		override lazy val hashCode :Int = (where.hashCode * 31 + toOption.hashCode) * 31 + composition.hashCode
+
+		override def toString :String = toOption match {
+			case Some(x) => "Present{" + where + "}(" + x + ")"
+			case _ if where == True => "All[" + composition + "]"
+			case _ if isMissing => "Missing[" + composition + "]{" + where + "}"
+			case _ if isNonexistent => "Nonexistent[" + composition + "]{" + where + "}"
+			case _ => "Absent[" + composition + "]{" + where + "}"
+		}
+	}
+
+
+
+
+
+
+	/** Factory and matcher for Kin specifying the referenced values through reflected filter functions of `E`.
+	  * Each [[net.noresttherein.oldsql.model.Kin.Restrained Restrained]]`[E, T]`
+	  * carries a [[net.noresttherein.oldsql.model.Restraint Restraint]]`[E]`.
+	  */
+	object Restrained {
+		type Of[E] = { type Kin[T] = Restrained[E, T] }
+
+		/** A restrained kin using the given `Restraint` as the filter specifying the referenced values. */
+		def apply[E, T](where :Restraint[E], value :Option[T])(implicit as :T ComposedOf E) :Restrained[E, T] =
+			if (value.isDefined) new PresentRestrained[E, T](where, value)
+			else new AbsentRestrained(where)(as.composer)
+
+		def apply[E, T](where :Restraint[E])(implicit composition :T ComposableFrom E) :Restrained[E, T] =
+			new AbsentRestrained(where)
+
+		def present[E, T](where :Restraint[E], value :T)(implicit as :T ComposedOf E) :Restrained[E, T] =
+			new PresentRestrained[E, T](where, value)
+
+		def missing[E, T](where :Restraint[E])(implicit composition :T ComposableFrom E) :Restrained[E, T] =
+			new AbsentRestrained[E, T](where)
+
+		def absent[E, T](where :Restraint[E])(implicit composition :T ComposableFrom E) :Restrained[E, T] =
+			new AbsentRestrained[E, T](where, false)
+
+		def delay[E, T](where :Restraint[E], value: => Option[T])(implicit as :T ComposedOf E) :Restrained[E, T] =
+			new LazyRestrained(where, () => value)
+
+		def unapply[E, T](kin :Derived[E, T]) :Option[(Restraint[E], T ComposableFrom E)] = kin match {
+			case restrained :Restrained[E, T] => Some((restrained.where, restrained.composition))
+			case _ => None
+		}
+
+		def unapply[T](kin :Kin[T]) :Option[(Restraint[E], T ComposableFrom E) forSome { type E }] = kin match {
+			case restrained :Restrained[e, T] => Some((restrained.where, restrained.composition))
+			case _ => None
+		}
+
+
+		def apply[E, K](restrainer :Restrainer[E, K]) :DerivedKinFactory[K, E, E] =
+			new RequiredRestrainedKinFactory[K, E, E](restrainer)
+
+
+		private class PresentRestrained[E, T](override val where :Restraint[E], override val get :T)
+		                                     (implicit as :T ComposedOf E)
+			extends PresentBase[E, T](get)(as.decomposer, as.composer) with Restrained[E, T]
+		{
+			def this(where :Restraint[E], toOption :Option[T])(implicit as :T ComposedOf E) =
+				this(where, toOption.get)
+		}
+
+		private class AbsentRestrained[E, T](override val where :Restraint[E], isMissing :Boolean = true)
+		                                    (implicit override val composition :T ComposableFrom E)
+			extends AbsentBase[E, T](isMissing) with Restrained[E, T]
+
+		private class LazyRestrained[E, T](override val where :Restraint[E], init :() => Option[T])
+		                                  (implicit as :T ComposedOf E)
+			extends Delayed[T](init) with Restrained[E, T]
+		{
+			override def composition :T ComposableFrom E = as.composer
+			override def items :Option[Iterable[E]] = toOption.map(as.decomposer.apply)
+		}
+
+
+
+
+		private[oldsql] class RestrainedKinFactory[K, E, X](private val restrainer :Restrainer[E, K])
+		                                                   (implicit val result :X ComposedOf E)
+			extends BaseKinFactory[K, E, X]
+		{
+			override def delay(key :K, value: => Option[X]): Derived[E, X] =
+				Restrained.delay(restrainer(key), value)
+
+			override def apply(key :K, value :Option[X]) :Derived[E, X] = Restrained(restrainer(key), value)
+			override def present(value :X) :Derived[E, X] = Restrained(Restraint.False, Some(value))
+			override def missing(key: K): Derived[E, X] = Restrained.missing(restrainer(key))
+			override def absent(key: K): Derived[E, X] = Restrained.absent(restrainer(key))
+
+			override def keyFrom(item: E): Option[K] = restrainer.from(item)
+
+			override def keyOf(ref: Kin[X]): Option[K] = ref match {
+				case AllWhere(this.restrainer(key)) => Some(key)
+				case result.decomposer(values) =>
+					if (values.isEmpty) None
+					else restrainer.from(values.head).filter(v => values.forall(v == _))
+				case _ => None
+			}
+
+			override def required :KinFactory[K, E, X] =
+				if (isRequired) this else new RequiredRestrainedKinFactory(restrainer)
+
+			override def as[Y](implicit composition: Y ComposedOf E): KinFactory[K, E, Y] =
+				new RestrainedKinFactory[K, E, Y](restrainer)
+
+
+			override def equivalencyToken :Any = restrainer
+
+			override def canEqual(that: Any): Boolean = that.isInstanceOf[RestrainedKinFactory[_,_,_]]
+
+			override def equals(that :Any) :Boolean = that match {
+				case c:RestrainedKinFactory[_, _, _] =>
+					(this eq c) || c.canEqual(this) && c.restrainer == restrainer && c.result == result
+				case _ => false
+			}
+
+			override def hashCode :Int = restrainer.hashCode * 31 + result.hashCode
+
+			override def toString = result.toString + (if (isRequired) "" else "?") + "(" + restrainer + ")"
 		}
 
 	}
 
 
-
-
-	/** Implementation delegating all calls to another Kin factory - useful as a base class for extending functionality. */
-	private[oldsql] case class KinFactoryProxy[K, E, X, +R <: Kin[X]](protected val target :GenericKinFactory[K, E, X, R])
-		extends GenericKinFactory[K, E, X, R]
+	private[oldsql] class RequiredRestrainedKinFactory[K, E, X](restrainer :Restrainer[E, K])
+	                                                           (implicit result :X ComposedOf E)
+		extends RestrainedKinFactory[K, E, X](restrainer) with BaseDerivedKinFactory[K, E, X]
 	{
-		override def result: ComposedOf[X, E] = target.result
+		override def apply(key :K, value :Option[X]) = Restrained(restrainer(key), value)
+		override def present(value :X) = Restrained(Restraint.False, Some(value))
 
-		override def delayed(key: K, value: => Option[X]): R = target.delayed(key, value)
-		override def apply(key :K, value :Option[X]) :R = target(key, value)
-
-		override def present(value: X): R = target.present(value)
-		override def absent(key :K) :R = target.absent(key)
-		override def missing(key: K): R = target.missing(key)
-		override def nonexistent :R = target.nonexistent
-
-		override def keyFor(item: E): Option[K] = target.keyFor(item)
-		override def keyOf(kin: Kin[X]): Option[K] = target.keyOf(kin)
-		override def forceKeyOutOf(kin :Kin[X]) :K = target.forceKeyOutOf(kin)
-		override def unapply(kin :Kin[X]) :Option[(K, Option[X])] = target.unapply(kin)
-
-		override def optionalKeys(nonexistent :Kin[X]) :RelatedEntityFactory[Option[K], E, X, Kin[X]] =
-			target.optionalKeys(nonexistent)
-		override def optionalKeys :RelatedEntityFactory[Option[K], E, X, Kin[X]] = target.optionalKeys
-		override def optional :RelatedEntityFactory[Option[K], E, X, Option[Kin[X]]] = target.optional
-		override def required :GenericKinFactory[K, E, X, R] = target.required
-		override def isRequired :Boolean = target.isRequired
-
-		override def as[Y](implicit composition: ComposedOf[Y, E]): KinFactory[K, E, Y] = target.as[Y]
-
-		override def equivalencyToken: Any = target.equivalencyToken
+		override def as[Y](implicit composition: Y ComposedOf E): DerivedKinFactory[K, E, Y] =
+			new RequiredRestrainedKinFactory[K, E, Y](restrainer)
 	}
 
-
-
-	private[oldsql] class RequiredKinFactory[K, E, X, +R <: Kin[X]](backing :GenericKinFactory[K, E, X, R])
-		extends KinFactoryProxy[K, E, X, R](backing)
-	{
-		override def nonexistent :R = throw new MissingKeyException(toString + ": no key found.")
-		override def isRequired = true
-
-		override def equivalencyToken =
-			new EquivalencyTokenWrapper(target.equivalencyToken) {
-				override def toString = "Required[" + token + "]"
-			}
-
-	}
-	
 }
 

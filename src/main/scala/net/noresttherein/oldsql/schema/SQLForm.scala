@@ -577,7 +577,7 @@ object SQLForm {
 		/** Scala `None` as the null value for `Option[T]`. */
 		implicit final val None :NullValue[Option[Nothing]] = NullValue(scala.None)
 
-		implicit final val Miss :NullValue[Opt[Nothing]] = NullValue(Opt.Blank)
+		implicit final val Miss :NullValue[Opt[Nothing]] = NullValue(Opt.Lack)
 
 		implicit def NullOptional[T] :NullValue[Optional[T]] = NullValue(Optional.empty[T])
 

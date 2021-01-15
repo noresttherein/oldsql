@@ -5,6 +5,7 @@ import scala.collection.mutable
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.generic.=#>
@@ -274,6 +275,13 @@ object MappingProxy {
 		override val columnExtracts :ColumnExtractMap = filterColumnExtracts(this)(extracts)
 
 		protected[MappingProxy] def initExtractMap :ExtractMap
+
+		private val columnMap = columns.view.map { c => (c.name, c) }.toMap
+
+		override def columnNamed(name :String) :Column[_] = columnMap.getOrElse(name, null) match {
+			case null => throw new NoSuchComponentException("No column '" + name + "' in " + this + ".")
+			case res => res
+		}
 
 		private[this] def alias[T](exports :mutable.Map[Mapping, Extract[_]],
 		                           originals :mutable.Map[MappingAt[O], Mapping],

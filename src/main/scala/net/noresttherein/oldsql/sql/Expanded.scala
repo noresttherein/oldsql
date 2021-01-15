@@ -156,7 +156,7 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
 	  * using member types of `RowProduct`, as they become proper path types instead of projections.
 	  */
-	protected def narrow :left.type Adjoin R
+	def narrow :left.type Adjoin R
 
 
 	override def fullSize :Int = left.fullSize + 1
@@ -418,7 +418,7 @@ trait Expanded[+L <: RowProduct, R[O] <: MappingAt[O]]
 	/** Narrows this instance to one parameterized with the singleton type of its left side. This is helpful when
 	  * using member types of `RowProduct`, as they become proper path types instead of projections.
 	  */
-	protected def narrow :left.type Expanded R
+	def narrow :left.type Expanded R
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Expanded.*]

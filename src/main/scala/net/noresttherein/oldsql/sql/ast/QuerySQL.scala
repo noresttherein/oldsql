@@ -44,7 +44,7 @@ trait QuerySQL[-F <: RowProduct, V]
 
 	def notExists :ColumnSQL[F, GlobalScope, Boolean] = !ExistsSQL(this)
 
-	def single :SQLExpression[F, GlobalScope, V] = to[V]
+	def one :SQLExpression[F, GlobalScope, V] = to[V]
 
 	def rows :SQLExpression[F, GlobalScope, Seq[V]] = to[Seq[V]]
 
@@ -100,7 +100,7 @@ object QuerySQL extends ImplicitQueryRelations {
 		def nonEmpty :Boolean = seq.nonEmpty
 
 		def seq :Seq[V]
-		def single :V
+		def one :V
 		def head :V
 		def headOption :Option[V]
 	}
@@ -122,7 +122,7 @@ object QuerySQL extends ImplicitQueryRelations {
 
 
 		private case class MultipleRows[+E](seq :Seq[E]) extends Rows[E] {
-			def single :E = seq match {
+			def one :E = seq match {
 				case Seq(res) => res
 				case _ => throw new IllegalStateException("Expected a single result from a Rows instance, got " + seq.size)
 			}
@@ -130,10 +130,10 @@ object QuerySQL extends ImplicitQueryRelations {
 			def headOption :Option[E] = seq.headOption
 		}
 
-		private class SingleRow[E](override val single :E) extends Rows[E] {
-			override def head = single
-			override def headOption = Some(single)
-			override def seq :Seq[E] = single::Nil
+		private class SingleRow[E](override val one :E) extends Rows[E] {
+			override def head = one
+			override def headOption = Some(one)
+			override def seq :Seq[E] = one::Nil
 		}
 	}
 

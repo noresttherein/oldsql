@@ -79,6 +79,7 @@ object DelegateMapping {
 		override def updatedByDefault :Unique[Column[_]] = backer.updatedByDefault
 		override def insertedByDefault :Unique[Column[_]] = backer.insertedByDefault
 
+		override def columnNamed(name :String) :Column[_] = backer.columnNamed(name)
 
 		/** Refers to the adapted mapping `backer` to export the passed component to its final representation,
 		  * unless `component` is the `backer` itself, in which it is returned as-is.
@@ -91,8 +92,7 @@ object DelegateMapping {
 		  */
 		override def export[T](column :Column[T]) :Column[T] = backer.export(column)
 
-		override def exportOrNot[T](component :Component[T]) :Component[T] =
-			if (component eq this) component else backer.exportOrNot(component)
+		override def exportOrNot[T](component :Component[T]) :Component[T] = backer.exportOrNot(component)
 
 		override def exportOrNot[T](column :Column[T]) :Column[T] = backer.exportOrNot(column)
 

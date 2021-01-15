@@ -23,8 +23,7 @@ class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
 	override def apply(values :Pieces) :S = subject
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		//fixme: not selectable, but default select list
-		SQLReadForm.const(subject, (0 /: components) { _ + _.selectable.size })
+		SQLReadForm.const(subject, (0 /: components) { _ + _.selectedByDefault.size })
 
 	override val selectForm :SQLReadForm[S] = SQLReadForm.const(subject)
 

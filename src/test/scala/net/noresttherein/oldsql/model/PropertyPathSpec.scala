@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.model
 
-import net.noresttherein.oldsql.model.PropertyPath.HackedPropertyPath
+import net.noresttherein.oldsql.model.PropertyPath.HackedProperty
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.Suite
@@ -170,16 +170,16 @@ class PropertyPathSpec extends AnyFlatSpec with Suite with Matchers {
 	}
 
 
-	"HackedPropertyPath" should "equal reflected instances" in {
+	"HackedProperty" should "equal reflected instances" in {
 		val reflected = PropertyPath[Forum](_.topic.subject.intVal)
 		val prefix1 = PropertyPath[Forum](_.topic)
 		val prefix2 = PropertyPath[Forum](_.topic.subject)
 		val suffix1 = reflected.drop(prefix1).get
 		val suffix2 = reflected.drop(prefix2).get
 
-		val hacked = new HackedPropertyPath[Forum, Int]("topic.subject.intVal", _.topic.subject.intVal)
-		val hackedPrefix1 = new HackedPropertyPath[Forum, Topic]("topic", _.topic)
-		val hackedPrefix2 = new HackedPropertyPath[Forum, Subject]("topic.subject", _.topic.subject)
+		val hacked = new HackedProperty[Forum, Int]("topic.subject.intVal", _.topic.subject.intVal)
+		val hackedPrefix1 = new HackedProperty[Forum, Topic]("topic", _.topic)
+		val hackedPrefix2 = new HackedProperty[Forum, Subject]("topic.subject", _.topic.subject)
 
 
 		hacked should equal(reflected)

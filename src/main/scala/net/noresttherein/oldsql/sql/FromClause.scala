@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping
 import net.noresttherein.oldsql.sql.AggregateFunction.{Avg, Count, Max, Min, StdDev, Sum, Var}
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
@@ -18,7 +19,7 @@ import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NonEmptyFrom
 import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, RelationSQL, TypedComponentSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, LooseComponent, RelationSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
@@ -384,6 +385,51 @@ object FromSome {
 		                (implicit cast :InferAliasedSubject[F, InnerJoin, R, T, S, N]) :F InnerJoin R As N =
 			InnerJoin(thisClause, table)
 
+		/** Performs an inner join between this clause on the left side, and a table referenced by a foreign key
+		  * from its last table on the right side. The foreign key mapping returned by the passed function
+		  * can represent both a true foreign key (linking 0-1 rows from the referenced table) and a foreign key inverse:
+		  * a key in the last table (typically its primary key) referenced by a foreign key in the joined table.
+		  * Returned join will already include a join condition matching the two keys from its last two tables.
+		  * @param table a function selecting a foreign key component from the mapping of the last table in this clause.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */
+/*
+		@inline def join[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                (table :LastMapping[thisClause.type] => DirectRelationshipMapping[R, _, thisClause.type])
+		                (implicit cast :InferSubject[F, InnerJoin, R, T, S]) :F InnerJoin R =
+		{
+			val key = table(thisClause.last.relation.row[thisClause.type])
+			val join = InnerJoin(thisClause, cast(key.table))
+			val narrowed = join.narrow
+			import narrowed.left.lastTableOffset
+			val local = key.key.withOrigin[narrowed.left.FromLast Join T].toSQL[narrowed.left.FromLast Join T, key.Key]
+			val remote = key.target.withOrigin[FromSome Join T].toSQL[FromSome Join T, key.Key]
+			narrowed where local === remote
+		}
+*/
+
+		/** Performs an inner join between this clause on the left side, and a table referenced by a foreign key
+		  * from one of its tables on the right side. The foreign key mapping returned by the passed function
+		  * can represent both a true foreign key (linking 0-1 rows from the referenced table) and a foreign key inverse:
+		  * a key in the last table (typically its primary key) referenced by a foreign key in the joined table.
+		  * Returned join will already include a join condition matching the two keys from its last two tables.
+		  * @param table a function selecting a foreign key component from a mapping for a table joined in this clause.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @param offset an implicit witness carrying the negative offset of the table with the reference component
+		  *               selected by the function argument.
+		  */ //todo: extension methods for Brokered
+		def join[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, E >: Generalized <: FromSome]
+		        (table :JoinedMappings[F] => DirectRelationshipMapping[R, _, E])
+		        (implicit cast :InferSubject[F, InnerJoin, R, T, S], offset :TableCount[E, _ <: Numeral])
+				:F InnerJoin R =
+		{
+			val key = table(thisClause.mappings)
+			val narrowed = InnerJoin[thisClause.type, T, T, S](thisClause, cast(key.table))
+			val local = key.key.toSQL[E, key.Key].expand(narrowed.generalized :E Join T)
+			val remote = key.target.withOrigin[FromSome Join T].toSQL[FromSome Join T, key.Key]
+			narrowed where local === remote
+		}
+
 		/** Performs an inner join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
@@ -407,8 +453,7 @@ object FromSome {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
 		@inline def outerJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                     (table :Table[R])
-		                     (implicit cast :InferSubject[F, OuterJoin, R, T, S]) :F OuterJoin R =
+		                     (table :Table[R])(implicit cast :InferSubject[F, OuterJoin, R, T, S]) :F OuterJoin R =
 			OuterJoin(thisClause, table)
 		
 		/** Performs a symmetric outer join between this clause on the left side, and the table given as a `Table`
@@ -425,6 +470,29 @@ object FromSome {
 		                     (table :StaticTable[N, R])
 		                     (implicit cast :InferAliasedSubject[F, OuterJoin, R, T, S, N]) :F OuterJoin R As N =
 			OuterJoin(thisClause, table)
+
+		/** Performs a symmetric outer join between this clause on the left side, and a table referenced
+		  * by a foreign key from one of its tables on the right side. The foreign key mapping returned
+		  * by the passed function can represent both a true foreign key (linking 0-1 rows from the referenced table)
+		  * and a foreign key inverse: a key in the last table (typically its primary key) referenced by a foreign key
+		  * in the joined table. Returned join will already include a join condition matching the two keys
+		  * from its last two tables.
+		  * @param table a function selecting a foreign key component from a mapping for a table joined in this clause.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @param offset an implicit witness carrying the negative offset of the table with the reference component
+		  *               selected by the function argument.
+		  */
+		def outerJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, K, E >: Generalized <: FromSome]
+		             (table :JoinedMappings[F] => DirectRelationshipMapping[R, _, E])
+		             (implicit cast :InferSubject[F, OuterJoin, R, T, S], offset :TableCount[E, _ <: Numeral])
+				:F OuterJoin R =
+		{
+			val key = table(thisClause.mappings)
+			val narrowed = OuterJoin[thisClause.type, T, T, S](thisClause, cast(key.table))
+			val local = key.key.toSQL[E, key.Key].expand(narrowed.generalized :E Join T)
+			val remote = key.target.withOrigin[FromSome Join T].toSQL[FromSome Join T, key.Key]
+			narrowed where local === remote
+		}
 
 		/** Performs a symmetric outer join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
@@ -449,8 +517,7 @@ object FromSome {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
 		@inline def leftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                    (table :Table[R])
-		                    (implicit cast :InferSubject[F, LeftJoin, R, T, S]) :F LeftJoin R =
+		                    (table :Table[R])(implicit cast :InferSubject[F, LeftJoin, R, T, S]) :F LeftJoin R =
 			LeftJoin(thisClause, table)
 
 		/** Performs a left outer join between this clause on the left side, and the table given as a `Table`
@@ -467,6 +534,29 @@ object FromSome {
 		                    (table :StaticTable[N, R])
 		                    (implicit cast :InferAliasedSubject[F, LeftJoin, R, T, S, N]) :F LeftJoin R As N =
 			LeftJoin(thisClause, table)
+
+		/** Performs a left outer join between this clause on the left side, and a table referenced
+		  * by a foreign key from one of its tables on the right side. The foreign key mapping returned
+		  * by the passed function can represent both a true foreign key (linking 0-1 rows from the referenced table)
+		  * and a foreign key inverse: a key in the last table (typically its primary key) referenced by a foreign key
+		  * in the joined table. Returned join will already include a join condition matching the two keys
+		  * from its last two tables.
+		  * @param table a function selecting a foreign key component from a mapping for a table joined in this clause.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @param offset an implicit witness carrying the negative offset of the table with the reference component
+		  *               selected by the function argument.
+		  */
+		def leftJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, K, E >: Generalized <: FromSome]
+		            (table :JoinedMappings[F] => DirectRelationshipMapping[R, _, E])
+		            (implicit cast :InferSubject[F, LeftJoin, R, T, S], offset :TableCount[E, _ <: Numeral])
+				:F LeftJoin R =
+		{
+			val key = table(thisClause.mappings)
+			val narrowed = LeftJoin[thisClause.type, T, T, S](thisClause, cast(key.table))
+			val local = key.key.toSQL[E, key.Key].expand(narrowed.generalized :E Join T)
+			val remote = key.target.withOrigin[FromSome Join T].toSQL[FromSome Join T, key.Key]
+			narrowed where local === remote
+		}
 
 		/** Performs a left outer join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
@@ -491,8 +581,7 @@ object FromSome {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  */
 		@inline def rightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                     (table :Table[R])
-		                     (implicit cast :InferSubject[F, RightJoin, R, T, S]) :F RightJoin R =
+		                     (table :Table[R])(implicit cast :InferSubject[F, RightJoin, R, T, S]) :F RightJoin R =
 			RightJoin(thisClause, table)
 
 		/** Performs a right outer join between this clause on the left side, and the table given as a `Table`
@@ -509,6 +598,29 @@ object FromSome {
 		                     (table :StaticTable[N, R])
 		                     (implicit cast :InferAliasedSubject[F, RightJoin, R, T, S, N]) :F RightJoin R As N =
 			RightJoin(thisClause, table)
+
+		/** Performs a right outer join between this clause on the left side, and a table referenced
+		  * by a foreign key from one of its tables on the right side. The foreign key mapping returned
+		  * by the passed function can represent both a true foreign key (linking 0-1 rows from the referenced table)
+		  * and a foreign key inverse: a key in the last table (typically its primary key) referenced by a foreign key
+		  * in the joined table. Returned join will already include a join condition matching the two keys
+		  * from its last two tables.
+		  * @param table a function selecting a foreign key component from a mapping for a table joined in this clause.
+		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  * @param offset an implicit witness carrying the negative offset of the table with the reference component
+		  *               selected by the function argument.
+		  */
+		def rightJoin[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, K, E >: Generalized <: FromSome]
+		             (table :JoinedMappings[F] => DirectRelationshipMapping[R, _, E])
+		             (implicit cast :InferSubject[F, RightJoin, R, T, S], offset :TableCount[E, _ <: Numeral])
+				:F RightJoin R =
+		{
+			val key = table(thisClause.mappings)
+			val narrowed = RightJoin[thisClause.type, T, T, S](thisClause, cast(key.table))
+			val local = key.key.toSQL[E, key.Key].expand(narrowed.generalized :E Join T)
+			val remote = key.target.withOrigin[FromSome Join T].toSQL[FromSome Join T, key.Key]
+			narrowed where local === remote
+		}
 
 		/** Performs a right outer join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
@@ -713,8 +825,7 @@ object FromSome {
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
 		@inline def subselect[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                     (table :Table[R])
-		                     (implicit cast :InferSubject[F, Subselect, R, T, S]) :F Subselect R =
+		                     (table :Table[R])(implicit cast :InferSubject[F, Subselect, R, T, S]) :F Subselect R =
 			Subselect(thisClause, table)
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.

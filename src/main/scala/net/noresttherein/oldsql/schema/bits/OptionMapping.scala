@@ -31,7 +31,7 @@ object OptionMapping {
 
 	def apply[X <: Mapping, M <: RefinedMapping[S, O], S, O]
 	         (mapping :X)(implicit types :InferTypeParams[X, M, RefinedMapping[S, O]]) :Optional[M] =
-		new DirectOptionMapping[M, S, O](mapping)
+		new MappedOptionMapping[M, S, O](mapping)
 
 	def singleton[S, O](mapping :RefinedMapping[S, O]) :Optional[mapping.type] =
 		apply[mapping.type, mapping.type, S, O](mapping)
@@ -43,12 +43,14 @@ object OptionMapping {
 
 
 
-	private class DirectOptionMapping[+M <: RefinedMapping[S, O], S, O]
-	                                 (protected override val backer :M,
-	                                  protected override val map :S =?> Option[S] = Extractor.Requisite(Some(_:S)),
-	                                  protected override val unmap :Option[S] =?> S = Extractor.fromOpt[S])
+	private[oldsql] class MappedOptionMapping[+M <: RefinedMapping[S, O], S, O] private
+	                                         (protected override val backer :M,
+	                                          protected override val map :S =?> Option[S],
+	                                          protected override val unmap :Option[S] =?> S)
 		extends MappedMapping[S, Option[S], O] with OptionMapping[M, S, O]// with ShallowDelegate[Option[S], O]
 	{ box =>
+		def this(get :M) = this(get, Extractor.Requisite(Some(_:S)), Extractor.fromOpt[S])
+
 		override val get :M = backer
 		private[this] val backerExtract = apply(get)
 
@@ -58,10 +60,14 @@ object OptionMapping {
 
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[Option[S]] =
-			get.selectForm(if (components.contains(get)) get.selectedByDefault else components).toOpt
+			get.selectForm(
+				if (components.contains(get)) get.selectedByDefault ++ components - get else components
+			).toOpt
 
 		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
-			get.writeForm(op, if (components.contains(get)) op.defaultColumns(get) else components).toOpt
+			get.writeForm(op,
+				if (components.contains(get)) op.defaultColumns(get) ++ components - get else components
+			).toOpt
 
 		override val selectForm :SQLReadForm[Option[S]] = get.selectForm.toOpt
 		override val filterForm :SQLWriteForm[Option[S]] = get.filterForm.toOpt

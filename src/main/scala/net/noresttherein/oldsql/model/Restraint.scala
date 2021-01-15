@@ -34,7 +34,7 @@ trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable w
 	def unary_! :Restraint[T] = Not(this)
 
 	/** Create a restriction satisfied if and only if both this restriction and the given argument are satisfied. */
-	def &&[S<:T](other :Restraint[S]) :Restraint[S] = other match {
+	def &&[S <: T](other :Restraint[S]) :Restraint[S] = other match {
 		case True => this
 		case False => False
 		case Conjunction(restrictions) => Conjunction(other +: restrictions)
@@ -46,7 +46,7 @@ trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable w
 
 
 	/** Create a restriction satisfied if and only if any of this and the given argument are satisfied. */
-	def ||[S<:T](other :Restraint[S]) :Restraint[S] = other match {
+	def ||[S <: T](other :Restraint[S]) :Restraint[S] = other match {
 		case True => True
 		case False => this
 		case Disjunction(restrictions) => Disjunction(other +: restrictions)
@@ -59,20 +59,20 @@ trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable w
 
 
 	/** An alias for `&&` which may be used to force an implicit conversion from objects which do declare a `&&` method. */
-	final def and[S<:T](other :Restraint[S]) :Restraint[S] = this && other
+	final def and[S <: T](other :Restraint[S]) :Restraint[S] = this && other
 
 	/** An alias for `||` which may be used to force an implicit conversion from objects which do declare a `||` method. */
-	final def or[S<:T](other :Restraint[S]) :Restraint[S] = this || other
+	final def or[S <: T](other :Restraint[S]) :Restraint[S] = this || other
 
 
 	/** Represent this restraint as one of a new, parent type `X`. */
-	def derive[X, S<:T](nest :Restrictive[X, S]) :Restraint[X] =
+	def derive[X, S <: T](nest :Restrictive[X, S]) :Restraint[X] =
 		new NestedRestraint[X, S](nest, this)
 
 	/** Uses this instance as a boolean condition to create a `Restrictive` implementing a conditional expression.
 	  * @return a `Restrictive` which is equivalent to `ifTrue` whenever this `Restraint` holds and `ifFalse` otherwise.
 	  */
-	def ifElse[S<:T, O](ifTrue :Restrictive[S, O])(ifFalse :Restrictive[S, O]) :Restrictive[S, O] =
+	def ifElse[S <: T, O](ifTrue :Restrictive[S, O])(ifFalse :Restrictive[S, O]) :Restrictive[S, O] =
 		IfElse[S, O](this)(ifTrue)(ifFalse)
 
 
@@ -246,14 +246,14 @@ object Restraint {
 	  */
 	trait RestrainerFactory[T] extends Any {
 		/** Constrain the whole value of target type T */
-		def self(implicit tag :TypeTag[T]) :Restrainer[T, T] = Equal[T]()
+		@inline final def self(implicit tag :TypeTag[T]) :Restrainer[T, T] = Equal[T]()
 
 		/** Constrain the value of the given property of T */
-		def Property[P](property :PropertyPath[T, P]) :Restrainer[T, P] =
+		@inline final def property[P](property :PropertyPath[T, P]) :Restrainer[T, P] =
 			Restraint.Property(property)
 
 		/** Constrain the value of the given property of T */
-		def Property[P](property :T=>P)(implicit tag :TypeTag[T]) :Restrainer[T, P] =
+		@inline final def property[P](property :T => P)(implicit tag :TypeTag[T]) :Restrainer[T, P] =
 			Restraint.Property(PropertyPath(property))
 	}
 

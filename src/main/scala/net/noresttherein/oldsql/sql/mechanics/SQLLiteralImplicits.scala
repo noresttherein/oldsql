@@ -107,7 +107,7 @@ object SQLLiteralImplicits {
 		  * a [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]] or
 		  * [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists for type `T`.
 		  */
-		@inline def apply[T](implicit factory :SQLNull.Factory[T]) :factory.Res = factory(())
+		@inline final def apply[T](implicit factory :SQLNull.Factory[T]) :factory.Res = factory(())
 	}
 
 }

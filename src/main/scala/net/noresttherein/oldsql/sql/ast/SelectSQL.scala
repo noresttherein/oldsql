@@ -175,7 +175,7 @@ object SelectSQL {
 	{
 		override def readForm :ColumnReadForm[Rows[V]] = selectClause.readForm.nullMap(Rows(_))
 		override val selectClause :ColumnSQL[From, LocalScope, V]
-		override def single :ColumnSQL[F, GlobalScope, V] = to[V]
+		override def one :ColumnSQL[F, GlobalScope, V] = to[V]
 
 		override def asGlobal :Option[SelectColumn[F, V]] = Some(this)
 		override def anchor(from :F) :SelectColumn[F, V] = this
