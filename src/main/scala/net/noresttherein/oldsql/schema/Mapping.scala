@@ -7,7 +7,8 @@ import scala.collection.immutable.ArraySeq
 
 import net.noresttherein.oldsql.{slang, OperationType}
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.abacus.Numeral
@@ -351,7 +352,7 @@ trait Mapping {
 	  */
 	def apply(pieces: Pieces): Subject =
 		optionally(pieces) match {
-			case Some(result) => result
+			case Got(result) => result
 			case _ => throw new NoSuchElementException(s"Can't assemble $this from $pieces.")
 		}
 
@@ -378,12 +379,12 @@ trait Mapping {
 	  * for example, in altered mappings (which are adapters changing the effective buffs), this method might not be
 	  * called at all. It is however safe to call by adapter mappings from their `optionally` method.
 	  *
-	  * Returning `None` signifies that neither the value of this mapping nor its required components were available
+	  * Returning `Lack` signifies that neither the value of this mapping nor its required components were available
 	  * in `pieces`, but, while there is an overlap, doesn't signify that the corresponding columns in the `ResultSet`
 	  * were `null`. First, a `null` column generally means that the datatype (as implemented by
 	  * [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]) supports `null` values, be it directly as
 	  * Scala `null` or by mapping to some special value: typically, such a column would be mapped to an `Option[_]`
-	  * type, and `null` values to `None` (and this method would return `Some(None)`). Second, it is possible,
+	  * type, and `null` values to `None` (and this method would return `Got(None)`). Second, it is possible,
 	  * although discouraged, for a composite mapping to return `null` despite some or all of its columns being
 	  * not null, if validation fails or the result cannot be assembled for other reasons. The most common cases
 	  * for returning `None` are:
@@ -393,11 +394,11 @@ trait Mapping {
 	  *   - sometimes, missing optional columns, for components which are not included in all queries.
 	  * Ultimately, exact semantics will be defined by applications and custom mapping implementations.
 	  * Bundled classes never throw an (accidental)  `NullPointerException` as a result of some mapping returning
-	  * `Some(null)` here (or, equivalently, `null` from
+	  * `Got(null)` here (or, equivalently, `null` from
 	  * [[net.noresttherein.oldsql.schema.Mapping.apply(pieces:Pieces) apply]]`(pieces)`.)
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 	  */
-	def optionally(pieces: Pieces): Option[Subject]
+	def optionally(pieces: Pieces): Opt[Subject]
 
 	/** Attempts to assemble the value of this mapping from the values of subcomponents stored in the passed
 	  * `ComponentValues`. This is the final dispatch target of other constructor methods declared here or
@@ -412,7 +413,7 @@ trait Mapping {
 	  * @see [[net.noresttherein.oldsql.haul.ComponentValues.subject ComponentValues.subject]]
 	  * @see [[net.noresttherein.oldsql.haul.ComponentValues.optionally ComponentValues.optionally]]
 	  */
-	def assemble(pieces :Pieces) :Option[Subject]
+	def assemble(pieces :Pieces) :Opt[Subject]
 
 
 	/** Default value returned by the select forms of this mapping when the assembly process fails
@@ -1719,9 +1720,13 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		override val readColumns: Int = (0 /: forms)(_ + _.readColumns)
 
-		override def opt(res: ResultSet, position: Int): Option[S] = {
-			var i = position //consider: not precompute the values (which wraps them in Option) but read on demand.
-			val columnValues = forms.map { f => i += 1; f.opt(res, i - 1) }
+		override def opt(res: ResultSet, position: Int): Opt[S] = {
+			val columnValues = new Array[Any](forms.length)
+			var i = forms.length - 1
+			while (i >= 0) {
+				columnValues(i) = forms(i).opt(res, position + i).orNull
+				i -= 1
+			}
 			val pieces = ColumnValues(mapping)(ArraySeq.unsafeWrapArray(columnValues))(columns.indexOf)
 			mapping.optionally(pieces)
 		}
@@ -1835,7 +1840,7 @@ object Mapping extends LowPriorityMappingImplicits {
 					val form = forms(i).asInstanceOf[SQLWriteForm[Any]]
 					val value = extras(i) match {
 						case null => values get column
-						case buff => Some(buff.value)
+						case buff => Got(buff.value)
 					}
 					form.setOpt(statement, offset, value)
 					offset += form.writtenColumns
@@ -1865,7 +1870,7 @@ object Mapping extends LowPriorityMappingImplicits {
 					res append ',' append ' '
 				val form = forms(i).asInstanceOf[SQLWriteForm[Any]]
 				res append (extracts(i).get(subject) match {
-					case Some(literal) =>
+					case Got(literal) =>
 						if (literal == null) form.nullLiteral(inline)
 						else form.literal(literal, inline)
 					case _ => form.nullLiteral(inline)

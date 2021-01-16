@@ -1152,39 +1152,3 @@ object IndexedSchemaMapping {
 		   with FlatIndexedOperationSchema[A, S, V, C, O]
 
 }
-
-
-
-
-
-
-abstract class AbstractIndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
-                                           (protected override val backer :IndexedMappingSchema[S, V, C, O])
-	extends MappingSchemaDelegate[IndexedMappingSchema[S, V, C, O], S, V, C, O] with IndexedSchemaMapping[S, V, C, O]
-	   with StaticSchemaMapping[
-			({ type A[M <: RefinedMapping[S, O], X] = IndexedSchemaMappingAdapter[M, S, X, V, C, O] })#A,
-			IndexedMappingSchema[S, V, C, O], S, V, C, O]
-{
-	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
-			:IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		AdjustedMapping(this, include, exclude, alter)
-
-	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
-			:IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new AlteredMapping[this.type, S, O](this, op, include, exclude)
-			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
-
-	override def prefixed(prefix :String) :IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new PrefixedMapping[this.type, S, O](prefix, this)
-			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
-
-	override def renamed(naming :String => String) :IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new RenamedMapping[this.type, S, O](this, naming)
-			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
-
-	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
-			:IndexedSchemaMappingAdapter[this.type, S, X, V, C, O] =
-		new MappedIndexedSchemaMapping[this.type, S, X, V, C, O](this, there, back)
-			with DelegateAdapter[this.type, X, O] with IndexedSchemaMappingAdapter[this.type, S, X, V, C, O]
-
-}

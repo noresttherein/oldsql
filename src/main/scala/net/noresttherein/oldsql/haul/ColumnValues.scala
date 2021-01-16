@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql.haul
 
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.haul.ColumnValues.{AliasedColumnValues, DedicatedColumnValues, EmptyValues, FallbackColumnValues}
 import net.noresttherein.oldsql.haul.ComponentValues.{aliasing, selectiveAliasing, AliasedComponentValues, ChosenDisassembledValues, ComponentValuesAliasing, ComponentValuesMap, ComponentValuesNaturalMap, DedicatedComponentValues, DisassembledValues, FallbackValues, GlobalComponentValues, IndexedValues, LazyComponentValuesProxy, MappingAliasing, SimpleComponentValues, TypedValues, UntypedValues}
-import net.noresttherein.oldsql.morsels.generic.=#>
+import net.noresttherein.oldsql.morsels.generic.{=#>, Self}
 import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
@@ -98,11 +99,11 @@ object ColumnValues {
 	  * which is compatible with any mapping. You can supply a `NaturalMap` as an argument.
 	  * @param values factory of values for columns.
 	  */
-	def apply[S, O](values :MappingAt[O]#Column =#> Option) :ColumnValues[S, O] = values match {
-		case map :NaturalMap[MappingAt[O]#Column @unchecked, Option @unchecked] =>
+	def apply[S, O](values :MappingAt[O]#Column =#> Self) :ColumnValues[S, O] = values match {
+		case map :NaturalMap[MappingAt[O]#Column @unchecked, Self @unchecked] =>
 			new ColumnValuesNaturalMap(map)
 		case _ =>
-			new TypedValues[S, O](values.asInstanceOf[NaturalMap[MappingAt[O]#Component, Option]])
+			new TypedValues[S, O](values.asInstanceOf[NaturalMap[MappingAt[O]#Component, Self]])
 				with ColumnValuesAdapter[S, O] with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
 	}
 
@@ -114,11 +115,11 @@ object ColumnValues {
 	  * which is compatible with any mapping. You can supply a `Map` as an argument.
 	  * @param values factory of values for columns, must return an option of the same type as the input mapping.
 	  */
-	def apply[S, O](values :ColumnMapping[_, O] => Option[_]) :ColumnValues[S, O] = values match {
+	def apply[S, O](values :ColumnMapping[_, O] => Any) :ColumnValues[S, O] = values match {
 		case map :Map[_, _] =>
-			new ColumnValuesMap(map.asInstanceOf[Map[ColumnMapping[_, O], Option[_]]])
+			new ColumnValuesMap(map.asInstanceOf[Map[ColumnMapping[_, O], Any]])
 		case _ =>
-			new UntypedValues[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Option[_]]])
+			new UntypedValues[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Any]])
 				with ColumnValuesAdapter[S, O] with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
 	}
 
@@ -131,7 +132,7 @@ object ColumnValues {
 	  * @param index A function returning the index of the value for the column in the given sequence.
 	  *              If the column has no preset value, it should return a negative number.
 	  */
-	def apply[S, O](values :IndexedSeq[Option[Any]])(index :ColumnMapping[_, O] => Int) :ColumnValues[S, O] =
+	def apply[S, O](values :IndexedSeq[Any])(index :ColumnMapping[_, O] => Int) :ColumnValues[S, O] =
 		new IndexedValues[S, O](values, index.asInstanceOf[MappingAt[O] => Int])
 			with ColumnValuesAdapter[S, O]with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
 
@@ -174,7 +175,7 @@ object ColumnValues {
 			with ColumnValuesAdapter[S, O] with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
 
 
-	/** An empty instance, returning always `None` or throwing `NoSuchElementException`. This instance does ''not''
+	/** An empty instance, returning always `Lack` or throwing `NoSuchElementException`. This instance does ''not''
 	  * perform aliasing in order to obtain the operative version of the components before calling their
 	  * `optionally`, `apply`, `assemble` methods, which may result in incorrect result in the cases where
 	  * some buffs are inherited from an owning mapping (or it is modified in any other way for the purpose
@@ -183,7 +184,7 @@ object ColumnValues {
 	  */
 	def apply[S, O]() :ColumnValues[S, O] = EmptyValues.asInstanceOf[ColumnValues[S, O]]
 
-	/** An empty instance, returning always `None` or throwing `NoSuchElementException`. This instance does ''not''
+	/** An empty instance, returning always `Lack` or throwing `NoSuchElementException`. This instance does ''not''
 	  * perform aliasing in order to obtain the operative version of the components before calling their
 	  * `optionally`, `apply`, `assemble` methods, which may result in incorrect result in the cases where
 	  * some buffs are inherited from an owning mapping (or it is modified in any other way for the purpose
@@ -192,7 +193,7 @@ object ColumnValues {
 	  */
 	def empty[S, O] :ColumnValues[S, O] = EmptyValues.asInstanceOf[ColumnValues[S, O]]
 
-	/** An empty instance, returning always `None` or throwing a `NoSuchElementException`. This instance does ''not''
+	/** An empty instance, returning always `Lack` or throwing a `NoSuchElementException`. This instance does ''not''
 	  * perform aliasing in order to obtain the operative version of the components before calling their
 	  * `optionally`, `apply`, `assemble` methods, which may result in incorrect result in the cases where
 	  * some buffs are inherited from an owning mapping (or it is modified in any other way for the purpose
@@ -216,7 +217,7 @@ object ColumnValues {
 	  * @param value the preset for the specified column.
 	  */
 	def preset[R, S, O](column :ColumnMapping[S, O], value :S) :ColumnValues[R, O] =
-		new PresetColumnValue(column, Some(value))
+		new PresetColumnValue(column, Got(value))
 
 	/** Create `ColumnValues` with a value preset for a single column. This is different to the disassembling
 	  * values `ColumnValues(component, value)` in that it can be created for an arbitrary root subject type `R`,
@@ -244,10 +245,10 @@ object ColumnValues {
 	  * @param value the preset for the specified column.
 	  */
 	def later[R, S, O](column :ColumnMapping[S, O], value: => S) :ColumnValues[R, O] =
-		new LazyColumnValue(column, Some(value))
+		new LazyColumnValue(column, () => Some(value))
 
 	/** Create a lazy, preset instance using the value of the given expression for the component.
-	  * Similar to `later`, but the expression might not produce a value (return `None`), and used generally
+	  * Similar to `later`, but the expression might not produce a value (return `Lack`), and used generally
 	  * as a fallback default value for when the first choice couldn't be obtained.
 	  * Note that no component aliasing takes place; the column provided
 	  * here must be the column which is going to be used as the argument, unless this instance is treated only
@@ -255,17 +256,16 @@ object ColumnValues {
 	  * @param column a column of the root mapping of `R`.
 	  * @param value the preset for the specified column.
 	  */
-	def fallback[S, O](column :ColumnMapping[S, O], value: => Option[S]) :ColumnValues[S, O] =
-		new LazyColumnValue(column, value)
+	def fallback[S, O](column :ColumnMapping[S, O], value: => Opt[S]) :ColumnValues[S, O] =
+		new LazyColumnValue(column, () => value.toOption)
 
 
 
 	/** A proxy `ColumnValues` which delegates all assembly-related and '/' calls to the lazily computed
 	  * instance initialized with the by-name parameter.
 	  */
-	def delayed[S, O](values: => ColumnValues[S, O]) :ColumnValues[S, O] =
-		new LazyComponentValuesProxy[S, O](values) with ColumnValuesAdapter[S, O]
-		{
+	def delay[S, O](values: => ColumnValues[S, O]) :ColumnValues[S, O] =
+		new LazyComponentValuesProxy[S, O](values) with ColumnValuesAdapter[S, O] {
 			override def /[T](component :Component[T]) :ColumnValues[T, O] =
 				backing.asInstanceOf[ColumnValues[S, O]] / component
 
@@ -356,19 +356,19 @@ object ColumnValues {
 
 		/** Returns `ColumnValues` using the given generic function as the source of values for columns.
 		  * The return values of the function are used as the preset values yielded by the created instance,
-		  * with the presets for all non-column components being `None` by contract.
+		  * with the presets for all non-column components being `Lack` by contract.
 		  * All components passed to the created instance will be aliased using the supplied mapping's
 		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
 		  * or calls to their methods. You can supply a `NaturalMap` as an argument.
 		  * @param values factory of values for columns.
 		  */
-		def apply(values :MappingAt[O]#Column =#> Option) :ColumnValues[S, O] = values match {
-			case map :NaturalMap[MappingAt[O]#Column @unchecked, Option @unchecked] =>
+		def apply(values :MappingAt[O]#Column =#> Self) :ColumnValues[S, O] = values match {
+			case map :NaturalMap[MappingAt[O]#Column @unchecked, Self @unchecked] =>
 				new ColumnValuesNaturalMap[S, O](map) with ColumnValuesAliasing[S, O] with MappingAliasing[S, O] {
 					override val mapping = factory.mapping
 				}
 			case _ =>
-				new TypedValues[S, O](values.asInstanceOf[MappingAt[O]#Component =#> Option])
+				new TypedValues[S, O](values.asInstanceOf[MappingAt[O]#Component =#> Self])
 					with ColumnValuesAliasing[S, O] with MappingAliasing[S, O]
 					with ColumnValuesAdapter[S, O] with ImmutableColumnValues[S, O]
 				{
@@ -380,21 +380,21 @@ object ColumnValues {
 
 		/** Returns `ColumnValues` using the given function as the source of values for columns.
 		  * The return values of the function are used as the preset values yielded by the created instance,
-		  * with the presets for non-column components being `None` by contract.
+		  * with the presets for non-column components being `Lack` by contract.
 		  * All components passed to the created instance will be aliased using the supplied mapping's
 		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
 		  * or calls to their methods. You can supply a `Map` as an argument.
 		  * @param values factory of values for columns, must return an option of the input mapping's subject type.
 		  */
-		def apply(values :ColumnMapping[_, O] => Option[_]) :ColumnValues[S, O] = values match {
+		def apply(values :ColumnMapping[_, O] => Any) :ColumnValues[S, O] = values match {
 			case map :Map[_, _] =>
-				new ColumnValuesMap[S, O](map.asInstanceOf[Map[ColumnMapping[_, O], Option[_]]])
+				new ColumnValuesMap[S, O](map.asInstanceOf[Map[ColumnMapping[_, O], Any]])
 					with ColumnValuesAliasing[S, O] with MappingAliasing[S, O]
 				{
 					override val mapping = factory.mapping
 				}
 			case _ =>
-				new UntypedValues[S, O](values.asInstanceOf[RefinedMapping[_, O] => Option[_]])
+				new UntypedValues[S, O](values.asInstanceOf[RefinedMapping[_, O] => Any])
 					with ColumnValuesAdapter[S, O] with ColumnValuesAliasing[S, O] with MappingAliasing[S, O]
 				{
 					override val mapping = factory.mapping
@@ -403,8 +403,8 @@ object ColumnValues {
 
 
 		/** Returns `ColumnValues` wrapping the given set of values with their assignment to columns happening
-		  * by the use of the provided indexing function. An entry of `None` or a negative index results in
-		  * no preset value for the column, with the presets for all non-column components being `None` by contract.
+		  * by the use of the provided indexing function. An entry of `null` or a negative index results in
+		  * no preset value for the column, with the presets for all non-column components being `Lack` by contract.
 		  * All components passed to the created instance will be aliased using the supplied mapping's
 		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
 		  * or calls to their methods.
@@ -413,7 +413,7 @@ object ColumnValues {
 		  * @param index  A function returning the index of the value for the column in the given sequence.
 		  *               If the column has no preset value, it should return a negative number.
 		  */
-		def apply(values :IndexedSeq[Option[Any]])(index :MappingAt[O] => Int) :ColumnValues[S, O] =
+		def apply(values :IndexedSeq[Any])(index :MappingAt[O] => Int) :ColumnValues[S, O] =
 			new IndexedValues[S, O](values, index)
 				with ColumnValuesAdapter[S, O] with ColumnValuesAliasing[S, O] with MappingAliasing[S, O]
 				with ImmutableColumnValues[S, O]
@@ -422,7 +422,7 @@ object ColumnValues {
 			}
 
 
-		/** Create an empty instance returning always `None`/another empty `ColumnValues` or throwing
+		/** Create an empty instance returning always `Lack`/another empty `ColumnValues` or throwing
 		  * a `NoSuchElementException`. It will print the provided mapping in its `toString` method and
 		  * any exception messages resulting from a lack of value. Note that all components passed to this
 		  * instance will be aliased with this mapping's [[net.noresttherein.oldsql.schema.Mapping.export export]]
@@ -444,13 +444,18 @@ object ColumnValues {
 		def newBuilder :ColumnValuesBuilder[S, O] =
 			new ColumnValuesBuilder[S, O] {
 				val mapping = factory.mapping
-				var map = Map.empty[ColumnMapping[_, O], Option[_]]
+				var map = Map.empty[ColumnMapping[_, O], Any]
 
-				override def add[T](component :ColumnMapping[T, O], result :Option[T]) = {
-					map = map.updated(component, result); this
+				override def addOpt[T](component :ColumnMapping[T, O], result :Opt[T]) = {
+					if (result.isDefined)
+						map = map.updated(component, result)
+					this
 				}
 
-				override def result() :ColumnValues[S, O] = ColumnValues(mapping)(map.withDefaultValue(None))
+				override def result() :ColumnValues[S, O] = {
+					val res = map; map = null
+					ColumnValues(mapping)(res.withDefaultValue(null))
+				}
 			}
 
 	}
@@ -464,19 +469,21 @@ object ColumnValues {
 
 
 	trait ColumnValuesBuilder[S, O] {
-		@inline final def add[T](component :ColumnMapping[T, O], value :T) :this.type = add(component, Some(value))
+		@inline final def add[T](component :ColumnMapping[T, O], value :T) :this.type = addOpt(component, Got(value))
 
-		def add[T](component :ColumnMapping[T, O], result :Option[T]) :this.type
+		def addOpt[T](component :ColumnMapping[T, O], result :Opt[T]) :this.type
 
 		def result() :ColumnValues[S, O]
 	}
 
 
 	private class ColumnValuesMapBuilder[S, O] extends ColumnValuesBuilder[S, O] {
-		private var map = Map.empty[ColumnMapping[_, O], Option[_]]
+		private var map = Map.empty[ColumnMapping[_, O], Any]
 
-		override def add[T](column :ColumnMapping[T, O], result :Option[T]) :this.type = {
-			map = map.updated(column, result); this
+		override def addOpt[T](column :ColumnMapping[T, O], result :Opt[T]) :this.type = {
+			if (result.isDefined)
+				map = map.updated(column, result.get)
+			this
 		}
 
 		override def result() :ColumnValuesMap[S, O] = new ColumnValuesMap(map)
@@ -507,7 +514,7 @@ object ColumnValues {
 
 	//this trait is currently unused, as we'd need to make column's optionally and assemble final
 	trait SimpleColumnValues[S, O] extends SimpleComponentValues[S, O] {
-		override def preset(root :RefinedMapping[S, O]) :Option[S] = root match {
+		override def preset(root :RefinedMapping[S, O]) :Opt[S] = root match {
 			case column :SimpleColumn[S @unchecked, O @unchecked] => defined(column)
 			case _ => None
 		}
@@ -548,9 +555,9 @@ object ColumnValues {
 	  * Overrides the `preset` method to only call super if the argument is a column.
 	  */
 	trait ColumnValuesAdapter[S, O] extends ColumnValues[S, O] {
-		abstract override def preset(root :RefinedMapping[S, O]) :Option[S] =
+		abstract override def preset(root :RefinedMapping[S, O]) :Opt[S] =
 			if (root.isInstanceOf[ColumnMapping[_, _]]) super.preset(root)
-			else None
+			else Lack
 	}
 
 
@@ -560,10 +567,10 @@ object ColumnValues {
 	  */
 	trait ColumnValue[S, X, O] extends GlobalColumnValues[S, O] {
 		val column :ColumnMapping[X, O]
-		def value :Option[X]
+		def value :Opt[X]
 
-		override def preset(root :RefinedMapping[S, O]) :Option[S] =
-			if (root eq column) value.asInstanceOf[Option[S]] else None
+		override def preset(root :RefinedMapping[S, O]) :Opt[S] =
+			if (root eq column) value.asInstanceOf[Opt[S]] else Lack
 
 		override def /[T](component :Component[T]) :ColumnValues[T, O] =
 			if (component eq column) this.asColumnsOf[T]
@@ -577,11 +584,11 @@ object ColumnValues {
 				values match {
 					case cols :ColumnValues[S @unchecked, O @unchecked] => this orElse cols
 					case comps :ComponentValuesMap[S @unchecked, O @unchecked] =>
-						if (comps.values.isEmpty) this
-						else ComponentValues(comps.values.updated(column, value))
+						if (comps.map.isEmpty) this
+						else ComponentValues(comps.map.updated(column, value.get))
 					case comps :ComponentValuesNaturalMap[S @unchecked, O @unchecked] =>
-						if (comps.values.isEmpty) this
-						else ComponentValues(comps.values.updated(column, value))
+						if (comps.map.isEmpty) this
+						else ComponentValues(comps.map.updated[Self, X](column, value.get))
 					case _ =>
 						super.orElse(values)
 				}
@@ -596,14 +603,14 @@ object ColumnValues {
 							this
 						else {
 							val map = Map.empty[Column[_], Option[_]]
-							ColumnValues(map.updated(column, value).updated(col.column, col.value))
+							ColumnValues(map.updated(column, value.get).updated(col.column, col.value.get))
 						}
 					case cols :ColumnValuesMap[S @unchecked, O @unchecked] =>
-						if (cols.values.isEmpty) this
-						else ColumnValues(cols.values.updated(column, value))
+						if (cols.map.isEmpty) this
+						else ColumnValues(cols.map.updated(column, value.get))
 					case cols :ColumnValuesNaturalMap[S @unchecked, O @unchecked] =>
-						if (cols.values.isEmpty) this
-						else ColumnValues(cols.values.updated(column, value))
+						if (cols.map.isEmpty) this
+						else ColumnValues(cols.map.updated[Self, X](column, value.get))
 					case _ =>
 						super.orElse(values)
 				}
@@ -630,7 +637,7 @@ object ColumnValues {
 
 
 
-	private class PresetColumnValue[S, T, O](override val column :ColumnMapping[T, O], result :Option[T])
+	private class PresetColumnValue[S, T, O](override val column :ColumnMapping[T, O], result :Opt[T])
 		extends ColumnValue[S, T, O] with ImmutableColumnValues[S, O]
 	{
 		override def value = result
@@ -640,30 +647,32 @@ object ColumnValues {
 
 
 
-	private class LazyColumnValue[S, T, O](override val column :ColumnMapping[T, O], init: => Option[T])
+	private class LazyColumnValue[S, T, O](override val column :ColumnMapping[T, O], private var init: () => Option[T])
 		extends ColumnValue[S, T, O]
 	{
 		@volatile private var result :Option[T] = _
 		private var cached :Option[T] = _
 
-		override def value :Option[T] = {
+		override def value :Opt[T] = {
 			if (cached == null) {
 				val res = result
 				if (res != null)
 					cached = res
 				else {
-					cached = init
-					result = cached
+					val cons = init
+					if (cons != null) {
+						cached = cons()
+						result = cached
+						init = null
+					}
 				}
 			}
 			cached
 		}
 
-		override def clone() :ColumnValues[S, O] = value match {
-			case some :Some[T @unchecked] => new PresetColumnValue(column, some)
-			case _ => empty
-		}
-
+		override def clone() :ColumnValues[S, O] =
+			if (value.isEmpty) empty
+			else new PresetColumnValue(column, value)
 
 		override def toString = {
 			val res = result
@@ -679,22 +688,24 @@ object ColumnValues {
 
 
 
-	private class ColumnValuesNaturalMap[S, O](values :NaturalMap[MappingAt[O]#Column, Option])
-		extends ComponentValuesNaturalMap[S, O](values.asInstanceOf[NaturalMap[MappingAt[O]#Component, Option]])
+	private class ColumnValuesNaturalMap[S, O](values :NaturalMap[MappingAt[O]#Column, Self])
+		extends ComponentValuesNaturalMap[S, O](values.asInstanceOf[NaturalMap[MappingAt[O]#Component, Self]])
 		   with ImmutableColumnValues[S, O] with GlobalColumnValues[S, O]
 	{
-		private def columnValues :NaturalMap[MappingAt[O]#Column, Option] = values
+		private def columnValues :NaturalMap[MappingAt[O]#Column, Self] = values
 
-		override def preset(component :RefinedMapping[S, O]) =
-			if (component.isInstanceOf[ColumnMapping[_, _]]) values(component)
-			else None
+		override def preset(component :RefinedMapping[S, O]) = component match {
+			case col :ColumnMapping[S @unchecked, O @unchecked] =>
+				Opt(values.getOrElse[Self, S](col, null.asInstanceOf[S]))
+			case _ => Lack
+		}
 
 		override def ++(other :ColumnValues[S, O]) = other match {
 			case same :ColumnValuesNaturalMap[S @unchecked, O @unchecked] =>
 				new ColumnValuesNaturalMap(values ++ same.columnValues)
 			case single :ColumnValue[S @unchecked, t, O @unchecked] =>
 				if (single.value.isDefined)
-					new ColumnValuesNaturalMap(values.updated(single.column, single.value))
+					new ColumnValuesNaturalMap(values.updated[Self, t](single.column, single.value.get))
 				else this
 			case _ => super.++(other)
 		}
@@ -702,22 +713,24 @@ object ColumnValues {
 
 
 
-	private class ColumnValuesMap[S, O](values :Map[ColumnMapping[_, O], Option[_]])
-		extends ComponentValuesMap[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Option[_]]])
+	private class ColumnValuesMap[S, O](values :Map[ColumnMapping[_, O], Any])
+		extends ComponentValuesMap[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Any]])
 		   with ImmutableColumnValues[S, O] with GlobalColumnValues[S, O]
 	{
-		private def columnValues :Map[ColumnMapping[_, O], Option[_]] = values
+		private def columnValues :Map[ColumnMapping[_, O], Any] = values
 
-		override def preset(component :RefinedMapping[S, O]) :Option[S] =
-			if (component.isInstanceOf[ColumnMapping[S, O]]) values(component).asInstanceOf[Option[S]]
-			else None
+		override def preset(component :RefinedMapping[S, O]) :Opt[S] = component match {
+			case col :ColumnMapping[S @unchecked, O @unchecked] =>
+				Opt(values.getOrElse(col, null)).asInstanceOf[Opt[S]]
+			case _ => Lack
+		}
 
 		override def ++(other :ColumnValues[S, O]) = other match {
 			case same :ColumnValuesMap[S @unchecked, O @unchecked] =>
 				new ColumnValuesMap(values ++ same.columnValues)
 			case single :ColumnValue[S @unchecked, t, O @unchecked] =>
 				if (single.value.isDefined)
-					new ColumnValuesMap(values.updated(single.column, single.value))
+					new ColumnValuesMap(values.updated(single.column, single.value.get))
 				else this
 			case _ => super.++(other)
 		}
@@ -737,7 +750,7 @@ object ColumnValues {
 
 		override def preset(root :RefinedMapping[S, O]) =
 			if (root.isInstanceOf[ColumnMapping[_, _]]) values.get(root).flatMap(_.preset(root))
-			else None
+			else Lack
 
 		override def /[T](component :Component[T]) :ColumnValues[T, O] = values.get(component) match {
 			case Some(vals) => vals
@@ -782,7 +795,7 @@ object ColumnValues {
 		protected override def contents :ColumnValues[S, O] = values
 
 		protected override val noAliasing :ColumnValues[S, O] = new ColumnValues[S, O] {
-			override def preset(root :RefinedMapping[S, O]) :Option[S] = values.preset(root)
+			override def preset(root :RefinedMapping[S, O]) :Opt[S] = values.preset(root)
 			override def /[T](component :Component[T]) :ColumnValues[T, O] = outer / component
 		}
 
@@ -835,8 +848,8 @@ object ColumnValues {
 
 		def this(mapping :RefinedMapping[S, O]) = this(mapping.toString)
 
-		override def preset(root: RefinedMapping[S, O]): Option[S] = None
-		override def assemble(root: RefinedMapping[S, O]): Option[S] = root.assemble(this)
+		override def preset(root: RefinedMapping[S, O]): Opt[S] = Lack
+		override def assemble(root: RefinedMapping[S, O]): Opt[S] = root.assemble(this)
 
 		override def aliased(root :RefinedMapping[S, O]) :ColumnValues[S, O] = this
 		override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValues[S, O] = this

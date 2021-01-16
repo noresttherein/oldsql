@@ -1,5 +1,8 @@
 package net.noresttherein.oldsql.morsels.witness
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+
 
 
 
@@ -8,12 +11,12 @@ package net.noresttherein.oldsql.morsels.witness
 /** A type for which an implicit value is always present, however, if an implicit value for `T` can be found,
   * it is exposed as `Some[T]` through this instances [[net.noresttherein.oldsql.morsels.witness.Maybe.opt opt]] property.
   */
-class Maybe[+T] private[witness] (val opt :Option[T])
+class Maybe[+T] private[witness] (val opt :Opt[T])
 
 
 
 sealed abstract class MaybeNoImplicit {
-	private[this] val no :Maybe[Nothing] = new Maybe(None)
+	private[this] val no :Maybe[Nothing] = new Maybe(Lack)
 
 	implicit def maybeNo[T] :Maybe[T] = no
 }
@@ -23,17 +26,17 @@ sealed abstract class MaybeNoImplicit {
 object Maybe extends MaybeNoImplicit {
 	type TypeClass[F[_]] = { type T[X] = Maybe[F[X]] }
 
-	def apply[T](implicit maybe :Maybe[T]) :Option[T] = maybe.opt
+	def apply[T](implicit maybe :Maybe[T]) :Opt[T] = maybe.opt
 
-	def unapply[T](maybe :Maybe[T]) :Option[T] = maybe.opt
+	def unapply[T](maybe :Maybe[T]) :Opt[T] = maybe.opt
 
-	implicit def maybeYes[T](implicit e :T) :Maybe[T] = new Maybe(Option(e))
+	implicit def maybeYes[T](implicit e :T) :Maybe[T] = new Maybe(Opt(e))
 
-	def some[T](implicit e :T) :Maybe[T] = new Maybe(Some(e))
+	def some[T](implicit e :T) :Maybe[T] = new Maybe(Got(e))
 
-	val none :Maybe[Nothing] = new Maybe[Nothing](None)
+	val none :Maybe[Nothing] = new Maybe[Nothing](Lack)
 
-	implicit def explicit[T](value :T) :Maybe[T] = new Maybe(Option(value))
+	implicit def explicit[T](value :T) :Maybe[T] = new Maybe(Opt(value))
 
 }
 

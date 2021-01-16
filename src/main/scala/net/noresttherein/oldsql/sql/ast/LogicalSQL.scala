@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLBoolean, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
@@ -116,10 +118,10 @@ object LogicalSQL {
 			e.conditions
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
-				:Option[Seq[ColumnSQL[F, S, Boolean]]] =
+				:Opt[Seq[ColumnSQL[F, S, Boolean]]] =
 			e match {
-				case and :AndSQL[F, S] => Some(and.conditions)
-				case _ => None
+				case and :AndSQL[F, S] => Got(and.conditions)
+				case _ => Lack
 			}
 
 
@@ -194,10 +196,10 @@ object LogicalSQL {
 			or.conditions
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
-				:Option[Seq[ColumnSQL[F, S, Boolean]]] =
+				:Opt[Seq[ColumnSQL[F, S, Boolean]]] =
 			e match {
-				case or :OrSQL[F, S] => Some(or.conditions)
-				case _ => None
+				case or :OrSQL[F, S] => Got(or.conditions)
+				case _ => Lack
 			}
 
 		trait OrMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {

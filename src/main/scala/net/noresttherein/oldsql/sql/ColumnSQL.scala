@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, Opt}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
@@ -510,12 +511,12 @@ object ColumnSQL {
 			new AliasedColumn[F, S, V](column, alias)
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, V]
-		           (expr :SQLExpression[F, S, V]) :Option[(ColumnSQL[F, S, V], String)] =
+		           (expr :SQLExpression[F, S, V]) :Opt[(ColumnSQL[F, S, V], String)] =
 			expr match {
 				case alias :AliasedColumn[F @unchecked, S @unchecked, V @unchecked] =>
-					Some((alias.column, alias.alias))
+					Got((alias.column, alias.alias))
 				case _ =>
-					None
+					Lack
 			}
 
 

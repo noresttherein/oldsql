@@ -4,6 +4,8 @@ import scala.util.matching.Regex
 import scala.reflect.runtime.universe.TypeTag
 import scala.collection.Iterable
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.ComposedOf.{DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False, NestedRestraint, Not, True}
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, FlattenedRestrainer, MappedRestrainer, NestedRestrainer}
@@ -115,16 +117,16 @@ object Restraint {
 		/** Retrieve the value of the constrained part of the passed argument if possible.
 		  * If this method returns `Some(x)`, `x` should be a valid argument for this restrainer's factory methods.
 		  */
-		def from(value :T) :Option[P]
+		def from(value :T) :Opt[P]
 
 		/** Retrieve the value of the constrained part from the passed restriction if possible.
 		  * If the restriction does not contain an appropriate value or is incompatible with this restrainer
 		  * return `None`. If this method returns `Some(x)`, `x` should be a valid argument for this restrainer's factory methods.
 		  */
-		def from[X <: T](restraint :Restraint[X]) :Option[P]
+		def from[X <: T](restraint :Restraint[X]) :Opt[P]
 
 		/** Retrieve the value of the constrained part from the passed restraint if possible. Same as `from(Restraint[T])`. */
-		def unapply[X <: T](restraint :Restraint[X]) :Option[P] = from(restraint)
+		def unapply[X <: T](restraint :Restraint[X]) :Opt[P] = from(restraint)
 
 		/** Value of the constrained part of target type is a member of passed collection. */
 		def in :Restrainer[T, Set[P]]
@@ -135,7 +137,7 @@ object Restraint {
 			new MappedRestrainer[T, P, K](this)(oldKey, newKey)
 
 		/** Represents an optional constrained part as non optional by wrapping all key arguments of the returned
-		  * restrainer in `Some` and flattening all `Option[P]` with keys returned by this instance to `Option[K]`.
+		  * restrainer in `Some` and flattening all `Opt[P]` with keys returned by this instance to `Opt[K]`.
 		  */
 		def flatten[K](implicit keyIsOpt :P =:= Option[K]) :Restrainer[T, K] =
 			new FlattenedRestrainer(keyIsOpt.liftCo[({ type R[X] = Restrainer[T, X] })#R](this))
@@ -158,7 +160,7 @@ object Restraint {
 		abstract class AbstractTermRestrainer[-T, V] extends Restrainer[T, V] {
 			protected def Term :Restrictive[T, V]
 
-			override def from(value :T) :Option[V] = Option(Term.derive(value))
+			override def from(value :T) :Opt[V] = Opt(Term.derive(value))
 
 			override def as(value :T) :Restraint[T] = apply(Term.derive(value))
 
@@ -190,11 +192,11 @@ object Restraint {
 
 			override def as(value :T) :Restraint[T] = target.as(nest.derive(value)).derive(nest)
 
-			override def from(value :T) :Option[P] = target.from(nest.derive(value))
+			override def from(value :T) :Opt[P] = target.from(nest.derive(value))
 
-			override def from[X <: T](restraint :Restraint[X]) :Option[P] = restraint match {
+			override def from[X <: T](restraint :Restraint[X]) :Opt[P] = restraint match {
 				case NestedRestraint(p, r) if p == nest => target.from(r.asInstanceOf[Restraint[M]])
-				case _ => None
+				case _ => Lack
 			}
 
 			override def in :Restrainer[T, Set[P]] = new NestedRestrainer(target.in, nest)
@@ -208,9 +210,9 @@ object Restraint {
 		{
 			override def apply(value: Y): Restraint[T] = backing(there(value))
 
-			override def from(value: T): Option[Y] = backing.from(value).map(back)
+			override def from(value: T): Opt[Y] = backing.from(value).map(back)
 
-			override def from[S <: T](restriction: Restraint[S]): Option[Y] = backing.from(restriction).map(back)
+			override def from[S <: T](restriction: Restraint[S]): Opt[Y] = backing.from(restriction).map(back)
 
 			override def in: Restrainer[T, Set[Y]] = backing.in.compose(_.map(back), _.map(there))
 
@@ -225,8 +227,14 @@ object Restraint {
 		{
 			override def apply(value :K) :Restraint[T] = backing(Some(value))
 
-			override def from(value :T) = backing.from(value).flatten
-			override def from[X <: T](restraint :Restraint[X]) = backing.from(restraint).flatten
+			override def from(value :T) = backing.from(value) match {
+				case Got(Some(k)) => Got(k)
+				case _ => Lack
+			}
+			override def from[X <: T](restraint :Restraint[X]) = backing.from(restraint) match {
+				case Got(Some(k)) => Got(k)
+				case _ => Lack
+			}
 
 			override def in :Restrainer[T, Set[K]] = backing.in.compose(_.flatten, _.map(Some.apply))
 			override def as(value :T) = backing.as(value)
@@ -455,15 +463,15 @@ object Restraint {
 		/** Check if the given restraint is an equality restriction with a specified value.
 		  * It will also match membership restrictions for singleton sets.
 		  */
-		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, E], Restrictive[T, E]) forSome { type E }] =
+		def unapply[T](restraint :Restraint[T]) :Opt[(Restrictive[T, E], Restrictive[T, E]) forSome { type E }] =
 			restraint match {
-				case EqualityTest(left, right) => Some((left, right))
-				case compare :Compares[T, v] => Some((compare.left, compare.right))
+				case EqualityTest(left, right) => Got((left, right))
+				case compare :Compares[T, v] => Got((compare.left, compare.right))
 //				case Compares(left, EQ, right) => Some((left, right)) //this loses the information that left and right are of the same type
 				case Membership(left, Collection(right, _), _) if right.size == 1 =>
-					Some((left.asInstanceOf[Restrictive[T, Any]], right.head.asInstanceOf[Restrictive[T, Any]]))
+					Got((left.asInstanceOf[Restrictive[T, Any]], right.head.asInstanceOf[Restrictive[T, Any]]))
 //				case _ => Compares.unapply(restraint) collect { case (l, EQ, r) => (l, r) }
-				case _ => None
+				case _ => Lack
 			}
 
 
@@ -483,9 +491,9 @@ object Restraint {
 
 			override def apply(key :K) :Restraint[T] = Equal[T, K](Term, Literal(key))
 
-			override def from[X <: T](restraint :Restraint[X]) :Option[K] = restraint match {
-				case Equal(Term, Literal(v)) => Some(v.asInstanceOf[K])
-				case _ => None
+			override def from[X <: T](restraint :Restraint[X]) :Opt[K] = restraint match {
+				case Equal(Term, Literal(v)) => Got(v.asInstanceOf[K])
+				case _ => Lack
 			}
 
 			override def derive[X, S <: T](nest :Restrictive[X, S]) :Restrainer[X, K] =
@@ -565,10 +573,10 @@ object Restraint {
 
 
 		def unapply[T](restraint :Restraint[T])
-				:Option[(Restrictive[T, V], Comparison, Restrictive[T, V]) forSome { type V }] =
+				:Opt[(Restrictive[T, V], Comparison, Restrictive[T, V]) forSome { type V }] =
 			restraint match {
-				case comp :Compares[T, v] => Some((comp.left, comp.relation, comp.right))
-				case _ => None
+				case comp :Compares[T, v] => Got((comp.left, comp.relation, comp.right))
+				case _ => Lack
 			}
 
 
@@ -610,9 +618,9 @@ object Restraint {
 		{
 			override def apply(key :K) :Restraint[T] = Compares(Term, Cmp, Literal(key))
 
-			override def from[X](restraint :Restraint[X]) :Option[K] = restraint match {
-				case Compares(Term, Cmp, Literal(right)) => Some(right.asInstanceOf[K])
-				case _ => None
+			override def from[X](restraint :Restraint[X]) :Opt[K] = restraint match {
+				case Compares(Term, Cmp, Literal(right)) => Got(right.asInstanceOf[K])
+				case _ => Lack
 			}
 
 			override def derive[X, S <: T](nest :Restrictive[X, S]) :Restrainer[X, K] =
@@ -647,9 +655,9 @@ object Restraint {
 			new Like(matched.toRestrictive, pattern)
 
 
-		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, String], String)] = restraint match {
-			case like :Like[T] => Some((like.term, like.pattern))
-			case _ => None
+		def unapply[T](restraint :Restraint[T]) :Opt[(Restrictive[T, String], String)] = restraint match {
+			case like :Like[T] => Got((like.term, like.pattern))
+			case _ => Lack
 		}
 
 		/** Compares the given literal string `term` with the provided pattern. */
@@ -761,11 +769,11 @@ object Restraint {
 
 		/** Check if the given restriction is a membership test for a set. */
 		def unapply[T](restraint :Restraint[T])
-				:Option[(Restrictive[T, E], Restrictive[T, C], C DecomposableTo E) forSome { type E; type C }] =
+				:Opt[(Restrictive[T, E], Restrictive[T, C], C DecomposableTo E) forSome { type E; type C }] =
 			restraint match {
-				case m :MembershipTest[T, c, e] => Some((m.member, m.values, m.decomposer))
+				case m :MembershipTest[T, c, e] => Got((m.member, m.values, m.decomposer))
 //				case Equal(left, right) => Some((left, right, DecomposableTo.Subclass()))
-				case _ => None
+				case _ => Lack
 			}
 
 
@@ -790,18 +798,19 @@ object Restraint {
 
 			override def as(value :T) :Restraint[T] = Term in Set(Literal(Term.derive(value)))
 
-			override def from(value :T) :Option[Set[K]] = Option(Term.derive(value)) map { Set(_) }
+			override def from(value :T) :Opt[Set[K]] = Opt(Term.derive(value)) map { Set(_) }
 
-			override def from[X <: T](restraint :Restraint[X]) :Option[Set[K]] = restraint match {
+			override def from[X <: T](restraint :Restraint[X]) :Opt[Set[K]] = restraint match {
 				case Membership(Term, Collection(items, _), _) =>
-					items.collect { case Literal(v) => v.asInstanceOf[K] }.toSet providing (_.size == items.size)
+					val keys = items.collect { case Literal(v) => v.asInstanceOf[K] }.toSet
+					if (keys.size == items.size) Got(keys) else Lack
 
 				case Membership(Term, Literal(items), deco) =>
 					//todo: wrong! may be Iterable[Set[K]] after decomposition
-					Some(deco.asInstanceOf[DecomposableTo[Any, Any]].apply(items).toSet.asInstanceOf[Set[K]])
+					Got(deco.asInstanceOf[DecomposableTo[Any, Any]].apply(items).toSet.asInstanceOf[Set[K]])
 
-				case False => Some(Set.empty)
-				case _ => None
+				case False => Got(Set.empty)
+				case _ => Lack
 			}
 
 			override def in :Restrainer[T, Set[Set[K]]] = compose(Set(_), _.flatten)
@@ -883,10 +892,10 @@ object Restraint {
 		def apply[T :TypeTag, E](condition :Restraint[E])(implicit composite :T ComposedOf E) :Restraint[T] =
 			new ForAll[T, T, E](Self(), condition)(composite.decomposer)
 
-		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, C], Restraint[E], C DecomposableTo E) forSome { type C; type E }] =
+		def unapply[T](restraint :Restraint[T]) :Opt[(Restrictive[T, C], Restraint[E], C DecomposableTo E) forSome { type C; type E }] =
 			restraint match {
-				case all :ForAll[T, c, e] => Some((all.collection, all.condition, all.decomposer))
-				case _ => None
+				case all :ForAll[T, c, e] => Got((all.collection, all.condition, all.decomposer))
+				case _ => Lack
 			}
 	}
 
@@ -922,11 +931,12 @@ object Restraint {
 		def apply[T :TypeTag, E](condition :Restraint[E])(implicit composite :T ComposedOf E) :Restraint[T] =
 			new Exists(Self(), condition)(composite.decomposer)
 
-		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, C], Restraint[E], C DecomposableTo E) forSome { type C; type E }] =
+		def unapply[T](restraint :Restraint[T])
+				:Opt[(Restrictive[T, C], Restraint[E], C DecomposableTo E) forSome { type C; type E }] =
 			restraint match {
 				case exists :Exists[T, c, e] =>
-					Some((exists.collection, exists.condition, exists.decomposer))
-				case _ => None
+					Got((exists.collection, exists.condition, exists.decomposer))
+				case _ => Lack
 			}
 	}
 
@@ -943,11 +953,11 @@ object Restraint {
 
 		def apply[T :TypeTag](restraint :Restraint[T]) :Restraint[Option[T]] = Exists[Option[T], T](restraint)
 
-		def unapply[T](restraint :Restraint[T]) :Option[(Restrictive[T, Option[E]], Restraint[E]) forSome { type E }] =
+		def unapply[T](restraint :Restraint[T]) :Opt[(Restrictive[T, Option[E]], Restraint[E]) forSome { type E }] =
 			restraint match {
 				case Exists(option, condition, deco @ DecomposableTo.Option()) =>
-					Some((option.asInstanceOf[Restrictive[T, Option[Any]]], condition.asInstanceOf[Restraint[Any]]))
-				case _ => None
+					Got((option.asInstanceOf[Restrictive[T, Option[Any]]], condition.asInstanceOf[Restraint[Any]]))
+				case _ => Lack
 			}
 	}
 

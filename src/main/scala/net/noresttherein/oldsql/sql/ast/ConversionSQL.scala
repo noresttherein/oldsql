@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, Opt}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, ParamSelect, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
@@ -159,11 +160,11 @@ object ConversionSQL {
 			new PromotionConversion(expr)(lift)
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, Y](expr :SQLExpression[F, S, Y])
-				:Option[(SQLExpression[F, S, X], Lift[X, Y])] forSome { type X } =
+				:Opt[(SQLExpression[F, S, X], Lift[X, Y])] forSome { type X } =
 			expr match {
 				case promo :PromotionConversion[_, _, _, _] =>
-					Some(promo.value.asInstanceOf[SQLExpression[F, S, Any]] -> promo.lift.asInstanceOf[Lift[Any, Y]])
-				case _ => None
+					Got(promo.value.asInstanceOf[SQLExpression[F, S, Any]] -> promo.lift.asInstanceOf[Lift[Any, Y]])
+				case _ => Lack
 			}
 
 
@@ -207,11 +208,11 @@ object ConversionSQL {
 			new ColumnPromotionConversion(expr)(lift)
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, Y](expr :SQLExpression[F, S, Y])
-				:Option[(ColumnSQL[F, S, X], Lift[X, Y])] forSome { type X } =
+				:Opt[(ColumnSQL[F, S, X], Lift[X, Y])] forSome { type X } =
 			expr match {
 				case promo :ColumnPromotionConversion[_, _, _, _] =>
-					Some(promo.value.asInstanceOf[ColumnSQL[F, S, Any]] -> promo.lift.asInstanceOf[Lift[Any, Y]])
-				case _ => None
+					Got(promo.value.asInstanceOf[ColumnSQL[F, S, Any]] -> promo.lift.asInstanceOf[Lift[Any, Y]])
+				case _ => Lack
 			}
 
 

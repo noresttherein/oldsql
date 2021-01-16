@@ -5,12 +5,11 @@ import net.noresttherein.oldsql.collection.{Chain, Listing}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, PrefixedMapping, RenamedMapping}
-import net.noresttherein.oldsql.schema.support.AdjustedMapping.SpecificAdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.bits.MappingSchema
+import net.noresttherein.oldsql.schema.bits.{IndexedMappingSchema, IndexedSchemaMapping, MappingSchema}
 import net.noresttherein.oldsql.schema.bits.IndexedMappingSchema.FlatIndexedMappingSchema
-import net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping.{FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping}
+import net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping.{FlatIndexedSchemaMapping, FlatIndexedSchemaMappingAdapter, FlatIndexedSchemaMappingProxy, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedFlatIndexedSchemaMapping, MappedIndexedSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.MappingSchema.FlatMappingSchema
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, MappedFlatSchemaMapping, MappedSchemaMapping, MappingSchemaDelegate, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
 
@@ -175,3 +174,39 @@ abstract class AbstractFlatIndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
 
 
 
+
+
+
+
+
+
+abstract class AbstractIndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
+                                           (protected override val backer :IndexedMappingSchema[S, V, C, O])
+	extends MappingSchemaDelegate[IndexedMappingSchema[S, V, C, O], S, V, C, O] with IndexedSchemaMapping[S, V, C, O]
+	   with StaticSchemaMapping[
+			({ type A[M <: RefinedMapping[S, O], X] = IndexedSchemaMappingAdapter[M, S, X, V, C, O] })#A,
+			IndexedMappingSchema[S, V, C, O], S, V, C, O]
+{
+	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+			:IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		AdjustedMapping(this, include, exclude, alter)
+
+	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+			:IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		new AlteredMapping[this.type, S, O](this, op, include, exclude)
+			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
+
+	override def prefixed(prefix :String) :IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		new PrefixedMapping[this.type, S, O](prefix, this)
+			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
+
+	override def renamed(naming :String => String) :IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
+		new RenamedMapping[this.type, S, O](this, naming)
+			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
+
+	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
+			:IndexedSchemaMappingAdapter[this.type, S, X, V, C, O] =
+		new MappedIndexedSchemaMapping[this.type, S, X, V, C, O](this, there, back)
+			with DelegateAdapter[this.type, X, O] with IndexedSchemaMappingAdapter[this.type, S, X, V, C, O]
+
+}

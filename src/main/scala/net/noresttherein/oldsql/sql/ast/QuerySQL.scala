@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, DerivedTable, Table}
@@ -347,10 +348,10 @@ object QuerySQL extends ImplicitQueryRelations {
 			new BaseCompoundSelectSQL(left, operator, right)
 
 		def unapply[F <: RowProduct, V](e :SQLExpression[F, LocalScope, Rows[V]])
-				:Option[(QuerySQL[F, V], SetOperator, QuerySQL[F, V])] =
+				:Opt[(QuerySQL[F, V], SetOperator, QuerySQL[F, V])] =
 			e match {
-				case op :CompoundSelectSQL[F @unchecked, V @unchecked] => Some((op.left, op.operator, op.right))
-				case _ => None
+				case op :CompoundSelectSQL[F @unchecked, V @unchecked] => Got((op.left, op.operator, op.right))
+				case _ => Lack
 			}
 
 		private[QuerySQL] class BaseCompoundSelectSQL[-F <: RowProduct, V]
@@ -446,10 +447,10 @@ object QuerySQL extends ImplicitQueryRelations {
 			new BaseCompoundSelectColumn(left, operator, right)
 
 		def unapply[F <: RowProduct, V](e :SQLExpression[F, LocalScope, Rows[V]])
-				:Option[(ColumnQuery[F, V], SetOperator, ColumnQuery[F, V])] =
+				:Opt[(ColumnQuery[F, V], SetOperator, ColumnQuery[F, V])] =
 			e match {
-				case op :CompoundSelectColumn[F @unchecked, V @unchecked] => Some((op.left, op.operator, op.right))
-				case _ => None
+				case op :CompoundSelectColumn[F @unchecked, V @unchecked] => Got((op.left, op.operator, op.right))
+				case _ => Lack
 			}
 
 		private[QuerySQL] class BaseCompoundSelectColumn[-F <: RowProduct, V]
@@ -540,11 +541,11 @@ object QuerySQL extends ImplicitQueryRelations {
 			new BaseCompoundSelectMapping(left, operator, right)
 
 		def unapply[F <: RowProduct, V](e :SQLExpression[F, LocalScope, Rows[V]])
-				:Option[(MappingQuery[F, M], SetOperator, MappingQuery[F, M]) forSome { type M[O] <: MappingAt[O] }] =
+				:Opt[(MappingQuery[F, M], SetOperator, MappingQuery[F, M]) forSome { type M[O] <: MappingAt[O] }] =
 			e match {
 				case op :CompoundSelectMapping[F @unchecked, MappingAt @unchecked] =>
-					Some((op.left, op.operator, op.right))
-				case _ => None
+					Got((op.left, op.operator, op.right))
+				case _ => Lack
 			}
 
 		private[QuerySQL] class BaseCompoundSelectMapping[-F <: RowProduct, M[O] <: MappingAt[O]]
@@ -624,11 +625,11 @@ object QuerySQL extends ImplicitQueryRelations {
 			new BaseCompoundSelectColumnMapping(left, operator, right)
 
 		def unapply[F <: RowProduct, V](e :SQLExpression[F, LocalScope, Rows[V]])
-				:Option[(ColumnMappingQuery[F, M, V], SetOperator, ColumnMappingQuery[F, M, V]) forSome { type M[O] <: ColumnMapping[V, O] }] =
+				:Opt[(ColumnMappingQuery[F, M, V], SetOperator, ColumnMappingQuery[F, M, V]) forSome { type M[O] <: ColumnMapping[V, O] }] =
 			e match {
 				case op :CompoundSelectColumnMapping[F @unchecked, MappingOf[V]#ColumnProjection @unchecked, V @unchecked] =>
-					Some((op.left, op.operator, op.right))
-				case _ => None
+					Got((op.left, op.operator, op.right))
+				case _ => Lack
 			}
 
 		private[QuerySQL] class BaseCompoundSelectColumnMapping[-F <: RowProduct, M[O] <: ColumnMapping[V, O], V]

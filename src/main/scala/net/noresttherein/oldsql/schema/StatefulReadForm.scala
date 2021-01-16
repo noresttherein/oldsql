@@ -5,6 +5,8 @@ import java.sql.ResultSet
 import scala.collection.mutable.Builder
 import scala.collection.IterableFactory
 
+import net.noresttherein.oldsql.collection.Opt.Got
+
 
 
 
@@ -30,7 +32,7 @@ object StatefulReadForm {
 			this(factory.newBuilder[E])
 
 		override def add(result :ResultSet, position :Int) :Unit = form.opt(result, position) match {
-			case Some(item) => builder += item
+			case Got(item) => builder += item
 			case _ =>
 		}
 

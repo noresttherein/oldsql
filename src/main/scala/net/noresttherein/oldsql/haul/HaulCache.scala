@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.haul
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.Lack
 import net.noresttherein.oldsql.schema.Mapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation.Table
@@ -11,7 +13,7 @@ import net.noresttherein.oldsql.schema.Relation.Table
 
 trait FutureValues[+E] {
 	def apply[K](component :MappingOf[K], key :K) :E
-	def unique[K](component :MappingOf[K], key :K) :Option[E]
+	def unique[K](component :MappingOf[K], key :K) :Opt[E]
 	def all[K](component :MappingOf[K], key :K) :Iterable[E]
 }
 
@@ -22,7 +24,7 @@ object FutureValues {
 		override def apply[K](component :MappingOf[K], key :K) :Nothing =
 			throw new NoSuchElementException(s"No value for key $component=$key in $this")
 
-		override def unique[K](component :MappingOf[K], key :K) :Option[Nothing] = None
+		override def unique[K](component :MappingOf[K], key :K) :Opt[Nothing] = Lack
 
 		override def all[K](component :MappingOf[K], key :K) :Iterable[Nothing] = Nil
 	}
@@ -67,7 +69,7 @@ object TableCache {
 
 		override def apply[K](component :MappingOf[K], key :K) :S = apply(component)(key)
 
-		override def unique[K](component :MappingOf[K], key :K) :Option[S] = apply(component).unique(key)
+		override def unique[K](component :MappingOf[K], key :K) :Opt[S] = apply(component).unique(key)
 
 		override def all[K](component :MappingOf[K], key :K) :Iterable[S] = apply(component).all(key)
 

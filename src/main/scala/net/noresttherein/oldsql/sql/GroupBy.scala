@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
@@ -310,15 +312,15 @@ object GroupBy {
 	/** Matches all `GroupBy` instances, splitting them into their left (ungrouped ''from'' clause)
 	  * and right (the first column grouping) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Relation[R])] = from match {
-		case _ :GroupBy[_, _] => Some((from.left, from.right))
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Relation[R])] = from match {
+		case _ :GroupBy[_, _] => Got((from.left, from.right))
+		case _ => Lack
 	}
 
 	/** Matches all `GroupBy` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Relation.*)] = from match {
-		case group :GroupBy.* => Some((group.left, group.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(FromSome, Relation.*)] = from match {
+		case group :GroupBy.* => Got((group.left, group.right))
+		case _ => Lack
 	}
 
 
@@ -698,15 +700,15 @@ object By {
 	/** Matches all `By` instances, splitting them into their left (preceding column groupings)
 	  * and right (the last column grouping) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Relation[R])] = from match {
-		case _ :By[_, _] => Some((from.left, from.right))
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Relation[R])] = from match {
+		case _ :By[_, _] => Got((from.left, from.right))
+		case _ => Lack
 	}
 
 	/** Matches all `By` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(GroupByClause, Relation.*)] = from match {
-		case group :By.* => Some((group.left, group.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(GroupByClause, Relation.*)] = from match {
+		case group :By.* => Got((group.left, group.right))
+		case _ => Lack
 	}
 
 

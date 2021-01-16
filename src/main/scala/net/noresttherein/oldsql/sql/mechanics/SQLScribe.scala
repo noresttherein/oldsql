@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.sql.mechanics
 
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
@@ -574,7 +575,7 @@ object SQLScribe {
 					val rank = params.length - shift
 					val param = params(rank)
 					extract.get(param.asInstanceOf[E]) match {
-						case Some(v) => SQLParameter(extract.export.form)(v)
+						case Got(v) => SQLParameter(extract.export.form)(v)
 						case _ => CompositeNull[V](extract.export.form)
 					}
 				case _ =>
@@ -593,7 +594,7 @@ object SQLScribe {
 				case UnboundParamSQL(_, extract, idx) =>
 					val shift = followingParams(followingParams.length - 1 - idx)
 					extract.get(params(params.length - shift).asInstanceOf[E]) match {
-						case Some(v) => SQLParameterColumn(v)(extract.export.form)
+						case Got(v) => SQLParameterColumn(v)(extract.export.form)
 						case _ => SQLNull[V](extract.export.form)
 					}
 				case _ =>
@@ -652,7 +653,7 @@ object SQLScribe {
 			e match {
 				case UnboundParamSQL(_, extract, this.idx) =>
 					extract.get(param.asInstanceOf[E]) match {
-						case Some(v) => SQLParameter(extract.export.form)(v)
+						case Got(v) => SQLParameter(extract.export.form)(v)
 						case _ => CompositeNull[V](extract.export.form)
 					}
 				case _ if e.origin.offset < idx =>
@@ -668,7 +669,7 @@ object SQLScribe {
 			e match {
 				case UnboundParamSQL(_, extract, this.idx) =>
 					extract.get(param.asInstanceOf[E]) match {
-						case Some(v) => SQLParameterColumn(v)(extract.export.form)
+						case Got(v) => SQLParameterColumn(v)(extract.export.form)
 						case _ => SQLNull[V](extract.export.form) :SQLNull[V]
 					}
 				case _ if e.origin.offset < idx =>

@@ -3,6 +3,8 @@ package net.noresttherein.oldsql.model
 import scala.reflect.runtime.universe.{typeOf, Type, TypeTag}
 import scala.reflect.{classTag, ClassTag}
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.Compares.{GT, GTE, LT, LTE}
 import net.noresttherein.oldsql.model.Restraint.{Compares, Equal, Exists, False, ForAll, IsNull, Membership, Restrainer, StringLike, True}
@@ -227,9 +229,9 @@ object Restrictive {
 		@inline def apply[T :TypeTag, V](property :T => V) :Restrictive[T, V] = apply(PropertyPath(property))
 
 		/** Check if the given expression represents a property of T (is an instance created by this factory). */
-		def unapply[T, V](restrictive :Restrictive[T, V]) :Option[PropertyPath[T, V]] = restrictive match {
-			case  property :PropertyRestrictive[T, V] => Some(property.property)
-			case _ => None
+		def unapply[T, V](restrictive :Restrictive[T, V]) :Opt[PropertyPath[T, V]] = restrictive match {
+			case  property :PropertyRestrictive[T, V] => Got(property.property)
+			case _ => Lack
 		}
 	}
 
@@ -241,9 +243,9 @@ object Restrictive {
 		def apply[T :TypeTag]() :Restrictive[T, T] = new SelfRestrictive[T, T](typeOf[T])
 
 		/** Check if the given `Restrictive` is the value `T` itself created by this factory. */
-		def unapply[T, V](restrictive :Restrictive[T, V]) :Option[Type] = restrictive match {
-			case self :SelfRestrictive[_, _] => Some(self.definedFor)
-			case _ => None
+		def unapply[T, V](restrictive :Restrictive[T, V]) :Opt[Type] = restrictive match {
+			case self :SelfRestrictive[_, _] => Got(self.definedFor)
+			case _ => Lack
 		}
 	}
 
@@ -262,9 +264,9 @@ object Restrictive {
 		@inline private[model] def apply[T, V](value :V) :Restrictive[T, V] = new LiteralRestrictive[T, V](value)
 
 		/** Check if the given restrictive is a literal expression. */
-		def unapply[V](restrictive :Restrictive[_, V]) :Option[V] = restrictive match {
-			case literal :LiteralRestrictive[_, V] => Some(literal.value)
-			case _ => None
+		def unapply[V](restrictive :Restrictive[_, V]) :Opt[V] = restrictive match {
+			case literal :LiteralRestrictive[_, V] => Got(literal.value)
+			case _ => Lack
 		}
 
 /*
@@ -301,10 +303,10 @@ object Restrictive {
 			new CollectionRestrictive(values)
 
 		def unapply[T, C](restrictive :Restrictive[T, C])
-				:Option[(Iterable[Restrictive[T, E]], C ComposedOf E) forSome { type E }] =
+				:Opt[(Iterable[Restrictive[T, E]], C ComposedOf E) forSome { type E }] =
 			restrictive match {
-				case col :CollectionRestrictive[T, C, e] => Some((col.values, col.composite))
-				case _ =>None
+				case col :CollectionRestrictive[T, C, e] => Got((col.values, col.composite))
+				case _ => Lack
 			}
 
 	}
@@ -323,10 +325,10 @@ object Restrictive {
 			new ArithmeticRestrictive(Literal(left), op, right)
 
 
-		def unapply[T, N](term :Restrictive[T, N]) :Option[(Restrictive[T, N], Operator, Restrictive[T, N])] =
+		def unapply[T, N](term :Restrictive[T, N]) :Opt[(Restrictive[T, N], Operator, Restrictive[T, N])] =
 			term match {
-				case ArithmeticRestrictive(left, op, right) => Some((left, op, right))
-				case _ => None
+				case ArithmeticRestrictive(left, op, right) => Got((left, op, right))
+				case _ => Lack
 			}
 
 
@@ -335,9 +337,9 @@ object Restrictive {
 			def apply[T, N :ArithmeticSupport](term :Restrictive[T, N]) :Restrictive[T, N] =
 				new NegatedRestrictive(term)
 
-			def unapply[T, N](term :Restrictive[T, N]) :Option[Restrictive[T, N]] = term match {
-				case NegatedRestrictive(x) => Some(x)
-				case _ => None
+			def unapply[T, N](term :Restrictive[T, N]) :Opt[Restrictive[T, N]] = term match {
+				case NegatedRestrictive(x) => Got(x)
+				case _ => Lack
 			}
 		}
 
@@ -378,10 +380,10 @@ object Restrictive {
 		def apply[T](left :String, right :Restrictive[T, String]) :Restrictive[T, String] =
 			new ConcatRestrictive[T](Literal(left), right)
 
-		def unapply[T, V](term :Restrictive[T, V]) :Option[(Restrictive[T, String], Restrictive[T, String])] =
+		def unapply[T, V](term :Restrictive[T, V]) :Opt[(Restrictive[T, String], Restrictive[T, String])] =
 			term match {
-				case concat :ConcatRestrictive[T] => Some((concat.left, concat.right))
-				case _ => None
+				case concat :ConcatRestrictive[T] => Got((concat.left, concat.right))
+				case _ => Lack
 			}
 	}
 
@@ -395,10 +397,10 @@ object Restrictive {
 			new SizeRestrictive(collection)
 
 		def unapply[T, Int](restrictive :Restrictive[T, Int])
-				:Option[(Restrictive[T, C], C ComposedOf E) forSome { type C; type E }] =
+				:Opt[(Restrictive[T, C], C ComposedOf E) forSome { type C; type E }] =
 			restrictive match {
-				case size :SizeRestrictive[T, c, e] => Some((size.collection, size.composite))
-				case _ => None
+				case size :SizeRestrictive[T, c, e] => Got((size.collection, size.composite))
+				case _ => Lack
 			}
 	}
 
@@ -412,10 +414,10 @@ object Restrictive {
 		               (ifTrue :Restrictive[T, O])(ifFalse :Restrictive[T, O]) :Restrictive[T, O] =
 			new IfElseRestrictive(condition, ifTrue, ifFalse)
 
-		def unapply[T, O](term :Restrictive[T, O]) :Option[(Restraint[T], Restrictive[T, O], Restrictive[T, O])] =
+		def unapply[T, O](term :Restrictive[T, O]) :Opt[(Restraint[T], Restrictive[T, O], Restrictive[T, O])] =
 			term match {
-				case IfElseRestrictive(condition, ifTrue, ifFalse) => Some((condition, ifTrue, ifFalse))
-				case _ => None
+				case IfElseRestrictive(condition, ifTrue, ifFalse) => Got((condition, ifTrue, ifFalse))
+				case _ => Lack
 			}
 	}
 
@@ -434,12 +436,12 @@ object Restrictive {
 		                  (default :Restrictive[X, O]) :Restrictive[X, O] =
 			new SwitchRestrictive(term, cases map { case (guard, branch) => guard.toRestrictive -> branch }, default)
 
-		def unapply[T, O](term :Restrictive[T, O]) :Option[
+		def unapply[T, O](term :Restrictive[T, O]) :Opt[
 					(Restrictive[T, S], Seq[(Restrictive[T, S], Restrictive[T, O])], Restrictive[T, O]
 				) forSome { type S }] =
 			term match {
-				case SwitchRestrictive(what, cases, default) => Some((what, cases, default))
-				case _ => None
+				case SwitchRestrictive(what, cases, default) => Got((what, cases, default))
+				case _ => Lack
 			}
 	}
 
@@ -450,7 +452,7 @@ object Restrictive {
 	  * value, returned in an `Option`. The translation to SQL varies and depends on the mapping definition for
 	  * the down cast expression.
 	  */
-	object DownCast {
+	object DownCast { //todo: actually implement a type class for this or smth
 		def apply[T >: S :TypeTag, S :ClassTag, O](forSubclass :Restrictive[S, O]) :Restrictive[T, Option[O]] =
 			new SubclassRestrictive(Self[T](), classTag[S].runtimeClass, forSubclass)
 
@@ -459,10 +461,10 @@ object Restrictive {
 			new SubclassRestrictive(term, classTag[S].runtimeClass, forSubclass)
 
 		def unapply[T, O](term :Restrictive[T, Option[O]])
-				:Option[(Restrictive[T, U], Class[_], Restrictive[S, O]) forSome { type U >: S; type S }] =
+				:Opt[(Restrictive[T, U], Class[_], Restrictive[S, O]) forSome { type U >: S; type S }] =
 			term match {
-				case SubclassRestrictive(t, subclass, cond) => Some((t, subclass, cond))
-				case _ => None
+				case SubclassRestrictive(t, subclass, cond) => Got((t, subclass, cond))
+				case _ => Lack
 			}
 	}
 

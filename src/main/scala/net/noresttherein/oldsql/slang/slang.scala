@@ -6,6 +6,9 @@ import scala.annotation.tailrec
 import scala.reflect.{classTag, ClassTag}
 import scala.util.Try
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.Got
+
 
 
 
@@ -14,7 +17,7 @@ import scala.util.Try
 package object slang {
 
 	private[oldsql] object && {
-		def unapply[T](value :T) :Option[(T, T)] = Some(value, value)
+		def unapply[T](value :T) :Opt[(T, T)] = Got((value, value))
 	}
 
 

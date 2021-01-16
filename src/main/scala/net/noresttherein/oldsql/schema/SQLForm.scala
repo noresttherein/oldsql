@@ -10,6 +10,7 @@ import scala.reflect.ClassTag
 import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.Kin
 import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Extractor, Stateless}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
@@ -706,8 +707,8 @@ object SQLForm {
 		protected def map(s :S) :T
 		protected def unmap(t :T) :S
 
-		override def opt(res :ResultSet, position :Int) :Option[T] = form.opt(res, position) match {
-			case Some(s) => Some(map(s))
+		override def opt(res :ResultSet, position :Int) :Opt[T] = form.opt(res, position) match {
+			case Got(s) => Got(map(s))
 			case _ => None
 		}
 
@@ -736,7 +737,7 @@ object SQLForm {
 	trait EmptyForm[T] extends SQLForm[T] with EmptyWriteForm[T] {
 		override def apply(res: ResultSet, position: Int): T = nullValue
 
-		override def opt(rs :ResultSet, position :Int) :Option[T] = None
+		override def opt(rs :ResultSet, position :Int) :Opt[T] = Lack
 
 		override def notNull :SQLForm[T] = super[SQLForm].notNull
 
@@ -820,7 +821,7 @@ object SQLForm {
 		override def setNull(statement :PreparedStatement, position :Int) :Unit =
 			write.setNull(statement, position)
 
-		override def opt(res :ResultSet, position :Int): Option[T] = read.opt(res, position)
+		override def opt(res :ResultSet, position :Int): Opt[T] = read.opt(res, position)
 
 		override def nullValue: T = read.nullValue
 		override def nulls :NullValue[T] = read.nulls

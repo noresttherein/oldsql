@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
@@ -52,10 +54,10 @@ object ConcatSQL {
 		new ConcatSQL(parts.toList.reverse)
 
 	def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope]
-	           (e :SQLExpression[F, S, _]) :Option[Seq[ColumnSQL[F, S, String]]] =
+	           (e :SQLExpression[F, S, _]) :Opt[Seq[ColumnSQL[F, S, String]]] =
 		e match {
-			case concat :ConcatSQL[F @unchecked, S @unchecked] => Some(concat.inOrder)
-			case _ => None
+			case concat :ConcatSQL[F @unchecked, S @unchecked] => Got(concat.inOrder)
+			case _ => Lack
 		}
 
 

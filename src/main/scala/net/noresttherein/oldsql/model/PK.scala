@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.model
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.EntityIdentity.NoPrimaryKeyException
 import net.noresttherein.oldsql.schema.SQLForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -72,7 +74,7 @@ object PK {
 	}
 
 	object Key {
-		def unapply[T, K](key :Key[T, K]) :Some[K] = Some(key.key)
+		def unapply[T, K](key :Key[T, K]) :Opt[K] = Got(key.key)
 	}
 
 
@@ -138,7 +140,7 @@ object PK {
 		/** Creates a key assigned to an entity by an application (transient) backed by the given value. */
 		def apply[T, @specialized(Int, Long) K](key :K) :AssignedPK[T, K] = new AssignedPK[T, K](key)
 
-		def unapply[T, K](pk :Key[T, K]) :Option[K] = if (pk.isTransient) Some(pk.key) else None
+		def unapply[T, K](pk :Key[T, K]) :Opt[K] = if (pk.isTransient) Got(pk.key) else Lack
 	}
 
 

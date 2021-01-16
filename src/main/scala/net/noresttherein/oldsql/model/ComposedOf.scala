@@ -3,6 +3,8 @@ package net.noresttherein.oldsql.model
 import scala.collection.{immutable, EvidenceIterableFactory, Factory, IterableFactory, MapFactory, SortedMapFactory}
 import scala.collection.mutable.Builder
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{IllegalKinArityException, IncompatibleElementTypeException}
 import net.noresttherein.oldsql.model.ComposedOf.{Arity, CollectionOf, ComposableFrom, ConstructFrom, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.ToCollection
@@ -54,37 +56,14 @@ trait ComposedOf[C, E] {
 
 	def rebuild(value: C): C = composer(decomposer(value))
 
-	def unapply(composite :C) :Option[Iterable[E]] = decomposer.unapply(composite)
+	def unapply(composite :C) :Opt[Iterable[E]] = decomposer.unapply(composite)
 
-	def unapply(kin :Kin[C]) :Option[Derived[E, C]] =
+	def unapply(kin :Kin[C]) :Opt[Derived[E, C]] =
 		kin match {
 			case composite :Derived[E @unchecked, C] if composite.composition compatibleWith decomposer =>
-				Some(composite)
-			case _ => None
+				Got(composite)
+			case _ => Lack
 		}
-//	def unapply(kin :Kin[C]) :Option[Iterable[E]] = //todo: migrate to Kin.Derived
-//		kin match {
-//			case DecomposableTo(deco) && Kin.Present(value) =>
-//				if (decomposer == deco)
-//					Some(decomposer(value).toSeq)
-//				else {
-//					throw new IncompatibleElementTypeException(
-//						s"Cannot decompose kin $kin: associated decomposer $deco doesn't seem to be compatible " +
-//							s"with the requested decomposer $decomposer.")
-//				}
-//			case Kin.Present(value) =>
-//				Some(apply(value))
-//			case _ => None
-//		}
-
-//	def unapply(kin :Kin[C]) :Option[C ComposedOf E] = kin match {
-//		case ComposedOf(composed) if this.compatibleWith(composed) =>
-//			Some(composed.asInstanceOf[C ComposedOf E])
-//		case DecomposableTo(deco) if compatibleWith(decomposer) =>
-//			Some(ComposedOf(composer, deco.asInstanceOf[C DecomposableTo E]))
-//		case _ :Derived[_, _] => None
-//		case _ => Some(this)
-//	}
 
 
 	def compatibleWith[X >: C](other: ComposableFrom[X, _]): Boolean = composer.compatibleWith(other)
@@ -303,7 +282,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			throw new IllegalKinArityException(s"Can't perform composition $this for $items.")
 		}
 
-		def attempt(items :Iterable[E]) :Option[C]
+		def attempt(items :Iterable[E]) :Opt[C]
 
 //		def compose[T <: E, X](first :T ComposedOf X) :C ComposedOf X
 
@@ -335,19 +314,19 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		@inline def apply[T, E](implicit compose :T ConstructFrom E) :T ConstructFrom E = compose
 
 
-		def unapply[T, E](composition :T ComposableFrom E) :Option[T ConstructFrom E] = composition match {
-			case c :ConstructFrom[T, E] => Some(c)
-			case _ => None
+		def unapply[T, E](composition :T ComposableFrom E) :Opt[T ConstructFrom E] = composition match {
+			case c :ConstructFrom[T, E] => Got(c)
+			case _ => Lack
 		}
 
-		def unapply[T, E](composite :T ComposedOf E) :Option[T ConstructFrom E] = unapply(composite.composer)
+		def unapply[T, E](composite :T ComposedOf E) :Opt[T ConstructFrom E] = unapply(composite.composer)
 
-		def unapply[T, E](kin :Derived[E, T]) :Option[T ConstructFrom E] = unapply(kin.composition)
+		def unapply[T, E](kin :Derived[E, T]) :Opt[T ConstructFrom E] = unapply(kin.composition)
 
-		def unapply[T](kin :Kin[T]) :Option[ConstructFrom[T, _]] = kin match {
+		def unapply[T](kin :Kin[T]) :Opt[ConstructFrom[T, _]] = kin match {
 			case c :Derived[_, _] if c.composition.isInstanceOf[ConstructFrom[_, _]] =>
-				Some(c.composition.asInstanceOf[ConstructFrom[T, _]])
-			case _ => None
+				Got(c.composition.asInstanceOf[ConstructFrom[T, _]])
+			case _ => Lack
 		}
 	}
 
@@ -372,13 +351,13 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		def apply[T, E](compose :Iterable[E] => T) :ComposableFrom[T, E] = new Custom(compose)
 
 
-		def unapply[T, E](composedOf :T ComposedOf E) :Option[T ComposableFrom E] = Some(composedOf.composer)
+		def unapply[T, E](composedOf :T ComposedOf E) :Opt[T ComposableFrom E] = Got(composedOf.composer)
 
-		def unapply[T, E](kin :Derived[E, T]) :Option[T ComposableFrom E] = Some(kin.composition)
+		def unapply[T, E](kin :Derived[E, T]) :Opt[T ComposableFrom E] = Got(kin.composition)
 
-		def unapply[T](kin :Kin[T]) :Option[ComposableFrom[T, _]] = kin match {
-			case c :Derived[_, T] => Some(c.composition)
-			case _ => None
+		def unapply[T](kin :Kin[T]) :Opt[ComposableFrom[T, _]] = kin match {
+			case c :Derived[_, T] => Got(c.composition)
+			case _ => Lack
 		}
 
 
@@ -399,8 +378,14 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 		/** Composition of `Option[T]` out of an `Iterable[T]`. If the input iterable contains more than one element,
 		  * an exception is thrown.
-		  */
+		  */ //consider: making these two not ComposableFrom
 		implicit def option[T] :Option[T] ConstructFrom T = ToOption.asInstanceOf[ConstructFrom[Option[T], T]]
+
+//		/** Composition of `Opt[T]` out of an `Iterable[T]`. If the input iterable contains more than one element,
+//		  * an exception is thrown. Note that there may be no advantage to gain out of using `Opt` in place of `Option`
+//		  * in case the composite type is generic, as it would result in boxing either way.
+//		  */
+//		implicit def opt[T] :Opt[T] ConstructFrom T = ToOpt.asInstanceOf[ConstructFrom[Opt[T], T]]
 
 		/** Identity composition available for all types witnessing that a singleton `Iterable[T]` can be converted to
 		  * the type `T` itself. This instance will always throw an exception if the input collection contains
@@ -418,18 +403,18 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			def apply[T, E](property :PropertyPath[E, T]) :T ComposableFrom E =
 				new ToProperty[T, E](property)
 
-			def unapply[T, E](composition :T ComposableFrom E) :Option[PropertyPath[E, T]] = composition match {
-				case prop :ToProperty[T, E] => Some(prop.property)
-				case _ => None
+			def unapply[T, E](composition :T ComposableFrom E) :Opt[PropertyPath[E, T]] = composition match {
+				case prop :ToProperty[T, E] => Got(prop.property)
+				case _ => Lack
 			}
 
-			def unapply[T, E](composedOf :T ComposedOf E) :Option[PropertyPath[E, T]] = unapply(composedOf.composer)
+			def unapply[T, E](composedOf :T ComposedOf E) :Opt[PropertyPath[E, T]] = unapply(composedOf.composer)
 
-			def unapply[T, E](kin :Derived[E, T]) :Option[PropertyPath[E, T]] = unapply(kin.composition)
+			def unapply[T, E](kin :Derived[E, T]) :Opt[PropertyPath[E, T]] = unapply(kin.composition)
 
-			def unapply[T](kin :Kin[T]) :Option[PropertyPath[_, T]] = kin match {
+			def unapply[T](kin :Kin[T]) :Opt[PropertyPath[_, T]] = kin match {
 				case composite :Derived[e, T] => unapply(composite.composition)
-				case _ => None
+				case _ => Lack
 			}
 		}
 
@@ -440,24 +425,24 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 				new ToProperties(property, composition)
 
 			def unapply[T, E](composition :T ComposableFrom E)
-					:Option[(PropertyPath[E, P], T ComposableFrom P) forSome { type P }] =
+					:Opt[(PropertyPath[E, P], T ComposableFrom P) forSome { type P }] =
 				composition match {
-					case prop :ToProperties[T, p, E] => Some(prop.property, prop.compose)
-					case _ => None
+					case prop :ToProperties[T, p, E] => Got(prop.property, prop.compose)
+					case _ => Lack
 				}
 
 			def unapply[T, E](composition :T ComposedOf E)
-					:Option[(PropertyPath[E, P], T ComposableFrom P) forSome { type P }] =
+					:Opt[(PropertyPath[E, P], T ComposableFrom P) forSome { type P }] =
 				unapply(composition.composer)
 
 			def unapply[T, E](kin :Derived[E, T])
-					:Option[(PropertyPath[E, P], T ComposableFrom P) forSome { type P }] =
+					:Opt[(PropertyPath[E, P], T ComposableFrom P) forSome { type P }] =
 				unapply(kin.composition)
 
-			def unapply[T](kin :Kin[T]) :Option[(PropertyPath[E, P], T ComposableFrom P) forSome { type P; type E }] =
+			def unapply[T](kin :Kin[T]) :Opt[(PropertyPath[E, P], T ComposableFrom P) forSome { type P; type E }] =
 				kin match {
 					case composite :Derived[e, T] => unapply(composite.composition)
-					case _ => None
+					case _ => Lack
 				}
 		}
 
@@ -497,6 +482,24 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 				case _ => false
 			}
 		}
+
+//		/** A factory and matcher for the composition of `Option[T]` out of one or zero values of `T`. */
+//		object Opt {
+//			def apply[T](): Opt[T] ConstructFrom T = ToOpt.asInstanceOf[Opt[T] ConstructFrom T]
+//
+//			def of[T] :Opt[T] ConstructFrom T = apply()
+//
+//			def unapply[T, E](composition :T ComposableFrom E) :Boolean = composition == ToOpt
+//
+//			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.composer == ToOpt
+//
+//			def unapply[T, E](kin :Derived[E, T]) :Boolean = kin.composition == ToOpt
+//
+//			def unapply[T](kin :Kin[T]) :Boolean = kin match {
+//				case c :Derived[_, _] => c.composition == ToOpt
+//				case _ => false
+//			}
+//		}
 
 
 		/** A factory and matcher for the composition of the type `Iterable[T]` itself. */
@@ -545,18 +548,18 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 					new ToCollection[C[E], E](factory)
 			}
 
-			def unapply[T, E](composition :T ComposableFrom E) :Option[Factory[E, T]] = composition match {
-				case col :ToCollection[T, E] => Some(col.factory)
-				case _ => None
+			def unapply[T, E](composition :T ComposableFrom E) :Opt[Factory[E, T]] = composition match {
+				case col :ToCollection[T, E] => Got(col.factory)
+				case _ => Lack
 			}
 
-			def unapply[T, E](composedOf :T ComposedOf E) :Option[Factory[E, T]] = unapply(composedOf.composer)
+			def unapply[T, E](composedOf :T ComposedOf E) :Opt[Factory[E, T]] = unapply(composedOf.composer)
 
-			def unapply[T, E](kin :Derived[E, T]) :Option[Factory[E, T]] = unapply(kin.composition)
+			def unapply[T, E](kin :Derived[E, T]) :Opt[Factory[E, T]] = unapply(kin.composition)
 
-			def unapply[T](kin :Kin[T]) :Option[Factory[_, T]] = kin match {
+			def unapply[T](kin :Kin[T]) :Opt[Factory[_, T]] = kin match {
 				case c :Derived[e, T] => unapply(c.composition)
-				case _ => None
+				case _ => Lack
 			}
 		}
 
@@ -587,20 +590,20 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			}
 
 
-			def unapply[T, E](composition :T ComposableFrom E) :Option[Factory[(_, _), _]] = composition match {
-				case ToMap(factory) => Some(factory)
-				case _ => None
+			def unapply[T, E](composition :T ComposableFrom E) :Opt[Factory[(_, _), _]] = composition match {
+				case ToMap(factory) => Got(factory)
+				case _ => Lack
 			}
 
-			def unapply[T, E](composition :T ComposedOf E) :Option[Factory[(_, _), _]] =
+			def unapply[T, E](composition :T ComposedOf E) :Opt[Factory[(_, _), _]] =
 				unapply(composition.composer)
 
-			def unapply[T, E](kin :Derived[E, T]) :Option[Factory[(_, _), _]] =
+			def unapply[T, E](kin :Derived[E, T]) :Opt[Factory[(_, _), _]] =
 				unapply(kin.composition)
 
-			def unapply[T](kin :Kin[T]) :Option[Factory[(_, _), _]] = kin match {
+			def unapply[T](kin :Kin[T]) :Opt[Factory[(_, _), _]] = kin match {
 				case c :Derived[e, T] => unapply(c.composition)
-				case _ => None
+				case _ => Lack
 			}
 		}
 
@@ -623,18 +626,18 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			}
 
 
-			def unapply[T, E](composition :T ComposableFrom E) :Option[Factory[_, _]] = composition match {
-				case idx :ToOrdered[_, _] => Some(idx.factory)
-				case _ => None
+			def unapply[T, E](composition :T ComposableFrom E) :Opt[Factory[_, _]] = composition match {
+				case idx :ToOrdered[_, _] => Got(idx.factory)
+				case _ => Lack
 			}
 
-			def unapply[T, E](composition :T ComposedOf E) :Option[Factory[_, _]] = unapply(composition.composer)
+			def unapply[T, E](composition :T ComposedOf E) :Opt[Factory[_, _]] = unapply(composition.composer)
 
-			def unapply[T, E](kin :Derived[E, T]) :Option[Factory[_, _]] = unapply(kin.composition)
+			def unapply[T, E](kin :Derived[E, T]) :Opt[Factory[_, _]] = unapply(kin.composition)
 
-			def unapply[T](kin :Kin[T]) :Option[Factory[_, _]] = kin match {
+			def unapply[T](kin :Kin[T]) :Opt[Factory[_, _]] = kin match {
 				case c :Derived[_, _] => unapply(c.composition)
-				case _ => None
+				case _ => Lack
 			}
 		}
 
@@ -645,7 +648,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			extends ComposableFrom[C, E]
 		{
 			override def apply(items: Iterable[E]): C = compose(items)
-			override def attempt(items: Iterable[E]): Option[C] = Some(compose(items))
+			override def attempt(items: Iterable[E]): Opt[C] = Got(compose(items))
 
 			override def compatibleWith[X >: C](other: ComposableFrom[X, _]): Boolean =
 				other.canEqual(this) && this == other
@@ -659,18 +662,18 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			def apply[T, E](compose :Iterable[E] => T, arity :Arity = Arity._0_n) :T ComposableFrom E =
 				new Custom(compose, arity)
 
-			def unapply[T, E](composition :T ComposableFrom E) :Option[Iterable[E] => T] = composition match {
-				case custom :Custom[T, E] => Some(custom.compose)
-				case _ => None
+			def unapply[T, E](composition :T ComposableFrom E) :Opt[Iterable[E] => T] = composition match {
+				case custom :Custom[T, E] => Got(custom.compose)
+				case _ => Lack
 			}
 
-			def unapply[T, E](composedOf :T ComposedOf E) :Option[Iterable[E] => T] = unapply(composedOf.composer)
+			def unapply[T, E](composedOf :T ComposedOf E) :Opt[Iterable[E] => T] = unapply(composedOf.composer)
 
-			def unapply[T, E](kin :Derived[E, T]) :Option[Iterable[E] => T] = unapply(kin.composition)
+			def unapply[T, E](kin :Derived[E, T]) :Opt[Iterable[E] => T] = unapply(kin.composition)
 
-			def unapply[T](kin :Kin[T]) :Option[Iterable[E] => T] forSome { type E } = kin match {
+			def unapply[T](kin :Kin[T]) :Opt[Iterable[E] => T] forSome { type E } = kin match {
 				case c :Derived[e, T] => unapply[T, e](c.composition)
-				case _ => None
+				case _ => Lack
 			}
 		}
 
@@ -723,8 +726,8 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 				if (items.size == 1) items.head
 				else throw new IllegalKinArityException("Not a single result: " + items + ".")
 
-			override def attempt(items: Iterable[Any]) :Option[Any] =
-				if (items.size == 1) items.headOption else None
+			override def attempt(items: Iterable[Any]) :Opt[Any] =
+				if (items.size == 1) Got(items.head) else Lack
 
 			override def compatibleWith(decomposer :DecomposableTo[Any, _]) =
 				decomposer == DecomposableTo.Self()
@@ -757,14 +760,51 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 					throw new IllegalKinArityException("Expected 0-1 results, got " + items + ".")
 				else items.headOption
 
-			override def attempt(items: Iterable[Any]) :Option[Option[Any]] =
-				if (items.sizeIs <= 1) Some(items.headOption) else None
+			override def attempt(items: Iterable[Any]) :Opt[Option[Any]] =
+				if (items.sizeIs <= 1) Got(items.headOption) else Lack
 
 			override def compatibleWith(decomposer :DecomposableTo[Option[Any], _]) =
-				DecomposableTo.Option.unapply(decomposer) || DecomposableTo.Iterable.unapply(decomposer)
+				DecomposableTo.Option.unapply(decomposer) //|| DecomposableTo.Iterable.unapply(decomposer)
 
 			override def toString = "Option"
 		}
+
+//		private case object ToOpt extends ConstructFrom[Opt[Any], Any] {
+//			def arity :Arity = Arity._0_1
+//
+//			override def builder = new Builder[Any, Opt[Any]] {
+//				var res :Opt[Any] = Lack
+//
+//				override def clear() :Unit = res = Lack
+//
+//				override def result() = res
+//
+//				override def addOne(elem :Any) :this.type = {
+//					if (res.nonEmpty)
+//						throw new IllegalKinArityException(
+//							"Attempted to return more than one result as an Option: " + res.get + ", "+ elem + "."
+//						)
+//					res = Got(elem)
+//					this
+//				}
+//			}
+//
+//			override def apply(items :Iterable[Any]) :Opt[Any] =
+//				if (items.sizeIs > 1)
+//					throw new IllegalKinArityException("Expected 0-1 results, got " + items + ".")
+//				else if (items.isEmpty) Lack
+//				else Got(items.head)
+//
+//			override def attempt(items: Iterable[Any]) :Opt[Opt[Any]] =
+//				if (items.isEmpty) Got(Lack)
+//				else if (items.sizeIs <= 1) Got(Got(items.head))
+//				else Lack
+//
+//			override def compatibleWith(decomposer :DecomposableTo[Opt[Any], _]) =
+//				DecomposableTo.Opt.unapply(decomposer)
+//
+//			override def toString = "Opt"
+//		}
 
 		private[ComposedOf] class ToCollection[+C, -E](val factory :Factory[E, C])
 			extends Custom[C, E](factory.fromSpecific) with ConstructFrom[C, E]
@@ -796,7 +836,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 		private object ToIterable extends ToCollection[Iterable[Any], Any](scala.Iterable) {
 			override def apply(items :Iterable[Any]) :Iterable[Any] = items
-			override def attempt(items :Iterable[Any]) :Option[Iterable[Any]] = Some(items)
+			override def attempt(items :Iterable[Any]) :Opt[Iterable[Any]] = Got(items)
 
 			override def toString = "Iterable"
 		}
@@ -854,7 +894,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 		private object ToNothing extends ComposableFrom[Nothing, Any] {
 			override def arity = Arity._0_1
-			override def attempt(items :Iterable[Any]) = None
+			override def attempt(items :Iterable[Any]) = Lack
 			override def compatibleWith(decomposer :DecomposableTo[Nothing, _]) = false
 			override def toString = "Nothing"
 		}
@@ -881,10 +921,10 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 		def apply(composite :C) :Iterable[E]
 
-		def unapply(composite :C) :Option[Iterable[E]] = Some(apply(composite))
+		def unapply(composite :C) :Opt[Iterable[E]] = Got(apply(composite))
 
-		def unapply(kin :Kin[C]) :Option[Iterable[E]] =
-			if (kin.isPresent) Some(apply(kin.get)) else None
+		def unapply(kin :Kin[C]) :Opt[Iterable[E]] =
+			if (kin.isPresent) Got(apply(kin.get)) else Lack
 
 		def first(composite :C) :E
 
@@ -915,11 +955,11 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		def apply[T, E](implicit extract :T ExtractAs E) :T ExtractAs E = extract
 
 
-		def unapply[T, E](implicit decomposition :T DecomposableTo E) :Option[T ExtractAs E] = decomposition match {
-			case extract :ExtractAs[T, E] => Some(extract)
-			case _ => None
+		def unapply[T, E](implicit decomposition :T DecomposableTo E) :Opt[T ExtractAs E] = decomposition match {
+			case extract :ExtractAs[T, E] => Got(extract)
+			case _ => Lack
 		}
-		def unapply[T, E](composite :T ComposedOf E) :Option[T ExtractAs E] = unapply(composite.decomposer)
+		def unapply[T, E](composite :T ComposedOf E) :Opt[T ExtractAs E] = unapply(composite.decomposer)
 
 	}
 
@@ -947,26 +987,29 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			new Custom(decompose, arity)
 
 
-		def unapply[T, E](composite :T ComposedOf E) :Option[T DecomposableTo E] = Some(composite.decomposer)
+		def unapply[T, E](composite :T ComposedOf E) :Opt[T DecomposableTo E] = Got(composite.decomposer)
 
-		def unapply[T, E](kin :Derived[E, T]) :Option[Iterable[E]] = kin.items
+		def unapply[T, E](kin :Derived[E, T]) :Opt[Iterable[E]] = kin.items
 
-		def unapply[T, E](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Option[Iterable[E]] =
+		def unapply[T, E](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Opt[Iterable[E]] =
 			kin match {
 				case composite :Derived[E @unchecked, T @unchecked]
 						if composite.composition compatibleWith decomposition =>
-					Some(composite.items.asInstanceOf[Iterable[E]])
-				case _ => None
+					Got(composite.items.asInstanceOf[Iterable[E]])
+				case _ => Lack
 			}
 
 		/** A decomposer of type `Map[K, V]` into an `Iterable[K -> V]`. */
-		implicit def map[K, V] :Map[K, V] ExtractAs (K->V) = FromMap.asInstanceOf[ExtractAs[Map[K, V], K->V]]
+		implicit def map[K, V] :Map[K, V] ExtractAs (K -> V) = FromMap.asInstanceOf[ExtractAs[Map[K, V], K->V]]
 
 		/** A decomposer of `Iterable[T]` - and, by extension, any of its subtypes - returning it as-is. */
 		implicit def iterable[T] :Iterable[T] ExtractAs T = FromIterable.asInstanceOf[ExtractAs[Iterable[T], T]]
 
-		/** A decomposer of `Option[T]` into an `Iterable[T]`. */
+		/** A decomposer of `Option[T]` into an `Iterable[T]`. */ //consider: making these two DecomposableTo
 		implicit def option[T] :Option[T] ExtractAs T = FromOption.asInstanceOf[ExtractAs[Option[T], T]]
+
+//		/** A decomposer of `Opt[T]` into an `Iterable[T]`. */
+//		implicit def opt[T] :Opt[T] ExtractAs T = FromOpt.asInstanceOf[ExtractAs[Opt[T], T]]
 
 
 
@@ -990,6 +1033,16 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 
+//		/** A factory and matcher for the decomposition of `Opt[T]` into zero or one values of `T`. */
+//		object Opt {
+//			def apply[T]() :Opt[T] ExtractAs T = FromOpt.asInstanceOf[Opt[T] ExtractAs T]
+//
+//			def unapply[T, E](decomposition :DecomposableTo[T, E]) :Boolean = decomposition == FromOpt
+//
+//			def unapply[T, E](composedOf :T ComposedOf E) :Boolean = composedOf.decomposer == FromOpt
+//		}
+
+
 		/** A factory and matcher for the decomposition of `Iterable[E]` returning simply its argument as the collection
 		  * of elements.
 		  */
@@ -1006,7 +1059,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		  * @see [[net.noresttherein.oldsql.model.-> ->]]
 		  */
 		object Map {
-			def apply[K, V]() :Map[K, V] ExtractAs (K->V) = FromMap.asInstanceOf[Map[K, V] ExtractAs (K->V)]
+			def apply[K, V]() :Map[K, V] ExtractAs (K -> V) = FromMap.asInstanceOf[Map[K, V] ExtractAs (K->V)]
 
 			def unapply[T, E](decomposer :T DecomposableTo E) :Boolean = decomposer == FromMap
 
@@ -1051,6 +1104,16 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 			override def toString = "Option"
 		}
+
+//		private case object FromOpt extends ExtractAs[Opt[Any], Any] {
+//			override def arity = Arity._0_1
+//
+//			override def apply(composite :Opt[Any]) :Iterable[Any] =
+//				if (composite.isDefined) composite.get::Nil else Nil
+//			override def first(composite :Opt[Any]) :Any = composite.get
+//
+//			override def toString = "Opt"
+//		}
 
 		private case object FromIterable extends ExtractAs[Iterable[Any], Any] {
 			override def arity = Arity._0_n

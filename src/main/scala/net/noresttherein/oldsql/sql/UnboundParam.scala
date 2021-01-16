@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.~
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
@@ -159,26 +160,26 @@ object UnboundParam {
 	/** Matches all `UnboundParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: NonEmptyFrom, P[O] <: ParamAt[O]](param :F UnboundParam P) :Option[(F, Relation[P])] =
-		Some(param.left -> param.right)
+	def unapply[F <: NonEmptyFrom, P[O] <: ParamAt[O]](param :F UnboundParam P) :Opt[(F, Relation[P])] =
+		Got(param.left -> param.right)
 
 	/** Matches all `UnboundParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
 	def unapply[F <: RowProduct, X](from :F Adjoin M forSome { type M[O] <: RefinedMapping[X, O] })
-			:Option[(F, Relation[ParamRelation[X]#Param])] =
+			:Opt[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
-			case param :UnboundParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))
-			case _ => None
+			case param :UnboundParam[_, ParamRelation[X]#Param @unchecked] => Got((from.left, param.right))
+			case _ => Lack
 		}
 
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply(from :RowProduct) :Option[(RowProduct, Relation[ParamRelation[_]#Param])] =
+	def unapply(from :RowProduct) :Opt[(RowProduct, Relation[ParamRelation[_]#Param])] =
 		from match {
-			case param :UnboundParam.* @unchecked => Some(param.left -> param.right)
-			case _ => None
+			case param :UnboundParam.* @unchecked => Got(param.left -> param.right)
+			case _ => Lack
 		}
 
 
@@ -265,9 +266,9 @@ object UnboundParam {
 
 		def apply[X :SQLForm]() :ParamRelation[X] = ParamRelation("_")
 
-		def unapply(source :Relation.*) :Option[(SQLForm[_], String)] = source match {
-			case param :ParamRelation.* => Some(param.form -> param.name)
-			case _ => None
+		def unapply(source :Relation.*) :Opt[(SQLForm[_], String)] = source match {
+			case param :ParamRelation.* => Got(param.form -> param.name)
+			case _ => Lack
 		}
 
 		type * = ParamRelation[_]
@@ -300,9 +301,9 @@ object UnboundParam {
 		def apply[N <: Label, X]()(implicit form :SQLForm[X], name :ValueOf[N]) :NamedParamRelation[N, X] =
 			new NamedParamRelation[N, X](valueOf[N])
 
-		def unapply(source :Relation.*) :Option[(SQLForm[_], String)] = source match {
-			case param :NamedParamRelation[_, _] => Some(param.form -> param.name)
-			case _ => None
+		def unapply(source :Relation.*) :Opt[(SQLForm[_], String)] = source match {
+			case param :NamedParamRelation[_, _] => Got(param.form -> param.name)
+			case _ => Lack
 		}
 
 		type * = NamedParamRelation[_, _]
@@ -481,30 +482,28 @@ object UnboundParam {
 
 
 
-		def unapply[X](expr :ColumnSQL[_, _, X]) :Option[ParamColumn[X]] = expr match {
+		def unapply[X](expr :ColumnSQL[_, _, X]) :Opt[ParamColumn[X]] = expr match {
 			case TypedComponentSQL(_, MappingExtract(_, _, col :FromParam[_, _]#ParamColumn[_])) if col.root == this =>
-				Some(col.asInstanceOf[ParamColumn[X]])
-			case _ =>
-				None
+				Got(col.asInstanceOf[ParamColumn[X]])
+			case _ => Lack
 		}
 
-		def unapply[X](expr :SQLExpression[_, _, X]) :Option[ParamMapping[P, X, O]] = expr match {
+		def unapply[X](expr :SQLExpression[_, _, X]) :Opt[ParamMapping[P, X, O]] = expr match {
 			case TypedComponentSQL(_, MappingExtract(_, _, comp :ParamMapping[_, _, _])) if comp.root == this =>
-				Some(comp.asInstanceOf[ParamMapping[P, X, O]])
-			case _ => None
+				Got(comp.asInstanceOf[ParamMapping[P, X, O]])
+			case _ => Lack
 		}
 
-		def unapply[X](column :Column[X]) :Option[ParamColumn[X]] = column match {
+		def unapply[X](column :Column[X]) :Opt[ParamColumn[X]] = column match {
 			case param :FromParam[_, _]#ParamColumn[_] if param.root == this =>
-				Some(param.asInstanceOf[ParamColumn[X]])
-			case _ =>
-				None
+				Got(param.asInstanceOf[ParamColumn[X]])
+			case _ => Lack
 		}
 
-		def unapply[X](component :Component[X]) :Option[ParamMapping[P, X, O]] = component match {
+		def unapply[X](component :Component[X]) :Opt[ParamMapping[P, X, O]] = component match {
 			case param :ParamMapping[_, _, _] if param.root == this =>
-				Some(param.asInstanceOf[ParamComponent[X]])
-			case _ => None
+				Got(param.asInstanceOf[ParamComponent[X]])
+			case _ => Lack
 		}
 
 
@@ -552,24 +551,23 @@ object UnboundParam {
 	  * by application of some function. It extracts both the root `FromParam` and the `MappingExtract` for its component.
 	  */
 	object UnboundParamSQL {
-
+		//these do not use Opt only because of a scalac bug regarding existentials and value types.
 		def unapply[F <: RowProduct, T[A] <: BaseMapping[E, A], E, M[A] <: ColumnMapping[V, A], V, O >: F <: RowProduct]
 		           (expr :TypedColumnComponentSQL[F, T, E, M, V, O])
 				:Option[(FromParam[E, O], ParamColumnExtract[E, V, O], Int)] =
 			expr.extract.export match {
 				case param :FromParam[E @unchecked, O @unchecked]#ParamColumn[V @unchecked] =>
 					Some((param.root, param.extract, expr.origin.offset))
-				case _ =>
-					None
+				case _ => None
 			}
 
 		def unapply[F <: RowProduct, T[A] <: BaseMapping[E, A], E, M[A] <: BaseMapping[V, A], V, O >: F <: RowProduct]
-		           (expr :TypedComponentSQL[_, T, E, M, V, O]) :Option[(FromParam[E, O], ParamExtract[E, V, O], Int)] =
+		           (expr :TypedComponentSQL[_, T, E, M, V, O])
+				:Option[(FromParam[E, O], ParamExtract[E, V, O], Int)] =
 			expr.extract.export match {
 				case param :ParamMapping[E @unchecked, V @unchecked, O @unchecked] =>
 					Some((param.root, param.extract, expr.origin.offset))
-				case _ =>
-					None
+				case _ => None
 			}
 
 		def unapply[X](expr :SQLExpression[_, _, X])
@@ -854,26 +852,26 @@ object JoinParam {
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: TopFromSome, X](param :F WithParam X) :Option[(F, Relation[ParamRelation[X]#Param])] =
-		Some(param.left -> param.right)
+	def unapply[F <: TopFromSome, X](param :F WithParam X) :Opt[(F, Relation[ParamRelation[X]#Param])] =
+		Got(param.left -> param.right)
 
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
 	def unapply[F <: RowProduct, X](from :F Adjoin M forSome { type M[O] <: RefinedMapping[X, O] })
-			:Option[(F, Relation[ParamRelation[X]#Param])] =
+			:Opt[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
-			case param :JoinParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))
-			case _ => None
+			case param :JoinParam[_, ParamRelation[X]#Param @unchecked] => Got((from.left, param.right))
+			case _ => Lack
 		}
 
 	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply(from :RowProduct) :Option[(FromSome, Relation[ParamRelation[_]#Param])] =
+	def unapply(from :RowProduct) :Opt[(FromSome, Relation[ParamRelation[_]#Param])] =
 		from match {
-			case param :JoinParam.* @unchecked => Some(param.left -> param.right)
-			case _ => None
+			case param :JoinParam.* @unchecked => Got(param.left -> param.right)
+			case _ => Lack
 		}
 
 
@@ -1154,26 +1152,26 @@ object GroupParam {
 	/** Matches all `GroupParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply[F <: GroupByClause, X](param :F ByParam X) :Option[(F, Relation[ParamRelation[X]#Param])] =
-		Some(param.left -> param.right)
+	def unapply[F <: GroupByClause, X](param :F ByParam X) :Opt[(F, Relation[ParamRelation[X]#Param])] =
+		Got(param.left -> param.right)
 
 	/** Matches all `GroupParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
 	def unapply[F <: RowProduct, X](from :F Adjoin M forSome { type M[O] <: RefinedMapping[X, O] })
-			:Option[(F, Relation[ParamRelation[X]#Param])] =
+			:Opt[(F, Relation[ParamRelation[X]#Param])] =
 		from match {
-			case param :GroupParam[_, ParamRelation[X]#Param @unchecked] => Some((from.left, param.right))
-			case _ => None
+			case param :GroupParam[_, ParamRelation[X]#Param @unchecked] => Got((from.left, param.right))
+			case _ => Lack
 		}
 
 	/** Matches all `GroupParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
-	def unapply(from :RowProduct) :Option[(GroupByClause, Relation[ParamRelation[_]#Param])] =
+	def unapply(from :RowProduct) :Opt[(GroupByClause, Relation[ParamRelation[_]#Param])] =
 		from match {
-			case param :GroupParam.* @unchecked => Some(param.left -> param.right)
-			case _ => None
+			case param :GroupParam.* @unchecked => Got(param.left -> param.right)
+			case _ => Lack
 		}
 
 

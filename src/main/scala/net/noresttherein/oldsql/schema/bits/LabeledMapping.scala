@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
@@ -80,13 +82,13 @@ object LabeledMapping {
 
 
 	object @: {
-		def unapply(mapping :Mapping) :Option[(Label, Mapping)] = mapping match {
-			case labeled: @:[_, _] => Some(labeled.label -> labeled.body)
-			case _ => None
+		def unapply(mapping :Mapping) :Opt[(Label, Mapping)] = mapping match {
+			case labeled: @:[_, _] => Got(labeled.label -> labeled.body)
+			case _ => Lack
 		}
 
-		def unapply[N <: Label, M <: Mapping](labeled :N @: M) :Some[(N, M)] =
-			Some(labeled.label -> labeled.body)
+		def unapply[N <: Label, M <: Mapping](labeled :N @: M) :Opt[(N, M)] =
+			Got(labeled.label -> labeled.body)
 
 
 		type LabeledProjection[L <: Label, M[O] <: MappingAt[O]] = { type WithOrigin[O] = L @: M[O] }

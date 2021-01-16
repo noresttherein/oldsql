@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.schema.forms
 
 import java.sql.ResultSet
 
+import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.schema.SQLReadForm
 
 
@@ -304,7 +305,7 @@ trait ScalaReadForms {
 		val _1  :SQLReadForm[L]
 		val _2  :SQLReadForm[R]
 
-		override def opt(res :ResultSet, position :Int): Option[(L, R)] = {
+		override def opt(res :ResultSet, position :Int): Opt[(L, R)] = {
 			val l = _1.opt(res, position)
 			val r = _2.opt(res, position + _1.readColumns)
 			for (v1 <- l; v2 <- r) yield (v1, v2)
@@ -332,7 +333,7 @@ trait ScalaReadForms {
 		private[this] val offset_2 = _1.readColumns
 		private[this] val offset_3 = _1.readColumns + _2.readColumns
 		
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C)] = for {
 				a <- _1.opt(res, position)
 				b <- _2.opt(res, position + offset_2)
 				c <- _3.opt(res, position + offset_3)
@@ -361,7 +362,7 @@ trait ScalaReadForms {
 		private[this] val offset_3 = offset_2 + _2.readColumns
 		private[this] val offset_4 = offset_3 + _3.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -393,7 +394,7 @@ trait ScalaReadForms {
 		private[this] val offset_4 = offset_3 + _3.readColumns
 		private[this] val offset_5 = offset_4 + _4.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -429,7 +430,7 @@ trait ScalaReadForms {
 		private[this] val offset_5 = offset_4 + _4.readColumns
 		private[this] val offset_6 = offset_5 + _5.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -470,7 +471,7 @@ trait ScalaReadForms {
 		private[this] val offset_6 = offset_5 + _5.readColumns
 		private[this] val offset_7 = offset_6 + _6.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -514,7 +515,7 @@ trait ScalaReadForms {
 		private[this] val offset_7 = offset_6 + _6.readColumns
 		private[this] val offset_8 = offset_7 + _7.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -563,7 +564,7 @@ trait ScalaReadForms {
 		private[this] val offset_8 = offset_7 + _7.readColumns
 		private[this] val offset_9 = offset_8 + _8.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -615,7 +616,7 @@ trait ScalaReadForms {
 		private[this] val offset_9 = offset_8 + _8.readColumns
 		private[this] val offset_10 = offset_9 + _9.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -672,7 +673,7 @@ trait ScalaReadForms {
 		private[this] val offset_10 = offset_9 + _9.readColumns
 		private[this] val offset_11 = offset_10 + _10.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -733,7 +734,7 @@ trait ScalaReadForms {
 		private[this] val offset_11 = offset_10 + _10.readColumns
 		private[this] val offset_12 = offset_11 + _11.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -797,7 +798,7 @@ trait ScalaReadForms {
 		private[this] val offset_12 = offset_11 + _11.readColumns
 		private[this] val offset_13 = offset_12 + _12.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -865,7 +866,7 @@ trait ScalaReadForms {
 		private[this] val offset_13 = offset_12 + _12.readColumns
 		private[this] val offset_14 = offset_13 + _13.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -935,7 +936,7 @@ trait ScalaReadForms {
 		private[this] val offset_14 = offset_13 + _13.readColumns
 		private[this] val offset_15 = offset_14 + _14.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -1009,7 +1010,7 @@ trait ScalaReadForms {
 		private[this] val offset_15 = offset_14 + _14.readColumns
 		private[this] val offset_16 = offset_15 + _15.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -1087,7 +1088,7 @@ trait ScalaReadForms {
 		private[this] val offset_16 = offset_15 + _15.readColumns
 		private[this] val offset_17 = offset_16 + _16.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -1168,7 +1169,7 @@ trait ScalaReadForms {
 		private[this] val offset_17 = offset_16 + _16.readColumns
 		private[this] val offset_18 = offset_17 + _17.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -1252,7 +1253,7 @@ trait ScalaReadForms {
 		private[this] val offset_18 = offset_17 + _17.readColumns
 		private[this] val offset_19 = offset_18 + _18.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -1339,7 +1340,7 @@ trait ScalaReadForms {
 		private[this] val offset_19 = offset_18 + _18.readColumns
 		private[this] val offset_20 = offset_19 + _19.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -1429,7 +1430,7 @@ trait ScalaReadForms {
 		private[this] val offset_20 = offset_19 + _19.readColumns
 		private[this] val offset_21 = offset_20 + _20.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)
@@ -1523,7 +1524,7 @@ trait ScalaReadForms {
 		private[this] val offset_21 = offset_20 + _20.readColumns
 		private[this] val offset_22 = offset_21 + _21.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)] = for {
+		override def opt(res :ResultSet, position :Int) :Opt[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)] = for {
 			a <- _1.opt(res, position)
 			b <- _2.opt(res, position + offset_2)
 			c <- _3.opt(res, position + offset_3)

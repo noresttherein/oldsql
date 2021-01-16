@@ -5,6 +5,8 @@ import java.io.ObjectOutputStream
 import scala.collection.{EvidenceIterableFactory, Factory, IterableFactory, IterableOps}
 import scala.reflect.runtime.universe.{typeOf, TypeTag}
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{AbsentKinException, IncompatibleElementTypeException}
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, ComposableFrom, ConstructFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Derived, Property, Recomposed, Unknown}
@@ -135,6 +137,10 @@ trait Kin[+T] extends Serializable {
 
 	/** The referenced value in `Some` if this kin is present, or `None` if it is absent. */
 	def toOption :Option[T]
+
+	/** The referenced value as [[net.noresttherein.oldsql.collection.Opt.Got Got]]`(x)` if this kin is present,
+	  * or [[net.noresttherein.oldsql.collection.Opt.Lack Lack]] if it is absent.*/
+	def opt :Opt[T] = if (isPresent) Got(get) else Lack //todo: make this primary, rather than toOption
 
 	/** Returns the value of this kin, if present, or throws
 	  * [[net.noresttherein.oldsql.exceptions.AbsentKinException AbsentKinException]] (a `NoSuchElementException`
@@ -593,11 +599,10 @@ object Kin {
 		  * @param decomposition specification of what type `E` type `T` should be decomposed to and how.
 		  * @return the restraint stored in this instance if it exists and is compatible with `composition`.
 		  */
-		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Option[Restraint[_ <: E]] =
+		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Opt[Restraint[_ <: E]] =
 			kin match {
-				case r :Restrained[e, T] if r.composition compatibleWith decomposition =>
-					Some(r.where)
-				case _ => None
+				case r :Restrained[e, T] if r.composition compatibleWith decomposition => Got(r.where)
+				case _ => Lack
 			}
 
 		private class RestrainedCollector[T](restraint :Restraint[T]) extends KinCollector[T] {
@@ -690,9 +695,9 @@ object Kin {
 		  * composition. This includes all instances created by this object as well as sibling factories under
 		  * [[net.noresttherein.oldsql.model.Kin Kin]], if that composition type was provided explicitly.
 		  */
-		def unapply[T](kin :Kin[C[T]]) :Option[Restraint[_ <: T]] = kin match {
-			case AllWhere(restraint) => Some(restraint)
-			case _ => None
+		def unapply[T](kin :Kin[C[T]]) :Opt[Restraint[_ <: T]] = kin match {
+			case AllWhere(restraint) => Got(restraint)
+			case _ => Lack
 		}
 	}
 
@@ -978,7 +983,7 @@ object Kin {
 		/** Check if this `Kin` has a present value associated with it.
 		  * @return `kin.toOption`.
 		  */
-		@inline def unapply[T](kin :Kin[T]) :Option[T] = kin.toOption
+		@inline def unapply[T](kin :Kin[T]) :Opt[T] = kin.opt
 	}
 
 
@@ -1385,11 +1390,11 @@ object Kin {
 		/** Matches `Derived[E, T]` instances, checking that it's `composition` is compatible with the implicit
 		  * `decomposition`. If you wish to match all `Derived` instances instead, you should do so by its type instead.
 		  */
-		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Option[Derived[E, T]] =
+		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Opt[Derived[E, T]] =
 			kin match {
 				case derived :Derived[E @unchecked, T @unchecked] if derived.composition compatibleWith decomposition =>
-					Some(derived)
-				case _ => None
+					Got(derived)
+				case _ => Lack
 			}
 
 
@@ -1481,20 +1486,20 @@ object Kin {
 		  * @return the adapted kin, with its decomposition to the element type and the composition used for creating
 		  *         the desired value.
 		  */
-		def unapply[E, T](kin :Derived[E, T]) :Option[(Kin[X], X DecomposableTo E, T ComposableFrom E) forSome { type X }] =
+		def unapply[E, T](kin :Derived[E, T]) :Opt[(Kin[X], X DecomposableTo E, T ComposableFrom E) forSome { type X }] =
 			kin match {
-				case adapter :Recomposed[E, x, T] => Some((adapter.kin, adapter.decomposition, adapter.composition))
-				case _ => None
+				case adapter :Recomposed[E, x, T] => Got((adapter.kin, adapter.decomposition, adapter.composition))
+				case _ => Lack
 			}
 
 		/** Matches kin adapter created by [[net.noresttherein.oldsql.model.Kin.Recomposed.apply Recomposed(kin)]].
 		  * @return the adapted kin, with its decomposition to the element type and the composition used for creating
 		  *         the desired value.
 		  */
-		def unapply[T](kin :Kin[T]) :Option[(Kin[X], X DecomposableTo E, T ComposableFrom E) forSome { type X; type E }] =
+		def unapply[T](kin :Kin[T]) :Opt[(Kin[X], X DecomposableTo E, T ComposableFrom E) forSome { type X; type E }] =
 			kin match {
-				case adapter :Recomposed[e, x, T] => Some((adapter.kin, adapter.decomposition, adapter.composition))
-				case _ => None
+				case adapter :Recomposed[e, x, T] => Got((adapter.kin, adapter.decomposition, adapter.composition))
+				case _ => Lack
 			}
 
 	}
@@ -1529,7 +1534,7 @@ object Kin {
 		  * matching all `Derived`.
 		  * @return `Some(kin.parts)`.
 		  */
-		def unapply[E, T](kin :Derived[E, T]) :Option[Iterable[Derived[E, _]]] = Some(kin.parts)
+		def unapply[E, T](kin :Derived[E, T]) :Opt[Iterable[Derived[E, _]]] = Got(kin.parts)
 
 		/** Matches all [[net.noresttherein.oldsql.model.Kin.Derived Derived]] with composition matching
 		  * the implicit decomposition, extracting its [[net.noresttherein.oldsql.model.Kin.Derived.parts parts]].
@@ -1538,8 +1543,8 @@ object Kin {
 		  * result in all their individual constituents instead.
 		  * @return `kin.`[[net.noresttherein.oldsql.model.Kin.explode explode]].
 		  */
-		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Option[Iterable[Derived[E, _]]] =
-			kin.explode
+		def unapply[E, T](kin :Kin[T])(implicit decomposition :T DecomposableTo E) :Opt[Iterable[Derived[E, _]]] =
+			kin.explode[E]
 	}
 
 
@@ -1699,10 +1704,10 @@ object Kin {
 		  * [[net.noresttherein.oldsql.model.Kin.Derived.composition composition]] property of `Derived`).
 		  */
 		def unapply[E, T](kin :Derived[E, T])
-				:Option[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P)] forSome { type X; type P } =
+				:Opt[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P)] forSome { type X; type P } =
 			kin match {
-				case prop :Property[E, x, p, T] => Some((prop.owner, prop.property, prop.propertyComposition))
-				case _ => None
+				case prop :Property[E, x, p, T] => Got((prop.owner, prop.property, prop.propertyComposition))
+				case _ => Lack
 			}
 
 		/** Matches kin instances created by this factory (or, indirectly,
@@ -1713,10 +1718,10 @@ object Kin {
 		  * [[net.noresttherein.oldsql.model.Kin.Derived.composition composition]] property of `Derived`).
 		  */
 		def unapply[T](kin :Kin[T])
-				:Option[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P) forSome { type E; type P }] =
+				:Opt[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P) forSome { type E; type P }] =
 			kin match {
-				case prop :Property[e, x, p, T] => Some((prop.owner, prop.property, prop.propertyComposition))
-				case _ => None
+				case prop :Property[e, x, p, T] => Got((prop.owner, prop.property, prop.propertyComposition))
+				case _ => Lack
 			}
 
 
@@ -1763,18 +1768,21 @@ object Kin {
 
 			override def missing(key :K) = Property(entities.missing(key), property)
 
-			override def decompose(value :T) = None
-			override def itemsOf(kin :Kin[T]) :Option[Iterable[E]] = None
+			override def decompose(value :T) = Lack
+			override def itemsOf(kin :Kin[T]) :Opt[Iterable[E]] = Lack
 
-			override def keyFor(value :T) :Option[K] = None
-			override def keyFrom(item :E) :Option[K] = entities.keyFrom(item)
-			override def keyFrom(items :Iterable[E]) :Option[K] = entities.keyFrom(items)
+			override def keyFor(value :T) :Opt[K] = Lack
+			override def keyFrom(item :E) :Opt[K] = entities.keyFrom(item)
+			override def keyFrom(items :Iterable[E]) :Opt[K] = entities.keyFrom(items)
 
-			override def keyOf(kin :Kin[T]) :Option[K] = kin match {
+			override def keyOf(kin :Kin[T]) :Opt[K] = kin match {
 				//owner.Element <:< prop.definedFor, so elements are safe to pass of as E even if owner is not (invariance)
 				case Property(owner :Derived[E @unchecked, _], prop, _) //unchecked type not necessarily true, but^
-					if prop.definedFor <:< argType && property == prop => owner.items.flatMap(entities.keyFrom)
-				case _ => None
+					if prop.definedFor <:< argType && property == prop => owner.items match {
+						case Some(items) => keyFrom(items)
+						case _ => Lack
+					}
+				case _ => Lack
 			}
 
 			override def as[Y](implicit composition :Y ComposedOf E) = entities.as[Y]
@@ -1903,14 +1911,14 @@ object Kin {
 		def delay[E, T](where :Restraint[E], value: => Option[T])(implicit as :T ComposedOf E) :Restrained[E, T] =
 			new LazyRestrained(where, () => value)
 
-		def unapply[E, T](kin :Derived[E, T]) :Option[(Restraint[E], T ComposableFrom E)] = kin match {
-			case restrained :Restrained[E, T] => Some((restrained.where, restrained.composition))
-			case _ => None
+		def unapply[E, T](kin :Derived[E, T]) :Opt[(Restraint[E], T ComposableFrom E)] = kin match {
+			case restrained :Restrained[E, T] => Got((restrained.where, restrained.composition))
+			case _ => Lack
 		}
 
-		def unapply[T](kin :Kin[T]) :Option[(Restraint[E], T ComposableFrom E) forSome { type E }] = kin match {
-			case restrained :Restrained[e, T] => Some((restrained.where, restrained.composition))
-			case _ => None
+		def unapply[T](kin :Kin[T]) :Opt[(Restraint[E], T ComposableFrom E) forSome { type E }] = kin match {
+			case restrained :Restrained[e, T] => Got((restrained.where, restrained.composition))
+			case _ => Lack
 		}
 
 
@@ -1953,14 +1961,17 @@ object Kin {
 			override def missing(key: K): Derived[E, X] = Restrained.missing(restrainer(key))
 			override def absent(key: K): Derived[E, X] = Restrained.absent(restrainer(key))
 
-			override def keyFrom(item: E): Option[K] = restrainer.from(item)
+			override def keyFrom(item: E): Opt[K] = restrainer.from(item)
 
-			override def keyOf(ref: Kin[X]): Option[K] = ref match {
-				case AllWhere(this.restrainer(key)) => Some(key)
+			override def keyOf(ref: Kin[X]): Opt[K] = ref match {
+				case AllWhere(this.restrainer(key)) => Got(key)
 				case result.decomposer(values) =>
-					if (values.isEmpty) None
-					else restrainer.from(values.head).filter(v => values.forall(v == _))
-				case _ => None
+					if (values.isEmpty) Lack
+					else restrainer.from(values.head) match {
+						case res @ Got(k) if values.forall(_ == k) => res
+						case _ => Lack
+					}
+				case _ => Lack
 			}
 
 			override def required :KinFactory[K, E, X] =

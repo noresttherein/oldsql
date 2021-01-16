@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.schema.support
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.haul.{TableCache, TableIndex}
 import net.noresttherein.oldsql.haul.TableCache.EntityTableCache
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
@@ -11,6 +13,12 @@ import net.noresttherein.oldsql.schema.MappingExtract
 
 
 
+/** A stateful proxy to another mapping which maintains a collection of indices which map the values
+  * of chosen components of the backing mapping to subjects sharing those values.
+  * Unlike normal mappings, which are static - typically created during application startup -
+  * and are shared by all threads performing actions on the schema, this mapping is created
+  * specifically for mapping a single `ResultSet` or a single ''haul''.
+  */
 class IndexedMapping[S, O](protected override val backer :RefinedMapping[S, O], indices :Iterable[TableIndex[_, S]])
 	extends DirectProxy[S, O]
 {
@@ -18,8 +26,8 @@ class IndexedMapping[S, O](protected override val backer :RefinedMapping[S, O], 
 
 	private[this] val fastIndices = indices.toArray
 
-	override def optionally(pieces :Pieces) :Option[S] = pieces.get(backer) match {
-		case res @ Some(value) =>
+	override def optionally(pieces :Pieces) :Opt[S] = pieces.get(backer) match {
+		case res @ Got(value) =>
 			var i = fastIndices.length - 1
 			while (i >= 0) {
 				fastIndices(i) += value
@@ -29,7 +37,7 @@ class IndexedMapping[S, O](protected override val backer :RefinedMapping[S, O], 
 		case none => none
 	}
 
-	override def assemble(pieces :Pieces) :Option[S] = None //backer.assemble(pieces)
+	override def assemble(pieces :Pieces) :Opt[S] = Lack
 
 	override def toString :String = "Indexed(" + backer + ")"
 }
@@ -39,8 +47,14 @@ class IndexedMapping[S, O](protected override val backer :RefinedMapping[S, O], 
 
 
 
-/**
-  * @author Marcin Mościcki
+/** A stateful proxy to another mapping which maintains a cache of all previously read values
+  * and performs aliasing, always returning the same entity instance from the cache for the same primary key.
+  * Additionally, like [[net.noresttherein.oldsql.schema.support.IndexedMapping IndexedMapping]], it maintains
+  * a collection of indices which map the values of chosen components of the backing mapping
+  * to subjects sharing those values in the same manner as with the primary key cache.
+  * Unlike normal mappings, which are static - typically created during application startup -
+  * and are shared by all threads performing actions on the schema, this mapping is created
+  * specifically for mapping a single `ResultSet` or a single ''haul''.
   */
 class IndexedEntityMapping[K, S, O] private (protected override val backer :RefinedMapping[S, O],
                                              pk :TableIndex[K, S], indices :Iterable[TableIndex[_, S]])
@@ -51,24 +65,24 @@ class IndexedEntityMapping[K, S, O] private (protected override val backer :Refi
 	private[this] val extract = MappingExtract(pk.component[O])(pk.property)
 	private[this] val fastIndices = indices.toArray
 
-	override def optionally(pieces :Pieces) :Option[S] = pieces.get(extract) match {
-		case Some(k) =>	pk.unique(k) match {
-			case res @ Some(_) => res
+	override def optionally(pieces :Pieces) :Opt[S] = pieces.get(extract) match {
+		case Got(k) => pk.unique(k) match {
+			case res if res.isDefined => res
 			case _ => pieces.get(backer) match {
-				case res @ Some(s) => put(k, s); res
+				case res @ Got(s) => put(k, s); res
 				case none => none
 			}
 		}
 		case _ => pieces.get(backer) match {
-			case res @ Some(s) => extract.get(s) match {
-				case Some(k) => put(k, s); res
+			case res @ Got(s) => extract.get(s) match {
+				case Got(k) => put(k, s); res
 				case _ => res
 			}
 			case none => none
 		}
 	}
 
-	override def assemble(pieces :Pieces) :Option[S] = None //backer.assemble(pieces)
+	override def assemble(pieces :Pieces) :Opt[S] = Lack
 
 	private def put(key :K, value :S) :Unit = {
 		pk.add(key, value)

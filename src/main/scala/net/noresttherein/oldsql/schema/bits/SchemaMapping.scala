@@ -5,7 +5,7 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
-import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainContains, ChainGet, ItemExists}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.haul.ComponentValues
@@ -1306,7 +1306,7 @@ object SchemaMapping {
 	{
 		private[this] val cons = conversion(schema, constructor)
 
-		override def assemble(pieces :Pieces) :Option[S] = cons(pieces)
+		override def assemble(pieces :Pieces) :Opt[S] = cons(pieces)
 	}
 
 

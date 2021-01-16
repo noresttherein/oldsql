@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.model
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{MissingKeyException, NonexistentEntityException}
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Derived, Nonexistent, Present}
@@ -98,9 +100,9 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 	  * If `value` is undefined (`items` are insufficient or otherwise invalid elements of the referenced type),
 	  * this method will always return `None` - even if a common key could be extracted from the collection.
 	  */
-	override def forItems(items :Iterable[E]) :Option[R] = composition.attempt(items) match {
-		case opt @ Some(value) => keyFrom(items).map(apply(_, opt)) orElse Some(present(value))
-		case _ => None
+	override def forItems(items :Iterable[E]) :Opt[R] = composition.attempt(items) match {
+		case opt @ Got(value) => keyFrom(items).map(apply(_, opt)) orElse Got(present(value))
+		case _ => Lack
 	}
 
 	/** Create a present instance based on an (assumed complete) collection of entities and the key pointing
@@ -109,22 +111,22 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 	  * [[net.noresttherein.oldsql.model.RelatedEntityFactory.keyFrom keyFrom]]`(item)`. If any of the items yields
 	  * a non empty result differing from `Some(key)` the method returns `None`.
 	  */
-	override def forItems(key :K, items :Iterable[E]) :Option[R] =
-		if (keyFrom(items).exists(_ != key)) None
-		else composition.attempt(items).map(x => apply(key, Some(x)))
+	override def forItems(key :K, items :Iterable[E]) :Opt[R] =
+		if (keyFrom(items).exists(_ != key)) Lack
+		else composition.attempt(items).map(x => apply(key, Got(x)))
 
 	/** Decomposes the given `Kin` into individual entities. */
-	override def itemsOf(kin :Kin[X]) :Option[Iterable[E]] = valueOf(kin).flatMap(decompose)
+	override def itemsOf(kin :Kin[X]) :Opt[Iterable[E]] = valueOf(kin).flatMap(decompose)
 
 //	override def keyFor(value :X) :Option[K]
 
 	/** Try to retrieve the key out of the given target item. */
-	override def keyFrom(item :E) :Option[K]
+	override def keyFrom(item :E) :Opt[K]
 
 	/** Try to retrieve the key out of the given `Kin`. In case of a non-empty result, `absent(key)` should return
 	  * a `Kin` equal to the argument.
 	  */
-	def keyOf(kin :Kin[X]) :Option[K]
+	def keyOf(kin :Kin[X]) :Opt[K]
 
 	/** Retrieve the key out of the given `Kin` or throw a `MissingKeyException` if not possible.
 	  * Relies on the `keyOf()` implementation.
@@ -133,12 +135,12 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 		keyOf(kin) getOrElse { throw new MissingKeyException(s"No $this key in $kin.") }
 
 	/** Returns `kin.toOption`. */
-	override def valueOf(kin :Kin[X]) :Option[X] = kin.toOption
+	override def valueOf(kin :Kin[X]) :Opt[X] = kin.toOption
 
 	/** Tries to retrieve both the key and the value from a `Kin`.
 	  * @return `keyOf(kin)`.
 	  */
-	override def unapply(kin :Kin[X]) :Option[K] = keyOf(kin)
+	override def unapply(kin :Kin[X]) :Opt[K] = keyOf(kin)
 
 	/** A proxy to this factory which
 	  * throws a [[net.noresttherein.oldsql.exceptions.MissingKeyException MissingKeyException]]
@@ -227,9 +229,9 @@ object KinFactory {
 		override def present(value :X) :Kin[X] = Present(value)
 		override def nonexistent :Kin[X] = Nonexistent()
 
-		override def decompose(value :X) :Option[Iterable[E]] = Some(result.decomposer(value))
-		override def itemsOf(kin :Kin[X]) :Option[Iterable[E]] =
-			if (kin.isPresent) Some(result.decomposer(kin.get)) else None
+		override def decompose(value :X) :Opt[Iterable[E]] = Got(result.decomposer(value))
+		override def itemsOf(kin :Kin[X]) :Opt[Iterable[E]] =
+			if (kin.isPresent) Got(result.decomposer(kin.get)) else Lack
 
 		override def isRequired = false
 	}
@@ -276,15 +278,15 @@ object KinFactory {
 		override def nonexistent :R = target.nonexistent
 		override def unknown :Kin[X] = target.unknown
 
-		override def decompose(value :X) :Option[Iterable[E]] = target.decompose(value)
-		override def itemsOf(kin :Kin[X]) :Option[Iterable[E]] = target.itemsOf(kin)
+		override def decompose(value :X) :Opt[Iterable[E]] = target.decompose(value)
+		override def itemsOf(kin :Kin[X]) :Opt[Iterable[E]] = target.itemsOf(kin)
 
-		override def keyFor(value :X) :Option[K] = target.keyFor(value)
-		override def keyFrom(item: E): Option[K] = target.keyFrom(item)
-		override def keyFrom(items :Iterable[E]) :Option[K] = target.keyFrom(items)
-		override def keyOf(kin: Kin[X]): Option[K] = target.keyOf(kin)
+		override def keyFor(value :X) :Opt[K] = target.keyFor(value)
+		override def keyFrom(item: E): Opt[K] = target.keyFrom(item)
+		override def keyFrom(items :Iterable[E]) :Opt[K] = target.keyFrom(items)
+		override def keyOf(kin: Kin[X]): Opt[K] = target.keyOf(kin)
 		override def forceKeyOutOf(kin :Kin[X]) :K = target.forceKeyOutOf(kin)
-		override def unapply(kin :Kin[X]) :Option[K] = target.unapply(kin)
+		override def unapply(kin :Kin[X]) :Opt[K] = target.unapply(kin)
 
 		override def optionalKeys(nonexistent :Kin[X]) :RelatedEntityFactory[Option[K], E, X, Kin[X]] =
 			target.optionalKeys(nonexistent)

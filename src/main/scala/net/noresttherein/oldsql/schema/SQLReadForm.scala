@@ -5,6 +5,8 @@ import java.sql.{CallableStatement, ResultSet, SQLException, Types}
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.Seq
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.ColumnBasedFactory
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
@@ -62,7 +64,7 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]]
 	  */
 	def apply(res :ResultSet, position :Int) :T = opt(res, position) match {
-		case Some(x) => x
+		case Got(x) => x
 		case _ => try {
 			nullValue
 		} catch {
@@ -78,7 +80,7 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	/** Attempts to read the column values from columns `<position..position + this.readColumns` of the passed
 	  * `ResultSet` and create an instance of `T`. If the values are unavailable (required columns carry `null` values),
 	  * `None` is returned. It is the recommended practice to have the returned option reflect only the availability
-	  * of the input values and not their validity. It is allowed for the form to return `Some(null)`
+	  * of the input values and not their validity. It is allowed for the form to return `Got(null)`
 	  * (as long as `T >: Null`), but this results in propagation of `null` values to any forms derived from it
 	  * and to the application. As such, it is discouraged, with the exception of `ColumnForm`s, as the validity of
 	  * `null` values can be explicitly switched on for columns using the `Nullable` buff (and otherwise affected
@@ -88,7 +90,7 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  * for any other reason. Similarly, all thrown `SQLException`s are propagated.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.apply apply]]
 	  */
-	def opt(res :ResultSet, position :Int) :Option[T]
+	def opt(res :ResultSet, position :Int) :Opt[T]
 
 
 	/** Attempts to read the values of ''out'' parameters of the given `CallableStatement` and create an instance of `T`.
@@ -112,7 +114,7 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	def apply(call :CallableStatement, position :Int) :T = {
 		val res = new CallableStatementOutParams(call)
 		opt(res, position) match {
-			case Some(x) => x
+			case Got(x) => x
 			case _ => guardedNullValue(position, res)
 		}
 	}
@@ -124,7 +126,7 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  * to [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]`(res, position)`.
 	  * If the values are unavailable (required columns carry `null` values),
 	  * `None` is returned. It is the recommended practice to have the returned option reflect only the availability
-	  * of the input values and not their validity. It is allowed for the form to return `Some(null)`
+	  * of the input values and not their validity. It is allowed for the form to return `Got(null)`
 	  * (as long as `T >: Null`), but this results in propagation of `null` values to any forms derived from it
 	  * and to the application. As such, it is discouraged, with the exception of `ColumnForm`s, as the validity of
 	  * `null` values can be explicitly switched on for columns using the `Nullable` buff (and otherwise affected
@@ -134,7 +136,7 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  * for any other reason. Similarly, all thrown `SQLException`s are propagated.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.apply apply]]
 	  */
-	def opt(call :CallableStatement, position :Int) :Option[T] = opt(new CallableStatementOutParams(call), position)
+	def opt(call :CallableStatement, position :Int) :Opt[T] = opt(new CallableStatementOutParams(call), position)
 
 	/** The value a `null` column (or all `null` columns) should be mapped to. It is used in particular by `apply`
 	  * when the value is unavailable, for example as a result of an outer join. Extending classes are allowed
@@ -386,7 +388,7 @@ object SQLReadForm {
 	  * @param reader a function taking an SQL `ResultSet`, a start column position, and reads the following
 	  *               `columns` columns to create a value of `T`.
 	  */
-	def opt[T :NullValue](columns :Int, name :String = null)(reader :(ResultSet, Int) => Option[T]) :SQLReadForm[T] =
+	def opt[T :NullValue](columns :Int, name :String = null)(reader :(ResultSet, Int) => Opt[T]) :SQLReadForm[T] =
 		new CustomOptSQLReadForm[T](columns, name)(reader)
 
 
@@ -402,7 +404,7 @@ object SQLReadForm {
 	  * by reevaluating the given expression. An implicitly provided null value is used by its `nullValue` method,
 	  * to which the `apply` method delegates when the former yields `None`. The expression must be thread safe.
 	  */
-	def evalopt[T :NullValue](expr : => Option[T], readColumns :Int = 0, name :String = null) :SQLReadForm[T] =
+	def evalopt[T :NullValue](expr: => Opt[T], readColumns :Int = 0, name :String = null) :SQLReadForm[T] =
 		new EvalSQLReadForm(expr, readColumns, if (name != null) name else "=_>")
 
 
@@ -414,13 +416,13 @@ object SQLReadForm {
 	  */
 	def const[T](value :T, readColumns :Int = 0, name :String = null) :SQLReadForm[T] =
 		new ConstSQLReadForm[T](
-			Some(value), readColumns, if (name != null) name else "='" + value + "'>"
+			Got(value), readColumns, if (name != null) name else "='" + value + "'>"
 		)(NullValue(value))
 
 	/** Creates a form reading the given number of columns and always returning the provided value from its `opt` method.
-	  * If `value` is `None`, the implicit `NullValue[T]` is used by the form's `apply` method to stand in.
+	  * If `value` is `Lack`, the implicit `NullValue[T]` is used by the form's `apply` method to stand in.
 	  */
-	def constopt[T :NullValue](value :Option[T], readColumns :Int = 0, name :String = null) :SQLReadForm[T] =
+	def constopt[T :NullValue](value :Opt[T], readColumns :Int = 0, name :String = null) :SQLReadForm[T] =
 		new ConstSQLReadForm[T](value, readColumns, if (name != null) name else "=" + value + ">")
 
 
@@ -650,8 +652,8 @@ object SQLReadForm {
 //			else t
 //		}
 
-		abstract override def opt(res :ResultSet, position :Int) :Option[T] = super.opt(res, position) match {
-			case Some(null) => throw new NullPointerException("Cannot return null from " + this + ".")
+		abstract override def opt(res :ResultSet, position :Int) :Opt[T] = super.opt(res, position) match {
+			case Got(null) => throw new NullPointerException("Cannot return null from " + this + ".")
 			case t => t
 		}
 	}
@@ -688,7 +690,7 @@ object SQLReadForm {
 	trait EmptyReadForm[+T] extends SQLReadForm[T] {
 		override def readColumns = 0
 
-		override def opt(res :ResultSet, position :Int) :Option[T] = None
+		override def opt(res :ResultSet, position :Int) :Opt[T] = Lack
 		override def apply(res :ResultSet, position :Int) :T = nullValue
 		override def register(call :CallableStatement, position :Int) :Unit = ()
 
@@ -713,7 +715,7 @@ object SQLReadForm {
 	trait ProxyReadForm[+T] extends SQLReadForm[T] {
 		protected def form :SQLReadForm[T]
 
-		override def opt(res :ResultSet, position :Int) :Option[T] = form.opt(res, position)
+		override def opt(res :ResultSet, position :Int) :Opt[T] = form.opt(res, position)
 		override def apply(res :ResultSet, position :Int) :T = form(res, position)
 
 		override def nulls :NullValue[T] = form.nulls
@@ -789,7 +791,7 @@ object SQLReadForm {
 		extends AbstractSQLReadForm[T]
 	{
 		override def apply(res :ResultSet, position :Int) :T = read(res, position)
-		override def opt(res :ResultSet, position :Int) :Option[T] = Option(read(res, position))
+		override def opt(res :ResultSet, position :Int) :Opt[T] = Opt(read(res, position))
 
 		override def notNull :SQLReadForm[T] =
 			new CustomSQLReadForm[T](columns, toString + ".notNull")(read)(NotNull) with NotNullReadForm[T] {
@@ -807,10 +809,10 @@ object SQLReadForm {
 
 
 	private[schema] class CustomOptSQLReadForm[+T :NullValue](columns :Int, name :String = null)
-	                                                         (read :(ResultSet, Int) => Option[T])
+	                                                         (read :(ResultSet, Int) => Opt[T])
 		extends AbstractSQLReadForm[T]
 	{
-		override def opt(res :ResultSet, position :Int) :Option[T] = read(res, position)
+		override def opt(res :ResultSet, position :Int) :Opt[T] = read(res, position)
 
 		override def notNull :SQLReadForm[T] =
 			new CustomOptSQLReadForm[T](columns, toString + ".notNull")(read)(NotNull) with ReadFormNullGuard[T]
@@ -820,17 +822,17 @@ object SQLReadForm {
 	}
 
 
-	private[schema] class ConstSQLReadForm[+T :NullValue](value :Option[T], columns :Int, name :String = null)
+	private[schema] class ConstSQLReadForm[+T :NullValue](value :Opt[T], columns :Int, name :String = null)
 		extends AbstractSQLReadForm[T]
 	{
 		override def readColumns :Int = columns
 
-		protected def get :Option[T] = value
+		protected def get :Opt[T] = value
 
-		override def opt(res :ResultSet, position :Int): Option[T] = value
+		override def opt(res :ResultSet, position :Int): Opt[T] = value
 
 		override def notNull :SQLReadForm[T] = value match {
-			case Some(null) => error(columns, toString + ".notNull") {
+			case Got(null) => error(columns, toString + ".notNull") {
 				throw new NullPointerException("Cannot return a null value from " + this + ".opt.")
 			}
 			case _ if nulls == NullValue.NotNull => this
@@ -851,12 +853,12 @@ object SQLReadForm {
 
 
 	private[schema] class EvalSQLReadForm[+T :NullValue]
-	                                     (value: => Option[T], columns :Int = 0, override val toString :String = "=_>")
+	                                     (value: => Opt[T], columns :Int = 0, override val toString :String = "=_>")
 		extends AbstractSQLReadForm[T]
 	{
 		override def readColumns :Int = columns
 
-		override def opt(res :ResultSet, position :Int): Option[T] = value
+		override def opt(res :ResultSet, position :Int): Opt[T] = value
 
 		override def notNull :SQLReadForm[T] =
 			new EvalSQLReadForm[T](value, columns, toString + ".notNull") with ReadFormNullGuard[T]
@@ -874,7 +876,10 @@ object SQLReadForm {
 
 		override def readColumns :Int = source.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[T] = source.opt(res, position).flatMap(map)
+		override def opt(res :ResultSet, position :Int) :Opt[T] = source.opt(res, position) match {
+			case Got(s) => map(s)
+			case _ => Lack
+		}
 
 		override def notNull :SQLReadForm[T] =
 			new FlatMappedSQLReadForm(map, toString + ".notNull")(source, NullValue.NotNull) with ReadFormNullGuard[T]
@@ -893,7 +898,7 @@ object SQLReadForm {
 
 		override def readColumns :Int = source.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[T] = source.opt(res, position).map(map)
+		override def opt(res :ResultSet, position :Int) :Opt[T] = source.opt(res, position).map(map)
 
 		override def notNull :SQLReadForm[T] =
 			new MappedSQLReadForm[S, T](map, toString + ".notNull")(source, NullValue.NotNull) with ReadFormNullGuard[T]
@@ -909,7 +914,7 @@ object SQLReadForm {
 		protected def first :SQLReadForm[T] = overrides
 		protected def second :SQLReadForm[T] = fallback
 
-		override def opt(res :ResultSet, position :Int) :Option[T] =
+		override def opt(res :ResultSet, position :Int) :Opt[T] =
 			first.opt(res, position) orElse second.opt(res, position)
 
 		override def nullValue :T = overrides.nullValue
@@ -996,7 +1001,7 @@ object SQLReadForm {
 
 		override def readColumns :Int = form.readColumns * repeats
 
-		override def opt(res :ResultSet, position :Int): Option[Seq[T]] = Some(apply(res, position))
+		override def opt(res :ResultSet, position :Int): Opt[Seq[T]] = Opt(apply(res, position))
 
 		override def apply(res :ResultSet, position :Int): Seq[T] = {
 			val f = form
@@ -1004,7 +1009,7 @@ object SQLReadForm {
 			val result = List.newBuilder[T]
 			var countdown = repeats
 			while (repeats > 0) f.opt(res, i) match {
-				case Some(x) => result += x; countdown -= 1; i += jump
+				case Got(x) => result += x; countdown -= 1; i += jump
 				case _ => countdown -= 1; i += jump
 			}
 			result.result()
@@ -1030,15 +1035,15 @@ object SQLReadForm {
 	private[schema] trait ReadFormSeq[+T] extends CompositeReadForm[Seq[T]] {
 		protected override val forms :Seq[SQLReadForm[T]]
 
-		override def opt(res :ResultSet, position :Int) :Option[Seq[T]] = {
+		override def opt(res :ResultSet, position :Int) :Opt[Seq[T]] = {
 			var i = position + readColumns
 			(forms :\ Option(List.empty[T])) { (form, acc) =>
 				acc flatMap { tail =>
 					i -= form.readColumns
 					form.opt(res, i) match {
-						case Some(head) => Some(head::tail)
+						case Got(head) => Got(head::tail)
 						case _ => try {
-							Some(form.nullValue::tail)
+							Got(form.nullValue::tail)
 						} catch {
 							case e :Exception => None
 						}

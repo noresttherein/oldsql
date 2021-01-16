@@ -1,8 +1,9 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.Opt.Got
+import net.noresttherein.oldsql.collection.{Opt, Unique}
 import net.noresttherein.oldsql.schema.support.EmptyMapping
-import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.SQLReadForm
 
 
 
@@ -14,11 +15,11 @@ import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
   * @author Marcin Mościcki
   */
 class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
-	private[this] val result = Some(subject)
+	private[this] val result = Got(subject)
 
-	override def assemble(values :Pieces) :Option[S] = result
+	override def assemble(values :Pieces) :Opt[S] = result
 
-	override def optionally(values :Pieces) :Option[S] = result
+	override def optionally(values :Pieces) :Opt[S] = result
 
 	override def apply(values :Pieces) :S = subject
 
@@ -40,9 +41,9 @@ class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
   */
 class GeneratorMapping[S, O](generator: => S) extends EmptyMapping[S, O] {
 
-	override def assemble(values :Pieces) :Option[S] = Some(generator)
+	override def assemble(values :Pieces) :Opt[S] = Got(generator)
 
-	override def optionally(values :Pieces) :Option[S] = Some(generator)
+	override def optionally(values :Pieces) :Opt[S] = Got(generator)
 
 	override def apply(values :Pieces) :S = generator
 

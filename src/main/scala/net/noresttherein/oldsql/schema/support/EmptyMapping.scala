@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.Lack
 import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
@@ -84,8 +85,8 @@ trait EffectivelyEmptyMapping[S, O] extends BaseMapping[S, O] {
   */
 trait EmptyMapping[S, O] extends EffectivelyEmptyMapping[S, O] {
 
-	override def assemble(pieces :Pieces) :Option[S] = None
-	override def optionally(pieces :Pieces) :Option[S] = pieces.preset(this)
+	override def assemble(pieces :Pieces) :Opt[S] = Lack
+	override def optionally(pieces :Pieces) :Opt[S] = pieces.preset(this)
 
 	override def export[T](component :Component[T]) :Component[T] =
 		if (component eq this) component

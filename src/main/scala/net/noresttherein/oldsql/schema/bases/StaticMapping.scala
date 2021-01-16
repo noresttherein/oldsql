@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -98,7 +100,7 @@ object StaticMapping {
 		  * invokes [[net.noresttherein.oldsql.schema.bases.StaticMapping.construct construct(pieces)]] as long as
 		  * [[net.noresttherein.oldsql.schema.bases.StaticMapping.isDefined isDefined(pieces)]] returns `true`.
 		  * Additionally, all `NoSuchElementException` exceptions (thrown by default by components' `apply` methods
-		  * when no value is preset or can be assembled) are caught and result in returning `None`. All other exceptions,
+		  * when no value is preset or can be assembled) are caught and result in returning `Lack`. All other exceptions,
 		  * including `NullPointerException` (which may also result from unavailable columns), are propagated.
 		  * Subclasses should override those methods instead of `assemble`.
 		  * @return `Some(construct(pieces))` if `isDefined(pieces)` returns `true` or `None` if it returns `false` or
@@ -106,11 +108,12 @@ object StaticMapping {
 		  * @see [[net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate.construct construct]]
 		  * @see [[net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate.isDefined isDefined]]
 		  */
-		override def assemble(pieces: Pieces): Option[S] =
+		override def assemble(pieces: Pieces): Opt[S] =
 			try {
-				isDefined(pieces) ifTrue construct(pieces)
+				if (isDefined(pieces)) Got(construct(pieces))
+				else Lack
 			} catch {
-				case _ :NoSuchElementException => None
+				case _ :NoSuchElementException => Lack
 			}
 
 		/** The final target of the assembly process for this mapping invoked directly by `assemble` (and, indirectly,

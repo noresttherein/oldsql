@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLBoolean, SQLExpression, SQLOrdering}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
@@ -128,11 +130,11 @@ object ConditionSQL {
 			}
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
-				:Option[(SQLExpression[F, S, T], ComparisonOperator, SQLExpression[F, S, T]) forSome { type T }] =
+				:Opt[(SQLExpression[F, S, T], ComparisonOperator, SQLExpression[F, S, T]) forSome { type T }] =
 			e match {
 				case cmp :ComparisonSQL[F @unchecked, S @unchecked, t] => //fixme: ComparisonSQL
-					Some((cmp.left, cmp.comparison, cmp.right))
-				case _ => None
+					Got((cmp.left, cmp.comparison, cmp.right))
+				case _ => Lack
 			}
 
 
@@ -142,11 +144,11 @@ object ConditionSQL {
 				ComparisonSQL(left, this, right)
 
 			def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
-					:Option[(SQLExpression[F, S, T], SQLExpression[F, S, T]) forSome { type T }] =
+					:Opt[(SQLExpression[F, S, T], SQLExpression[F, S, T]) forSome { type T }] =
 				e match {
 					case compare :ComparisonSQL[F @unchecked, S @unchecked, t] if compare.comparison == this =>
-						Some((compare.left, compare.right))
-					case _ => None
+						Got((compare.left, compare.right))
+					case _ => Lack
 				}
 		}
 
@@ -219,11 +221,11 @@ object ConditionSQL {
 			new OrderComparisonSQL(left, cmp, right)
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope](e :SQLExpression[F, S, _])
-				:Option[(SQLExpression[F, S, T], ComparisonOperator, SQLExpression[F, S, T]) forSome { type T }] =
+				:Opt[(SQLExpression[F, S, T], ComparisonOperator, SQLExpression[F, S, T]) forSome { type T }] =
 			e match {
 				case cmp :OrderComparisonSQL[F @unchecked, S @unchecked, t] =>
-					Some((cmp.left, cmp.comparison, cmp.right))
-				case _ => None
+					Got((cmp.left, cmp.comparison, cmp.right))
+				case _ => Lack
 			}
 
 		trait OrderComparisonMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {

@@ -2,8 +2,9 @@ package net.noresttherein.oldsql.model
 
 import java.{lang => j}
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.Restraint.Compares
 import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, NegatedRestrictive}
 import net.noresttherein.oldsql.model.types.ArithmeticSupport.MappedArithmeticSupport
@@ -118,12 +119,12 @@ object types {
 	object OrderingSupport {
 		@inline def apply[T :OrderingSupport] :OrderingSupport[T] = implicitly[OrderingSupport[T]]
 
-		def unapply[T](restraint :Restraint[T]) :Option[OrderingSupport[_]] = restraint match {
-			case cmp :Compares[T, _] => Some(cmp.ordering)
-			case _ => None
+		def unapply[T](restraint :Restraint[T]) :Opt[OrderingSupport[_]] = restraint match {
+			case cmp :Compares[T, _] => Got(cmp.ordering)
+			case _ => Lack
 		}
 
-		def map[X :OrderingSupport, Y](down :Y=>X) :OrderingSupport[Y] = new MappedOrdering(down)
+		def map[X :OrderingSupport, Y](down :Y => X) :OrderingSupport[Y] = new MappedOrdering(down)
 
 
 		implicit def numericOrdering[T :Numeric] :OrderingSupport[T] = {
@@ -189,10 +190,10 @@ object types {
 	object ArithmeticSupport {
 		def apply[N :ArithmeticSupport] :ArithmeticSupport[N] = implicitly[ArithmeticSupport[N]]
 
-		def unapply[T, N](restrictive :Restrictive[T, N]) :Option[ArithmeticSupport[N]] = restrictive match {
-			case op :ArithmeticRestrictive[T, N] => Some(op.arithmetic)
-			case neg :NegatedRestrictive[T, N] => Some(neg.arithmetic)
-			case _ => None
+		def unapply[T, N](restrictive :Restrictive[T, N]) :Opt[ArithmeticSupport[N]] = restrictive match {
+			case op :ArithmeticRestrictive[T, N] => Got(op.arithmetic)
+			case neg :NegatedRestrictive[T, N] => Got(neg.arithmetic)
+			case _ => Lack
 		}
 
 

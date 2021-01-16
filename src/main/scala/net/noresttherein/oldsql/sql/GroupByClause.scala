@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm}
@@ -360,16 +362,16 @@ object Aggregated {
 		}
 
 
-	def unapply[F <: FromSome](from :Aggregated[F]) :Some[F] = Some(from.clause)
+	def unapply[F <: FromSome](from :Aggregated[F]) :Opt[F] = Got(from.clause)
 
-	def unapply[F <: RowProduct](from :DecoratedFrom[F]) :Option[F] = from match {
-		case _ :Aggregated[_] => Some(from.clause)
-		case _ => None
+	def unapply[F <: RowProduct](from :DecoratedFrom[F]) :Opt[F] = from match {
+		case _ :Aggregated[_] => Got(from.clause)
+		case _ => Lack
 	}
 
-	def unapply(from :RowProduct) :Option[FromSome] = from match {
-		case aggro :Aggregated.* => Some(aggro.clause)
-		case _ => None
+	def unapply(from :RowProduct) :Opt[FromSome] = from match {
+		case aggro :Aggregated.* => Got(aggro.clause)
+		case _ => Lack
 	}
 
 
@@ -503,9 +505,9 @@ object GroupByClause {
 	type Group[S] = { type T[O] = BaseMapping[S, O]; type C[O] = ColumnMapping[S, O] }
 
 
-	def unapply(f :RowProduct) :Option[FromClause] = f match {
-		case group :GroupByClause => Some(group.fromClause)
-		case _ => None
+	def unapply(f :RowProduct) :Opt[FromClause] = f match {
+		case group :GroupByClause => Got(group.fromClause)
+		case _ => Lack
 	 }
 
 

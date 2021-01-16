@@ -2,12 +2,14 @@ package net.noresttherein.oldsql.schema.bits
 
 import java.sql.{JDBCType, PreparedStatement}
 
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.MissingKeyException
 import net.noresttherein.oldsql.model.RelatedEntityFactory
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
-import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional}
+import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
+import net.noresttherein.oldsql.morsels.Lazy
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, Requisite}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, OptimizedMappingAssembly}
 import net.noresttherein.oldsql.schema.{cascadeBuffs, composeColumnExtracts, composeExtracts, Buff, ColumnForm, ColumnMapping, MappingExtract}
 import net.noresttherein.oldsql.schema.ColumnMapping.{OptimizedColumn, SimpleColumn, StableColumn}
@@ -502,9 +504,9 @@ object ForeignKeyMapping {
 
 		private[this] val composer = factory.composition
 
-		override def assemble(pieces :Pieces) :Option[R] = pieces.get(key) match {
-			case Some(k) => Some(factory.delay(k, composer.attempt(pieces(table).all(lazyTarget.get, k))))
-			case _ => None
+		override def assemble(pieces :Pieces) :Opt[R] = pieces.get(key) match {
+			case Got(k) => Some(factory.delay(k, composer.attempt(pieces(table).all(lazyTarget.get, k))))
+			case _ => Lack
 		}
 
 
@@ -527,7 +529,7 @@ object ForeignKeyMapping {
 		extends AbstractForeignKeyEntityMapping[M, C, K, E, T, R, X, O](factory)(table, pk) with LazyMapping[R, O]
 	{
 		private[this] val lazyKey = Lazy {
-			val keyBuffs = cascadeBuffs(this)(factory.keyOf _)
+			val keyBuffs = cascadeBuffs(this)(factory.keyOf(_:R).toOption)
 			new CoveredMapping[C[X], K, X, O](target, rename, keyBuffs)
 		}
 		override def key :Component[K] = lazyKey.get
@@ -559,7 +561,7 @@ object ForeignKeyMapping {
 		override def form = lazyForm
 
 		private[this] val lazyKey = Lazy {
-			val keyBuffs = cascadeBuffs(this)(Optional(factory.keyOf _))
+			val keyBuffs = cascadeBuffs(this)(KeyExtractor(factory))
 			if (target.isInstanceOf[SimpleColumn[_, _]])
 				ColumnMapping[K, O](name, keyBuffs :_*)(target.form)
 			else
@@ -568,7 +570,7 @@ object ForeignKeyMapping {
 		override def key :Column[K] = lazyKey
 
 
-		override def assemble(pieces :Pieces) = super[AbstractForeignKeyEntityMapping].assemble(pieces)
+		override def assemble(pieces :Pieces) :Opt[R] = super[AbstractForeignKeyEntityMapping].assemble(pieces)
 
 		override def local[S](subKey :RefinedMapping[S, X]) :Component[S] =
 			if (subKey eq target) key.asInstanceOf[Component[S]]
@@ -582,7 +584,7 @@ object ForeignKeyMapping {
 		override def apply[S](column :Column[S]) :ColumnExtract[S] = columnExtracts(column)
 
 		override lazy val columnExtracts :NaturalMap[Column, ColumnExtract] = {
-			composeColumnExtracts(key, Extractor.opt(factory.keyOf))
+			composeColumnExtracts(key, KeyExtractor(factory))
 				.updated[ColumnExtract, R](this, super.apply(this))
 		}
 
@@ -645,9 +647,9 @@ object ForeignKeyMapping {
 
 		private[this] val composer :ComposableFrom[T, E] = factory.composition
 
-		override def assemble(pieces :Pieces) :Option[R] = pieces.get(localKey) match {
-			case Some(k) => Some(factory.delay(k, composer.attempt(pieces(table).all(fk, k))))
-			case _ => Some(factory.nonexistent)
+		override def assemble(pieces :Pieces) :Opt[R] = pieces.get(localKey) match {
+			case Got(k) => Got(factory.delay(k, composer.attempt(pieces(table).all(fk, k))))
+			case _ => Got(factory.nonexistent)
 		}
 
 
@@ -670,8 +672,8 @@ object ForeignKeyMapping {
 		extends AbstractInverseForeignKeyMapping[M, C, K, E, T, R, X, O](backer, factory)(table, foreignKey)
 		   with MappedMapping[K, R, O] with OptimizedMappingAssembly
 	{
-		override protected def map :K =?> R = factory.absent _
-		override protected def unmap :R =?> K = factory.keyOf _
+		override protected def map :K =?> R = Requisite(factory.absent _)
+		override protected def unmap :R =?> K = KeyExtractor(factory)
 
 		protected override def nulls :NullValue[R] =
 			if (factory.isRequired) NullValue.eval(factory.nonexistent)
@@ -696,7 +698,7 @@ object ForeignKeyMapping {
 		override def apply[S](column :Column[S]) :ColumnExtract[S] = columnExtracts(column)
 
 		override lazy val columnExtracts :NaturalMap[Column, ColumnExtract] = {
-			composeColumnExtracts(key, Extractor.opt(factory.keyOf))
+			composeColumnExtracts(key, KeyExtractor(factory))
 				.updated[ColumnExtract, R](this, super.apply(this))
 		}
 
@@ -726,7 +728,7 @@ object ForeignKeyMapping {
 
 		override def set(statement :PreparedStatement, position :Int, value :R) :Unit =
 			factory.keyOf(value) match {
-				case Some(key) => referenced.set(statement, position, key)
+				case Got(key) => referenced.set(statement, position, key)
 				case _ if nullable => referenced.setNull(statement, position)
 				case _ =>
 					throw new MissingKeyException(toString + "no key in " + value + ".")
@@ -738,7 +740,7 @@ object ForeignKeyMapping {
 				referenced.nullLiteral
 			else
 				factory.keyOf(value) match {
-					case Some(key) => referenced.literal(key)
+					case Got(key) => referenced.literal(key)
 					case _ => referenced.nullLiteral
 				}
 
@@ -747,7 +749,7 @@ object ForeignKeyMapping {
 				referenced.inlineNullLiteral
 			else
 				factory.keyOf(value) match {
-					case Some(key) => referenced.inlineLiteral(key)
+					case Got(key) => referenced.inlineLiteral(key)
 					case _ => referenced.inlineNullLiteral
 				}
 

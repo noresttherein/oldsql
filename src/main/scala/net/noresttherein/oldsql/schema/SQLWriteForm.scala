@@ -5,6 +5,8 @@ import java.sql.PreparedStatement
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.Seq
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Stateless}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -41,8 +43,8 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.set]]
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull]]
 	  */
-	def setOpt(statement :PreparedStatement, position  :Int, value :Option[T]) :Unit = value match {
-		case Some(x) => set(statement, position, x)
+	def setOpt(statement :PreparedStatement, position  :Int, value :Opt[T]) :Unit = value match {
+		case Got(x) => set(statement, position, x)
 		case _ => setNull(statement, position)
 	}
 
@@ -52,7 +54,7 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 	  * by arbitrary forms. This would be impossible to achieve for forms of built-in value types, which will always
 	  * throw a `NullPointerException` on a `null` unboxing attempt, but also higher-level forms can depend on
 	  * the internal structure of the value `T` without checking it for nullity. Instead of calling `set` for a `null`,
-	  * use [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt setOpt]] for `None` or explicitly `setNull`.
+	  * use [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt setOpt]] for `Lack` or explicitly `setNull`.
 	  * If a value for a column/parameter cannot be obtained, a `null` value of the appropriate JDBC SQL type should
 	  * be set, unless this lack is a result of illegal argument or some other error, in which case an appropriate
 	  * exception should be thrown.
@@ -610,7 +612,7 @@ object SQLWriteForm {
 	/** An `SQLWriteForm` mixin trait which throws a `NullPointerException` from
 	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]] method and from
 	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]] if the argument given is `null` and from
-	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt setOpt]] if the argument given is `None`.
+	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.setOpt setOpt]] if the argument given is `Lack`.
 	  * It still allows null literals.
 	  */
 	trait NotNullWriteForm[-T] extends SQLWriteForm[T] {

@@ -3,20 +3,21 @@ package net.noresttherein.oldsql.sql.ast
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.collection.{Chain, Listing}
+import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.sql.{ast, ColumnSQL, ListingColumnSQLMapping, IndexedMapping, ListingSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
+import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedMapping, ListingColumnSQLMapping, ListingSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChain, ChainEntry, ChainMatcher, EmptyChain}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingEntry, ListingMatcher, ListingColumn, ListingValueSQL}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingEntry, ListingMatcher, ListingValueSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple.{CaseSeq, SeqMatcher}
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
@@ -55,10 +56,10 @@ trait TupleSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T] extends Com
 object TupleSQL {
 	//todo: true scala tuple expressions
 	def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope](expr: SQLExpression[F, S, _])
-			:Option[Seq[SQLExpression[F, S, _]]] =
+			:Opt[Seq[SQLExpression[F, S, _]]] =
 		expr match {
-			case t: TupleSQL[_, _, _] => Some(t.inOrder.asInstanceOf[Seq[SQLExpression[F, S, _]]])
-			case _ => None
+			case t: TupleSQL[_, _, _] => Got(t.inOrder.asInstanceOf[Seq[SQLExpression[F, S, _]]])
+			case _ => Lack
 		}
 
 

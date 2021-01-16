@@ -10,11 +10,12 @@ import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.model.{PropertyPath, RelatedEntityFactory}
+import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, RequisiteExtractor}
 import net.noresttherein.oldsql.schema
@@ -83,13 +84,13 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * The best of both worlds can be achieved by simply mixing in this trait into a ready component class.
 	  *
 	  * @tparam T subject type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.MandatoryComponent]]
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.RequisiteComponent]]
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.OptionalComponent]]
 	  */
 	trait FrameComponent[T] extends BaseMapping[T, O] { self =>
 
-		/** Returns the value of this component in an option if an implicit `ComponentValues` instance 
-		  * for the enclosing composite mapping is present. 
+		/** Returns the value of this component in an option if an implicit `ComponentValues` instance
+		  * for the enclosing composite mapping is present.
 		  */
 		@inline final def ?(implicit values :frame.Pieces) :Option[T] = values.get(extract)
 
@@ -287,7 +288,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		protected override def adapt[X](component :backer.Component[X]) :Component[X] = exportSubcomponent(component)
 		protected override def adapt[X](column :backer.Column[X]) :Column[X] = exportColumn(column)
 
-		override def assemble(pieces :Pieces) :Option[T] = backer.assemble(pieces)
+		override def assemble(pieces :Pieces) :Opt[T] = backer.assemble(pieces)
 
 		override def toString :String = "^" + backer + "^"
 	}
@@ -301,7 +302,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseComponent]]
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.ComponentFrame]]
 	  */
-	trait MandatoryComponent[T] extends FrameComponent[T] {
+	trait RequisiteComponent[T] extends FrameComponent[T] {
 		protected[schema] override def componentSelector :RequisiteExtractor[S, T] = Extractor.req(pick)
 		protected def pick :S => T
 	}
@@ -326,7 +327,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  *      This is for example the case with mapping of a class with its subclasses to a single database table.
 	  *
 	  *  Of the above, the first case should use a
-	  *  [[net.noresttherein.oldsql.schema.bases.MappingFrame.MandatoryComponent MandatoryComponent]] instance,
+	  *  [[net.noresttherein.oldsql.schema.bases.MappingFrame.RequisiteComponent RequisiteComponent]] instance,
 	  *  while the last two are clear candidates for this type of the component. The second and third cases
 	  *  are less clear cut and can conceivably  use either of the approaches.
 	  *
@@ -361,8 +362,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @tparam T value type of this component.
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseOptionalComponent]]
 	  */
-	abstract class BaseComponent[T](protected override val pick :S => T, opts :Buff[T]*) extends MandatoryComponent[T] {
-//		protected[schema] override val extractor :Extractor[S, T] = Extractor.req(pick)
+	abstract class BaseComponent[T](protected override val pick :S => T, opts :Buff[T]*) extends RequisiteComponent[T] {
 		override val buffs :Seq[Buff[T]] = opts ++: inheritedBuffs
 	}
 
@@ -401,7 +401,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	abstract class BaseOptionalComponent[T](protected override val pick :S => Option[T], opts :Buff[T]*)
 		extends OptionalComponent[T]
 	{
-//		protected[schema] override val extractor = Extractor(pick)
 		override val buffs :Seq[Buff[T]] = opts ++: inheritedBuffs
 	}
 
@@ -585,7 +584,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		override val buffs = super.buffs
 
 		private[this] val lazyKey = Lazy {
-			val selector = Extractor.opt(factory.keyOf)
+			val selector = KeyExtractor(factory)
 			val buffs = cascadeBuffs(this.buffs, toString)(selector)
 			if (target.isInstanceOf[SimpleColumn[_, _]])
 				new DirectColumn[K](componentSelector andThen selector, name, buffs)(target.form)
@@ -1638,7 +1637,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		private[this] val values = new Array[Option[Any]](columnCount)
 		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Option[_]]
 
-		override def add[T](component :RefinedMapping[T, O], result :Option[T]) :this.type = export(component) match {
+		override def addOpt[T](component :RefinedMapping[T, O], result :Opt[T]) :this.type = export(component) match {
 			case col :MappingFrame[_, _]#FrameColumn[_] =>
 				values(col.index) = result; this
 			case _ =>
@@ -1674,15 +1673,15 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		private val forms :Array[SQLReadForm[_]] = fastColumns.map(read)
 		override val readColumns: Int = fastColumns.length //(0 /: forms)(_ + _.readColumns)
 
-		override def opt(res :ResultSet, position :Int): Option[S] = {
-			val values = new Array[Option[Any]](columnCount)
+		override def opt(res :ResultSet, position :Int): Opt[S] = {
+			val values = new Array[Any](columnCount)
 			java.util.Arrays.fill(values.asInstanceOf[Array[AnyRef]], None)
 
 			var i = position
 			val end = position + fastColumns.length
 			while (i < end) fastColumns(i) match {
 				case c :MappingFrame[_, _]#FrameColumn[_] =>
-					i += 1; values(c.index) = forms(i).opt(res, i - 1)
+					i += 1; values(c.index) = forms(i).opt(res, i - 1).orNull
 				case c =>
 					throw new IllegalArgumentException(s"Non-export column $c passed to SQLReadForm $this of $frame.")
 			}

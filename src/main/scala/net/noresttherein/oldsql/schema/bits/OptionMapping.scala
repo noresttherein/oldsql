@@ -1,12 +1,13 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{Opt, Unique}
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.schema.{Mapping, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.MappedMapping
@@ -54,7 +55,7 @@ object OptionMapping {
 		override val get :M = backer
 		private[this] val backerExtract = apply(get)
 
-		override def assemble(values: Pieces): Option[Option[S]] = Some(values.get(backerExtract))
+		override def assemble(values: Pieces): Opt[Option[S]] = Got(values.get(backerExtract).toOption)
 
 		protected override def nulls :NullValue[Option[Nothing]] = NullValue.None
 

@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql.{ast, AggregateClause, AggregateFunction, ColumnSQL, FromSome, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
@@ -130,15 +132,15 @@ object AggregateSQL {
 
 
 	def unapply[F <: FromSome, G <: RowProduct, X, Y]
-	           (e :AggregateSQL[F, G, X, Y]) :Some[(AggregateFunction, Boolean, ColumnSQL[F, LocalScope, X])] =
-		Some((e.function, e.isDistinct, e.arg))
+	           (e :AggregateSQL[F, G, X, Y]) :Opt[(AggregateFunction, Boolean, ColumnSQL[F, LocalScope, X])] =
+		Got((e.function, e.isDistinct, e.arg))
 
 	def unapply[G <: RowProduct, T](e :SQLExpression[G, LocalScope, T])
-			:Option[(AggregateFunction, Boolean, ColumnSQL[_ <: FromSome, LocalScope, _])] =
+			:Opt[(AggregateFunction, Boolean, ColumnSQL[_ <: FromSome, LocalScope, _])] =
 		e match {
 			case aggr :AggregateSQL.* =>
-				Some((aggr.function, aggr.isDistinct, aggr.arg.asInstanceOf[ColumnSQL[_ <: FromSome, LocalScope, _]]))
-			case _ => None
+				Got((aggr.function, aggr.isDistinct, aggr.arg.asInstanceOf[ColumnSQL[_ <: FromSome, LocalScope, _]]))
+			case _ => Lack
 		}
 
 

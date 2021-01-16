@@ -10,6 +10,11 @@ import net.noresttherein.oldsql.schema.bits.Temporal
 import net.noresttherein.oldsql.slang._
 import scala.reflect.ClassTag
 
+import net.noresttherein.oldsql.exceptions.OldSQLException
+
+
+
+
 
 
 /** An optional annotation/modifier for component mappings, especially columns.
@@ -24,7 +29,7 @@ import scala.reflect.ClassTag
   * @see [[net.noresttherein.oldsql.schema.Buff.AuditBuff AuditBuff]]
   * @tparam T the value type of the annotated component.
   */
-trait Buff[T] {
+trait Buff[T] extends Serializable {
 	//todo: contradictory buffs
 	//todo: dedicated buffs collection handling duplicates and implications
 	//todo: semantics of use in SQL DSL
@@ -473,7 +478,7 @@ object Buff {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.AuditBuffType]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ManagedBuffType]]
 	  */
-	trait BuffType { factory =>
+	trait BuffType extends Serializable { factory =>
 
 		/** If `true`, export versions of subcomponents of the annotated component should inherit this buff.
 		  * Note that this flag applies only to buffs created by this instance, not any other buffs which
@@ -512,8 +517,8 @@ object Buff {
 		def disabled(buff :Buff[_]) :Boolean = !(buff is this)
 		def disabled(buffs :Seq[Buff[_]]) :Boolean = buffs.forall(disabled)
 		def disabled(column :Mapping) :Boolean = disabled(column.buffs)
-
-		def test[T](buff :Buff[T]) :Option[Buff[T]] = buff is this ifTrue buff
+		//todo: make these use Opt once we implement Buffs collection
+		def test[T](buff :Buff[T]) :Option[Buff[T]] = if (buff is this) Some(buff) else None
 		def test[T](buffs :Seq[Buff[T]]) :Option[Buff[T]] =
 			buffs.collectFirst { case buff if buff is this => buff }
 		def test[T](column :MappingOf[T]) :Option[Buff[T]] = test(column.buffs)
@@ -750,11 +755,6 @@ object Buff {
 			case const :ValueBuff[T] => Some(const.value)
 			case _ => None
 		}
-
-		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
-			buffs collectFirst { case const :ValueBuff[T] => const.value }
-
-		@inline def unapply[T](column :MappingOf[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -781,7 +781,7 @@ object Buff {
 	trait ValueBuffType extends DedicatedBuffType[ValueBuff] {
 		protected[this] def classTag :ClassTag[_] = implicitly[ClassTag[ValueBuff[Any]]]
 
-		object Value {
+		object Value { //todo: migrate to Opt
 			@inline def unapply[T](buff :Buff[T]) :Option[T] = test(buff).map(_.value)
 			@inline def unapply[T](buffs :Seq[Buff[T]]) :Option[T] = test(buffs).map(_.value)
 			@inline def unapply[T](mapping :MappingOf[T]) :Option[T] = test(mapping).map(_.value)
@@ -846,11 +846,6 @@ object Buff {
 			case const :ConstantBuff[T] => Some(const.value)
 			case _ => None
 		}
-
-		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
-			buffs collectFirst { case const :ConstantBuff[T] => const.value }
-
-		@inline def unapply[T](column :MappingOf[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -900,11 +895,6 @@ object Buff {
 			case const :GeneratedBuff[T] => Some(const.value)
 			case _ => None
 		}
-
-		def unapply[T](buffs :Seq[Buff[T]]) :Option[T] =
-			buffs collectFirst { case const :GeneratedBuff[T] => const.value }
-
-		@inline def unapply[T](column :MappingOf[T]) :Option[T] = unapply(column.buffs)
 	}
 
 
@@ -1009,7 +999,7 @@ object Buff {
 			else audits.reduce(_ andThen _)
 		}
 
-		object Audit {
+		object Audit { //todo: migrate to Opt
 			@inline def apply[T](buff :Buff[T]) :Option[T => T] = unapply(buff)
 			@inline def apply[T](buffs :Seq[Buff[T]]) :Seq[T => T] = unapply(buffs)
 			@inline def apply[T](mapping :MappingOf[T]) :Seq[T => T] = unapply(mapping)
@@ -1108,6 +1098,7 @@ object Buff {
 	  * This exception can be thrown both from the `optMap` method and at some later point, when the buff's value
 	  * is accessed for buffs which generated values.
 	  */
-	class BuffMappingFailureException(msg :String, cause :Throwable = null) extends RuntimeException(msg, cause)
+	class BuffMappingFailureException(msg :String, cause :Throwable = null)
+		extends RuntimeException(msg, cause) with OldSQLException
 
 }

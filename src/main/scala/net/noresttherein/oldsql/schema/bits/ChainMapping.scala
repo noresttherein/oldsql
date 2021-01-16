@@ -1,11 +1,10 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.{Chain, NaturalMap}
+import net.noresttherein.oldsql.collection.{Chain, NaturalMap, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, MappingExtract}
-import net.noresttherein.oldsql.schema.bases.ExportMapping
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{EmptySchema, FlatMappingSchema, NonEmptyFlatSchema, NonEmptySchema}
@@ -161,9 +160,9 @@ object ChainMapping {
 	                                       (protected val backer :MappingSchema[V, V, C, O])
 		extends MappingSchema[S, V, C, O] with ExportProxy[V, O]
 	{
-		override def optionally(pieces :Pieces) :Option[V] = pieces.assemble(this)
+		override def optionally(pieces :Pieces) :Opt[V] = pieces.assemble(this)
 
-		override def unapply(subject :S) :Option[V] = backer.unapply(subject.init)
+		override def unapply(subject :S) :Opt[V] = backer.unapply(subject.init)
 
 		override def disassemble(subject :S) :V = backer.disassemble(subject.init)
 

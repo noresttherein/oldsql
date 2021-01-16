@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression, SQLNumber}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
@@ -56,11 +58,11 @@ object ArithmeticSQL {
 			new UnaryOperationSQL(op, value)
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, V]
-		           (e :SQLExpression[F, S, V]) :Option[(UnaryOperation, ColumnSQL[F, S, V])] =
+		           (e :SQLExpression[F, S, V]) :Opt[(UnaryOperation, ColumnSQL[F, S, V])] =
 			e match {
 				case op :UnaryOperationSQL[F @unchecked, S @unchecked, V @unchecked] =>
-					Some((op.operation, op.value))
-				case _ => None
+					Got((op.operation, op.value))
+				case _ => Lack
 			}
 
 
@@ -71,11 +73,11 @@ object ArithmeticSQL {
 				new UnaryOperationSQL(this, value)
 
 			def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, V]
-			           (e :SQLExpression[F, S, V]) :Option[ColumnSQL[F, S, V]] =
+			           (e :SQLExpression[F, S, V]) :Opt[ColumnSQL[F, S, V]] =
 				e match {
 					case op :UnaryOperationSQL[F @unchecked, S @unchecked, V @unchecked] if op.operation == this =>
-						Some(op.value)
-					case _ => None
+						Got(op.value)
+					case _ => Lack
 				}
 		}
 
@@ -134,11 +136,11 @@ object ArithmeticSQL {
 			new BinaryOperationSQL(left, operation, right)
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V])
-				:Option[(ColumnSQL[F, S, V], BinaryOperation, ColumnSQL[F, S, V])] =
+				:Opt[(ColumnSQL[F, S, V], BinaryOperation, ColumnSQL[F, S, V])] =
 			e match {
 				case op :BinaryOperationSQL[F @unchecked, S @unchecked, V @unchecked] =>
-					Some((op.left, op.operation, op.right))
-				case  _ => None
+					Got((op.left, op.operation, op.right))
+				case  _ => Lack
 			}
 
 
@@ -149,11 +151,11 @@ object ArithmeticSQL {
 				new BinaryOperationSQL(left, this, right)
 
 			def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V])
-					:Option[(ColumnSQL[F, S, V], ColumnSQL[F, S, V])] =
+					:Opt[(ColumnSQL[F, S, V], ColumnSQL[F, S, V])] =
 				e match {
 					case op :BinaryOperationSQL[F @unchecked, S @unchecked, V @unchecked] if op.operation == this =>
-						Some((op.left, op.right))
-					case _ => None
+						Got((op.left, op.right))
+					case _ => Lack
 				}
 		}
 

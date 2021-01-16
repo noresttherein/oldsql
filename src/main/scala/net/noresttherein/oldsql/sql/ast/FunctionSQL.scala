@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, Opt}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.{ColumnFunction, ColumnSQL, RowProduct, SQLExpression, SQLFunction}
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
@@ -67,15 +68,15 @@ object FunctionSQL {
 
 
 	def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: Chain, Y](e :FunctionSQL[F, S, X, Y])
-			:(SQLFunction[X, Y], ChainTuple[F, S, X]) =
-		(e.function, e.args)
+			:Opt[(SQLFunction[X, Y], ChainTuple[F, S, X])] =
+		Got(e.function, e.args)
 
 	def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, Y](e :SQLExpression[F, S, Y])
-			:Option[(SQLFunction[X, Y], ChainTuple[F, S, X]) forSome { type X <: Chain }] =
+			:Opt[(SQLFunction[X, Y], ChainTuple[F, S, X]) forSome { type X <: Chain }] =
 		e match {
 			case fun :FunctionSQL[F @unchecked, S @unchecked, x, Y] =>
-				Some((fun.function, fun.args))
-			case _ => None
+				Got((fun.function, fun.args))
+			case _ => Lack
 		}
 
 
@@ -123,20 +124,19 @@ object FunctionSQL {
 
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, X <: Chain, Y](e :FunctionSQL[F, S, X, Y])
-				:Option[(ColumnFunction[X, Y], ChainTuple[F, S, X])] =
+				:Opt[(ColumnFunction[X, Y], ChainTuple[F, S, X])] =
 			e match {
 				case fun :FunctionColumn[F @unchecked, S @unchecked, X @unchecked, Y @unchecked] =>
-					Some((fun.function, fun.args))
-				case _ =>
-					None
+					Got((fun.function, fun.args))
+				case _ => Lack
 			}
 
 		def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, Y](e :SQLExpression[F, S, Y])
-				:Option[(ColumnFunction[X, Y], ChainTuple[F, S, X]) forSome { type X <: Chain }] =
+				:Opt[(ColumnFunction[X, Y], ChainTuple[F, S, X]) forSome { type X <: Chain }] =
 			e match {
 				case fun :FunctionColumn[F @unchecked, S @unchecked, x, Y @unchecked] =>
-					Some((fun.function, fun.args))
-				case _ => None
+					Got((fun.function, fun.args))
+				case _ => Lack
 			}
 
 

@@ -4,6 +4,8 @@ import java.sql.{CallableStatement, JDBCType, ResultSet}
 
 import scala.annotation.implicitNotFound
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
@@ -33,7 +35,7 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
 
 	def apply(column :String)(res :ResultSet) :T = apply(res, res.findColumn(column))
 
-	def opt(column :String)(res :ResultSet) :Option[T] = opt(res, res.findColumn(column))
+	def opt(column :String)(res :ResultSet) :Opt[T] = opt(res, res.findColumn(column))
 
 	protected override def errorMessage(position :Int, res :ResultSet) :String =
 		"Null values not allowed for column " + res.getMetaData.getColumnName(position) + ":" + this + "."
@@ -144,7 +146,7 @@ object ColumnReadForm {
 	  * @param read a function taking an SQL `ResultSet`, a column position, and reads the value of the column.
 	  */
 	def opt[T :NullValue](columnType :JDBCType, name :String = null)
-	                     (read :(ResultSet, Int) => Option[T]) :ColumnReadForm[T] =
+	                     (read :(ResultSet, Int) => Opt[T]) :ColumnReadForm[T] =
 		new CustomOptColumnReadForm[T](columnType, name)(read)
 
 
@@ -431,9 +433,9 @@ object ColumnReadForm {
 			} else t
 		}
 
-		override def opt(res :ResultSet, position :Int) :Option[T] = {
+		override def opt(res :ResultSet, position :Int) :Opt[T] = {
 			val t = read(res, position)
-			if (res.wasNull) None else Some(t)
+			if (res.wasNull) None else Got(t)
 		}
 	}
 
@@ -501,7 +503,7 @@ object ColumnReadForm {
 
 
 	private[schema] class CustomOptColumnReadForm[+T :NullValue](override val sqlType :JDBCType, name :String = null)
-	                                                            (reader :(ResultSet, Int) => Option[T])
+	                                                            (reader :(ResultSet, Int) => Opt[T])
 		extends CustomOptSQLReadForm[T](1, name)(reader) with ColumnReadForm[T]
 	{
 		override def notNull :ColumnReadForm[T] =

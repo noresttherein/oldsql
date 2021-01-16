@@ -1,8 +1,10 @@
 package net.noresttherein.oldsql.schema
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalAdapter, OptionalExtractor, RequisiteAdapter, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.GenericExtract.{ConstantExtract, EmptyExtract, IdentityExtract, OptionalExtract, RequisiteExtract}
 
@@ -51,12 +53,12 @@ object ColumnExtract { //todo: unify the name with ColumnMappingExtract
 
 
 
-	def unapply[S, T](extractor :Extractor[S, T]) :Option[(S => Option[T], Option[S => T], ColumnMapping[_ <: T, _])] =
+	def unapply[S, T](extractor :Extractor[S, T]) :Opt[(S => Option[T], Opt[S => T], ColumnMapping[_ <: T, _])] =
 		extractor match {
 			case c :GenericExtract[_, S @unchecked, T @unchecked, _] if c.export.isInstanceOf[ColumnMapping[_, _]] =>
-				Some((extractor.optional, extractor.requisite, c.export.asInstanceOf[ColumnMapping[_ <: T, _]]))
+				Got((extractor.optional, extractor.requisite, c.export.asInstanceOf[ColumnMapping[_ <: T, _]]))
 			case _ =>
-				None
+				Lack
 		}
 
 }
@@ -103,12 +105,12 @@ object MappingExtract {
 
 
 
-	def unapply[S, T](extractor :Extractor[S, T]) :Option[(S => Option[T], Option[S => T], RefinedMapping[_ <: T, _])] =
+	def unapply[S, T](extractor :Extractor[S, T]) :Opt[(S => Option[T], Opt[S => T], RefinedMapping[_ <: T, _])] =
 		extractor match {
 			case c :GenericExtract[_, S @unchecked, T @unchecked, _] =>
-				Some((extractor.optional, extractor.requisite, c.export.asInstanceOf[RefinedMapping[_ <: T, _]]))
+				Got((extractor.optional, extractor.requisite, c.export.asInstanceOf[RefinedMapping[_ <: T, _]]))
 			case _ =>
-				None
+				Lack
 		}
 
 }
@@ -134,45 +136,13 @@ trait GenericExtract[+M <: RefinedMapping[T, O], -S, T, O] extends Extractor[S, 
 	@inline final def get[L <: S](pieces :ComponentValues[L, O]) :Option[T] = pieces.get(this)
 
 
-	def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericExtract[C, T, Y, O])
-			:GenericExtract[C, S, Y, O] =
-		extract compose this
+	def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericExtract[C, T, Y, O]) :GenericExtract[C, S, Y, O]
 
-
-
-	override def compose[X](extractor :Extractor[X, S]) :GenericExtract[M, X, T, O] = extractor match {
-		case _ :OptionalExtractor[_, _] => composeOpt(extractor.optional)
-
-		case _ :IdentityExtractor[_] => this.asInstanceOf[GenericExtract[M, X, T, O]]
-
-		case c :ConstantExtractor[X @unchecked, S @unchecked] => try {
-			new ConstantExtract[M, T, O](export, apply(c.constant))
-		} catch {
-			case _ :Exception =>
-				new OptionalExtract[M, X, T, O](export, c.getter andThen optional)
-		}
-
-		case req :RequisiteExtractor[X, S] =>
-			new OptionalExtract[M, X, T, O](export, req.getter andThen optional)
-
-		case _ :EmptyExtractor[_, _] =>
-			new EmptyExtract[M, T, O](export)
-
-		case _ => extractor.requisite match {
-			case Some(req) => this compose req
-			case _ => this composeOpt extractor.optional
-		}
-
-	}
-
-	override def compose[X](first :X => S) :GenericExtract[M, X, T, O] =
-		new OptionalExtract[M, X, T, O](export, first andThen optional)
-
-	override def composeOpt[X](first :X => Option[S]) :GenericExtract[M, X, T, O] = {
-		val pick = optional
-		new OptionalExtract[M, X, T, O](export, first(_) flatMap pick)
-	}
-
+	override def compose[X](extractor :X =?> S) :GenericExtract[M, X, T, O]
+	override def composeOpt[X](extractor :OptionalExtractor[X, S]) :GenericExtract[M, X, T, O]
+	override def composeReq[X](extractor :RequisiteExtractor[X, S]) :GenericExtract[M, X, T, O]
+	override def compose[X](f :X => S) :GenericExtract[M, X, T, O]
+	override def composeOpt[X](f :X => Option[S]) :GenericExtract[M, X, T, O]
 
 	override def toString :String = "Extract(" + export + ")"
 }
@@ -225,8 +195,8 @@ object GenericExtract {
 
 
 	def unapply[M <: RefinedMapping[T, O], S, T, O](extract :GenericExtract[M, S, T, O])
-			:Some[(S => Option[T], Option[S => T], M)] =
-		Some(extract.optional, extract.requisite, extract.export)
+			:Opt[(S => Option[T], Opt[S => T], M)] =
+		Got(extract.optional, extract.requisite, extract.export)
 
 
 
@@ -234,10 +204,26 @@ object GenericExtract {
 
 
 	private[schema] class OptionalExtract[+M <: RefinedMapping[T, O], -S, T, O]
-	                                     (val export :M, override val optional :S => Option[T])
-		extends GenericExtract[M, S, T, O] with OptionalExtractor[S, T]
+	                                     (override val export :M, extract :S => Option[T])
+		extends OptionalAdapter[S, T](extract) with GenericExtract[M, S, T, O]
 	{
-		override def get(x :S) :Option[T] = optional(x)
+		override def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericExtract[C, T, Y, O]) =
+			extract composeOpt optional
+
+		override def compose[W](extractor :W =?> S) =
+			GenericExtract(export)(extractor andThenOpt optional)
+
+		override def composeOpt[W](extractor :OptionalExtractor[W, S]) =
+			GenericExtract(export)(extractor andThenOpt optional)
+
+		override def composeReq[W](extractor :RequisiteExtractor[W, S]) =
+			GenericExtract(export)(extractor andThenOpt optional)
+
+		override def compose[W](f :W => S) =
+			GenericExtract.opt(export)(f andThen optional)
+
+		override def composeOpt[W](f :W => Option[S]) =
+			GenericExtract.opt(export)(f(_).flatMap(optional))
 
 		override def toString :String = "Optional(" + export + ")"
 	}
@@ -245,52 +231,37 @@ object GenericExtract {
 
 
 
-
-
 	private[schema] class RequisiteExtract[+M <: RefinedMapping[T, O], -S, T, O]
-	                                      (override val export :M, override val getter :S => T)
-		extends GenericExtract[M, S, T, O] with RequisiteExtractor[S, T]
+	                                      (override val export :M, extract :S => T)
+		extends RequisiteAdapter[S, T](extract) with GenericExtract[M, S, T, O]
 	{
-		override def apply(x :S) :T = getter(x)
+		override def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericExtract[C, T, Y, O]) =
+			extract compose getter
 
-		override def compose[X](extractor :X =?> S) :GenericExtract[M, X, T, O] = extractor match {
-			case r :RequisiteExtractor[X, S] => this compose r
+		override def compose[X](extractor :X =?> S) :GenericExtract[M, X, T, O] =
+			GenericExtract(export)(extractor andThen getter)
 
-			case _ :OptionalExtractor[X ,S] => this composeOpt extractor.optional
+		override def composeOpt[X](extractor :OptionalExtractor[X, S]) :GenericExtract[M, X, T, O] =
+			composeOpt(extractor.optional) //this method isn't really called, at least by GenericExtract
 
-			case _ => extractor.requisite match {
-				case Some(req) => this compose req
-				case _ => this composeOpt extractor.optional
-			}
-		}
-
-		override def compose[X](extractor :RequisiteExtractor[X, S]) :RequisiteExtract[M, X, T, O] = extractor match {
-			case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteExtract[M, X, T, O]]
-
-			case c :ConstantExtractor[_, S] => try {
-				new ConstantExtract[M, T, O](export, getter(c.constant))
-			} catch {
-				case _ :Exception =>
-					new RequisiteExtract[M, X, T, O](export, c.getter andThen getter)
-			}
-			case _ =>
-				new RequisiteExtract[M, X, T, O](export, extractor.getter andThen getter)
-		}
+		override def composeReq[X](extractor :RequisiteExtractor[X, S]) :RequisiteExtract[M, X, T, O] =
+			compose(extractor.getter) //this method isn't really called, at least by GenericExtract
 
 		override def compose[X](f :X => S) :RequisiteExtract[M, X, T, O] =
 			new RequisiteExtract[M, X, T, O](export, f andThen getter)
 
 		override def composeOpt[X](f :X => Option[S]) :GenericExtract[M, X, T, O] = {
-			val get = getter; new OptionalExtract[M, X, T, O](export, f(_) map get)
+			val cont = getter
+			new OptionalExtract[M, X, T, O](export, f(_) map cont) {
+				override def get(x :X) :Opt[T] = f(x) match {
+					case Some(s) => Got(cont(s))
+					case _ => None
+				}
+			}
 		}
 
-
-
 		override def toString :String = "Requisite(" + export + ")"
-
 	}
-
-
 
 
 
@@ -298,41 +269,26 @@ object GenericExtract {
 	private[schema] class IdentityExtract[+M <: RefinedMapping[T, O], T, O](component :M)
 		extends RequisiteExtract[M, T, T, O](component, Predef.identity[T]) with IdentityExtractor[T]
 	{
+		override def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericExtract[C, T, Y, O]) =
+			extract
 
-		override def compose[X](extractor :X =?> T) :GenericExtract[M, X, T, O] = extractor match {
-			case e :RequisiteExtractor[_, _] => this compose e
+		override def compose[X](extractor :X =?> T) :GenericExtract[M, X, T, O] =
+			GenericExtract(export)(extractor)
 
-			case comp :GenericExtract[_, _, _, _] if comp.export == export =>
-				comp.asInstanceOf[GenericExtract[M, X, T, O]]
+		override def composeOpt[X](extractor :OptionalExtractor[X, T]) :GenericExtract[M, X, T, O] =
+			GenericExtract.opt(export)(extractor.optional)
 
-			case _ :OptionalExtractor[_, _] => new OptionalExtract[M, X, T, O](export, extractor.optional)
-
-			case _ => extractor.requisite match {
-				case Some(req) => this compose req
-				case _ => new OptionalExtract[M, X, T, O](export, extractor.optional)
-			}
-		}
-
-		override def compose[X](extractor :RequisiteExtractor[X, T]) :RequisiteExtract[M, X, T, O] = extractor match {
-			case comp :RequisiteExtract[_, _, _, _] => comp.asInstanceOf[RequisiteExtract[M, X, T, O]]
-
-			case _ :IdentityExtractor[_] => this.asInstanceOf[RequisiteExtract[M, X, T, O]]
-
-			case _ => new RequisiteExtract[M, X, T, O](export, extractor.getter)
-		}
+		override def composeReq[X](extractor :RequisiteExtractor[X, T]) :RequisiteExtract[M, X, T, O] =
+			new RequisiteExtract[M, X, T, O](export, extractor.getter)
+//			GenericExtract(export)(extractor).asInstanceOf[RequisiteExtract[M, X, T, O]]
 
 		override def compose[X](r :X => T) = new RequisiteExtract[M, X, T, O](export, r)
 
 		override def composeOpt[X](f :X => Option[T]) :GenericExtract[M, X, T, O] =
 			new OptionalExtract[M, X, T, O](export, f)
 
-
-
 		override def toString :String = "Identity(" + export + ")"
-
 	}
-
-
 
 
 
@@ -340,28 +296,21 @@ object GenericExtract {
 	private[schema] class ConstantExtract[+M <: RefinedMapping[T, O], T, O](component :M, override val constant :T)
 		extends RequisiteExtract[M, Any, T, O](component, (_ :Any) => constant) with ConstantExtractor[Any, T]
 	{
+		override def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericExtract[C, T, Y, O]) =
+			GenericExtract(extract.export)(this andThen (extract :T =?> Y))
 
-		override def compose[X](extractor :X =?> Any) :GenericExtract[M, X, T, O] = extractor match {
-			case _ :RequisiteExtractor[_, _] => this
-			case _ :OptionalExtractor[_, _] => composeOpt(extractor.optional)
-			case _ :EmptyExtractor[_, _] => new EmptyExtract[M, T, O](export)
-			case _ => extractor.requisite match {
-				case Some(req) => compose(req)
-				case _ => composeOpt(extractor.optional)
-			}
-		}
+		override def compose[X](extractor :X =?> Any) :GenericExtract[M, X, T, O] =
+			GenericExtract(export)(super[ConstantExtractor].compose(extractor))
 
-		override def compose[X](extractor :RequisiteExtractor[X, Any]) :RequisiteExtract[M, X, T, O] = this
+		override def composeOpt[X](extractor :OptionalExtractor[X, Any]) :GenericExtract[M, X, T, O] =
+			composeOpt(extractor.optional)
+
+		override def composeReq[X](extractor :RequisiteExtractor[X, Any]) :RequisiteExtract[M, X, T, O] = this
 
 		override def compose[X](req :X => Any) :RequisiteExtract[M, X, T, O] = this
 
-		override def composeOpt[X](f :X => Option[Any]) = new OptionalExtract(export, f(_) map getter)
-
 		override def toString :String = "Const(" + export + "=" + constant + ")"
-
 	}
-
-
 
 
 
@@ -369,15 +318,16 @@ object GenericExtract {
 	private[schema] class EmptyExtract[+M <: RefinedMapping[T, O], T, O](component :M)
 		extends OptionalExtract[M, Any, T, O](component, Extractor.none.optional) with EmptyExtractor[Any, T]
 	{
+		override def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericExtract[C, T, Y, O]) =
+			GenericExtract.none(extract.export)
+
 		override def compose[X](extractor :X =?> Any) :GenericExtract[M, X, T, O] = this
-
+		override def composeOpt[X](extractor :OptionalExtractor[X, Any]) :GenericExtract[M, X, T, O] = this
+		override def composeReq[X](extractor :RequisiteExtractor[X, Any]) :GenericExtract[M, X, T, O] = this
 		override def compose[X](req :X => Any) :GenericExtract[M, X, T, O] = this
-
 		override def composeOpt[X](f :X => Option[Any]) :GenericExtract[M, X, T, O] = this
 
-
 		override def toString :String = "Empty(" + export + ")"
-
 	}
 
 

@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
@@ -163,10 +165,10 @@ object MappingPath {
 
 
 
-		def unapply[X <: MappingOf[S], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O]) :Option[Y] =
+		def unapply[X <: MappingOf[S], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O]) :Opt[Y] =
 			path match {
-				case _ :ComponentPath[_, _, _, _, _] => Some(path.end)
-				case _ => None
+				case _ :ComponentPath[_, _, _, _, _] => Got(path.end)
+				case _ => Lack
 			}
 
 	}
@@ -213,10 +215,10 @@ object MappingPath {
 		}
 
 
-		def unapply[X <: MappingOf[S], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O]) :Option[X] =
+		def unapply[X <: MappingOf[S], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O]) :Opt[X] =
 			path match {
-				case self :SelfPath[_, _, _] => Some(self.end.asInstanceOf[X])
-				case _ => None
+				case self :SelfPath[_, _, _] => Got(self.end.asInstanceOf[X])
+				case _ => Lack
 			}
 	}
 
@@ -293,21 +295,21 @@ object MappingPath {
 	object \~\ {
 
 		def unapply[X <: MappingOf[S], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O])
-				:Option[(MappingPath[X, W, S, Q, _], MappingPath[W, Y, Q, T, O])] forSome
+				:Opt[(MappingPath[X, W, S, Q, _], MappingPath[W, Y, Q, T, O])] forSome
 					{ type W <: MappingOf[Q]; type Q } =
 			path match {
-				case concat :ConcatPath[X, _, Y, S, _, T, _, O] => Some(concat.first -> concat.second)
-				case _ => None
+				case concat :ConcatPath[X, _, Y, S, _, T, _, O] => Got(concat.first -> concat.second)
+				case _ => Lack
 			}
 	}
 
 	object \\ {
 		def unapply[X <: RefinedMapping[S, O], Y <: RefinedMapping[T, O], S, T, O](path :MappingPath[X, Y, S, T, O])
-				:Option[(ComponentPath[X, W, S, Q, O], ComponentPath[W, Y, Q, T, O])] forSome
+				:Opt[(ComponentPath[X, W, S, Q, O], ComponentPath[W, Y, Q, T, O])] forSome
 					{ type W <: RefinedMapping[Q, O]; type Q } =
 			path match {
-				case concat :ConcatComponentPath[X, _, Y, S, _, T, O] => Some(concat.first -> concat.second)
-				case _ => None
+				case concat :ConcatComponentPath[X, _, Y, S, _, T, O] => Got(concat.first -> concat.second)
+				case _ => Lack
 			}
 
 	}

@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ColumnValues
 import net.noresttherein.oldsql.haul.ComponentValues
@@ -76,7 +77,7 @@ trait ColumnMapping[S, O]
 			val audited = (subject /: op.audit.Audit(this)) { (s, f) => f(s) }
 			collector.add(this, audited)
 		} else op.extra.Value(this) match {
-			case res if res.isDefined => collector.add(this, res)
+			case Some(res) => collector.add(this, res)
 			case _ =>
 		}
 
@@ -89,7 +90,7 @@ trait ColumnMapping[S, O]
 	/** Columns are not typically assembled from subcomponents; this method by default returns `None`
 	  * and there should be little need to override it.
 	  */
-	override def assemble(pieces: Pieces): Option[S] = None
+	override def assemble(pieces: Pieces): Opt[S] = Lack
 
 	/** Attempts to retrieve the value for the mapped `Subject` from the given `ComponentValues`. The behaviour for
 	  * columns is roughly equivalent to that of components, as implemented by default in
@@ -104,15 +105,15 @@ trait ColumnMapping[S, O]
 	  * @throws `NullPointerException` if the preset value is explicitly stated as `null` (`pieces.preset(this)`
 	  *                                returned `Some(null)`), but this column does not have the `Nullable` buff.
 	  */
-	override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this) match {
-		case res @ Some(x) => //a very common case
+	override def optionally(pieces :Pieces) :Opt[S] = pieces.assemble(this) match {
+		case res @ Got(x) => //a very common case
 			if (x == null && !isNullable)
 				throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
 				                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
 			else if (buffs.isEmpty)
 				res
 			else selectAudit match {
-				case Some(audit) => Some(audit(x))
+				case Got(audit) => Got(audit(x))
 				case _ => res
 			}
 		case _ => defaultValue
@@ -122,10 +123,10 @@ trait ColumnMapping[S, O]
 	  * composed with each other. It is applied to every value returned by the form or
 	  * [[net.noresttherein.oldsql.schema.ColumnMapping.assemble assemble]] method.
 	  */
-	protected def selectAudit :Option[S => S] = {
+	protected def selectAudit :Opt[S => S] = {
 		val audits = SelectAudit.Audit(this)
-		if (audits.isEmpty) None
-		else Some(audits.reduce(_ andThen _))
+		if (audits.isEmpty) Lack
+		else Got(audits.reduce(_ andThen _))
 	}
 
 	/** The value returned by [[net.noresttherein.oldsql.schema.ColumnMapping.optionally optionally]]
@@ -134,7 +135,7 @@ trait ColumnMapping[S, O]
 	  * @return [[net.noresttherein.oldsql.schema.Buff.SelectDefault SelectDefault]]`.`[[net.noresttherein.oldsql.schema.Buff.ValueBuffType.Value Value]]`(this)`
 	  *         `orElse` [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]]`.Value(this)`.
 	  */
-	protected def defaultValue :Option[S] = {
+	protected def defaultValue :Opt[S] = {
 		val res = SelectDefault.Value(this)
 		if (res.isDefined) res else ExtraSelect.Value(this)
 	}
@@ -363,10 +364,10 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 	  */
 	trait SimpleColumn[S, O] extends ColumnMapping[S, O] with ExportMapping {
 
-		final override def assemble(pieces :Pieces) :Option[S] = None
+		final override def assemble(pieces :Pieces) :Opt[S] = Lack
 
 		final override def apply(pieces: Pieces): S = optionally(pieces) match {
-			case Some(res) => res
+			case Got(res) => res
 			case _ =>
 				throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
 				                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
@@ -383,12 +384,12 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		  * @throws `NullPointerException` if the preset value is explicitly stated as `null` (`pieces.preset(this)`
 		  *                                returned `Some(null)`), but this column does not have the `Nullable` buff.
 		  */
-		final override def optionally(pieces :Pieces) :Option[S] =
+		final override def optionally(pieces :Pieces) :Opt[S] =
 			if (isNullable)
 				pieces.preset(this)
 			else //consider: making the method final, perhaps only calling pieces.preset, so we can make some optimizations
 				pieces.preset(this) match {
-					case Some(null) =>
+					case Got(null) =>
 						throw new NullPointerException("Read a null value for a non-nullable column " + name + ". " +
 						                               "Flag the column with Buff.Nullable to explicitly allow nulls.")
 					case res => res //don't check buffs - we do it in the form for speed
@@ -538,9 +539,9 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		protected val updateAudit :S => S = UpdateAudit.fold(this)
 		protected val insertAudit :S => S = InsertAudit.fold(this)
 
-		protected val extraFilter :Option[S] = ExtraFilter.Value(this)
-		protected val extraUpdate :Option[S] = ExtraUpdate.Value(this)
-		protected val extraInsert :Option[S] = ExtraInsert.Value(this)
+		protected val extraFilter :Opt[S] = ExtraFilter.Value(this)
+		protected val extraUpdate :Opt[S] = ExtraUpdate.Value(this)
+		protected val extraInsert :Opt[S] = ExtraInsert.Value(this)
 
 		protected val extraFilterValues :ColumnValues[S, O] = extraWrite(extraFilter)
 		protected val extraUpdateValues :ColumnValues[S, O] = extraWrite(extraUpdate)
@@ -551,8 +552,8 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 			case _ => ColumnValues.empty[S, O]
 		}
 
-		protected override val selectAudit :Option[S => S] = super.selectAudit
-		protected override val defaultValue :Option[S] = super.defaultValue
+		protected override val selectAudit :Opt[S => S] = super.selectAudit
+		protected override val defaultValue :Opt[S] = super.defaultValue
 
 		override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
 			op.writtenValues(this, subject)
@@ -575,15 +576,15 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 
 		override def filterValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			if (isFilterable) collector.add(this, filterAudit(subject))
-			else collector.add(this, extraFilter)
+			else collector.addOpt(this, extraFilter)
 
 		override def updateValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			if (isUpdatable) collector.add(this, updateAudit(subject))
-			else collector.add(this, extraUpdate)
+			else collector.addOpt(this, extraUpdate)
 
 		override def insertValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			if (isInsertable) collector.add(this, insertAudit(subject))
-			else collector.add(this, extraInsert)
+			else collector.addOpt(this, extraInsert)
 
 
 		protected val defaultColumns :Unique[OptimizedColumn[S, O]] = Unique.single(this)

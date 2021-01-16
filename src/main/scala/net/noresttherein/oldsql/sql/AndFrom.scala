@@ -1,6 +1,8 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
@@ -9,7 +11,7 @@ import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
-import net.noresttherein.oldsql.sql.RowProduct.{As, RowComposition, RowDecomposition, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowComposition, RowDecomposition}
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedDecomposition, NonSubselect}
@@ -172,15 +174,15 @@ object AndFrom {
 
 
 	/** Splits any `AndFrom` into its left (all relations but the last one) and right (the last relation) sides. */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](join :L Adjoin R) :Option[(L, Relation[R])] = join match {
-		case join :AndFrom[L @unchecked, R @unchecked] => Some((join.left, join.right))
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](join :L Adjoin R) :Opt[(L, Relation[R])] = join match {
+		case join :AndFrom[L @unchecked, R @unchecked] => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 	/** Matches all `AndFrom` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(RowProduct, Relation.*)] = from match {
-		case join :AndFrom.* => Some((join.left, join.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(RowProduct, Relation.*)] = from match {
+		case join :AndFrom.* => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 
@@ -608,15 +610,15 @@ object From {
 
 
 	/** Matches all `From` instances, extracting their relation in the process. */
-	def unapply[M[O] <: MappingAt[O]](from :RowProduct Adjoin M) :Option[Table[M]] = from match {
-		case f :From[M @unchecked] => Some(f.right)
-		case _ => None
+	def unapply[M[O] <: MappingAt[O]](from :RowProduct Adjoin M) :Opt[Table[M]] = from match {
+		case f :From[M @unchecked] => Got(f.right)
+		case _ => Lack
 	}
 
 	/** Matches all `From` instances, extracting their relation in the process. */
-	def unapply(from :RowProduct) :Option[Table.*] = from match {
-		case f :From.* => Some(f.table)
-		case _ => None
+	def unapply(from :RowProduct) :Opt[Table.*] = from match {
+		case f :From.* => Got(f.table)
+		case _ => Lack
 	}
 
 

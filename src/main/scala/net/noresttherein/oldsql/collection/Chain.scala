@@ -5,6 +5,7 @@ import scala.annotation.{implicitNotFound, tailrec}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, UpperBound}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.Listing.{:~, method_:~, |~}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Positive}
 import net.noresttherein.oldsql.morsels.generic.{Const, GenericFun, Self}
 import net.noresttherein.oldsql.morsels.LUB
@@ -173,9 +174,9 @@ object Chain extends ChainFactory {
 
 		@inline def unapply[I <: Chain, L](chain :I ~ L) :I ~ L = chain
 
-		def unapply(chain :Chain) :Option[(Chain, Any)] = chain match {
-			case link: ~[_, _] => Some(link.init -> link.last)
-			case _ => None
+		def unapply(chain :Chain) :Opt[(Chain, Any)] = chain match {
+			case link: ~[_, _] => Got(link.init -> link.last)
+			case _ => Lack
 		}
 	}
 
@@ -1800,16 +1801,16 @@ object Listing extends ListingFactory {
 		  */
 		@inline def apply[K <: Key, V](key :K, value :V) :K :~ V = new :~(value)
 
-		@inline def unapply[K <: Key :ValueOf, V](entry :K :~ V) :Option[(K, V)] =
-			Some(valueOf[K] -> entry.value)
+		@inline def unapply[K <: Key :ValueOf, V](entry :K :~ V) :Opt[(K, V)] =
+			Got(valueOf[K] -> entry.value)
 
 
-		def unapply[K <: Key :ValueOf, V](index: Listing |~ (K :~ V)) :Option[(K, V)] =
-			if (index.init eq @~) Some(valueOf[K] -> index.last.value) else None
+		def unapply[K <: Key :ValueOf, V](index: Listing |~ (K :~ V)) :Opt[(K, V)] =
+			if (index.init eq @~) Got(valueOf[K] -> index.last.value) else Lack
 
-		def unapply(index :Listing) :Option[Value] = index match {
-			case @~ |~ value => Some(value)
-			case _ => None
+		def unapply(index :Listing) :Opt[Value] = index match {
+			case @~ |~ value => Got(value)
+			case _ => Lack
 		}
 
 
@@ -1891,9 +1892,9 @@ object Listing extends ListingFactory {
 
 		@inline def unapply[I <: Listing, L <: Item](index :I |~ L) :I |~ L = index
 
-		@inline def unapply(index :Listing) :Option[(Listing, Any)] = index match {
-			case nonEmpty: |~[_, _] => Some(nonEmpty.init -> nonEmpty.last.value)
-			case _ => None
+		@inline def unapply(index :Listing) :Opt[(Listing, Any)] = index match {
+			case nonEmpty: |~[_, _] => Got(nonEmpty.init -> nonEmpty.last.value)
+			case _ => Lack
 		}
 	}
 
@@ -2064,8 +2065,8 @@ object LabeledChain extends ListingFactory {
 
 		@inline def unapply[I <: LabeledChain, L <: Item](index :I >~ L) :I >~ L = index
 
-		@inline def unapply(index :LabeledChain) :Option[(LabeledChain, Any)] = index match {
-			case nonEmpty: >~[_, _] => Some(nonEmpty.init -> nonEmpty.last.value)
+		@inline def unapply(index :LabeledChain) :Opt[(LabeledChain, Any)] = index match {
+			case nonEmpty: >~[_, _] => Opt(nonEmpty.init -> nonEmpty.last.value)
 			case _ => None
 		}
 	}
@@ -2227,9 +2228,9 @@ object ChainMap extends ChainMapFactory {
 
 		@inline def unapply[T<: ChainMap, H <: (Key, Any)](index :T &~ H) :T &~ H = index
 
-		@inline def unapply(index :ChainMap) :Option[(ChainMap, (Key, Any))] = index match {
-			case nonEmpty: &~[_, _] => Some(nonEmpty.init -> nonEmpty.last)
-			case _ => None
+		@inline def unapply(index :ChainMap) :Opt[(ChainMap, (Key, Any))] = index match {
+			case nonEmpty: &~[_, _] => Got(nonEmpty.init -> nonEmpty.last)
+			case _ => Lack
 		}
 	}
 
@@ -2380,9 +2381,9 @@ object Record extends ChainMapFactory {
 
 		@inline def unapply[T <: Record, E <: (Key, Any)](record :T |# E) :T |# E = record
 
-		@inline def unapply(record :Record) :Option[(Record, (Key, Any))] = record match {
-			case rec: |#[_, _] => Some(rec.init -> rec.last)
-			case _ => None
+		@inline def unapply(record :Record) :Opt[(Record, (Key, Any))] = record match {
+			case rec: |#[_, _] => Got(rec.init -> rec.last)
+			case _ => Lack
 		}
 	}
 
@@ -2411,14 +2412,14 @@ object Record extends ChainMapFactory {
 	  */
 	object #> {
 
-		def unapply[K <: Key, V](entry :(K, V)) :Some[(K, V)] = Some(entry)
+		def unapply[K <: Key, V](entry :(K, V)) :Opt[(K, V)] = Got(entry)
 
-		def unapply[K <: Key, V](record :Record |# (K, V)) :Option[(K, V)] =
-			if (record.init eq @~) Some(record.last) else None
+		def unapply[K <: Key, V](record :Record |# (K, V)) :Opt[(K, V)] =
+			if (record.init eq @~) Got(record.last) else Lack
 
-		def unapply(record :Record) :Option[(Key, Any)] = record match {
-			case @~ |# entry => Some(entry)
-			case _ => None
+		def unapply(record :Record) :Opt[(Key, Any)] = record match {
+			case @~ |# entry => Got(entry)
+			case _ => Lack
 		}
 
 	}

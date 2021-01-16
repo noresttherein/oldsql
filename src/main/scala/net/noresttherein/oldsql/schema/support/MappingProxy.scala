@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.support
 import scala.collection.mutable
 
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ComponentValues
@@ -59,7 +59,7 @@ object MappingProxy {
 	trait ShallowProxy[S, O]
 		extends MappingProxy[S, O] with ShallowDelegate[S, O] with DelegateMapping[RefinedMapping[S, O], S, O]
 	{
-		override def assemble(pieces :Pieces) :Option[S] = {
+		override def assemble(pieces :Pieces) :Opt[S] = {
 			val res = pieces.preset(backer)
 			if (res.isDefined) res else backer.assemble(pieces)
 		}
@@ -104,7 +104,7 @@ object MappingProxy {
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy]]
 	  */
 	trait WrapperProxy[S, O] extends ShallowProxy[S, O] with WrapperDelegate[S, O] {
-		override def assemble(pieces :Pieces) :Option[S] = pieces.get(backer)
+		override def assemble(pieces :Pieces) :Opt[S] = pieces.get(backer)
 	}
 
 
@@ -120,8 +120,8 @@ object MappingProxy {
 	  */
 	trait DirectProxy[S, O] extends ShallowProxy[S, O] {
 
-		override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this)
-		override def assemble(pieces :Pieces) :Option[S] = pieces.get(backer)
+		override def optionally(pieces :Pieces) :Opt[S] = pieces.assemble(this)
+		override def assemble(pieces :Pieces) :Opt[S] = pieces.get(backer)
 
 		override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
 			backer.writtenValues(op, subject)
@@ -196,7 +196,7 @@ object MappingProxy {
 	trait ExportProxy[S, O]
 		extends MappingProxy[S, O] with ShallowDelegate[S, O] with DelegateMapping[RefinedMapping[S, O], S, O]
 	{
-		override def assemble(pieces :Pieces) :Option[S] = backer.assemble(pieces)
+		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
 
 		override def export[T](component :Component[T]) :Component[T] =
 			if ((component eq backer) | (component eq this)) this.asInstanceOf[Component[T]]
@@ -353,7 +353,7 @@ object MappingProxy {
 		//without the map becoming an instance field - it is used only in initialization of the 'extracts' properties
 		def this(backer :MappingOf[S]) = this(backer, mutable.Map.empty)
 
-		override def assemble(pieces :Pieces) :Option[S] = backer.assemble(pieces.asInstanceOf[backer.Pieces])
+		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces.asInstanceOf[backer.Pieces])
 
 
 		protected[MappingProxy] override def initExtractMap :ExtractMap = {
@@ -394,7 +394,7 @@ object MappingProxy {
 		//without the map becoming an instance field - it is used only in initialization of the 'extracts' properties
 		def this(backer :MappingOf[S]) = this(backer, mutable.Map.empty)
 
-		override def assemble(pieces :Pieces) :Option[S] = //composes aliasing to substitute components of component to this
+		override def assemble(pieces :Pieces) :Opt[S] = //composes aliasing to substitute components of component to this
 			backer.asInstanceOf[Component[S]].assemble(pieces.selectivelyAliased(aliases))
 
 
@@ -439,7 +439,7 @@ object MappingProxy {
 				if (x eq backer) this.asInstanceOf[Column[T]] else x
 		}
 		
-		override def assemble(pieces :Pieces) :Option[S] = 
+		override def assemble(pieces :Pieces) :Opt[S] =
 			backer.asInstanceOf[Column[S]].assemble(pieces.aliased(aliasing))
 	}
 
@@ -452,8 +452,8 @@ object MappingProxy {
 		def this(backer :ColumnMapping[S, O]) = this(backer, backer.name, backer.form)
 		def this(backer :ColumnMapping[S, O], name :String) = this(backer, name, backer.form)
 
-		override def optionally(pieces :Pieces) :Option[S] = pieces.assemble(this)
-		override def assemble(pieces :Pieces) :Option[S] = pieces.get(backer)
+		override def optionally(pieces :Pieces) :Opt[S] = pieces.assemble(this)
+		override def assemble(pieces :Pieces) :Opt[S] = pieces.get(backer)
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
 		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
@@ -509,7 +509,7 @@ object MappingProxy {
 		def this(backer :ColumnMapping[S, O], name :String, buffs :Seq[Buff[S]]) =
 			this(backer, name, buffs, backer.form)
 
-		override def assemble(pieces :Pieces) :Option[S] = backer.assemble(pieces)
+		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
 		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)

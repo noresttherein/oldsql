@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.generic.{Const, Self}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.FormFunction
@@ -152,9 +154,9 @@ object SQLTerm {
 // 		def apply[T :SQLForm](value :T) :SQLLiteral[T] = new SQLLiteral(value)
 
 
-		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Option[T] = e match {
-			case literal :SQLLiteral[T @unchecked] => Some(literal.value)
-			case _ => None
+		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Opt[T] = e match {
+			case literal :SQLLiteral[T @unchecked] => Got(literal.value)
+			case _ => Lack
 		}
 
 
@@ -212,9 +214,9 @@ object SQLTerm {
 	object ColumnLiteral {
 		def apply[T :ColumnForm](literal :T) :ColumnLiteral[T] = new ColumnLiteral[T](literal)
 
-		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Option[T] = e match {
-			case literal :ColumnLiteral[T @unchecked] => Some(literal.value)
-			case _ => None
+		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Opt[T] = e match {
+			case literal :ColumnLiteral[T @unchecked] => Got(literal.value)
+			case _ => Lack
 		}
 
 
@@ -275,9 +277,9 @@ object SQLTerm {
 
 		def apply[T](form :SQLForm[T])(value :T) :SQLParameter[T] = new SQLParameter(value)(form)
 
-		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Option[(T, Option[String])] = e match {
-			case param :SQLParameter[T @unchecked] => Some((param.value, param.name))
-			case _ => None
+		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Opt[(T, Option[String])] = e match {
+			case param :SQLParameter[T @unchecked] => Got((param.value, param.name))
+			case _ => Lack
 		}
 
 
@@ -331,9 +333,9 @@ object SQLTerm {
 		def apply[T :ColumnForm](param :T, name :Option[String] = None) :SQLParameterColumn[T] =
 			new SQLParameterColumn[T](param, name)
 
-		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Option[(T, Option[String])] = e match {
-			case param :SQLParameterColumn[T] => Some((param.value, param.name))
-			case _ => None
+		def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Opt[(T, Option[String])] = e match {
+			case param :SQLParameterColumn[T] => Got((param.value, param.name))
+			case _ => Lack
 		}
 
 
@@ -594,9 +596,9 @@ object SQLTerm {
 
 	object NativeTerm extends FormFunction[Const[String]#T, NativeTerm, NativeColumnTerm] {
 
-		def unapply(e :SQLExpression[Nothing, LocalScope, _]) :Option[String] = e match {
-			case native :NativeTerm[_] => Some(native.sql)
-			case _ => None
+		def unapply(e :SQLExpression[Nothing, LocalScope, _]) :Opt[String] = e match {
+			case native :NativeTerm[_] => Got(native.sql)
+			case _ => Lack
 		}
 
 
@@ -636,9 +638,9 @@ object SQLTerm {
 	object NativeColumnTerm {
 		def apply[T :ColumnForm](sql :String) :NativeColumnTerm[T] = new NativeColumnTerm[T](sql)
 
-		def unapply(e :SQLExpression[Nothing, LocalScope, _]) :Option[String] = e match {
-			case native :NativeColumnTerm[_] => Some(native.sql)
-			case _ => None
+		def unapply(e :SQLExpression[Nothing, LocalScope, _]) :Opt[String] = e match {
+			case native :NativeColumnTerm[_] => Got(native.sql)
+			case _ => Lack
 		}
 
 

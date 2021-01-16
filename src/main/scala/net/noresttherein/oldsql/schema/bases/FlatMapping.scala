@@ -7,7 +7,7 @@ import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.model.{PropertyPath, RelatedEntityFactory}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional}
@@ -23,9 +23,9 @@ import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping}
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{AbstractForeignKeyEntityMapping, ForeignKeyEntityColumnMapping, ForeignKeyEntityMapping, InverseForeignKeyMapping}
-import net.noresttherein.oldsql.schema.bits.OptionMapping.{MappedOptionMapping, Optional}
+import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{ForeignKeyEntityColumnMapping, ForeignKeyEntityMapping, InverseForeignKeyMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, OpaqueProxy}
 
 
@@ -178,7 +178,7 @@ trait FlatMapping[S, O]
 			column(PropertyPath.nameOf(property), property, buffs :_*)
 
 		protected def optcolumn[X :ColumnForm](name :String, property :T => Option[X], buffs :Buff[X]*) :Column[X] =
-			borrow(new FlatColumn[X](name, extract andThen property, buffs), property)
+			borrow(new FlatColumn[X](name, extract andThenOpt property, buffs), property)
 
 
 		protected override def fkimpl[M[A] <: RefinedMapping[E, A], K, E, X, R]
@@ -189,7 +189,7 @@ trait FlatMapping[S, O]
 			val selector = Extractor.req(property)
 			val cascaded = buffs ++: cascadeBuffs(this.buffs, toString)(selector)
 			borrow(
-				new FKColumn[M, K, E, X, R, ()](extract andThen selector, name, cascaded)(
+				new FKColumn[M, K, E, X, R, ()](extract andThenReq selector, name, cascaded)(
 					factory, table, key.asInstanceOf[M[()] => ColumnMapping[K, ()]]
 				), selector
 			)
@@ -203,7 +203,7 @@ trait FlatMapping[S, O]
 			val selector = Extractor.req(property)
 			val cascaded = buffs ++: cascadeBuffs(this.buffs, toString)(selector)
 			borrow(
-				new FKComponent[M, C, K, E, X, R, ()](extract andThen selector, rename, cascaded)(
+				new FKComponent[M, C, K, E, X, R, ()](extract andThenReq selector, rename, cascaded)(
 					factory, table, key.asInstanceOf[M[()] => C[()]]
 				), selector
 			)
@@ -217,7 +217,7 @@ trait FlatMapping[S, O]
 			val selector = Extractor.req(property)
 			val cascaded = buffs ++: cascadeBuffs(this.buffs, toString)(selector)
 			borrow(
-				new InverseFKComponent[M, C, K, E, X, R, ()](extract andThen selector, cascaded)(key, reference)(
+				new InverseFKComponent[M, C, K, E, X, R, ()](extract andThenReq selector, cascaded)(key, reference)(
 					table, fk.asInstanceOf[M[()] => ForeignKeyMapping[MappingAt, C, K, _, ()]]
 				), selector
 			)
@@ -300,7 +300,7 @@ trait FlatMapping[S, O]
 			this(selector, prefix + _, buffs)(factory, table, pk)
 
 		private[this] val lazyKey = Lazy {
-			val extract = Extractor.opt(factory.keyOf)
+			val extract = KeyExtractor(factory)
 			val keyBuffs = cascadeBuffs(this)(extract)
 			val selector = componentSelector andThen extract
 			new MirrorComponent[C[X], K, X](selector, keyBuffs)(target, rename)
@@ -323,7 +323,7 @@ trait FlatMapping[S, O]
 			with AbstractColumn[R]
 	{
 		private[this] val lazyKey = Lazy {
-			val extract = Extractor.opt(factory.keyOf)
+			val extract = KeyExtractor(factory)
 			val keyBuffs = cascadeBuffs(this)(extract)
 			val selector = componentSelector andThen extract
 			if (target.isInstanceOf[SimpleColumn[_, _]])
@@ -426,7 +426,7 @@ trait FlatMapping[S, O]
 		private[this] val values = new Array[Option[Any]](columnCount)
 		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Option[_]]
 
-		override def add[T](component :RefinedMapping[T, O], result :Option[T]) :this.type = export(component) match {
+		override def addOpt[T](component :RefinedMapping[T, O], result :Opt[T]) :this.type = export(component) match {
 			case col :FlatMapping[_, _]#AbstractColumn[_] =>
 				values(col.index) = result; this
 			case _ =>
@@ -466,12 +466,12 @@ trait FlatMapping[S, O]
 
 		override def readColumns :Int = fastColumns.length
 
-		override def opt(res :ResultSet, position :Int) :Option[S] = {
-			val vals = new Array[Option[Any]](fastColumns.length)
+		override def opt(res :ResultSet, position :Int) :Opt[S] = {
+			val vals = new Array[Any](fastColumns.length)
 			java.util.Arrays.fill(vals.asInstanceOf[Array[AnyRef]], None)
 			var i = 0
 			while (i < forms.length) {
-				vals(fastColumns(i).index) = forms(i).opt(res, position + i)
+				vals(fastColumns(i).index) = forms(i).opt(res, position + i).orNull
 				i += 1
 			}
 			val pieces = ColumnValues(root)(ArraySeq.unsafeWrapArray(vals)) {

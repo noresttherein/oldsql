@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory}
 import net.noresttherein.oldsql.model.Kin.{Derived, Present}
@@ -96,15 +98,15 @@ object TeleKin {
 			}
 
 
-	def unapply[E, T](kin :Derived[E, T]) :Option[Kin[Iterable[Kin[E]]]] = kin match {
-		case broker :TeleKin[E, T] => Some(broker.key)
-		case _ => None
+	def unapply[E, T](kin :Derived[E, T]) :Opt[Kin[Iterable[Kin[E]]]] = kin match {
+		case broker :TeleKin[E, T] => Got(broker.key)
+		case _ => Lack
 	}
 
-	def unapply[T](kin :Kin[T]) :Option[(Kin[Iterable[Kin[E]]], T ComposableFrom E) forSome { type E }] =
+	def unapply[T](kin :Kin[T]) :Opt[(Kin[Iterable[Kin[E]]], T ComposableFrom E) forSome { type E }] =
 		kin match {
-			case broker :TeleKin[e, T] => Some((broker.key, broker.composition))
-			case _ => None
+			case broker :TeleKin[e, T] => Got((broker.key, broker.composition))
+			case _ => Lack
 		}
 
 
@@ -132,17 +134,17 @@ object TeleKin {
 			TeleKin(Derived.present(result.decomposer(value).map(Derived.one)))
 
 
-		override def keyFrom(item :E) :Option[Kin[Iterable[Kin[E]]]] =
-			Some(keyFactory.present(valueFactory.present(item)::Nil))
+		override def keyFrom(item :E) :Opt[Kin[Iterable[Kin[E]]]] =
+			Got(keyFactory.present(valueFactory.present(item)::Nil))
 
-		override def keyFrom(items :Iterable[E]) :Option[Kin[Iterable[Kin[E]]]] =
-			Some(keyFactory.present(items.map(valueFactory.present)))
+		override def keyFrom(items :Iterable[E]) :Opt[Kin[Iterable[Kin[E]]]] =
+			Got(keyFactory.present(items.map(valueFactory.present)))
 
-		override def keyOf(kin :Kin[T]) :Option[Kin[Iterable[Kin[E]]]] = kin match {
-			case Derived(TeleKin(k)) => Some(k.asInstanceOf[Kin[Iterable[Kin[E]]]])
+		override def keyOf(kin :Kin[T]) :Opt[Kin[Iterable[Kin[E]]]] = kin match {
+			case Derived(TeleKin(k)) => Got(k.asInstanceOf[Kin[Iterable[Kin[E]]]])
 			case Present(result.decomposer(values)) =>
-				Some(keyFactory.present(values.map(valueFactory.present)))
-			case _ => None
+				Got(keyFactory.present(values.map(valueFactory.present)))
+			case _ => Lack
 		}
 
 //		override def required :KinFactory[Kin[Iterable[Kin[E]]], E, T] =

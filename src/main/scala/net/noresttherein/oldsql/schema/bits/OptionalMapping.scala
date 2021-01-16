@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.model.RelatedEntityFactory
 import net.noresttherein.oldsql.morsels.Extractor
-import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, Requisite}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.{MappedMapping, MappingAdapter}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -41,9 +41,8 @@ object OptionalMapping {
 		protected override def nulls :NullValue[R] =
 			if (factory.isRequired) NullValue.eval(factory.nonexistent) else NullValue(factory.nonexistent)
 
-		protected override def map :S =?> R = factory.present _
-
-		protected override def unmap :R =?> S = factory.valueOf _
+		protected override def map :S =?> R = Requisite(factory.present _)
+		protected override def unmap :R =?> S = Optional(factory.valueOf(_:R))
 	}
 
 }

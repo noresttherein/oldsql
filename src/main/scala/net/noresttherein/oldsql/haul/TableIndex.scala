@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.haul
 
 import scala.collection.mutable
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingExtract
@@ -22,14 +24,14 @@ trait TableIndex[K, E] {
 	def property :E =?> K
 
 	def apply(key :K) :E
-	def unique(key :K) :Option[E]
+	def unique(key :K) :Opt[E]
 	def all(key :K) :Iterable[E]
 
 	def +=(value :E) :Unit
 	def add(key :K, value :E) :Unit
 
 	def add[O](value :E, pieces :ComponentValues[E, O]) :Unit = pieces.get(component[O]) match {
-		case Some(key) => add(key, value)
+		case Got(key) => add(key, value)
 		case _ => this += value
 	}
 }
@@ -55,15 +57,16 @@ object TableIndex {
 			res
 		}
 
-		override def unique(key :K) :Option[E] = idx.get(key)
+		override def unique(key :K) :Opt[E] =
+			Opt(idx.getOrElse(key, null.asInstanceOf[E]))
 
 		override def all(key :K) :Iterable[E] =
-			Option(idx.getOrElse(key, null.asInstanceOf[E]))
+			idx.getOrElse(key, null.asInstanceOf[E])::Nil
 
 		override def +=(value :E) :Unit =
 			if (value != null)
 				extract.get(value) match {
-					case Some(key) if key != null => idx.update(key, value)
+					case Got(key) if key != null => idx.update(key, value)
 					case _ =>
 				}
 
@@ -75,7 +78,7 @@ object TableIndex {
 
 		override def add[O](value :E, pieces :ComponentValues[E, O]) :Unit =
 			pieces.get(extract.asInstanceOf[MappingExtract[E, K, O]]) match {
-				case Some(k) => add(k, value)
+				case Got(k) => add(k, value)
 				case _ =>
 			}
 
@@ -93,7 +96,7 @@ object TableIndex {
 		override def +=(value :E) :Unit =
 			if (value != null)
 				extract.get(value) match {
-					case Some(key) if key != null && !(key eq None) => index.update(key, value)
+					case Got(key) if key != null && !(key eq None) => index.update(key, value)
 					case _ =>
 				}
 
@@ -127,12 +130,12 @@ object TableIndex {
 			res.head
 		}
 
-		override def unique(key :K) :Option[E] = {
+		override def unique(key :K) :Opt[E] = {
 			val res = idx.getOrElse(key, null)
-			if (res == null || res.isEmpty) None
+			if (res == null || res.isEmpty) Lack
 			else if (res.size > 1)
 				throw new IllegalStateException(s"Non unique results for key $key in $this.")
-			else res.headOption
+			else Got(res.head)
 		}
 
 		override def all(key :K) :collection.Set[E] = {
@@ -143,7 +146,7 @@ object TableIndex {
 		override def +=(value :E) :Unit =
 			if (value != null)
 				extract.get(value) match {
-					case Some(key) if key != null =>
+					case Got(key) if key != null =>
 						var res = idx.getOrElse(key, null)
 						if (res == null) {
 							res = mutable.Set.empty[E]
@@ -167,7 +170,7 @@ object TableIndex {
 
 		override def add[O](value :E, pieces :ComponentValues[E, O]) :Unit =
 			pieces.get(extract.asInstanceOf[MappingExtract[E, K, O]]) match {
-				case Some(k) => add(k, value)
+				case Got(k) => add(k, value)
 				case _ =>
 			}
 
@@ -186,7 +189,7 @@ object TableIndex {
 		override def +=(value :E) :Unit =
 			if (value != null)
 				extract.get(value) match {
-					case Some(key) if key != null && !(key eq None) =>
+					case Got(key) if key != null && !(key eq None) =>
 						var res = cache.getOrElse(key, null)
 						if (res == null) {
 							res = mutable.Set.empty[E]
@@ -236,12 +239,12 @@ object TableIndex {
 			res.head._2
 		}
 
-		override def unique(key :K) :Option[E] = {
+		override def unique(key :K) :Opt[E] = {
 			val res = idx.getOrElse(key, null)
-			if (res == null || res.isEmpty) None
+			if (res == null || res.isEmpty) Lack
 			else if (res.size > 1)
 				throw new IllegalStateException(s"Non unique results for key $key in $this.")
-			else Some(res.head._2)
+			else Got(res.head._2)
 		}
 
 		override def all(key :K) :Iterable[E] = {
@@ -252,8 +255,8 @@ object TableIndex {
 		override def +=(value :E) :Unit =
 			if (value != null)
 				indexProperty.get(value) match {
-					case Some(i) if i != null => extract.get(value) match {
-						case Some(key) if key != null =>
+					case Got(i) if i != null => extract.get(value) match {
+						case Got(key) if key != null =>
 							var res = idx.getOrElse(key, null)
 							if (res == null) {
 								res = mutable.ListBuffer.empty[(I, E)]
@@ -270,7 +273,7 @@ object TableIndex {
 				if (value == null)
 					throw new NullPointerException(s"Attempted to add a null value with key $key to index $this.")
 				indexProperty.get(value) match {
-					case Some(i) if i != null =>
+					case Got(i) if i != null =>
 						var res = idx.getOrElse(key, null)
 						if (res == null) {
 							res = mutable.ListBuffer.empty[(I, E)]
@@ -283,9 +286,9 @@ object TableIndex {
 
 		override def add[O](value :E, pieces :ComponentValues[E, O]) :Unit =
 			pieces.get(indexProperty.asInstanceOf[MappingExtract[E, I, O]]) match {
-				case Some(i) if i != null =>
+				case Got(i) if i != null =>
 					pieces.get(extract.asInstanceOf[MappingExtract[E, K, O]]) match {
-						case Some(key) if key != null =>
+						case Got(key) if key != null =>
 							var res = idx.getOrElse(key, null)
 							if (res == null) {
 								res = mutable.ListBuffer.empty[(I, E)]

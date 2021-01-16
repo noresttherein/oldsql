@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.{Chain, Unique}
+import net.noresttherein.oldsql.collection.{Chain, Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, Relation, SQLReadForm}
@@ -356,14 +357,14 @@ object MappingSQL {
 
 
 		def unapply[F <: RowProduct, X](expr :SQLExpression[F, _, X])
-				:Option[(BaseMapping[X, _ >: F <: RowProduct], Int)] =
+				:Opt[(BaseMapping[X, _ >: F <: RowProduct], Int)] =
 			expr match {
-				case free: LooseComponent.Typed[F, X] @unchecked => Some(free.mapping -> free.offset)
-				case _ => None
+				case free: LooseComponent.Typed[F, X] @unchecked => Got(free.mapping -> free.offset)
+				case _ => Lack
 			}
 
-		def unapply[F <: RowProduct, M[A] <: BaseMapping[X, A], X](expr :LooseComponent[F, M, X]) :Option[(M[F], Int)] =
-			Some(expr.mapping -> expr.offset)
+		def unapply[F <: RowProduct, M[A] <: BaseMapping[X, A], X](expr :LooseComponent[F, M, X]) :Opt[(M[F], Int)] =
+			Got(expr.mapping -> expr.offset)
 
 
 
@@ -567,16 +568,16 @@ object MappingSQL {
 
 
 		def unapply[F <: RowProduct, X](expr :SQLExpression[F, _, X])
-				:Option[(ColumnMapping[X, _ >: F <: RowProduct], Int)] =
+				:Opt[(ColumnMapping[X, _ >: F <: RowProduct], Int)] =
 			expr match {
-				case free: LooseColumn.Typed[F, X] @unchecked => Some(free.mapping -> free.offset)
-				case _ => None
+				case free: LooseColumn.Typed[F, X] @unchecked => Got(free.mapping -> free.offset)
+				case _ => Lack
 			}
 
-		def unapply[F <: RowProduct, M[A] <: BaseMapping[X, A], X](expr :LooseComponent[F, M, X]) :Option[(M[F], Int)] =
+		def unapply[F <: RowProduct, M[A] <: BaseMapping[X, A], X](expr :LooseComponent[F, M, X]) :Opt[(M[F], Int)] =
 			(expr :LooseComponent.*) match {
-				case _ :LooseColumn.* @unchecked => Some(expr.mapping -> expr.offset)
-				case _ => None
+				case _ :LooseColumn.* @unchecked => Got(expr.mapping -> expr.offset)
+				case _ => Lack
 			}
 
 
@@ -715,14 +716,14 @@ object MappingSQL {
 
 
 		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X])
-				:Option[(RelationSQL[F, T, R, O], MappingExtract[R, X, O])
+				:Opt[(RelationSQL[F, T, R, O], MappingExtract[R, X, O])
 						forSome { type T[O] <: BaseMapping[R, O]; type R; type O >: F <: RowProduct }] =
 			e match {
 				case component :ComponentSQL.* @unchecked =>
-					Some((component.origin, component.extract).asInstanceOf[
+					Got((component.origin, component.extract).asInstanceOf[
 						(RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F], MappingExtract[Any, X, F])
 					])
-				case _ => None
+				case _ => Lack
 			}
 
 
@@ -917,14 +918,14 @@ object MappingSQL {
 
 
 		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X])
-				:Option[(RelationSQL[F, T, R, O], MappingExtract[R, X, O])
+				:Opt[(RelationSQL[F, T, R, O], MappingExtract[R, X, O])
 						forSome { type T[O] <: BaseMapping[R, O]; type R; type O >: F <: RowProduct }] =
 			e match {
 				case component :TypedComponentSQL.* @unchecked =>
-					Some((component.origin, component.extract).asInstanceOf[
+					Got((component.origin, component.extract).asInstanceOf[
 						(RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F], MappingExtract[Any, X, F])
 					])
-				case _ => None
+				case _ => Lack
 			}
 
 
@@ -1087,14 +1088,14 @@ object MappingSQL {
 
 
 		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X])
-				:Option[(RelationSQL[F, T, R, O], ColumnMappingExtract[R, X, O])
+				:Opt[(RelationSQL[F, T, R, O], ColumnMappingExtract[R, X, O])
 					forSome { type T[O] <: BaseMapping[R, O]; type R; type O >: F <: RowProduct }] =
 			e match {
 				case component :TypedColumnComponentSQL.* @unchecked =>
-					Some((component.origin, component.extract).asInstanceOf[
+					Got((component.origin, component.extract).asInstanceOf[
 						(RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F], ColumnMappingExtract[Any, X, F])
 					])
-				case _ => None
+				case _ => Lack
 			}
 
 	}
@@ -1235,14 +1236,14 @@ object MappingSQL {
 
 
 		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X])
-				:Option[(RelationSQL[F, T, R, O], ColumnMappingExtract[R, X, O])
+				:Opt[(RelationSQL[F, T, R, O], ColumnMappingExtract[R, X, O])
 						forSome { type T[O] <: BaseMapping[R, O]; type R; type O >: F <: RowProduct }] =
 			e match {
 				case component :TypedColumnComponentSQL.* @unchecked =>
-					Some((component.origin, component.extract).asInstanceOf[
+					Got((component.origin, component.extract).asInstanceOf[
 						(RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F], ColumnMappingExtract[Any, X, F])
 					])
-				case _ => None
+				case _ => Lack
 			}
 
 
@@ -1394,11 +1395,11 @@ object MappingSQL {
 
 	object JoinedRelation {
 
-		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Option[(Relation[MappingAt], Int)] =
+		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Opt[(Relation[MappingAt], Int)] =
 			e match {
 				case from :JoinedRelation.Typed[F, X] @unchecked =>
-					Some(from.relation -> from.offset)
-				case _ => None
+					Got(from.relation -> from.offset)
+				case _ => Lack
 			}
 
 
@@ -1464,11 +1465,11 @@ object MappingSQL {
 
 	object JoinedTable {
 
-		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Option[(Table[MappingAt], Int)] =
+		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Opt[(Table[MappingAt], Int)] =
 			e match {
 				case from :JoinedTable.Typed[F, X] @unchecked =>
-					Some(from.relation -> from.offset)
-				case _ => None
+					Got(from.relation -> from.offset)
+				case _ => Lack
 			}
 
 
@@ -1684,11 +1685,11 @@ object MappingSQL {
 
 
 
-		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Option[(Relation[MappingAt], Int)] =
+		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Opt[(Relation[MappingAt], Int)] =
 			e match {
 				case from :RelationSQL.Typed[F, X] @unchecked =>
-					Some(from.relation.asInstanceOf[Relation[MappingOf[X]#TypedProjection]] -> from.offset)
-				case _ => None
+					Got(from.relation.asInstanceOf[Relation[MappingOf[X]#TypedProjection]] -> from.offset)
+				case _ => Lack
 			}
 
 
@@ -1870,11 +1871,11 @@ object MappingSQL {
 
 
 
-		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Option[(Table[MappingAt], Int)] =
+		def unapply[F <: RowProduct, X](e :SQLExpression[F, _, X]) :Opt[(Table[MappingAt], Int)] =
 			e match {
 				case from :TableSQL.Typed[F, X] @unchecked =>
-					Some(from.relation.asInstanceOf[Table[MappingOf[X]#TypedProjection]] -> from.offset)
-				case _ => None
+					Got(from.relation.asInstanceOf[Table[MappingOf[X]#TypedProjection]] -> from.offset)
+				case _ => Lack
 			}
 
 

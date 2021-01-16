@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
@@ -20,16 +21,16 @@ import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
   */
 trait OptimizedMappingAssembly extends Mapping {
 
-	override def optionally(pieces :Pieces) :Option[Subject] = pieces.assemble(refine) match {
+	override def optionally(pieces :Pieces) :Opt[Subject] = pieces.assemble(refine) match {
 		case res if buffs.isEmpty => res
-		case res :Some[Subject] => selectAudit.get match {
-			case Some(audit) => Some(audit(res.get))
+		case res if res.isDefined => selectAudit.get match {
+			case Got(audit) => Got(audit(res.get))
 			case _ => res
 		}
 		case _ => selectDefault.get
 	}
 
-	private val selectAudit = Lazy { if (SelectAudit.enabled(refine)) Some(SelectAudit.fold(refine)) else None }
+	private val selectAudit = Lazy { if (SelectAudit.enabled(refine)) Got(SelectAudit.fold(refine)) else Lack }
 	private val selectDefault = Lazy { SelectDefault.Value(refine) orElse ExtraSelect.Value(refine) }
 
 
@@ -40,7 +41,7 @@ trait OptimizedMappingAssembly extends Mapping {
 		if (isFilterable) {
 			val audited = filterAudit(subject)
 			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
-				case Some(value) => comp.filterValues(value, collector)
+				case Got(value) => comp.filterValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -50,7 +51,7 @@ trait OptimizedMappingAssembly extends Mapping {
 		if (isUpdatable) {
 			val audited = updateAudit(subject)
 			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
-				case Some(value) => comp.updateValues(value, collector)
+				case Got(value) => comp.updateValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -60,7 +61,7 @@ trait OptimizedMappingAssembly extends Mapping {
 		if (isInsertable) {
 			val audited = insertAudit(subject)
 			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
-				case Some(value) => comp.insertValues(value, collector)
+				case Got(value) => comp.insertValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -174,12 +175,10 @@ trait StableMapping extends Mapping {
 	//todo: this should extend BaseMapping but currently it is extended by some traits with conflicting (narrowed)
 	// declarations of methods implemented in BaseMapping
 
-	override def optionally(pieces :Pieces) :Option[Subject] = pieces.assemble(refine) match {
+	override def optionally(pieces :Pieces) :Opt[Subject] = pieces.assemble(refine) match {
 		case res if noBuffs => res
-		case res :Some[Subject] =>
-			if (noSelectAudit) res else Some(selectAudit(res.get))
-		case _ =>
-			if (default.isDefined) default else explicit
+		case res if res.isDefined => if (noSelectAudit) res else Got(selectAudit(res.get))
+		case _ => default
 	}
 
 
@@ -190,7 +189,7 @@ trait StableMapping extends Mapping {
 		if (isFilterable) {
 			val audited = filterAudit(subject)
 			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
-				case Some(value) => comp.filterValues(value, collector)
+				case Got(value) => comp.filterValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -200,7 +199,7 @@ trait StableMapping extends Mapping {
 		if (isUpdatable) {
 			val audited = updateAudit(subject)
 			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
-				case Some(value) => comp.updateValues(value, collector)
+				case Got(value) => comp.updateValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -210,7 +209,7 @@ trait StableMapping extends Mapping {
 		if (isInsertable) {
 			val audited = insertAudit(subject)
 			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
-				case Some(value) => comp.insertValues(value, collector)
+				case Got(value) => comp.insertValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -228,7 +227,6 @@ trait StableMapping extends Mapping {
 	private val noSelectAudit = SelectAudit.disabled(this)
 	private val selectAudit = SelectAudit.fold(refine)
 	private val default = SelectDefault.Value(refine)
-	private val explicit = ExtraSelect.Value(refine)
 
 
 //	override def apply[T](component :Component[T]) :Extract[T] =

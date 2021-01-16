@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.model.RelatedEntityFactory
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
@@ -116,8 +117,8 @@ object JoinTableCollectionMapping {
 
 		override def forKey(key :K) :R = factory.absent(inbound.forKey(key))
 
-		override def assemble(pieces :Pieces) :Option[R] = pieces.get(inbound) match {
-			case Some(ref) => Some(factory(ref))
+		override def assemble(pieces :Pieces) :Opt[R] = pieces.get(inbound) match {
+			case Got(ref) => Got(factory(ref))
 			case _ => None
 		}
 

@@ -2,12 +2,13 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.NoSuchComponentException
-import net.noresttherein.oldsql.morsels.generic.=#>
+import net.noresttherein.oldsql.morsels.generic.{=#>, Self}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
@@ -142,11 +143,10 @@ object SQLMapping {
 				new NonColumnSQLMapping(expression)
 		}
 
-	def unapply[X](mapping :RefinedMapping[X, _]) :Option[SQLExpression[_, LocalScope, X]] =
+	def unapply[X](mapping :RefinedMapping[X, _]) :Opt[SQLExpression[_, LocalScope, X]] =
 		mapping match {
-			case expr :SQLMapping[_, LocalScope @unchecked, X @unchecked, _] =>
-				Some(expr.expr)
-			case _ => None
+			case expr :SQLMapping[_, LocalScope @unchecked, X @unchecked, _] => Got(expr.expr)
+			case _ => Lack
 		}
 
 
@@ -319,12 +319,16 @@ object SQLMapping {
 				val aliasing = component.columnExtracts.map(selectedColumn(_))
 
 				{ pieces :Pieces =>
-					val values = ComponentValues[V, A](new (MappingAt[A]#Component =#> Option) {
-						override def apply[C](x :RefinedMapping[C, A]) = aliasing.get(x) match {
-							case Some(column) => pieces.get(column)
-							case _ => None
-						}
-					})
+					val values = ComponentValues[V, A](new (MappingAt[A]#Component =#> Self) {
+						override def apply[C](x :RefinedMapping[C, A]) :C =
+							aliasing.getOrElse[ExpressionColumn, C](x, null) match {
+								case null => null.asInstanceOf[C]
+								case column => pieces.get(column) match {
+									case Got(res) => res
+									case _ => null.asInstanceOf[C]
+								}
+							}
+						})
 					component.optionally(values)
 				}
 			}
@@ -403,7 +407,7 @@ object SQLMapping {
 
 		private val assembler = (new AssemblerComposer)(expr)
 
-		override def assemble(pieces: Pieces): Option[X] = assembler(pieces)
+		override def assemble(pieces: Pieces): Opt[X] = assembler(pieces)
 
 
 		override def mappingName = "SQL"
@@ -495,11 +499,11 @@ object ColumnSQLMapping {
 
 
 
-	def unapply[X, O](mapping :MappingOf[X]) :Option[(ColumnSQL[_, LocalScope, X], String)] =
+	def unapply[X, O](mapping :MappingOf[X]) :Opt[(ColumnSQL[_, LocalScope, X], String)] =
 		mapping match {
 			case col :ColumnSQLMapping[_, LocalScope @unchecked, X @unchecked, O @unchecked] =>
-				Some((col.expr, col.name))
-			case _ => None
+				Got((col.expr, col.name))
+			case _ => Lack
 		}
 
 }
@@ -732,10 +736,10 @@ object ListingSQLMapping {
 			case res => res
 		}
 
-		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Option[T]
+		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Opt[T]
 
 		private class AssemblerComposer extends BaseExpressionMatcher[F, Assembler] with MatchListing[F, Assembler] {
-			override def emptyChain = { val res = Some(@~); _ => res }
+			override def emptyChain = { val res = Got(@~); _ => res }
 
 			override def listingEntry[C >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
 			                         (init :ListingSQL[F, C, I], last :ListingValueSQL[F, C, L]) :Assembler[C, I |~ (K :~ L)] =
@@ -829,10 +833,11 @@ object ListingColumnSQLMapping {
 		}
 
 
-	def unapply[X, O](mapping :MappingOf[X]) :Option[ListingColumn[_ <: RowProduct, LocalScope, _ <: Label, X]] =
+	def unapply[X, O](mapping :MappingOf[X]) :Opt[ListingColumn[_ <: RowProduct, LocalScope, _ <: Label, X]] =
 		mapping match {
-			case indexed :ListingColumnSQLMapping[f, LocalScope @unchecked, n, X @unchecked, _] => Some(indexed.expr)
-			case _ => None
+			case indexed :ListingColumnSQLMapping[f, LocalScope @unchecked, n, X @unchecked, _] =>
+				Got(indexed.expr)
+			case _ => Lack
 		}
 
 	type Column[F <: RowProduct, S >: LocalScope <: GlobalScope, N <: Label, X] = {

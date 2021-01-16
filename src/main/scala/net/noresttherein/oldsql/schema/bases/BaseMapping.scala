@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.collection.Unique
+import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
@@ -54,7 +55,7 @@ trait BaseMapping[S, O] extends Mapping { self =>
 			val audited = op.audit.fold(this)(subject)
 			def componentValues[X](comp :Component[X]) :Unit = {
 				apply(comp).get(audited) match {
-					case Some(value) => comp.writtenValues(op, value, collector)
+					case Got(value) => comp.writtenValues(op, value, collector)
 					case _ => op.default.Value(comp) match {
 						case Some(value) => comp.writtenValues(op, value, collector)
 						case _ =>
@@ -70,16 +71,16 @@ trait BaseMapping[S, O] extends Mapping { self =>
 			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
 		}
 
-	override def optionally(pieces: Pieces): Option[S] = pieces.assemble(this) match {
+	override def optionally(pieces: Pieces): Opt[S] = pieces.assemble(this) match {
 		case res if buffs.isEmpty => res //a very common case
-		case Some(res) => Some((res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
+		case Got(res) => Some((res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
 		case _ =>
 			val res = SelectDefault.Value(this)
 			if (res.isDefined) res
 			else ExtraSelect.Value(this)
 	}
 
-	override def assemble(pieces :Pieces) :Option[S]
+	override def assemble(pieces :Pieces) :Opt[S]
 
 	/** @inheritdoc
 	  * @return `NullValue.NotNull` by default.

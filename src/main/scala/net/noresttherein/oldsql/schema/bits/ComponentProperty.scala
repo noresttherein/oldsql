@@ -9,6 +9,8 @@ import net.noresttherein.oldsql.schema.GenericExtract.{ConstantExtract, EmptyExt
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import scala.reflect.runtime.universe.{typeOf, typeTag, Type, TypeTag}
 
+import net.noresttherein.oldsql.collection.Opt.Got
+
 
 
 
@@ -155,42 +157,45 @@ object ComponentProperty {
 
 
 		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
-				:GenericComponentProperty[C, S, Y, O] = extractor match {
-			case _ :IdentityExtractor[_] =>
-				if (extractor.export == export) this.asInstanceOf[GenericComponentProperty[C, S, Y, O]]
-				else requisite match {
-					case Some(req) =>
-						new RequisiteProperty[C, S, Y, O](extractor.export, req.asInstanceOf[S => Y])
-					case _ =>
-						new OptionalProperty[C, S, Y, O](extractor.export, optional.asInstanceOf[S => Option[Y]])
-				}
-			case const :ConstantProperty[C @unchecked, Y @unchecked, O @unchecked] => const
-
-			case const :ConstantExtractor[T @unchecked, Y @unchecked] => requisite match {
-				case Some(_) => new ConstantProperty[C, Y, O](extractor.export, const.constant)
-				case _ =>
-					val first = optional
-					new OptionalProperty[C, S, Y, O](extractor.export, first(_) map const.getter)
-			}
-
-			case none :EmptyProperty[C @unchecked, Y @unchecked, O @unchecked] => none
-
-			case none :EmptyExtract[C @unchecked, Y @unchecked, O @unchecked] =>
-				new EmptyProperty[C, Y, O](extractor.export)
-
-			case sure :RequisiteExtractor[T @unchecked, Y @unchecked] => requisite match {
-				case Some(req) => new RequisiteProperty[C, S, Y, O](extractor.export, req andThen sure.getter)
-				case _ =>
-					val first = optional; val second = sure.getter
-					new OptionalProperty[C, S, Y, O](extractor.export, first(_).map(second))
-			}
-			case _ => requisite match {
-				case Some(req) => new OptionalProperty[C, S, Y, O](extractor.export, req andThen extractor.optional)
-				case _ =>
-					val first = optional; val second = extractor.optional
-					new OptionalProperty[C, S, Y, O](extractor.export, first(_).flatMap(second))
-			}
-		}
+				:GenericComponentProperty[C, S, Y, O]
+//		override def andThen[C <: RefinedMapping[Y, O], Y](extractor :GenericExtract[C, T, Y, O])
+//				:GenericComponentProperty[C, S, Y, O] = extractor match {
+//			case _ :IdentityExtractor[_] =>
+//				if (extractor.export == export) this.asInstanceOf[GenericComponentProperty[C, S, Y, O]]
+//				else requisite match {
+//					case Got(req) =>
+//						new RequisiteProperty[C, S, Y, O](extractor.export, req.asInstanceOf[S => Y])
+//					case _ =>
+//						new OptionalProperty[C, S, Y, O](extractor.export, optional.asInstanceOf[S => Option[Y]])
+//				}
+//			case const :ConstantProperty[C @unchecked, Y @unchecked, O @unchecked] => const
+//
+//			case const :ConstantExtractor[T @unchecked, Y @unchecked] =>
+//				if (requisite.isDefined)
+//					new ConstantProperty[C, Y, O](extractor.export, const.constant)
+//				else {
+//					val first = optional
+//					new OptionalProperty[C, S, Y, O](extractor.export, first(_) map const.getter)
+//				}
+//
+//			case none :EmptyProperty[C @unchecked, Y @unchecked, O @unchecked] => none
+//
+//			case none :EmptyExtract[C @unchecked, Y @unchecked, O @unchecked] =>
+//				new EmptyProperty[C, Y, O](extractor.export)
+//
+//			case sure :RequisiteExtractor[T @unchecked, Y @unchecked] => requisite match {
+//				case Got(req) => new RequisiteProperty[C, S, Y, O](extractor.export, req andThen sure.getter)
+//				case _ =>
+//					val first = optional; val second = sure.getter
+//					new OptionalProperty[C, S, Y, O](extractor.export, first(_).map(second))
+//			}
+//			case _ => requisite match {
+//				case Got(req) => new OptionalProperty[C, S, Y, O](extractor.export, req andThen extractor.optional)
+//				case _ =>
+//					val first = optional; val second = extractor.optional
+//					new OptionalProperty[C, S, Y, O](extractor.export, first(_).flatMap(second))
+//			}
+//		}
 
 
 
@@ -199,13 +204,13 @@ object ComponentProperty {
 				:GenericComponentProperty[M, X, T, O] =
 			extractor andThen this
 
-		override def compose[X](extractor :X =?> S) :GenericExtract[M, X, T, O] = extractor match {
+		abstract override def compose[X](extractor :X =?> S) :GenericExtract[M, X, T, O] = extractor match {
 			case prop :GenericComponentProperty[_, X @unchecked, S @unchecked, _] => compose(prop)
 			case _ => super.compose(extractor)
 		}
 
 
-		override def toString :String = "Extractor(" + export + "=" + property + ")"
+		override def toString :String = "Extractor(" + property + ":" + export + ")"
 
 	}
 
@@ -239,7 +244,7 @@ object ComponentProperty {
 					new OptionalProperty(extractor.export, first(_) flatMap second)
 			}
 
-		override def toString :String = "Optional(" + export + "=" + property + ")"
+		override def toString :String = "Optional(" + property + ":" + export + ")"
 
 	}
 
@@ -280,7 +285,7 @@ object ComponentProperty {
 
 
 
-		override def toString :String = "Requisite(" + export + "=" + property + ")"
+		override def toString :String = "Requisite(" + property + ":" + export + ")"
 
 	}
 
@@ -306,7 +311,7 @@ object ComponentProperty {
 
 
 
-		override def toString :String = "Identity(" + export + "=" + property + ")"
+		override def toString :String = "Identity(" + property + ":" + export + ")"
 
 	}
 
@@ -315,11 +320,11 @@ object ComponentProperty {
 
 
 
-	private class ConstantProperty[+M <: RefinedMapping[T, O], T, O](component :M, constant :T)
-		extends ConstantExtract[M, T, O](component, constant) with GenericComponentProperty[M, Any, T, O]
+	private class ConstantProperty[+M <: RefinedMapping[T, O], T, O](component :M, const :T)
+		extends ConstantExtract[M, T, O](component, const) with GenericComponentProperty[M, Any, T, O]
 	{
 		protected[this] implicit override def tag :TypeTag[Any] = typeTag[Any]
-
+		//fixme: this will throw an exception
 		override val property :ReflectedProperty[Any, T] = PropertyPath.property(getter)
 		override val argumentType :Type = typeOf[Any]
 
@@ -338,16 +343,14 @@ object ComponentProperty {
 				case req :RequisiteExtractor[T @unchecked, Y @unchecked] =>
 					new ConstantProperty(extractor.export, req(constant))
 				case _ => extractor.get(constant) match {
-					case Some(const) => new ConstantProperty(extractor.export, const)
+					case Got(const) => new ConstantProperty(extractor.export, const)
 					case _ => new EmptyProperty(extractor.export)
 				}
 
 			}
 
-		override def toString :String = "Constant(" + export + "=" + constant + ")"
+		override def toString :String = "Constant(" + property + ":" + export + "=" + constant + ")"
 	}
-
-
 
 
 

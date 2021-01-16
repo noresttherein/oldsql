@@ -6,7 +6,7 @@ import scala.reflect.runtime.universe.TypeTag
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.WriteOperationType
-import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
@@ -95,7 +95,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with
 
 
 
-	override def optionally(pieces :Pieces) :Option[V] = pieces.assemble(this) //no buffs.
+	override def optionally(pieces :Pieces) :Opt[V] = pieces.assemble(this) //no buffs.
 
 	/** The buffs intended for the outer mapping of `S` based on this schema. */
 	protected def packedBuffs :Seq[Buff[S]] = Nil
@@ -107,7 +107,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with
 	  *         from their `optionally` method, and `None` in the case when at least one of them didn't have a value
 	  *         in the given subject.
 	  */
-	def unapply(subject :S) :Option[V]
+	def unapply(subject :S) :Opt[V]
 
 	/** Returns the chain with the values of all components from the subject value of the enclosing `SchemaMapping`
 	  * This method will ask the extractors given for all components to produce a value for that component.
@@ -1328,7 +1328,7 @@ object MappingSchema {
 	@implicitNotFound("I don't know how to use ${F} to construct the subject ${S} from chain ${V}.\n" +
 	                  "Missing implicit SubjectConstructor[${S}, ${V}, ${C}, ${O}, ${F}].")
 	trait SubjectConstructor[S, V <: Chain, C <: Chain, O, F] {
-		def apply(schema :MappingSchema[S, V, C, O], f :F) :ComponentValues[S, O] => Option[S]
+		def apply(schema :MappingSchema[S, V, C, O], f :F) :ComponentValues[S, O] => Opt[S]
 	}
 
 
@@ -1349,7 +1349,7 @@ object MappingSchema {
 		  * all its elements as separate parameters, or a tuple consisting of the same elements as the chain `V`.
 		  */
 		implicit def optMapValueChain[S, V <: Chain, C <: Chain, O, F]
-		                             (implicit apply :ChainApplication[V, F, Option[S]])
+		                             (implicit apply :ChainApplication[V, F, Opt[S]])
 		       :SubjectConstructor[S, V, C, O, F] =
 			(schema :MappingSchema[S, V, C, O], f :F) =>
 				(pieces :ComponentValues[S, O]) => pieces.get(schema).flatMap(apply(f, _))
@@ -1359,12 +1359,12 @@ object MappingSchema {
 	object SubjectConstructor extends ChainSubjectConstructors {
 
 		def apply[S, V <: Chain, C <: Chain, O, F]
-		         (construct :(MappingSchema[S, V, C, O], F) => ComponentValues[S, O] => Option[S])
+		         (construct :(MappingSchema[S, V, C, O], F) => ComponentValues[S, O] => Opt[S])
 				:SubjectConstructor[S, V, C, O, F] =
 			(schema :MappingSchema[S, V, C, O], f :F) => construct(schema, f)
 
 		def apply[S, V <: Chain, C <: Chain, O, F]
-		         (construct :(MappingSchema[S, V, C, O], F, ComponentValues[S, O]) => Option[S])
+		         (construct :(MappingSchema[S, V, C, O], F, ComponentValues[S, O]) => Opt[S])
 				:SubjectConstructor[S, V, C, O, F] =
 			(schema :MappingSchema[S, V, C, O], f :F) => (pieces :ComponentValues[S, O]) => construct(schema, f, pieces)
 
@@ -1379,8 +1379,8 @@ object MappingSchema {
 		/** A [[net.noresttherein.oldsql.schema.bits.MappingSchema.SubjectConstructor SubjectConstructor]] which assembles
 		  * the value chain `V` using the provided schema and flat maps the result with to the intended subject type.
 		  */
-		implicit def optMap[S, V <: Chain, C <: Chain, O]() :SubjectConstructor[S, V, C, O, V => Option[S]] =
-			(schema :MappingSchema[S, V, C, O], f :V => Option[S]) =>
+		implicit def optMap[S, V <: Chain, C <: Chain, O]() :SubjectConstructor[S, V, C, O, V => Opt[S]] =
+			(schema :MappingSchema[S, V, C, O], f :V => Opt[S]) =>
 				(pieces :ComponentValues[S, O]) => pieces.get(schema).flatMap(f)
 
 
@@ -1399,13 +1399,13 @@ object MappingSchema {
 
 
 		implicit def optMap1[Vs <: Chain, CA <: X[A], A, Y, Z] = SAM {
-			(schema :MappingSchema[Y, Vs, @~ ~CA, Z], f :A => Option[Y]) => (pieces :ComponentValues[Y, Z]) =>
+			(schema :MappingSchema[Y, Vs, @~ ~CA, Z], f :A => Opt[Y]) => (pieces :ComponentValues[Y, Z]) =>
 				pieces.get(schema.lastExtract) flatMap f
 		}
 
 		implicit def optMap2[Vs <: @~ ~_~_, CA <: X[A], A, CB <: X[B], B, Y, Z] =
 			SAM {
-				(schema :MappingSchema[Y, Vs, @~ ~CA~CB, Z], f :(A, B) => Option[Y]) => {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB, Z], f :(A, B) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = schema.prev
@@ -1418,7 +1418,7 @@ object MappingSchema {
 
 		implicit def optMap3[Vs <: @~ ~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, Y, Z] =
 			SAM {
-				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC, Z], f :(A, B, C) => Option[Y]) => {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC, Z], f :(A, B, C) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev
@@ -1431,7 +1431,7 @@ object MappingSchema {
 
 		implicit def optMap4[Vs <: @~ ~_~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, Y, Z] =
 			SAM {
-				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD, Z], f :(A, B, C, D) => Option[Y]) => {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD, Z], f :(A, B, C, D) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev
@@ -1445,7 +1445,7 @@ object MappingSchema {
 		implicit def optMap5[Vs <: @~ ~_~_~_~_~_,
 		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, Y, Z] =
 			SAM {
-				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE, Z], f :(A, B, C, D, E) => Option[Y]) => {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE, Z], f :(A, B, C, D, E) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1460,7 +1460,7 @@ object MappingSchema {
 			                 CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                     Y, Z] =
 			SAM {
-				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF, Z], f :(A, B, C, D, E, F) => Option[Y]) => {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF, Z], f :(A, B, C, D, E, F) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1477,7 +1477,7 @@ object MappingSchema {
 		                     CG <: X[G], G,
 		                     Y, Z] =
 			SAM {
-				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG, Z], f :(A, B, C, D, E, F, G) => Option[Y]) => {
+				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG, Z], f :(A, B, C, D, E, F, G) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1495,7 +1495,7 @@ object MappingSchema {
 		                     Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH, Z],
-				 f :(A, B, C, D, E, F, G, H) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1513,7 +1513,7 @@ object MappingSchema {
 		                     Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI, Z],
-				 f :(A, B, C, D, E, F, G, H, I) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1531,7 +1531,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1549,7 +1549,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1570,7 +1570,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1592,7 +1592,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1614,7 +1614,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1636,7 +1636,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1659,7 +1659,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1682,7 +1682,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1705,7 +1705,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1729,7 +1729,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1753,7 +1753,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1778,7 +1778,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -1804,7 +1804,7 @@ object MappingSchema {
 		                      Y, Z] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU~CV, Z],
-				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Option[Y]) =>
+				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Opt[Y]) =>
 					{ implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
@@ -2289,7 +2289,7 @@ object MappingSchema {
 	private[schema] class EmptySchema[S, O] extends ConstantMapping[@~, O](@~) with FlatMappingSchema[S, @~, @~, O] {
 		private[this] val result = Some(@~)
 
-		override def unapply(subject :S): Option[@~] = result
+		override def unapply(subject :S): Opt[@~] = result
 		override def disassemble(subject :S): @~ = @~
 
 
@@ -2396,14 +2396,14 @@ object MappingSchema {
 	                                                  val extractor :MappingExtract[S, T, O], lastValue :V L E => T)
 		extends MappingSchema[S, V L E, C ~ M, O] with LazyMapping[V L E, O]
 	{
-		override def unapply(subject :S) :Option[V L E] =
+		override def unapply(subject :S) :Opt[V L E] =
 			for (i <- init.unapply(subject); l <- extractor.get(subject)) yield link(i, l)
 
 		override def disassemble(subject :S) :V L E = link(init.disassemble(subject), extractor(subject))
 
 		protected def link(init :V, last :T) :V L E
 
-		override def assemble(pieces :Pieces) :Option[V L E] = //todo: the dillema of null values
+		override def assemble(pieces :Pieces) :Opt[V L E] = //todo: the dillema of null values
 			for (i <- pieces.get(initExtract); l <- pieces.get(componentExtract)) yield link(i, l)
 
 
@@ -2558,11 +2558,11 @@ object MappingSchema {
 	private[schema] trait MappingSchemaProxy[S, V <: Chain, C <: Chain, O]
 		extends MappingSchema[S, V, C, O] with DelegateMapping[MappingSchema[S, V, C, O], V, O]
 	{
-		override def unapply(subject :S) :Option[V] = backer.unapply(subject)
+		override def unapply(subject :S) :Opt[V] = backer.unapply(subject)
 		override def disassemble(subject :S) :V = backer.disassemble(subject)
 		override def members :C = backer.members
 
-		override def assemble(pieces :Pieces) :Option[V] = backer.assemble(pieces)
+		override def assemble(pieces :Pieces) :Opt[V] = backer.assemble(pieces)
 
 		override def last[M](implicit nonEmpty :C <:< (Chain ~ M)) :M = backer.last
 
@@ -2670,9 +2670,9 @@ object MappingSchema {
 				s"$members is an invalid $op schema as it contains a component with the ${op.prohibited} Buff."
 			)
 
-		override def unapply(subject :S) :Option[V] = filtered.unapply(subject)
+		override def unapply(subject :S) :Opt[V] = filtered.unapply(subject)
 		override def disassemble(subject :S) :V = filtered.disassemble(subject)
-		override def assemble(pieces :Pieces) :Option[V] = filtered.assemble(pieces)
+		override def assemble(pieces :Pieces) :Opt[V] = filtered.assemble(pieces)
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
 			new AlteredSchema(original compose extractor, filtered compose extractor, op, include, exclude)

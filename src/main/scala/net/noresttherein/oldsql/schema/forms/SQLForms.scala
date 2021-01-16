@@ -195,10 +195,8 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 		new OptWriteForm[T] { //these methods can't be extracted out as there is a clash between them and their inherited
 			override val form = SQLWriteForm[T] //erased signatures which for some reason doesn't exist for anonymous classes
 
-			override def set(statement :PreparedStatement, position :Int, value :Opt[T]) :Unit = value match {
-				case Got(x) => form.set(statement, position, x)
-				case _ => form.setNull(statement, position)
-			}
+			override def set(statement :PreparedStatement, position :Int, value :Opt[T]) :Unit =
+				form.setOpt(statement, position, value)
 
 			override def literal(value :Opt[T], inline :Boolean) = value match {
 				case Got(x) => form.literal(x, inline)
@@ -225,8 +223,8 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	private[forms] trait OptionReadForm[T] extends ReadFormAdapter[Option[T]] {
 		protected override def form :SQLReadForm[T]
 
-		override def apply(res :ResultSet, position :Int) :Option[T] = form.opt(res, position)
-		override def opt(res :ResultSet, position :Int) :Option[Option[T]] = Some(form.opt(res, position))
+		override def apply(res :ResultSet, position :Int) :Option[T] = form.opt(res, position).toOption
+		override def opt(res :ResultSet, position :Int) :Opt[Option[T]] = Got(form.opt(res, position).toOption)
 		override def nullValue :Option[T] = None
 
 		override def equals(that :Any) :Boolean = that match  {
@@ -249,7 +247,8 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 		override def writtenColumns :Int = form.writtenColumns
 
 		override def set(statement :PreparedStatement, position :Int, value :Option[T]) :Unit =
-			form.setOpt(statement, position, value)
+			if (value.isDefined) form.set(statement, position, value.get)
+			else form.setNull(statement, position)
 
 		override def setNull(statement :PreparedStatement, position :Int) :Unit =
 			form.setNull(statement, position)
@@ -284,7 +283,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 		protected def form :SQLReadForm[T]
 		override def readColumns :Int = form.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[Opt[T]] = Some(form.opt(res, position))
+		override def opt(res :ResultSet, position :Int) :Opt[Opt[T]] = Got(form.opt(res, position))
 
 		override def equals(that :Any) :Boolean = that match  {
 			case self :AnyRef if self eq this => true
@@ -449,7 +448,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	{   //this is fine because init and last are guaranteed to be initialized as constructor parameters
 		override val readColumns :Int = init.readColumns + last.readColumns
 
-		override def opt(res :ResultSet, position :Int) :Option[I ~ L] =
+		override def opt(res :ResultSet, position :Int) :Opt[I ~ L] =
 			for (t <- init.opt(res, position); h <- last.opt(res, position + init.readColumns)) yield t ~ h
 
 		private[this] val nullChain :I ~ L =
@@ -481,7 +480,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 		protected[this] def cons(init :I, value :V) :I C E[K, V]
 
-		override def opt(res :ResultSet, position :Int) :Option[I C E[K, V]] =
+		override def opt(res :ResultSet, position :Int) :Opt[I C E[K, V]] =
 			for (i <- init.opt(res, position); v <- value.opt(res, position + init.readColumns))
 				yield cons(i, v)
 

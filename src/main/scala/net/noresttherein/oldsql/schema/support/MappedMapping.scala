@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnMapping, MappingExtract, SQLReadForm, SQLWriteForm}
@@ -10,6 +10,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{ColumnAdapter, ComposedAdapter, DelegateAdapter, MappedTo}
 import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 
 
 
@@ -32,7 +33,7 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	  * with either a method or a constructor parameter `val` or `NullPointerException` will be thrown from
 	  * the constructor.
 	  */
-	protected def map :T =?> S
+	protected def map :T =?> S //todo: make sure these are stable in subclasses
 
 	/** Function mapping the subject type `S`` of this mapping to the subject type `T` of the` adapted mapping,
 	  * used by write forms. It is used in the constructor body of this trait and as such '''must''' be overriden
@@ -49,11 +50,12 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	private[this] val flatMapFun = map.optional
 
 
-	override def optionally(values :Pieces) :Option[S] = values.assemble(this)
+	override def optionally(values :Pieces) :Opt[S] = values.assemble(this)
 
-	override def assemble(values :Pieces) :Option[S] =
-		if (mapFun == null) values.get(backerExtract).flatMap(flatMapFun)
-		else values.get(backerExtract).map(mapFun)
+	override def assemble(values :Pieces) :Opt[S] = values.get(backerExtract) match {
+		case Got(t) => map.get(t)
+		case _ => Lack
+	}
 
 	/** The subject value `S` that database `null`s should map to, used by the read forms. It is initialized
 	  * with the `nulls` parameter of the `Mapping.optMap` method creating `MappedMapping` instances. If the latter

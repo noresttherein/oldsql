@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.NaturalMap
+import net.noresttherein.oldsql.collection.{NaturalMap, Opt}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{MismatchedKeyException, MissingKeyException}
 import net.noresttherein.oldsql.haul.ColumnValues
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath}
@@ -198,7 +199,7 @@ object TableKin {
 				s"Cannot create a TableKin($target.$component) for an empty value $value: no key to extract."
 			)
 		val key = keyExtract.requisite match {
-			case Some(f) =>
+			case Got(f) =>
 				val res = f(entities.head)
 				if (entities.view.map(f).forall(_ == res)) res
 				else throw new MismatchedKeyException(
@@ -232,7 +233,7 @@ object TableKin {
 			(NaturalMap.newBuilder ++= component.filteredByDefault.view.map(target.export[O].export(_)).flatMap { c =>
 				def assoc[X](column :ColumnMapping[X, O]) =
 					target.row[O](column).get(value) match {
-						case Some(v) => Some(Assoc[ColumnOf, Self, X](column, v))
+						case Got(v) => Some(Assoc[ColumnOf, Self, X](column, v))
 						case _ => None
 					}
 				assoc(c)
@@ -297,7 +298,7 @@ object TableKin {
 		(NaturalMap.newBuilder ++= component.filteredByDefault.view.map(mapping.export(_)).flatMap { c =>
 			def assoc[X](column :ColumnMapping[X, O]) =
 				component(column).get(key) match {
-					case Some(v) => Some(Assoc[ColumnOf, Self, X](column, v))
+					case Got(v) => Some(Assoc[ColumnOf, Self, X](column, v))
 					case _ => None
 				}
 			assoc(c)
@@ -306,9 +307,9 @@ object TableKin {
 
 
 
-	def unapply[T](kin :Kin[T]) :Option[(Table[MappingAt], NaturalMap[ColumnOf, Self])] = kin match {
-		case key :TableKin[T @unchecked] => Some((key.table, key.columns))
-		case _ => None
+	def unapply[T](kin :Kin[T]) :Opt[(Table[MappingAt], NaturalMap[ColumnOf, Self])] = kin match {
+		case key :TableKin[T @unchecked] => Got((key.table, key.columns))
+		case _ => Lack
 	}
 
 
@@ -370,24 +371,24 @@ object TableKin {
 		override def missing(key :K) :DerivedTableKin[E, T] =
 			new EagerTableKin(table, columns(entity, this.key, key), None)
 
-		override def keyFrom(item :E) :Option[K] = keyExtract.get(item)
+		override def keyFrom(item :E) :Opt[K] = keyExtract.get(item)
 
-		override def keyOf(kin :Kin[T]) :Option[K] = kin match {
+		override def keyOf(kin :Kin[T]) :Opt[K] = kin match {
 			case TableKin(t, _) && Present(vals) => result.decomposer(vals).flatMap(keyExtract.optional).toList match {
-				case Nil => None
-				case _ if t != table => None
+				case Nil => Lack
+				case _ if t != table => Lack
 				case keys @ h::t if t.exists(_ != h) =>
 					throw new MismatchedKeyException(s"Differing $this key values in $kin: $keys.")
-				case h::_ => Some(h)
+				case h::_ => Got(h)
 			}
-			case TableKin(t, columns) if t == table =>
+			case TableKin(t, columns) if t == table => //or we could cache TableKin.byName in a lazy val
 				val byName = columns.view.map { case Assoc(col, value) => (col.name, value) }.toMap
-				val values = ColumnValues(entity.refine)(new (MappingAt[O]#Column =#> Option) {
+				val values = ColumnValues(entity.refine)(new (MappingAt[O]#Column =#> Self) {
 					override def apply[X](x :ColumnMapping[X, O]) =
-						byName.get(x.name).asInstanceOf[Option[X]]
+						byName.getOrElse(x.name, null).asInstanceOf[X]
 				})
 				values.get(key)
-			case _ => None
+			case _ => Lack
 		}
 
 
@@ -443,7 +444,7 @@ object TableKin {
 			new EagerTableKin(table, columns(table.export[O], this.key, key), value)
 
 		override def present(value :T) :Derived[E, T] = keyFor(value) match {
-			case Some(k) => apply(k, Some(value))
+			case Got(k) => apply(k, Some(value))
 			case _ => Derived.present(value)
 		}
 

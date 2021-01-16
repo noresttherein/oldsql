@@ -1,7 +1,8 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.collection.{Chain, Listing}
+import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
 import net.noresttherein.oldsql.collection.Chain.ChainApplication
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnMapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
@@ -260,10 +261,10 @@ object ParamQuery {
 				:ParamCompoundSelect[P, V] =
 			new BaseParamCompoundSelect(left, operator, right)
 
-		def unapply[P, V](query :ParamQuery[P, V]) :Option[(ParamQuery[P, V], SetOperator, ParamQuery[P, V])] =
+		def unapply[P, V](query :ParamQuery[P, V]) :Opt[(ParamQuery[P, V], SetOperator, ParamQuery[P, V])] =
 			query match {
-				case op :ParamCompoundSelect[P @unchecked, V @unchecked] => Some((op.left, op.operator, op.right))
-				case _ => None
+				case op :ParamCompoundSelect[P @unchecked, V @unchecked] => Got((op.left, op.operator, op.right))
+				case _ => Lack
 			}
 
 		private[ParamQuery] class BaseParamCompoundSelect[P, V]
@@ -310,11 +311,11 @@ object ParamQuery {
 			new BaseParamCompoundSelectMapping(left, operator, right)
 
 		def unapply[P, V](query :ParamQuery[P, V])
-				:Option[(ParamMappingQuery[P, M], SetOperator, ParamMappingQuery[P, M]) forSome { type M[O] <: MappingAt[O] }] =
+				:Opt[(ParamMappingQuery[P, M], SetOperator, ParamMappingQuery[P, M]) forSome { type M[O] <: MappingAt[O] }] =
 			query match {
 				case op :ParamCompoundSelectMapping[P @unchecked, MappingAt @unchecked] =>
-					Some((op.left, op.operator, op.right))
-				case _ => None
+					Got((op.left, op.operator, op.right))
+				case _ => Lack
 			}
 
 		private[ParamQuery] class BaseParamCompoundSelectMapping[P, M[O] <: MappingAt[O]]

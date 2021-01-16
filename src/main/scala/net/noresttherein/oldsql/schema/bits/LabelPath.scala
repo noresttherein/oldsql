@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema.bits
 
 import scala.annotation.tailrec
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.bits.LabelPath.{/, :/, ConcatLabelPath, Label, SplitLabelPath}
 import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 
@@ -80,14 +82,14 @@ object LabelPath {
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabelPath.:/]]
 	  */
 	object Label {
-		@inline def unapply[P](path :LabelPath[P]) :Option[P with Label] = path match {
-			case label: :/[_] => Some(label.label.asInstanceOf[P with Label])
-			case _ => None
+		@inline def unapply[P](path :LabelPath[P]) :Opt[P with Label] = path match {
+			case label: :/[_] => Got(label.label.asInstanceOf[P with Label])
+			case _ => Lack
 		}
 
-		@inline def unapply[P](path :P) :Option[P with String with path.type] = path match {
-			case label :String => Some(label.asInstanceOf[P with String with path.type])
-			case _ => None
+		@inline def unapply[P](path :P) :Opt[P with String with path.type] = path match {
+			case label :String => Got(label.asInstanceOf[P with String with path.type])
+			case _ => Lack
 		}
 	}
 
@@ -145,9 +147,9 @@ object LabelPath {
 	object :/ {
 		def apply[L <: Label](label :L): :/[L] = new :/(label)
 
-		def unapply[P](path :LabelPath[P]) :Option[P with Label] = path match {
-			case atom: :/[_] => Some(atom.label.asInstanceOf[P with Label])
-			case _ => None
+		def unapply[P](path :LabelPath[P]) :Opt[P with Label] = path match {
+			case atom: :/[_] => Got(atom.label.asInstanceOf[P with Label])
+			case _ => Lack
 		}
 	}
 
@@ -177,15 +179,15 @@ object LabelPath {
 	object / {
 		def apply[L <: Label](label :L): :/[L] = new :/(label)
 
-		def unapply[P, L <: Label](path :P / L) :Option[(LabelPath[P], L)] = path.prefix match {
-			case label :String => Some((Label[label.type](label).asInstanceOf[LabelPath[P]], path.label))
-			case prefix :LabelPath[P @unchecked] => Some((prefix, path.label))
-			case _ => None //should never happen, unless someone messes with new implementations
+		def unapply[P, L <: Label](path :P / L) :Opt[(LabelPath[P], L)] = path.prefix match {
+			case label :String => Got((Label[label.type](label).asInstanceOf[LabelPath[P]], path.label))
+			case prefix :LabelPath[P @unchecked] => Got((prefix, path.label))
+			case _ => Lack //should never happen, unless someone messes with new implementations
 		}
 
-		def unapply(path :LabelPath[_]) :Option[(LabelPath[_], Label)] = path match {
+		def unapply(path :LabelPath[_]) :Opt[(LabelPath[_], Label)] = path match {
 			case split: /[p, l] => unapply[p, l](split)
-			case _ => None
+			case _ => Lack
 		}
 	}
 

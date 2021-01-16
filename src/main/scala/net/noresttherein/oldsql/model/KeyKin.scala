@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.model
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.KeyKin.Ensign
 import net.noresttherein.oldsql.model.Kin.{Delayed, Derived, Present}
@@ -76,10 +78,10 @@ object KeyKin {
 	def delay[K, T](ensign :Ensign[K], key :K, value : => Option[T]) :KeyKin[T] =
 		new LazyKeyKin(ensign, key, () => value)
 
-	def unapply[K, E, T](kin :Kin[T])(implicit ensign :Ensign[K]) :Option[K] =
+	def unapply[K, E, T](kin :Kin[T])(implicit ensign :Ensign[K]) :Opt[K] =
 		kin match {
-			case key :KeyKin[_] if key.ensign == ensign => Some(key.key.asInstanceOf[K])
-			case _ => None
+			case key :KeyKin[_] if key.ensign == ensign => Got(key.key.asInstanceOf[K])
+			case _ => Lack
 		}
 
 
@@ -121,9 +123,9 @@ object KeyKin {
 			DerivedKeyKin.missing(this, key)
 
 
-		def unapply[T](kin :Kin[T]) :Option[K] = kin match {
-			case key :KeyKin[_] if key.ensign == this => Some(key.key.asInstanceOf[K])
-			case _ => None
+		def unapply[T](kin :Kin[T]) :Opt[K] = kin match {
+			case key :KeyKin[_] if key.ensign == this => Got(key.key.asInstanceOf[K])
+			case _ => Lack
 		}
 
 		override def equals(that :Any) :Boolean = that match {
@@ -222,10 +224,13 @@ object KeyKin {
 		override def absent(key :K) :Kin[T] = KeyKin.absent(ensign, key)
 		override def missing(key :K) :Kin[T] = KeyKin.missing(ensign, key)
 
-		override def keyFrom(item :E) :Option[K] = key(item)
+		override def keyFrom(item :E) :Opt[K] = key(item)
 
-		override def keyOf(kin :Kin[T]) :Option[K] =
-			KeyKin.unapply(kin) orElse Present.unapply(kin).flatMap(keyFor)
+		override def keyOf(kin :Kin[T]) :Opt[K] =
+			KeyKin.unapply(kin) orElse (Present.unapply(kin) match {
+				case Got(x) => keyFor(x)
+				case _ => Lack
+			})
 
 
 		override def required :KinFactory[K, E, T] = new DerivedKeyKinFactory(ensign, key)
@@ -259,9 +264,13 @@ object KeyKin {
 
 		override def missing(key :K) :DerivedKeyKin[K, E, T] = ensign.missing(key)
 
-		override def keyFrom(item :E) :Option[K] = key(item)
-		override def keyOf(kin :Kin[T]) :Option[K] =
-			ensign.unapply(kin) orElse Present.unapply(kin).flatMap(keyFor)
+		override def keyFrom(item :E) :Opt[K] = key(item)
+
+		override def keyOf(kin :Kin[T]) :Opt[K] =
+			ensign.unapply(kin) orElse (Present.unapply(kin) match {
+				case Got(x) => keyFor(x)
+				case _ => Lack
+			})
 
 		override def as[Y](implicit composition :Y ComposedOf E) :DerivedKinFactory[K, E, Y] =
 			new DerivedKeyKinFactory[K, E, Y](ensign, key)

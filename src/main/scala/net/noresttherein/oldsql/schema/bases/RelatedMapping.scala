@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.schema.bases
 
 import scala.reflect.runtime.universe.TypeTag
 
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath, RelatedEntityFactory, Restraint}
 import net.noresttherein.oldsql.model.Kin.One
 import net.noresttherein.oldsql.model.KinFactory.DerivedKinFactory
@@ -101,7 +102,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			val comp = key(table.row).withOrigin[()]
 			val extract = table.row[()](comp)
 			extract.requisite match {
-				case Some(property) => Kin(Restraint.Property(property)).as[T]
+				case Got(property) => Kin(Restraint.Property(property)).as[T]
 				case _ => Kin(Restraint.Property(extract.optional).flatten).as[T]
 			}
 		}
@@ -144,7 +145,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			val key = pk(table.row).withOrigin[()]
 			val extract = table.row[()](key)
 			extract.requisite match {
-				case Some(property) => Kin.Restrained(Restraint.Property(property)).as[T]
+				case Got(property) => Kin.Restrained(Restraint.Property(property)).as[T]
 				case _ => Kin.Restrained(Restraint.Property(extract.optional).flatten).as[T]
 			}
 		}

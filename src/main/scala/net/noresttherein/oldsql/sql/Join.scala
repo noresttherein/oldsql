@@ -4,6 +4,8 @@ package net.noresttherein.oldsql.sql
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
@@ -211,15 +213,15 @@ object JoinLike {
 	/** Matches all `JoinLike` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
-		case join :JoinLike[L @unchecked, R @unchecked] => Some((join.left, join.right))
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Table[R])] = from match {
+		case join :JoinLike[L @unchecked, R @unchecked] => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 	/** Matches all `JoinLike` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(RowProduct, Table.*)]  = from match {
-		case join :JoinLike.* => Some((join.left, join.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(RowProduct, Table.*)]  = from match {
+		case join :JoinLike.* => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 
@@ -425,15 +427,15 @@ object Join {
 	/** Matches all `Join` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
-		case join :Join[L @unchecked, R @unchecked] => Some((join.left, join.right))
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Table[R])] = from match {
+		case join :Join[L @unchecked, R @unchecked] => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 	/** Matches all `Join` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Table.*)]  = from match {
-		case join :Join.* => Some((join.left, join.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(FromSome, Table.*)]  = from match {
+		case join :Join.* => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 
@@ -668,15 +670,15 @@ object InnerJoin {
 	/** Matches all `InnerJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
-		case join :InnerJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Table[R])] = from match {
+		case join :InnerJoin[L @unchecked, R @unchecked] => Got(join.left -> join.right)
+		case _ => Lack
 	}
 
 	/** Matches all `InnerJoin` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Table.*)] = from match {
-		case join :InnerJoin.* => Some((join.left, join.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(FromSome, Table.*)] = from match {
+		case join :InnerJoin.* => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 
@@ -857,15 +859,15 @@ object OuterJoin {
 	/** Matches all `OuterJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
-		case join :OuterJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Table[R])] = from match {
+		case join :OuterJoin[L @unchecked, R @unchecked] => Got(join.left -> join.right)
+		case _ => Lack
 	}
 
 	/** Matches all `OuterJoin` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Table.*)] = from match {
-		case join :OuterJoin.* => Some((join.left, join.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(FromSome, Table.*)] = from match {
+		case join :OuterJoin.* => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 
@@ -1046,15 +1048,15 @@ object LeftJoin {
 	/** Matches all `LeftJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
-		case join :LeftJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Table[R])] = from match {
+		case join :LeftJoin[L @unchecked, R @unchecked] => Got(join.left -> join.right)
+		case _ => Lack
 	}
 
 	/** Matches all `LeftJoin` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Table.*)] = from match {
-		case join :LeftJoin.* => Some((join.left, join.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(FromSome, Table.*)] = from match {
+		case join :LeftJoin.* => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 
@@ -1236,15 +1238,15 @@ object RightJoin {
 	/** Matches all `RightJoin` instances, splitting them into their left (all relations but the last one)
 	  * and right (the last relation) sides.
 	  */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
-		case join :RightJoin[L @unchecked, R @unchecked] => Some(join.left -> join.right)
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Table[R])] = from match {
+		case join :RightJoin[L @unchecked, R @unchecked] => Got(join.left -> join.right)
+		case _ => Lack
 	}
 
 	/** Matches all `RightJoin` subclasses, extracting their `left` and `right` sides in the process. */
-	def unapply(from :RowProduct) :Option[(FromSome, Table.*)] = from match {
-		case join :RightJoin.* => Some((join.left, join.right))
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(FromSome, Table.*)] = from match {
+		case join :RightJoin.* => Got((join.left, join.right))
+		case _ => Lack
 	}
 
 
@@ -1560,15 +1562,15 @@ object Subselect {
 
 
 	/** Matches all `Subselect` instances, splitting them into their left (implicit) and right (explicit) sides. */
-	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Option[(L, Table[R])] = from match {
-		case subselect :Subselect[L @unchecked, R @unchecked] => Some(subselect.left -> subselect.right)
-		case _ => None
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Table[R])] = from match {
+		case subselect :Subselect[L @unchecked, R @unchecked] => Got(subselect.left -> subselect.right)
+		case _ => Lack
 	}
 
 	/** Matches all `Subselect` instances, splitting them into their left (implicit) and right (explicit) sides. */
-	def unapply(from :RowProduct) :Option[(NonEmptyFrom, Table.*)] = from match {
-		case join :Subselect.* => Some(join.left -> join.right)
-		case _ => None
+	def unapply(from :RowProduct) :Opt[(NonEmptyFrom, Table.*)] = from match {
+		case join :Subselect.* => Got(join.left -> join.right)
+		case _ => Lack
 	}
 
 

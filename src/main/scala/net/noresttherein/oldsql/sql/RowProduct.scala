@@ -2,8 +2,9 @@ package net.noresttherein.oldsql.sql
 
 import scala.annotation.implicitNotFound
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.ColumnMapping
@@ -1615,18 +1616,18 @@ object RowProduct {
 		/** Matches an aliased clause, providing that `as.aliasOpt.isDefined`. A non-aliased clause `F` can potentially
 		  * be constructed appear as `F As F#Alias`, with appropriate member type definitions, so this match can fail.
 		  */
-		def unapply[F <: NonEmptyFrom, A <: Label](as :F As A) :Option[(F, A)] = as.aliasOpt match {
-			case Some(alias) => Some((as, alias))
-			case _ => None
+		def unapply[F <: NonEmptyFrom, A <: Label](as :F As A) :Opt[(F, A)] = as.aliasOpt match {
+			case Some(alias) => Got((as, alias))
+			case _ => Lack
 		}
 
 		/** Matches a clause if it features an alias for its last relation/grouping expression, that is its
 		  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom.aliasOpt aliasOpt]] property is defined.
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.As]]
 		  */
-		def unapply(from :RowProduct) :Option[(NonEmptyFrom, Label)] = from match {
-			case as :NonEmptyFrom if as.aliasOpt.isDefined => Some((as, as.aliasOpt.get))
-			case _ => None
+		def unapply(from :RowProduct) :Opt[(NonEmptyFrom, Label)] = from match {
+			case as :NonEmptyFrom if as.aliasOpt.isDefined => Got((as, as.aliasOpt.get))
+			case _ => Lack
 		}
 	}
 
