@@ -744,8 +744,10 @@ object ColumnValues {
 		override def defaults :ColumnValues[S, O] = default
 
 		override def preset(root :RefinedMapping[S, O]) =
-			if (root.isInstanceOf[ColumnMapping[_, _]]) values.get(root).flatMap(_.preset(root))
-			else Lack
+			if (root.isInstanceOf[ColumnMapping[_, _]]) {
+				val res = values.getOrElse[WithOrigin[O]#T, S](root, null)
+				if (res == null) Lack else res.preset(root)
+			} else Lack
 
 		override def /[T](component :Component[T]) :ColumnValues[T, O] = values.get(component) match {
 			case Some(vals) => vals

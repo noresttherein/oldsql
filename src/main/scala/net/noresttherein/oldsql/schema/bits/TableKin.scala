@@ -419,6 +419,7 @@ object TableKin {
 		private val none = TableKin.nonexistent(table)
 
 		override def present(value :T) :TableKin[T] = TableKin.present(table, key, value)
+		override def present(key :K, value :T) :TableKin[T] = TableKin.present(table, this.key, key, value)
 		override def absent(key :K) :TableKin[T] = TableKin.absent(table, this.key, key)
 		override def nonexistent :TableKin[T] = none
 		override def isRequired :Boolean = false

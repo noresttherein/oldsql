@@ -73,7 +73,7 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 	override def optionally(pieces: Pieces): Opt[S] = pieces.assemble(this) match {
 		case res if buffs.isEmpty => res //a very common case
-		case Got(res) => Some((res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
+		case Got(res) => Got((res /: SelectAudit.Audit(this)) { (acc, f) => f(acc) })
 		case _ =>
 			val res = SelectDefault.Value(this)
 			if (res.isDefined) res

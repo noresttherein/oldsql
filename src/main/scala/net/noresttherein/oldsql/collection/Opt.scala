@@ -105,7 +105,7 @@ final class Opt[+T] private[Opt] (private val ref :AnyRef) extends AnyVal with S
 	/** Returns this `Opt` if the condition is true and `Lack` if it is false. This is equivalent
 	  * to `this.filter(_ => condition)`, but avoids creating a function and arguably conveys the intent better.
 	  */
-	@inline def orEmptyUnless(condition :Boolean) :Option[T] =
+	@inline def orEmptyUnless(condition :Boolean) :Opt[T] =
 		if (condition) this else Lack
 
 

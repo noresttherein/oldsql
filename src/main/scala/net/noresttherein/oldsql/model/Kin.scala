@@ -1775,6 +1775,7 @@ object Kin {
 			override def delay(key :K, value: => Option[T]) :Derived[E, T] =
 				Property.delay(entities.absent(key), property, value)
 
+			//we use delay because toOption is a lazy val anyway
 			override def apply(key :K, value: Option[T]) :Derived[E, T] = delay(key, value)
 
 			override def present(value :T) =
@@ -1785,6 +1786,7 @@ object Kin {
 					override def property[Y, U >: T](property :PropertyPath[U, Y]) :Derived[U, Y] =
 						Property.one(this, property)
 				}
+
 
 			override def missing(key :K) = Property(entities.missing(key), property)
 
@@ -1978,6 +1980,7 @@ object Kin {
 
 			override def apply(key :K, value :Option[X]) :Derived[E, X] = Restrained(restrainer(key), value)
 			override def present(value :X) :Derived[E, X] = Restrained(Restraint.False, Some(value))
+			override def present(key :K, value :X) :Derived[E, X] = Restrained.present(restrainer(key), value)
 			override def missing(key: K): Derived[E, X] = Restrained.missing(restrainer(key))
 			override def absent(key: K): Derived[E, X] = Restrained.absent(restrainer(key))
 
@@ -2024,7 +2027,7 @@ object Kin {
 		extends RestrainedKinFactory[K, E, X](restrainer) with BaseDerivedKinFactory[K, E, X]
 	{
 		override def apply(key :K, value :Option[X]) = Restrained(restrainer(key), value)
-		override def present(value :X) = Restrained(Restraint.False, Some(value))
+		override def present(value :X) :Restrained[E, X] = Restrained.present(Restraint.False, value)
 
 		override def as[Y](implicit composition: Y ComposedOf E): DerivedKinFactory[K, E, Y] =
 			new RequiredRestrainedKinFactory[K, E, Y](restrainer)

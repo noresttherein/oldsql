@@ -4,6 +4,8 @@ import java.sql.{JDBCType, PreparedStatement}
 
 import scala.annotation.implicitNotFound
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstSQLWriteForm, CustomNullSQLWriteForm, CustomSQLWriteForm, ErrorSQLWriteForm, EvalSQLWriteForm, FlatMappedSQLWriteForm, FlatMappedWriteForm, LazyWriteForm, MappedSQLWriteForm, MappedWriteForm, NonLiteralWriteForm, NotNullSQLWriteForm, NotNullWriteForm, NullSQLWriteForm, NullValueSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
@@ -114,7 +116,7 @@ object ColumnWriteForm {
 	  * and will be evaluated exactly once for every `set` and/or `setNull` call on the returned form.
 	  */
 	def eval[T :ColumnWriteForm](expr: => T, name :String = null) :ColumnWriteForm[Any] =
-		evalopt(Some(expr), name)
+		evalopt(Got(expr), name)
 
 	/** A form which will ignore all values provided as arguments and instead write the value resulting from evaluating
 	  * the given by-name argument, using the implicit `ColumnWriteForm[T]`. The given expression must be thread safe
@@ -122,7 +124,7 @@ object ColumnWriteForm {
 	  * `None`, the value carried by an implicitly available `NullValue` will be written instead, using the backing
 	  * form's `set` method.
 	  */
-	def evalopt[T :ColumnWriteForm](value: => Option[T], name :String = null) :ColumnWriteForm[Any] =
+	def evalopt[T :ColumnWriteForm](value: => Opt[T], name :String = null) :ColumnWriteForm[Any] =
 		new EvalSQLWriteForm[T](value, name) with ColumnWriteForm[Any] { outer =>
 			override def notNull :ColumnWriteForm[Any] =
 				new EvalSQLWriteForm[T](value, name) with ColumnWriteForm[Any] with NotNullWriteForm[Any] {
@@ -153,7 +155,7 @@ object ColumnWriteForm {
 	/** A form which will ignore all values provided as arguments and instead write the value provided here,
 	  * using the implicit `ColumnWriteForm[T]`.
 	  */
-	def constopt[T :ColumnWriteForm](value :Option[T], name :String = null) :ColumnWriteForm[Any] =
+	def constopt[T :ColumnWriteForm](value :Opt[T], name :String = null) :ColumnWriteForm[Any] =
 		if (value.isEmpty) none[T](name)
 		else const(value.get, name)
 

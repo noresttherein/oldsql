@@ -293,7 +293,7 @@ object SQLMapping {
 			override def column[C >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, C, V]) :Pieces => Option[V] = {
 				val column = columnStack.head.asInstanceOf[ExpressionColumn[V]]
 				columnStack = columnStack.tail
-				pieces => pieces.get(column)
+				pieces => pieces.get(column).toOption
 			}
 
 			override def component[T[B] <: BaseMapping[E, B], E, M[B] <: BaseMapping[V, B], V, A >: F <: RowProduct]
@@ -328,7 +328,7 @@ object SQLMapping {
 								}
 							}
 						})
-					component.optionally(values)
+					component.optionally(values).toOption
 				}
 			}
 

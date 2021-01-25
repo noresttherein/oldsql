@@ -573,8 +573,8 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		protected val extraInsertValues :ColumnValues[S, O] = extraWrite(extraInsert)
 		protected val extraUpdateValues :ColumnValues[S, O] = extraWrite(extraUpdate)
 
-		protected def extraWrite(extra :Option[S]) :ColumnValues[S, O] = extra match {
-			case Some(value) => ColumnValues.preset[S, S, O](this, value)
+		protected def extraWrite(extra :Opt[S]) :ColumnValues[S, O] = extra match {
+			case Got(value) => ColumnValues.preset[S, S, O](this, value)
 			case _ => ColumnValues.empty[S, O]
 		}
 

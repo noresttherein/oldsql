@@ -10,6 +10,7 @@ import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Opt, Uni
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
@@ -1460,7 +1461,7 @@ object MappingSchema {
 							val c0 = schema; val c1 = schema.prev
 							f(get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1473,7 +1474,7 @@ object MappingSchema {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev
 							f(get(c2), get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1486,7 +1487,7 @@ object MappingSchema {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev
 							f(get(c3), get(c2), get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1500,7 +1501,7 @@ object MappingSchema {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							f(get(c4), get(c3), get(c2), get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1516,7 +1517,7 @@ object MappingSchema {
 							val c5 = c4.prev
 							f(get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1533,7 +1534,7 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev
 							f(get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1551,7 +1552,7 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev
 							f(get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1569,7 +1570,7 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev
 							f(get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1587,7 +1588,7 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							f(get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1608,7 +1609,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1629,7 +1630,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1651,7 +1652,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1673,7 +1674,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1696,7 +1697,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1719,7 +1720,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1742,7 +1743,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1765,7 +1766,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1789,7 +1790,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1814,7 +1815,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1840,7 +1841,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1866,7 +1867,7 @@ object MappingSchema {
 							  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1884,9 +1885,9 @@ object MappingSchema {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = schema.prev
-							Some(f(get(c1), get(c0)))
+							Got(f(get(c1), get(c0)))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1897,9 +1898,9 @@ object MappingSchema {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev
-							Some(f(get(c2), get(c1), get(c0)))
+							Got(f(get(c2), get(c1), get(c0)))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1910,9 +1911,9 @@ object MappingSchema {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev
-							Some(f(get(c3), get(c2), get(c1), get(c0)))
+							Got(f(get(c3), get(c2), get(c1), get(c0)))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1924,9 +1925,9 @@ object MappingSchema {
 					implicit pcs :ComponentValues[Y, Z] =>
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
-							Some(f(get(c4), get(c3), get(c2), get(c1), get(c0)))
+							Got(f(get(c4), get(c3), get(c2), get(c1), get(c0)))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1940,9 +1941,9 @@ object MappingSchema {
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev
-							Some(f(get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)))
+							Got(f(get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)))
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1957,11 +1958,11 @@ object MappingSchema {
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev
-							Some(
+							Got(
 								f(get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 				}
 			}
@@ -1977,11 +1978,11 @@ object MappingSchema {
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev
-							Some(
+							Got(
 								f(get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -1997,11 +1998,11 @@ object MappingSchema {
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev
-							Some(
+							Got(
 								f(get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2017,11 +2018,11 @@ object MappingSchema {
 						try {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
-							Some(
+							Got(
 								f(get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0))
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2038,13 +2039,13 @@ object MappingSchema {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev
-							Some(
+							Got(
 								f(get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2061,13 +2062,13 @@ object MappingSchema {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev
-							Some(
+							Got(
 								f(get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2085,13 +2086,13 @@ object MappingSchema {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev
-							Some(
+							Got(
 								f(get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2109,13 +2110,13 @@ object MappingSchema {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev
-							Some(
+							Got(
 								f(get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2133,13 +2134,13 @@ object MappingSchema {
 							val c0 = schema; val c1 = c0.prev; val c2 = c1.prev; val c3 = c2.prev; val c4 = c3.prev
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
-							Some(
+							Got(
 								f(get(c14), get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2158,13 +2159,13 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
 							val c15 = c14.prev
-							Some(
+							Got(
 								f(get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2183,13 +2184,13 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
 							val c15 = c14.prev; val c16 = c15.prev
-							Some(
+							Got(
 								f(get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2208,13 +2209,13 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
 							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev
-							Some(
+							Got(
 								f(get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2234,13 +2235,13 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
 							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev
-							Some(
+							Got(
 								f(get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2260,14 +2261,14 @@ object MappingSchema {
 							val c5 = c4.prev; val c6 = c5.prev; val c7 = c6.prev; val c8 = c7.prev; val c9 = c8.prev
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
 							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
-							Some(
+							Got(
 								f(get(c19),
 								  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2288,14 +2289,14 @@ object MappingSchema {
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
 							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
 							val c20 = c19.prev
-							Some(
+							Got(
 								f(get(c20), get(c19),
 								  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2316,14 +2317,14 @@ object MappingSchema {
 							val c10 = c9.prev; val c11 = c10.prev; val c12 = c11.prev; val c13 = c12.prev; val c14 = c13.prev
 							val c15 = c14.prev; val c16 = c15.prev; val c17 = c16.prev; val c18 = c17.prev; val c19 = c18.prev
 							val c20 = c19.prev; val c21 = c20.prev
-							Some(
+							Got(
 								f(get(c21), get(c20), get(c19),
 								  get(c18), get(c17), get(c16), get(c15), get(c14), get(c13), get(c12), get(c11), get(c10),
 								  get(c9), get(c8), get(c7), get(c6), get(c5), get(c4), get(c3), get(c2), get(c1), get(c0)
 								)
 							)
 						} catch {
-							case _ :NoSuchElementException => None
+							case _ :NoSuchElementException => Lack
 						}
 					}
 			}
@@ -2486,7 +2487,7 @@ object MappingSchema {
 				:MappingExtract[S, X, O] =
 			extractor.asInstanceOf[MappingExtract[S, X, O]]
 
-		private[this] val unpackSelf :PackedExtract[V L E] = MappingExtract.opt(this)(unapply)
+		private[this] val unpackSelf :PackedExtract[V L E] = MappingExtract(this)(Extractor.Optional(unapply(_)))
 		private[this] val selfExtract :Extract[V L E] = MappingExtract.ident(this)
 		private[this] val initExtract :Extract[V] = MappingExtract.req(init) { vs :(V L E) => vs.init }
 		private[this] val componentExtract :Extract[T] = MappingExtract.req(component.withOrigin[O])(lastValue)
@@ -2660,8 +2661,9 @@ object MappingSchema {
 
 
 		override val packedExtracts :NaturalMap[Component, PackedExtract] =
-			original.packedExtracts.updated[PackedExtract, V](backer, MappingExtract.opt(backer)(backer.unapply)) ++
-				backer.packedExtracts
+			original.packedExtracts.updated[PackedExtract, V](
+				backer, MappingExtract(backer)(Extractor.Optional(backer.unapply(_)))
+			) ++ backer.packedExtracts
 
 		override val packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] =
 			original.packedColumnExtracts ++ backer.packedColumnExtracts

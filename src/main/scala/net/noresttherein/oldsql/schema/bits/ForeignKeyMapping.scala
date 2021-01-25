@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.exceptions.MissingKeyException
 import net.noresttherein.oldsql.model.RelatedEntityFactory
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
-import net.noresttherein.oldsql.morsels.Lazy
+import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, Requisite}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, OptimizedMappingAssembly}
 import net.noresttherein.oldsql.schema.{cascadeBuffs, composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnForm, ColumnMapping, MappingExtract}
@@ -609,7 +609,7 @@ object ForeignKeyMapping {
 		private[this] val composer = factory.composition
 
 		override def assemble(pieces :Pieces) :Opt[R] = pieces.get(key) match {
-			case Got(k) => Some(factory.delay(k, composer.attempt(pieces(table).all(lazyTarget.get, k))))
+			case Got(k) => Got(factory.delay(k, composer.attempt(pieces(table).all(lazyTarget.get, k)).toOption))
 			case _ => Lack
 		}
 
@@ -645,7 +645,7 @@ object ForeignKeyMapping {
 		override def local[S](subKey :ColumnMapping[S, X]) :Column[S] = lazyKey.get.cover(subKey)
 
 		override lazy val (extracts, columnExtracts) = {
-			val keyExtract = MappingExtract.opt(key)(factory.keyOf)
+			val keyExtract = MappingExtract(key)(Extractor.Optional[R, K](factory.keyOf))
 			(composeExtracts(keyExtract).updated[Extract, K](key, keyExtract) :ExtractMap) ->
 				(composeColumnExtracts(keyExtract) :ColumnExtractMap)
 		}
@@ -759,7 +759,7 @@ object ForeignKeyMapping {
 		private[this] val composer :ComposableFrom[T, E] = factory.composition
 
 		override def assemble(pieces :Pieces) :Opt[R] = pieces.get(localKey) match {
-			case Got(k) => Got(factory.delay(k, composer.attempt(pieces(table).all(fk, k))))
+			case Got(k) => Got(factory.delay(k, composer.attempt(pieces(table).all(fk, k)).toOption))
 			case _ => Got(factory.nonexistent)
 		}
 

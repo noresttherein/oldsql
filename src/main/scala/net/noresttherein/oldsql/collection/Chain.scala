@@ -2067,7 +2067,7 @@ object LabeledChain extends ListingFactory {
 
 		@inline def unapply(index :LabeledChain) :Opt[(LabeledChain, Any)] = index match {
 			case nonEmpty: >~[_, _] => Opt(nonEmpty.init -> nonEmpty.last.value)
-			case _ => None
+			case _ => Lack
 		}
 	}
 

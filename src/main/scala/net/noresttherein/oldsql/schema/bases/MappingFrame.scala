@@ -92,7 +92,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		/** Returns the value of this component in an option if an implicit `ComponentValues` instance
 		  * for the enclosing composite mapping is present.
 		  */
-		@inline final def ?(implicit values :frame.Pieces) :Option[T] = values.get(extract)
+		@inline final def ?(implicit values :frame.Pieces) :Opt[T] = values.get(extract)
 
 		@inline private[MappingFrame] final def belongsTo(mapping :MappingFrame[_, _]) :Boolean = mapping eq frame
 
@@ -1419,25 +1419,26 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * the [[net.noresttherein.oldsql.schema.Buffs.front front]] portion of this instance's
 	  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.buffs buffs]]. This property is for use
 	  * in `Buffs` constructor only and it should never be used in place of `buffs.declared`, as extending classes
-	  * can override directly `buffs` rather than this property.
+	  * can override directly `buffs` rather than this property. Overrides with a `val` must happen before
+	  * any component declarations!
 	  */
 	protected def declaredBuffs :Seq[Buff[S]] = Nil
 
-	/** Adapts the buffs attached to this instance for a subcomponent. The buffs are mapped with the given
-	  * value extractor; if the extractor fails to produce a value for the component out of a value of a buff,
-	  * an `IllegalArgumentException` will be thrown. Given the lazy nature of some types of buffs, this may
-	  * happen not from this method, but when the buff is actually used.
-	  * @param extractor extractor of the value for the subcomponent inheriting the values.
-	  * @param component a string identifying the component included in error messages for debug purposes.
-	  * @return this mapping's list of buffs mapped with the given extractor.
-	  * @throws IllegalStateException if `this.buffs` is `null`, which can typically happen if `buffs` is overriden
-	  *                               by subclass with a `val` defined after some components are initialized.
-	  * @throws IllegalArgumentException if `this.buffs` contains a buff with a value which can't be mapped with
-	  *                                  the given extractor, because it failed to produce the value for the target
-	  *                                  component.
-	  */
-	protected def conveyBuffs[T](extractor :S =?> T, component: => String = "") :Buffs[T] =
-		buffs.unsafeCascade(extractor)
+//	/** Adapts the buffs attached to this instance for a subcomponent. The buffs are mapped with the given
+//	  * value extractor; if the extractor fails to produce a value for the component out of a value of a buff,
+//	  * an `IllegalArgumentException` will be thrown. Given the lazy nature of some types of buffs, this may
+//	  * happen not from this method, but when the buff is actually used.
+//	  * @param extractor extractor of the value for the subcomponent inheriting the values.
+//	  * @param component a string identifying the component included in error messages for debug purposes.
+//	  * @return this mapping's list of buffs mapped with the given extractor.
+//	  * @throws IllegalStateException if `this.buffs` is `null`, which can typically happen if `buffs` is overriden
+//	  *                               by subclass with a `val` defined after some components are initialized.
+//	  * @throws IllegalArgumentException if `this.buffs` contains a buff with a value which can't be mapped with
+//	  *                                  the given extractor, because it failed to produce the value for the target
+//	  *                                  component.
+//	  */
+//	protected def conveyBuffs[T](extractor :S =?> T, component: => String = "") :Buffs[T] =
+//		buffs.unsafeCascade(extractor)
 
 
 
@@ -1452,15 +1453,15 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	}
 
 	private class IndexedColumnValuesBuilder extends ComponentValuesBuilder[S, O] {
-		private[this] val values = new Array[Option[Any]](columnCount)
-		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Option[_]]
+		private[this] val values = new Array[Any](columnCount)
+		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Any]
 
 		override def addOpt[T](component :RefinedMapping[T, O], result :Opt[T]) :this.type = export(component) match {
 			case col :MappingFrame[_, _]#FrameColumn[_] =>
-				values(col.index) = result; this
-			case _ =>
-				componentValues = componentValues.updated(component, result)
-				this
+				values(col.index) = result.orNull; this
+			case comp if !result.isEmpty =>
+				componentValues = componentValues.updated(comp, result.get); this
+			case _ => this
 		}
 
 		override def result() =
@@ -1603,7 +1604,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	private[this] class LateInitComponents[C <: FrameComponent[_]](var uninitialized :ListBuffer[C])
 		extends AbstractSeq[C]
 	{
-		def this() = this(ListBuffer.empty)
+		def this() = this(ListBuffer.empty[C])
 
 		@volatile
 		private[this] var initialized :Unique[C] = _
@@ -1717,13 +1718,21 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	private[this] final var initColumnIndex = new ListBuffer[FrameColumn[_]]
 
-	/** Contains the column with `index = n` at `n`-th position. */
+
+	/** Contains the column with `index = n` at `n`-th position, but only after full initialization of this mapping.
+	  * As long as we know the mapping was initialized before reading, it is thread safe without synchronization,
+	  * because only one value can ever be read.
+	  */ //todo: not true; the whole object may have been loaded to cache before initialization (I think)
 	private[this] var columnIndex :Array[FrameColumn[_]] = _
 
 	/** Number of columns ''created'' (not necessarily currently contained) by this instance.
-	  * Increased and assigned to a column as soon as it is created.
+	  * Increased and assigned to a column as soon as it is created. Modified only under lock of this object.
 	  */
 	private[this] var initColumnCount = 0
+
+	/** Set to the value of `initColumnCount` during initialization and never accessed unless it is certain that
+	  * the mapping is initialized. This makes it thread safe without synchronization, as all reads must read the same value.
+	  */
 	private[this] var columnCount :Int = _
 
 	private def nextColumnIndex() :Int = synchronized {
@@ -1759,7 +1768,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				throw new IllegalStateException(
 					s"Cannot initialize component lists of $this: initPreceding is already in progress.")
 			initializationState = 1
-			val elems = initQueue //guard against ConcurrentModificationException
+			val elems = initQueue //guard against a ConcurrentModificationException
 			initQueue = ListBuffer.empty
 			elems.foreach(_.include())
 			initializationState = 0
@@ -1863,7 +1872,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	protected def finalizeInitialization() :Unit = ()
 
 
-
+	//must only be created after full initialization of the mapping.
 	private class ReadForm(columns :Unique[ColumnMapping[_, O]],
 	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S] with ReadFormNullValue[S]
@@ -1910,6 +1919,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
 		//_.selectable aren't export components, but should have correct column names
+		//call to frame.export makes sure that the whole mapping is initialized and access to not synchronized fields is safe.
 		val columns = components.map(frame.export(_)).flatMap(_.selectedByDefault)
 
 		if (columns.exists(NoSelect.active))
@@ -1929,10 +1939,11 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		new ReadForm(columns :++ extra)
 	}
 
-	override val selectForm :SQLReadForm[S] = SQLReadForm.delayed(new ReadForm(selectedByDefault))
-	override val filterForm :SQLWriteForm[S] = SQLWriteForm.delayed(super.filterForm)
-	override val insertForm :SQLWriteForm[S] = SQLWriteForm.delayed(super.insertForm)
-	override val updateForm :SQLWriteForm[S] = SQLWriteForm.delayed(super.updateForm)
+	//initialize first, especially for selectForm, as it reads not synchronized member variables.
+	override val selectForm :SQLReadForm[S] = SQLReadForm.delayed { initialize(); new ReadForm(selectedByDefault) }
+	override val filterForm :SQLWriteForm[S] = SQLWriteForm.delayed { initialize(); super.filterForm }
+	override val insertForm :SQLWriteForm[S] = SQLWriteForm.delayed { initialize(); super.insertForm }
+	override val updateForm :SQLWriteForm[S] = SQLWriteForm.delayed { initialize(); super.updateForm }
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 }

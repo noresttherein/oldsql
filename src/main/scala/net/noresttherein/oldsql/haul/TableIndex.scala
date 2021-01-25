@@ -17,7 +17,6 @@ import net.noresttherein.oldsql.schema.Relation.Table
 /**
   * @author Marcin Mościcki
   */
-
 trait TableIndex[K, E] {
 	def table :Table[MappingOf[E]#Projection]
 	def component[O] :RefinedMapping[K, O]

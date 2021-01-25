@@ -58,6 +58,9 @@ trait RelatedEntityFactory[K, E, X, R] extends Serializable {
 	/** Create a full reference with the given value. */
 	def present(value :X) :R
 
+	/** Create a full reference with the given key and value. */
+	def present(key :K, value :X) :R = apply(key, Some(value))
+
 	/** Create an empty instance referencing al entities of type `E` with the specific value as the key,
 	  * as understood by this factory. Same as `absent`.
 	  */
@@ -104,7 +107,9 @@ trait RelatedEntityFactory[K, E, X, R] extends Serializable {
 	  * this method will always return `None` - even if a common key could be extracted from the collection.
 	  */
 	def forItems(items :Iterable[E]) :Opt[R] = keyFrom(items) match {
-		case Got(key) => Got(apply(key, composition.attempt(items)))
+		case Got(key) =>
+			val value = composition.attempt(items)
+			if (value.isEmpty) Got(absent(key)) else Got(present(key, value.get))
 		case _ => composition.attempt(items).map(present)
 	}
 
@@ -116,7 +121,7 @@ trait RelatedEntityFactory[K, E, X, R] extends Serializable {
 	  */
 	def forItems(key :K, items :Iterable[E]) :Opt[R] =
 		if (keyFrom(items).exists(_ != key)) Lack
-		else composition.attempt(items).map(x => apply(key, Got(x)))
+		else composition.attempt(items).map(x => present(key, x))
 
 
 	/** Decomposes the referenced value into individual entities. */
@@ -257,7 +262,8 @@ object RelatedEntityFactory {
 		override def unknown :Option[X] = None
 
 		override def decompose(value :X) :Opt[Iterable[E]] = Got(result.decomposer(value))
-		override def itemsOf(ref :Option[X]) :Opt[Iterable[E]] = ref.map(result.decomposer.apply)
+		override def itemsOf(ref :Option[X]) :Opt[Iterable[E]] =
+			if (ref.isEmpty) Lack else Got(result.decomposer(ref.get))
 
 
 		override def keyFor(value :X) :Opt[K] = Lack
@@ -296,6 +302,7 @@ object RelatedEntityFactory {
 		override def delay(key :K, value : => Option[X]) :Option[Option[X]] = None
 		override def apply(key :K, value :Option[X]) :Option[Option[X]] = value map present getOrElse absent(key)
 
+		override def present(key :K, value :X) :Option[Option[X]] = Some(Some(value))
 		override def present(value :X) :Option[Option[X]] = Some(Some(value))
 		override def absent(key :K) :Option[Option[X]] = unknown
 		override def missing(key :K) :Option[Option[X]] = unknown
@@ -303,7 +310,10 @@ object RelatedEntityFactory {
 		override def nonexistent :Option[Option[X]] = None
 
 		override def decompose(value :X) :Opt[Iterable[E]] = Got(result.decomposer(value))
-		override def itemsOf(ref :Option[Option[X]]) :Opt[Iterable[E]] = ref.flatten.map(result.decomposer.apply)
+		override def itemsOf(ref :Option[Option[X]]) :Opt[Iterable[E]] = ref.flatten match {
+			case Some(x) => Got(result.decomposer(x))
+			case _ => Lack
+		}
 
 		override def keyFor(value :X) :Opt[K] = Lack
 		override def keyFrom(item :E) :Opt[K] = Lack
@@ -348,6 +358,8 @@ object RelatedEntityFactory {
 		}
 
 		override def present(value :X) :R = backing.present(value)
+		override def present(key :Option[K], value :X) :R =
+			if (key.isEmpty) backing.present(value) else backing.present(key.get, value)
 
 		override def missing(key :Option[K]) :R = key match {
 			case Some(k) => backing.missing(k)
@@ -366,8 +378,8 @@ object RelatedEntityFactory {
 
 		override def keyFor(value :X) :Opt[Option[K]] = backing.keyFor(value).map(Some.apply)
 		override def keyFrom(items :Iterable[E]) :Opt[Option[K]] = backing.keyFrom(items).map(Some.apply)
-		override def keyFrom(item :E) :Opt[Option[K]] = Got(backing.keyFrom(item))
-		override def keyOf(ref :R) :Opt[Option[K]] = Got(backing.keyOf(ref))
+		override def keyFrom(item :E) :Opt[Option[K]] = Got(backing.keyFrom(item).toOption)
+		override def keyOf(ref :R) :Opt[Option[K]] = Got(backing.keyOf(ref).toOption)
 		override def valueOf(ref :R) :Opt[X] = backing.valueOf(ref)
 
 		override def isRequired = false
@@ -402,6 +414,8 @@ object RelatedEntityFactory {
 		}
 
 		override def present(value :X) = Some(backing.present(value))
+		override def present(key :Option[K], value :X) =
+			Some(if (key.isEmpty) backing.present(value) else backing.present(key.get, value))
 
 		override def missing(key :Option[K]) = key match {
 			case Some(k) => Some(backing.missing(k))
@@ -417,19 +431,20 @@ object RelatedEntityFactory {
 		override val unknown = Some(backing.unknown)
 
 		override def decompose(value :X) :Opt[Iterable[E]] = backing.decompose(value)
-		override def itemsOf(ref :Option[R]) :Opt[Iterable[E]] = ref.flatMap(backing.itemsOf)
+		override def itemsOf(ref :Option[R]) :Opt[Iterable[E]] =
+			if (ref.isEmpty) Lack else backing.itemsOf(ref.get)
 
 		override def keyFrom(item :E) = backing.keyFrom(item) match {
 			case Lack => Lack
-			case some => Got(some)
+			case some => Got(some.toOption)
 		}
 
 		override def keyOf(ref :Option[R]) = ref match {
 			case Some(r) => backing.keyOf(r) match {
 				case Lack => Lack
-				case some => Got(some)
+				case some => Got(some.toOption)
 			}
-			case _ => None
+			case _ => Lack
 		}
 
 		override def valueOf(ref :Option[R]) = ref match {
@@ -458,6 +473,7 @@ object RelatedEntityFactory {
 		override def delay(key :K, value : => Option[X]) :R = backing.delay(key, value)
 		override def apply(key :K, value :Option[X]) :R = backing(key, value)
 		override def present(value :X) :R = backing.present(value)
+		override def present(key :K, value :X) :R = backing.present(key, value)
 		override def missing(key :K) :R = backing.missing(key)
 		override def absent(key :K) :R = backing.absent(key)
 		override def nonexistent(key :K) = throw new NonexistentEntityException(s"No entity for $this key $key.")

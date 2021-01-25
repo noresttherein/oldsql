@@ -30,7 +30,10 @@ object ColumnExtract { //todo: unify the name with ColumnMappingExtract
 			case c :ConstantExtractor[_, T @unchecked] => const(column)(c.constant)
 			case requisite :RequisiteExtractor[S @unchecked, T @unchecked] => req(column)(requisite.getter)
 			case _ :EmptyExtractor[_, _] => none(column)
-			case _ => opt(column)(extractor.optional) //todo: FromOptionExtractor
+//			case _ => opt(column)(extractor.optional) //todo: FromOptionExtractor
+			case _ => new OptionalExtract[ColumnMapping[T, O], S, T, O](column, extractor.optional) {
+				override def opt(x :S) :Opt[T] = extractor.opt(x)
+			}
 		}
 
 
@@ -83,7 +86,10 @@ object MappingExtract {
 			case c :ConstantExtractor[_, T @unchecked] => const(component)(c.constant)
 			case requisite :RequisiteExtractor[S @unchecked, T @unchecked] => req(component)(requisite.getter)
 			case _ :EmptyExtractor[_, _] => none(component)
-			case _ => opt(component)(extractor.optional) //todo: FromOptionExtractor
+//			case _ => opt(component)(extractor.optional) //todo: FromOptionExtractor
+			case _ => new OptionalExtract[RefinedMapping[T, O], S, T, O](component, extractor.optional) {
+				override def opt(x :S) :Opt[T] = extractor.opt(x) //try to avoid boxing to Option
+			}
 		}
 
 
@@ -133,7 +139,7 @@ trait GenericExtract[+M <: RefinedMapping[T, O], -S, T, O] extends Extractor[S, 
 
 	@inline final def apply[L <: S](pieces :ComponentValues[L, O]) :T = pieces(this)
 
-	@inline final def get[L <: S](pieces :ComponentValues[L, O]) :Option[T] = pieces.get(this)
+	@inline final def get[L <: S](pieces :ComponentValues[L, O]) :Opt[T] = pieces.get(this)
 
 
 	def andThen[C <: RefinedMapping[Y, O], Y](extract :GenericExtract[C, T, Y, O]) :GenericExtract[C, S, Y, O]
@@ -162,7 +168,10 @@ object GenericExtract {
 			case c :ConstantExtractor[_, T @unchecked] => const(component)(c.constant)
 			case r :RequisiteExtractor[S @unchecked, T @unchecked] => req(component)(r.getter)
 			case _ :EmptyExtractor[_, _] => none(component)
-			case _ => opt(component)(extractor.optional) //todo: FromOptionExtractor
+//			case _ => opt(component)(extractor.optional) //todo: FromOptionExtractor
+			case _ => new OptionalExtract[M, S, T, O](component, extractor.optional) {
+				override def opt(x :S) :Opt[T] = extractor.opt(x)
+			}
 		}
 
 
@@ -255,7 +264,7 @@ object GenericExtract {
 			new OptionalExtract[M, X, T, O](export, f(_) map cont) {
 				override def opt(x :X) :Opt[T] = f(x) match {
 					case Some(s) => Got(cont(s))
-					case _ => None
+					case _ => Lack
 				}
 			}
 		}

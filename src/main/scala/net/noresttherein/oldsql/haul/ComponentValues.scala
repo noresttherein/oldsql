@@ -1416,16 +1416,28 @@ object ComponentValues {
 		def presets = values
 		def defaults = default
 
-		override def preset(root: RefinedMapping[S, O]): Opt[S] = values.get(root).flatMap(_.preset(root))
+		override def preset(root: RefinedMapping[S, O]): Opt[S] = {
+			val res = values.getOrElse[WithOrigin[O]#T, S](root, null)
+			if (res == null) Lack else res.preset(root)
+		}
 
-		override def assemble(root: RefinedMapping[S, O]): Opt[S] = values.get(root).flatMap(_.assemble(root))
+		override def assemble(root: RefinedMapping[S, O]): Opt[S] = {
+			val res = values.getOrElse[WithOrigin[O]#T, S](root, null)
+			if (res == null) Lack else res.assemble(root)
+		}
 
 
-		override def get[T](extract :Extract[T]) :Opt[T] =
-			values.get(extract.export).flatMap(_.optionally(extract.export)) orElse default.get(extract)
+		override def get[T](extract :Extract[T]) :Opt[T] = {
+			val vals = values.getOrElse[WithOrigin[O]#T, T](extract.export, null)
+			if (vals == null) default.get(extract)
+			else vals.optionally(extract.export) orElse default.get(extract)
+		}
 
-		override def get[T](component :Component[T]) :Opt[T] =
-			values.get(component).flatMap(_.optionally(component)) orElse default.get(component)
+		override def get[T](component :Component[T]) :Opt[T] = {
+			val res = values.getOrElse[WithOrigin[O]#T, T](component, null)
+			if (res == null) default.get(component)
+			else res.optionally(component) orElse default.get(component)
+		}
 
 		override def /[T](component :Component[T]) :ComponentValues[T, O] =
 			values.getOrElse[WithOrigin[O]#T, T](component, null.asInstanceOf[ComponentValues[T, O]]) match {

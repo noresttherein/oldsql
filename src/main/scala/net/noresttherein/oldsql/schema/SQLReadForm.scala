@@ -398,7 +398,7 @@ object SQLReadForm {
 	  * The expression must be thread safe.
 	  */
 	def eval[T](expr: => T, readColumns :Int = 0, name :String = null) :SQLReadForm[T] =
-		evalopt(Some(expr), readColumns, name)(NullValue.eval(expr))
+		evalopt(Got(expr), readColumns, name)(NullValue.eval(expr))
 
 	/** Creates a form reading the given number of columns and always returning from its `opt` method the value obtained
 	  * by reevaluating the given expression. An implicitly provided null value is used by its `nullValue` method,
@@ -1041,9 +1041,9 @@ object SQLReadForm {
 				acc flatMap { tail =>
 					i -= form.readColumns
 					form.opt(res, i) match {
-						case Got(head) => Got(head::tail)
+						case Got(head) => Some(head::tail)
 						case _ => try {
-							Got(form.nullValue::tail)
+							Some(form.nullValue::tail)
 						} catch {
 							case e :Exception => None
 						}

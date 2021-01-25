@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Opt, Uni
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainContains, ChainGet, ItemExists}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.haul.ComponentValues
-import net.noresttherein.oldsql.morsels.InferTypeParams
+import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, Mapping, MappingExtract}
@@ -962,7 +962,7 @@ object SchemaMapping {
 		  * the last (rightmost) one is taken.
 		  */
 		def ?[T](implicit schema :MappingSchema[S, V, C, O],
-		         get :GetLabeledComponent[N, V, C, T, @|-|[N, T, _, _]], pieces :ComponentValues[S, O]) :Option[T] =
+		         get :GetLabeledComponent[N, V, C, T, @|-|[N, T, _, _]], pieces :ComponentValues[S, O]) :Opt[T] =
 			pieces.get(get.extract(schema, label))
 
 		/** Get the component with this label from the implicit schema.
@@ -996,7 +996,7 @@ object SchemaMapping {
 		override val schema :M = backer
 		override def buffs :Buffs[S] = backer.outerBuffs
 
-		protected val schemaExtract :Extract[V] = MappingExtract.opt(schema)(schema.unapply)
+		protected val schemaExtract :Extract[V] = MappingExtract(schema)(Extractor.Optional(schema.unapply(_)))
 		protected val selfExtract :Extract[S] = MappingExtract.ident(this)
 
 		override def apply[T](component :Component[T]) :Extract[T] =

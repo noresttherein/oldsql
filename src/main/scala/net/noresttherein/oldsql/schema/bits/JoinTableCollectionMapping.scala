@@ -1,9 +1,9 @@
 package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
-import net.noresttherein.oldsql.collection.Opt.Got
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.RelatedEntityFactory
-import net.noresttherein.oldsql.morsels.Lazy
+import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
 import net.noresttherein.oldsql.schema.{composeExtracts, Buff, Buffs, MappingExtract}
@@ -119,12 +119,12 @@ object JoinTableCollectionMapping {
 
 		override def assemble(pieces :Pieces) :Opt[R] = pieces.get(inbound) match {
 			case Got(ref) => Got(factory(ref))
-			case _ => None
+			case _ => Lack
 		}
 
 
 		override lazy val extracts :NaturalMap[Component, Extract] = {
-			val inboundExtract = MappingExtract.opt(inbound)(factory.keyOf)
+			val inboundExtract = MappingExtract(inbound)(Extractor.Optional[R, JR](factory.keyOf(_)))
 			composeExtracts(inboundExtract).updated[Extract, JR](inbound, inboundExtract)
 		}
 

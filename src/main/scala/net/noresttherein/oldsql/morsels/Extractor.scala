@@ -69,8 +69,8 @@ object Extractor extends ImplicitExtractors {
 	type =?>[-X, +Y] = Extractor[X, Y]
 
 
-	def apply[X, Y](extract :X => Option[Y], requisite: Option[X => Y]) :Extractor[X, Y] = requisite match {
-		case Some(f) => new RequisiteAdapter(f)
+	def apply[X, Y](extract :X => Option[Y], requisite: Opt[X => Y]) :Extractor[X, Y] = requisite match {
+		case Got(f) => new RequisiteAdapter(f)
 		case _ => new OptionalAdapter(extract)
 	}
 

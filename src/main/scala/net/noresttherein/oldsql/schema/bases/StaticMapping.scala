@@ -238,7 +238,7 @@ object StaticMapping {
 		  * @return `pieces.get(extract)`, where `extract` is
 		  *         the [[net.noresttherein.oldsql.schema.MappingExtract MappingExtract]] for this component.
 		  */
-		def ?(implicit pieces :ComponentValues[S, O]) :Option[T] = pieces.get(extract)
+		def ?(implicit pieces :ComponentValues[S, O]) :Opt[T] = pieces.get(extract)
 	}
 }
 

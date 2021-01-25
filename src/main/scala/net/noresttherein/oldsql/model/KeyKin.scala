@@ -261,7 +261,8 @@ object KeyKin {
 		extends BaseDerivedKinFactory[K, E, T]
 	{
 		override def delay(key :K, value : => Option[T]) :DerivedKeyKin[K, E, T] = ensign.delay(key, value)
-
+		override def apply(key :K, value :Option[T]) :DerivedKeyKin[K, E, T] = ensign(key, value)
+		override def present(key :K, value :T) :DerivedKeyKin[K, E, T] = ensign(key, value)
 		override def missing(key :K) :DerivedKeyKin[K, E, T] = ensign.missing(key)
 
 		override def keyFrom(item :E) :Opt[K] = key(item)

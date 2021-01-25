@@ -120,7 +120,7 @@ trait Buff[T] extends Serializable {
 		if (cascades) extractor.requisite match {
 			case Got(f) => cascade(f)
 			case _ => None
-		} else Lack
+		} else None
 
 
 	/** Adapts this buff for a new component type. For flag buffs, this is an identity operation; for buffs

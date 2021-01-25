@@ -274,7 +274,7 @@ object SQLWriteForm {
 	  *             If none is provided, the form's name will be derived from the provided `value`.
 	  */
 	def eval[T :SQLWriteForm](expr: => T, name :String = null) :SQLWriteForm[Any] =
-		new EvalSQLWriteForm[T](Some(expr), name)
+		new EvalSQLWriteForm[T](Got(expr), name)
 
 	/** A form which will ignore all values provided as arguments and instead write the value resulting from evaluating
 	  * the given by-name argument, using the implicit `SQLWriteForm[T]`. The given expression must be thread safe
@@ -286,7 +286,7 @@ object SQLWriteForm {
 	  * @param name an optional name of the form, used in its `toString` implementation (and thrown exceptions).
 	  *             If none is provided, the form's name will be derived from the provided `value`.
 	  */
-	def evalopt[T :SQLWriteForm](expr: => Option[T], name :String = null) :SQLWriteForm[Any] =
+	def evalopt[T :SQLWriteForm](expr: => Opt[T], name :String = null) :SQLWriteForm[Any] =
 		new EvalSQLWriteForm[T](expr, name)
 
 
@@ -314,7 +314,7 @@ object SQLWriteForm {
 	  * @param name an optional name of the form, used in its `toString` implementation (and thrown exceptions).
 	  *             If none is provided, the form's name will be derived from the provided `value`.
 	  */
-	def constopt[T :SQLWriteForm](value :Option[T], name :String = null) :SQLWriteForm[Any] =
+	def constopt[T :SQLWriteForm](value :Opt[T], name :String = null) :SQLWriteForm[Any] =
 		if (value.isEmpty) new NullSQLWriteForm[T](name)
 		else new ConstSQLWriteForm(value.get, name)
 
@@ -855,7 +855,7 @@ object SQLWriteForm {
 
 
 
-	private[schema] class EvalSQLWriteForm[T](value: => Option[T], name :String = null)
+	private[schema] class EvalSQLWriteForm[T](value: => Opt[T], name :String = null)
 	                                         (implicit protected override val form :SQLWriteForm[T])
 		extends WriteFormAdapter[Any] with IgnoringWriteForm[Any] with NullableWriteFormLiterals[Any]
 	{
@@ -863,7 +863,7 @@ object SQLWriteForm {
 			form.setOpt(statement, position, value)
 
 		override def literal(ignored: Any, inline :Boolean): String = value match {
-			case Some(x) => form.literal(x, inline)
+			case Got(x) => form.literal(x, inline)
 			case _ => form.nullLiteral(inline)
 		}
 
@@ -874,18 +874,18 @@ object SQLWriteForm {
 
 
 
-	private[schema] class EvalOrNullSQLWriteForm[T](value: => Option[T])
+	private[schema] class EvalOrNullSQLWriteForm[T](value: => Opt[T])
 	                                               (implicit protected override val form :SQLWriteForm[T],
 	                                                orElse :NullValue[T])
 		extends WriteFormAdapter[Any] with IgnoringWriteForm[Any] with NullableWriteFormLiterals[Any]
 	{
 		override def setNull(statement :PreparedStatement, position :Int) :Unit = value match {
-			case Some(x) => form.set(statement, position, x)
+			case Got(x) => form.set(statement, position, x)
 			case _ => form.set(statement, position, orElse.value)
 		}
 
 		override def literal(ignored: Any, inline :Boolean): String = value match {
-			case Some(x) => form.literal(x, inline)
+			case Got(x) => form.literal(x, inline)
 			case _ => form.literal(orElse.value, inline)
 		}
 

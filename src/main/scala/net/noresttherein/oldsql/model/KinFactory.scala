@@ -55,6 +55,9 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 	/** Create a present `Kin` with the given value. */
 	override def present(value :X) :R
 
+	/** Create a present `Kin` with the given key and value. */
+	override def present(key :K, value :X) :R = apply(key, Some(value))
+
 	/** Create an absent instance referencing al entities of type `E` with the specific value as the key,
 	  * as understood by this factory. Same as `absent`.
 	  */
@@ -101,7 +104,7 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 	  * this method will always return `None` - even if a common key could be extracted from the collection.
 	  */
 	override def forItems(items :Iterable[E]) :Opt[R] = composition.attempt(items) match {
-		case opt @ Got(value) => keyFrom(items).map(apply(_, opt)) orElse Got(present(value))
+		case opt @ Got(value) => keyFrom(items).map(apply(_, opt.toOption)) orElse Got(present(value))
 		case _ => Lack
 	}
 
@@ -113,7 +116,7 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 	  */
 	override def forItems(key :K, items :Iterable[E]) :Opt[R] =
 		if (keyFrom(items).exists(_ != key)) Lack
-		else composition.attempt(items).map(x => apply(key, Got(x)))
+		else composition.attempt(items).map(x => present(key, x))
 
 	/** Decomposes the given `Kin` into individual entities. */
 	override def itemsOf(kin :Kin[X]) :Opt[Iterable[E]] = valueOf(kin).flatMap(decompose)
@@ -135,7 +138,7 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 		keyOf(kin) getOrElse { throw new MissingKeyException(s"No $this key in $kin.") }
 
 	/** Returns `kin.toOption`. */
-	override def valueOf(kin :Kin[X]) :Opt[X] = kin.toOption
+	override def valueOf(kin :Kin[X]) :Opt[X] = kin.opt
 
 	/** Tries to retrieve both the key and the value from a `Kin`.
 	  * @return `keyOf(kin)`.
@@ -157,8 +160,8 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 	  * Returned option is non-empty if the key can be retrieved from `kin`. The `Kin` itself inside the
 	  * option will be absent or present based on whether `kin` is present.
 	  */
-	def adapt(kin :Kin[X]) :Option[R] =
-		unapply(kin) map { key => apply(key, kin.toOption) } orElse kin.toOption.map(present)
+	def adapt(kin :Kin[X]) :Opt[R] =
+		unapply(kin) map { key => apply(key, kin.toOption) } orElse kin.opt.map(present)
 
 
 	/** Return a factory creating `Kin` for type `Y`, where `Y` is another composite type for the target entity `E`. */
@@ -195,7 +198,6 @@ object KinFactory {
 		new LazyKinFactory[K, E, T, R[T]](factory) with HigherKindKinFactory[K, E, T, R] {
 			protected override def target =
 				super.target.asInstanceOf[HigherKindKinFactory[K, E, T, R]]
-
 
 			override def required =
 				if (isEvaluated) target.required else KinFactory.delay(() => factory().required)
@@ -272,6 +274,7 @@ object KinFactory {
 		override def apply(key :K, value :Option[X]) :R = target(key, value)
 
 		override def present(value: X): R = target.present(value)
+		override def present(key :K, value :X) :R = target.present(key, value)
 		override def absent(key :K) :R = target.absent(key)
 		override def missing(key: K): R = target.missing(key)
 		override def nonexistent(key :K) :R = target.nonexistent(key)

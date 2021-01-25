@@ -708,8 +708,8 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 		private class ToProperty[T, -E](prop :PropertyPath[E, T]) extends ToProperties[T, T, E](prop, Self()) {
 			override def attempt(items :Iterable[E]) =
-				if (items.isEmpty || items.sizeIs > 1) None
-				else Some(property.fun(items.head))
+				if (items.isEmpty || items.sizeIs > 1) Lack
+				else Got(property.fun(items.head))
 
 			override def apply(items :Iterable[E]) =
 				if (items.isEmpty || items.sizeIs > 1)

@@ -89,7 +89,7 @@ trait SimpleMapping[S, O]
 		/** Returns the value of this component in an option if an implicit `ComponentValues` instance
 		  * for the enclosing composite mapping is present.
 		  */
-		@inline final def ?(implicit values :root.Pieces) :Option[T] = values.get(extract)
+		@inline final def ?(implicit values :root.Pieces) :Opt[T] = values.get(extract)
 
 		/** Buffs 'inherited' from the enclosing mapping. It uses the value extract `S => T` to map all buffs applied
 		  * to the enclosing mapping to adapt them to this value type. This means that if there are any
@@ -621,15 +621,15 @@ trait SimpleMapping[S, O]
 	private class IndexedColumnValuesBuilder extends ComponentValuesBuilder[S, O] {
 		private[this] val columns = lazyColumns.get
 		private[this] val columnCount = columns.size
-		private[this] val values = new Array[Option[Any]](columnCount)
-		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Option[_]]
+		private[this] val values = new Array[Any](columnCount)
+		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Any]
 
 		override def addOpt[T](component :RefinedMapping[T, O], result :Opt[T]) :this.type = export(component) match {
 			case col :SimpleMapping[_, _]#AbstractColumn[_] =>
-				values(col.index) = result; this
-			case _ =>
-				componentValues = componentValues.updated(component, result)
-				this
+				values(col.index) = result.orNull; this
+			case _ if !result.isEmpty =>
+				componentValues = componentValues.updated(component, result.get); this
+			case _ => this
 		}
 
 		override def result() =

@@ -234,7 +234,7 @@ object SQLForm {
 	/** Creates a dummy form which ignores its input and always reads and writes the value resulting from
 	  * reevaluating the given expression.
 	  */
-	def evalopt[T](expr: => Option[T], name :String = null)
+	def evalopt[T](expr: => Opt[T], name :String = null)
 	              (implicit write :SQLWriteForm[T], nulls :NullValue[T]) :SQLForm[T] =
 		join(name)(
 			new EvalOrNullSQLWriteForm[T](expr)(write, nulls), SQLReadForm.evalopt(expr, write.writtenColumns)
@@ -247,7 +247,7 @@ object SQLForm {
 		join(name)(SQLWriteForm.const(value), SQLReadForm.const(value, write.writtenColumns))
 
 	/** Creates a dummy form which always returns and writes the same value. */
-	def constopt[T](value :Option[T], name :String = null)
+	def constopt[T](value :Opt[T], name :String = null)
 	               (implicit write :SQLWriteForm[T], nulls :NullValue[T]) :SQLForm[T] =
 		join(name)(SQLWriteForm.constopt(value), SQLReadForm.constopt(value, write.writtenColumns))
 
@@ -709,7 +709,7 @@ object SQLForm {
 
 		override def opt(res :ResultSet, position :Int) :Opt[T] = form.opt(res, position) match {
 			case Got(s) => Got(map(s))
-			case _ => None
+			case _ => Lack
 		}
 
 		override def set(statement :PreparedStatement, position :Int, value :T) :Unit =

@@ -5,7 +5,7 @@ import java.sql.{CallableStatement, JDBCType, ResultSet}
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Opt
-import net.noresttherein.oldsql.collection.Opt.Got
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
@@ -162,7 +162,7 @@ object ColumnReadForm {
 	  * by reevaluating the given expression. An implicitly provided null value is used by its `nullValue` method,
 	  * to which the `apply` method delegates when the former yields `None`. The expression must be thread safe.
 	  */
-	def evalopt[T :NullValue](jdbcType :JDBCType, value: => Option[T], name :String = "=_>") :ColumnReadForm[T] =
+	def evalopt[T :NullValue](jdbcType :JDBCType, value: => Opt[T], name :String = "=_>") :ColumnReadForm[T] =
 		new EvalSQLReadForm[T](value, 1, name) with ColumnReadForm[T] { outer =>
 			override def notNull :ColumnReadForm[T] =
 				new EvalSQLReadForm[T](value, 1, name)(NotNull)
@@ -186,10 +186,10 @@ object ColumnReadForm {
 	/** Creates a dummy form which always produces the same value, never reading from the `ResultSet`.
 	  * If `value` is `None`, implicit `NullValue[T]` will be used by `apply`.
 	  */
-	def constopt[T :NullValue](jdbcType :JDBCType, value :Option[T], name :String = null) :ColumnReadForm[T] =
+	def constopt[T :NullValue](jdbcType :JDBCType, value :Opt[T], name :String = null) :ColumnReadForm[T] =
 		new ConstSQLReadForm[T](value, 1, name) with ColumnReadForm[T] {
 			override def notNull :ColumnReadForm[T] = value match {
-				case Some(null) => error(sqlType, toString + ".notNull") {
+				case Got(null) => error(sqlType, toString + ".notNull") {
 					throw new NullPointerException("Cannot return a null value from " + this + ".opt.")
 				}
 				case _ if nulls == NotNull => this
@@ -435,7 +435,7 @@ object ColumnReadForm {
 
 		override def opt(res :ResultSet, position :Int) :Opt[T] = {
 			val t = read(res, position)
-			if (res.wasNull) None else Got(t)
+			if (res.wasNull) Lack else Got(t)
 		}
 	}
 
