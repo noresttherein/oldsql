@@ -72,8 +72,8 @@ object OptionMapping {
 
 		override val selectForm :SQLReadForm[Option[S]] = get.selectForm.toOpt
 		override val filterForm :SQLWriteForm[Option[S]] = get.filterForm.toOpt
-		override val updateForm :SQLWriteForm[Option[S]] = get.updateForm.toOpt
 		override val insertForm :SQLWriteForm[Option[S]] = get.insertForm.toOpt
+		override val updateForm :SQLWriteForm[Option[S]] = get.updateForm.toOpt
 //		override def writeForm(op :WriteOperationType) :SQLWriteForm[Option[S]] = op.form(this)
 
 

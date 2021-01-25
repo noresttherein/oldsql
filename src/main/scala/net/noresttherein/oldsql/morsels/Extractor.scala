@@ -23,14 +23,14 @@ import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtra
   * @author Marcin Mościcki
   */ //consider: implementing PartialFunction. Would be great if Function extended PartialFunction (or vice versa).
 trait Extractor[-X, +Y] { self =>
-	def optional :X => Option[Y] = get(_).toOption
+	def optional :X => Option[Y] = opt(_).toOption
 	def requisite :Opt[X => Y] = Lack
 
 	def apply(x :X) :Y
 
-	def get(x :X) :Opt[Y]
+	def opt(x :X) :Opt[Y]
 
-	def unapply(x :X) :Opt[Y] = get(x)
+	def unapply(x :X) :Opt[Y] = opt(x)
 
 	def andThen[Z](extractor :Extractor[Y, Z]) :Extractor[X, Z]
 	def andThenOpt[Z](extractor :OptionalExtractor[Y, Z]) :Extractor[X, Z]
@@ -55,13 +55,13 @@ trait Extractor[-X, +Y] { self =>
 
 
 
-sealed abstract class ExtractorImplicits {
+sealed abstract class ImplicitExtractors {
 	implicit def requisiteExtractor[X, Y](f :X => Y) :RequisiteExtractor[X, Y] = Extractor.req(f)
 }
 
 
 
-object Extractor extends ExtractorImplicits {
+object Extractor extends ImplicitExtractors {
 
 	/** A type alias for [[net.noresttherein.oldsql.morsels.Extractor Extractor]], allowing concise writing it
 	  * in the infix function format `X =?> Y`.
@@ -133,7 +133,7 @@ object Extractor extends ExtractorImplicits {
 	object Optional {
 		/** Lifts the given function literal for `X => Option[Y]` to an `Extractor[X, Y]` by the SAM conversion.
 		  * This is different than `Extractor.opt` in that produced extractor does not wrap a function, but instead
-		  * implements its `apply` and `get` methods directly with the body of the argument function literal.
+		  * implements its `apply` and `opt` methods directly with the body of the argument function literal.
 		  * This approach is generally preferable for optional extractors, as it can avoid boxing of the returned values.
 		  * @return f
 		  */
@@ -148,7 +148,7 @@ object Extractor extends ExtractorImplicits {
 	object Requisite {
 		/** Lifts the given function literal for `X => Y` to an `Extractor[X, Y]` by the SAM conversion.
 		  * This is different than `Extractor.req` in that produced extractor does not wrap a function, but instead
-		  * implements its `apply` and `get` methods directly with the body of the argument function literal.
+		  * implements its `apply` and `opt` methods directly with the body of the argument function literal.
 		  * In all situations where the extractor is created from a literal lambda expression, this method
 		  * is slightly preferable to `Extractor.req`, as it doesn't involve an additional delegation call.
 		  * @return f
@@ -159,7 +159,7 @@ object Extractor extends ExtractorImplicits {
 	}
 
 	/** Factory and matcher for identity extractors, i.e. `Extractor` instances which always return the given argument
-	  * from their `get` method.
+	  * from their `opt` method.
 	  */
 	object Identity {
 		/** An `Extractor` wrapping an identity function, i.e. always returning `Some(arg)` for the given argument
@@ -172,7 +172,7 @@ object Extractor extends ExtractorImplicits {
 
 	/** Factory and matcher for extractors of constant, i.e. `Extractor` instances which always return the same value. */
 	object Constant {
-		/** An `Extractor` always returning `value` from its `get` method. This is the same as `Extractor.const`,
+		/** An `Extractor` always returning `value` from its `opt` method. This is the same as `Extractor.const`,
 		  * provided here for consistency.
 		  */
 		@inline def apply[Y](value :Y) :ConstantExtractor[Any, Y] = new ConstantAdapter[Y](value)
@@ -201,10 +201,10 @@ object Extractor extends ExtractorImplicits {
 
 
 	/** The default `Extractor` implementation which can fail to produce a value for the argument.
-	  * It is a 'SAM' type, leaving only the `get` method to be implemented by subclasses.
+	  * It is a 'SAM' type, leaving only the `opt` method to be implemented by subclasses.
 	  */
 	trait OptionalExtractor[-X, +Y] extends Extractor[X, Y] { self =>
-		override def apply(x :X) :Y = get(x) getOrElse {
+		override def apply(x :X) :Y = opt(x) getOrElse {
 			throw new NoSuchElementException("No value for " + this + " in " + x)
 		}
 
@@ -217,15 +217,15 @@ object Extractor extends ExtractorImplicits {
 			case _ => andThenCallback(extractor)
 		}
 		protected def andThenCallback[Z](extractor :Y =?> Z) :X =?> Z =
-			Optional { get(_) match {
-				case Got(y) => extractor.get(y)
+			Optional { opt(_) match {
+				case Got(y) => extractor.opt(y)
 				case _ => Lack
 			}}
 
-		override def andThen[Z](f :Y => Z) :X =?> Z = Optional { get(_) map f }
+		override def andThen[Z](f :Y => Z) :X =?> Z = Optional { opt(_) map f }
 
 		override def andThenOpt[Z](f :Y => Option[Z]) :X =?> Z =
-			Extractor.opt { x :X => get(x) match {
+			Extractor.opt { x :X => opt(x) match {
 				case Got(y) => f(y)
 				case _ => None
 			}}
@@ -237,7 +237,7 @@ object Extractor extends ExtractorImplicits {
 		override def compose[W](f :W => X) :W =?> Y =
 			new OptionalExtractor[W, Y] {
 				override val optional = f andThen self.optional
-				override def get(x :W) = self.get(f(x))
+				override def opt(x :W) = self.opt(f(x))
 			}
 
 		override def composeOpt[W](f :W => Option[X]) :W =?> Y =
@@ -245,8 +245,8 @@ object Extractor extends ExtractorImplicits {
 				private[this] val continue = self.optional
 				override val optional = f(_) flatMap continue
 
-				override def get(w :W) = f(w) match {
-					case Some(x) => self.get(x)
+				override def opt(w :W) = f(w) match {
+					case Some(x) => self.opt(x)
 					case _ => Lack
 				}
 			}
@@ -257,20 +257,20 @@ object Extractor extends ExtractorImplicits {
 
 	private[oldsql] class OptionalAdapter[-X, +Y](p :X => Option[Y]) extends OptionalExtractor[X, Y] {
 		override def optional = p
-		override def get(x :X) :Opt[Y] = p(x)
+		override def opt(x :X) :Opt[Y] = p(x)
 
 		override def andThen[Z](extractor :Y =?> Z) : X =?> Z = extractor composeOpt optional
 
 		protected override def andThenCallback[Z](extractor :Y =?> Z) =
 			Optional { p(_) match {
-				case Some(y) => extractor.get(y)
+				case Some(y) => extractor.opt(y)
 				case _ => Lack
 			}}
 
 		override def andThen[Z](f :Y => Z) :X =?> Z = new OptionalExtractor[X, Z] {
 			override val optional = p(_).map(f)
 
-			override def get(x :X) = p(x) match {
+			override def opt(x :X) = p(x) match {
 				case Some(y) => Got(f(y))
 				case _ => Lack
 			}
@@ -298,7 +298,7 @@ object Extractor extends ExtractorImplicits {
 
 		override def apply(x :X) :Y
 
-		override def get(x :X) :Opt[Y] = Got(apply(x))
+		override def opt(x :X) :Opt[Y] = Got(apply(x))
 
 		override def andThen[Z](extractor :Y =?> Z) :X =?> Z = extractor.composeReq[X](this)
 
@@ -306,7 +306,7 @@ object Extractor extends ExtractorImplicits {
 			new OptionalExtractor[X, Z] {
 				private[this] val first = self.getter
 				override val optional = first andThen extractor.optional
-				override def get(x :X) = extractor.get(first(x))
+				override def opt(x :X) = extractor.opt(first(x))
 			}
 
 		override def andThenReq[Z](extractor :RequisiteExtractor[Y, Z]) :RequisiteExtractor[X, Z] =
@@ -331,7 +331,7 @@ object Extractor extends ExtractorImplicits {
 				private[this] val continue = self.getter
 				override val optional = f(_) map continue
 
-				override def get(w :W) = f(w) match {
+				override def opt(w :W) = f(w) match {
 					case Some(x) => Got(continue(x))
 					case _ => Lack
 				}
@@ -356,7 +356,7 @@ object Extractor extends ExtractorImplicits {
 		override val requisite = Got(p)
 
 		override def apply(x :X) :Y = p(x)
-		override def get(x :X) = Got(p(x))
+		override def opt(x :X) = Got(p(x))
 
 		override def andThen[Z](extractor :Y =?> Z) :X =?> Z = extractor compose p
 		override def andThenOpt[Z](extractor :OptionalExtractor[Y, Z]) :X =?> Z = extractor compose p
@@ -375,7 +375,7 @@ object Extractor extends ExtractorImplicits {
 		override val optional :X => Some[X] = identityOptional.asInstanceOf[X => Some[X]]
 
 		override def apply(x :X) :X = x
-		override def get(x :X) :Opt[X] = Got(x)
+		override def opt(x :X) :Opt[X] = Got(x)
 
 		override def andThen[Z](extractor :X =?> Z) :X =?> Z = extractor
 		override def andThenOpt[Z](extractor :OptionalExtractor[X, Z]) :X =?> Z = extractor
@@ -408,7 +408,7 @@ object Extractor extends ExtractorImplicits {
 		final override val optional = { val res = Some(constant); _ :X => res }
 
 		final override def apply(x :X) :Y = constant
-		final override def get(x :X) :Opt[Y] = Got(constant)
+		final override def opt(x :X) :Opt[Y] = Got(constant)
 
 		override def andThenOpt[Z](extractor :OptionalExtractor[Y, Z]) :X =?> Z = andThenOpt(extractor.optional)
 
@@ -444,13 +444,13 @@ object Extractor extends ExtractorImplicits {
 
 
 
-	/** An `Extractor` which never produces any value, always returning `None` from its `get` method. */
+	/** An `Extractor` which never produces any value, always returning `None` from its `opt` method. */
 	trait EmptyExtractor[-X, +Y] extends Extractor[X, Y] {
 		override def optional :Any => Option[Nothing] = emptyOptional
 		override def requisite :Opt[Any => Nothing] = Lack
 
 		override def apply(x :X) :Y = throw new NoSuchElementException(toString + ".apply(" + x + ")")
-		override def get(x :X) :Opt[Y] = Lack
+		override def opt(x :X) :Opt[Y] = Lack
 
 		override def andThen[Z](extractor :Y =?> Z) :X =?> Z = none
 		override def andThenOpt[Z](extractor :OptionalExtractor[Y, Z]) :X =?> Z = none
@@ -478,11 +478,11 @@ object Extractor extends ExtractorImplicits {
 		override def optional :Option[X] => Option[X] = identity[Option[X]]
 
 		override def apply(x :Option[X]) :X = x.get
-		override def get(x :Option[X]) :Opt[X] = x
+		override def opt(x :Option[X]) :Opt[X] = x
 
 		protected override def andThenCallback[Z](extractor :X =?> Z) :Option[X] =?> Z =
 			Optional {
-				case Some(x) => extractor.get(x)
+				case Some(x) => extractor.opt(x)
 				case _ => Lack
 			}
 		override def andThenOpt[Z](f :X => Option[Z]) :Option[X] =?> Z = Extractor.opt(_.flatMap(f))
@@ -492,7 +492,7 @@ object Extractor extends ExtractorImplicits {
 
 		override def compose[W](f :W => Option[X]) :W =?> X = Extractor.opt(f)
 
-		override def toString = "_.get"
+		override def toString = "_.opt"
 	}
 
 

@@ -6,17 +6,33 @@ import scala.annotation.nowarn
 import net.noresttherein.oldsql.collection.Unique.{UniqueSeqAdapter, UniqueSetAdapter}
 import scala.collection.immutable.{IndexedSeq, Iterable, Seq, Set}
 import scala.collection.mutable.Builder
-import scala.collection.{AbstractSeq, AbstractSet, IterableFactory, IterableFactoryDefaults, IterableOps}
+import scala.collection.{AbstractSeq, AbstractSet, Factory, IterableFactory, IterableFactoryDefaults, IterableOps}
+import scala.reflect.ClassTag
+
+
+
+
 
 
 /** A collection of unique items in a specific order providing `O(1)` `indexOf(T)`, `contains(T)`, `apply(Int)`,
   * `toSet`, `toSeq`, `toIndexedSeq` and `size` implementations. This class is used for the column lists exported
   * by mappings in order to quickly find the column mapping for a given column result in a `ResultSet`.
+  * It works like a `Seq`, but append/prepend operations will result in no change if the added element is already
+  * present (in terms of `equals`) in this collection
   * @tparam T element type.
   */
 trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with IterableFactoryDefaults[T, Unique] { unique =>
 
+	override def knownSize :Int = size
+
 	override def iterableFactory :IterableFactory[Unique] = Unique
+
+	override def toIndexedSeq :IndexedSeq[T] = new UniqueSeqAdapter(this)
+
+	override def toSeq :Seq[T] = toIndexedSeq
+
+	override def toSet[U >: T] :Set[U] = new UniqueSetAdapter(this)
+
 
 	/** The `n`-th element in this collection.
 	  * @param n the index in the `[0..size-1]` range.
@@ -28,13 +44,6 @@ trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with
 
 	/** Checks if this collection contains the given element as defined by `equals`. */
 	def contains[U >: T](elem :U) :Boolean = indexOf(elem) >= 0
-
-
-	override def toIndexedSeq :IndexedSeq[T] = new UniqueSeqAdapter(this)
-
-	override def toSeq :Seq[T] = new UniqueSeqAdapter(this)
-
-	override def toSet[U >: T] :Set[U] = new UniqueSetAdapter(this)
 
 	/** Prepends an element to the front of the collection if it isn't already present.
 	  * @return `this` ''iff'' it already contains `elem`, or a `Unique` instance containing the given element
@@ -57,7 +66,7 @@ trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with
 
 
 	/** Verifies if the element sets of the two collections are equal.
-	  * @return value equivalent to `this.toSet == other.toSet`
+	  * @return value equal to `this.toSet == other.toSet`.
 	  */
 	def contentsEqual[U](other :Unique[U]) :Boolean =
 		size == other.size && other.forall(contains)
@@ -75,11 +84,20 @@ trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with
 /** Companion object serving as a factory for Unique - sequence-like collections with fast indexOf operations. */
 object Unique extends IterableFactory[Unique] {
 
-
 	override def from[T](elems :IterableOnce[T]) :Unique[T] = elems match {
-		case _ :Unique[_] => elems.asInstanceOf[Unique[T]]
-		case seq :UniqueSeqAdapter[_] => seq.toUnique.asInstanceOf[Unique[T]]
-		case set :UniqueSetAdapter[_] => set.toUnique.asInstanceOf[Unique[T]]
+		case unique :Unique[T] => unique
+		case seq :UniqueSeqAdapter[T] => seq.toUnique
+		case set :UniqueSetAdapter[T] => set.toUnique
+		case iter :Iterable[_] if iter.isEmpty => empty[T]
+		case iter :Iterator[_] if iter.isEmpty => empty[T]
+		case iter :Iterable[T] if iter.sizeIs <= 1 =>
+			new SingletonUnique[T](iter.head)
+		case iter :Iterable[T] if iter.sizeIs <= SmallUniqueLimit =>
+			new SmallUnique[T](iter.toArray(ClassTag[T](classOf[AnyRef])))
+		case iter :Iterable[T] =>
+			val seq = iter.toIndexedSeq
+			val map = seq.view.zipWithIndex.toMap
+			new IndexedUnique(seq, map)
 		case _ => (newBuilder[T] ++= elems).result()
 	}
 
@@ -131,14 +149,31 @@ object Unique extends IterableFactory[Unique] {
 
 
 
-	private class UniqueBuilder[T](
-			private[this] var items :Builder[T, IndexedSeq[T]] = IndexedSeq.newBuilder[T],
-			private[this] var index :Map[T, Int] = Map[T, Int]())
+	private class UniqueBuilder[T] private (private[this] var items :Builder[T, IndexedSeq[T]],
+	                                        private[this] var index :Map[T, Int],
+	                                        private[this] var array :Array[T],
+	                                        private[this] var smallSize :Int)
 		extends Builder[T, Unique[T]]
 	{
+		def this(items :Builder[T, IndexedSeq[T]], index :Map[T, Int]) =
+			this(items, index, null, -1)
+
+		def this() = this(null, null, new Array[Any](SmallUniqueLimit).asInstanceOf[Array[T]], 0)
 
 		override def addOne(elem :T) :this.type = {
-			if (!index.contains(elem)) {
+			if (smallSize >= 0) {
+				if (array.indexOf(elem) < 0)
+					if (smallSize < SmallUniqueLimit) {
+						array(smallSize) = elem
+						smallSize += 1
+					} else {
+						if (items == null)
+							items = IndexedSeq.newBuilder[T]
+						items ++= array
+						index = array.view.zipWithIndex.toMap
+						smallSize = -1
+					}
+			} else if (!index.contains(elem)) {
 				index = index.updated(elem, index.size)
 				items += elem
 			}
@@ -146,11 +181,33 @@ object Unique extends IterableFactory[Unique] {
 		}
 
 		override def clear() :Unit = {
-			index = Map[T, Int]()
-			items = IndexedSeq.newBuilder
+			smallSize = 0
+			index = null
+			items.clear()
+			if (array == null)
+				array = new Array[Any](SmallUniqueLimit).asInstanceOf[Array[T]]
+			else
+				java.util.Arrays.fill(array.asInstanceOf[Array[AnyRef]], null)
 		}
 
-		override def result() :Unique[T] = new IndexedUnique(items.result(), index.withDefaultValue(-1))
+		override def sizeHint(size :Int) :Unit =
+			if (size >= SmallUniqueLimit && smallSize == 0) {
+				if (items == null)
+					items = IndexedSeq.newBuilder[T]
+				items sizeHint size
+				index = Map.empty
+			}
+
+		override def result() :Unique[T] = {
+			val res = smallSize match {
+				case 0 => empty[T]
+				case 1 => new SingletonUnique(array(0))
+				case n if n >= 0 => new SmallUnique[T](array.take(n))
+				case _ => new IndexedUnique(items.result(), index)
+			}
+			clear()
+			res
+		}
 	}
 
 
@@ -190,7 +247,7 @@ object Unique extends IterableFactory[Unique] {
 
 		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
 			if (elems.iterator.isEmpty) this
-			else ((elems ++: items) : @nowarn)
+			else elems ++: items : @nowarn
 
 		override def -[U >: T](elem :U) :Unique[T] = items - elem
 
@@ -206,16 +263,18 @@ object Unique extends IterableFactory[Unique] {
 
 
 
-	private class IndexedUnique[+T](items :IndexedSeq[T], index :Map[T, Int]) extends Unique[T] {
+	private class IndexedUnique[+T](items :IndexedSeq[T], map :Map[T, Int]) extends Unique[T] {
+		private[this] val index = map.withDefaultValue(-1)
+
 		override def iterator :Iterator[T] = items.iterator
 
 		override def size :Int = index.size
 		override def isEmpty :Boolean = size == 0
 
 
-		override def apply(idx :Int) :T = items(idx)
-
 		override def foreach[U](f :T => U) :Unit = items foreach f
+
+		override def apply(idx :Int) :T = items(idx)
 
 		override def indexOf[U >: T](elem :U) :Int = index(elem.asInstanceOf[T])
 
@@ -265,16 +324,96 @@ object Unique extends IterableFactory[Unique] {
 
 
 
-	private class SingletonUnique[T](override val head :T) extends Unique[T] {
+	private class SmallUnique[+T](elements :Array[T]) extends Unique[T] {
+		override def size = elements.length
+		override def knownSize = size
+		override def last = elements(elements.length - 1)
+		override def head = elements(0)
+		override def tail = new SmallUnique(elements.tail)
+		override def init = new SmallUnique(elements.init)
+
+		override def iterator = elements.iterator
+		override def foreach[U](f :T => U) :Unit = elements.foreach(f)
+		override def map[B](f :T => B) :Unique[B] = new SmallUnique(elements.map(f)(ClassTag(classOf[Any])))
+
+		override def apply(n :Int) = elements(n)
+		override def indexOf[U >: T](elem :U) = elements.indexOf(elem.asInstanceOf[T])
+
+		override def -[U >: T](elem :U) = indexOf(elem) match {
+			case n if n < 0 => this
+			case n =>
+				val res = Array.ofDim[T](elements.length - 1)(ClassTag(elements.getClass))
+				var i = 0; var j = 0
+				while (i < elements.length) {
+					if (i != n) {
+						res(j) = elements(i)
+						j += 1
+					}
+					i += 1
+				}
+				new SmallUnique(res)
+		}
+
+		override def +:[U >: T](elem :U) = indexOf(elem) match {
+			case n if n >= 0 => this
+			case _ if elements.length >= SmallUniqueLimit =>
+				val seq = elements.view.prepended(elem).toIndexedSeq
+				val map = seq.view.zipWithIndex.toMap
+				new IndexedUnique[U](seq, map)
+			case _ =>
+				val res = Array.ofDim[U](elements.length + 1)(ClassTag(elements.getClass))
+				res(0) = elem
+				var i = 0
+				while (i < elements.length) {
+					res(i + 1) = elements(i); i += 1
+				}
+				new SmallUnique(res)
+		}
+
+		override def :+[U >: T](elem :U) = indexOf(elem) match {
+			case n if n >= 0 => this
+			case _ if elements.length >= SmallUniqueLimit =>
+				val seq = elements.view.appended(elem).toIndexedSeq
+				val map = seq.view.zipWithIndex.toMap
+				new IndexedUnique(seq, map)
+			case _ =>
+				val res = Array.copyOf(elements.asInstanceOf[Array[U]], elements.length + 1)
+				res(elements.length) = elem
+				new SmallUnique(res)
+		}
+
+		override def :++[U >: T](elems :IterableOnce[U]) = concat(elems)
+
+		override def concat[U >: T](suffix :IterableOnce[U]) :Unique[U] = suffix match {
+			case iterable :Iterable[U] if iterable.isEmpty => this
+			case iterator :Iterator[_] if iterator.isEmpty => this
+			case _ =>
+				val builder = new UniqueBuilder[U]
+				val suffixSize = suffix.knownSize
+				if (suffixSize >= 0)
+					builder.sizeHint(elements.length + suffixSize)
+				(builder ++= this ++= suffix).result()
+		}
+	}
+
+
+	private[this] final val SmallUniqueLimit = 8
+
+
+
+
+	private class SingletonUnique[+T](override val head :T) extends Unique[T] {
 		override def last :T = head
 		override def tail = Unique.empty[T]
 		override def init = Unique.empty[T]
 
+		override def iterator = Iterator.single(head)
+
+		override def foreach[U](f :T => U) :Unit = f(head)
+
 		override def apply(n :Int) =
 			if (n == 0) head
 			else throw new IndexOutOfBoundsException(s"$n/1")
-
-		override def foreach[U](f :T => U) :Unit = f(head)
 
 		override def indexOf[U >: T](elem :U) = if (head == elem) 0 else -1
 
@@ -290,9 +429,6 @@ object Unique extends IterableFactory[Unique] {
 
 		override def -[U >: T](elem :U) :Unique[T] =
 			if (elem == head ) Unique.empty[T] else this
-
-
-		override def iterator = Iterator.single(head)
 
 		override def toString = "Unique(" + head + ")"
 	}

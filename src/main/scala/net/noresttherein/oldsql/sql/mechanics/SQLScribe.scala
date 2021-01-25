@@ -574,7 +574,7 @@ object SQLScribe {
 					val shift = followingParams(followingParams.length - 1 - idx)
 					val rank = params.length - shift
 					val param = params(rank)
-					extract.get(param.asInstanceOf[E]) match {
+					extract.opt(param.asInstanceOf[E]) match {
 						case Got(v) => SQLParameter(extract.export.form)(v)
 						case _ => CompositeNull[V](extract.export.form)
 					}
@@ -593,7 +593,7 @@ object SQLScribe {
 			e match {
 				case UnboundParamSQL(_, extract, idx) =>
 					val shift = followingParams(followingParams.length - 1 - idx)
-					extract.get(params(params.length - shift).asInstanceOf[E]) match {
+					extract.opt(params(params.length - shift).asInstanceOf[E]) match {
 						case Got(v) => SQLParameterColumn(v)(extract.export.form)
 						case _ => SQLNull[V](extract.export.form)
 					}
@@ -652,7 +652,7 @@ object SQLScribe {
 		                      (e :TypedComponentSQL[F, T, E, M, V, O]) :GlobalSQL[G, V] =
 			e match {
 				case UnboundParamSQL(_, extract, this.idx) =>
-					extract.get(param.asInstanceOf[E]) match {
+					extract.opt(param.asInstanceOf[E]) match {
 						case Got(v) => SQLParameter(extract.export.form)(v)
 						case _ => CompositeNull[V](extract.export.form)
 					}
@@ -668,7 +668,7 @@ object SQLScribe {
 		                      (e :TypedColumnComponentSQL[F, T, E, M, V, O]) :ColumnSQL[G, GlobalScope, V] =
 			e match {
 				case UnboundParamSQL(_, extract, this.idx) =>
-					extract.get(param.asInstanceOf[E]) match {
+					extract.opt(param.asInstanceOf[E]) match {
 						case Got(v) => SQLParameterColumn(v)(extract.export.form)
 						case _ => SQLNull[V](extract.export.form) :SQLNull[V]
 					}

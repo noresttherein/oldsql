@@ -19,6 +19,18 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 	override type Subject = S
 	override type Origin = O
 
+	/** A mapping like this instance but with [[net.noresttherein.oldsql.schema.Mapping.buffs buffs]] replaced
+	  * with the given collection. The buffs cascade to the components of the new mapping: the ''export'' version
+	  * of every component from this mapping has the new buffs as its suffix.
+	  */
+	override def withBuffs(buffs :Buffs[Subject]) :A[S]
+
+	/** A mapping like this instance but with [[net.noresttherein.oldsql.schema.Mapping.buffs buffs]] replaced
+	  * with the given list. The buffs cascade to the components of the new mapping: the ''export'' version
+	  * of every component from this mapping has the new buffs prepended to its list.
+	  */
+	override def withBuffs(buffs :Seq[Buff[Subject]]) :Component[Subject] = withBuffs(Buffs(this, buffs :_*))
+
 
 	override def apply(adjustments :ComponentSelection[_, O]*) :A[S] =
 		apply(
@@ -41,16 +53,16 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 		alter(FILTER, include, exclude)
 
 	/** @inheritdoc
-	  * @return `alter(UPDATE, include, exclude)`.
-	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.alter alter]] */
-	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
-		alter(UPDATE, include, exclude)
-
-	/** @inheritdoc
 	  * @return `alter(INSERT, include, exclude)`.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.alter alter]] */
 	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
 		alter(INSERT, include, exclude)
+
+	/** @inheritdoc
+	  * @return `alter(UPDATE, include, exclude)`.
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingFactoryMethods.alter alter]] */
+	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] =
+		alter(UPDATE, include, exclude)
 
 	/** Target method for `forSelect`, `forFilter`, `forUpdate` and `forInsert`. Responsible for creating an
 	  * adapter (typically an [[net.noresttherein.oldsql.schema.support.AlteredMapping AlteredMapping]] subclass)
@@ -113,23 +125,17 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends MappingFactoryMethods[A, S, O] {
 
 	protected def name :String
-
 	protected def form :ColumnForm[S]
-
-	/** A column identical to this one as an instance of `A[S]`. Implemented as `copy(name, buffs)`, it
-	  * should be overriden to `this` in classes conforming to `A[S]`. */
-	protected def thisColumn :A[S] = copy(name, buffs)
-
-	/** A column with the specified name and buffs, inheriting the form and any other properties from this
-	  * instance. It is the target of the `prefixed`, `alter` and related methods.
-	  */
-	protected def copy(name :String, buffs :Seq[Buff[S]]) :A[S]
-
 
 	/** A new column, with the same name, form (and optionally other properties), but with the buffs replaced by
 	  * the provided list.
 	  */
-	def withBuffs(buffs :Seq[Buff[S]]) :A[S] = copy(name, buffs)
+	override def withBuffs(buffs :Buffs[S]) :A[S] = copy(name, buffs)
+
+	/** A new column, with the same name, form (and optionally other properties), but with the buffs replaced by
+	  * the provided list.
+	  */
+	override def withBuffs(buffs :Seq[Buff[S]]) :A[S] = withBuffs(Buffs(this, buffs :_*))
 
 
 	override def apply(adjustments :ComponentSelection[_, O]*) :A[S] =
@@ -141,15 +147,15 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 			thisColumn
 		else adjustments.head match {
 			case IncludedComponent(c) if c == this =>
-				val ops = OperationType.operations.filterNot(_.prohibited.enabled(this))
+				val ops = OperationType.operations.filterNot(_.prohibited.active(this))
 				if (ops.nonEmpty)
-					withBuffs(buffs.filter { buff => ops.forall { op => op.extra.disabled(buff) } })
+					withBuffs(buffs.filter { buff => ops.forall { op => op.extra.inactive(buff) } })
 				else
 	                thisColumn
 
 			case ExcludedComponent(c) if c ==  this =>
-				val excludes = OperationType.operations.filter(_.optional.enabled(this)).map(_.exclude[S])
-				if (excludes.nonEmpty) withBuffs(excludes ++: buffs)
+				val excludes = OperationType.operations.filter(_.optional.active(this)).map(_.exclude[S])
+				if (excludes.nonEmpty) withBuffs(excludes ++: buffs.declared)
 				else thisColumn
 
 			case mod => throw new IllegalArgumentException(
@@ -169,9 +175,9 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 			if (include.isEmpty)
 				thisColumn
 			else if (include.head == this) {
-				val ops = OperationType.operations.filterNot(_.prohibited.enabled(this))
+				val ops = OperationType.operations.filterNot(_.prohibited.active(this))
 				if (ops.nonEmpty)
-					withBuffs(buffs.filter { buff => ops.forall { op => op.extra.disabled(buff) } })
+					withBuffs(buffs.filter { buff => ops.forall { op => op.extra.inactive(buff) } })
 				else
 					thisColumn
 			} else
@@ -179,8 +185,8 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 					"Mapping " + include.head + " is not a component of column " + this + "."
 				)
 		else if (exclude.head == this) {
-			val excludes = OperationType.operations.filter(_.optional.enabled(this)).map(_.exclude[S])
-			if (excludes.nonEmpty) withBuffs(excludes ++: buffs)
+			val excludes = OperationType.operations.filter(_.optional.active(this)).map(_.exclude[S])
+			if (excludes.nonEmpty) withBuffs(excludes ++: buffs.declared)
 			else thisColumn
 		} else
 			throw new IllegalArgumentException(
@@ -194,14 +200,27 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 			throw new IllegalArgumentException("Mappings " + include + " are not components of column " + this + ".")
 		else if (exclude.size > 1)
 			throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this + ".")
-		else if (exclude.headOption.contains(this) && op.optional.enabled(this))
-			withBuffs(op.exclude[S] +: buffs)
-		else if (include.headOption.contains(this) && op.explicit.enabled(this))
-			withBuffs(buffs.filter(op.explicit.disabled))
+		else if (exclude.headOption.contains(this) && op.optional.active(this))
+			withBuffs(op.exclude[S] +: buffs.declared)
+		else if (include.headOption.contains(this) && op.explicit.active(this))
+			withBuffs(buffs.filter(op.explicit.inactive(_)))
 		else
 			thisColumn
 
 
+	/** A column identical to this one as an instance of `A[S]`. Implemented as `copy(name, buffs)`, it
+	  * should be overriden to `this` in classes conforming to `A[S]`. */
+	protected def thisColumn :A[S] = copy(name, buffs)
+
+	/** A column with the specified name and buffs, inheriting the form and any other properties from this
+	  * instance. It is the target of the `prefixed`, `alter` and related methods.
+	  */
+	protected def copy(name :String, buffs :Buffs[S]) :A[S]
+
+	/** A column with the specified name and buffs, inheriting the form and any other properties from this
+	  * instance. It is the target of the `prefixed`, `alter` and related methods.
+	  */
+	protected def copy(name :String, buffs :Seq[Buff[S]]) :A[S] = copy(name, Buffs(buffs :_*))
 
 	/** A column with exactly the same components, buffs and implementation as this one, but the new `name`. */
 	def rename(name :String) :A[S] = copy(name, buffs)

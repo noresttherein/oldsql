@@ -342,7 +342,7 @@ object ComponentProperty {
 				}
 				case req :RequisiteExtractor[T @unchecked, Y @unchecked] =>
 					new ConstantProperty(extractor.export, req(constant))
-				case _ => extractor.get(constant) match {
+				case _ => extractor.opt(constant) match {
 					case Got(const) => new ConstantProperty(extractor.export, const)
 					case _ => new EmptyProperty(extractor.export)
 				}

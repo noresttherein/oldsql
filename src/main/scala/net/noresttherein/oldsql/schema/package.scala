@@ -44,7 +44,7 @@ package object schema {
 	  * the most generic [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping[T, O] ]].
 	  * @see [[net.noresttherein.oldsql.schema.GenericExtract]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.apply[T](RefinedMapping[T]) ]]
-	  * @see [[ComponentValues ComponentValues]]
+	  * @see [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]]
 	  * @tparam S the subject type of the parent mapping.
 	  * @tparam T the subject type of the component mapping.
 	  * @tparam O the origin type of the parent and child mappings.
@@ -63,7 +63,7 @@ package object schema {
 
 
 
-	private[schema] def mapBuffs[S, X](mapping :MappingOf[S])(map :S =?> X, unmap :X =?> S) :Seq[Buff[X]] =
+	private[schema] def mapBuffs[S, X](mapping :MappingOf[S])(map :S =?> X, unmap :X =?> S) :Buffs[X] =
 		mapping.buffs.map { buff =>
 			buff.bimap(
 				map.requisite getOrElse {
@@ -88,8 +88,8 @@ package object schema {
 
 
 	private[schema] def flatMapBuffs[S, X](mapping :MappingOf[S])
-	                                      (map :S => Option[X], unmap :X => Option[S]) :Seq[Buff[X]] =
-		mapping.buffs.map { buff => buff.bimap(
+	                                      (map :S => Option[X], unmap :X => Option[S]) :Buffs[X] =
+		mapping.buffs.map { buff => buff.bimap[X](
 			s => map(s) getOrElse {
 				throw new BuffMappingFailureException(
 					s"Failed mapping buff $buff of mapping $mapping: no value returned for $s by $map."
@@ -103,17 +103,19 @@ package object schema {
 		)}
 
 
-	private[schema] def cascadeBuffs[S, X](mapping :MappingOf[S])(map :S =?> X) :Seq[Buff[X]] =
+	private[schema] def cascadeBuffs[S, X](mapping :MappingOf[S])(map :S =?> X) :Buffs[X] =
 		cascadeBuffs[S, X](mapping.buffs, mapping.toString)(map)
 
-	private[schema] def cascadeBuffs[S, X](buffs :Seq[Buff[S]], owner: =>String)(map :S =?> X) :Seq[Buff[X]] =
-		buffs.flatMap(buff => buff.cascade(map.requisite getOrElse {
-			s :S => map.get(s) getOrElse {
-				throw new BuffMappingFailureException(
-					s"Failed cascading buff $buff from $owner: no value returned for $s by $map"
-				)
-			}
-		}))
+	private[schema] def cascadeBuffs[S, X](buffs :Buffs[S], owner: => String)(map :S =?> X) :Buffs[X] =
+		buffs.flatMap(buff =>
+			buff.cascade(map.requisite getOrElse {
+				s :S => map.opt(s) getOrElse {
+					throw new BuffMappingFailureException(
+						s"Failed cascading buff $buff from $owner: no value returned for $s by $map"
+					)
+				}
+			})
+		)
 
 
 

@@ -66,7 +66,7 @@ import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKey
   *
   *
   * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame]]
-  * @see [[net.noresttherein.oldsql.schema.bases.FlatMapping]]
+  * @see [[net.noresttherein.oldsql.schema.bases.SimpleMapping]]
   * @author Marcin Mościcki
   */ //todo: inverse fk, optional Option[Kin] fk
 trait RelatedMapping[S, O] extends BaseMapping[S, O] {
@@ -158,6 +158,12 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 
 
 
+	/** Prefix added to given names of all created instances of this.Column[_]. Defaults to "", subclasses may override.
+	  * Overrides with a `val` or `var` (or any used in their implementation) must happen ''before'' any components
+	  * of this mapping are initialized - in practice before any column declarations.
+	  */
+	protected def columnPrefix = ""
+	
 	//use a differently named method so definitions in subclasses don't mess with overload rules
 	protected def fkimpl[M[A] <: RefinedMapping[E, A], K, E, X, R]
 	                    (name :String, property :S => R, buffs :Buff[R]*)
@@ -327,25 +333,27 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                (property :S => R, columnPrefix :String, buffs :Buff[R]*)
 	                (table :RelVar[M], key :M[_] => C[_], reference :RelatedEntityFactory[K, E, X, R])
 			:ForeignKeyMapping[M, C, K, R, O] =
-		fkimpl[M, C, K, E, X, R](property, buffs :_*)(table, key, reference)(columnPrefix + _)
+		fkimpl[M, C, K, E, X, R](property, buffs :_*)(table, key, reference)(this.columnPrefix + columnPrefix + _)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, X, R]
 	                (property :S => R, columnPrefix :String, buffs :Buff[R]*)
 	                (key :M[_] => C[_], reference :RelatedEntityFactory[K, E, X, R])
 	                (implicit table :RelVar[M]) :ForeignKeyMapping[M, C, K, R, O] =
-		fkimpl[M, C, K, E, X, R](property, buffs :_*)(table, key, reference)(columnPrefix + _)
+		fkimpl[M, C, K, E, X, R](property, buffs :_*)(table, key, reference)(this.columnPrefix + columnPrefix + _)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], K, E, X, R]
 	                (property :S => R, columnPrefix :String, buffs :Buff[R]*)
 	                (table :RelVar[M], reference :RelatedEntityFactory[K, E, X, R])
 	                (implicit key :PrimaryKeyOf[M] { type Key = K }) :ForeignKeyMapping[M, key.PKMapping, K, R, O] =
-		fkimpl[M, key.PKMapping, K, E, X, R](property, buffs :_*)(table, key(_), reference)(columnPrefix + _)
+		fkimpl[M, key.PKMapping, K, E, X, R](property, buffs :_*)(
+			table, key(_), reference)(this.columnPrefix + columnPrefix + _)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], K, E, X, R]
 	                (property :S => R, columnPrefix :String, buffs :Buff[R]*)
 	                (reference :RelatedEntityFactory[K, E, X, R])
 	                (implicit table :RelVar[M], key :PrimaryKeyOf[M] { type Key = K }) :ForeignKeyMapping[M, key.PKMapping, K, R, O] =
-		fkimpl[M, key.PKMapping, K, E, X, R](property, buffs :_*)(table, key(_), reference)(columnPrefix + _)
+		fkimpl[M, key.PKMapping, K, E, X, R](property, buffs :_*)(
+			table, key(_), reference)(this.columnPrefix + columnPrefix + _)
 
 	/*  Not null multi column foreign key, as Kin[E]            */
 
@@ -388,14 +396,14 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                (implicit referencedType :TypeTag[E]) :ForeignKeyMapping[M, C, K, Kin[E], O] =
 		fkimpl[M, C, K, E, E, Kin[E]](property, buffs :_*)(
 			table, key, kinFactory[M, K, E, E](table, key).required
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
 	                (property :S => Kin[E], columnPrefix :String, buffs :Buff[Kin[E]]*)(key :M[_] => C[_])
 	                (implicit referenceType :TypeTag[E], table :RelVar[M]) :ForeignKeyMapping[M, C, K, Kin[E], O] =
 		fkimpl[M, C, K, E, E, Kin[E]](property, buffs :_*)(
 			table, key, kinFactory[M, K, E, E](table, key).required
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], E]
 	                (property :S => Kin[E], columnPrefix :String, buffs :Buff[Kin[E]]*)(table :RelVar[M])
@@ -403,7 +411,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			:ForeignKeyMapping[M, key.PKMapping, key.Key, Kin[E], O] =
 		fkimpl[M, key.PKMapping, key.Key, E, E, Kin[E]](property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_)).required
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], E]
 	                (property :S => Kin[E], columnPrefix :String, buffs :Buff[Kin[E]]*)
@@ -411,7 +419,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			:ForeignKeyMapping[M, key.PKMapping, key.Key, Kin[E], O] =
 		fkimpl[M, key.PKMapping, key.Key, E, E, Kin[E]](property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_)).required
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 
 
@@ -589,26 +597,28 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                   (property :S => R, columnPrefix :String, buffs :Buff[R]*)
 	                   (table :RelVar[M], key :M[_] => C[_], reference :RelatedEntityFactory[K, E, T, R])
 			:ForeignKeyMapping[M, C, K, R, O] =
-		optfkimpl[M, C, K, E, T, R](property, buffs :_*)(table, key, reference)(columnPrefix + _)
+		optfkimpl[M, C, K, E, T, R](property, buffs :_*)(table, key, reference)(this.columnPrefix + columnPrefix + _)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
 	                   (property :S => R, columnPrefix :String, buffs :Buff[R]*)
 	                   (key :M[_] => C[_], reference :RelatedEntityFactory[K, E, T, R])
 	                   (implicit table :RelVar[M]) :ForeignKeyMapping[M, C, K, R, O] =
-		optfkimpl[M, C, K, E, T, R](property, buffs :_*)(table, key, reference)(columnPrefix + _)
+		optfkimpl[M, C, K, E, T, R](property, buffs :_*)(table, key, reference)(this.columnPrefix + columnPrefix + _)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], K, E, T, R]
 	                   (property :S => R, columnPrefix :String, buffs :Buff[R]*)
 	                   (table :RelVar[M], reference :RelatedEntityFactory[K, E, T, R])
 	                   (implicit key :PrimaryKeyOf[M] { type Key = K }) :ForeignKeyMapping[M, key.PKMapping, K, R, O] =
-		optfkimpl[M, key.PKMapping, K, E, T, R](property, buffs :_*)(table, key(_), reference)(columnPrefix + _)
+		optfkimpl[M, key.PKMapping, K, E, T, R](property, buffs :_*)(
+			table, key(_), reference)(this.columnPrefix + columnPrefix + _)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], K, E, T, R]
 	                   (property :S => R, columnPrefix :String, buffs :Buff[R]*)
 	                   (reference :RelatedEntityFactory[K, E, T, R])
 	                   (implicit table :RelVar[M], key :PrimaryKeyOf[M] { type Key = K })
 			:ForeignKeyMapping[M, key.PKMapping, K, R, O] =
-		optfkimpl[M, key.PKMapping, K, E, T, R](property, buffs :_*)(table, key(_), reference)(columnPrefix + _)
+		optfkimpl[M, key.PKMapping, K, E, T, R](property, buffs :_*)(
+			table, key(_), reference)(this.columnPrefix + columnPrefix + _)
 
 	/*  Nullable multi column foreign key, as Kin[E]            */
 
@@ -651,14 +661,14 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                   (implicit referencedType :TypeTag[E]) :ForeignKeyMapping[M, C, K, Kin[E], O] =
 		optfkimpl[M, C, K, E, E, Kin[E]](property, buffs :_*)(
 			table, key, kinFactory[M, K, E, E](table, key).required
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
 	                   (property :S => Kin[E], columnPrefix :String, buffs :Buff[Kin[E]]*)(key :M[_] => C[_])
 	                   (implicit referenceType :TypeTag[E], table :RelVar[M]) :ForeignKeyMapping[M, C, K, Kin[E], O] =
 		optfkimpl[M, C, K, E, E, Kin[E]](property, buffs :_*)(
 			table, key, kinFactory[M, K, E, E](table, key).required
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], E]
 	                   (property :S => Kin[E], columnPrefix :String, buffs :Buff[Kin[E]]*)(table :RelVar[M])
@@ -666,7 +676,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			:ForeignKeyMapping[M, key.PKMapping, key.Key, Kin[E], O] =
 		optfkimpl[M, key.PKMapping, key.Key, E, E, Kin[E]](property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_)).required
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], E]
 	                   (property :S => Kin[E], columnPrefix :String, buffs :Buff[Kin[E]]*)
@@ -674,7 +684,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			:ForeignKeyMapping[M, key.PKMapping, key.Key, Kin[E], O] =
 		optfkimpl[M, key.PKMapping, key.Key, E, E, Kin[E]](property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_)).required
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 
 
@@ -787,14 +797,14 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                 (implicit referencedType :TypeTag[E]) :ForeignKeyMapping[M, C, K, One[E], O] =
 		fkimpl[M, C, K, E, E, One[E]](property, buffs :_*)(
 			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def one[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
 	                 (property :S => One[E], columnPrefix :String, buffs :Buff[One[E]]*)(key :M[_] => C[_])
 	                 (implicit referenceType :TypeTag[E], table :RelVar[M]) :ForeignKeyMapping[M, C, K, One[E], O] =
 		fkimpl[M, C, K, E, E, One[E]](property, buffs :_*)(
 			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def one[M[A] <: RefinedMapping[E, A], E]
 	                 (property :S => One[E], columnPrefix :String, buffs :Buff[One[E]]*)(table :RelVar[M])
@@ -802,7 +812,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			:ForeignKeyMapping[M, key.PKMapping, key.Key, One[E], O] =
 		fkimpl[M, key.PKMapping, key.Key, E, E, One[E]](property, buffs :_*)(
 			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 	protected def one[M[A] <: RefinedMapping[E, A], E]
 	                 (property :S => One[E], columnPrefix :String, buffs :Buff[One[E]]*)
@@ -810,7 +820,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			:ForeignKeyMapping[M, key.PKMapping, key.Key, One[E], O] =
 		fkimpl[M, key.PKMapping, key.Key, E, E, One[E]](property, buffs :_*)(
 			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
-		)(columnPrefix + _)
+		)(this.columnPrefix + columnPrefix + _)
 
 
 
@@ -922,14 +932,14 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 //	                     (implicit referencedType :TypeTag[E]) :ForeignKeyMapping[M, C, K, Supposed[E], O] =
 //		fkimpl[M, C, K, E, E, Supposed[E]](property, buffs :_*)(
 //			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
-//		)(columnPrefix + _)
+//		)(this.columnPrefix + columnPrefix + _)
 //
 //	protected def supposed[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
 //	                      (property :S => Supposed[E], columnPrefix :String, buffs :Buff[Supposed[E]]*)(key :M[_] => C[_])
 //	                      (implicit referenceType :TypeTag[E], table :RelVar[M]) :ForeignKeyMapping[M, C, K, Supposed[E], O] =
 //		fkimpl[M, C, K, E, E, Supposed[E]](property, buffs :_*)(
 //			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
-//		)(columnPrefix + _)
+//		)(this.columnPrefix + columnPrefix + _)
 //
 //	protected def supposed[M[A] <: RefinedMapping[E, A], E]
 //	                      (property :S => Supposed[E], columnPrefix :String, buffs :Buff[Supposed[E]]*)(table :RelVar[M])
@@ -937,7 +947,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 //			:ForeignKeyMapping[M, key.PKMapping, key.Key, Supposed[E], O] =
 //		fkimpl[M, key.PKMapping, key.Key, E, E, Supposed[E]](property, buffs :_*)(
 //			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
-//		)(columnPrefix + _)
+//		)(this.columnPrefix + columnPrefix + _)
 //
 //	protected def supposed[M[A] <: RefinedMapping[E, A], E]
 //	                      (property :S => Supposed[E], columnPrefix :String, buffs :Buff[Supposed[E]]*)
@@ -945,7 +955,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 //			:ForeignKeyMapping[M, key.PKMapping, key.Key, Supposed[E], O] =
 //		fkimpl[M, key.PKMapping, key.Key, E, E, Supposed[E]](property, buffs :_*)(
 //			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
-//		)(columnPrefix + _)
+//		)(this.columnPrefix + columnPrefix + _)
 
 
 

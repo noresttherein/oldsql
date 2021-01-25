@@ -73,7 +73,7 @@ object JoinTableCollectionMapping {
 	          C[A] <: RefinedMapping[K, A], TC[A] <: RefinedMapping[TK, A], K, TK, E, S, JR, TR, R, TO, O]
 	         (key :C[O], inbound :ForeignKeyMapping[J, C, K, JR, O])
 	         (out :J[inbound.TargetOrigin] => ForeignKeyMapping[T, TC, TK, TR, inbound.TargetOrigin] { type TargetOrigin = TO })
-	         (tk :T[TO] => TC[TO], factory :RelatedEntityFactory[JR, E, S, R], buffs :Seq[Buff[R]])
+	         (tk :T[TO] => TC[TO], factory :RelatedEntityFactory[JR, E, S, R], buffs :Buffs[R])
 			:JoinTableCollectionMapping[J, T, C, TC, K, TK, R, O] =
 		new JoinTableEntityMapping[J, T, C, TC, K, TK, E, S, JR, TR, R, inbound.TargetOrigin, TO, O](
 			key, inbound)(out, tk, factory, buffs
@@ -102,7 +102,7 @@ object JoinTableCollectionMapping {
 	                             override val inbound :ForeignKeyMapping[J, C, K, JR, O] { type TargetOrigin = JO })
 	                            (out :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO] { type TargetOrigin = TO },
 	                             tk :T[TO] => TC[TO], factory :RelatedEntityFactory[JR, E, S, R],
-	                             override val buffs :Seq[Buff[R]])
+	                             override val buffs :Buffs[R])
 		extends JoinTableCollectionMapping[J, T, C, TC, K, TK, R, O] with LazyMapping[R, O]
 	{
 		override type FirstRef = JR

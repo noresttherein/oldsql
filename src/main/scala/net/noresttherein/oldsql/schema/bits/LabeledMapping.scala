@@ -7,10 +7,11 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
-import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.ColumnFormAdapter
+import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.{SimpleColumnAdapter, ExportColumnAdapter}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter
+import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
 
 
 
@@ -51,7 +52,10 @@ object LabeledMapping {
 	type Of[S] = { type As[N <: Label] = { type P[O] = LabeledMapping[N, S, O] } }
 
 	def LabeledColumn[N <: Label, S, O](label :N, column :ColumnMapping[S, O]) :N @: ColumnMapping[S, O] =
-		new ColumnLabel[N, S, O](column)(new ValueOf[N](label))
+		column match {
+			case simple :SimpleColumn[S, O] => new SimpleColumnLabel[N, S, O](simple)(new ValueOf[N](label))
+			case _ => new ColumnLabel[N, S, O](column)(new ValueOf[N](label))
+		}
 
 
 
@@ -115,17 +119,32 @@ object LabeledMapping {
 
 
 
-	class ColumnLabel[N <: Label, S, O](column :ColumnMapping[S, O], columnName :String, columnBuffs :Seq[Buff[S]] = Nil)
-	                                   (implicit form :ColumnForm[S], labelValue :ValueOf[N])
-		extends ColumnFormAdapter[ColumnMapping[S, O], S, O](column, columnName, columnBuffs)
+	class ColumnLabel[N <: Label, S, O](column :ColumnMapping[S, O], name :String, buffs :Buffs[S] = Buffs.empty[S])
+	                                   (implicit labelValue :ValueOf[N])
+		extends ExportColumnAdapter[ColumnMapping[S, O], S, O](column, name, buffs)(column.form)
 		   with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
 	{
 		def this(column :ColumnMapping[S, O])(implicit label :ValueOf[N]) =
-			this(column, column.name, column.buffs)(column.form, label)
+			this(column, column.name, column.buffs)(label)
 
 		override val label :N = labelValue.value
+		//use body properties so that constructor params do not become fields
+		override def toString :String = "'" + label + "@:" + body.name + "[" + body.form + "]"
+	}
 
-		override def toString :String = "'" + label + "@:" + name + "[" + form + "]"
+
+
+	class SimpleColumnLabel[N <: Label, S, O](column :SimpleColumn[S, O], name :String, buffs :Buffs[S] = Buffs.empty[S])
+	                                         (implicit labelValue :ValueOf[N])
+		extends SimpleColumnAdapter[SimpleColumn[S, O], S, O](column, name, buffs)
+		   with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
+	{
+		def this(column :SimpleColumn[S, O])(implicit label :ValueOf[N]) =
+			this(column, column.name, column.buffs)(label)
+
+		override val label :N = labelValue.value
+		//use body properties so that constructor params do not become fields
+		override def toString :String = "'" + label + "@:" + body.name + "[" + body.form + "]"
 	}
 
 

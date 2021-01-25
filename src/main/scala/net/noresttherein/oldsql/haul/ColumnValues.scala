@@ -208,7 +208,7 @@ object ColumnValues {
 
 	/** Create `ColumnValues` with a value preset for a single column. This is different to the disassembling
 	  * values `ColumnValues(component, value)` in that it can be created for an arbitrary root subject type `R`,
-	  * and the presets for any mappings other than this column are always immediately stated as `None`. This makes
+	  * and the presets for any mappings other than this column are always immediately stated as `Lack`. This makes
 	  * it particularly suited for an override such as `ColumnValues(column, value) orElse defaults`,
 	  * or joining with other values with `++`. Note that no component aliasing takes place; the column provided
 	  * here must be the column which is going to be used as the argument, unless this instance is treated only
@@ -221,7 +221,7 @@ object ColumnValues {
 
 	/** Create `ColumnValues` with a value preset for a single column. This is different to the disassembling
 	  * values `ColumnValues(component, value)` in that it can be created for an arbitrary root subject type `R`,
-	  * and the presets for any mappings other than this column are always immediately stated as `None`. This makes
+	  * and the presets for any mappings other than this column are always immediately stated as `Lack`. This makes
 	  * it particularly suited for an override such as `ColumnValues(column, value) orElse defaults`,
 	  * or joining with other values with `++`. Note that no component aliasing takes place; the column provided
 	  * here must be the column which is going to be used as the argument, unless this instance is treated only
@@ -231,7 +231,7 @@ object ColumnValues {
 	  * @return `ColumnValues.empty` or `ColumnValues.preset(column, value.get)`, depending on whether the value
 	  *        is empty.
 	  */
-	def preset[S, O](column :ColumnMapping[S, O], value :Option[S]) :ColumnValues[S, O] =
+	def presetOpt[S, O](column :ColumnMapping[S, O], value :Opt[S]) :ColumnValues[S, O] =
 		if (value.isEmpty) empty
 		else new PresetColumnValue(column, value)
 
@@ -338,7 +338,7 @@ object ColumnValues {
 		/** Returns `ColumnValues` based on a predefined mapping result. The columns listed in the second
 		  * argument will be have their values disassembled (extracted from the preset value) using
 		  * a `MappingExtract` supplied by the mapping provided earlier, while `preset()` calls for all other
-		  * columns and components will always return `None`, so that their value is assembled from lower level
+		  * columns and components will always return `Lack`, so that their value is assembled from lower level
 		  * components. All components used for assembly are aliased with the mapping's
 		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before invoking their `optionally`
 		  * (or `apply`) method.
@@ -516,7 +516,7 @@ object ColumnValues {
 	trait SimpleColumnValues[S, O] extends SimpleComponentValues[S, O] {
 		override def preset(root :RefinedMapping[S, O]) :Opt[S] = root match {
 			case column :SimpleColumn[S @unchecked, O @unchecked] => defined(column)
-			case _ => None
+			case _ => Lack
 		}
 	}
 
@@ -562,7 +562,7 @@ object ColumnValues {
 
 
 
-	/** A `ColumnValues` instance with a preset result (possibly `None`) for a single column. It is recognized
+	/** A `ColumnValues` instance with a preset result (possibly `Lack`) for a single column. It is recognized
 	  * by some of the other mapping's `++` methods.
 	  */
 	trait ColumnValue[S, X, O] extends GlobalColumnValues[S, O] {
@@ -571,11 +571,6 @@ object ColumnValues {
 
 		override def preset(root :RefinedMapping[S, O]) :Opt[S] =
 			if (root eq column) value.asInstanceOf[Opt[S]] else Lack
-
-		override def /[T](component :Component[T]) :ColumnValues[T, O] =
-			if (component eq column) this.asColumnsOf[T]
-			else throw new IllegalArgumentException(s"Mapping $component is not a component of column $column.")
-
 
 		override def orElse(values :ComponentValues[S, O]) :ComponentValues[S, O] =
 			if (value.isEmpty)
@@ -799,10 +794,11 @@ object ColumnValues {
 			override def /[T](component :Component[T]) :ColumnValues[T, O] = outer / component
 		}
 
-		override def /[T](component :Component[T]) :ColumnValues[T, O] = {
-			val export = aliases(component)
-			val next = values / export
-			if (next eq values) noAliasing.asColumnsOf[T]
+		override def /[T](component :Component[T]) :ColumnValues[T, O] = aliases(component) match {
+			case null => empty("No export version of component " + component + " in " + this)
+			case export =>
+				val next = values / export
+				if (next eq values) noAliasing.asColumnsOf[T]
 			else next.aliased(aliases)
 		}
 

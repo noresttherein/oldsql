@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
-import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit, SelectDefault}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.OptionMapping
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
-import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, MappedMapping, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, BuffedMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 
 
 
@@ -51,13 +51,13 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 
 	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
-		if (op.prohibited.disabled(this)) {
+		if (op.prohibited.inactive(this)) {
 			val audited = op.audit.fold(this)(subject)
 			def componentValues[X](comp :Component[X]) :Unit = {
-				apply(comp).get(audited) match {
+				apply(comp).opt(audited) match {
 					case Got(value) => comp.writtenValues(op, value, collector)
 					case _ => op.default.Value(comp) match {
-						case Some(value) => comp.writtenValues(op, value, collector)
+						case Got(value) => comp.writtenValues(op, value, collector)
 						case _ =>
 					}
 				}
@@ -87,6 +87,13 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	  */
 	override def nullValue :NullValue[S] = NullValue.NotNull
 
+	/** @inheritdoc
+	  * @return an empty collection, unless overriden. */
+	override def buffs :Buffs[S] = Buffs.empty
+
+	override def withBuffs(buffs :Buffs[S]) :Component[S] =
+		BuffedMapping[BaseMapping[S, O], S, O](this, buffs)
+
 
 
 	def apply[M >: this.type <: RefinedMapping[S, O], X <: Mapping, C <: RefinedMapping[T, O], T]
@@ -105,14 +112,14 @@ trait BaseMapping[S, O] extends Mapping { self =>
 		writeForm(FILTER, components)
 
 	/** @inheritdoc
-	  * @return `writeForm(UPDATE, components)` unless overriden. */
-	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		writeForm(UPDATE, components)
-
-	/** @inheritdoc
 	  * @return `writeForm(INSERT, components)` unless overriden. */
 	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
 		writeForm(INSERT, components)
+
+	/** @inheritdoc
+	  * @return `writeForm(UPDATE, components)` unless overriden. */
+	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		writeForm(UPDATE, components)
 
 	/** @inheritdoc
 	  * @return `MappingWriteForm(op, this, components)` by default. */
@@ -125,22 +132,17 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	  * @return `writeForm(FILTER)` (or a functionally equivalent instance) unless overriden. */
 	override def filterForm :SQLWriteForm[S] = writeForm(FILTER)
 
-	/** Default write form (included columns) of update statements for this mapping.
-	  * @return `writeForm(UPDATE)` (or a functionally equivalent instance) unless overriden. */
-	override def updateForm :SQLWriteForm[S] = writeForm(UPDATE)
-
 	/** Default write form (included columns) of insert statements for this mapping.
 	  * @return `writeForm(INSERT)` (or a functionally equivalent instance) unless overriden. */
 	override def insertForm :SQLWriteForm[S] = writeForm(INSERT)
 
+	/** Default write form (included columns) of update statements for this mapping.
+	  * @return `writeForm(UPDATE)` (or a functionally equivalent instance) unless overriden. */
+	override def updateForm :SQLWriteForm[S] = writeForm(UPDATE)
+
 	/** The delegate target of all properties with write forms of various statement types.
 	  * @return `MappingWriteForm(op, this)` unless overriden. */
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = MappingWriteForm(op, this)
-
-
-	/** @inheritdoc
-	  * @return an empty sequence, unless overriden. */
-	override def buffs :Seq[Buff[S]] = Nil
 
 
 	override def apply(adjustments :ComponentSelection[_, O]*) :Component[S] =
@@ -159,11 +161,11 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		AlteredMapping.filter[BaseMapping[S, O], S, O](this, include, exclude)
 
-	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		AlteredMapping.update[BaseMapping[S, O], S, O](this, include, exclude)
-
 	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
 		AlteredMapping.insert[BaseMapping[S, O], S, O](this, include, exclude)
+
+	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
+		AlteredMapping.update[BaseMapping[S, O], S, O](this, include, exclude)
 
 
 
@@ -176,7 +178,6 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 	override def renamed(naming :String => String) :Component[S] =
 		RenamedMapping[this.type, S, O](this :this.type, naming)
-
 
 
 	override def inOption :Optional[this.type] = OptionMapping.singleton(this)

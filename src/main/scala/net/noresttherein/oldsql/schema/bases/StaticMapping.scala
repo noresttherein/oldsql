@@ -39,7 +39,7 @@ trait StaticMapping[S, O] extends BaseMapping[S, O]
 
 	protected override def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:Adapted[this.type] =
-		AlteredMapping[this.type, S, O](this, op, include, exclude)
+		AlteredMapping[this.type, S, O](op, this, include, exclude)
 
 
 	override def prefixed(prefix :String) :Adapted[this.type] =
@@ -184,11 +184,12 @@ object StaticMapping {
 		override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
 			alter(FILTER, include, exclude)
 
+		override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
+			alter(INSERT, include, exclude)
+
 		override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
 			alter(UPDATE, include, exclude)
 
-		override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[this.type, S] =
-			alter(INSERT, include, exclude)
 
 		protected def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:A[this.type, S]
@@ -216,7 +217,7 @@ object StaticMapping {
 
 
 	/** Extends any `Component[T]` of some `RefinedMapping[S, O]` with an `apply()` method returning the value
-	  * of the component from implicit [[ComponentValues ComponentValues]].
+	  * of the component from implicit [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]].
 	  */
 	class GetComponentValue[S, T, O](private val extract :MappingExtract[S, T, O]) extends AnyVal {
 

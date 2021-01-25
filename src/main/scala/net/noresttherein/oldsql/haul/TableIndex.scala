@@ -65,7 +65,7 @@ object TableIndex {
 
 		override def +=(value :E) :Unit =
 			if (value != null)
-				extract.get(value) match {
+				extract.opt(value) match {
 					case Got(key) if key != null => idx.update(key, value)
 					case _ =>
 				}
@@ -95,7 +95,7 @@ object TableIndex {
 
 		override def +=(value :E) :Unit =
 			if (value != null)
-				extract.get(value) match {
+				extract.opt(value) match {
 					case Got(key) if key != null && !(key eq None) => index.update(key, value)
 					case _ =>
 				}
@@ -145,7 +145,7 @@ object TableIndex {
 
 		override def +=(value :E) :Unit =
 			if (value != null)
-				extract.get(value) match {
+				extract.opt(value) match {
 					case Got(key) if key != null =>
 						var res = idx.getOrElse(key, null)
 						if (res == null) {
@@ -188,7 +188,7 @@ object TableIndex {
 
 		override def +=(value :E) :Unit =
 			if (value != null)
-				extract.get(value) match {
+				extract.opt(value) match {
 					case Got(key) if key != null && !(key eq None) =>
 						var res = cache.getOrElse(key, null)
 						if (res == null) {
@@ -254,8 +254,8 @@ object TableIndex {
 
 		override def +=(value :E) :Unit =
 			if (value != null)
-				indexProperty.get(value) match {
-					case Got(i) if i != null => extract.get(value) match {
+				indexProperty.opt(value) match {
+					case Got(i) if i != null => extract.opt(value) match {
 						case Got(key) if key != null =>
 							var res = idx.getOrElse(key, null)
 							if (res == null) {
@@ -272,7 +272,7 @@ object TableIndex {
 			if (key != null) {
 				if (value == null)
 					throw new NullPointerException(s"Attempted to add a null value with key $key to index $this.")
-				indexProperty.get(value) match {
+				indexProperty.opt(value) match {
 					case Got(i) if i != null =>
 						var res = idx.getOrElse(key, null)
 						if (res == null) {

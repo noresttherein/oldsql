@@ -9,6 +9,8 @@ import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, MappingAt, R
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.support.AdjustedMapping.SpecificAdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.{ExportColumnAdapter, ExportComposedColumnAdapter}
 import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ExportColumnProxy, ShallowProxy}
@@ -74,6 +76,8 @@ trait MappingAdapter[+M <: Mapping, S, O]
 	/** The adapted mapping. It is considered a valid component of this mapping. */
 	val body :M { type Origin = O }
 
+	override def withBuffs(buffs :Buffs[S]) :MappingAdapter[M, S, O] = fail
+
 	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :MappingAdapter[M, S, O] = fail
 
 	override def renamed(naming :String => String) :MappingAdapter[M, S, O] = fail
@@ -122,6 +126,8 @@ object MappingAdapter {
 
 		private[this] type Adapter[X] = MappingAdapter[M, X, O]
 
+		override def withBuffs(buffs :Buffs[S]) :MappingAdapter[M, S, O] = BuffedMapping(this, buffs)
+
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :MappingAdapter[M, S, O] =
 			new AdjustedMapping[this.type, S, O](this, include, exclude)
 				with ComposedAdapter[M ,S, S, O] with SpecificAdjustedMapping[Adapter, this.type, S, O]
@@ -158,7 +164,7 @@ object MappingAdapter {
 	trait DelegateAdapter[+M <: MappingAt[O], S, O] extends DelegateMapping[M, S, O] with BaseAdapter[M, S, O] {
 		if (backer == null)
 			throw new NullPointerException(
-				getClass.toString + ".backer: DelegateAdapter trait was likely mixed in before the backer field initialization."
+				getClass.toString + ".backer: DelegateAdapter trait was likely mixed in before backer field initialization."
 			)
 
 		override val body :M = backer
@@ -198,11 +204,11 @@ object MappingAdapter {
 	  * is included only for show - the primary reason for this class is multiple inheritance scenario enforcing a type
 	  * to be both a column and an adapter.
 	  */
-	trait ColumnAdapter[M <: ColumnMapping[T, O], T, S, O]
+	trait ColumnAdapter[+M <: ColumnMapping[T, O], T, S, O]
 		extends BaseAdapter[M, S, O] with ColumnMapping[S, O]
 		   with ColumnMappingFactoryMethods[({ type C[X] = ColumnAdapter[M, T, X, O] })#C, S, O]
 	{
-		override protected def thisColumn :ColumnAdapter[M, T, S, O] = this
+		override def withBuffs(buffs :Buffs[S]) :ColumnAdapter[M, T, S, O] = copy(name, buffs)
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :ColumnAdapter[M, T, S, O] =
 			super[ColumnMappingFactoryMethods].apply(include, exclude)
@@ -212,15 +218,16 @@ object MappingAdapter {
 			super[ColumnMappingFactoryMethods].alter(op, include, exclude)
 
 
+		override protected def thisColumn :ColumnAdapter[M, T, S, O] = this
+
+		protected override def copy(name :String, buffs :Buffs[S]) :ColumnAdapter[M, T, S, O] =
+			new ExportComposedColumnAdapter[M, T, S, O](this, name, buffs)
+
 		override def prefixed(prefix :String) :ColumnAdapter[M, T, S, O] =
 			super[ColumnMappingFactoryMethods].prefixed(prefix)
 
 		override def renamed(naming :String => String) :ColumnAdapter[M, T, S, O] =
 			super[ColumnMappingFactoryMethods].renamed(naming)
-
-
-		protected override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[M, T, S, O] =
-			new ExportComposedColumnAdapter[M, T, S, O](this, name, buffs)
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :ColumnAdapter[M, T, X, O] =
 			MappedMapping.columnAdapter[M, T, S, X, O](this, there, back)
@@ -243,8 +250,8 @@ object MappingAdapter {
 		  * is likely to result in a `NoSuchElementException`. For this reason, this is mainly a base class from
 		  * which more specialized adapter implementations are derived.
 		  */
-		class BaseColumnAdapter[M <: ColumnMapping[T, O], T, S, O]
-		                       (override val body :M, override val name :String, override val buffs :Seq[Buff[S]])
+		class BaseColumnAdapter[+M <: ColumnMapping[T, O], T, S, O]
+		                       (override val body :M, override val name :String, override val buffs :Buffs[S])
 		                       (implicit override val form :ColumnForm[S])
 			extends ColumnAdapter[M, T, S, O] with StableColumn[S, O]
 
@@ -258,14 +265,14 @@ object MappingAdapter {
 		  * of the adapted column for the assembly.
 		  * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.ExportComposedColumnAdapter]]
 		  */
-		class ExportColumnAdapter[M <: ColumnMapping[S, O], S, O]
+		class ExportColumnAdapter[+M <: ColumnMapping[S, O], S, O]
 		                         (protected override val backer :M, override val name :String,
-		                          override val buffs :Seq[Buff[S]])
-		                         (implicit override val form :ColumnForm[S])
+		                          override val buffs :Buffs[S])
+		                         (implicit override val form :ColumnForm[S] = backer.form)
 			extends ExportColumnProxy[S, O](backer, name, buffs)
 			   with DelegateAdapter[M, S, O] with ColumnAdapter[M, S, S, O]
 		{
-			override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[M, S, S, O] =
+			override def copy(name :String, buffs :Buffs[S]) :ColumnAdapter[M, S, S, O] =
 				new ExportColumnAdapter[M, S, O](backer, name, buffs)
 		}
 
@@ -275,13 +282,13 @@ object MappingAdapter {
 		  * methods to the adapter class. It considers itself the ''export'' version of the adapted adapter,
 		  * as well as any other subcolumn that it might define and report itself as the export version of.
 		  */
-		class ExportComposedColumnAdapter[M <: ColumnMapping[T, O], T, S, O]
+		class ExportComposedColumnAdapter[+M <: ColumnMapping[T, O], T, S, O]
 		                                 (protected override val backer :ColumnAdapter[M, T, S, O],
-		                                  override val name :String, override val buffs :Seq[Buff[S]])
+		                                  override val name :String, override val buffs :Buffs[S])
 			extends ExportColumnProxy[S, O](backer, name, buffs)
 			   with ComposedAdapter[M, S, S, O] with ColumnAdapter[M, T, S, O]
 		{
-			override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[M, T, S, O] =
+			override def copy(name :String, buffs :Buffs[S]) :ColumnAdapter[M, T, S, O] =
 				new ExportComposedColumnAdapter(backer, name, buffs)
 		}
 
@@ -289,27 +296,29 @@ object MappingAdapter {
 
 		/** A strange beast, being both a `ColumnMapping` (normally a value-oriented class with little polymorphism) and
 		  * a `MappingAdapter`, containing some other column as a component (which columns normally don't).
-		  * While this breaks the column contract as documented (a column is its only component,
-		  * present on the columns lists, but not `components`/`subcomponents`), with careful hiding of this fact
-		  * it can remain compatible. This is done by including the adapted column `body` only in the `extracts`
-		  * (and `columnExtracts`) maps, which are used only for aliasing to the ''export'' versions of the components.
+		  * While nominally it is an adapter of the wrapped column, in reality all methods use the
+		  * [[net.noresttherein.oldsql.schema.ColumnMapping.form form]] of that column, which remains unused.
+		  * The adapted column `body` is included only in the `extracts` (and `columnExtracts`) maps,
+		  * which are used only for aliasing to the ''export'' versions of the components,
+		  * but not in  `components`/`subcomponents`.
 		  * As the result, the adapted column is not technically a subcomponent, with only this instance being visible
 		  * to containing mappings, and all operations modifying a component (such as prefixing the column names) apply
-		  * only to this instance and return a new `ColumnFormAdapter`, without modifying the `body`.
+		  * only to this instance and return a new `SimpleColumnAdapter`, without modifying the `body`.
 		  */
-		class ColumnFormAdapter[M <: ColumnMapping[S, O], S, O](column :M, name :String, buffs :Seq[Buff[S]])
-		                                                       (implicit override val form :ColumnForm[S] = column.form)
-			extends BaseColumnAdapter[M, S, S, O](column, name, buffs) //with SimpleColumn
+		class SimpleColumnAdapter[+M <: SimpleColumn[S, O], S, O](column :M, name :String, buffs :Buffs[S])
+			extends BaseColumnAdapter[M, S, S, O](column, name, buffs)(column.form) with SimpleColumn[S, O]
 		{
-			def this(column :M) = this(column, column.name, column.buffs)(column.form)
+			def this(column :M) = this(column, column.name, column.buffs)
 
 			private[this] val originalExtract = ColumnExtract.ident(body)
 
-			override val extracts = { //get the self extractor for ourselves and add one for the body column.
+			override val extracts :NaturalMap[Component, ColumnExtract] = {
+				//get the self extractor for ourselves and add one for the body column.
 				val superExtracts = NaturalMap.single[Component, ColumnExtract, S](this, apply(this))
 				superExtracts.updated[ColumnExtract, S](body :Component[S], originalExtract)
 			}
-			override val columnExtracts = extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
+			override val columnExtracts :NaturalMap[Column, ColumnExtract] =
+				extracts.asInstanceOf[NaturalMap[Column, ColumnExtract]]
 
 			override def apply[T](component :Component[T]) :Extract[T] =
 				if (component eq body) originalExtract.asInstanceOf[ColumnExtract[T]]
@@ -319,23 +328,26 @@ object MappingAdapter {
 				if (column eq body) originalExtract.asInstanceOf[ColumnExtract[T]]
 				else super.apply(column)
 
-			override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[M, S, S, O] =
-				new ColumnFormAdapter(body, name, buffs)
+			override def copy(name :String, buffs :Buffs[S]) :ColumnAdapter[M, S, S, O] =
+				new SimpleColumnAdapter(body, name, buffs)
+
+			override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :ColumnAdapter[M, S, X, O] =
+				super[BaseColumnAdapter].as(there, back)
 		}
 
 
 
-		/** This class takes the degeneration of the `ColumnFormAdapter` adapter one step further and only pretends
+		/** This class takes the degeneration of the `SimpleColumnAdapter` adapter one step further and only pretends
 		  * to be an adapter - the `body` property points to this very instance. In all functionality this class
 		  * behaves the same as a `StandardColumn`.
 		  */
-		class MockColumnProxy[S, O](override val name :String, override val buffs :Seq[Buff[S]])
+		class MockColumnProxy[S, O](override val name :String, override val buffs :Buffs[S])
 		                           (implicit override val form :ColumnForm[S])
 			extends ColumnAdapter[ColumnMapping[S, O], S, S, O] with StableColumn[S, O]
 		{
 			override val body :ColumnMapping[S, O] = this
 
-			override def copy(name :String, buffs :Seq[Buff[S]]) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =
+			override def copy(name :String, buffs :Buffs[S]) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =
 				new MockColumnProxy[S, O](name, buffs)
 		}
 

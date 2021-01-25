@@ -42,7 +42,7 @@ trait ChainMapping[V <: Chain, C <: Chain, O] extends BaseChainMapping[V, C, O] 
 
 	/** Appends a new column to this schema with the given name. */
 	def col[T :ColumnForm](name :String, buffs :Buff[T]*) :ChainMapping[V ~ T, C ~ ||[T], O] =
-		append[T, ||[T]](SchemaColumn[T, O](name, buffs :_*))
+		append[T, ||[T]](SchemaColumn[T, O](name, buffs))
 
 
 
@@ -53,7 +53,7 @@ trait ChainMapping[V <: Chain, C <: Chain, O] extends BaseChainMapping[V, C, O] 
 	  * @tparam T the mapped column type.
 	  */
 	def lbl[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :ChainMapping[V ~ T, C ~ (N @|| T), O] =
-		append[T, N @|| T](LabeledSchemaColumn[N, T, O](name, buffs:_*))
+		append[T, N @|| T](LabeledSchemaColumn[N, T, O](name, buffs))
 
 	/** Appends to this schema a new column labeled with a string different from its name.
 	  * @param label the label used to access the column in the schema.
@@ -63,7 +63,7 @@ trait ChainMapping[V <: Chain, C <: Chain, O] extends BaseChainMapping[V, C, O] 
 	  * @tparam T the mapped column type.
 	  */
 	def lbl[N <: Label, T :ColumnForm](label :N, name :String, buffs :Buff[T]*) :ChainMapping[V ~ T, C ~ (N @|| T), O] =
-		append[T, N @|| T](LabeledSchemaColumn[N, T, O](label, name, buffs:_*))
+		append[T, N @|| T](LabeledSchemaColumn[N, T, O](label, name, buffs))
 
 
 	private[schema] def asPrefix[T] :MappingSchema[V ~ T, V, C, O] =
@@ -111,10 +111,10 @@ object ChainMapping {
 			new NonEmptyFlatChainMapping(this, component)
 
 		override def col[T :ColumnForm](name :String, buffs :Buff[T]*) :FlatChainMapping[V ~ T, C ~ ||[T], O] =
-			col[T, ||[T]](SchemaColumn(name, buffs:_*))
+			col[T, ||[T]](SchemaColumn(name, buffs))
 
 		override def lbl[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :ChainMapping[V ~ T, C ~ (N @|| T), O] =
-			col[T, N @|| T](LabeledSchemaColumn(name, buffs:_*))
+			col[T, N @|| T](LabeledSchemaColumn(name, buffs))
 
 
 		private[schema] override def asPrefix[T] :FlatMappingSchema[V ~ T, V, C, O] =
@@ -166,6 +166,7 @@ object ChainMapping {
 
 		override def disassemble(subject :S) :V = backer.disassemble(subject.init)
 
+		override val buffs = backer.buffs
 
 		override def members :C = backer.members
 

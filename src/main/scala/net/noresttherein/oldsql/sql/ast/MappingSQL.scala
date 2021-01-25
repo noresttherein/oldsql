@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComp
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, ComponentValue, Expanded, ParamSelect, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, Expanded, ParamSelect, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, PrefixOf, TopFrom}

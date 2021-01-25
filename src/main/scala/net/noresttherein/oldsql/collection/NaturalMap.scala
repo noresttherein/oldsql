@@ -46,6 +46,8 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 			(outer ++ entries).withDefault(whenNoKey)
 
 		override def iterator = outer.iterator
+		override def keySet = outer.keySet
+		override def values = outer.values
 
 		override def withDefault[S[T] >: U[T]](whenNoKey :K =#> S) =
 			outer.withDefault(whenNoKey)
@@ -58,6 +60,10 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 //		throw new NoSuchElementException("No value for key " + key)
 
 	override def iterator :Iterator[NaturalMap.Assoc[K, V, _]]
+
+	def keySet :collection.Set[K[_]]
+
+	def values :Iterable[V[_]]
 
 	def map[A[_], B[_]](f :Assoc[K, V, _] => Assoc[A, B, _]) :NaturalMap[A, B] = {
 		val res = NaturalMap.newBuilder[A, B]
@@ -105,16 +111,13 @@ object NaturalMap {
 		@inline def key :K[X] = _1
 		@inline def value :V[X] = _2
 
-
 		override def toString :String = String.valueOf(_1) + "->" + _2
 	}
-
 
 
 	implicit class -#>[K[_], X](private val key :K[X]) extends AnyVal {
 		@inline def -#>[V[_]](value :V[X]) :Assoc[K, V, X] = new Assoc(key, value)
 	}
-
 
 
 	implicit class NaturalMapMethods[K[_], V[_]](private val self :NaturalMap[K, V]) extends AnyVal {
@@ -126,15 +129,13 @@ object NaturalMap {
 
 
 
-
-
 	def apply[K[_], V[_]](entries :Assoc[K, V, _]*) :NaturalMap[K, V] = (newBuilder[K, V] ++= entries).result()
 
 	def single[K[_], V[_], X](key :K[X], value :V[X]) :NaturalMap[K, V] = new Singleton(key, value)
 
 	def empty[K[_], V[_]] :NaturalMap[K, V] = instance.asInstanceOf[NaturalMap[K, V]]
 
-	private[this] final val instance = new NaturalizedMap[Seq, Seq](Map[Seq[_], Seq[_]]())
+	private[this] final val instance = new NaturalizedMap[Seq, Seq](Map.empty[Seq[_], Seq[_]])
 
 
 	def newBuilder[K[_], V[_]] :Builder[Assoc[K, V, _], NaturalMap[K, V]] =
@@ -305,6 +306,10 @@ object NaturalMap {
 
 
 		override def iterator :Iterator[Assoc[K, V, _]] = target.iterator
+
+		override def keySet :collection.Set[K[_]] = target.keySet
+
+		override def values :Iterable[V[_]] = target.values
 	}
 
 
@@ -336,8 +341,11 @@ object NaturalMap {
 			if (key == _1) new Singleton(key, value)
 			else (NaturalMap.newBuilder[K, U] += this += Assoc(key, value)).result()
 
-
 		override def iterator :Iterator[Assoc[K, V, _]] = Iterator.single(this)
+
+		override def keySet :Set[K[_]] = Set(key)
+
+		override def values :Iterable[V[_]] = Unique.single(value)
 	}
 
 
@@ -392,6 +400,10 @@ object NaturalMap {
 		override def iterator :Iterator[NaturalMap.Assoc[K, V, _]] = entries.iterator.map {
 			case key -> value => new Assoc(key.asInstanceOf[K[Any]], value.asInstanceOf[V[Any]])
 		}
+
+		override def keySet :Set[K[_]] = entries.keySet
+
+		override def values :Iterable[V[_]] = entries.values
 
 
 		override def withDefault[U[T] >: V[T]](default :K =#> U) :NaturalMap[K, U] =

@@ -111,7 +111,8 @@ private[oldsql] object MutableNaturalMap {
 		override def iterator :Iterator[Assoc[K, V, _]] =
 			entries.iterator.map { case (k, v) => Assoc(k.asInstanceOf[K[Any]], v.asInstanceOf[V[Any]]) }
 
-
+		override def keySet = entries.keySet
+		override def values = entries.values
 
 		override def removed(key :K[_]) :NaturalMap[K, V] = {
 			val res = NaturalMap.newBuilder[K, V]

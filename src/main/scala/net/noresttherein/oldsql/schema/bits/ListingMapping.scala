@@ -55,7 +55,7 @@ trait ListingMapping[V <: Listing, C <: Chain, O] extends BaseChainMapping[V, C,
 	  * @tparam T the mapped column type.
 	  */
 	def col[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*) :ListingMapping[V |~ (N :~ T), C ~ (N @|| T), O] =
-		append[N, T, N @|| T](name, LabeledSchemaColumn[N, T, O](name, buffs:_*))
+		append[N, T, N @|| T](name, LabeledSchemaColumn[N, T, O](name, buffs))
 
 	/** Appends to this schema a new column Labeled with a string different from its name.
 	  * @param label the label used to access the column in the schema.
@@ -66,7 +66,7 @@ trait ListingMapping[V <: Listing, C <: Chain, O] extends BaseChainMapping[V, C,
 	  */
 	def col[N <: Label, T :ColumnForm](label :N, name :String, buffs :Buff[T]*)
 			:ListingMapping[V |~ (N :~ T), C ~ (N @|| T), O] =
-		append[N, T, N @|| T](label, LabeledSchemaColumn[N, T, O](label, name, buffs:_*))
+		append[N, T, N @|| T](label, LabeledSchemaColumn[N, T, O](label, name, buffs))
 
 
 
@@ -101,11 +101,11 @@ object ListingMapping {
 
 		override def col[N <: Label, T :ColumnForm](name :N, buffs :Buff[T]*)
 				:FlatListingMapping[V |~ (N :~ T), C ~ (N @|| T), O] =
-			col[N, T, N @|| T](name, LabeledSchemaColumn(name, buffs:_*))
+			col[N, T, N @|| T](name, LabeledSchemaColumn(name, buffs))
 
 		override def col[N <: Label, T :ColumnForm](label :N, name :String, buffs :Buff[T]*)
 				:FlatListingMapping[V |~ (N :~ T), C ~ (N @|| T), O] =
-			col[N, T, N @|| T](label, LabeledSchemaColumn(label, name, buffs:_*))
+			col[N, T, N @|| T](label, LabeledSchemaColumn(label, name, buffs))
 
 
 
@@ -145,8 +145,8 @@ object ListingMapping {
 	{
 		override val selectForm = (init.selectForm |~ key :~ last.selectForm)(new ValueOf(key))
 		override val filterForm = init.filterForm |~  key :~ last.filterForm
-		override val updateForm = init.updateForm |~ key :~ last.updateForm
 		override val insertForm = init.insertForm |~ key :~ last.insertForm
+		override val updateForm = init.updateForm |~ key :~ last.updateForm
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |~ (K :~ T)] = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V |~ (K :~ T), C ~ M, O] =

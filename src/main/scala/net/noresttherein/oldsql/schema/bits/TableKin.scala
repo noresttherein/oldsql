@@ -232,7 +232,7 @@ object TableKin {
 		TableKin.present(target,
 			(NaturalMap.newBuilder ++= component.filteredByDefault.view.map(target.export[O].export(_)).flatMap { c =>
 				def assoc[X](column :ColumnMapping[X, O]) =
-					target.row[O](column).get(value) match {
+					target.row[O](column).opt(value) match {
 						case Got(v) => Some(Assoc[ColumnOf, Self, X](column, v))
 						case _ => None
 					}
@@ -297,7 +297,7 @@ object TableKin {
 	private def columns[O, K, S](mapping :MappingAt[O], component :RefinedMapping[K, O], key :K) = {
 		(NaturalMap.newBuilder ++= component.filteredByDefault.view.map(mapping.export(_)).flatMap { c =>
 			def assoc[X](column :ColumnMapping[X, O]) =
-				component(column).get(key) match {
+				component(column).opt(key) match {
 					case Got(v) => Some(Assoc[ColumnOf, Self, X](column, v))
 					case _ => None
 				}
@@ -371,7 +371,7 @@ object TableKin {
 		override def missing(key :K) :DerivedTableKin[E, T] =
 			new EagerTableKin(table, columns(entity, this.key, key), None)
 
-		override def keyFrom(item :E) :Opt[K] = keyExtract.get(item)
+		override def keyFrom(item :E) :Opt[K] = keyExtract.opt(item)
 
 		override def keyOf(kin :Kin[T]) :Opt[K] = kin match {
 			case TableKin(t, _) && Present(vals) => result.decomposer(vals).flatMap(keyExtract.optional).toList match {

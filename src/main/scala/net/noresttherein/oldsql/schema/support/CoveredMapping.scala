@@ -25,7 +25,7 @@ import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColu
   */
 class CoveredMapping[M <: RefinedMapping[S, X], S, X, O]
                     (protected override val backer :M, rename :String => String = identity[String],
-                     override val buffs :Seq[Buff[S]] = Nil)
+                     override val buffs :Buffs[S] = Buffs.empty[S])
 	extends OpaqueProxy[S, O](backer)
 {
 	//scala can't correctly pick an overload between String and String => String FFS
@@ -35,13 +35,15 @@ class CoveredMapping[M <: RefinedMapping[S, X], S, X, O]
 	val body :M = backer
 
 	protected override def adapt[T](component :backer.Component[T]) :Component[T] =
-		new CoveredMapping[RefinedMapping[T, X], T, X, O](component)
+		new CoveredMapping[RefinedMapping[T, X], T, X, O](
+			component, rename, buffs.unsafeCascade(backer(component))
+		)
 
 	protected override def adapt[T](column :backer.Column[T]) :Column[T] = column match {
 		case simple :SimpleColumn[T @unchecked, X @unchecked] =>
-			ColumnMapping(rename(column.name), cascadeBuffs(this)(backer(simple)):_*)(simple.form)
+			ColumnMapping(rename(column.name), buffs.unsafeCascade(backer(simple)))(simple.form)
 		case _ =>
-			new OpaqueColumnProxy[T, O](column, rename(column.name), cascadeBuffs(this)(backer(column)))
+			new OpaqueColumnProxy[T, O](column, rename(column.name), buffs.unsafeCascade(backer(column)))
 	}
 
 

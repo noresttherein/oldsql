@@ -54,7 +54,6 @@ object playground extends App {
 //		f.apply("A")
 //		refined.withOrigin["X"]
 	).tree)
-
 //	val a = f("A")
 //	a :Nothing
 /*

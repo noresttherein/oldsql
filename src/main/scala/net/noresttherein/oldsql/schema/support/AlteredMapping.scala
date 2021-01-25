@@ -25,7 +25,9 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy
   * or similar copies of columns for the same form. Most notably, it is used to alter the buffs defining
   * which columns should take part in which database operations, creating in the process a mapping which
   * ''by default'' includes/excludes certain columns which were excluded/included in the origin for the purpose
-  * of a single operation type.
+  * of a single operation type. The companion object contains factory methods which manipulate buffs controlling
+  * the effective (default) column sets, the class itself isn't specific to that application and can be used
+  * for other purposes by providing suitable `substitutions`.
   * @see [[net.noresttherein.oldsql.schema.support.AdjustedMapping AdjustedMapping]]
   * @see [[net.noresttherein.oldsql.OperationType]]
   * @author Marcin Mościcki
@@ -39,7 +41,6 @@ class AlteredMapping[+M <: RefinedMapping[S, O], S, O]
 	         includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]]) =
 		this(original, overrides(original, op, includes, excludes))
 
-	
 	protected override def adapt[T](component :backer.Component[T]) :Component[T] =
 		substitutions.getOrElse(component, component)
 
@@ -120,12 +121,28 @@ class AlteredMapping[+M <: RefinedMapping[S, O], S, O]
 object AlteredMapping {
 	type Override[S, O] = Assoc[MappingAt[O]#Component, MappingAt[O]#Component, S]
 	type Overrides[O] = NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component]
-
 	
+	
+	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
+	  * to effective buffs on the chosen components. The goal is for all components on the `include` list to
+	  * be included in operation `op`, while all columns on the `exclude` list to be excluded.
+	  * @param original a mapping (any in theory, but in practice the 'root' mapping for some table).
+	  * @param op       a type of database operation (`SELECT`, `INSERT`, etc).                
+	  * @param include  a collection of components of `original`, which must not have 
+	  *                 the [[net.noresttherein.oldsql.OperationType.prohibited op.prohibited]] buff (in any form).
+	  * @param exclude  a collection of components of `original`, with each item having
+	  *                 the [[net.noresttherein.oldsql.OperationType.optional op.optional]] buff.
+	  * @return a `Mapping` which features new ''export'' versions of the given components (and their subcomponents),
+	  *         which strip the components on the `includes` list and their subcomponents from 
+	  *         the [[net.noresttherein.oldsql.OperationType.nonDefault op.nonDefault]] buffs, and all components on
+	  *         the `excludes` list which didn't have the `nonDefault` buff receive one.
+	  */
+	@throws[IllegalArgumentException]("if a mapping with NoXxx buff is present on the include list, " +
+	                                  "or a mapping without OptionalXxx buff is present on the exclude list.")
 	def apply[M <: RefinedMapping[S, O], S, O]
-	         (original :M, op :OperationType,
-	          includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]] = Nil) :Adapted[M] =
-		new AlteredMapping[M, S, O](original, op, includes, excludes) with DelegateAdapter[M, S, O]
+	         (op :OperationType, original :M,
+	          include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil) :Adapted[M] =
+		new AlteredMapping[M, S, O](original, op, include, exclude) with DelegateAdapter[M, S, O]
 
 	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
@@ -159,7 +176,7 @@ object AlteredMapping {
 	def select[M <: RefinedMapping[S, O], S, O]
 	          (original :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
               (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](original, SELECT, include, exclude)
+		apply[M, S, O](SELECT, original, include, exclude)
 
 	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
@@ -195,7 +212,7 @@ object AlteredMapping {
 	def filter[M <: RefinedMapping[S, O], S, O]
 	          (original :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
 	          (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](original, FILTER, include, exclude)
+		apply[M, S, O](FILTER, original, include, exclude)
 
 	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
@@ -230,7 +247,7 @@ object AlteredMapping {
 	def insert[M <: RefinedMapping[S, O], S, O]
 	          (original :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
               (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](original, UPDATE, include, exclude)
+		apply[M, S, O](INSERT, original, include, exclude)
 
 	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
@@ -265,7 +282,7 @@ object AlteredMapping {
 	def update[M <: RefinedMapping[S, O], S, O]
 	          (original :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
               (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](original, INSERT, include, exclude)
+		apply[M, S, O](UPDATE, original, include, exclude)
 
 
 
@@ -282,8 +299,8 @@ object AlteredMapping {
 	                     prohibited :BuffType, nonDefault :BuffType, exclude :FlagBuffType, optional :BuffType)
 			:Overrides[O] =
 	{
-		val excludeExports = excludes.map(original.export(_)).to(Unique)
-		val includeExports = includes.map(original.export(_)).filterNot(excludeExports)
+		val excludeExports = excludes.view.map(original.export(_)).to(Unique)
+		val includeExports = includes.view.map(original.export(_)).filterNot(excludeExports).toList
 		val included = this.include(original, includeExports, prohibited, nonDefault)
 		val excluded = this.exclude(original, excludeExports, nonDefault, exclude, optional)
 		included ++ excluded
@@ -307,37 +324,26 @@ object AlteredMapping {
 		builder.result()
 	}
 
-	//todo: for non-columns, include only their default subcomponents, not all of them.
-	//  requires distinction between inherited and declared buffs
 	private def include[T, O](mapping :RefinedMapping[_, O], component :RefinedMapping[T, O],
 	                          prohibited :BuffType, nonDefault :BuffType,
 	                          builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 		component match { //already is export
-			case comp if prohibited.enabled(comp) =>
+			case comp if prohibited.active(comp) =>
 				throw new IllegalArgumentException(
 					s"Can't include component $component of $mapping as it has the $prohibited buff."
 				)
 			case column :ColumnMapping[_, O @unchecked] =>
-				if (nonDefault.enabled(column))
-					builder += new Override(column, column.withBuffs(column.buffs.filter(nonDefault.disabled)))
+				if (nonDefault.active(column))
+					builder += new Override(column, column.withBuffs(column.buffs.filter(nonDefault.inactive(_))))
 			case export =>
-				if (nonDefault.enabled(export)) {
-					val buffs = export.buffs.filter(nonDefault.disabled)
-					val buffed = BuffedMapping.nonCascading[RefinedMapping[T, O], T, O](export, buffs:_*)
+				if (nonDefault.active(export)) { //in practice, true if there is an ExplicitXxx buff
+					val buffs = export.buffs.filter(nonDefault.inactive[T])
+					val buffed = export.withBuffs(buffs)
 					builder += new Override[T, O](export, buffed)
-				}
-				export.subcomponents foreach {
-					case column :ColumnMapping[_, O @unchecked] =>
-						val col = mapping.export(column)
-						if (prohibited.disabled(col) && nonDefault.enabled(col))
-							builder += new Override(col, col.withBuffs(col.buffs.filter(nonDefault.disabled)))
-					case sub =>
-						val comp = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
-						if (prohibited.disabled(comp) && nonDefault.enabled(comp)) {
-							val buffs = comp.buffs.filter(nonDefault.disabled)
-							val buffed = BuffedMapping.cascading[RefinedMapping[Any, O], Any, O](comp, buffs :_*)
-							builder += new Override[Any, O](comp, buffed)
-						}
+
+					@inline def substitute[X](component :RefinedMapping[X, O]) :Unit =
+						builder += new Override(component, buffed.export(component))
+					export.extracts.keySet foreach { sub :RefinedMapping[_, O] => substitute(sub) }
 				}
 		}
 
@@ -362,28 +368,20 @@ object AlteredMapping {
 	                          nonDefault :BuffType, exclude :FlagBuffType, optional :BuffType,
 	                          builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 		component match {
-			case comp if optional.disabled(comp) =>
+			case comp if optional.inactive(comp) =>
 				throw new IllegalArgumentException(
 					s"Can't exclude component $comp of $mapping as it does not have the $optional buff."
 				)
-			case column :ColumnMapping[_, O @unchecked] =>
-				if (nonDefault.disabled(column))
-					builder += new Override(column, column.withBuffs(exclude[T] +: column.buffs))
-			case lifted =>
-				lifted.subcomponents foreach {
-					case column :ColumnMapping[_, O @unchecked] =>
-						val col = mapping.export(column).asInstanceOf[ColumnMapping[Any, O]]
-						if (nonDefault.disabled(col) && optional.enabled(col))
-							builder += new Override[Any, O](col, col.withBuffs(exclude[Any] +: col.buffs))
-					case sub =>
-						val comp = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
-						if (nonDefault.disabled(comp) && optional.enabled(comp)) {
-							val buffs = exclude[Any] +: comp.buffs
-							val buffed = BuffedMapping.cascading[RefinedMapping[Any, O], Any, O](comp, buffs :_*)
-							builder += new Override[Any, O](comp, buffed)
-						}
-				}
+			case comp if nonDefault.active(comp) => //it already won't be included
+			case column :ColumnMapping[T @unchecked, O @unchecked] =>
+				builder += new Override(column, column.withBuffs(exclude[T] +: column.buffs.declared))
+			case export =>
+				val buffed = export.withBuffs(exclude[T] +: export.buffs.declared)
+				builder += new Override[T, O](export, buffed)
 
+				@inline def substitute[X](component :RefinedMapping[X, O]) :Unit =
+					builder += new Override[X, O](component, buffed.export(component))
+				export.extracts.keySet.foreach { sub :RefinedMapping[_, O] => substitute(sub) }
 		}
 
 
@@ -416,8 +414,8 @@ object AlteredMapping {
   * in order to combine the lists, with the selection type of the new argument always taking precedence over
   * the adjustments given as constructor arguments to this instance. This implementation is however very likely
   * to be overriden if a [[net.noresttherein.oldsql.schema.support.MappingAdapter MappingAdapter]] is mixed in.
-  * Two special late mix in traits however are provided with overrides of this method returning some `Mapping` subtype:
-  * [[net.noresttherein.oldsql.schema.support.AdjustedMapping.AdjustedMappingMerger AdjustedMappingMerger]]
+  * Two special late mix in traits are provided to counteract it, with overrides of this method returning some `Mapping`
+  * subtype: [[net.noresttherein.oldsql.schema.support.AdjustedMapping.AdjustedMappingMerger AdjustedMappingMerger]]
   * and [[net.noresttherein.oldsql.schema.support.AdjustedMapping.SpecificAdjustedMapping SpecificAdjustedMapping]].
   * @see [[net.noresttherein.oldsql.schema.Mapping.ComponentSelection]]
   */
@@ -537,9 +535,9 @@ object AdjustedMapping {
 	  *         but have any `OptionalXxx` receive matching ones.
 	  */
 	def apply[M <: RefinedMapping[S, O], S, O]
-	         (original :M, includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]])
+	         (original :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]])
 			:Adapted[M] =
-		new AdjustedMapping[M, S, O](original, includes, excludes) with DelegateAdapter[M, S, O]
+		new AdjustedMapping[M, S, O](original, include, exclude) with DelegateAdapter[M, S, O]
 
 	
 	
@@ -586,39 +584,16 @@ object AdjustedMapping {
 	private def include[T, O](mapping :RefinedMapping[_, O], component :RefinedMapping[T, O],
 	                          builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 	{
-		def ops(export :Mapping) =
-			operations.filter(o => o.prohibited.disabled(export) && o.nonDefault.enabled(export))
+		val excludedOps = operations.filter(o => o.prohibited.inactive(component) && o.nonDefault.active(component))
+		if (excludedOps.nonEmpty) {
+			val noExcludes = component.buffs.filter { buff => excludedOps.forall(_.nonDefault.inactive(buff)) }
+			val buffed = component.withBuffs(noExcludes)
+			builder += new Override(component, buffed)
 
-		def substitute[V](column :ColumnMapping[V, O]) = {
-			val optional = ops(column)
-			if (optional.nonEmpty) {
-				val disabled = column.buffs.filter { b => optional.forall(_.nonDefault.disabled(b)) }
-				builder += new Override(column, column.withBuffs(disabled))
-			}
-		}
-
-		component match {
-			case column :ColumnMapping[_, O @unchecked] => substitute(column)
-
-			case export =>
-				val optional = ops(export)
-				if (optional.nonEmpty) {
-					val disabled = export.buffs.filter { b => optional.forall(_.nonDefault.disabled(b)) }
-					val buffed = BuffedMapping.nonCascading[RefinedMapping[T, O], T, O](export, disabled :_*)
-					builder += new Override[T, O](export, buffed)
-				}
-				export.subcomponents foreach {
-					case column :ColumnMapping[_, O @unchecked] => substitute(mapping.export(column))
-
-					case sub =>
-						val export = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
-						val optional = ops(export)
-						if (optional.nonEmpty) {
-							val disabled = export.buffs.filter { b => optional.forall(_.nonDefault.disabled(b)) }
-							val buffed = BuffedMapping.cascading[RefinedMapping[Any, O], Any, O](export, disabled :_*)
-							builder += new Override[Any, O](export, buffed)
-						}
-				}
+			@inline def substitute[X](subcomponent :RefinedMapping[X, O]) :Unit =
+				builder += new Override(subcomponent, buffed.export(subcomponent))
+			if (!component.isColumn)
+				component.extracts.keySet foreach { subcomponent => substitute(subcomponent) }
 		}
 	}
 
@@ -635,31 +610,16 @@ object AdjustedMapping {
 	private def exclude[T, O](mapping :RefinedMapping[_, O], component :RefinedMapping[T, O],
 	                          builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 	{
-		def ops(export :RefinedMapping[_, O]) =
-			operations.filter(o => o.optional.enabled(export) && o.nonDefault.disabled(export))
+		val optionalOps = operations.filter(o => o.optional.active(component) && o.nonDefault.inactive(component))
+		if (optionalOps.nonEmpty) {
+			val excludes = optionalOps.map(_.exclude[T]) ++: component.buffs.declared
+			val buffed = component.withBuffs(excludes)
+			builder += new Override(component, buffed)
 
-		def substitute[V](column :ColumnMapping[V, O]) = {
-			val optional = ops(column)
-			if (optional.nonEmpty)
-				builder += new Override(column, column.withBuffs(optional.map(_.exclude[V]) ++: column.buffs))
-		}
-
-		component match {
-			case column :ColumnMapping[_, O @unchecked] => substitute(column)
-
-			case export =>
-				export.subcomponents foreach {
-					case column :ColumnMapping[_, O @unchecked] => substitute(mapping.export(column))
-
-					case sub =>
-						val export = mapping.export(sub).asInstanceOf[RefinedMapping[Any, O]]
-						val optional = ops(export)
-						if (optional.nonEmpty) {
-							val buffs = optional.map(_.exclude[Any]) ++: export.buffs
-							val buffed = BuffedMapping.cascading[RefinedMapping[Any, O], Any, O](export, buffs :_*)
-							builder += new Override[Any, O](export, buffed)
-						}
-				}
+			@inline def substitute[X](subcomponent :RefinedMapping[X, O]) :Unit =
+				builder += new Override(subcomponent, buffed.export(subcomponent))
+			if (!component.isColumn)
+				component.extracts.keySet foreach { subcomponent :RefinedMapping[_, O] => substitute(subcomponent) }
 		}
 	}
 

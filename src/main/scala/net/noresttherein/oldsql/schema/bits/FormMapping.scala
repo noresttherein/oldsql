@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
   */
 class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O] {
 
-	final override def buffs :Seq[Buff[S]] = Nil
+	final override def buffs :Buffs[S] = Buffs.empty
 
 	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 		collector.add(this, subject)
@@ -28,9 +28,8 @@ class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O
 		ComponentValues(this, subject)
 
 	override def filterValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
-	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
 	override def insertValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
-
+	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 		if (components.isEmpty) SQLReadForm.nulls(form.nulls)
@@ -45,8 +44,6 @@ class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O
 //	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(FILTER, components)
 //	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(UPDATE, components)
 //	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(INSERT, components)
-
-
 
 	override def selectForm :SQLReadForm[S] = form
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = form

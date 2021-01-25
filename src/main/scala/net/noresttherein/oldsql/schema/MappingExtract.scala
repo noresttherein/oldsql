@@ -253,7 +253,7 @@ object GenericExtract {
 		override def composeOpt[X](f :X => Option[S]) :GenericExtract[M, X, T, O] = {
 			val cont = getter
 			new OptionalExtract[M, X, T, O](export, f(_) map cont) {
-				override def get(x :X) :Opt[T] = f(x) match {
+				override def opt(x :X) :Opt[T] = f(x) match {
 					case Some(s) => Got(cont(s))
 					case _ => None
 				}

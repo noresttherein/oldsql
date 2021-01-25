@@ -70,26 +70,24 @@ object DelegateMapping {
 		override def columns :Unique[Column[_]] = backer.columns
 		override def selectable :Unique[Column[_]] = backer.selectable
 		override def filterable :Unique[Column[_]] = backer.filterable
-		override def updatable :Unique[Column[_]] = backer.updatable
-		override def autoUpdated :Unique[Column[_]] = backer.autoUpdated
 		override def insertable :Unique[Column[_]] = backer.insertable
+		override def updatable :Unique[Column[_]] = backer.updatable
 		override def autoInserted :Unique[Column[_]] = backer.autoInserted
+		override def autoUpdated :Unique[Column[_]] = backer.autoUpdated
 		override def selectedByDefault :Unique[Column[_]] = backer.selectedByDefault
 		override def filteredByDefault :Unique[Column[_]] = backer.filteredByDefault
-		override def updatedByDefault :Unique[Column[_]] = backer.updatedByDefault
 		override def insertedByDefault :Unique[Column[_]] = backer.insertedByDefault
+		override def updatedByDefault :Unique[Column[_]] = backer.updatedByDefault
 
 		override def columnNamed(name :String) :Column[_] = backer.columnNamed(name)
 
 		/** Refers to the adapted mapping `backer` to export the passed component to its final representation,
-		  * unless `component` is the `backer` itself, in which it is returned as-is.
+		  * unless `component` is the `this` itself, in which it is returned as-is.
 		  */
 		override def export[T](component :Component[T]) :Component[T] =
 			if (component eq this) component else backer.export(component)
 
-		/** Refers to the adapted mapping `backer` to export the passed component to its final representation,
-		  * unless `column` is the `backer` itself, in which it is returned as-is.
-		  */
+		/** Refers to the adapted mapping `backer` to export the passed component to its final representation. */
 		override def export[T](column :Column[T]) :Column[T] = backer.export(column)
 
 		override def exportOrNot[T](component :Component[T]) :Component[T] = backer.exportOrNot(component)

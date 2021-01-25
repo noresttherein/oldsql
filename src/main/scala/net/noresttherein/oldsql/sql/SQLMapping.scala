@@ -76,15 +76,14 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
 trait SQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O] extends BaseMapping[X, O] {
 
 	val expr :SQLExpression[F, S, X]
-
 	def format :String = ??? //todo:
 
-	override def buffs :Seq[Buff[X]] = SQLMapping.buffList.asInstanceOf[Seq[Buff[X]]]
+	override val buffs :Buffs[X] = Buffs(this, SQLMapping.buffList.asInstanceOf[Seq[Buff[X]]]:_*)
 
 	override def writtenValues[T](op :WriteOperationType, subject :X) :ComponentValues[X, O] = ColumnValues.empty
-
 	override def writtenValues[T](op :WriteOperationType, subject :X, collector :ComponentValuesBuilder[T, O]) :Unit =
 		()
+
 
 	override def components :Unique[SQLMapping[F, S, _, O]]
 	override def subcomponents :Unique[SQLMapping[F, S, _, O]]
@@ -99,20 +98,20 @@ trait SQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O] extend
 	override def columns :Unique[ColumnSQLMapping[F, S, _, O]]
 	override def selectable :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoSelect)
 	override def filterable :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoFilter)
-	override def updatable :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoUpdate)
-	override def autoUpdated :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWith(AutoUpdate)
 	override def insertable :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoInsert)
+	override def updatable :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoUpdate)
 	override def autoInserted :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWith(AutoInsert)
+	override def autoUpdated :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWith(AutoUpdate)
 	override def selectedByDefault :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoSelectByDefault)
 	override def filteredByDefault :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoFilterByDefault)
-	override def updatedByDefault :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoUpdateByDefault)
 	override def insertedByDefault :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoInsertByDefault)
+	override def updatedByDefault :Unique[ColumnSQLMapping[F, S, _, O]] = columnsWithout(NoUpdateByDefault)
 
 	override def columnsWith(buff :BuffType) :Unique[ColumnSQLMapping[F, S, _, O]] =
-		columns.filter(buff.enabled)
+		columns.filter(buff.active)
 
 	override def columnsWithout(buff :BuffType) :Unique[ColumnSQLMapping[F, S, _, O]] =
-		columns.filter(buff.disabled)
+		columns.filter(buff.inactive)
 
 	override def selectForm :SQLReadForm[X] = expr.readForm
 
@@ -208,7 +207,7 @@ object SQLMapping {
 					val selectExtract = GenericExtract(selected)(componentExtract)
 					Assoc[ExpressionColumn, ExpressionExtract[V]#E, C](selected, selectExtract)
 				}
-				mapping.columns.view.map(relation.export(_).export).filter(NoSelectByDefault.disabled)
+				mapping.columns.view.map(relation.export(_).export).filter(NoSelectByDefault.inactive)
 					.map(extractAssoc(_)).toList
 			}
 
@@ -302,7 +301,7 @@ object SQLMapping {
 			{
 				val table = e.entity
 				val component = e.export
-				val exported = component.columns.view.map(table.export(_)).filter(NoSelectByDefault.disabled).toList
+				val exported = component.columns.view.map(table.export(_)).filter(NoSelectByDefault.inactive).toList
 				val count = exported.length
 				val (selected, tail) = columnStack.splitAt(count)
 				columnStack = tail
@@ -384,14 +383,14 @@ object SQLMapping {
 		override def subcomponents :Unique[SQLMapping[F, S, _, O]] = columns
 		override def selectable :Unique[ExpressionColumn[_]] = columns
 		override def filterable :Unique[ExpressionColumn[_]] = columns
-		override def updatable :Unique[ExpressionColumn[_]] = Unique.empty
-		override def autoUpdated :Unique[ExpressionColumn[_]] = Unique.empty
 		override def insertable :Unique[ExpressionColumn[_]] = Unique.empty
+		override def updatable :Unique[ExpressionColumn[_]] = Unique.empty
 		override def autoInserted :Unique[ExpressionColumn[_]] = Unique.empty
+		override def autoUpdated :Unique[ExpressionColumn[_]] = Unique.empty
 		override def selectedByDefault :Unique[ExpressionColumn[_]] = columns
 		override def filteredByDefault :Unique[ExpressionColumn[_]] = columns
-		override def updatedByDefault :Unique[ExpressionColumn[_]] = Unique.empty
 		override def insertedByDefault :Unique[ExpressionColumn[_]] = Unique.empty
+		override def updatedByDefault :Unique[ExpressionColumn[_]] = Unique.empty
 
 		override val selectForm :SQLReadForm[X] = expr.readForm
 
@@ -459,14 +458,14 @@ trait ColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 	override val columns :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.single(this)
 	override def selectable :Unique[ColumnSQLMapping[F, S, X, O]] = columns
 	override def filterable :Unique[ColumnSQLMapping[F, S, X, O]] = columns
-	override def updatable :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
-	override def autoUpdated :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
 	override def insertable :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
+	override def updatable :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
 	override def autoInserted :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
+	override def autoUpdated :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
 	override def selectedByDefault :Unique[ColumnSQLMapping[F, S, X, O]] = selectable
 	override def filteredByDefault :Unique[ColumnSQLMapping[F, S, X, O]] = filterable
-	override def updatedByDefault :Unique[ColumnSQLMapping[F, S, X, O]] = updatable
 	override def insertedByDefault :Unique[ColumnSQLMapping[F, S, X, O]] = insertable
+	override def updatedByDefault :Unique[ColumnSQLMapping[F, S, X, O]] = updatable
 
 	override def form :ColumnForm[X] = expr.readForm match {
 		case rw :ColumnForm[X @unchecked] => rw
@@ -533,20 +532,20 @@ sealed trait IndexedMapping[S, O] extends BaseMapping[S, O] {
 	override def columns :Unique[IndexedColumnMapping[_, O]]
 	override def selectable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoSelect)
 	override def filterable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoFilter)
-	override def updatable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoUpdate)
-	override def autoUpdated :Unique[IndexedColumnMapping[_, O]] = columnsWith(AutoUpdate)
 	override def insertable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoInsert)
 	override def autoInserted :Unique[IndexedColumnMapping[_, O]] = columnsWith(AutoInsert)
+	override def updatable :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoUpdate)
+	override def autoUpdated :Unique[IndexedColumnMapping[_, O]] = columnsWith(AutoUpdate)
 	override def selectedByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoSelectByDefault)
 	override def filteredByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoFilterByDefault)
-	override def updatedByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoUpdateByDefault)
 	override def insertedByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoInsertByDefault)
+	override def updatedByDefault :Unique[IndexedColumnMapping[_, O]] = columnsWithout(NoUpdateByDefault)
 
 	override def columnsWith(buff :BuffType) :Unique[IndexedColumnMapping[_, O]] =
-		columns.filter(buff.enabled)
+		columns.filter(buff.active)
 
 	override def columnsWithout(buff :BuffType) :Unique[IndexedColumnMapping[_, O]] =
-		columns.filter(buff.disabled)
+		columns.filter(buff.inactive)
 }
 
 
@@ -560,14 +559,14 @@ sealed trait IndexedColumnMapping[S, O] extends IndexedMapping[S, O] with Column
 	override def columns :Unique[IndexedColumnMapping[S, O]] = Unique.single(this)
 	override def selectable :Unique[IndexedColumnMapping[S, O]] = columns
 	override def filterable :Unique[IndexedColumnMapping[S, O]] = columns
-	override def updatable :Unique[IndexedColumnMapping[S, O]] = Unique.empty
-	override def autoUpdated :Unique[IndexedColumnMapping[S, O]] = Unique.empty
 	override def insertable :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def updatable :Unique[IndexedColumnMapping[S, O]] = Unique.empty
 	override def autoInserted :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def autoUpdated :Unique[IndexedColumnMapping[S, O]] = Unique.empty
 	override def selectedByDefault :Unique[IndexedColumnMapping[S, O]] = columns
 	override def filteredByDefault :Unique[IndexedColumnMapping[S, O]] = columns
-	override def updatedByDefault :Unique[IndexedColumnMapping[S, O]] = Unique.empty
 	override def insertedByDefault :Unique[IndexedColumnMapping[S, O]] = Unique.empty
+	override def updatedByDefault :Unique[IndexedColumnMapping[S, O]] = Unique.empty
 
 	override def apply[N <: Label](label :N)(implicit get :GetListingComponent[S, N]) :IndexedMapping[get.Value, O] =
 		this.asInstanceOf[IndexedColumnMapping[get.Value, O]]
@@ -618,10 +617,10 @@ trait ListingSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 	override def columns :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]]
 	override def selectable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoSelect)
 	override def filterable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoFilter)
-	override def updatable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoUpdate)
-	override def autoUpdated :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoUpdate)
 	override def insertable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoInsert)
+	override def updatable :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWithout(NoUpdate)
 	override def autoInserted :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoInsert)
+	override def autoUpdated :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] = columnsWith(AutoUpdate)
 
 	override def selectedByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columnsWithout(NoSelectByDefault)
@@ -629,17 +628,17 @@ trait ListingSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 	override def filteredByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columnsWithout(NoFilterByDefault)
 
-	override def updatedByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
-		columnsWithout(NoUpdateByDefault)
-
 	override def insertedByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
 		columnsWithout(NoInsertByDefault)
 
+	override def updatedByDefault :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
+		columnsWithout(NoUpdateByDefault)
+
 	override def columnsWith(buff :BuffType) :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
-		columns.filter(buff.enabled)
+		columns.filter(buff.active)
 
 	override def columnsWithout(buff :BuffType) :Unique[ListingColumnSQLMapping[F, S, _ <: Label, _, O]] =
-		columns.filter(buff.disabled)
+		columns.filter(buff.inactive)
 }
 
 
@@ -720,14 +719,14 @@ object ListingSQLMapping {
 
 		override def selectable :Unique[ColumnExpression[_ <: Label, _]] = columns
 		override def filterable :Unique[ColumnExpression[_ <: Label, _]] = columns
-		override def updatable :Unique[ColumnExpression[_ <: Label, _]] = Unique.empty
 		override def insertable :Unique[ColumnExpression[_ <: Label, _]] = Unique.empty
-		override def autoUpdated :Unique[ColumnExpression[_ <: Label, _]] = Unique.empty
+		override def updatable :Unique[ColumnExpression[_ <: Label, _]] = Unique.empty
 		override def autoInserted :Unique[ColumnExpression[_ <: Label, _]] = Unique.empty
+		override def autoUpdated :Unique[ColumnExpression[_ <: Label, _]] = Unique.empty
 		override def selectedByDefault :Unique[ColumnExpression[_ <: Label, _]] = selectable
 		override def filteredByDefault :Unique[ColumnExpression[_ <: Label, _]] = filterable
-		override def updatedByDefault :Unique[ColumnExpression[_ <: Label, _]] = updatable
 		override def insertedByDefault :Unique[ColumnExpression[_ <: Label, _]] = insertable
+		override def updatedByDefault :Unique[ColumnExpression[_ <: Label, _]] = updatable
 
 		private val columnMap = columns.view.map { c => (c.name, c) }.toMap
 
@@ -799,14 +798,14 @@ trait ListingColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope,
 	override val columns :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.single(this)
 	override def selectable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
 	override def filterable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
-	override def updatable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
-	override def autoUpdated :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
 	override def insertable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def updatable :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
 	override def autoInserted :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def autoUpdated :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
 	override def selectedByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
 	override def filteredByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = columns
-	override def updatedByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
 	override def insertedByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
+	override def updatedByDefault :Unique[ListingColumnSQLMapping[F, S, N, X, O]] = Unique.empty
 
 	override def apply[K <: Label](label :K)(implicit get :GetListingComponent[X, K]) :ListingSQLMapping[F, S, get.Value, O] =
 		this.asInstanceOf[ListingSQLMapping[F, S, get.Value, O]] //these shouldn't be possible to call, but to guard against a future refactor

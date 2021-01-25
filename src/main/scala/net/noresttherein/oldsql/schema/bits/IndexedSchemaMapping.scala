@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.schema.bits.MappingSchema.{AlteredSchema, BaseNo
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, AlteredSchemaMapping, AlterSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.AlterSchema.{ComponentsExist, FilterSchema}
 import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, DelegateMapping, MappedMapping, MappingFactoryMethods, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, BuffedMapping, DelegateMapping, MappedMapping, MappingFactoryMethods, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.support.AdjustedMapping.{AdjustedMappingMerger, SpecificAdjustedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{ComposedAdapter, DelegateAdapter}
 
@@ -133,15 +133,15 @@ object IndexedMappingSchema {
 		private[IndexedMappingSchema] def columnPrefix :String = prefix
 
 
-		protected[schema] def conveyBuffs[T](extractor :S => T, buffs :Seq[Buff[T]]) :Seq[Buff[T]] =
-			if (buffs.isEmpty) packedBuffs.flatMap(_.cascade(extractor))
-			else if (packedBuffs.isEmpty) buffs
-			else buffs ++: packedBuffs.flatMap(_.cascade(extractor))
+		protected[schema] def conveyBuffs[T](extractor :S => T, buffs :Seq[Buff[T]]) :Buffs[T] =
+			if (buffs.isEmpty) packedBuffs.cascade(extractor)
+			else if (packedBuffs.isEmpty) Buffs(buffs :_*)
+			else packedBuffs.cascade(extractor).declare(buffs :_*)
 
-		protected[schema] def conveyBuffs[T](extractor :S =?> T, buffs :Seq[Buff[T]]) :Seq[Buff[T]] =
-			if (buffs.isEmpty) cascadeBuffs(packedBuffs, toString)(extractor)
-			else if (packedBuffs.isEmpty) buffs
-			else buffs ++: cascadeBuffs(packedBuffs, toString)(extractor)
+		protected[schema] def conveyBuffs[T](extractor :S =?> T, buffs :Seq[Buff[T]]) :Buffs[T] =
+			if (buffs.isEmpty) packedBuffs.unsafeCascade(extractor)
+			else if (packedBuffs.isEmpty) Buffs(buffs :_*)
+			else packedBuffs.unsafeCascade(extractor).declare(buffs :_*)
 
 
 
@@ -206,7 +206,7 @@ object IndexedMappingSchema {
 		  * @tparam MC a `Chain` containing all subcomponents of the new component.
 		  */
 		def comp[K <: Label, T, MV <: Chain, MC <: Chain]
-		        (label :K, value :S => T, buffs :Buff[T]*)(component :(String, Seq[Buff[T]]) => |-|[T, MV, MC])
+		        (label :K, value :S => T, buffs :Buff[T]*)(component :(String, Buffs[T]) => |-|[T, MV, MC])
 		        (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
 			comp(label, value, component(prefix, conveyBuffs(value, buffs)))
@@ -242,7 +242,7 @@ object IndexedMappingSchema {
 		  */
 		def comp[K <: Label, T, MV <: Chain, MC <: Chain]
 		        (label :K, value :S => T, columnPrefix :String, buffs :Buff[T]*)
-		        (component :(String, Seq[Buff[T]]) => |-|[T, MV, MC])
+		        (component :(String, Buffs[T]) => |-|[T, MV, MC])
 		        (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
 			comp(label, value, component(prefix + columnPrefix, conveyBuffs(value, buffs)))
@@ -305,7 +305,7 @@ object IndexedMappingSchema {
 		  * @tparam MC a `Chain` containing all subcomponents of the new component.
 		  */
 		def optcomp[K <: Label, T, MV <: Chain, MC <: Chain]
-		           (label :K, value :S => Option[T], buffs :Buff[T]*)(component :(String, Seq[Buff[T]]) => |-|[T, MV, MC])
+		           (label :K, value :S => Option[T], buffs :Buff[T]*)(component :(String, Buffs[T]) => |-|[T, MV, MC])
 		           (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
 			optcomp(label, value, component(prefix, conveyBuffs(Extractor.opt(value), buffs)))
@@ -348,7 +348,7 @@ object IndexedMappingSchema {
 		  */
 		def optcomp[K <: Label, T, MV <: Chain, MC <: Chain]
 		           (label :K, value :S => Option[T], columnPrefix :String, buffs :Buff[T]*)
-		           (component :(String, Seq[Buff[T]]) => |-|[T, MV, MC])
+		           (component :(String, Buffs[T]) => |-|[T, MV, MC])
 		           (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
 			optcomp(label, value, component(prefix + columnPrefix, conveyBuffs(Extractor.opt(value), buffs)))
@@ -407,7 +407,7 @@ object IndexedMappingSchema {
 		                                  (implicit unique :UniqueKey[V, N])
 				:ExtensibleIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
 		{
-			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs :_*)
+			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs)
 			append(column, ColumnExtract.req(column)(value))
 		}
 
@@ -435,7 +435,7 @@ object IndexedMappingSchema {
 		                                     (implicit unique :UniqueKey[V, N])
 				:ExtensibleIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
 		{
-			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs:_*)
+			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs)
 			append(column, ColumnExtract.opt(column)(value))
 		}
 
@@ -456,7 +456,7 @@ object IndexedMappingSchema {
 		  * from the chain. This allows direct passing of factory methods from companion objects as arguments
 		  * to this method. The keys of the index chain will however be completely ignored in that case.
 		  * Note that the values of components are accessed 'forcibly'
-		  * from the [[ComponentValues ComponentValues]] passed for assembly rather than
+		  * from the [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]] passed for assembly rather than
 		  * by the `Option` returning `get` method and, instead, `NoSuchElementException` exceptions are caught
 		  * and translated to a `None` result in the [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]]
 		  * method. The created `Mapping`, regardless if by mapping the value chain or using direct component access,
@@ -511,7 +511,7 @@ object IndexedMappingSchema {
 		                                           (implicit unique :UniqueKey[V, N])
 				:ExtensibleFlatIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
 		{
-			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs:_*)
+			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs)
 			new NonEmptyFlatIndexedSchema(this, column, MappingExtract(column)(Extractor.req(value)), prefix)
 		}
 
@@ -527,7 +527,7 @@ object IndexedMappingSchema {
 		                                              (implicit unique :UniqueKey[V, N])
 				:ExtensibleFlatIndexedSchema[S, V |~ (N :~ T), C ~ (N @|| T), O] =
 		{
-			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs:_*)
+			val column = LabeledSchemaColumn[N, T, O](label, prefix + name, buffs)
 			new NonEmptyFlatIndexedSchema(this, column, MappingExtract(column)(Extractor(value)), prefix)
 		}
 
@@ -557,14 +557,15 @@ object IndexedMappingSchema {
 
 
 	private[schema] class EmptyIndexedSchema[S, O](protected override val prefix :String = "",
-	                                               protected override val packedBuffs :Seq[Buff[S]] = Nil)
+	                                               declaredPackedBuffs :Seq[Buff[S]] = Nil)
 		extends EmptySchema[S, O] with ExtensibleFlatIndexedSchema[S, @~, @~, O]
 	{
+
 		override def prev[I <: Chain, P <: Chain](implicit vals: @~ <:< (I ~ Any), comps: @~ <:< (P ~ Any)) =
 			throw new UnsupportedOperationException("EmptyIndexedSchema.prefix")
 
 		override def compose[X](extractor :X =?> S) :EmptyIndexedSchema[X, O] =
-			new EmptyIndexedSchema(prefix)
+			new EmptyIndexedSchema[X, O](prefix)
 	}
 
 
@@ -607,8 +608,8 @@ object IndexedMappingSchema {
 		override val selectForm = //todo: get rid of explicit references to SQLForms
 			SQLForms.ListingReadForm(init.selectForm, new ValueOf(label), component.selectForm)
 		override val filterForm = SQLForms.ListingWriteForm(init.filterForm, component.filterForm)
-		override val updateForm = SQLForms.ListingWriteForm(init.updateForm, component.updateForm)
 		override val insertForm = SQLForms.ListingWriteForm(init.insertForm, component.insertForm)
+		override val updateForm = SQLForms.ListingWriteForm(init.updateForm, component.updateForm)
 		override def writeForm(op :WriteOperationType) = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyFlatIndexedSchema[X, V, C, K, T, M, O] =
@@ -704,6 +705,10 @@ trait IndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
 	   with MappingFactoryMethods[({ type A[X] = IndexedSchemaMapping[X, V, C, O] })#A, S, O]
 { outer =>
 	override val schema :IndexedMappingSchema[S, V, C, O]
+
+	override def withBuffs(buffs :Buffs[S]) :IndexedSchemaMapping[S, V, C, O] =
+		new BuffedMapping[this.type, S, O](this, buffs)
+			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
 
 	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:IndexedSchemaMapping[S, V, C, O] =
@@ -844,6 +849,9 @@ object IndexedSchemaMapping {
 
 		override val schema :FlatIndexedMappingSchema[S, V, C, O]
 
+		override def withBuffs(buffs :Buffs[S]) :FlatIndexedSchemaMapping[S, V, C, O] =
+			new BuffedMapping[this.type, S, O](this, buffs) with DelegateFlatIndexedSchemaMapping[S, V, C, O]
+
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMapping[S, V, C, O] =
 			AdjustedMapping(this, include, exclude, alter)
@@ -918,6 +926,11 @@ object IndexedSchemaMapping {
 	{
 		private[this] type Adapter[X] = IndexedSchemaMappingAdapter[M, T, X, V, C, O]
 
+		override def withBuffs(buffs :Buffs[S]) :IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
+			new BuffedMapping[this.type, S, O](this, buffs)
+				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
+				with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
+
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
 			new AdjustedMapping[this.type, S, O](this, include, exclude)
@@ -973,6 +986,11 @@ object IndexedSchemaMapping {
 		   with MappingFactoryMethods[({ type A[X] = FlatIndexedSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
 		private[this] type Adapter[X] = FlatIndexedSchemaMappingAdapter[M, T, X, V, C, O]
+
+		override def withBuffs(buffs :Buffs[S]) :FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
+			new BuffedMapping[this.type, S, O](this, buffs)
+				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
+				with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
@@ -1126,7 +1144,7 @@ object IndexedSchemaMapping {
 
 	private[schema] class MappedIndexedSchema[S, V <: Listing, C <: Chain, O, F]
 	                      (protected override val backer :IndexedMappingSchema[S, V, C, O],
-	                       constructor :F, buffs :Seq[Buff[S]] = Nil)
+	                       constructor :F, buffs :Buffs[S] = Buffs.empty[S])
 	                      (implicit conversion :SubjectConstructor[S, V, C, O, F])
 		extends MappedSchema[S, V, C, O, F](backer, constructor, buffs) with IndexedSchemaMapping[S, V, C, O]
 		   with MappingSchemaDelegate[IndexedMappingSchema[S, V, C, O], S, V, C, O]

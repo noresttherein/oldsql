@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, Mapping, MappingExtract}
 import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnSupport, StableColumn}
-import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, StableMapping}
@@ -24,7 +24,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{AlteredFlatSchema, AlteredSchema, EmptySchema, ExtensibleFlatMappingSchema, ExtensibleMappingSchema, FlatMappingSchema, GetLabeledComponent, MappingSchemaComponents, SchemaFlattening, SubjectConstructor}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{|-|, AlterSchema, DelegateSchemaMapping, FlatSchemaMapping, LabeledSchemaMapping, MappedSchemaMapping, SchemaMappingAdapter, SchemaMappingProxy}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.AlterSchema.{ComponentsExist, FilterSchema}
-import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, ColumnMappingFactoryMethods, DelegateMapping, MappedMapping, MappingFactoryMethods, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, BuffedMapping, ColumnMappingFactoryMethods, DelegateMapping, MappedMapping, MappingAdapter, MappingFactoryMethods, PrefixedMapping, RenamedMapping}
 import net.noresttherein.oldsql.schema.support.AdjustedMapping.{AdjustedMappingMerger, SpecificAdjustedMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{BaseAdapter, ComposedAdapter, DelegateAdapter}
@@ -137,6 +137,9 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 			protected override val backer = outer
 		}
 
+	override def withBuffs(buffs :Buffs[S]) :SchemaMapping[S, V, C, O] =
+		new BuffedMapping[this.type, S, O](this, buffs)
+			with DelegateAdapter[this.type, S, O] with SchemaMappingProxy[this.type, S, V, C, O]
 
 	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :SchemaMapping[S, V, C, O] =
 		AdjustedMapping(this, include, exclude, alter)
@@ -198,7 +201,6 @@ trait SchemaMapping[S, V <: Chain, C <:Chain, O]
 
 	def forUpdateExclude[E <: Chain](implicit result :AlterSchema[UPDATE, this.type, S, O, E]) :result.Result =
 		forUpdate[E](Nil)
-
 
 
 	def forInsert[E <: Chain](include :Iterable[Component[_]], exclude :E)
@@ -291,7 +293,54 @@ object SchemaMapping {
 	  * @see [[net.noresttherein.oldsql.schema.bits.MappingSchema]]
 	  * @see [[net.noresttherein.oldsql.schema.bits.SchemaMapping]]
 	  */
-	def apply[S](buffs :Buff[S]*) :ExtensibleFlatMappingSchema[S, @~, @~, _] = EmptySchema(buffs)
+	def apply[S](buffs :Buffs[S]) :ExtensibleFlatMappingSchema[S, @~, @~, _] = EmptySchema(buffs)
+
+	/** An empty `MappingSchema` which can be expanded by appending new columns and components.
+	  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
+	  * creating a [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]].
+	  * {{{
+	  *     case class Address(street :String, city :String, zip :String)
+	  *     def addresses[O] = MappingSchema[Address, O].col("street", _.street).col("city", _.city).col("zip", _.zip)
+	  *                                                 .map(Address.apply)
+	  * }}}
+	  * This is equivalent to `SchemaMapping[S, O](buffs)` except it doesn't take the origin type parameter for more
+	  * convenient building of schema components, that is instances of
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping.|-| |-|]], which have an unspecified `Origin`.
+	  * @tparam S the subject type of a `SchemaMapping` over this schema. All components in the schema have
+	  *           extractors which retrieve their value from this type.
+	  * @param buffs a list of `Buff`s for the created `SchemaMapping`. They will not show as the buffs
+	  *              of the returned schema, but will be nevertheless inherited by all all columns appended to it
+	  *              and those components for which factory functions will be given.
+	  * @return an [[net.noresttherein.oldsql.schema.bits.MappingSchema.ExtensibleFlatMappingSchema ExtensibleFlatMappingSchema]].
+	  * @see [[net.noresttherein.oldsql.schema.bits.MappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.bits.SchemaMapping]]
+	  */
+	def apply[S](buffs :Buff[S]*) :ExtensibleFlatMappingSchema[S, @~, @~, _] = EmptySchema(Buffs(buffs :_*))
+
+	/** An empty `MappingSchema` which can be expanded by appending new columns and components.
+	  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
+	  * creating a [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]].
+	  * {{{
+	  *     case class Address(street :String, city :String, zip :String)
+	  *     def addresses[O] = MappingSchema[Address, O].col("street", _.street).col("city", _.city).col("zip", _.zip)
+	  *                                                 .map(Address.apply)
+	  * }}}
+	  * This is equivalent to `SchemaMapping[S, O](prefix, buffs)` except it doesn't take the origin type parameter
+	  * for more convenient building of schema components, that is instances of
+	  * [[net.noresttherein.oldsql.schema.bits.SchemaMapping.|-| |-|]], which have an unspecified `Origin`.
+	  * @tparam S the subject type of a `SchemaMapping` over this schema. All components in the schema have
+	  *           extractors which retrieve their value from this type.
+	  * @param columnPrefix a `String` prepended to all column names. It will be also passed as an argument
+	  *                     to all factory functions used to create new components for the schema.
+	  * @param buffs a list of `Buff`s for the created `SchemaMapping`. They will not show as the buffs
+	  *              of the returned schema, but will be nevertheless inherited by all all columns appended to it
+	  *              and those components for which factory functions will be given.
+	  * @return an [[net.noresttherein.oldsql.schema.bits.MappingSchema.ExtensibleFlatMappingSchema ExtensibleFlatMappingSchema]].
+	  * @see [[net.noresttherein.oldsql.schema.bits.MappingSchema]]
+	  * @see [[net.noresttherein.oldsql.schema.bits.SchemaMapping]]
+	  */
+	def apply[S](columnPrefix :String, buffs :Buffs[S]) :ExtensibleFlatMappingSchema[S, @~, @~, _] =
+		EmptySchema(columnPrefix, buffs)
 
 	/** An empty `MappingSchema` which can be expanded by appending new columns and components.
 	  * At any point the chain of values with the components in the schema can be mapped to the subject type `S`,
@@ -316,7 +365,7 @@ object SchemaMapping {
 	  * @see [[net.noresttherein.oldsql.schema.bits.SchemaMapping]]
 	  */
 	def apply[S](columnPrefix :String, buffs :Buff[S]*) :ExtensibleFlatMappingSchema[S, @~, @~, _] =
-		EmptySchema(columnPrefix, buffs)
+		EmptySchema(columnPrefix, Buffs(buffs :_*))
 
 
 
@@ -617,6 +666,9 @@ object SchemaMapping {
 			LabeledSchemaMapping(label, this)
 
 
+		override def withBuffs(buffs :Buffs[S]) :FlatSchemaMapping[S, V, C, O] =
+			new BuffedMapping[this.type, S, O](this, buffs) with DelegateFlatSchemaMapping[S, V, C, O]
+
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatSchemaMapping[S, V, C, O] =
 			AdjustedMapping(this, include, exclude, alter)
@@ -699,16 +751,16 @@ object SchemaMapping {
 		override def apply[N <: Label :ValueOf] :LabeledSchemaColumn[N, S, O] = labeled(valueOf[N])
 
 		override def labeled[N <: Label](label :N) :LabeledSchemaColumn[N, S, O] =
-			LabeledSchemaColumn(label, name, buffs :_*)(form)
+			LabeledSchemaColumn(label, name, buffs)(form)
 
 
 		protected override def thisColumn :SchemaColumn[S, O] = this
 
-		protected override def copy(name :String, buffs :Seq[Buff[S]]) :SchemaColumn[S, O] =
-			SchemaColumn(name, buffs :_*)(form)
+		protected override def copy(name :String, buffs :Buffs[S]) :SchemaColumn[S, O] =
+			SchemaColumn(name, buffs)(form)
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :SchemaColumn[X, O] =
-			SchemaColumn(name, oldsql.schema.mapBuffs(this)(there, back) :_*)(form.as(there)(back))
+			SchemaColumn(name, buffs.unsafeBimap(there, back))(form.as(there)(back))
 
 	}
 
@@ -716,8 +768,11 @@ object SchemaMapping {
 
 	object SchemaColumn {
 
-		def apply[S :ColumnForm, O](name :String, buffs :Buff[S]*) :SchemaColumn[S, O] =
+		def apply[S :ColumnForm, O](name :String, buffs :Buffs[S]) :SchemaColumn[S, O] =
 			new ColumnSupport[S, O](name, buffs) with SchemaColumn[S, O] with StableColumn[S, O]
+
+		def apply[S :ColumnForm, O](name :String, buffs :Seq[Buff[S]]) :SchemaColumn[S, O] =
+			SchemaColumn(name, Buffs(buffs :_*))
 
 		//implicit 'override' from || which will work for SchemaMapping subclasses as normal.
 		implicit def genericSchemaColumnProjection[M[Q] <: SchemaColumn[S, Q], S, O]
@@ -807,12 +862,12 @@ object SchemaMapping {
 
 		protected override def thisColumn :LabeledSchemaColumn[N, S, O] = this
 
-		protected override def copy(name :String, buffs :Seq[Buff[S]]) :LabeledSchemaColumn[N, S, O] =
-			LabeledSchemaColumn(label, name, buffs :_*)(form)
+		protected override def copy(name :String, buffs :Buffs[S]) :LabeledSchemaColumn[N, S, O] =
+			LabeledSchemaColumn(label, name, buffs)(form)
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
 				:LabeledSchemaColumn[N, X, O] =
-			LabeledSchemaColumn(label, name, oldsql.schema.mapBuffs(this)(there, back) :_*)(
+			LabeledSchemaColumn(label, name, buffs.unsafeBimap(there, back))(
 				form.as(there)(back)
 			)
 
@@ -823,13 +878,19 @@ object SchemaMapping {
 
 	object LabeledSchemaColumn {
 
-		@inline def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
-			apply(name, name, buffs:_*)
+		@inline def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Buffs[S]) :LabeledSchemaColumn[N, S, O] =
+			apply(name, name, buffs)
 
-		def apply[N <: Label, S :ColumnForm, O](lbl :N, name :String, buffs :Buff[S]*) :LabeledSchemaColumn[N, S, O] =
+		def apply[N <: Label, S :ColumnForm, O](lbl :N, name :String, buffs :Buffs[S]) :LabeledSchemaColumn[N, S, O] =
 			new ColumnSupport[S, O](name, buffs) with LabeledSchemaColumn[N, S, O] with StableColumn[S, O] {
 				override val label = lbl
 			}
+
+		def apply[N <: Label, S :ColumnForm, O](name :N, buffs :Seq[Buff[S]]) :LabeledSchemaColumn[N, S, O] =
+			apply(name, Buffs(buffs :_*))
+
+		def apply[N <: Label, S :ColumnForm, O](lbl :N, name :String, buffs :Seq[Buff[S]]) :LabeledSchemaColumn[N, S, O] =
+			apply(lbl, name, Buffs(buffs :_*))
 
 		//implicit 'override' from @|| which will work for SchemaMapping subclasses as normal.
 		implicit def genericLabeledSchemaColumnProjection[M[Q] <: LabeledSchemaColumn[_, S, Q], S, O]
@@ -933,12 +994,10 @@ object SchemaMapping {
 		extends ShallowDelegate[S, O] with DelegateMapping[M, S, O] with SchemaMapping[S, V, C, O]
 	{
 		override val schema :M = backer
+		override def buffs :Buffs[S] = backer.outerBuffs
 
-		override def buffs :Seq[Buff[S]] = backer.outerBuffs
-
-
-		protected val schemaExtract = MappingExtract.opt(schema)(schema.unapply)
-		protected val selfExtract = MappingExtract.ident(this)
+		protected val schemaExtract :Extract[V] = MappingExtract.opt(schema)(schema.unapply)
+		protected val selfExtract :Extract[S] = MappingExtract.ident(this)
 
 		override def apply[T](component :Component[T]) :Extract[T] =
 			if (component eq schema) schemaExtract.asInstanceOf[Extract[T]]
@@ -981,6 +1040,11 @@ object SchemaMapping {
 		   with MappingFactoryMethods[({ type A[X] = SchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
 		private[this] type Adapter[X] = SchemaMappingAdapter[M, T, X, V, C, O]
+
+		override def withBuffs(buffs :Buffs[S]) :SchemaMappingAdapter[M, T, S, V, C, O] =
+			new BuffedMapping[this.type, S, O](this, buffs)
+				with ComposedAdapter[M, S, S, O] with DelegateSchemaMapping[S, V, C, O]
+				with SchemaMappingAdapter[M, T, S, V, C, O]
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:SchemaMappingAdapter[M, T, S, V, C, O] =
@@ -1026,7 +1090,11 @@ object SchemaMapping {
 	trait SchemaMappingProxy[M <: SchemaMapping[S, V, C, O], S, V <: Chain, C <: Chain, O]
 		extends SchemaMappingAdapter[M, S, S, V, C, O]
 	{
-		override val schema = body.schema
+		if (body == null)
+			throw new NullPointerException(
+				getClass.toString + ".body: SchemaMappingProxy trait was likely mixed in before body field initialization."
+			)
+		override val schema :MappingSchema[S, V, C, O] = body.schema
 	}
 
 
@@ -1036,6 +1104,11 @@ object SchemaMapping {
 		   with MappingFactoryMethods[({ type A[X] = FlatSchemaMappingAdapter[M, T, X, V, C, O] })#A, S, O]
 	{
 		private[this] type Adapter[X] = FlatSchemaMappingAdapter[M, T, X, V, C, O]
+
+		override def withBuffs(buffs :Buffs[S]) :FlatSchemaMappingAdapter[M, T, S, V, C, O] =
+			new BuffedMapping[this.type, S, O](this, buffs)
+				with ComposedAdapter[M, S, S, O] with DelegateFlatSchemaMapping[S, V, C, O]
+				with FlatSchemaMappingAdapter[M, T, S, V, C, O]
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatSchemaMappingAdapter[M, T, S, V, C, O] =
@@ -1300,7 +1373,7 @@ object SchemaMapping {
 
 	private[schema] class MappedSchema[S, V <: Chain, C <: Chain, O, F]
 	                                  (protected override val backer :MappingSchema[S, V, C, O],
-	                                   constructor :F, override val buffs :Seq[Buff[S]] = Nil)
+	                                   constructor :F, override val buffs :Buffs[S] = Buffs.empty[S])
 	                                  (implicit conversion :SubjectConstructor[S, V, C, O, F])
 		extends MappingSchemaDelegate[MappingSchema[S, V, C, O], S, V, C, O] with StableMapping
 	{
@@ -1313,7 +1386,7 @@ object SchemaMapping {
 
 	private[schema] class MappedFlatSchema[S, V <: Chain, C <: Chain, O, F]
 	                      (protected override val backer :FlatMappingSchema[S, V, C, O],
-	                       constructor :F, buffs :Seq[Buff[S]] = Nil)
+	                       constructor :F, buffs :Buffs[S] = Buffs.empty[S])
 	                      (implicit conversion :SubjectConstructor[S, V, C, O, F])
 		extends MappedSchema(backer, constructor, buffs) with FlatSchemaMapping[S, V, C, O]
 		   with MappingSchemaDelegate[FlatMappingSchema[S, V, C, O], S, V, C, O]

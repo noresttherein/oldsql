@@ -53,7 +53,7 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	override def optionally(values :Pieces) :Opt[S] = values.assemble(this)
 
 	override def assemble(values :Pieces) :Opt[S] = values.get(backerExtract) match {
-		case Got(t) => map.get(t)
+		case Got(t) => map.opt(t)
 		case _ => Lack
 	}
 
@@ -114,13 +114,13 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 		else backer.selectForm.to(map)
 
 	private val defaultFilterForm :SQLWriteForm[S] = backer.filterForm.from(unmap)
-	private val defaultUpdateForm :SQLWriteForm[S] = backer.updateForm.from(unmap)
 	private val defaultInsertForm :SQLWriteForm[S] = backer.insertForm.from(unmap)
+	private val defaultUpdateForm :SQLWriteForm[S] = backer.updateForm.from(unmap)
 
 	override def selectForm :SQLReadForm[S] = defaultSelectForm
 	override def filterForm :SQLWriteForm[S] = defaultFilterForm
-	override def updateForm :SQLWriteForm[S] = defaultUpdateForm
 	override def insertForm :SQLWriteForm[S] = defaultInsertForm
+	override def updateForm :SQLWriteForm[S] = defaultUpdateForm
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 

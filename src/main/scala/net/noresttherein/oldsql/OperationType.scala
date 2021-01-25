@@ -34,9 +34,8 @@ sealed trait OperationType {
 	val extra :ValueBuffType
 
 	/** A buff marking a column/component as not included by default in the operation, but possibly still allowed
-	  * if included explicitly. Example: `NoSelectByDefault`. It is implied by both
-	  * [[net.noresttherein.oldsql.OperationType.prohibited prohibited]] and
-	  * [[net.noresttherein.oldsql.OperationType.explicit explicit]].
+	  * if included explicitly. It is implied by both [[net.noresttherein.oldsql.OperationType.prohibited prohibited]]
+	  * and [[net.noresttherein.oldsql.OperationType.explicit explicit]]. Example: `NoSelectByDefault`.
 	  */
 	val nonDefault :BuffType
 
@@ -49,9 +48,9 @@ sealed trait OperationType {
 	val exclude :FlagBuffType
 
 	/** A buff marking that a column/component must be included in the operation explicitly, as it is not included
-	  * by the mapping in the standard process. Example: `ExplicitSelect` for CLOB/BLOB types. This buff implies
+	  * by the mapping in the standard process. This buff implies
 	  * [[net.noresttherein.oldsql.OperationType.optional optional]] and
-	  * [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]].
+	  * [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]]. Example: `ExplicitSelect` for CLOB/BLOB types.
 	  */
 	val explicit :BuffType
 	
@@ -119,15 +118,16 @@ object OperationType {
 	}
 
 
+
 	sealed abstract class SELECT extends ReadOperationType {
-		override val prohibited = NoSelect
-		override val extra = ExtraSelect
-		override val nonDefault = NoSelectByDefault
-		override val exclude = FlagBuffType("ExcludeFromSelect")
-		override val explicit = ExplicitSelect
-		override val optional = OptionalSelect
-		override val audit = SelectAudit
-		override val default = SelectDefault
+		override val prohibited :FlagBuffType  = NoSelect
+		override val extra      :ValueBuffType = ExtraSelect
+		override val nonDefault :BuffType      = NoSelectByDefault
+		override val exclude    :FlagBuffType  = FlagBuffType("ExcludeFromSelect")(NoSelectByDefault)
+		override val explicit   :ValueBuffType = ExplicitSelect
+		override val optional   :ValueBuffType = OptionalSelect
+		override val audit      :AuditBuffType = SelectAudit
+		override val default    :ValueBuffType = SelectDefault
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.selectable
 
@@ -147,15 +147,16 @@ object OperationType {
 	implicit case object SELECT extends SELECT
 
 
+
 	sealed abstract class FILTER extends WriteOperationType {
-		override val prohibited = NoFilter
-		override val extra = ExtraFilter
-		override val nonDefault = NoFilterByDefault
-		override val exclude = FlagBuffType("ExcludeFromFilter")
-		override val explicit = ExplicitFilter
-		override val optional = OptionalFilter
-		override val audit = FilterAudit
-		override val default = AbstractValueBuff
+		override val prohibited :FlagBuffType  = NoFilter
+		override val extra      :ValueBuffType = ExtraFilter
+		override val nonDefault :BuffType      = NoFilterByDefault
+		override val exclude    :FlagBuffType  = FlagBuffType("ExcludeFromFilter")(NoFilterByDefault)
+		override val explicit   :BuffType      = ExplicitFilter
+		override val optional   :BuffType      = OptionalFilter
+		override val audit      :AuditBuffType = FilterAudit
+		override val default    :ValueBuffType = AbstractValueBuff
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.filterable
 
@@ -182,50 +183,16 @@ object OperationType {
 	implicit case object FILTER extends FILTER
 
 
-	sealed abstract class UPDATE extends WriteOperationType {
-		override val prohibited = NoUpdate
-		override val extra = ExtraUpdate
-		override val nonDefault = NoUpdateByDefault
-		override val exclude = FlagBuffType("ExcludeFromUpdate")
-		override val explicit = ExplicitUpdate
-		override val optional = OptionalUpdate
-		override val audit = UpdateAudit
-		override val default = UpdateDefault
-
-		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatable
-
-		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatedByDefault
-
-		override def alter[S, O](mapping :RefinedMapping[S, O],
-		                         include :Iterable[RefinedMapping[_, O]],
-		                         exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
-			mapping.forUpdate(include, exclude)
-
-		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O],
-		                                    subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
-			mapping.updateValues(subject, collector)
-
-		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O], subject :S) :ComponentValues[S, O] =
-			mapping.updateValues(subject)
-
-		override def form[S](mapping :MappingOf[S]) :SQLWriteForm[S] = mapping.updateForm
-
-		override def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S] =
-			mapping.updateForm(components)
-	}
-
-	implicit case object UPDATE extends UPDATE
-
 
 	sealed abstract class INSERT extends WriteOperationType {
-		override val prohibited = NoInsert
-		override val extra = ExtraInsert
-		override val nonDefault = NoInsertByDefault
-		override val exclude = FlagBuffType("ExcludeFromInsert")
-		override val explicit = ExplicitInsert
-		override val optional = OptionalInsert
-		override val audit = InsertAudit
-		override val default = InsertDefault
+		override val prohibited :FlagBuffType  = NoInsert
+		override val extra      :ValueBuffType = ExtraInsert
+		override val nonDefault :BuffType      = NoInsertByDefault
+		override val exclude    :FlagBuffType  = FlagBuffType("ExcludeFromInsert")(NoInsertByDefault)
+		override val explicit   :BuffType      = ExplicitInsert
+		override val optional   :BuffType      = OptionalInsert
+		override val audit      :AuditBuffType = InsertAudit
+		override val default    :ValueBuffType = InsertDefault
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.insertable
 
@@ -253,7 +220,43 @@ object OperationType {
 
 
 
-	final val operations = Seq[OperationType](SELECT, FILTER, UPDATE, INSERT)
+	sealed abstract class UPDATE extends WriteOperationType {
+		override val prohibited :FlagBuffType  = NoUpdate
+		override val extra      :ValueBuffType = ExtraUpdate
+		override val nonDefault :BuffType      = NoUpdateByDefault
+		override val exclude    :FlagBuffType  = FlagBuffType("ExcludeFromUpdate")(NoUpdateByDefault)
+		override val explicit   :BuffType      = ExplicitUpdate
+		override val optional   :BuffType      = OptionalUpdate
+		override val audit      :AuditBuffType = UpdateAudit
+		override val default    :ValueBuffType = UpdateDefault
+
+		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatable
+
+		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatedByDefault
+
+		override def alter[S, O](mapping :RefinedMapping[S, O],
+		                         include :Iterable[RefinedMapping[_, O]],
+		                         exclude :Iterable[RefinedMapping[_, O]]) :RefinedMapping[S, O] =
+			mapping.forUpdate(include, exclude)
+
+		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O],
+		                                    subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+			mapping.updateValues(subject, collector)
+
+		override def writtenValues[S, T, O](mapping :RefinedMapping[S, O], subject :S) :ComponentValues[S, O] =
+			mapping.updateValues(subject)
+
+		override def form[S](mapping :MappingOf[S]) :SQLWriteForm[S] = mapping.updateForm
+
+		override def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S] =
+			mapping.updateForm(components)
+	}
+
+	implicit case object UPDATE extends UPDATE
+
+
+
+	final val operations = Seq[OperationType](SELECT, FILTER, INSERT, UPDATE)
 
 }
 

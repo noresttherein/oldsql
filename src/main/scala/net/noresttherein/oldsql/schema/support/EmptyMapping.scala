@@ -33,8 +33,8 @@ trait EffectivelyEmptyMapping[S, O] extends BaseMapping[S, O] {
 	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] = ComponentValues.empty
 
 	override def filterValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
-	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
 	override def insertValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
+	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues.empty
 
 	override def exportOrNot[T](component :Component[T]) :Component[T] = component
 	override def exportOrNot[T](column :Column[T]) :Column[T] = column
@@ -42,21 +42,22 @@ trait EffectivelyEmptyMapping[S, O] extends BaseMapping[S, O] {
 	override def extracts :NaturalMap[Component, Extract] = NaturalMap.empty
 	override def columnExtracts :NaturalMap[Column, ColumnExtract] = NaturalMap.empty
 
+	override def contains[T](component :Component[T]) :Boolean = component == this
+
 	override def components :Unique[Component[_]] = Unique.empty
 	override def subcomponents :Unique[Component[_]] = Unique.empty
 
 	override def columns :Unique[Column[_]] = Unique.empty
 	override def selectable :Unique[Column[_]] = Unique.empty
 	override def filterable :Unique[Column[_]] = Unique.empty
-	override def updatable :Unique[Column[_]] = Unique.empty
-	override def autoUpdated :Unique[Column[_]] = Unique.empty
 	override def insertable :Unique[Column[_]] = Unique.empty
+	override def updatable :Unique[Column[_]] = Unique.empty
 	override def autoInserted :Unique[Column[_]] = Unique.empty
+	override def autoUpdated :Unique[Column[_]] = Unique.empty
 	override def selectedByDefault :Unique[Column[_]] = Unique.empty
 	override def filteredByDefault :Unique[Column[_]] = Unique.empty
-	override def updatedByDefault :Unique[Column[_]] = Unique.empty
 	override def insertedByDefault :Unique[Column[_]] = Unique.empty
-
+	override def updatedByDefault :Unique[Column[_]] = Unique.empty
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = selectForm
 	//	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] = SQLWriteForm.empty

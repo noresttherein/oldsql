@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 
 /** A `Mapping` mixin trait which caches buff information in member fields and overrides the methods for assembly
   * and disassembly taking advantage of these flags.
-  */
+  */ //todo: buffs?
 trait OptimizedMappingAssembly extends Mapping {
 
 	override def optionally(pieces :Pieces) :Opt[Subject] = pieces.assemble(refine) match {
@@ -30,7 +30,7 @@ trait OptimizedMappingAssembly extends Mapping {
 		case _ => selectDefault.get
 	}
 
-	private val selectAudit = Lazy { if (SelectAudit.enabled(refine)) Got(SelectAudit.fold(refine)) else Lack }
+	private val selectAudit = Lazy { if (SelectAudit.active(refine)) Got(SelectAudit.fold(refine)) else Lack }
 	private val selectDefault = Lazy { SelectDefault.Value(refine) orElse ExtraSelect.Value(refine) }
 
 
@@ -40,18 +40,8 @@ trait OptimizedMappingAssembly extends Mapping {
 	override def filterValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
 		if (isFilterable) {
 			val audited = filterAudit(subject)
-			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).opt(audited) match {
 				case Got(value) => comp.filterValues(value, collector)
-				case _ =>
-			}
-			components foreach { c :Component[_] => componentValues(c) }
-		}
-
-	override def updateValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
-		if (isUpdatable) {
-			val audited = updateAudit(subject)
-			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
-				case Got(value) => comp.updateValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -60,21 +50,31 @@ trait OptimizedMappingAssembly extends Mapping {
 	override def insertValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
 		if (isInsertable) {
 			val audited = insertAudit(subject)
-			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).opt(audited) match {
 				case Got(value) => comp.insertValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
 		}
 
-	private val isFilterable = Lazy(NoFilter.disabled(this))
-	private val isUpdatable = Lazy(NoUpdate.disabled(this))
-	private val isInsertable = Lazy(NoInsert.disabled(this))
+	override def updateValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
+		if (isUpdatable) {
+			val audited = updateAudit(subject)
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).opt(audited) match {
+				case Got(value) => comp.updateValues(value, collector)
+				case _ =>
+			}
+			components foreach { c :Component[_] => componentValues(c) }
+		}
+
+	private val isFilterable = Lazy(NoFilter.inactive(this))
+	private val isInsertable = Lazy(NoInsert.inactive(this))
+	private val isUpdatable = Lazy(NoUpdate.inactive(this))
 	private val filterAudit = Lazy(FilterAudit.fold(refine))
-	private val updateAudit = Lazy(UpdateAudit.fold(refine))
 	private val insertAudit = Lazy(InsertAudit.fold(refine))
-	private val updateDefault = Lazy(UpdateDefault.Value(refine))
+	private val updateAudit = Lazy(UpdateAudit.fold(refine))
 	private val insertDefault = Lazy(InsertDefault.Value(refine))
+	private val updateDefault = Lazy(UpdateDefault.Value(refine))
 
 }
 
@@ -113,27 +113,27 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 	protected[schema] val lazyColumns :Lazy[Unique[Column[_]]] = Lazy(components.flatMap(_.columns).map(export(_)))
 	protected[schema] val lazySelectable :Lazy[Unique[Column[_]]] = Lazy(super.selectable)
 	protected[schema] val lazyFilterable :Lazy[Unique[Column[_]]] = Lazy(super.filterable)
-	protected[schema] val lazyUpdatable :Lazy[Unique[Column[_]]] = Lazy(super.updatable)
-	protected[schema] val lazyAutoUpdated :Lazy[Unique[Column[_]]] = Lazy(super.autoUpdated)
 	protected[schema] val lazyInsertable :Lazy[Unique[Column[_]]] = Lazy(super.insertable)
+	protected[schema] val lazyUpdatable :Lazy[Unique[Column[_]]] = Lazy(super.updatable)
 	protected[schema] val lazyAutoInserted :Lazy[Unique[Column[_]]] = Lazy(super.autoInserted)
+	protected[schema] val lazyAutoUpdated :Lazy[Unique[Column[_]]] = Lazy(super.autoUpdated)
 	protected[schema] val lazySelectedByDefault :Lazy[Unique[Column[_]]] = Lazy(super.selectedByDefault)
 	protected[schema] val lazyFilteredByDefault :Lazy[Unique[Column[_]]] = Lazy(super.filteredByDefault)
-	protected[schema] val lazyUpdatedByDefault :Lazy[Unique[Column[_]]] = Lazy(super.updatedByDefault)
 	protected[schema] val lazyInsertedByDefault :Lazy[Unique[Column[_]]] = Lazy(super.insertedByDefault)
+	protected[schema] val lazyUpdatedByDefault :Lazy[Unique[Column[_]]] = Lazy(super.updatedByDefault)
 
 	override def subcomponents :Unique[Component[_]] = lazySubcomponents
 	override def columns :Unique[Column[_]] = lazyColumns
 	override def selectable :Unique[Column[_]] = lazySelectable
 	override def filterable :Unique[Column[_]] = lazyFilterable
-	override def updatable :Unique[Column[_]] = lazyUpdatable
-	override def autoUpdated :Unique[Column[_]] = lazyAutoUpdated
 	override def insertable :Unique[Column[_]] = lazyInsertable
+	override def updatable :Unique[Column[_]] = lazyUpdatable
 	override def autoInserted :Unique[Column[_]] = lazyAutoInserted
+	override def autoUpdated :Unique[Column[_]] = lazyAutoUpdated
 	override def selectedByDefault :Unique[Column[_]] = lazySelectedByDefault
 	override def filteredByDefault :Unique[Column[_]] = lazyFilteredByDefault
-	override def updatedByDefault :Unique[Column[_]] = lazyUpdatedByDefault
 	override def insertedByDefault :Unique[Column[_]] = lazyInsertedByDefault
+	override def updatedByDefault :Unique[Column[_]] = lazyUpdatedByDefault
 
 	protected[schema] val lazyColumnMap :Lazy[Map[String, Column[_]]] =
 		Lazy(columns.view.map { c => (c.name, c) }.toMap)
@@ -145,13 +145,13 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 
 	protected[schema] val lazySelectForm :Lazy[SQLReadForm[S]] = Lazy(super.selectForm)
 	protected[schema] val lazyFilterForm :Lazy[SQLWriteForm[S]] = Lazy(super.filterForm)
-	protected[schema] val lazyUpdateForm :Lazy[SQLWriteForm[S]] = Lazy(super.updateForm)
 	protected[schema] val lazyInsertForm :Lazy[SQLWriteForm[S]] = Lazy(super.insertForm)
+	protected[schema] val lazyUpdateForm :Lazy[SQLWriteForm[S]] = Lazy(super.updateForm)
 
 	override def selectForm: SQLReadForm[S] = lazySelectForm
 	override def filterForm: SQLWriteForm[S] = lazyFilterForm
-	override def updateForm: SQLWriteForm[S] = lazyUpdateForm
 	override def insertForm: SQLWriteForm[S] = lazyInsertForm
+	override def updateForm: SQLWriteForm[S] = lazyUpdateForm
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 }
@@ -178,7 +178,7 @@ trait StableMapping extends Mapping {
 	override def optionally(pieces :Pieces) :Opt[Subject] = pieces.assemble(refine) match {
 		case res if noBuffs => res
 		case res if res.isDefined => if (noSelectAudit) res else Got(selectAudit(res.get))
-		case _ => default
+		case _ => selectDefault
 	}
 
 
@@ -188,18 +188,8 @@ trait StableMapping extends Mapping {
 	override def filterValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
 		if (isFilterable) {
 			val audited = filterAudit(subject)
-			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).opt(audited) match {
 				case Got(value) => comp.filterValues(value, collector)
-				case _ =>
-			}
-			components foreach { c :Component[_] => componentValues(c) }
-		}
-
-	override def updateValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
-		if (isUpdatable) {
-			val audited = updateAudit(subject)
-			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
-				case Got(value) => comp.updateValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
@@ -208,25 +198,35 @@ trait StableMapping extends Mapping {
 	override def insertValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
 		if (isInsertable) {
 			val audited = insertAudit(subject)
-			def componentValues[X](comp :Component[X]) :Unit = apply(comp).get(audited) match {
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).opt(audited) match {
 				case Got(value) => comp.insertValues(value, collector)
 				case _ =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
 		}
 
-	private val isFilterable = NoFilter.disabled(this)
-	private val isUpdatable = NoUpdate.disabled(this)
-	private val isInsertable = NoInsert.disabled(this)
+	override def updateValues[T](subject :Subject, collector :ComponentValuesBuilder[T, Origin]) :Unit =
+		if (isUpdatable) {
+			val audited = updateAudit(subject)
+			def componentValues[X](comp :Component[X]) :Unit = apply(comp).opt(audited) match {
+				case Got(value) => comp.updateValues(value, collector)
+				case _ =>
+			}
+			components foreach { c :Component[_] => componentValues(c) }
+		}
+
+	private val isFilterable = NoFilter.inactive(this)
+	private val isInsertable = NoInsert.inactive(this)
+	private val isUpdatable = NoUpdate.inactive(this)
 	private val filterAudit = FilterAudit.fold(refine)
-	private val updateAudit = UpdateAudit.fold(refine)
 	private val insertAudit = InsertAudit.fold(refine)
+	private val updateAudit = UpdateAudit.fold(refine)
 
 
 	private val noBuffs = buffs.isEmpty
-	private val noSelectAudit = SelectAudit.disabled(this)
+	private val noSelectAudit = SelectAudit.inactive(this)
 	private val selectAudit = SelectAudit.fold(refine)
-	private val default = SelectDefault.Value(refine)
+	private val selectDefault = SelectDefault.Value(refine)
 
 
 //	override def apply[T](component :Component[T]) :Extract[T] =
@@ -246,14 +246,14 @@ trait StableMapping extends Mapping {
 
 	override val selectable :Unique[Column[_]] = super.selectable
 	override val filterable :Unique[Column[_]] = super.filterable
-	override val updatable :Unique[Column[_]] = super.updatable
-	override val autoUpdated :Unique[Column[_]] = super.autoUpdated
 	override val insertable :Unique[Column[_]] = super.insertable
+	override val updatable :Unique[Column[_]] = super.updatable
 	override val autoInserted :Unique[Column[_]] = super.autoInserted
+	override val autoUpdated :Unique[Column[_]] = super.autoUpdated
 	override val selectedByDefault :Unique[Column[_]] = super.selectedByDefault
 	override val filteredByDefault :Unique[Column[_]] = super.filteredByDefault
-	override val updatedByDefault :Unique[Column[_]] = super.updatedByDefault
 	override val insertedByDefault :Unique[Column[_]] = super.insertedByDefault
+	override val updatedByDefault :Unique[Column[_]] = super.updatedByDefault
 
 	private val columnMap = columns.view.map { c => (c.name, c) }.toMap
 
@@ -264,8 +264,8 @@ trait StableMapping extends Mapping {
 
 	abstract override val selectForm: SQLReadForm[Subject] = super.selectForm
 	abstract override val filterForm :SQLWriteForm[Subject] = super.filterForm
-	abstract override val updateForm :SQLWriteForm[Subject] = super.updateForm
 	abstract override val insertForm :SQLWriteForm[Subject] = super.insertForm
+	abstract override val updateForm :SQLWriteForm[Subject] = super.updateForm
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[Subject] = op.form(refine)
 
 }

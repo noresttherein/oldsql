@@ -326,17 +326,37 @@ trait Kin[+T] extends Serializable {
 		items ++:[E, X, U] Recomposed(this)(composition.decomposer, composition.composer)
 
 	//todo: -
-
+	/** Create a kin for the value of property `property` of `T` in this kin. */
 	def property[X, U >: T](property :PropertyPath[U, X]) :Kin[X] = Property.one(this, property)
 
+	/** Create a kin for a collection of values of property `property :X` of all individual elements `E`
+	  * comprising the value of this kin.
+	  * @param property a property of item type `E` of which value `T` of this kin is composed.
+	  * @param in a factory for a type `C[_]` used to collect property values of all items in this kin.
+	  *           This is typically the companion object to the collection type.
+	  * @param decomposition implicit information how the value `T` of this kin decomposes to individual elements `E`.
+	  */
 	def properties[E, X, C[_]](property :PropertyPath[E, X], in :IterableFactory[C])
 	                          (implicit decomposition :T DecomposableTo E) :Kin[C[X]] =
 		properties(property, ComposableFrom.Collection.of[X](in))
 
+	/** Create a kin for a collection of values of property `property :X` of all individual elements `E`
+	  * comprising the value of this kin.
+	  * @param property a property of item type `E` of which value `T` of this kin is composed.
+	  * @param in a factory for a type `C[_]` used to collect property values of all items in this kin.
+	  *           This is typically the companion object to the collection type.
+	  * @param decomposition implicit information how the value `T` of this kin decomposes to individual elements `E`.
+	  */
 	def properties[E, X, C[_], Ev[_]](property :PropertyPath[E, X], in :EvidenceIterableFactory[C, Ev])
 	                                 (implicit decomposition :T DecomposableTo E, ev :Ev[X]) :Kin[C[X]] =
 		properties(property, ComposableFrom.Collection.of[X](in))
 
+	/** Create a kin for a collection of values of property `property :X` of all individual elements `E`
+	  * comprising the value of this kin.
+	  * @param property a property of item type `E` of which value `T` of this kin is composed.
+	  * @param as information about the composition of the required type `C` from individual property values `X`.
+	  * @param decomposition implicit information how the value `T` of this kin decomposes to individual elements `E`.
+	  */
 	def properties[E, X, C](property :PropertyPath[E, X], as :C ComposableFrom X)
 	                       (implicit decomposition :T DecomposableTo E) :Kin[C] //=
 //		Property(this, property)(decomposition, as)

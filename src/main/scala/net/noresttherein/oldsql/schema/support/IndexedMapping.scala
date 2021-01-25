@@ -74,7 +74,7 @@ class IndexedEntityMapping[K, S, O] private (protected override val backer :Refi
 			}
 		}
 		case _ => pieces.get(backer) match {
-			case res @ Got(s) => extract.get(s) match {
+			case res @ Got(s) => extract.opt(s) match {
 				case Got(k) => put(k, s); res
 				case _ => res
 			}

@@ -48,8 +48,7 @@ class GeneratorMapping[S, O](generator: => S) extends EmptyMapping[S, O] {
 	override def apply(values :Pieces) :S = generator
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		//fixme: proper semantics of including optional components
-		SQLReadForm.eval(generator, (0 /: components) { _ + _.selectable.size })
+		SQLReadForm.eval(generator, (0 /: components) { _ + _.selectedByDefault.size })
 
 	override val selectForm :SQLReadForm[S] = SQLReadForm.eval(generator)
 
