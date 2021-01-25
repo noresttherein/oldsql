@@ -74,17 +74,17 @@ trait MappingFactoryMethods[+A[X] <: RefinedMapping[X, O], S, O] extends Mapping
 	  *                It is the source of buffs used in the process.
 	  * @param include a list of (additional) components of this mapping to include in the operation.
 	  *                Must not contain components having the `no` buff. All components on the list will
-	  *                have their `explicit` buff removed (if present) and, if the included component
-	  *                is not a column, all its subcomponents with the `explicit` buff will have that buff
+	  *                have their `Explicit` buff removed (if present) and, if the included component
+	  *                is not a column, all its subcomponents with the `Explicit` buff will have that buff
 	  *                removed.
 	  * @param exclude a list of components which should be excluded from the operation. Must contain
-	  *                components whose export versions have the `optional` buff. All components on this list
-	  *                will receive the `nonDefault` buff (if not already present) and so will
-	  *                all their subcomponents with the `optional` buff.
+	  *                components whose export versions have the `Optional` buff. All components on this list
+	  *                will receive the `NonDefault` buff (if not already present) and so will
+	  *                all their subcomponents with the `Optional` buff.
 	  * @throws IllegalArgumentException if a component of `include` contains buff
-	  *                                  `op.`[[net.noresttherein.oldsql.OperationType.prohibited prohibited]],
+	  *                                  `op.`[[net.noresttherein.oldsql.OperationType.Prohibited Prohibited]],
 	  *                                  or a component of `exclude` does not contain buff
-	  *                                  `op.`[[net.noresttherein.oldsql.OperationType.optional optional]].
+	  *                                  `op.`[[net.noresttherein.oldsql.OperationType.Optional Optional]].
 	  */ //this may conflict with the extension method alter
 	protected def alter(op :OperationType, include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S]
 
@@ -147,14 +147,14 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 			thisColumn
 		else adjustments.head match {
 			case IncludedComponent(c) if c == this =>
-				val ops = OperationType.operations.filterNot(_.prohibited.active(this))
+				val ops = OperationType.operations.filterNot(_.Prohibited.active(this))
 				if (ops.nonEmpty)
-					withBuffs(buffs.filter { buff => ops.forall { op => op.extra.inactive(buff) } })
+					withBuffs(buffs.filter { buff => ops.forall { op => op.Extra.inactive(buff) } })
 				else
 	                thisColumn
 
 			case ExcludedComponent(c) if c ==  this =>
-				val excludes = OperationType.operations.filter(_.optional.active(this)).map(_.exclude[S])
+				val excludes = OperationType.operations.filter(_.Optional.active(this)).map(_.Exclude[S])
 				if (excludes.nonEmpty) withBuffs(excludes ++: buffs.declared)
 				else thisColumn
 
@@ -175,9 +175,9 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 			if (include.isEmpty)
 				thisColumn
 			else if (include.head == this) {
-				val ops = OperationType.operations.filterNot(_.prohibited.active(this))
+				val ops = OperationType.operations.filterNot(_.Prohibited.active(this))
 				if (ops.nonEmpty)
-					withBuffs(buffs.filter { buff => ops.forall { op => op.extra.inactive(buff) } })
+					withBuffs(buffs.filter { buff => ops.forall { op => op.Extra.inactive(buff) } })
 				else
 					thisColumn
 			} else
@@ -185,7 +185,7 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 					"Mapping " + include.head + " is not a component of column " + this + "."
 				)
 		else if (exclude.head == this) {
-			val excludes = OperationType.operations.filter(_.optional.active(this)).map(_.exclude[S])
+			val excludes = OperationType.operations.filter(_.Optional.active(this)).map(_.Exclude[S])
 			if (excludes.nonEmpty) withBuffs(excludes ++: buffs.declared)
 			else thisColumn
 		} else
@@ -200,10 +200,10 @@ trait ColumnMappingFactoryMethods[+A[X] <: ColumnMapping[X, O], S, O] extends Ma
 			throw new IllegalArgumentException("Mappings " + include + " are not components of column " + this + ".")
 		else if (exclude.size > 1)
 			throw new IllegalArgumentException("Mappings " + exclude + " are not components of column " + this + ".")
-		else if (exclude.headOption.contains(this) && op.optional.active(this))
-			withBuffs(op.exclude[S] +: buffs.declared)
-		else if (include.headOption.contains(this) && op.explicit.active(this))
-			withBuffs(buffs.filter(op.explicit.inactive(_)))
+		else if (exclude.headOption.contains(this) && op.Optional.active(this))
+			withBuffs(op.Exclude[S] +: buffs.declared)
+		else if (include.headOption.contains(this) && op.Explicit.active(this))
+			withBuffs(buffs.filter(op.Explicit.inactive(_)))
 		else
 			thisColumn
 

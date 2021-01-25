@@ -1856,12 +1856,12 @@ object Mapping extends LowPriorityMappingImplicits {
 		extends SQLWriteForm[S] with WriteFormLiterals[S]
 	{ //todo: non-nullable columns should throw an early exception and not leave it to the database.
 //		def this(op :WriteOperationType, mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]]) =
-//			this(mapping, columns, op.extra, op.form(_))
+//			this(mapping, columns, op.Extra, op.form(_))
 
 		private[this] val fasterColumns = columns.toArray //speeds up the iteration
 		private[this] val extracts = fasterColumns.map(mapping(_)) //extracts for the columns for fast access
 		private[this] val forms = fasterColumns.map(op.form(_))
-		private[this] val extras = fasterColumns.map(op.extra.get(_).orNull)
+		private[this] val extras = fasterColumns.map(op.Extra.get(_).orNull)
 
 		override def set(statement :PreparedStatement, position :Int, subject :S) :Unit =
 			if (subject == null)
@@ -1960,7 +1960,7 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		def apply[S, O](op :WriteOperationType, mapping :RefinedMapping[S, O], components :Unique[MappingAt[O]])
 				:SQLWriteForm[S] =
-			custom[S, O](op, mapping, components)//, op.prohibited, op.nonDefault, op.extra, op.form(_))
+			custom[S, O](op, mapping, components)//, op.Prohibited, op.NonDefault, op.Extra, op.form(_))
 
 		def apply[S, O](op :WriteOperationType, mapping :RefinedMapping[S, O]) :SQLWriteForm[S] =
 			default(op, mapping)
@@ -2002,32 +2002,32 @@ object Mapping extends LowPriorityMappingImplicits {
 				:SQLWriteForm[S] =
 		{ //fixme: hey, this should use Mapping.writtenValues!
 			val exports = components.view.map(mapping.export(_))
-			if (exports.exists(op.prohibited.active))
+			if (exports.exists(op.Prohibited.active))
 				throw new IllegalArgumentException(
-					s"Can't create a $op write form for $mapping using $exports: ${op.prohibited} buff present among selection."
+					s"Can't create a $op write form for $mapping using $exports: ${op.Prohibited} buff present among selection."
 				)
 			val columns = exports.flatMap { //fixme: this excludes ExplicitXxx components/columns even if present in `components`
-				c => c.columns.view.map(mapping.export(_)).filter(op.nonDefault.inactive)
+				c => c.columns.view.map(mapping.export(_)).filter(op.NonDefault.inactive)
 			}.to(Unique)
-			val mandatory = mapping.columns.filter(op.optional.inactive)
+			val mandatory = mapping.columns.filter(op.Optional.inactive)
 			val missing = mandatory.toSet - columns.toSet
 			if (missing.nonEmpty)
 				throw new IllegalArgumentException(missing.mkString(
 					s"Can't create a $op write form for $mapping using $exports: missing mandatory columns ", ", ", "."
 				))
 
-			val extras = columns ++ op.extra.Active.columns(mapping)
+			val extras = columns ++ op.Extra.Active.columns(mapping)
 			new MappingWriteForm[S, O](op, mapping, extras)
 		}
 
 		private def default[S](op :WriteOperationType, mapping :MappingOf[S]) :SQLWriteForm[S] = {
-			val columns = op.prohibited.Inactive.columns(mapping) ++ op.extra.Active.columns(mapping)
+			val columns = op.Prohibited.Inactive.columns(mapping) ++ op.Extra.Active.columns(mapping)
 			new MappingWriteForm[S, mapping.Origin](op, mapping, columns)
 		}
 
 		private def full[S](op :WriteOperationType, mapping :MappingOf[S]) :SQLWriteForm[S] =
 			new MappingWriteForm[S, mapping.Origin](
-				op, mapping, op.columns[mapping.Origin](mapping) ++ op.extra.Active.columns(mapping)
+				op, mapping, op.columns[mapping.Origin](mapping) ++ op.Extra.Active.columns(mapping)
 			)
 
 	}

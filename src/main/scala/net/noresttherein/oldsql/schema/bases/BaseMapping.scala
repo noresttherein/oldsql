@@ -51,12 +51,12 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 
 	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
-		if (op.prohibited.inactive(this)) {
-			val audited = op.audit.fold(this)(subject)
+		if (op.Prohibited.inactive(this)) {
+			val audited = op.Audit.fold(this)(subject)
 			def componentValues[X](comp :Component[X]) :Unit = {
 				apply(comp).opt(audited) match {
 					case Got(value) => comp.writtenValues(op, value, collector)
-					case _ => op.default.Value(comp) match {
+					case _ => op.Default.Value(comp) match {
 						case Got(value) => comp.writtenValues(op, value, collector)
 						case _ =>
 					}

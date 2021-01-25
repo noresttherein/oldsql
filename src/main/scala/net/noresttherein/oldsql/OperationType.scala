@@ -22,71 +22,71 @@ sealed trait OperationType {
 
 	/** A buff marking a column/component as not allowed in a given operation type or, more specifically,
 	  * that the column is not used in this statement type as part of the mapping - it can still be used by the
-	  * framework explicitly (see [[net.noresttherein.oldsql.OperationType.extra extra]]. Example: `NoSelect`.
+	  * framework explicitly (see [[net.noresttherein.oldsql.OperationType.Extra Extra]]. Example: `NoSelect`.
 	  */
-	val prohibited :FlagBuffType
+	val Prohibited :FlagBuffType
 
 	/** A buff marking a column/component as not used as part of the owning mapping, but forcibly always included
 	  * by the framework, with the value specified by the buff instance. For example, `ExtraFilter` will apply
 	  * an additional filter on the queried table or view. It always implies
-	  * [[net.noresttherein.oldsql.OperationType.prohibited prohibited]].
+	  * [[net.noresttherein.oldsql.OperationType.Prohibited Prohibited]].
 	  */
-	val extra :ValueBuffType
+	val Extra :ValueBuffType
 
 	/** A buff marking a column/component as not included by default in the operation, but possibly still allowed
-	  * if included explicitly. It is implied by both [[net.noresttherein.oldsql.OperationType.prohibited prohibited]]
-	  * and [[net.noresttherein.oldsql.OperationType.explicit explicit]]. Example: `NoSelectByDefault`.
+	  * if included explicitly. It is implied by both [[net.noresttherein.oldsql.OperationType.Prohibited Prohibited]]
+	  * and [[net.noresttherein.oldsql.OperationType.Explicit Explicit]]. Example: `NoSelectByDefault`.
 	  */
-	val nonDefault :BuffType
+	val NonDefault :BuffType
 
-	/** A buff implying [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]], used internally
+	/** A buff implying [[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]], used internally
 	  * in order to flag an
-	  * [[net.noresttherein.oldsql.OperationType.optional optional]]/[[net.noresttherein.oldsql.OperationType.explicit explicit]]
+	  * [[net.noresttherein.oldsql.OperationType.Optional Optional]]/[[net.noresttherein.oldsql.OperationType.Explicit Explicit]]
 	  * component for being excluded from the operation. Should not be used in the application code in order
 	  * to statically mark optional components - use one of the former buff types instead.
 	  */
-	val exclude :FlagBuffType
+	val Exclude :FlagBuffType
 
 	/** A buff marking that a column/component must be included in the operation explicitly, as it is not included
 	  * by the mapping in the standard process. This buff implies
-	  * [[net.noresttherein.oldsql.OperationType.optional optional]] and
-	  * [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]]. Example: `ExplicitSelect` for CLOB/BLOB types.
+	  * [[net.noresttherein.oldsql.OperationType.Optional Optional]] and
+	  * [[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]]. Example: `ExplicitSelect` for CLOB/BLOB types.
 	  */
-	val explicit :BuffType
-	
+	val Explicit :BuffType
+
 	/** A buff marking that a column/component can be excluded from this operation, but it must happen explicitly,
-	  * as it is included by default. Example `OptionalSelect`. 
+	  * as it is included by default. Example `OptionalSelect`.
 	  */
-	val optional :BuffType
-	
+	val Optional :BuffType
+
 	/** A buff carrying a transforming function working on the mapping subject type, which must be applied to
 	  * every value written or read by this operation. For example, `InsertAudit` and `UpdateAudit` can be used
 	  * to implement validation of the data before it is written to the database.
 	  */
-	val audit :AuditBuffType
+	val Audit :AuditBuffType
 
 	/** A buff carrying a default value which should be inserted/updated if the written entity is missing one
 	  * for the component (in write operations) or returned if none can be assembled (when selecting). */
-	val default :ValueBuffType
+	val Default :ValueBuffType
 
-	/** All columns, direct or indirect, of the given mapping which are applicable to this operation type. 
+	/** All columns, direct or indirect, of the given mapping which are applicable to this operation type.
 	  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
-	  * the [[net.noresttherein.oldsql.OperationType.prohibited prohibited]] buff.
+	  * the [[net.noresttherein.oldsql.OperationType.Prohibited Prohibited]] buff.
 	  * @see [[net.noresttherein.oldsql.OperationType.defaultColumns]]
 	  */
 	def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]]
 
 	/** Columns, both direct and indirect, of the given mapping which are used by default in this operation type.
 	  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
-	  * the [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]] buff.
+	  * the [[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]] buff.
 	  * @see [[net.noresttherein.oldsql.OperationType.columns]]
 	  */
 	def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]]
 
 	/** Creates a version of the given mapping with buffs manipulated in such a way that the specified components
 	  * are included or excluded from this operation type by default. It can only include components which are
-	  * allowed for this operation type (have the `explicit` buff) and exclude those which are specifically marked
-	  * as optional with the `optional` buff.
+	  * allowed for this operation type (have the `Explicit` buff) and exclude those which are specifically marked
+	  * as optional with the `Optional` buff.
 	  */
 	def alter[S, O](mapping :RefinedMapping[S, O],
 	                include :Iterable[RefinedMapping[_, O]],
@@ -101,8 +101,8 @@ sealed trait OperationType {
 object OperationType {
 
 	sealed trait ReadOperationType extends OperationType {
-		override val explicit :ValueBuffType
-		override val optional :ValueBuffType
+		override val Explicit :ValueBuffType
+		override val Optional :ValueBuffType
 
 		def form[S](mapping :MappingOf[S]) :SQLReadForm[S]
 		def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLReadForm[S]
@@ -120,14 +120,14 @@ object OperationType {
 
 
 	sealed abstract class SELECT extends ReadOperationType {
-		override val prohibited :FlagBuffType  = NoSelect
-		override val extra      :ValueBuffType = ExtraSelect
-		override val nonDefault :BuffType      = NoSelectByDefault
-		override val exclude    :FlagBuffType  = FlagBuffType("ExcludeFromSelect")(NoSelectByDefault)
-		override val explicit   :ValueBuffType = ExplicitSelect
-		override val optional   :ValueBuffType = OptionalSelect
-		override val audit      :AuditBuffType = SelectAudit
-		override val default    :ValueBuffType = SelectDefault
+		override val Prohibited :FlagBuffType  = NoSelect
+		override val Extra      :ValueBuffType = ExtraSelect
+		override val NonDefault :BuffType      = NoSelectByDefault
+		override val Exclude    :FlagBuffType  = FlagBuffType("ExcludeFromSelect")(NoSelectByDefault)
+		override val Explicit   :ValueBuffType = ExplicitSelect
+		override val Optional   :ValueBuffType = OptionalSelect
+		override val Audit      :AuditBuffType = SelectAudit
+		override val Default    :ValueBuffType = SelectDefault
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.selectable
 
@@ -149,14 +149,14 @@ object OperationType {
 
 
 	sealed abstract class FILTER extends WriteOperationType {
-		override val prohibited :FlagBuffType  = NoFilter
-		override val extra      :ValueBuffType = ExtraFilter
-		override val nonDefault :BuffType      = NoFilterByDefault
-		override val exclude    :FlagBuffType  = FlagBuffType("ExcludeFromFilter")(NoFilterByDefault)
-		override val explicit   :BuffType      = ExplicitFilter
-		override val optional   :BuffType      = OptionalFilter
-		override val audit      :AuditBuffType = FilterAudit
-		override val default    :ValueBuffType = AbstractValueBuff
+		override val Prohibited :FlagBuffType  = NoFilter
+		override val Extra      :ValueBuffType = ExtraFilter
+		override val NonDefault :BuffType      = NoFilterByDefault
+		override val Exclude    :FlagBuffType  = FlagBuffType("ExcludeFromFilter")(NoFilterByDefault)
+		override val Explicit   :BuffType      = ExplicitFilter
+		override val Optional   :BuffType      = OptionalFilter
+		override val Audit      :AuditBuffType = FilterAudit
+		override val Default    :ValueBuffType = AbstractValueBuff
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.filterable
 
@@ -185,14 +185,14 @@ object OperationType {
 
 
 	sealed abstract class INSERT extends WriteOperationType {
-		override val prohibited :FlagBuffType  = NoInsert
-		override val extra      :ValueBuffType = ExtraInsert
-		override val nonDefault :BuffType      = NoInsertByDefault
-		override val exclude    :FlagBuffType  = FlagBuffType("ExcludeFromInsert")(NoInsertByDefault)
-		override val explicit   :BuffType      = ExplicitInsert
-		override val optional   :BuffType      = OptionalInsert
-		override val audit      :AuditBuffType = InsertAudit
-		override val default    :ValueBuffType = InsertDefault
+		override val Prohibited :FlagBuffType  = NoInsert
+		override val Extra      :ValueBuffType = ExtraInsert
+		override val NonDefault :BuffType      = NoInsertByDefault
+		override val Exclude    :FlagBuffType  = FlagBuffType("ExcludeFromInsert")(NoInsertByDefault)
+		override val Explicit   :BuffType      = ExplicitInsert
+		override val Optional   :BuffType      = OptionalInsert
+		override val Audit      :AuditBuffType = InsertAudit
+		override val Default    :ValueBuffType = InsertDefault
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.insertable
 
@@ -221,14 +221,14 @@ object OperationType {
 
 
 	sealed abstract class UPDATE extends WriteOperationType {
-		override val prohibited :FlagBuffType  = NoUpdate
-		override val extra      :ValueBuffType = ExtraUpdate
-		override val nonDefault :BuffType      = NoUpdateByDefault
-		override val exclude    :FlagBuffType  = FlagBuffType("ExcludeFromUpdate")(NoUpdateByDefault)
-		override val explicit   :BuffType      = ExplicitUpdate
-		override val optional   :BuffType      = OptionalUpdate
-		override val audit      :AuditBuffType = UpdateAudit
-		override val default    :ValueBuffType = UpdateDefault
+		override val Prohibited :FlagBuffType  = NoUpdate
+		override val Extra      :ValueBuffType = ExtraUpdate
+		override val NonDefault :BuffType      = NoUpdateByDefault
+		override val Exclude    :FlagBuffType  = FlagBuffType("ExcludeFromUpdate")(NoUpdateByDefault)
+		override val Explicit   :BuffType      = ExplicitUpdate
+		override val Optional   :BuffType      = OptionalUpdate
+		override val Audit      :AuditBuffType = UpdateAudit
+		override val Default    :ValueBuffType = UpdateDefault
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatable
 

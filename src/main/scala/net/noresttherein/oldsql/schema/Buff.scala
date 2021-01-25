@@ -284,7 +284,7 @@ object Buff {
 	  * from that particular expression. Alternatively, corresponding methods of
 	  * [[net.noresttherein.oldsql.schema.Relation Relation]] can be used, which will exclude it
 	  * (unless explicitly included) from all occurrences of any owning component in an SQL ''select''
-	  * using the relation: [[net.noresttherein.oldsql.schema.Relation.include exclude]] and
+	  * using the relation: [[net.noresttherein.oldsql.schema.Relation.exclude exclude]] and
 	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation(...)]].
 	  */
 	case object OptionalFilter extends ContradictoryFlag()(NoFilter)

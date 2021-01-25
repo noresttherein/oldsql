@@ -280,7 +280,7 @@ object QuerySQL extends ImplicitQueryRelations {
 	  * of the [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.operator operator]] member property.
 	  * The row schemas of both arguments must match or an exception will be thrown when this expression
 	  * is converted into an executable SQL statement. If the schema of any of the member ''selects'' is flexible
-	  * (it is defined by a mapping with [[net.noresttherein.oldsql.schema.Buff.OptionalSelect optional]] columns),
+	  * (it is defined by a mapping with [[net.noresttherein.oldsql.schema.Buff.OptionalSelect Optional]] columns),
 	  * the schema of the first member is used for both of the arguments.
 	  */
 	trait CompoundSelectSQL[-F <: RowProduct, V] extends CompositeSQL[F, GlobalScope, Rows[V]] with QuerySQL[F, V] {

@@ -2714,9 +2714,9 @@ object MappingSchema {
 				components.filterNot(remaining)
 			})
 
-		if (filtered.components.exists(op.prohibited.active))
+		if (filtered.components.exists(op.Prohibited.active))
 			throw new IllegalArgumentException(
-				s"$members is an invalid $op schema as it contains a component with the ${op.prohibited} Buff."
+				s"$members is an invalid $op schema as it contains a component with the ${op.Prohibited} Buff."
 			)
 
 		override def unapply(subject :S) :Opt[V] = filtered.unapply(subject)

@@ -17,7 +17,7 @@ import net.noresttherein.oldsql.sql.ast.AggregateSQL.DefaultAggregateSQL
 /** An SQL expression representing the application of an aggregate function such as `sum` to an expression using
   * columns from multiple rows. Used in conjunction with queries featuring a ''group by'' clause,
   * or in the ''select'' clause when all rows are being aggregated.
-  * @tparam F the ungrouped ''from'' clause whose [[net.noresttherein.oldsql.sql.RowProduct.Explicit ''explicit'']]
+  * @tparam F the ungrouped ''from'' clause whose [[net.noresttherein.oldsql.sql.RowProduct.Explicit ''Explicit'']]
   *           section is aggregated, that is contains relations whose columns are not available individually
   *           (unless featured in
   *           [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]/[[net.noresttherein.oldsql.sql.By By]]).

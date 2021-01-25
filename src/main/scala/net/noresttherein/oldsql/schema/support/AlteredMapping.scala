@@ -62,24 +62,24 @@ class AlteredMapping[+M <: RefinedMapping[S, O], S, O]
   * for all database operations and, in order to exclude a particular one - both completely and only by default -
   * they require [[net.noresttherein.oldsql.schema.Buff Buff]]s being applied. The exact buffs affected by this factory
   * are defined in every [[net.noresttherein.oldsql.OperationType OperationType]] instance:
-  *   1. [[net.noresttherein.oldsql.OperationType.prohibited prohibited]] (for example,
+  *   1. [[net.noresttherein.oldsql.OperationType.Prohibited Prohibited]] (for example,
   *      [[net.noresttherein.oldsql.schema.Buff.NoSelect NoSelect]]): completely disallows the use of a component
   *      in that operation type under any circumstances. Providing a component with this buff in the 'include' list
   *      will result in an `IllegalArgumentException`.
-  *   1. [[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]] (such as
+  *   1. [[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]] (such as
   *      [[net.noresttherein.oldsql.schema.Buff.NoSelectByDefault NoSelectByDefault]]): the buff which excludes
   *      the component from a particular operation type. All columns which do not carry this buff are included
   *      by default, and in most cases are impossible to use in this capacity without adapting the mapping first.
-  *      It occurs typically in the form of [[net.noresttherein.oldsql.OperationType.explicit explicit]] buff 
+  *      It occurs typically in the form of [[net.noresttherein.oldsql.OperationType.Explicit Explicit]] buff
   *      ([[net.noresttherein.oldsql.schema.Buff.ExplicitSelect ExplicitSelect]]), which can be removed
   *      by this procedure, making the component selectable (or insertable, updatable, etc) normally.
-  *   1. [[net.noresttherein.oldsql.OperationType.optional optional]]: buffs such as 
-  *      [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] are the opposite of the `nonDefault`
+  *   1. [[net.noresttherein.oldsql.OperationType.Optional Optional]]: buffs such as
+  *      [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] are the opposite of the `NonDefault`
   *      buffs: they mark components which can be omitted from the selected/updated column set. Listing a component
   *      without this buff in the 'excludes' argument will result in an `IllegalArgumentException`. At the same time,
   *      the buff provides a default value for the component which will be returned in place of the one
   *      in the table/entity object.
-  *   1. [[net.noresttherein.oldsql.OperationType.exclude exclude]]: instead of replacing an `OptionalXxx`
+  *   1. [[net.noresttherein.oldsql.OperationType.Exclude Exclude]]: instead of replacing an `OptionalXxx`
   *      with an `ExplicitXxx` to exclude a component, this synthetic buff implying `NoXxxByDefault` is added
   *      (unless the component already has a `NoXxxByDefault` attached) to force this change.
   * 
@@ -91,15 +91,15 @@ class AlteredMapping[+M <: RefinedMapping[S, O], S, O]
   * in the 'include' list, the change described earlier will affect the whole component tree under it,
   * ''with the exception of'' that single column. In order for the column to be included in the column set,
   * it would have to be specified alongside its ancestor component, because its `ExplicitSelect` will remain
-  * active. Similarly, an inherited added `exclude` buff is contradicted by an `optional` buff coming before it
+  * active. Similarly, an inherited added `Exclude` buff is contradicted by an `Optional` buff coming before it
   * (that is, defined somewhere under the component tree of the component which is excluded) and the buffed column
-  * must be individually specified in the 'exclude' list to be omitted.
+  * must be individually specified in the 'Exclude' list to be omitted.
   * 
   * Another consequence of buff inheritance and performing the changes on the level of single components
   * (rather than manually for the whole tree) is that passing to be included a component which already is included
   * by default has no effect; in particular, any its columns which are not included by default are unaffected
   * (and will not be included). The same goes for excluding components. On the other hand, if a column or component
-  * under one of the listed components has the `prohibited`/does not have the `optional` buff, it will be ignored
+  * under one of the listed components has the `Prohibited`/does not have the `Optional` buff, it will be ignored
   * as previously, without raising an error. An exception is thrown only if current buffs of the explicitly
   * listed components do not allow the changes to be made.
   * 
@@ -109,9 +109,9 @@ class AlteredMapping[+M <: RefinedMapping[S, O], S, O]
   * custom behaviour, which can potentially interfere with how this factory operates. In particular, non-standard
   * [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] methods can be bypassed.
   * 
-  * Remember also that [[net.noresttherein.oldsql.OperationType.extra OperationType.extra]] columns
+  * Remember also that [[net.noresttherein.oldsql.OperationType.Extra OperationType.Extra]] columns
   * (having o [[net.noresttherein.oldsql.schema.Buff.ExtraSelect ExtraSelect]] buff or its sibling) imply
-  * `prohibited` (`NoSelect`); despite taking part in every operation of the given type, they cannot appear
+  * `Prohibited` (`NoSelect`); despite taking part in every operation of the given type, they cannot appear
   * on the 'include' list, but rather are included automatically at a later stage.
   * 
   * @see [[net.noresttherein.oldsql.schema.support.AdjustedMapping]]
@@ -128,14 +128,14 @@ object AlteredMapping {
 	  * be included in operation `op`, while all columns on the `exclude` list to be excluded.
 	  * @param original a mapping (any in theory, but in practice the 'root' mapping for some table).
 	  * @param op       a type of database operation (`SELECT`, `INSERT`, etc).                
-	  * @param include  a collection of components of `original`, which must not have 
-	  *                 the [[net.noresttherein.oldsql.OperationType.prohibited op.prohibited]] buff (in any form).
-	  * @param exclude  a collection of components of `original`, with each item having
-	  *                 the [[net.noresttherein.oldsql.OperationType.optional op.optional]] buff.
+	  * @param include a collection of components of `original`, which must not have
+	  *                the [[net.noresttherein.oldsql.OperationType.Prohibited op.Prohibited]] buff (in any form).
+	  * @param exclude a collection of components of `original`, with each item having
+	  *                the [[net.noresttherein.oldsql.OperationType.Optional op.Optional]] buff.
 	  * @return a `Mapping` which features new ''export'' versions of the given components (and their subcomponents),
 	  *         which strip the components on the `includes` list and their subcomponents from 
-	  *         the [[net.noresttherein.oldsql.OperationType.nonDefault op.nonDefault]] buffs, and all components on
-	  *         the `excludes` list which didn't have the `nonDefault` buff receive one.
+	  *         the [[net.noresttherein.oldsql.OperationType.NonDefault op.NonDefault]] buffs, and all components on
+	  *         the `excludes` list which didn't have the `NonDefault` buff receive one.
 	  */
 	@throws[IllegalArgumentException]("if a mapping with NoXxx buff is present on the include list, " +
 	                                  "or a mapping without OptionalXxx buff is present on the exclude list.")
@@ -146,7 +146,7 @@ object AlteredMapping {
 
 	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
-	  * ''select'' clauses to include components on the `include` list and exclude all the components on the `exclude` 
+	  * ''select'' clauses to include components on the `include` list and exclude all the components on the `exclude`
 	  * list. This is done by dropping all [[net.noresttherein.oldsql.schema.Buff.NoSelectByDefault NoSelectByDefault]]
 	  * buffs (and all buffs which [[net.noresttherein.oldsql.schema.Buff.BuffType.implies imply]] this buff)
 	  * from the `include` list, and adding a buff implying `NoSelectByDefault` to every component on the `exclude` list.
@@ -180,7 +180,7 @@ object AlteredMapping {
 
 	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
-	  * ''where'' clause to include components on the `include` list and exclude all the components on the `exclude` 
+	  * ''where'' clause to include components on the `include` list and exclude all the components on the `exclude`
 	  * list. This is done by dropping all [[net.noresttherein.oldsql.schema.Buff.NoFilterByDefault NoFilterByDefault]]
 	  * buffs (and all buffs which [[net.noresttherein.oldsql.schema.Buff.BuffType.implies imply]] this buff)
 	  * from the `include` list, and adding a buff implying `NoFilterByDefault` to every component on 
@@ -208,7 +208,7 @@ object AlteredMapping {
 	  *         receive one.                 
 	  */
 	@throws[IllegalArgumentException]("if a mapping with NoFilter buff is present on the include list, " +
-		                              "or a mapping without OptionalFilter buff is present on the exclude list.")	
+		                              "or a mapping without OptionalFilter buff is present on the exclude list.")
 	def filter[M <: RefinedMapping[S, O], S, O]
 	          (original :M, include :Iterable[RefinedMapping[_, O]], exclude :Iterable[RefinedMapping[_, O]] = Nil)
 	          (implicit inferS :InferTypeParams[M, M, RefinedMapping[S, O]]) :Adapted[M] =
@@ -290,7 +290,7 @@ object AlteredMapping {
 	                    (original :RefinedMapping[S, O], op :OperationType,
 	                     includes :Iterable[RefinedMapping[_, O]], excludes :Iterable[RefinedMapping[_, O]])
 			:Overrides[O] =
-		overrides(original, includes, excludes, op.prohibited, op.nonDefault, op.exclude, op.optional)
+		overrides(original, includes, excludes, op.Prohibited, op.NonDefault, op.Exclude, op.Optional)
 
 
 	private[schema] def overrides[S, O]
@@ -309,9 +309,9 @@ object AlteredMapping {
 	
 
 	/** Modifies the buffs of the given components so that they are included by default in a particular operation.
-	  * It removes the `explicit` buff from all the components in the `components` collection and their subcomponents,
-	  * but if the `prohibited` buff is present on any of the components, an `IllegalArgumentException` is raised.
-	  * If it is present on any of the subcomponents, the presence of `explicit` buff is ignored and the subcomponent
+	  * It removes the `Explicit` buff from all the components in the `components` collection and their subcomponents,
+	  * but if the `Prohibited` buff is present on any of the components, an `IllegalArgumentException` is raised.
+	  * If it is present on any of the subcomponents, the presence of `Explicit` buff is ignored and the subcomponent
 	  * remains unchanged.
 	  */
 	private def include[O](mapping :RefinedMapping[_, O], components :Iterable[RefinedMapping[_, O]],
@@ -350,9 +350,9 @@ object AlteredMapping {
 
 
 	/** Modifies the buffs of the given components so that they are not included by default in a particular operation.
-	  * It adds the  `nonDefault` flag to all the components in the `components` collection and their subcomponents,
-	  * but if the `optional` buff is missing on any of the listed components, an `IllegalArgumentException` is raised.
-	  * Subcomponents of the listed components without the `optional` buff simply remain unchanged.
+	  * It adds the  `NonDefault` flag to all the components in the `components` collection and their subcomponents,
+	  * but if the `Optional` buff is missing on any of the listed components, an `IllegalArgumentException` is raised.
+	  * Subcomponents of the listed components without the `Optional` buff simply remain unchanged.
 	  */
 	private def exclude[O](mapping :RefinedMapping[_, O], components :Iterable[RefinedMapping[_, O]],
 	                       nonDefault :BuffType, exclude :FlagBuffType, optional :BuffType)
@@ -397,15 +397,15 @@ object AlteredMapping {
   * [[net.noresttherein.oldsql.schema.Mapping.buffs buffs]] in such a way that they are included/excluded
   * from all database operations where it is possible.
   * All components on the `included` list which do not carry
-  * an `op.`[[net.noresttherein.oldsql.OperationType.prohibited prohibited]] buff for any operation
+  * an `op.`[[net.noresttherein.oldsql.OperationType.Prohibited Prohibited]] buff for any operation
   * `op <: `[[net.noresttherein.oldsql.OperationType OperationType]], have all
-  * `op.`[[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]] buffs removed.
-  * This typically means removing `op.`[[net.noresttherein.oldsql.OperationType.explicit explicit]].
-  * All components on the `excluded` list which carry an `op.`[[net.noresttherein.oldsql.OperationType.optional optional]],
-  * but not an `op.`[[net.noresttherein.oldsql.OperationType.nonDefault nonDefault]],
+  * `op.`[[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]] buffs removed.
+  * This typically means removing `op.`[[net.noresttherein.oldsql.OperationType.Explicit Explicit]].
+  * All components on the `excluded` list which carry an `op.`[[net.noresttherein.oldsql.OperationType.Optional Optional]],
+  * but not an `op.`[[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]],
   * (so, those which actually use [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]],
   * rather than [[net.noresttherein.oldsql.schema.Buff.ExplicitSelect ExplicitSelect]], for example),
-  * receive a special `nonDefault` buff.  Other listed components are silently ignored.
+  * receive a special `NonDefault` buff.  Other listed components are silently ignored.
   *
   * All components passed to public constructors (and public factory methods) are first substituted with their
   * ''export'' version for `mapping`.
@@ -584,9 +584,9 @@ object AdjustedMapping {
 	private def include[T, O](mapping :RefinedMapping[_, O], component :RefinedMapping[T, O],
 	                          builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 	{
-		val excludedOps = operations.filter(o => o.prohibited.inactive(component) && o.nonDefault.active(component))
+		val excludedOps = operations.filter(o => o.Prohibited.inactive(component) && o.NonDefault.active(component))
 		if (excludedOps.nonEmpty) {
-			val noExcludes = component.buffs.filter { buff => excludedOps.forall(_.nonDefault.inactive(buff)) }
+			val noExcludes = component.buffs.filter { buff => excludedOps.forall(_.NonDefault.inactive(buff)) }
 			val buffed = component.withBuffs(noExcludes)
 			builder += new Override(component, buffed)
 
@@ -610,9 +610,9 @@ object AdjustedMapping {
 	private def exclude[T, O](mapping :RefinedMapping[_, O], component :RefinedMapping[T, O],
 	                          builder :Builder[Override[_, O], Overrides[O]]) :Unit =
 	{
-		val optionalOps = operations.filter(o => o.optional.active(component) && o.nonDefault.inactive(component))
+		val optionalOps = operations.filter(o => o.Optional.active(component) && o.NonDefault.inactive(component))
 		if (optionalOps.nonEmpty) {
-			val excludes = optionalOps.map(_.exclude[T]) ++: component.buffs.declared
+			val excludes = optionalOps.map(_.Exclude[T]) ++: component.buffs.declared
 			val buffed = component.withBuffs(excludes)
 			builder += new Override(component, buffed)
 

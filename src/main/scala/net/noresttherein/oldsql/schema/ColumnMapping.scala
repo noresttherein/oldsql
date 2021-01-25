@@ -68,15 +68,15 @@ trait ColumnMapping[S, O]
 
 	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
 		if (op.columns(this).nonEmpty)
-			ColumnValues.preset(this, (subject /: op.audit.Audit(this)) { (s, f) => f(s) })
+			ColumnValues.preset(this, (subject /: op.Audit.Audit(this)) { (s, f) => f(s) })
 		else
-	        ColumnValues.presetOpt(this, op.extra.Value(this))
+	        ColumnValues.presetOpt(this, op.Extra.Value(this))
 
 	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 		if (op.columns(this).nonEmpty) { //this check is the fastest with columns caching the individual lists.
-			val audited = (subject /: op.audit.Audit(this)) { (s, f) => f(s) }
+			val audited = (subject /: op.Audit.Audit(this)) { (s, f) => f(s) }
 			collector.add(this, audited)
-		} else op.extra.Value(this) match {
+		} else op.Extra.Value(this) match {
 			case Got(res) => collector.add(this, res)
 			case _ =>
 		}
@@ -457,11 +457,11 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		  * Note that `OptionalXxx` and even `NoXxx` buffs are ignored here and columns need to be explicitly
 		  * included/excluded in an operation. The burden of validating this information lies with the owning mapping.
 		  */
-		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.extra.get(buffs) match {
+		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.Extra.get(buffs) match {
 			case Got(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
 			case Got(buff) => SQLWriteForm.eval(buff.value)(form)
 			case _ =>
-				val audits = op.audit.Audit(buffs)
+				val audits = op.Audit.Audit(buffs)
 				if (audits.isEmpty) form
 				else form.unmap(audits.reduce(_ andThen _))
 		}
