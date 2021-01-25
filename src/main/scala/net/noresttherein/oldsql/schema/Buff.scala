@@ -27,7 +27,7 @@ import net.noresttherein.oldsql.schema.Buff.FlagBuffType.NamedFlag
   * Modifies the way the annotated component is mapped, in particular it is used to include or exclude
   * certain columns from select/insert/update statements. Each `Buff` is associated with a single
   * [[net.noresttherein.oldsql.schema.Buff.BuffType BuffType]], which serves as a factory, matcher and a virtual 'class'.
-  * These factories can be used to get if a component is annotated with a buff of a particular type and retrieve
+  * These factories can be used to test if a component is annotated with a buff of a particular type and retrieve
   * its information, if present. Unless otherwise noted or implied from the documentation, buffs apply only to automatic
   * translation of application `save/load` requests to SQL ''insert''/''update''/''select'' and value assembly in general,
   * but not to SQL statements created using the SQL DSL. In particular, a manually created SQL ''select'' is allowed
@@ -70,7 +70,7 @@ trait Buff[T] extends Serializable {
 	/** Is this buff of the buff type defined by `group`, carrying information defined by the type?
 	  * This will be true if this buff was created by `group` or if the type which created this buff
 	  * has a strictly narrower meaning than the passed argument, effectively implying the latter.
-	  * This method delegates the get to the associated `BuffType`'s
+	  * This method delegates the test to the associated `BuffType`'s
 	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies implies]].
 	  */
 	def is(group :BuffType) :Boolean = buffType.implies(group)
@@ -627,7 +627,7 @@ object Buff {
 		  * Default implementation calls in double dispatch method
 		  * `other `[[net.noresttherein.oldsql.schema.Buff.BuffType.impliedBy impliedBy]]` this`, but buff types which
 		  * specifically imply other listed types ([[net.noresttherein.oldsql.schema.Buff.ComboBuffType ComboBuffType]])
-		  * will expand this get by checking for implication by transitiveness.
+		  * will expand this test by checking for implication by transitiveness.
 		  * @see [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts]]
 		  */
 		def implies(other :BuffType) :Boolean = other impliedBy this
@@ -685,7 +685,7 @@ object Buff {
 
 		/** Match pattern for buffs ''not'' of this type, checking them simply for existence,
 		  * without extracting any values. When matching a mapping or a buff collection, all included buffs must match
-		  * (i.e. be not of this type) for the whole match to get positive, unlike the `Active` pattern.
+		  * (i.e. be not of this type) for the whole match to test positive, unlike the `Active` pattern.
 		  * Note that this pattern matches if and only if
 		  * `this.`[[net.noresttherein.oldsql.schema.Buff.BuffType.get get(buff)]] des not return a value,
 		  * and not being in the [[net.noresttherein.oldsql.schema.Buff.is is]] relation is only a required condition,
@@ -1209,7 +1209,7 @@ object Buff {
 	object ValueBuffType {
 		/** Creates a new abstract [[net.noresttherein.oldsql.schema.Buff.ValueBuffType ValueBuffType]]
 		  * of the given name. The returned object cannot be used to create new `Buff`s, but it can still
-		  * get positive for buffs of other `ValueBuffType` which imply it. This implementation is value-based:
+		  * test positive for buffs of other `ValueBuffType` which imply it. This implementation is value-based:
 		  * two instances of the same name will compare equal, regardless of the `cascades` flag.
 		  */ //todo: contradicted
 		def apply[T](name :String, cascades :Boolean = true)(implied :BuffType*) :ValueBuffType =
@@ -1476,7 +1476,7 @@ object Buff {
 
 	/** A column/component `Buff` carrying a function `T=>T` which is used to modify the value read or written
 	  * to the database. Which operations are actually affected depends on the buff type. Audit buffs never cascade:
-	  * presence of one on a component doesn't make any of its columns or subcomponents get positive.
+	  * presence of one on a component doesn't make any of its columns or subcomponents test positive.
 	  */
 	class AuditBuff[T](val buffType :AuditBuffType, val audit :T => T) extends Buff[T] {
 

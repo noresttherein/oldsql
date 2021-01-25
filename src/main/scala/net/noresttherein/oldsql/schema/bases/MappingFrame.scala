@@ -1589,7 +1589,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	/** A sequence which works as a mutable buffer during initialization, but once it is completed requires
 	  * no synchronization. All appends must be synchronized with the enclosing class's lock, immediately
-	  * followed by a get of `isInitialized`, signifying that no further modification can be done
+	  * followed by a test of `isInitialized`, signifying that no further modification can be done
 	  * (will most likely throw a `NullPointerException`). The fields of this type are initialized
 	  * by a call to `initialize()`, which must likewise happen inside a lock and with a guard, as initialization
 	  * is not idempotent. The initialization copies the components from a mutable list to a `@volatile`,
