@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.support.EmptyMapping
-import net.noresttherein.oldsql.schema.{Buff, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, Buffs, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 

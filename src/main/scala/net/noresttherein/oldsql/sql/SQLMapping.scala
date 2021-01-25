@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, Buff, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, GenericExtract, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{composeExtracts, filterColumnExtracts, Buff, Buffs, ColumnForm, ColumnMapping, ColumnReadForm, ColumnWriteForm, GenericExtract, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, ReadOnly}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, ExportMapping, LazyMapping}

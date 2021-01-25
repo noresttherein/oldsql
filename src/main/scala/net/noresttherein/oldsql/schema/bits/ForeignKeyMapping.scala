@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, Requisite}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, OptimizedMappingAssembly}
-import net.noresttherein.oldsql.schema.{cascadeBuffs, composeColumnExtracts, composeExtracts, Buff, ColumnForm, ColumnMapping, MappingExtract}
+import net.noresttherein.oldsql.schema.{cascadeBuffs, composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnForm, ColumnMapping, MappingExtract}
 import net.noresttherein.oldsql.schema.ColumnMapping.{OptimizedColumn, SimpleColumn, StableColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.RelVar
@@ -205,6 +205,30 @@ trait ForeignKeyMapping[+T[A] <: MappingAt[A], +C[X] <: MappingAt[X], K, S, O] e
 	  */
 	def inverse[M[A] <: RefinedMapping[E, A], E, X, R]
 	           (table :RelVar[M], factory :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
+			:ForeignKeyMapping[M, C, K, R, TargetOrigin] =
+		inverse(table, factory, Buffs(buffs :_*))
+
+	/** Create a mapping for a reference `R` to the table containing this component, which will represent the other
+	  * side of the relationship. It represents following the 'primary key' `this.table / this.target` to all rows
+	  * containing a matching foreign key (`this.key`). Returned mapping can only be used in the table
+	  * referenced by this mapping - `this.table`.
+	  * @tparam M the mapping type for rows of the table containing this component.
+	  * @tparam E the entity type containing this mapping's reference subject `S` as a (possibly composite) property.
+	  * @tparam X the value type referenced by the created mapping, which is some collection of `E` or `E` itself.
+	  * @tparam R the reference type created by the passed factory and the subject type of the created mapping.
+	  * @param table the table owning this component. It doesn't suffice that mapping `M` contains this mapping (type)
+	  *              as its component, it must be the actual `RelVar` instance which produced
+	  *              the row mapping instance `M` having this instance as its member (sub)component.
+	  * @param factory a factory for references to collections of the entities mapped to this component's table.
+	  * @param buffs the buffs for the created mapping. As the mapping will have the component `this.target`
+	  *               as its component, most likely duplicating its occurrence in `this.table`, it almost certainly
+	  *               should contain [[net.noresttherein.oldsql.schema.Buff.Ignored Ignored]] buff.
+	  * @throws UnsupportedOperationException if this instance represents the inverted side of the relationship,
+	  *                                       that is was created through `target.inverse` (or one of the similar
+	  *                                       factory methods in the companion object).
+	  */
+	def inverse[M[A] <: RefinedMapping[E, A], E, X, R]
+	           (table :RelVar[M], factory :RelatedEntityFactory[K, E, X, R], buffs :Buffs[R])
 			:ForeignKeyMapping[M, C, K, R, TargetOrigin]
 }
 
@@ -388,31 +412,36 @@ object ForeignKeyMapping {
 	def column[M[A] <: RefinedMapping[E, A], K, E, T, R, X, O]
 	          (name :String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	          (table :RelVar[M], pk :M[X] => ColumnMapping[K, X]) :ForeignKeyColumnMapping[M, K, R, O] =
-		new ForeignKeyEntityColumnMapping[M, K, E, T, R, X, O](name, buffs, factory)(table, pk)
+		new ForeignKeyEntityColumnMapping[M, K, E, T, R, X, O](name, factory, buffs)(table, pk)
 
-//	def optional[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X, O]
-//	            (rename :String => String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
-//	            (table :RelVar[M], pk :M[X] => C[X]) :ForeignKeyMapping[M, C, K, R, O] =
-//		pk(table[X]) match {
-//			case col :ColumnMapping[_, _] =>
-//				val selector = pk.asInstanceOf[M[X] => ColumnMapping[K, X]]
-//				optionalColumn[M, K, E, T, R, X, O](rename(col.name), factory, buffs :_*)(table, selector)
-//					.asInstanceOf[ForeignKeyMapping[M, C, K, R, O]]
-//			case _ =>
-//				new ForeignKeyEntityMapping[M, C, K, E, T, R, X, O](rename, buffs, factory)(table, pk)
-//					with OptionalForeignKeyMapping[M, C, K, E, T, R, X, O]
-//		}
-//
-//	def optional[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X, O]
-//	            (columnPrefix :String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
-//	            (table :RelVar[M], pk :M[X] => C[X]) :ForeignKeyMapping[M, C, K, R, O] =
-//		optional[M, C, K, E, T, R, X, O](columnPrefix + _, factory, buffs :_*)(table, pk)
-//
-//	def optionalColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, X, O]
-//	                  (name :String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
-//	                  (table :RelVar[M], pk :M[X] => ColumnMapping[K, X]) :ForeignKeyColumnMapping[K, R, O] =
-//		new ForeignKeyEntityColumnMapping[M, K, E, T, R, X, O](name, buffs, factory)(table, pk)
-//			with OptionalForeignKeyMapping[M, KeyColumn[K]#M, K, E, T, R, X, O]
+	/** Create a mapping for the other side of a relationship defined by a foreign key mapping.
+	  * It will, similarly to the original foreign key mapping, use some reference type `R` to the table containing
+	  * the foreign key. It represents following the referenced 'primary key' `key` to all rows
+	  * containing a matching foreign key. The returned mapping can only be used in the table
+	  * containing the original referenced key.
+	  * @tparam M the mapping type for rows of the table containing the foreign key mapping referencing `key`.
+	  * @tparam C the type of the referenced component, which is the 'primary key' side of the relationship
+	  *           (not necessarily an actual primary key).
+	  * @tparam K the key type: the subject of the referenced key,
+	  *           the [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.key key]] component of the foreign key
+	  *           returned by `fk`, and the `key` component of the returned mapping.
+	  * @tparam E the entity type containing both the key `K` and the collection referenced by the created mapping
+	  *           as (possibly composite) properties.
+	  * @tparam T the value type referenced by the created mapping, which is some collection of `E` or `E` itself.
+	  * @tparam R the reference type created by the passed factory and the subject type of the created mapping.
+	  * @tparam O the origin type of the created mapping and the whole table mapping containing the referenced key.
+	  * @param key the original key referenced by the inverted foreign key returned by `fk`.
+	  * @param factory a factory for references to collections of the entities mapped to `table`.
+	  * @param buffs the buffs for the created mapping. As the mapping will have the component `key`
+	  *              as its component, most likely duplicating its occurrence in the owning table, it almost certainly
+	  *              should contain [[net.noresttherein.oldsql.schema.Buff.Ignored Ignored]] buff.
+	  * @param table the table owning the foreign key component.
+	  * @param fk a function returning the foreign key subcomponent of the table referenced by the created mapping.
+	  */
+	def inverse[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X, O]
+	           (key :C[O], factory :RelatedEntityFactory[K, E, T, R], buffs :Buffs[R])
+	           (table :RelVar[M], fk :M[X] => ForeignKeyMapping[MappingAt, C, K, _, X]) :ForeignKeyMapping[M, C, K, R, O] =
+		new InverseForeignKeyMapping[M, C, K, E, T, R, X, O](key, factory, buffs)(table, fk)
 
 	/** Create a mapping for the other side of a relationship defined by a foreign key mapping.
 	  * It will, similarly to the original foreign key mapping, use some reference type `R` to the table containing

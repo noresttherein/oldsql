@@ -12,14 +12,15 @@ import net.noresttherein.oldsql
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.model.{PropertyPath, RelatedEntityFactory}
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{cascadeBuffs, Buff, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
@@ -330,6 +331,19 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  *  [[net.noresttherein.oldsql.schema.bases.MappingFrame.RequisiteComponent RequisiteComponent]] instance,
 	  *  while the last two are clear candidates for this type of the component. The second and third cases
 	  *  are less clear cut and can conceivably  use either of the approaches.
+	  *
+	  * Optional components can cause conflicts with [[net.noresttherein.oldsql.schema.Buff.ValueBuff value buffs]]
+	  * declared on the outer frame or some of its ancestors. If `pick` function defined by the component returns
+	  * no value for a value stored in such a buff,
+	  * a [[net.noresttherein.oldsql.exceptions.BuffMappingFailureException BuffMappingFailureException]]
+	  * will be thrown. This can happen both when the component's buffs are created - either in this component's
+	  * constructor or when its buffs are accessed during any database operation - and when the value of the said buff
+	  * is being requested - it depends on whether the value buff carries a constant or a generator expression.
+	  * An optional component is safe from this problem if one of the following conditions holds:
+	  *   1. No value buffs are among the outer frame's buffs;
+	  *   1. `pick` always returns a value for all value buffs declared or inherited by the outer frame;
+	  *   1. All unsafe buffs are not [[net.noresttherein.oldsql.schema.Buff.cascades cascading]];
+	  *   1. This component does not inherit buffs from its outer frame.
 	  *
 	  *  Note that while optional components will often be used in combination with the
 	  *  `OptionalSelect`/`OptionalInsert`/`OptionalUpdate` buffs, none of them is automatically implied.
@@ -1032,8 +1046,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * by the application.
 	  * @param name the name of the column (the complete name will include `this.columnPrefix`).
 	  * @param buffs the buffs to attach to the created column. This list will be prepended with `Buff.ReadOnly[T]`.
-	  * @return a new column, enlisted on the `columns`, `selectable`, `components` and `subcomponents`
-	  *         properties of this mapping and none other.
+	  * @return a new column, enlisted on the `components`, `subcomponents`, `columns`, `selectable`, `selectedByDefault`,
+	  *         `filterable`, `filteredByDefault` properties of this mapping, depending on the buffs given here
+	  *         and inherited from this mapping.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ReadOnly$ Buff.ReadOnly]]
 	  */
 	protected def column[T :ColumnForm](name :String, buffs :Buff[T]*) :Column[T] =
@@ -1184,6 +1199,30 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		pieces(component.extract)
 
 
+	private[this] final val initBuffs = Lazy {
+		val bs = declaredBuffs
+		if (bs == null)
+			throw new IllegalStateException(
+				s"$this.buffs is null: overrides must happen before any component declarations.")
+		Buffs(this, bs :_*)
+	}
+
+	/** Optional flags and annotations modifying the way this mapping is used: primarily to include or exclude columns
+	  * from a given type of SQL statements. It is inherited by columns and components of this mapping with the
+	  * exception of those created using one of `embed` methods. As the result, declaring this component, for example,
+	  * as [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]] will propagate this flag to
+	  * all columns (including indirect ''export'' columns) and its check for the given buff will be positive.
+	  * However, Any component on the path to a column, including the column itself, can declare the same buff,
+	  * overriding the definition provided here. Additionally, some buffs
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradict]] other buffs; in that case any buff
+	  * declared 'lower' and contradicting a given of these buffs, will 'shadow' it: any check for the shadowed buff
+	  * on the component with the contradicting buff or its subcomponent will be negative.
+	  *
+	  * Most subclasses will choose to override
+	  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.declaredBuffs declaredBuffs]] instead (if at all).
+	  * @return `Buffs(this, `[[net.noresttherein.oldsql.schema.bases.MappingFrame.declaredBuffs declaredBuffs]]`:_*)`.
+	  */
+	override def buffs :Buffs[S] = initBuffs.get
 
 
 

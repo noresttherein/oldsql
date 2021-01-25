@@ -406,7 +406,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		  * form. They are involved only as a part of the assembly process for owning components, provided
 		  * by the created `ComponentValues` containing the value returned by this form instead.
 		  */
-		override def selectForm :SQLReadForm[S] = ExtraSelect.test(buffs) match {
+		override def selectForm :SQLReadForm[S] = ExtraSelect.get(buffs) match {
 			//these *could* be column forms, but likely we'd rather have it zero width, as there is no such column in the db.
 			case Some(ConstantBuff(x)) => SQLReadForm.const(x, 0, name + "='" + x + "'>")
 			case Some(buff) => SQLReadForm.eval(buff.value, 0, name + "=_>")
@@ -415,9 +415,9 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 				val read = //we can't enforce not null here because of artificial nulls resulting from outer joins
 					if (audits.isEmpty) form
 					else form.map(audits.reduce(_ andThen _))(form.nulls)
-				SelectDefault.test(buffs) match {
-					case Some(ConstantBuff(x)) => read orElse ColumnReadForm.const(read.sqlType, x, name + "='" + x + "'>")
-					case Some(buff) => read orElse ColumnReadForm.eval(read.sqlType, buff.value, name + "=_>")
+				SelectDefault.get(buffs) match {
+					case Got(ConstantBuff(x)) => read orElse ColumnReadForm.const(read.sqlType, x, name + "='" + x + "'>")
+					case Got(buff) => read orElse ColumnReadForm.eval(read.sqlType, buff.value, name + "=_>")
 					case _ => read
 				}
 
@@ -446,9 +446,9 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		  * Note that `OptionalXxx` and even `NoXxx` buffs are ignored here and columns need to be explicitly
 		  * included/excluded in an operation. The burden of validating this information lies with the owning mapping.
 		  */
-		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.extra.test(buffs) match {
-			case Some(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
-			case Some(buff) => SQLWriteForm.eval(buff.value)(form)
+		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.extra.get(buffs) match {
+			case Got(ConstantBuff(x)) => SQLWriteForm.const(x)(form)
+			case Got(buff) => SQLWriteForm.eval(buff.value)(form)
 			case _ =>
 				val audits = op.audit.Audit(buffs)
 				if (audits.isEmpty) form

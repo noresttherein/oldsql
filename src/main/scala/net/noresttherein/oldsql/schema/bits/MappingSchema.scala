@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
-import net.noresttherein.oldsql.schema.{bits, cascadeBuffs, composeExtractAssoc, filterColumnExtracts, Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, Mapping, MappingExtract, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{composeExtractAssoc, filterColumnExtracts, Buff, Buffs, ColumnExtract, ColumnForm, ColumnMappingExtract, Mapping, MappingExtract, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, ExportMapping, LazyMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label

@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.{schema, OperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StableColumn}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}

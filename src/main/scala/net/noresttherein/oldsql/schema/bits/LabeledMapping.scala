@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, Mapping}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy

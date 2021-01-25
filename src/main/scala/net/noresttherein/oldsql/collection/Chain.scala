@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.Listing.{:~, method_:~, |~}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Positive}
-import net.noresttherein.oldsql.morsels.generic.{Const, GenericFun, Self}
+import net.noresttherein.oldsql.morsels.generic.{Fixed, GenericFun, Self}
 import net.noresttherein.oldsql.morsels.LUB
 
 
@@ -298,7 +298,7 @@ object Chain extends ChainFactory {
 			result(f)(self)
 
 		/** Applies the given function to every element of this chain for the side effects. */
-		def foreach(f :GenericFun[Self, Const[Unit]#T]) :Unit = {
+		def foreach(f :GenericFun[Self, Fixed[Unit]#T]) :Unit = {
 			def rec(chain :Chain) :Unit = chain match {
 				case t ~ h => rec(t); f(h)
 				case _ => ()

@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping, MappingExtract}
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, Mapping, MappingExtract}
 import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnSupport, StableColumn}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}

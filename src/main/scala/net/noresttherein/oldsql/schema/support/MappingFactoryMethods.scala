@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComp
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, ColumnForm, ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, Mapping}
 
 
 

@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.generic.=#>
-import net.noresttherein.oldsql.schema.{filterColumnExtracts, Buff, ColumnExtract, ColumnForm, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{filterColumnExtracts, Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue

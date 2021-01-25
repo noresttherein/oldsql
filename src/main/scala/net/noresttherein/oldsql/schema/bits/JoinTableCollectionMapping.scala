@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.model.RelatedEntityFactory
 import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
-import net.noresttherein.oldsql.schema.{composeExtracts, Buff, MappingExtract}
+import net.noresttherein.oldsql.schema.{composeExtracts, Buff, Buffs, MappingExtract}
 import net.noresttherein.oldsql.schema.Relation.RelVar
 
 

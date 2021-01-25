@@ -4,13 +4,19 @@ import java.sql
 
 import scala.collection.immutable.ArraySeq
 
-import net.noresttherein.oldsql.schema.Buff.BuffType
+import net.noresttherein.oldsql.schema.Buff.{BuffExtractor, BuffType}
 import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, MappingOf}
 import net.noresttherein.oldsql.schema.bits.Temporal
 import net.noresttherein.oldsql.slang._
 import scala.reflect.ClassTag
 
+import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.OldSQLException
+import net.noresttherein.oldsql.morsels.generic.{Fixed, Self}
+import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.schema.Buff.BuffType.NamedBuffType
+import net.noresttherein.oldsql.schema.Buff.FlagBuffType.NamedFlag
 
 
 
@@ -19,39 +25,64 @@ import net.noresttherein.oldsql.exceptions.OldSQLException
 
 /** An optional annotation/modifier for component mappings, especially columns.
   * Modifies the way the annotated component is mapped, in particular it is used to include or exclude
-  * certain columns from select/insert/update statements. Each `Buff` is associated with a single `BuffType`, which
-  * serves as a factory, matcher and a virtual 'class'. These factories can be used to test if a component is
-  * annotated with a buff of a particular type and retrieve its information, if present.
+  * certain columns from select/insert/update statements. Each `Buff` is associated with a single
+  * [[net.noresttherein.oldsql.schema.Buff.BuffType BuffType]], which serves as a factory, matcher and a virtual 'class'.
+  * These factories can be used to get if a component is annotated with a buff of a particular type and retrieve
+  * its information, if present. Unless otherwise noted or implied from the documentation, buffs apply only to automatic
+  * translation of application `save/load` requests to SQL ''insert''/''update''/''select'' and value assembly in general,
+  * but not to SQL statements created using the SQL DSL. In particular, a manually created SQL ''select'' is allowed
+  * to use any columns of the tables in the ''from'' clause, regardless of their flags which control their availability
+  * for a given operation type.
+  *
+  * The term 'buff' can refer in the documentation to both a buff instance (that is, an instance of this class),
+  * and to a buff type - an instance of `BuffType`. It should be clear from context and method signatures which
+  * is being referred to, and in places where both are mentioned, `BuffType` is explicitly called buff type or
+  * the class names are used. Similarly, a buff type can potentially mean 'Scala type of a buff' and `BuffType`;
+  * the term is used almost exclusively in the former meaning, and the latter is expanded to 'Scala buff type'
+  * to avoid ambiguity. Last but not least, there are various `Buff` subclasses and matching broad `BuffType` categories
+  * such as [[net.noresttherein.oldsql.schema.Buff.ValueBuffType value buffs]] and
+  * [[net.noresttherein.oldsql.schema.Buff.FlagBuffType flag buffs]] (or flags). To avoid adding to the confusion,
+  * they are collectively (both buff and its buff type) are called ''buff kinds''. Buffs are simple objects unlikely
+  * to use higher kinds of Scala types, so there should be no ambiguity in this area.
   *
   * See [[net.noresttherein.oldsql.schema.Buff.BuffType BuffType]] for more information.
   * @see [[net.noresttherein.oldsql.schema.Buff.FlagBuff FlagBuff]]
   * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]
   * @see [[net.noresttherein.oldsql.schema.Buff.AuditBuff AuditBuff]]
-  * @tparam T the value type of the annotated component.
+  * @see [[net.noresttherein.oldsql.schema.Buffs Buffs]]
+  * @tparam T the subject type of the annotated component.
   */
 trait Buff[T] extends Serializable {
-	//todo: contradictory buffs
-	//todo: dedicated buffs collection handling duplicates and implications
 	//todo: semantics of use in SQL DSL
 	//consider: Buff for column prefix
 
 	/** If `true`, export versions of subcomponents of the annotated component should inherit this buff.
-	  * Note that this flag applies only to buffs created by this instance, not any other buffs which
-	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies imply]] this buff.
+	  * Note that this flag applies only to buffs created by this buff's factory, not any other buffs which
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies imply]] this buff. The effect is that this buff's type
+	  * will be automatically active on all columns of the component buffed with this instance, with the optional value
+	  * obtained from this buff's value (if it is a [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]).
 	  */
 	def cascades :Boolean = buffType.cascades
 
 	/** The type of this buff, i.e. the factory that created this instance. */
 	def buffType :BuffType
 
-	/** Does this buff belong to the buff group defined by `group`, carrying information defined by the group?
-	  * This will be true if this buff was created by this group or if the group which created this buff
-	  * has strictly narrower meaning than the passed argument, effectively implying the latter.
-	  * This method delegates the test to the associated `BuffType`'s
+	/** Is this buff of the buff type defined by `group`, carrying information defined by the type?
+	  * This will be true if this buff was created by `group` or if the type which created this buff
+	  * has a strictly narrower meaning than the passed argument, effectively implying the latter.
+	  * This method delegates the get to the associated `BuffType`'s
 	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies implies]].
 	  */
 	def is(group :BuffType) :Boolean = buffType.implies(group)
 
+	/** Applies the given extractor to self if its associated buff type is implied by the one that created this buff.
+	  * This is a lower level method called in double dispatch by certain buff types so as to pass the full
+	  * responsibility of matching to the buff. In particular it allows to not match a buff type `t` even if
+	  * `this is t` is true. This is used to implement guarded value generators which result in lack of a match
+	  * instead of an error when the generator throws an exception.
+	  */
+	def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] =
+		if (buffType implies extractor.buffType) extractor.get(this) else Lack
 
 	/** Adapts this buff for a new component type. For flag buffs, this is an identity operation; for buffs
 	  * with values it creates a new buff of the same type carrying the mapped value. Certain buffs, in particular
@@ -66,9 +97,31 @@ trait Buff[T] extends Serializable {
 	  * even return a buff of a different type than this instance. By default, flag buffs return themselves and buffs
 	  * with constant values create a new buff of the same type carrying the mapped value. Certain buffs, in particular
 	  * audit buffs, do not support this operation and will return `None`. This method should not throw exceptions.
-	  */
+	  */ //consider: a better name (impose? adopt? bestow?)
 	def cascade[X](f :T => X) :Option[Buff[X]] =
 		if (cascades) Some(map(f)) else None
+
+	/** An unsafe, conditional variant of [[net.noresttherein.oldsql.schema.Buff.cascade cascade]] method for
+	  * [[net.noresttherein.oldsql.morsels.Extractor extractors]] which might not produce a value for all possible
+	  * arguments. The decision of whether to adapt this buff to a new subject type is implementation specific
+	  * and varies between buff [[net.noresttherein.oldsql.schema.Buff.BuffType types]] and kinds.
+	  * The default is to delegate to the basic `cascade` only if the extractor is
+	  * a [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]]. This changes however
+	  * with all standard buff kinds: [[net.noresttherein.oldsql.schema.Buff.FlagBuffType flags]] always cascade
+	  * based only on the buff's [[net.noresttherein.oldsql.schema.Buff.cascades cascades]] property.
+	  * [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType Constant buffs]] will by default attempt to eagerly
+	  * evaluate the function for their value, catching thrown exception and simply not cascading instead of
+	  * propagating the error. [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]s with
+	  * a [[net.noresttherein.oldsql.schema.Buff.GeneratedBuffType by-name expression]] as their value morph
+	  * into a special proxy implementation, which will be ignored by all implied buff types if it were to throw
+	  * an exception. All these can however by overriden with custom buff kind implementations.
+	  */
+	def cascadeGuard[X](extractor :T =?> X) :Option[Buff[X]] =
+		if (cascades) extractor.requisite match {
+			case Got(f) => cascade(f)
+			case _ => None
+		} else Lack
+
 
 	/** Adapts this buff for a new component type. For flag buffs, this is an identity operation; for buffs
 	  * with values it creates a new buff of the same type carrying the mapped value. This method
@@ -77,9 +130,7 @@ trait Buff[T] extends Serializable {
 	def bimap[X](there :T => X, back :X => T) :Buff[X] = map(there)
 
 
-
 	def canEqual(that :Any) :Boolean = that.getClass == this.getClass
-
 
 	override def toString :String = buffType.toString
 }
@@ -92,41 +143,72 @@ trait Buff[T] extends Serializable {
 object Buff {
 
 	/** This column/component is not included in the default select statement and must be specified explicitly,
-	  * if at all possible. */
+	  * if at all possible. Implied by [[net.noresttherein.oldsql.schema.Buff.NoSelect NoSelect]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.OptionalSelect OptionalSelect]].
+	  */
 	case object NoSelectByDefault extends AbstractBuffType
 
+	/** This column/component is not included in the default filter condition when comparing the buffed
+	  * component/entity and must be specified explicitly, if at all possible. Implied by
+	  * [[net.noresttherein.oldsql.schema.Buff.NoFilter NoFilter]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.OptionalFilter OptionalFilter]].
+	  */
+	case object NoFilterByDefault extends AbstractBuffType
+
 	/** This column/component is not included in the default insert statement and must be specified explicitly,
-	  * if at all possible. */
+	  * if at all possible. Implied by [[net.noresttherein.oldsql.schema.Buff.NoInsert NoInsert]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.OptionalInsert OptionalInsert]].
+	  */
 	case object NoInsertByDefault extends AbstractBuffType
 
 	/** This column/component is not included in the default update statement and must be specified explicitly,
-	  * if at all possible. */
+	  * if at all possible. Implied by [[net.noresttherein.oldsql.schema.Buff.NoUpdate NoUpdate]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.OptionalUpdate OptionalUpdate]].
+	  */
 	case object NoUpdateByDefault extends AbstractBuffType
 
-	/** This column/component is not included in the default filter condition when comparing the enclosing
-	  * component/entity and must be specified explicitly, if at all possible. */
-	case object NoFilterByDefault extends AbstractBuffType
 
-
-
-	/** This column/component can't be included in a select statement (as part of its select clause). */
+	/** This column/component can't be included in a select statement (as part of its select clause).
+	  * Implies [[net.noresttherein.oldsql.schema.Buff.NoSelectByDefault NoSelectByDefault]], which is the main buff
+	  * which should be checked to determine if a column should be selected.
+	  */
 	case object NoSelect extends ComboFlag(NoSelectByDefault)
 
-	/** This column/component can't be included in an insert statement (as the inserted column). */
-	case object NoInsert extends ComboFlag(NoInsertByDefault)
-
-	/** This column/component can't be included in an update statement (as the updated column). */
-	case object NoUpdate extends ComboFlag(NoUpdateByDefault)
-
-	/** This column/component can't be included as part of the ''where'' clause of a select or update statement. */
+	/** This column/component can't be included as part of the ''where'' clause of a select or update statement.
+	  * Implies [[net.noresttherein.oldsql.schema.Buff.NoFilterByDefault NoFilterByDefault]], which is the main buff
+	  * which should be checked to determine which columns should be compared.
+	  */
 	case object NoFilter extends ComboFlag(NoFilterByDefault)
 
-	/** This column/component is never written to the database by the application. */
+	/** This column/component can't be included in an insert statement (as the inserted column).
+	  * Implies [[net.noresttherein.oldsql.schema.Buff.NoInsertByDefault NoInsertByDefault]], which is the main buff
+	  * which should be checked to determine if a column should be inserted.
+	  */
+	case object NoInsert extends ComboFlag(NoInsertByDefault)
+
+	/** This column/component can't be included in an update statement (as the updated column).
+	  * Implies [[net.noresttherein.oldsql.schema.Buff.NoUpdateByDefault NoUpdateByDefault]], which is the main buff
+	  * which should be checked to determine if a column should be updated.
+	  */
+	case object NoUpdate extends ComboFlag(NoUpdateByDefault)
+
+	/** This column/component is never written to the database by the application. Note that 'read only' means here
+	  * 'no write' and the column can still be non selectable
+	  * (see [[net.noresttherein.oldsql.schema.Buff.Virtual Virtual]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.Ignored Ignored]]).
+	  * Implies [[net.noresttherein.oldsql.schema.Buff.NoInsert NoInsert]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.NoUpdate NoUpdate]].
+	  */
 	case object ReadOnly extends ComboFlag(NoInsert, NoUpdate)
 
 	/** A buff type which marks columns ignored by the enclosing mapping. It is useful when a column is still
-	  * used as part of SQL statements. Implies `ReadOnly` and `NoSelect`. */
-	case object Ignored extends ComboFlag(ReadOnly, NoSelect)
+	  * used as part of SQL statements. Implies [[net.noresttherein.oldsql.schema.Buff.ReadOnly ReadOnly]],
+	  * [[net.noresttherein.oldsql.schema.Buff.ReadOnly ReadOnly]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.NoSelect NoSelect]].
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Virtual Virtual]]
+	  * @see [[net.noresttherein.oldsql.schema.Buff.Partition Partition]]
+	  */
+	case object Ignored extends ComboFlag(ReadOnly, NoFilter, NoSelect)
 
 
 
@@ -165,7 +247,7 @@ object Buff {
 	  * [[net.noresttherein.oldsql.schema.Relation.exclude exclude]] and
 	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation(...)]].
 	  */
-	case object OptionalSelect extends ComboValueBuffType(SelectDefault)
+	case object OptionalSelect extends ContradictoryValueBuffType(SelectDefault)(NoSelect)
 
 	/** A factory for buffs marking that a given column/component is omitted by default from the select clause
 	  * and needs to be included explicitly. When not included, the value stored in the buff will be used
@@ -205,7 +287,7 @@ object Buff {
 	  * using the relation: [[net.noresttherein.oldsql.schema.Relation.include exclude]] and
 	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation(...)]].
 	  */
-	case object OptionalFilter extends FlagBuffType with Cascading
+	case object OptionalFilter extends ContradictoryFlag()(NoFilter)
 
 	/** A buff marking that a given column or component can be omitted from the parameter list of the ''where'' clause
 	  * of an SQL statement and needs to be included explicitly. This applies when the comparison expression
@@ -239,12 +321,12 @@ object Buff {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Default]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.WriteDefault]]
 	  */
-	case object InsertDefault extends ComboValueBuffType
+	case object InsertDefault extends ContradictoryValueBuffType()(NoInsert)
 
-	/** A buff marking that a given column/component can be omitted from the insert statement.
+	/** A buff specifying that a given column/component can be omitted from the insert statement.
 	  * It is still included by default and needs to be excluded explicitly.
 	  */
-	case object OptionalInsert extends FlagBuffType with Cascading
+	case object OptionalInsert extends ContradictoryFlag()(NoInsert)
 
 	/** A buff marking that a given column/component is not inserted by default into the underlying table
 	  * and needs to be included explicitly. It implies `OptionalInsert` and `NoInsertByDefault`. */
@@ -252,7 +334,7 @@ object Buff {
 
 	/** Marks a column/component as having its value initialized by the expression provided by the buff
 	  * rather than the entity. Used particularly for 'created on' or 'created by' type of columns.
-	  */
+	  */ //consider: maybe it should not be cascading?
 	case object ExtraInsert extends ComboValueBuffType(InsertDefault, NoInsert) //fixme: currently unused!
 
 
@@ -261,11 +343,11 @@ object Buff {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.Default]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.WriteDefault]]
 	  */
-	case object UpdateDefault extends ComboValueBuffType
+	case object UpdateDefault extends ContradictoryValueBuffType()(NoUpdate)
 
 	/** A buff marking that a given column/component can be omitted from the update statement.
 	  * It is still included by default and needs to be excluded explicitly. */
-	case object OptionalUpdate extends FlagBuffType with Cascading
+	case object OptionalUpdate extends ContradictoryFlag()(NoUpdate)
 
 	/** A buff marking that a given column/component is not included by default in the update statements
 	  * and needs to be included explicitly. It implies `OptionalUpdate` and `NoUpdateByDefault`. */
@@ -273,7 +355,7 @@ object Buff {
 
 	/** Marks a column/component as being updated with the value of the expression provided by the buff
 	  * rather than some property of the mapped entity. Useful for particularly for 'update timestamp' columns.
-	  */
+	  */ //consider: maybe it should not be cascading?
 	case object ExtraUpdate extends ComboValueBuffType(UpdateDefault, NoUpdate) //fixme: currently unused!
 
 
@@ -310,12 +392,14 @@ object Buff {
 	case object Default extends ComboValueBuffType(SelectDefault, WriteDefault)
 
 	/** Signifies that a column/component can be excluded from all types of database operations.
-	  * It is a shortcut for marking it with `OptionalSelect`, `OptionalFilter`, `OptionalWrite`. */
+	  * It is a shortcut for marking it with `OptionalSelect`, `OptionalFilter`, `OptionalWrite`.
+	  */
 	case object Optional extends ComboValueBuffType(OptionalSelect, OptionalFilter, OptionalWrite)
 
 	/** Signifies that a column/component must be listed explicitly in order to be included in any database operation
 	  * (it is not included by default).
-	  * It is a shortcut for marking it with `Optional`, `ExplicitSelect`, `ExplicitFilter` and `ExplicitWrite`. */
+	  * It is a shortcut for marking it with `Optional`, `ExplicitSelect`, `ExplicitFilter` and `ExplicitWrite`.
+	  */
 	case object Explicit extends ComboValueBuffType(Optional, ExplicitSelect, ExplicitFilter, ExplicitWrite)
 
 
@@ -325,16 +409,16 @@ object Buff {
 	  * of its rows. It implies both `ExtraFilter` and `ExtraWrite`, meaning that all queries against the table will
 	  * include the annotated column in the filter and all inserts and updates will set its value based on this buff.
 	  */
-	case object Unmapped extends ComboValueBuffType(NoSelect, ExtraFilter, ExtraWrite) //SelectDefault?
+	case object Partition extends ComboValueBuffType(NoSelect, ExtraFilter, ExtraInsert, NoUpdate) //SelectDefault?
 
-	/** A buff marking a component or column which does not exist in the database and will not be used as part
-	  * of any SQL statements under any circumstances. It is still part of the mapping and, during assembly,
-	  * the provided expression is used as its value. This can be useful during schema migrations, when a mapping
-	  * might need to cover several versions of the schema, or if it is reused for several similar tables.
-	  * Alternatively, it can be used for mapping's which components are already included as subcomponents
-	  * of some other component of the same table.
+	/** A buff marking a component or column which does not exist in the database (or at least it not mapped
+	  * and required) and will not be used as part of any SQL statements under any circumstances. It is still part
+	  * of the mapping and, during assembly, the provided expression is used as its value. This can be useful
+	  * during schema migrations, when a mapping might need to cover several versions of the schema, or if it is reused
+	  * for several similar tables. Alternatively, it can be used for mapping's which components are already included
+	  * as subcomponents of some other component of the same table.
 	  */
-	case object Virtual extends ComboValueBuffType(ExtraSelect, ReadOnly, NoFilter)
+	case object Virtual extends ComboValueBuffType(ExtraSelect, NoFilter, ReadOnly)
 
 
 
@@ -378,7 +462,7 @@ object Buff {
 
 
 	/** A flag signifying that mapped values can be null. */
-	case object Nullable extends FlagBuffType with Cascading
+	case object Nullable extends FlagBuffType with NonCascading
 
 
 
@@ -435,32 +519,66 @@ object Buff {
 
 
 
+	/** An unspecified matching pattern used to extract values of type `V[T]` from (some subclass of) buffs `Buff[T]`.
+	  * This is a low-level callback invoked by buffs from their [[net.noresttherein.oldsql.schema.Buff.apply apply]]
+	  * method to return the result of a match as a way of reversing the control over matching.
+	  * The buff will check first if its [[net.noresttherein.oldsql.schema.Buff.buffType buffType]] implies
+	  * the buff type of this extractor before, leaving only the actual extraction of a value to this trait's
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffExtractor.get get]].
+	  */
+	trait BuffExtractor[+V[_]] {
+		def buffType :BuffType
+		def get[T](buff :Buff[T]) :Opt[V[T]]
+	}
+
+
+
 	/** A 'class for classes' being subtypes of `Buff`. It implicitly defines the information carried by the buffs of
 	  * this type and indicates their purpose or application conditions. It can be used both as a factory and matcher,
-	  * testing buff instances, collections, and mappings for the presence of an associated buff. This is an abstract
+	  * testing buff instances, collections, and mappings for the presence of a corresponding buff. This is an abstract
 	  * base class and as such declares no `apply/unapply` methods, leaving it to subclasses which define them
 	  * in terms of the information carried by their buffs. Whenever several matching buffs are present on a list
 	  * or in a mapping, the buff type will always pick the first one. Similarly, if a subtype extracts ''all''
-	  * matching buffs from a list or a component, it will do so preserving their order.
+	  * matching buffs from a list or a component, it will do so preserving their order. Repeated instances
+	  * of the same buff type are allowed - it would be impossible to prevent it for a common buff 'supertype'
+	  * of two buffs appearing in tandem.
 	  *
-	  * Note that buffs can be attached also to non-column components. The exact behavior in that case is completely
-	  * dependent on the mapping class; by default the subcomponents of the mapping inherit the buffs defined
-	  * in the enclosing mappings, with inherited buffs following the buffs declared locally.
+	  * Note that buffs can be attached also to non-column components. The exact behavior in that case depends both
+	  * on the buff type and the mapping class. By default the subcomponents of a mapping inherit those buffs defined
+	  * by enclosing mappings which have property [[net.noresttherein.oldsql.schema.Buff.cascades cascades]]
+	  * set to true, with inherited buffs following the buffs declared locally. Not all buff kinds can be adopted though:
+	  * there is no way for example to map an [[net.noresttherein.oldsql.schema.Buff.AuditBuff AuditBuff]]`[T]` with
+	  * a single function `T => S` and other restrictions may also be in play.
 	  *
 	  * Instances of this class form a subtype relation of sorts, meaning certain buffs created by some factories
 	  * are recognized as 'belonging' also to other buff types. This is implemented through the
 	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies implies]] method. If a `BuffType` `A` implies
-	  * a `BuffType` `B`, then `B.enabled(a)` and `a is B` will be true for every buff `a` created by the buff type `A`.
+	  * a `BuffType` `B`, then `B.active(a)` and `a is B` will be true for every buff `a` created by the buff type `A`.
 	  * If the actual `Buff` class, defining what information is carried by a buff, used by the type `A`
 	  * is a subclass of the class of buffs produces by the type `B` (which should be the case for all such pairs),
 	  * then also any extractor methods defined by the type `B` will pick up the data from buffs `A`.
 	  * This means that, for example, any `BuffType` can safely imply any instance of `FlagBuffType` and any additional
 	  * information carried by the buff being tested is ignored for the purpose of the check.
 	  * On the other hand, creating a `FlagBuffType` which implies `ValueBuffType` would be an application error:
-	  * while the valued type would recognize a buff created by the flag buff type in question in its
-	  * `enabled`/`disabled` methods, the `test` and `unapply` methods would yield `None`, as the buff does not conform
-	  * to the expected type. For the convenience of implementation, there are `ComboBuffType` and `ComboFlag`
-	  * classes which accept a list of implied buff types as constructor arguments.
+	  * because the buff does not conform to the expected type, it would not be matched by any patterns of the
+	  * `ValueBuffType`, including those which do not access the actual value like
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.active active]] and
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.inactive inactive]]. In general though it should not be assumed
+	  * that belonging to a buff type guarantees being matched by that buff type extractors, as other counterexamples
+	  * exist. For convenience of implementation, there are `ComboBuffType` and `ComboFlag` classes which accept
+	  * a list of implied buff types as constructor arguments.
+	  *
+	  * In addition to this implication relation, buffs can have mutually exclusive meanings. This is defined by
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradicts]] method: if a buff of a type
+	  * contradicted by this buff type is present on a buff list, it annuls all contradicted buffs which follow it,
+	  * including those inherited. While the relation is not transitive, all buff types which contradicted by
+	  * a buff ''implied'' by this type are also automatically considered contradicted by this type. There is no formal
+	  * definition or requirement as to when two buff types should contradict each other, but should follow
+	  * the policy of least surprise. It certainly is not exhaustive in terms of the logical implications modeled
+	  * by these buffs: satisfying it is not a guarantee that there is no conflict of meanings between any two buffs
+	  * in a collection. In general, however, situations where a buff overrides other buffs should generally be avoided
+	  * if possible, as it can lead to confusing situations. No buff should ever test both as contradictory and
+	  * belonging to a single buff type and behaviour in that case is unspecified.
 	  *
 	  * Certain buff types are ''abstract'', meaning they can't be used to create new instances, but serve only
 	  * as a grouping of more specific buff types which imply it. This is analogous to a common abstract base class.
@@ -469,6 +587,11 @@ object Buff {
 	  * a [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]],
 	  * which implies the [[net.noresttherein.oldsql.schema.Buff.UpdateAudit$ UpdateAudit]], will map all updated values
 	  * with the function provided by the buff before they are written to the database.
+	  *
+	  * Equality tests are paramount for this classes use case. As most buff types - and all those recognized
+	  * by the framework - are static in nature, represented by global constants, it is convenient to declare them
+	  * as singleton objects and rely on standard java reference equality for speed. This is not required though,
+	  * and there are generic factory methods for various buff type classes, returning value-based instances.
 	  *
 	  * See [[net.noresttherein.oldsql.schema.Buff$ Buff]] for the full list of predefined buff types.
 	  *
@@ -482,51 +605,206 @@ object Buff {
 
 		/** If `true`, export versions of subcomponents of the annotated component should inherit this buff.
 		  * Note that this flag applies only to buffs created by this instance, not any other buffs which
-		  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies imply]] this buff.
-		  * Note that other buff types implying this buff can be cascading, and ultimately it is
+		  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies imply]] this buff. The result is that this buff type
+		  * will be automatically active on all columns and subcomponents of a component buffed by this instance,
+		  * with the optional value obtained from the buff's value
+		  * (if it is a [[net.noresttherein.oldsql.schema.Buff.ValueBuff ValueBuff]]).
+		  * Other buff types implying this buff can be cascading, and ultimately it is
 		  * a [[net.noresttherein.oldsql.schema.Buff Buff]] property which is in effect.
 		  */
 		def cascades :Boolean
 
 		/** Checks if this buff type ''implies'' another buff type. If it does, tests for presence of `other`
-		  * on a mapping will give positive results also if this buff is present. This makes this buff type
+		  * on a mapping will be positive also if this buff is present. This makes this buff type
 		  * a specialization of the more generic `other` in a way similar to class inheritance. For this to work however,
 		  * the implied buff type must use the same `Buff` class as this instance, or a more generic one.
 		  * For example, a `FlagBuffType` implying a `ValueBuffType` will not be taken into account, as the latter
 		  * specifically checks only for `ValueBuff` subclasses. Implication in the other direction will work
-		  * however, as a `FlagBuffType` is satisfied with a `Buff` of any class.
+		  * however, as a `FlagBuffType` is satisfied with a `Buff` of any class. This relation is transitive,
+		  * but not symmetrical and cannot contain cycles. This constraint is unimportant however, as all buffs in an
+		  * implication cycle would be equivalent.
+		  *
+		  * Default implementation calls in double dispatch method
+		  * `other `[[net.noresttherein.oldsql.schema.Buff.BuffType.impliedBy impliedBy]]` this`, but buff types which
+		  * specifically imply other listed types ([[net.noresttherein.oldsql.schema.Buff.ComboBuffType ComboBuffType]])
+		  * will expand this get by checking for implication by transitiveness.
+		  * @see [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts]]
 		  */
-		def implies(other :BuffType) :Boolean = other == this
+		def implies(other :BuffType) :Boolean = other impliedBy this
+
+		/** Checks if this buff type ''knows'' that it is implied by the given buff type. Negative result here does not
+		  * automatically mean that there is no implication - in fact default implementation yields `true` only
+		  * if the two buffs are equal. You should use [[net.noresttherein.oldsql.schema.Buff.BuffType.implies implies]]
+		  * instead, for which this method is the target of a double dispatch call. Likewise, only some very specific
+		  * `BuffType` implementations override this method.
+		  */
+		def impliedBy(other :BuffType) :Boolean = this == other
+
+		protected[schema] val knownImplied :Unique[BuffType] = Unique.single(this)
+
+		/** Checks if this buff shadows another buff type. If true, presence of this buff on a mapping will
+		  * essentially annul the other buff, providing this buff was declared lower in the hierarchy
+		  * (i.e it is either defined on that mapping, or the component inclusion 'inheritance' path is shorter.
+		  * This relation is not transitive, but holds also if any buff type
+		  * [[net.noresttherein.oldsql.schema.Buff.BuffType.implies implied]] by this buff contradicts the other buff.
+		  * It is automatically made symmetrical, as the default implementation performs a symmetrical check
+		  * using delegate method [[net.noresttherein.oldsql.schema.Buff.BuffType.impliedContradicts impliedContradicts]],
+		  * which should be overriden rather than this method.
+		  * @return `(this impliedContradicts other) || (other impliedContradicts this)`.
+		  */
+		def contradicts(other :BuffType) :Boolean = (this impliedContradicts other) || (other impliedContradicts this)
+
+		/** Checks if buffs [[net.noresttherein.oldsql.schema.Buff.BuffType.implies implied]] by this buff
+		  * [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradict]] the given buff.
+		  * The check is performed by following the declarations of implication and contradiction,
+		  * which must not contain cycles. Default implementation always returns `false`.
+		  */
+		def impliedContradicts(other :BuffType) :Boolean = false
 
 
-		object Enabled extends ColumnFilter.WithBuff(factory) {
-			@inline def unapply(buff :Buff[_]) :Boolean = enabled(buff)
-			@inline def unapply(buffs :Seq[Buff[_]]) :Boolean = enabled(buffs)
-			@inline def unapply(mapping :Mapping) :Boolean = enabled(mapping)
+		/** Match pattern for buffs of this type, checking them simply for existence, without extracting any values.
+		  * Note that this pattern matches if and only if
+		  * `this.`[[net.noresttherein.oldsql.schema.Buff.BuffType.get get(buff)]] returns a value and does not depend
+		  * solely on the [[net.noresttherein.oldsql.schema.Buff.is is]] relation. All extractor methods delegate
+		  * eventually to the `get(buff)` method of the enclosing buff type, with a possible intermediate role
+		  * of [[net.noresttherein.oldsql.schema.Buffs.apply Buffs.apply]].
+		  */
+		case object Active {
+			val columns = new ColumnFilter.WithBuff(BuffType.this)
+
+			@inline def apply[T](buff :Buff[T]) :Boolean = !get(buff).isEmpty
+			@inline def apply[T](buffs :Iterable[Buff[T]]) :Boolean = !get(buffs).isEmpty
+			@inline def apply[T](buffs :Buffs[T]) :Boolean = !buffs(BuffType.this).isEmpty
+			@inline def apply[T](mapping :MappingOf[T]) :Boolean = !mapping.buffs(BuffType.this).isEmpty
+
+			@inline def unapply[T](buff :Buff[T]) :Boolean = !get(buff).isEmpty
+			@inline def unapply[T](buffs :Iterable[Buff[T]]) :Boolean = !get(buffs).isEmpty
+			@inline def unapply[T](buffs :Buffs[T]) :Boolean = !buffs(BuffType.this).isEmpty
+			@inline def unapply[T](mapping :MappingOf[T]) :Boolean = !mapping.buffs(BuffType.this).isEmpty
 		}
-		object Disabled extends ColumnFilter.WithoutBuff(factory) {
-			@inline def unapply(buff :Buff[_]) :Boolean = disabled(buff)
-			@inline def unapply(buffs :Seq[Buff[_]]) :Boolean = disabled(buffs)
-			@inline def unapply(mapping :Mapping) :Boolean = disabled(mapping)
+
+		/** Match pattern for buffs ''not'' of this type, checking them simply for existence,
+		  * without extracting any values. When matching a mapping or a buff collection, all included buffs must match
+		  * (i.e. be not of this type) for the whole match to get positive, unlike the `Active` pattern.
+		  * Note that this pattern matches if and only if
+		  * `this.`[[net.noresttherein.oldsql.schema.Buff.BuffType.get get(buff)]] des not return a value,
+		  * and not being in the [[net.noresttherein.oldsql.schema.Buff.is is]] relation is only a required condition,
+		  * not sufficient. All extractor methods delegate eventually to the `get(buff)` method of the enclosing
+		  * buff type, with a possible intermediate role of [[net.noresttherein.oldsql.schema.Buffs.apply Buffs.apply]].
+		  */
+		case object Inactive {
+			val columns = new ColumnFilter.WithoutBuff(BuffType.this)
+
+			@inline def apply[T](buff :Buff[T]) :Boolean = get(buff).isEmpty //buff(Active).isEmpty
+			@inline def apply[T](buffs :Iterable[Buff[T]]) :Boolean = get(buffs).isEmpty
+			@inline def apply[T](buffs :Buffs[T]) :Boolean = buffs(BuffType.this).isEmpty
+			@inline def apply[T](mapping :MappingOf[T]) :Boolean = mapping.buffs(BuffType.this).isEmpty
+
+			@inline def unapply[T](buff :Buff[T]) :Boolean = get(buff).isEmpty
+			@inline def unapply[T](buffs :Iterable[Buff[T]]) :Boolean = get(buffs).isEmpty
+			@inline def unapply[T](buffs :Buffs[T]) :Boolean = buffs(BuffType.this).isEmpty
+			@inline def unapply[T](mapping :MappingOf[T]) :Boolean = mapping.buffs(BuffType.this).isEmpty
 		}
 
-		def enabled(buff :Buff[_]) :Boolean = buff is this
-		def enabled(buffs :Seq[Buff[_]]) :Boolean = buffs.exists(enabled)
-		def enabled(column :Mapping) :Boolean = enabled(column.buffs)
+		private object Get
+			extends BuffExtractor[Buff] with PartialFunction[Buff[_], Buff[_]] with Serializable
+		{
+			override def buffType :BuffType = BuffType.this
+			override def get[T](buff :Buff[T]) :Opt[Buff[T]] = Got(buff)
 
-		def disabled(buff :Buff[_]) :Boolean = !(buff is this)
-		def disabled(buffs :Seq[Buff[_]]) :Boolean = buffs.forall(disabled)
-		def disabled(column :Mapping) :Boolean = disabled(column.buffs)
-		//todo: make these use Opt once we implement Buffs collection
-		def test[T](buff :Buff[T]) :Option[Buff[T]] = if (buff is this) Some(buff) else None
-		def test[T](buffs :Seq[Buff[T]]) :Option[Buff[T]] =
-			buffs.collectFirst { case buff if buff is this => buff }
-		def test[T](column :MappingOf[T]) :Option[Buff[T]] = test(column.buffs)
+			def apply[T](buffs :Iterable[Buff[T]]) :Option[Buff[T]] = {//preserve the Option to avoid second boxing to Opt
+				val res = buffs.collectFirst(this.asInstanceOf[PartialFunction[Buff[T], Buff[T]]])
+				if (res.isDefined && res.get == null) None //we found a contradictory buff
+				else res
+			}
+
+			override def isDefinedAt(buff :Buff[_]) :Boolean =
+				(buff.buffType contradicts BuffType.this) || buff(this).isDefined
+
+			override def apply(buff :Buff[_]) :Buff[_] =
+				if (buff.buffType contradicts BuffType.this) null
+				else buff(this).orFail(buff.toString + " is not a " + BuffType.this + " buff.")
+
+			override def applyOrElse[A1 <: Buff[_], B1 >: Buff[_]](buff :A1, default :A1 => B1) :B1 =
+				if (buff.buffType contradicts BuffType.this) null
+				else buff(this) getOrElse default(buff)
+		}
+
+		/** Checks if the buff [[net.noresttherein.oldsql.schema.Buff.is is]] of this type and is also otherwise
+		  * compatible with it. This will return `true` ''iff'' [[net.noresttherein.oldsql.schema.Buff.BuffType.get get]]
+		  * method for this buff would return a value.
+		  */
+		def active[T](buff :Buff[T]) :Boolean = !buff(Get).isEmpty
+
+		/** Checks if the given collection contains a matching buff, as defined by the overloaded `active` method
+		  * for a single buff, and that no preceding buff
+		  * is [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradictory]] to this type.
+		  */
+		def active[T](buffs :Iterable[Buff[T]]) :Boolean = !Get(buffs).isEmpty
+
+		/** Checks if the given collection contains a matching buff, as defined by the overloaded `active` method
+		  * for a single buff, and that no preceding buff
+		  * is [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradictory]] to this type.
+		  * The implementation delegates the check to the `buffs` argument, but it will be consistent with the
+		  * overloaded method accepting a generic `Iterable[Buff[_]]`.
+		  * @see [[net.noresttherein.oldsql.schema.Buffs.apply]]
+		  */
+		def active[T](buffs :Buffs[T]) :Boolean = !buffs(this).isEmpty
+
+		/** Checks if the given mapping has a matching buff, either directly declared, or inherited from some its
+		  * enclosing mapping. This is equivalent to `active(mapping.buffs)`.
+		  */
+		def active(mapping :Mapping) :Boolean = !mapping.buffs(this).isEmpty
+
+		/** Equivalent to `!active(buff)`. */
+		def inactive[T](buff :Buff[T]) :Boolean = buff(Get).isEmpty
+
+		/** Equivalent to `!active(buffs)`. */
+		def inactive[T](buffs :Iterable[Buff[T]]) :Boolean = get(buffs).isEmpty
+
+		/** Equivalent to `!active(buffs)`. */
+		def inactive[T](buffs :Buffs[T]) :Boolean = buffs(this).isEmpty
+
+		/** Equivalent to `!active(buffs)`. */
+		def inactive(mapping :Mapping) :Boolean = mapping.buffs(this).isEmpty
+
+		/** Checks if the given buff [[net.noresttherein.oldsql.schema.Buff.is is]] of this type and is otherwise
+		  * compatible with it and, if so, returns it. On the first impression this method does not give additional
+		  * information, but subclasses will generally narrow the result type to a buff of the compatible kind
+		  * and can even return a different (modified) buff instance than the argument. Additionally, this method
+		  * serves as the single final verdict of belonging, used by all other pattern methods associated
+		  * with this buff type.
+		  */
+		def get[T](buff :Buff[T]) :Opt[Buff[T]] = buff(Get)
+
+		/** Checks if the given collection contains a matching buff, as defined by the overloaded `active` method
+		  * for a single buff, and that no preceding buff
+		  * is [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradictory]] to this type. If so,
+		  * it returns the result of invoking `get(buff)` for the first matching buff (which will almost always be
+		  * the buff itself).
+		  */
+		def get[T](buffs :Iterable[Buff[T]]) :Opt[Buff[T]] = Get(buffs)
+
+		/** Checks if the given collection contains a matching buff, as defined by the overloaded `active` method
+		  * for a single buff, and that no preceding buff
+		  * is [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradictory]] to this type. If so,
+		  * it returns the result of invoking `get(buff)` for the first matching buff (which will almost always be
+		  * the buff itself). The implementation delegates the check to the `buffs` argument, but it will be consistent
+		  * with the more generic `get(buffs :Iterable[Buff[T]])`.
+		  */
+		@inline def get[T](buffs :Buffs[T]) :Opt[Buff[T]] = buffs(this)
+
+		/** Checks if the given mapping has a matching buff, either directly declared, or inherited from some its
+		  * enclosing mapping. This is equivalent to `get(mapping.buffs)`.
+		  */
+		@inline def get[T](component :MappingOf[T]) :Opt[Buff[T]] = component.buffs(this)
+
+
 
 //		/** A buff type which implies both of these buff types. This is different from
-//		  * a [[net.noresttherein.oldsql.schema.Buff.ComboBuffType]] in that the latter is considered enabled only
+//		  * a [[net.noresttherein.oldsql.schema.Buff.ComboBuffType]] in that the latter is considered active only
 //		  * by buffs created by itself or buff types implying it. Buff type conjunction, on the other hand,
-//		  * ''iff'' all individual buff types are enabled - the buff could be made by an unrelated factory.
+//		  * ''iff'' all individual buff types are active - the buff could be made by an unrelated factory.
 //		  */
 //		def &&(other :BuffType) :BuffType = other match {
 //			case combo :BuffTypeConjunction => new BuffTypeConjunction(this +: combo.buffs)
@@ -541,33 +819,126 @@ object Buff {
 			case _ => new BuffTypeDisjunction(ArraySeq(this, other))
 		}
 
+		/** A buff implying this buff, but which cascades to subcomponents. */
+		def ! :BuffType = if (cascades) this else BuffType(toString + "!")(this)
+
+		def canEqual(that :Any) :Boolean = that.isInstanceOf[BuffType]
+
 		override val toString :String = this.innerClassName
+
+	}
+
+
+	object BuffType {
+		//todo: contradicted
+		def apply(name :String, cascades :Boolean = true)(implied :BuffType*) :BuffType =
+			new NamedBuffType(name, cascades)(implied :_*)()
+
+		private[Buff] class NamedBuffType(override val toString :String, override val cascades :Boolean = true)
+		                                 (implied :BuffType*)(contradicted :BuffType*)
+			extends ContradictoryBuffType(cascades)(implied :_*)(contradicted :_*)
+		{
+			override def canEqual(that :Any) = that.getClass == getClass
+
+			override def equals(that :Any) = that match {
+				case other :NamedBuffType => (other eq this) || (other canEqual this) && other.toString == toString
+				case _ => false
+			}
+
+			override val hashCode = toString.hashCode
+		}
 
 	}
 
 
 
 
+	/** `BuffType` interface parameterized with the buff type produced by this instance. Defines `unapply` methods
+	  * which return a buff of this type if one exists.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.DedicatedBuffType]]
+	  */
+	trait TypedBuffType[+B[T] <: Buff[T]] extends BuffType { self =>
+
+		/** Equivalent to [[net.noresttherein.oldsql.schema.Buff.BuffType.get get(buff)]], but narrows down the result
+		  * to the compatible type `B[T]`. */
+		def unapply[T](buff :Buff[T]) :Opt[B[T]]
+
+		/** Equivalent to [[net.noresttherein.oldsql.schema.Buff.BuffType.get get(buffs)]], but narrows down the result
+		  * to the compatible type `B[T]`. */
+		def unapply[T](buffs :Iterable[Buff[T]]) :Opt[B[T]]
+
+		/** Equivalent to [[net.noresttherein.oldsql.schema.Buff.BuffType.get get(buffs)]], but narrows down the result
+		  * to the compatible type `B[T]`. */
+		def unapply[T](buffs :Buffs[T]) :Opt[B[T]] = buffs(this)
+
+		/** Equivalent to [[net.noresttherein.oldsql.schema.Buff.BuffType.get get(mapping)]], but narrows down the result
+		  * to the compatible type `B[T]`. */
+		def unapply[T](mapping :MappingOf[T]) :Opt[B[T]] = mapping.buffs(this)
+
+
+		override def ! :TypedBuffType[B] =
+			new NamedBuffType(toString + "!")(this)() with TypedBuffType[B] {
+				override def unapply[T](buff :Buff[T]) = self.unapply(buff)
+				override def unapply[T](buffs :Iterable[Buff[T]]) = self.unapply(buffs)
+				override def unapply[T](buffs :Buffs[T]) = self.unapply(buffs)
+				override def unapply[T](column :MappingOf[T]) = self.unapply(column)
+			}
+	}
+
+
 	/** A scaffolding base trait for buff types which use a `Buff` subclass rather then the `Buff` class itself. */
-	sealed trait DedicatedBuffType[+B[T] <: Buff[T]] extends BuffType {
-		private[this] val Class :ClassTag[B[Any]] = classTag.asInstanceOf[ClassTag[B[Any]]]
+	sealed trait DedicatedBuffType[+B[T] <: Buff[T]] extends TypedBuffType[B] {
+		private object Get
+			extends BuffExtractor[B] with PartialFunction[Buff[Any], B[Any]] with Serializable
+		{
+			private val cls = classTag.runtimeClass //relies on lazy initialization of singleton objects
+			override def buffType :BuffType = DedicatedBuffType.this
+			override def get[T](buff :Buff[T]) :Opt[B[T]] =
+				if (cls.isInstance(buff)) Got(buff.asInstanceOf[B[T]]) else Lack
+
+			def apply[T](buffs :Iterable[Buff[T]]) :Option[B[T]] = {//preserve the Option to avoid second boxing to Opt
+				val res = buffs.collectFirst(this.asInstanceOf[PartialFunction[Buff[T], B[T]]])
+				if (res.isDefined && res.get == null) None //we found a contradictory buff
+				else res
+			}
+
+			override def isDefinedAt(buff :Buff[Any]) :Boolean =
+				(buff.buffType contradicts DedicatedBuffType.this ) || buff(this).isDefined
+
+			override def apply(buff :Buff[Any]) :B[Any] =
+				if (buff.buffType contradicts DedicatedBuffType.this) null.asInstanceOf[B[Any]]
+				else buff(this).orFail(buff.toString + " is not a " + DedicatedBuffType.this + " buff.")
+
+			override def applyOrElse[A1 <: Buff[Any], B1 >: B[Any]](buff :A1, default :A1 => B1) :B1 =
+				if (buff.buffType contradicts DedicatedBuffType.this) null.asInstanceOf[B[Any]]
+				else buff(this) getOrElse default(buff)
+		}
 		protected[this] def classTag :ClassTag[_]
 
-		override def test[T](buff :Buff[T]) :Option[B[T]] = buff match {
-			case Class(b) if b is this => Some(b.asInstanceOf[B[T]])
-			case _ => None
-		}
+		override def get[T](buff :Buff[T]) :Opt[B[T]] = buff(Get)
+		override def get[T](buffs :Iterable[Buff[T]]) :Opt[B[T]] = Get(buffs)
+		override def get[T](buffs :Buffs[T]) :Opt[B[T]] = buffs(this)
+		override def get[T](mapping :MappingOf[T]) :Opt[B[T]] = mapping.buffs(this)
 
-		override def test[T](buffs :Seq[Buff[T]]) :Option[B[T]] =
-			buffs collectFirst { case Class(b) if b is this => b.asInstanceOf[B[T]] }
+		@inline final override def unapply[T](buff :Buff[T]) :Opt[B[T]] = get(buff)
+		@inline final override def unapply[T](buffs :Iterable[Buff[T]]) :Opt[B[T]] = get(buffs)
+		@inline final override def unapply[T](buffs :Buffs[T]) :Opt[B[T]] = buffs(this)
+		@inline final override def unapply[T](mapping :MappingOf[T]) :Opt[B[T]] = mapping.buffs(this)
+	}
 
-		override def test[T](column :MappingOf[T]) :Option[B[T]] = test(column.buffs)
 
-		def unapply[T](buff :Buff[T]) :Option[B[T]] = test(buff)
+	/** Mixing trait for [[net.noresttherein.oldsql.schema.Buff.BuffType buff types]] which marks them
+	  * as [[net.noresttherein.oldsql.schema.Buff.BuffType.cascades cascading]].
+	  */
+	trait Cascading extends BuffType {
+		override val cascades = true //val, not def, as its mixed in to traits which declare it as a val
+	}
 
-		def unapply[T](buffs :Seq[Buff[T]]) :Option[B[T]] = test(buffs)
-
-		def unapply[T](column :MappingOf[T]) :Option[B[T]] = test(column)
+	/** Mixing trait for [[net.noresttherein.oldsql.schema.Buff.BuffType buff types]] which marks them
+	  * as [[net.noresttherein.oldsql.schema.Buff.BuffType.cascades non cascading]].
+	  */
+	trait NonCascading extends BuffType {
+		override val cascades = false //val, not def, as its mixed in to traits which declare it as a val
 	}
 
 
@@ -581,9 +952,17 @@ object Buff {
 		  * be cascading. */
 		override def cascades :Boolean = false
 
-		@inline final def unapply[T](buff :Buff[T]) :Boolean = enabled(buff)
-		@inline final def unapply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
-		@inline final def unapply(component :Mapping) :Boolean = enabled(component)
+		/** Equivalent to `active(buff)`. */
+		@inline final def unapply[T](buff :Buff[T]) :Boolean = active(buff)
+
+		/** Equivalent to `active(buffs)` */
+		@inline final def unapply[T](buffs :Iterable[Buff[T]]) :Boolean = active(buffs)
+
+		/** Equivalent to `active(buffs)`. */
+		@inline final def unapply[T](buffs :Buffs[T]) :Boolean = active(buffs)
+
+		/** Equivalent to `active(mapping)`. */
+		@inline final def unapply(mapping :Mapping) :Boolean = active(mapping)
 	}
 
 	/** A `Buff` type which doesn't have any `Buff` instances and won't match any of them.
@@ -591,8 +970,10 @@ object Buff {
 	  * inactive, automatically fulfilling a function normally performed by a `Option[BuffType]`.
 	  */
 	case object AbstractBuff extends AbstractBuffType {
-		override def test[T](buff :Buff[T]) :Option[Buff[T]] = None
-		override def test[T](buffs :Seq[Buff[T]]) :Option[Buff[T]] = None
+		override def get[T](buff :Buff[T]) :Opt[Buff[T]] = Lack
+		override def get[T](buffs :Iterable[Buff[T]]) :Opt[Buff[T]] = Lack
+		override def get[T](buffs :Buffs[T]) :Opt[Buff[T]] = Lack
+		override def get[T](mapping :MappingOf[T]) :Opt[Buff[T]] = Lack
 	}
 
 	/** A special `Buff` factory producing buffs which are ignored and not recognized by any other buff types. */
@@ -604,15 +985,31 @@ object Buff {
 	  * Attaching a `Buff` of this type to a component is roughly equivalent to attaching buffs of the types
 	  * listed in the constructor. It is analogous to multi-inheritance with the implied buff types as super types.
 	  */
-	class ComboBuffType(override val cascades :Boolean, val implied :BuffType*) extends BuffType {
-		def this(implied :BuffType*) = this(true, implied :_*)
+	class ComboBuffType(override val cascades :Boolean)(val implied :BuffType*) extends BuffType {
+		def this(implied :BuffType*) = this(true)(implied :_*)
+
+		protected[schema] override val knownImplied :Unique[BuffType] =
+			(Unique.single[BuffType](this) /: implied)(_ :++ _.knownImplied)
 
 		override def implies(other :BuffType) :Boolean =
-			other == this || implied.exists(_.implies(other))
+			knownImplied.contains(other) || (other impliedBy this) || implied.exists(_.implies(other))
+
+		override def impliedContradicts(other :BuffType) :Boolean = implied.exists(_.contradicts(other))
 	}
 
+
+	class ContradictoryBuffType(cascades :Boolean)(implied :BuffType*)(val contradicted :BuffType*)
+		extends ComboBuffType(cascades)(implied :_*)
+	{
+		def this(implied :BuffType*)(contradicted :BuffType*) = this(true)(implied :_*)(contradicted :_*)
+
+		override def impliedContradicts(other :BuffType) :Boolean =
+			contradicted.contains(other) || implied.exists(_.contradicts(other))
+	}
+
+
 	private class BuffTypeDisjunction(val buffs :Seq[BuffType]) extends AbstractBuffType {
-		override def implies(other :BuffType) :Boolean =
+		override def impliedBy(other :BuffType) :Boolean =
 			buffs.exists(other.implies)
 
 		override def ||(other :BuffType) :BuffType = other match {
@@ -633,11 +1030,11 @@ object Buff {
 //		}
 //
 //
-//		override def enabled(buffs :Seq[Buff[_]]) = this.buffs.forall(_.enabled(buffs))
+//		override def active(buffs :Seq[Buff[_]]) = this.buffs.forall(_.active(buffs))
 //
-//		override def disabled(buffs :Seq[Buff[_]]) = this.buffs.exists(_.disabled(buffs))
+//		override def inactive(buffs :Seq[Buff[_]]) = this.buffs.exists(_.inactive(buffs))
 //
-////		override def test[T](buffs :Seq[Buff[T]]) = super.test(buffs)
+////		override def get[T](buffs :Seq[Buff[T]]) = super.get(buffs)
 //
 //		override val toString = buffs.mkString(" && ")
 //	}
@@ -645,38 +1042,25 @@ object Buff {
 
 
 
-
-	/** Mixing trait for [[net.noresttherein.oldsql.schema.Buff.BuffType buff types]] which marks them
-	  * as [[net.noresttherein.oldsql.schema.Buff.BuffType.cascades cascading]].
-	  */
-	trait Cascading extends BuffType {
-		override val cascades = true //val, not def, as its mixed in to traits which declare it as a val
-	}
-
-	/** Mixing trait for [[net.noresttherein.oldsql.schema.Buff.BuffType buff types]] which marks them
-	  * as [[net.noresttherein.oldsql.schema.Buff.BuffType.cascades non cascading]].
-	  */
-	trait NonCascading extends BuffType {
-		override val cascades = false //val, not def, as its mixed in to traits which declare it as a val
-	}
-
-
-
-	private class FlagBuff[T](val buffType :FlagBuffType) extends Buff[T] {
+	private class FlagBuff[T](override val buffType :FlagBuffType) extends Buff[T] {
 		override def map[X](there :T => X) :FlagBuff[X] = this.asInstanceOf[FlagBuff[X]]
-		override def cascade[X](there :T => X) :Some[Buff[X]] = Some(this.asInstanceOf[FlagBuff[X]])
+
+		override def cascade[X](there :T => X) :Option[FlagBuff[X]] =
+			if (cascades) Some(this.asInstanceOf[FlagBuff[X]]) else None
+
+		override def cascadeGuard[X](extractor :T =?> X) :Option[FlagBuff[X]] =
+			if (cascades) Some(this.asInstanceOf[FlagBuff[X]]) else None
+
 		override def bimap[X](there :T => X, back :X => T) :FlagBuff[X] = this.asInstanceOf[FlagBuff[X]]
 
 		override def equals(that :Any) :Boolean = that match {
 			case flag :FlagBuff[_] => buffType == flag.buffType
 			case _ => false
 		}
-
 		override def hashCode :Int = buffType.hashCode
 
 		override def toString :String = buffType.toString
 	}
-
 
 
 	/** A simple mapping buff which doesn't perform any function in the mapping itself, but serves
@@ -686,8 +1070,6 @@ object Buff {
 	  * it is possible to omit the type parameter of the factory `apply` method.
 	  */
 	trait FlagBuffType extends BuffType {
-		private[this] val instance = new FlagBuff[Nothing](this)
-
 		/** Creates a new instance of this buff type for a column/component with subject type `T`.
 		  * All instances created by this `BuffType` are equal.
 		  */
@@ -698,25 +1080,38 @@ object Buff {
 		  */
 		@inline def buff[T] :Buff[T] = apply[T]
 
-		@inline final def apply[T](buff :Buff[T]) :Boolean = enabled(buff)
-		@inline final def apply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
-		@inline final def apply(component :Mapping) :Boolean = enabled(component)
+		def +[T] :Buff[T] = !.buff
+		def -[T] :Buff[T] = nonCascading.buff
 
-		@inline final def unapply[T](buff :Buff[T]) :Boolean = enabled(buff)
-		@inline final def unapply[T](buffs :Seq[Buff[T]]) :Boolean = enabled(buffs)
-		@inline final def unapply(component :Mapping) :Boolean = enabled(component)
+		@inline final def apply[T](buff :Buff[T]) :Boolean = active(buff)
+		@inline final def apply[T](buffs :Iterable[Buff[T]]) :Boolean = active(buffs)
+		@inline final def apply[T](buffs :Buffs[T]) :Boolean = active(buffs)
+		@inline final def apply(component :Mapping) :Boolean = active(component)
+
+		@inline final def unappl[T](buff :Buff[T]) :Boolean = active(buff)
+		@inline final def unapply[T](buffs :Iterable[Buff[T]]) :Boolean = active(buffs)
+		@inline final def unapply[T](buffs :Buffs[T]) :Boolean = active(buffs)
+		@inline final def unapply(component :Mapping) :Boolean = active(component)
+
+		override val ! :FlagBuffType = FlagBuffType(toString + "!")(this)
+
+		private[this] val instance = new FlagBuff[Nothing](this)
+		private[this] val nonCascading = new NamedFlag(toString + "-")(this)() with NonCascading
 	}
 
 
 	object FlagBuffType {
-		/** Creates a new, unique type of component flag of the given name. */
-		def apply(name :String, cascades :Boolean = true) :FlagBuffType = new NamedFlag(name, cascades)
+		/** Creates a new, unique type of component flag of the given name. Two instances with the same name
+		  * will compare equal regardless of other properties, in particular implied buffs.
+		  */
+		def apply(name :String, cascades :Boolean = true)(implied :BuffType*) :FlagBuffType =
+			new NamedFlag(name, cascades)(implied :_*)() //todo: overrides with contradicted
 
 		implicit def flag[T](buff :FlagBuffType) :Buff[T] = buff[T]
 
-		private class NamedFlag(override val toString :String, override val cascades :Boolean) extends FlagBuffType
+		private[Buff] class NamedFlag(name :String, cascades :Boolean = true)(implied :BuffType*)(contradicted :BuffType*)
+			extends NamedBuffType(name, cascades)(implied :_*)(contradicted :_*) with FlagBuffType
 	}
-
 
 
 	/** A `FlagBuffType` which implies other flags (is equivalent to having them declared alongside it).
@@ -724,10 +1119,16 @@ object Buff {
 	  * specific than this buff. The difference from inheritance is that every buff instance of this type implies
 	  * all the listed buffs, not just one of them. A more proper way of viewing it is multi generalization/inheritance.
 	  */
-	class ComboFlag(cascades :Boolean, implied :BuffType*)
-		extends ComboBuffType(cascades, implied:_*) with FlagBuffType
+	class ComboFlag(cascades :Boolean)(implied :BuffType*)
+		extends ComboBuffType(cascades)(implied :_*) with FlagBuffType
 	{
-		def this(implied :BuffType*) = this(true, implied:_*)
+		def this(implied :BuffType*) = this(true)(implied :_*)
+	}
+	//todo: merge this class with ComboFlag when we can override constructors in Scala 3
+	class ContradictoryFlag(cascades :Boolean)(implied :BuffType*)(contradicted :BuffType*)
+		extends ContradictoryBuffType(cascades)(implied :_*)(contradicted :_*) with FlagBuffType
+	{
+		def this(implied :BuffType*)(contradicted :BuffType*) = this(true)(implied :_*)(contradicted :_*)
 	}
 
 
@@ -735,10 +1136,11 @@ object Buff {
 
 
 
-	/** A `Buff` which carries a value. These values are generally used instead of the the value carried
-	  * by an entity or read from the database, but the exact handling depends on the buff type.
-	  * They are typically created by a [[net.noresttherein.oldsql.schema.Buff.ValueBuffType ValueBuffType]] factory,
-	  * but can also be of a different type (for example in case of buff types which support only certain component types).
+	/** A `Buff` which carries a value of the subject type of the buffed component. These values are generally used
+	  * instead of the the value carried by an entity or read from the database, but the exact handling depends on
+	  * the buff type. They are typically created by a [[net.noresttherein.oldsql.schema.Buff.ValueBuffType ValueBuffType]]
+	  * factory, but can also be of a different type (for example in case of buff types which support only certain
+	  * component types).
 	  */
 	trait ValueBuff[T] extends Buff[T] {
 		override def map[X](there :T => X) :ValueBuff[X]
@@ -750,13 +1152,11 @@ object Buff {
 
 
 	object ValueBuff {
-
-		def unapply[T](buff :Buff[T]) :Option[T] = buff match {
-			case const :ValueBuff[T] => Some(const.value)
-			case _ => None
+		def unapply[T](buff :Buff[T]) :Opt[T] = buff match {
+			case const :ValueBuff[T] => Got(const.value)
+			case _ => Lack
 		}
 	}
-
 
 
 	/** A `Buff` type which carries a value. These buff types are handled explicitly when creating and executing
@@ -781,26 +1181,44 @@ object Buff {
 	trait ValueBuffType extends DedicatedBuffType[ValueBuff] {
 		protected[this] def classTag :ClassTag[_] = implicitly[ClassTag[ValueBuff[Any]]]
 
-		object Value { //todo: migrate to Opt
-			@inline def unapply[T](buff :Buff[T]) :Option[T] = test(buff).map(_.value)
-			@inline def unapply[T](buffs :Seq[Buff[T]]) :Option[T] = test(buffs).map(_.value)
-			@inline def unapply[T](mapping :MappingOf[T]) :Option[T] = test(mapping).map(_.value)
+		/** Extracts the value carried by buffs belonging to the enclosing
+		  * [[net.noresttherein.oldsql.schema.Buff.ValueBuffType ValueBuffType]].
+		  */
+		object Value extends BuffExtractor[Self] {
+			override def buffType :BuffType = ValueBuffType.this
+			override def get[T](buff :Buff[T]) :Opt[T] = buff match {
+				case value :ValueBuff[T] => Got(value.value)
+				case _ => Lack
+			}
 
-			@inline def apply[T](buff :Buff[T]) :Option[T] = unapply(buff)
-			@inline def apply[T](buffs :Seq[Buff[T]]) :Option[T] = unapply(buffs)
-			@inline def apply[T](mapping :MappingOf[T]) :Option[T] = unapply(mapping)
+			@inline def unapply[T](buff :Buff[T]) :Opt[T] = buff(this) //todo: look at the byte code
+			@inline def unapply[T](buffs :Iterable[Buff[T]]) :Opt[T] = ValueBuffType.this.get(buffs).map(_.value)
+			@inline def unapply[T](buffs :Buffs[T]) :Opt[T] = buffs(ValueBuffType.this).map(_.value)
+			@inline def unapply[T](mapping :MappingOf[T]) :Opt[T] = mapping.buffs(ValueBuffType.this).map(_.value)
+
+			@inline def apply[T](buff :Buff[T]) :Opt[T] = buff(this)
+			@inline def apply[T](buffs :Iterable[Buff[T]]) :Opt[T] = ValueBuffType.this.get(buffs).map(_.value)
+			@inline def apply[T](buffs :Buffs[T]) :Opt[T] = buffs(ValueBuffType.this).map(_.value)
+			@inline def apply[T](mapping :MappingOf[T]) :Opt[T] = mapping.buffs(ValueBuffType.this).map(_.value)
 		}
+
+		override val ! = ValueBuffType(toString + "!")(this)
 	}
 
 
 	object ValueBuffType {
-		/** Creates a new [[net.noresttherein.oldsql.schema.Buff.ValueBuffType ValueBuffType]] of the given name. */
-		def apply[T](name :String, cascades :Boolean = true) :ValueBuffType = new NamedValue(name, cascades)
+		/** Creates a new abstract [[net.noresttherein.oldsql.schema.Buff.ValueBuffType ValueBuffType]]
+		  * of the given name. The returned object cannot be used to create new `Buff`s, but it can still
+		  * get positive for buffs of other `ValueBuffType` which imply it. This implementation is value-based:
+		  * two instances of the same name will compare equal, regardless of the `cascades` flag.
+		  */ //todo: contradicted
+		def apply[T](name :String, cascades :Boolean = true)(implied :BuffType*) :ValueBuffType =
+			new NamedValue(name, cascades)(implied :_*)()
 
-		private class NamedValue(override val toString :String, override val cascades :Boolean)
-			extends ValueBuffType
+		private[Buff] class NamedValue(name :String, cascades :Boolean = true)
+		                              (implied :BuffType*)(contradicted :BuffType*)
+			extends NamedBuffType(name, cascades)(implied :_*)(contradicted :_*) with ValueBuffType
 	}
-
 
 
 	/** A `Buff` type without any instances, not applied to any components. It is used in place of a `ValueBuffType`
@@ -808,46 +1226,59 @@ object Buff {
 	  * a function which would be normally performed by an `Option[ValueBuffType]`.
 	  */
 	case object AbstractValueBuff extends ValueBuffType with NonCascading {
-		override def test[T](buff :Buff[T]) :Option[ValueBuff[T]] = None
-		override def test[T](buffs :Seq[Buff[T]]) :Option[ValueBuff[T]] = None
+		override def get[T](buff :Buff[T]) :Opt[ValueBuff[T]] = Lack
+		override def get[T](buffs :Iterable[Buff[T]]) :Opt[ValueBuff[T]] = Lack
+		override def get[T](buffs :Buffs[T]) :Opt[ValueBuff[T]] = Lack
+		override def get[T](mapping :MappingOf[T]) :Opt[ValueBuff[T]] = Lack
 	}
 
 
 
 
 	/** A mapping buff which carries a constant value to be used instead of the value present in the entity or
-	  * the database, depending on the exact buff type.
+	  * the database, depending on the exact buff type. The default mapping and cascading behaviour is to
+	  * eagerly map the carried value and produce a new `ConstantBuff` instance using the factory method
+	  * `this.`[[net.noresttherein.oldsql.schema.Buff.ConstantBuffType.apply buffType(this.value)]]. One exception
+	  * is the [[net.noresttherein.oldsql.schema.Buff.ConstantBuff.cascadeGuard cascadeGuard]] method when given
+	  * a non-requisite [[net.noresttherein.oldsql.morsels.Extractor extractor]]. In that case
+	  * the factory's method [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType.guard guard(f(this.value))]]
+	  * is called, the default implementation of which catches all `NoSuchElementException`s thrown during value
+	  * evaluation and choosing not to cascade instead of propagating the error. This of course can be overriden
+	  * by both buff and buff type subclasses.
+	  * evaluation of the new value, the buff will not cascade.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType]]
 	  */
-	class ConstantBuff[T](val buffType :ConstantBuffType, val value :T) extends ValueBuff[T] {
+	class ConstantBuff[T](override val buffType :ConstantBuffType, override val value :T) extends ValueBuff[T] {
 
-		override def map[X](there: T => X): ConstantBuff[X] = buffType(there(value))
+		override def map[X](there: T => X): ValueBuff[X] = buffType(there(value))
 
-		override def cascade[X](there :T => X) :Option[ConstantBuff[X]] = Some(buffType(there(value)))
+		override def cascade[X](there :T => X) :Option[ValueBuff[X]] =
+			if (cascades) Some(buffType(there(value))) else None
 
-		override def bimap[X](there :T => X, back :X => T) :ValueBuff[X] = buffType(there(value))
+		override def cascadeGuard[X](there :T =?> X) :Option[ValueBuff[X]] =
+			if (cascades) there.requisite match {
+				case Got(f) => Some(buffType(f(value)))
+				case _ => buffType.guard(there(value))
+			} else None
 
 		override def equals(that: Any): Boolean = that match {
 			case self :AnyRef if self eq this => true
-			case o :ConstantBuff[_] if o.canEqual(this) => o.value == value && o.buffType == buffType
+			case o :ConstantBuff[_] if o.canEqual(this) => o.buffType == buffType && o.value == value
 			case _ => false
 		}
-
 		override def hashCode :Int = value.hashCode
 
-		override def toString = s"$buffType: $value"
+		override def toString :String = buffType.toString + "(" + value + ")"
 	}
 
 
 	object ConstantBuff {
-
-		def unapply[T](buff :Buff[T]) :Option[T] = buff match {
-			case const :ConstantBuff[T] => Some(const.value)
-			case _ => None
+		def unapply[T](buff :Buff[T]) :Opt[T] = buff match {
+			case const :ConstantBuff[T] => Got(const.value)
+			case _ => Lack
 		}
 	}
-
 
 
 	/** A base trait for factories of `Buff[T]` instances wrapping values of `T`.
@@ -856,35 +1287,60 @@ object Buff {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  */
 	trait ConstantBuffType extends ValueBuffType {
+		/** Create a `ValueBuff` of this type, carrying the given value. */
 		def apply[T](value :T) :ConstantBuff[T] = new ConstantBuff[T](this, value)
+
+		/** A callback called from method [[net.noresttherein.oldsql.schema.Buff.ConstantBuff.cascadeGuard cascadeGuard]]
+		  * invoked when passed a non-requisite extractor. It is responsible for determining if and how to cascade
+		  * the mapped [[net.noresttherein.oldsql.schema.Buff.ConstantBuff ConstantBuff]]. Default implementation
+		  * evaluates the value eagerly within a try-catch block and, if a [[NoSuchElementException]] is caught,
+		  * does not cascade the buff instead of propagating the error. This can however be overriden by subclasses
+		  * if desired.
+		  */
+		def guard[T](value: => T) :Option[ValueBuff[T]] =
+			try { Some(this(value)) }
+			catch { case _ :NoSuchElementException => None}
+
+		override val ! :ConstantBuffType = ConstantBuffType(toString + "!")(this)
 	}
 
-
+	/** Factory for arbitrary [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType ConstantBuffType]],
+	  * with name-based equality.
+	  */
 	object ConstantBuffType {
-		/** Creates a new [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType ConstantBuffType]] of the given name.*/
-		def apply(name :String, cascades :Boolean = true) :ConstantBuffType = new NamedConstant(name, cascades)
+		/** Creates a new [[net.noresttherein.oldsql.schema.Buff.ConstantBuffType ConstantBuffType]] of the given name.
+		  * Two instances with the same name will be equal to each other.
+		  */
+		def apply(name :String, cascades :Boolean = true)(implied :BuffType*) :ConstantBuffType =
+			new NamedConstant(name, cascades)(implied :_*)() //todo: overrides with contradicted
 
-		private class NamedConstant(override val toString :String, override val cascades :Boolean)
-			extends ConstantBuffType
+		private class NamedConstant(name :String, cascades :Boolean = true)
+		                           (implied :BuffType*)(contradicted :BuffType*)
+			extends NamedBuffType(name, cascades)(implied :_*)(contradicted :_*) with ConstantBuffType
 	}
-
 
 
 
 	/** A buff which reevaluates encapsulated expression each time its `value` method is called.
 	  * This is similar to `ConstantBuff`, but the value is reevaluated with each call to `this.value`.
+	  * One difference is that, because its value may be different for every access, no two separate instances
+	  * are ever equal (while al `ConstantBuff`s of the same type and value are equal).
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ValueBuffType]]
 	  * @see [[net.noresttherein.oldsql.schema.Buff.GeneratedBuffType]]
 	  */
-	class GeneratedBuff[T](val buffType :GeneratedBuffType, generator: =>T) extends ValueBuff[T] {
-		def value :T = generator
+	class GeneratedBuff[T](override val buffType :GeneratedBuffType, generator: => T) extends ValueBuff[T] {
+		override def value :T = generator
 
-		override def map[X](there :T => X) :GeneratedBuff[X] = buffType(there(generator))
+		override def map[X](there :T => X) :ValueBuff[X] = buffType(there(generator))
 
-		/** Returns `None` */
-		override def cascade[X](there :T => X) :Option[Buff[X]] = None //Some(buffType(there(generator)))
+		override def cascade[X](there :T => X) :Option[ValueBuff[X]] =
+			if (cascades) Some(buffType(there(generator))) else None
 
-		override def bimap[X](there :T => X, back :X => T) :GeneratedBuff[X] = buffType(there(generator))
+		override def cascadeGuard[X](there :T =?> X) :Option[ValueBuff[X]] =
+			if (cascades) there.requisite match {
+				case Got(f) => cascade(f)
+				case _ => buffType.guard(there(value))
+			} else None
 
 		override def toString :String = buffType.toString + "()"
 	}
@@ -895,6 +1351,29 @@ object Buff {
 			case const :GeneratedBuff[T] => Some(const.value)
 			case _ => None
 		}
+	}
+
+
+
+	/** A variant of [[net.noresttherein.oldsql.schema.Buff.GeneratedBuff GeneratedBuff]] which will not be matched
+	  * by its own buff type if the generator expression throws a [[NoSuchElementException]]. All mapping and cascading
+	  * will produce also guarded buffs, even if the method would result in an exception being thrown by
+	  * a standard `GeneratedBuff`.
+	  */
+	class GuardedBuff[T](factory :GeneratedBuffType, generator: => T)
+		extends GeneratedBuff[T](factory, generator)
+	{
+		override def map[X](there :T => X) :ValueBuff[X] =
+			buffType.guard(there(generator)) getOrElse new GuardedBuff(buffType, there(generator))
+
+		override def cascade[X](there :T => X) :Option[ValueBuff[X]] =
+			if (cascades) buffType.guard(there(value)) else None
+
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] =
+			if (buffType implies extractor.buffType)
+				try { extractor.get(this) }
+				catch { case _ :NoSuchElementException => Lack }
+			else Lack
 	}
 
 
@@ -910,18 +1389,47 @@ object Buff {
 	  */
 	trait GeneratedBuffType extends ValueBuffType {
 		/** Create a `Buff` which will reevaluate the given expression each time its `value` method is accessed. */
-		def apply[T](value: =>T) :GeneratedBuff[T] = new GeneratedBuff(this, value)
+		def apply[T](value: => T) :GeneratedBuff[T] = new GeneratedBuff(this, value)
+
+		/** A callback from method [[net.noresttherein.oldsql.schema.Buff.GeneratedBuff.cascadeGuard cascadeGuard]]
+		  * of [[net.noresttherein.oldsql.schema.Buff.GeneratedBuff GeneratedBuff]] invoked when passed a non-requisite
+		  * extractor. Default implementation creates a `ValueBuff` which executes the given expression
+		  * within a `try-catch` block when matching against a buff type. If value evaluation throws
+		  * a [[NoSuchElementException]], the buff will be treated as if it was not of this type without propagating
+		  * the error.
+		  */
+		def guard[T](value: => T) :Option[ValueBuff[T]] = Some(new GuardedBuff(this, value))
+
+
+		override val ! :GeneratedBuffType = GeneratedBuffType(toString + "!")(this)
 	}
 
 
+	/** Factory for arbitrary [[net.noresttherein.oldsql.schema.Buff.GeneratedBuffType GeneratedBuffType]] instances,
+	  * with name-based equality.
+	  */
 	object GeneratedBuffType {
 		/** Create a new, unique [[net.noresttherein.oldsql.schema.Buff.GeneratedBuffType GeneratedBuffType]]
-		  * of the given name. */
-		def apply(name :String, cascades :Boolean = true) :GeneratedBuffType = new NamedGenerator(name, cascades)
+		  * of the given name. Two instances of the same name will equal each other.
+		  */
+		def apply(name :String, cascades :Boolean = true)(implied :BuffType*) :GeneratedBuffType =
+			new NamedGenerator(name, cascades)(implied :_*)() //todo: override with contradicted
 
 		private class NamedGenerator(override val toString :String, override val cascades :Boolean)
-			extends GeneratedBuffType
+		                            (implied :BuffType*)(contradicted :BuffType*)
+			extends ContradictoryBuffType(cascades)(implied :_*)(contradicted :_*) with GeneratedBuffType
+		{
+			override def canEqual(that :Any) = that.isInstanceOf[GeneratedBuffType]
+
+			override def equals(that :Any) :Boolean = that match {
+				case other :GeneratedBuffType => (other eq this) || (other canEqual this) && other.toString == toString
+				case _ => false
+			}
+
+			override val hashCode = toString.hashCode
+		}
 	}
+
 
 
 
@@ -929,23 +1437,37 @@ object Buff {
 	  * with `GeneratedBuffType`, additionally providing a `ConstantBuffType` implying this instance as the
 	  * `const` property.
 	  */
-	class ComboValueBuffType(override val toString :String, cascades :Boolean, implies :BuffType*)
-		extends ComboBuffType(cascades, implies :_*) with GeneratedBuffType
+	class ComboValueBuffType(cascades :Boolean)(implied :BuffType*)
+		extends ComboBuffType(cascades)(implied :_*) with GeneratedBuffType
 	{ outer =>
-		def this(name :String, implies :BuffType*) = this(name, true, implies :_*)
-		def this(cascades :Boolean, implies :BuffType*) = this(this.innerClassName, cascades, implies :_*)
-		def this(implies :BuffType*) = this(this.innerClassName, implies :_*)
+		def this(implied :BuffType*) = this(true)(implied :_*)
+
+		protected def readResolve :ComboValueBuffType = this
 
 		/** Factory of buffs wrapping constant values and are recognized as buffs of this buff type.
 		  * The [[net.noresttherein.oldsql.schema.Buff.BuffType.cascades cascades]] flag is the same as in this type.
 		  */
-		val const :ConstantBuffType = new ComboBuffType(cascades, this) with ConstantBuffType {
+		val const :ConstantBuffType = new ComboBuffType(cascades)(this) with ConstantBuffType {
 			override val toString :String = outer.toString + ".const"
+			private def readResolve = outer.readResolve.const
+		}
+
+		override val ! :ComboValueBuffType = new ComboValueBuffType(this) { //todo: contradicted
+			override val toString = outer.toString + "!" //todo: lazy, it would be better of as a value-based class
+			protected override def readResolve = outer.readResolve.!
 		}
 	}
 
+	//todo: remove these, replacing instead with overloaded constructors on base 'combo' classes
+	class ContradictoryValueBuffType(cascades :Boolean)(implied :BuffType*)(val contradicted :BuffType*)
+		extends ComboValueBuffType(cascades)(implied :_*)
+	{
+		def this(implied :BuffType*)(contradicted :BuffType*) =
+			this(true)(implied :_*)(contradicted :_*)
 
-
+		override def impliedContradicts(other :BuffType) :Boolean =
+			contradicted.contains(other) || implied.exists(_.contradicts(other))
+	}
 
 
 
@@ -953,29 +1475,29 @@ object Buff {
 
 
 	/** A column/component `Buff` carrying a function `T=>T` which is used to modify the value read or written
-	  * to the database. Which operations are actually affected depends on the buff type.
+	  * to the database. Which operations are actually affected depends on the buff type. Audit buffs never cascade:
+	  * presence of one on a component doesn't make any of its columns or subcomponents get positive.
 	  */
-	class AuditBuff[T](val buffType :AuditBuffType, val substitute :T => T) extends Buff[T] {
+	class AuditBuff[T](val buffType :AuditBuffType, val audit :T => T) extends Buff[T] {
 
 		override def map[X](there :T => X) :AuditBuff[X] =
 			throw new UnsupportedOperationException(toString + ".map: AuditBuff can't be mapped unidirectionally.")
 
+		override def cascades :Boolean = false
 		override def cascade[X](f :T => X) :Option[Nothing] = None
+		override def cascadeGuard[X](extractor :T =?> X) :Option[Buff[X]] = None
 
 		override def bimap[X](there :T => X, back :X => T) :AuditBuff[X] =
-			new AuditBuff[X](buffType, back andThen substitute andThen there)
-
+			new AuditBuff[X](buffType, back andThen audit andThen there)
 
 		override def equals(that :Any) :Boolean = that match {
-			case sub :AuditBuff[_] => (sub eq this) || sub.buffType == buffType && sub.substitute == substitute
+			case sub :AuditBuff[_] => (sub eq this) || sub.buffType == buffType && sub.audit == audit
 			case _ => false
 		}
+		override def hashCode :Int = buffType.hashCode * 31 + audit.hashCode
 
-		override def hashCode :Int = buffType.hashCode * 31 + substitute.hashCode
-
-		override def toString :String = buffType.toString + "(" + substitute + ")"
+		override def toString :String = buffType.toString + "(" + audit + ")"
 	}
-
 
 
 	/** A buff type which inspects and possibly modifies the value of the annotated column/component during
@@ -991,37 +1513,89 @@ object Buff {
 
 		protected def apply[T](map :T => T) :AuditBuff[T] = new AuditBuff(this, map)
 
+		/** Composes the functions from all matching audit buffs ''declared'' by the given mapping. 
+		  * If no matching buffs exist, the returned function will be identity. Note that this method 
+		  * ignores any contradictory buffs present in the input.  
+		  */
 		def fold[T](mapping :MappingOf[T]) :T => T = fold(mapping.buffs)
 
-		def fold[T](buffs :Seq[Buff[T]]) :T => T = {
+		/** Composes the functions from all matching audit buffs from the first declaration in the given `Buffs` 
+		  * collection. If no matching buffs exist, the returned function will be identity. Note that this method 
+		  * ignores any contradictory buffs present in the input.  
+		  */
+		def fold[T](buffs :Buffs[T]) :T => T = fold(buffs.front)
+
+		/** Composes the functions from all matching audit buffs in the collection. If no matching buffs exist, 
+		  * the returned function will be identity. Note that this method ignores any contradictory buffs 
+		  * present in the input.  
+		  */
+		def fold[T](buffs :Iterable[Buff[T]]) :T => T = {
 			val audits = Audit(buffs)
 			if (audits.isEmpty) identity[T]
 			else audits.reduce(_ andThen _)
 		}
 
-		object Audit { //todo: migrate to Opt
-			@inline def apply[T](buff :Buff[T]) :Option[T => T] = unapply(buff)
-			@inline def apply[T](buffs :Seq[Buff[T]]) :Seq[T => T] = unapply(buffs)
-			@inline def apply[T](mapping :MappingOf[T]) :Seq[T => T] = unapply(mapping)
+		object Audit {
+			/** If the given buff matches the enclosing 
+			  * [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]], return the function it carries.
+			  */
+			@inline def apply[T](buff :Buff[T]) :Opt[T => T] = unapply(buff)
 
-			def unapply[T](buff :Buff[T]) :Option[T => T] = buff match {
-				case sub :AuditBuff[T] if sub is self => Some(sub.substitute)
-				case _ => None
+			/** Find all buffs matching the enclosing [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]]
+			  * and return their functions. Note that this method ignores any contradictory buffs present in the input.   
+			  */
+			@inline def apply[T](buffs :Iterable[Buff[T]]) :Seq[T => T] = unapplySeq(buffs)
+
+			/** Find all buffs matching the enclosing [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]]
+			  * in the [[net.noresttherein.oldsql.schema.Buffs.declared declared]] prefix of the given collection
+			  * and return their functions. Note that this method ignores any contradictory buffs present in the input.   
+			  */
+			@inline def apply[T](buffs :Buffs[T]) :Seq[T => T] = unapplySeq(buffs)
+
+			/** Find all buffs declared by the given mapping which match the enclosing 
+			  * [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]] and return their functions.
+			  * Note that this method ignores any contradictory buffs present in the input.   
+			  */
+			@inline def apply[T](mapping :MappingOf[T]) :Seq[T => T] = unapplySeq(mapping)
+
+			/** If the given buff matches the enclosing 
+			  * [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]], return the function it carries.
+			  */
+			def unapply[T](buff :Buff[T]) :Opt[T => T] = buff match {
+				case sub :AuditBuff[T] if sub is self => Got(sub.audit)
+				case _ => Lack
 			}
 
-			def unapply[T](buffs :Seq[Buff[T]]) :Seq[T => T] =
-				buffs collect { case sub :AuditBuff[T] if sub is self => sub.substitute }
+			/** Find all buffs matching the enclosing [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]]
+			  * and return their functions. Note that this method ignores any contradictory buffs present in the input.   
+			  */
+			def unapplySeq[T](buffs :Iterable[Buff[T]]) :Seq[T => T] =
+				buffs collect { case sub :AuditBuff[T] if sub is self => sub.audit } to List
 
-			def unapply[T](component :MappingOf[T]) :Seq[T => T] = unapply(component.buffs)
+			/** Find all buffs matching the enclosing [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]]
+			  * in the [[net.noresttherein.oldsql.schema.Buffs.declared declared]] prefix of the given collection
+			  * and return their functions. Note that this method ignores any contradictory buffs present in the input.   
+			  */
+			def unapplySeq[T](buffs :Buffs[T]) :Seq[T => T] = unapplySeq(buffs.front)
+
+			/** Find all buffs declared by the given mapping which match the enclosing 
+			  * [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]] and return their functions.
+			  * Note that this method ignores any contradictory buffs present in the input.   
+			  */
+			def unapplySeq[T](component :MappingOf[T]) :Seq[T => T] = unapplySeq(component.buffs)
 		}
+
+		override val ! = AuditBuffType(toString + "!")(this)
 	}
 
 
 	object AuditBuffType {
 		/** A new, unique [[net.noresttherein.oldsql.schema.Buff.AuditBuffType AuditBuffType]] of the given name. */
-		def apply(name :String) :AuditBuffType = new NamedAudit(name)
+		def apply(name :String, cascades :Boolean = true)(implied :BuffType*) :AuditBuffType =
+			new NamedAudit(name, cascades)(implied :_*)() //todo: contradicts
 
-		private class NamedAudit(override val toString :String) extends AuditBuffType
+		private class NamedAudit(name :String, cascades :Boolean = true)(implied :BuffType*)(contradicted :BuffType*)
+			extends NamedBuffType(name, cascades)(implied :_*)(contradicted :_*) with AuditBuffType
 	}
 
 
@@ -1044,7 +1618,7 @@ object Buff {
 		override def cascade[X](there :T => X) :Option[Nothing] = None
 
 		override def bimap[X](there :T => X, back :X => T) :ManagedBuff[X] =
-			new ManagedBuff(buffType, there(init), back andThen substitute andThen there)
+			new ManagedBuff(buffType, there(init), back andThen audit andThen there)
 
 
 		override def equals(that :Any) :Boolean = that match {
@@ -1054,7 +1628,7 @@ object Buff {
 
 		override def hashCode :Int = System.identityHashCode(this)
 
-		override def toString :String = buffType.toString + "(?, " + substitute + ")"
+		override def toString :String = buffType.toString + "(?, " + audit + ")"
 	}
 
 
@@ -1075,30 +1649,21 @@ object Buff {
 				toString + ".apply(" + map + "): ManagedBuffType requires an initial value; use the two-argument constructor."
 			)
 
-		def apply[T](init: =>T, update :T => T) :ManagedBuff[T] = new ManagedBuff(this, init, update)
+		def apply[T](init: => T, update :T => T) :ManagedBuff[T] = new ManagedBuff(this, init, update)
 
+		override val ! = ManagedBuffType(toString + "!")(this)
 	}
 
 
 	object ManagedBuffType {
 		/** A new, unique [[net.noresttherein.oldsql.schema.Buff.ManagedBuffType ManagedBuffType]] of the given name. */
-		def apply(name :String) :ManagedBuffType = new NamedManaged(name)
+		def apply(name :String, cascades :Boolean = true)(implied :BuffType*) :ManagedBuffType =
+			new NamedManaged(name, cascades)(implied :_*)() //todo: contradicts
 
-		private class NamedManaged(override val toString :String) extends ManagedBuffType
+		private class NamedManaged(name :String, cascades :Boolean = true)(implied :BuffType*)(contradicted :BuffType*)
+			extends NamedBuffType(name, cascades)(implied :_*)(contradicted :_*) with ManagedBuffType
 	}
 
 
-
-
-
-
-	/** An exception thrown when the [[net.noresttherein.oldsql.schema.Mapping.optMap Mapping.optMap]] operation
-	  * fails due to presence of a buff which cannot be mapped with the given function, either because
-	  * the operation is not supported at all, or the function returned `None` for the `Buff`'s value.
-	  * This exception can be thrown both from the `optMap` method and at some later point, when the buff's value
-	  * is accessed for buffs which generated values.
-	  */
-	class BuffMappingFailureException(msg :String, cause :Throwable = null)
-		extends RuntimeException(msg, cause) with OldSQLException
 
 }

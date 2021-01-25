@@ -68,14 +68,14 @@ final class Opt[+T] private[Opt] (private val ref :AnyRef) extends AnyVal with S
 
 
 	/** Gets the element in this `Opt` or throws a `NoSuchElementException` with the given message. */
-	@inline def getOrThrow(msg: => String) :T =
+	@inline def orFail(msg: => String) :T =
 		if (ref eq EmptyMarker) throw new NoSuchElementException(msg) else ref.asInstanceOf[T]
 
 	/** Gets the element in the `Opt` or throws the exception given as the type parameter with the given message.
 	  * @tparam E an exception class which must provide publicly available constructor accepting a single `String`
 	  *           argument, or a two-argument constructor accepting a `String` and a `Throwable`.
 	  */
-	@inline def getOrThrow[E <: Exception :ClassTag](msg: => String) :T =
+	@inline def orThrow[E <: Exception :ClassTag](msg: => String) :T =
 		if (ref eq EmptyMarker) raise[E](msg) else ref.asInstanceOf[T]
 
 	/** Gets the element in the option or throws an `IllegalArgumentException` with the given message. */

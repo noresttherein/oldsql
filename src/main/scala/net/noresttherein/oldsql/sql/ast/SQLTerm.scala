@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.morsels.generic.{Const, Self}
+import net.noresttherein.oldsql.morsels.generic.{Fixed, Self}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.FormFunction
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
@@ -468,7 +468,7 @@ object SQLTerm {
 
 
 
-	object SQLNull extends FormFunction[Const[Unit]#T, CompositeNull, SQLNull] {
+	object SQLNull extends FormFunction[Fixed[Unit]#T, CompositeNull, SQLNull] {
 
 		def apply[T](implicit factory :Factory[T]) :factory.Res = SQLNull[(), T](())
 
@@ -594,7 +594,7 @@ object SQLTerm {
 
 
 
-	object NativeTerm extends FormFunction[Const[String]#T, NativeTerm, NativeColumnTerm] {
+	object NativeTerm extends FormFunction[Fixed[String]#T, NativeTerm, NativeColumnTerm] {
 
 		def unapply(e :SQLExpression[Nothing, LocalScope, _]) :Opt[String] = e match {
 			case native :NativeTerm[_] => Got(native.sql)

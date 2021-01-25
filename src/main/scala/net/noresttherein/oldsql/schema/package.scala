@@ -2,9 +2,9 @@ package net.noresttherein.oldsql
 
 import net.noresttherein.oldsql.collection.NaturalMap
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.exceptions.BuffMappingFailureException
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Buff.BuffMappingFailureException
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 
 

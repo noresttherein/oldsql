@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.collection.Listing.{:~, |~, UniqueKey}
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{cascadeBuffs, Buff, ColumnExtract, ColumnForm, MappingExtract}
+import net.noresttherein.oldsql.schema.{cascadeBuffs, Buff, Buffs, ColumnExtract, ColumnForm, MappingExtract}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.IndexedMappingSchema.{AlteredFlatIndexedSchema, AlteredIndexedSchema, ExtensibleFlatIndexedSchema, FlatIndexedMappingSchema}

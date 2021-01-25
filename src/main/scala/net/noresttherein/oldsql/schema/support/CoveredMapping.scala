@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
 import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, OpaqueProxy}
-import net.noresttherein.oldsql.schema.{cascadeBuffs, Buff, ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.{cascadeBuffs, Buff, Buffs, ColumnMapping, Mapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn}
 
 

@@ -1825,7 +1825,7 @@ object Mapping extends LowPriorityMappingImplicits {
 		private[this] val fasterColumns = columns.toArray //speeds up the iteration
 		private[this] val extracts = fasterColumns.map(mapping(_)) //extracts for the columns for fast access
 		private[this] val forms = fasterColumns.map(op.form(_))
-		private[this] val extras = fasterColumns.map(op.extra.test(_).orNull)
+		private[this] val extras = fasterColumns.map(op.extra.get(_).orNull)
 
 		override def set(statement :PreparedStatement, position :Int, subject :S) :Unit =
 			if (subject == null)

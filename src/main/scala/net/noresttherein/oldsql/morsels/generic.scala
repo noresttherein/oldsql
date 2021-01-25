@@ -6,7 +6,7 @@ package net.noresttherein.oldsql.morsels
 object generic {
 //	type Subtype[U] = { type T[X <: U] = X }
 	type Self[X] = X
-	type Const[Y] = { type T[X] = Y }
+	type Fixed[Y] = { type T[X] = Y }
 
 	type =#>[-X[A], +Y[A]] = GenericFun[X, Y]
 
