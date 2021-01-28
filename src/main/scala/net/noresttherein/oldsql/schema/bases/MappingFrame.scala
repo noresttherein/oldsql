@@ -17,16 +17,16 @@ import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.model.{PropertyPath, RelatedEntityFactory}
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, FlagBuffType, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
 import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{ForeignKeyEntityColumnMapping, ForeignKeyEntityMapping, InverseForeignKeyMapping}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{DeepProxy, OpaqueColumnProxy}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DeepProxy, ExportColumnProxy, OpaqueColumnProxy}
 import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping}
 import net.noresttherein.oldsql.schema.support.{BuffedMapping, EffectivelyEmptyMapping, MappingDeclaredBuffs}
@@ -165,10 +165,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		protected[MappingFrame] def exportColumn[U](column :Column[U]) :Column[U] =
 			exportSubcomponent(column).asInstanceOf[Column[U]]
 
-		/** Lifts ('exports') a component of this component to the subcomponent of the enclosing composite `MappingFrame`.
-		  * This method is called both during delayed initialization of standard components, and eagerly
-		  * by `ExportComponent` in its constructor. For this reason it should not touch any column/component lists.
-		  */
+		/** Lifts ('exports') a component of this component to the subcomponent of the enclosing composite
+		  * `MappingFrame`. */
 		protected[MappingFrame] def exportSubcomponent[U](subcomponent :Component[U]) :Component[U] =
 			exportExtract(subcomponent, apply(subcomponent)).export
 
@@ -177,6 +175,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		protected[MappingFrame] def exportExtract[U](subextract :MappingExtract[T, U, O]) :frame.Extract[U] =
 			exportExtract(subextract.export, subextract)
+
+		protected[MappingFrame] def exportExtract[U](subcolumn :Column[U], subextract :ColumnMappingExtract[T, U, O])
+				:frame.ColumnExtract[U] =
+			exportExtract(subcolumn :Component[U], subextract).asInstanceOf[frame.ColumnExtract[U]]
 
 		protected[MappingFrame] def exportExtract[U](subcomponent :Component[U], subextract :MappingExtract[T, U, O])
 				:frame.Extract[U] =
@@ -194,16 +196,14 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 					val subbuffs = export.buffs.zipper.locate(frame.buffs).replace(frameBuffs).buffs
 
 					val frameExtract = export match {
-						case column :ColumnMapping[_, _] =>
-							val adapted = new ColumnComponent[U](
-								fromFrame, renameColumn(column.name), subbuffs)(column.form
+						case column :SimpleColumn[U @unchecked, O] =>
+							extractFor(
+								new ColumnComponent[U](fromFrame, renameColumn(column.name), subbuffs)(column.form)
 							)
-							extractFor(adapted)
+						case column :ColumnMapping[U @unchecked, O] =>
+							extractFor(new ExportColumn[U](column, fromFrame, renameColumn(column.name), subbuffs))
 						case _ =>
-							val adapted = new ExportComponent[U](
-								export, fromFrame, columnPrefix, renameColumn, subbuffs
-							)
-							extractFor(adapted)
+							extractFor(new ExportComponent[U](export, fromFrame, columnPrefix, renameColumn, subbuffs))
 					}
 					initExtracts = initExtracts.updated(export, frameExtract)
 					frameExtract
@@ -239,28 +239,22 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		  */
 		protected final def inheritedBuffs :Buffs[T] = frame.buffs.unsafeCascade(componentSelector)
 
-//		/** The buffs for this component, including buffs inherited from the outer mapping (if not empty).  */
-//		override def buffs :Buffs[T] = {
-//			val mine = super.buffs
-//			val inherited = inheritedBuffs
-//			if (inherited.isEmpty) mine
-//			else inherited.declare(this, mine)
-//		}
-
 		/** The column prefix prepended to all columns at the behest of the enclosing `MappingFrame` or an empty string. */
 		protected final def inheritedPrefix :String = verifiedPrefix
 
-		/** The column prefix prepended to all columns of this component, ''not'' including the similar prefix
-		  * of the enclosing `MappingFrame`. It becomes, together with
-		  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix outer.columnPrefix]] the default value
-		  * of [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.columnPrefix fullColumnPrefix]].
+		/** The column prefix prepended to all columns of this component when exporting them as columns of the enclosing
+		  * `MappingFrame`, ''not'' including the similar prefix defined by it. It becomes, together with
+		  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix outer.columnPrefix]], the default value
+		  * of [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.columnPrefix columnPrefix]].
 		  * Note however that this property may be unused if a component overrides the latter or
 		  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.renameColumn renameColumn]].
 		  * @return an empty string.
 		  */
 		protected def relativePrefix :String = ""
 
-		/** The column prefix prepended to all columns by this component ''and'' the enclosing `MappingFrame`.
+		/** The full column prefix prepended to all columns of this component when exporting them to columns
+		  * of the outer frame. The [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
+		  * of the enclosing `MappingFrame` will ''not'' be additionally prepended.
 		  * Note that this property may be unused if a component overrides
 		  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.renameColumn renameColumn]] instead.
 		  * @return [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix outer.columnPrefix]] `+`
@@ -275,7 +269,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		/** A hook function used to rename columns when exporting them to the outer frame. The function should
 		  * return full column names: outer mapping's
 		  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]] is not prepended
-		  * to the result
+		  * to the result. The columns of ''this'' mapping will not be renamed.
 		  * @return [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.columnPrefix columnPrefix]]` + _`.
 		  */
 		protected def renameColumn :String => String = columnPrefix + _
@@ -311,29 +305,23 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	/** A proxy class for non-direct subcomponents of the enclosing `MappingFrame` which incorporates any column prefix
 	  * and buffs defined in it and any other enclosing components into the adapted component.
-	  * Its components are at the same time the export components of the enclosing mapping.
+	  * Its export components are at the same time the export components of the enclosing mapping.
 	  */
-	private class ExportComponent[T](override val backer :Component[T], val componentSelector :S =?> T,
+	private class ExportComponent[T](override val backer :Component[T], override val componentSelector :S =?> T,
 	                                 override val columnPrefix :String, override val renameColumn :String => String,
 	                                 override val buffs :Buffs[T])
 		extends DeepProxy[T, O](backer) with FrameComponent[T]
 	{
-		def this(component :Component[T], selector :S =?> T, rename :String => String, buffs :Buffs[T]) =
-			this(component, selector, "", rename, buffs)
-
-		def this(component :Component[T], selector :S =?> T, prefix :String, buffs :Buffs[T]) =
-			this(component, selector, prefix, prefix + _, buffs)
-
 		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
 			initSubcomponents += this
-			extracts foreach { exportExtract(_) }
 			initExtracts.getOrElse[frame.Extract, T](backer, extractFor(this))
 		}
 
-		protected override def adapt[X](component :backer.Component[X]) :Component[X] = exportSubcomponent(component)
-		protected override def adapt[X](column :backer.Column[X]) :Column[X] = exportColumn(column)
+		protected override def adapt[X](component :backer.Component[X]) :Component[X] = //exportSubcomponent(component)
+			exportExtract(component, backer(component)).export
 
-		override def assemble(pieces :Pieces) :Opt[T] = backer.assemble(pieces)
+		protected override def adapt[X](column :backer.Column[X]) :Column[X] =
+			exportExtract(column, backer(column)).export
 
 		override def toString :String = "^" + backer + "^"
 	}
@@ -350,6 +338,59 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	trait RequisiteComponent[T] extends FrameComponent[T] {
 		protected[schema] override def componentSelector :RequisiteExtractor[S, T] = Extractor.req(pick)
 		protected def pick :S => T
+	}
+
+	/** Convenience base component class which initializes the extractor using the constructor argument getter.
+	  * @param pick           extractor function for the value of this component.
+	  * @param relativePrefix prefix which will be added to all columns, direct and transitive within this instance.
+	  *                       It is relative to this component, not the outer `MappingFrame`: the `columnPrefix` declared
+	  *                       by the latter is combined with this prefix when exporting columns to the outer mapping.
+	  *                       All columns accessed through this instance methods will be affected, not only when viewed
+	  *                       from parent mappings. A column which is defined within a subcomponent of this component
+	  *                       will not show the prefix however when viewed in the scope of that component - only
+	  *                       the export proxy present on `this.columns` will. Note that the `columnPrefix` property
+	  *                       of this component will be the concatenation of the column prefix defined by the enclosing
+	  *                       mapping and this prefix.
+	  * @param declaredBuffs  buffs specific to this component. This list will be extended with buffs inherited
+	  *                       from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
+	  *                       to subcomponents of this component.
+	  * @tparam T value type of this component.
+	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseOptionalComponent]]
+	  */
+	abstract class BaseComponent[T](protected override val pick :S => T, override val relativePrefix :String,
+	                                declaredBuffs :Buff[T]*)
+		extends RequisiteComponent[T]
+	{
+		def this(pick :S => T, declaredBuffs :Buff[T]*) = this(pick, "", declaredBuffs :_*)
+
+		override val buffs :Buffs[T] = inheritedBuffs.declare(this, declaredBuffs :_*)
+	}
+
+	/** Convenience base class for components of this instance which themselves contain individually defined
+	  * static subcomponents.
+	  * @param pick           returns value of this component on a given parent entity.
+	  * @param relativePrefix prefix which will be added to all columns, direct and transitive within this instance.
+	  *                       It is relative to this component, not the outer `MappingFrame`: the `columnPrefix` declared
+	  *                       by the latter is combined with this prefix when exporting columns to the outer mapping.
+	  *                       All columns accessed through this instance methods will be affected, not only when viewed
+	  *                       from parent mappings. A column which is defined within a subcomponent of this component
+	  *                       will not show the prefix however when viewed in the scope of that component - only
+	  *                       the export proxy present on `this.columns` will. Note that the `columnPrefix` property
+	  *                       of this component will be the concatenation of the column prefix defined by the enclosing
+	  *                       mapping and this prefix.
+	  * @param declaredBuffs  buffs specific to this component. This list will be extended with buffs inherited
+	  *                       from the enclosing schema. The export versions of all subcomponents of this component will
+	  *                       inherit these buffs.
+	  * @tparam T value type of this component.
+	  */
+	abstract class ComponentFrame[T](protected[schema] override val pick :S => T,
+	                                 protected override val relativePrefix :String, declaredBuffs :Buff[T]*)
+		extends MappingFrame[T, O] with RequisiteComponent[T]
+	{
+		def this(value :S => T, buffs :Buff[T]*) = this(value, "", buffs :_*)
+
+		override val buffs :Buffs[T] = inheritedBuffs.declare(this, declaredBuffs :_*)
+		protected override val columnPrefix :String = inheritedPrefix + relativePrefix
 	}
 
 	/** Base trait for components which might not have a value for all instances of `T` (such as properties declared
@@ -407,160 +448,109 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		protected def pick :S => Option[T]
 	}
 
-	trait ReadOnlyComponent[T] extends FrameComponent[T] {
-		protected[schema] override def componentSelector :Extractor[S, Nothing] = Extractor.none
-	}
-
-
-	/** Convenience base component class which initializes the extractor using the constructor argument getter.
-	  * @param pick           extractor function for the value of this component.
-	  * @param relativePrefix prefix which will be added to all columns, direct and transitive within this instance.
-	  *                       It is relative to this component, not the outer `MappingFrame`: the `columnPrefix` declared
-	  *                       by the latter is combined with this prefix when exporting columns to the outer mapping.
-	  *                       All columns accessed through this instance methods will be affected, not only when viewed
-	  *                       from parent mappings. A column which is defined within a subcomponent of this component
-	  *                       will not show the prefix however when viewed in the scope of that component - only
-	  *                       the export proxy present on `this.columns` will. Note that the `columnPrefix` property
-	  *                       of this component will be the concatenation of the column prefix defined by the enclosing
-	  *                       mapping and this prefix.
-	  * @param declaredBuffs  buffs specific to this component. This list will be extended with buffs inherited
-	  *                       from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
-	  *                       to subcomponents of this component.
-	  * @tparam T value type of this component.
-	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseOptionalComponent]]
-	  */
-	abstract class BaseComponent[T](protected override val pick :S => T, override val relativePrefix :String,
-	                                declaredBuffs :Buff[T]*)
-		extends RequisiteComponent[T]
-	{
-		def this(pick :S => T, declaredBuffs :Buff[T]*) = this(pick, "", declaredBuffs :_*)
-
-		override val buffs :Buffs[T] = inheritedBuffs.declare(this, declaredBuffs :_*)
-	}
-
-	/** Convenience base class for components of this instance which themselves contain individually defined
-	  * static subcomponents.
-	  * @param pick           returns value of this component on a given parent entity.
-	  * @param relativePrefix prefix which will be added to all columns, direct and transitive within this instance.
-	  *                       It is relative to this component, not the outer `MappingFrame`: the `columnPrefix` declared
-	  *                       by the latter is combined with this prefix when exporting columns to the outer mapping.
-	  *                       All columns accessed through this instance methods will be affected, not only when viewed
-	  *                       from parent mappings. A column which is defined within a subcomponent of this component
-	  *                       will not show the prefix however when viewed in the scope of that component - only
-	  *                       the export proxy present on `this.columns` will. Note that the `columnPrefix` property
-	  *                       of this component will be the concatenation of the column prefix defined by the enclosing
-	  *                       mapping and this prefix.
-	  * @param declaredBuffs  buffs specific to this component. This list will be extended with buffs inherited
-	  *                       from the enclosing schema. The export versions of all subcomponents of this component will
-	  *                       inherit these buffs.
-	  * @tparam T value type of this component.
-	  */
-	abstract class ComponentFrame[T](protected override val pick :S => T,
-	                                 protected override val relativePrefix :String, declaredBuffs :Buff[T]*)
-		extends MappingFrame[T, O] with RequisiteComponent[T]
-	{
-		def this(value :S => T, buffs :Buff[T]*) = this(value, "", buffs :_*)
-
-		override val buffs :Buffs[T] = inheritedBuffs.declare(this, declaredBuffs :_*)
-		protected override val columnPrefix :String = relativePrefix + inheritedPrefix
-	}
-
 	/** Convenience base class for components which may not have a value for some instances of the enclosing mapping's
 	  * subject type `S`.
-	  * @param pick extractor function for the value of this component.
-	  * @param declaredBuffs buffs specific to this component. This list will be extended with buffs inherited
-	  *                      from the enclosing schema. Note that these `buffs` are ''not'' automatically conveyed
-	  *                      to subcomponents of this component.
+	  * @param componentSelector an extractor for the value of this component from the mapped subject of the enclosing
+	  *                          mapping. Note that `OptionalExtractor` is a SAM type and you can provide a function
+	  *                          literal `S => Opt[T]`.
+	  * @param relativePrefix    prefix which will be added to all columns, direct and transitive within this instance.
+	  *                          It is relative to this component, not the outer `MappingFrame`: the `columnPrefix`
+	  *                          declared by the latter is combined with this prefix when exporting columns to the outer
+	  *                          mapping. All columns accessed through this instance methods will be affected, not only
+	  *                          when viewed from parent mappings. A column which is defined within a subcomponent
+	  *                          of this component will not show the prefix however when viewed in the scope
+	  *                          of that component - only the export proxy present on `this.columns` will. Note that
+	  *                          `columnPrefix` property of this component will be the concatenation
+	  *                          of the column prefix defined by the enclosing mapping and this prefix.
+	  * @param declaredBuffs     buffs specific to this component. This list will be extended with buffs inherited
+	  *                          from the enclosing schema. The export versions of all subcomponents of this component
+	  *                          will inherit these buffs.
 	  * @tparam T value type of this component.
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseComponent]]
 	  */
-	abstract class BaseOptionalComponent[T](protected override val pick :S => Option[T],
+	abstract class BaseOptionalComponent[T](protected[schema] override val componentSelector :OptionalExtractor[S, T],
 	                                        protected override val relativePrefix :String, declaredBuffs :Buff[T]*)
-		extends OptionalComponent[T]
+		extends FrameComponent[T]
 	{
-		def this(value :S => Option[T], buffs :Buff[T]*) = this(value, "", buffs :_*)
+		def this(value :OptionalExtractor[S, T], buffs :Buff[T]*) = this(value, "", buffs :_*)
 
 		override val buffs :Buffs[T] = inheritedBuffs.declare(this, declaredBuffs :_*)
 	}
 
 	/** Convenience base class for optional components of this instance which themselves contain individually defined
 	  * static subcomponents.
-	  * @param pick           returns value of this component on a given parent entity.
-	  * @param relativePrefix prefix which will be added to all columns, direct and transitive within this instance.
-	  *                       It is relative to this component, not the outer `MappingFrame`: the `columnPrefix` declared
-	  *                       by the latter is combined with this prefix when exporting columns to the outer mapping.
-	  *                       All columns accessed through this instance methods will be affected, not only when viewed
-	  *                       from parent mappings. A column which is defined within a subcomponent of this component
-	  *                       will not show the prefix however when viewed in the scope of that component - only
-	  *                       the export proxy present on `this.columns` will. Note that the `columnPrefix` property
-	  *                       of this component will be the concatenation of the column prefix defined by the enclosing
-	  *                       mapping and this prefix.
-	  * @param declaredBuffs  buffs specific to this component. This list will be extended with buffs inherited
-	  *                       from the enclosing schema. The export versions of all subcomponents of this component will
-	  *                       inherit these buffs.
+	  * @param componentSelector an extractor for the value of this component from the mapped subject of the enclosing
+	  *                          mapping. Note that `OptionalExtractor` is a SAM type and you can provide a function
+	  *                          literal `S => Opt[T]`.
+	  * @param relativePrefix    prefix which will be added to all columns, direct and transitive within this instance.
+	  *                          It is relative to this component, not the outer `MappingFrame`: the `columnPrefix`
+	  *                          declared by the latter is combined with this prefix when exporting columns to the outer
+	  *                          mapping. All columns accessed through this instance methods will be affected, not only
+	  *                          when viewed from parent mappings. A column which is defined within a subcomponent
+	  *                          of this component will not show the prefix however when viewed in the scope
+	  *                          of that component - only the export proxy present on `this.columns` will. Note that
+	  *                          `columnPrefix` property of this component will be the concatenation
+	  *                          of the column prefix defined by the enclosing mapping and this prefix.
+	  * @param declaredBuffs     buffs specific to this component. This list will be extended with buffs inherited
+	  *                          from the enclosing schema. The export versions of all subcomponents of this component
+	  *                          will inherit these buffs.
 	  * @tparam T value type of this component.
 	  */
-	abstract class OptionalFrame[T](protected override val pick :S => Option[T],
+	abstract class OptionalFrame[T](protected[schema] override val componentSelector :OptionalExtractor[S, T],
 	                                protected override val relativePrefix :String, declaredBuffs :Buff[T]*)
-		extends MappingFrame[T, O] with OptionalComponent[T]
+		extends MappingFrame[T, O] with FrameComponent[T]
 	{
-		def this(value :S => Option[T], buffs :Buff[T]*) = this(value, "", buffs :_*)
+		def this(value :OptionalExtractor[S, T], buffs :Buff[T]*) = this(value, "", buffs :_*)
 
 		override val buffs :Buffs[T] = inheritedBuffs.declare(this, declaredBuffs :_*)
-		protected override val columnPrefix :String = relativePrefix + inheritedPrefix
+		protected override val columnPrefix :String = inheritedPrefix + relativePrefix
+	}
+
+	/** A component which is not represented by any property of the mapped subject `S`. */
+	trait ReadOnlyComponent[T] extends FrameComponent[T] {
+		protected[schema] override def componentSelector :Extractor[S, Nothing] = Extractor.none
 	}
 
 
 
-	/** An adapter allowing embedding of any other component, regardless of the `Origin` type, as part of this mapping.
-	  * The embedded component is not exposed to the outside. The components of the embedded mapping are exported
-	  * as components of the enclosing mapping by incorporating the `columnPrefix` and `buffs` given here (including
-	  * those inherited from the enclosing mapping). At the same time, they form the components of this instance exposed
-	  * in its component and column lists.
-	  * @param component the embedded component.
-	  * @param componentSelector the extractor for the value of this component.
-	  * @param columnPrefix the prefix string prepended to the names of all (export) columns of `body`.
-	  *                     The value of `columnPrefix` of the enclosing mapping is ''not'' prepended automatically
-	  *                     to this value - it should be done by the caller if required.
-	  * @param buffs the buffs attached to this component, inherited by all of its export subcomponents.
-	  *              The buffs of the enclosing mapping are ''not'' automatically added to this list -
-	  *              it should be done by the caller if required.
-	  * @tparam T the value type of this component.
+	/** An adapter of an independent component, allowing changing of its column names and buffs.
+	  * Used by `component` factory methods.
 	  */
-	private class CompositeComponent[T] private[MappingFrame]
-	              (component :MappingOf[T], protected[schema] val componentSelector :S =?> T,
-	               override val columnPrefix :String, override val renameColumn :String => String,
-	               override val buffs :Buffs[T])
-		extends DeepProxy[T, O](component) with FrameComponent[T]
-	{ nest =>
-		def this(component :MappingOf[T], selector :S =?> T, columnPrefix :String, buffs :Buffs[T]) =
-			this(component, selector, columnPrefix, columnPrefix + _, buffs)
-
-		def this(component :MappingOf[T], selector :S =?> T, rename :String => String, buffs :Buffs[T]) =
+	private class EmbeddedComponent[T](override val backer :Component[T], override val componentSelector :S =?> T,
+	                                   override val columnPrefix :String, override val renameColumn :String => String,
+	                                   override val buffs :Buffs[T])
+		extends BuffedMapping[RefinedMapping[T, O], T, O](backer, buffs) with FrameComponent[T]
+	{
+		def this(component :Component[T], selector :S =?> T, rename :String => String, buffs :Buffs[T]) =
 			this(component, selector, "", rename, buffs)
 
+		def this(component :Component[T], selector :S =?> T, prefix :String, buffs :Buffs[T]) =
+			this(component, selector, prefix, prefix + _, buffs)
+
 		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
-			val cast = component.asInstanceOf[Component[T]]
+			val cast = backer.asInstanceOf[Component[T]]
 			if (initExtracts contains cast)
 				throw new IllegalArgumentException(
-					s"Can't embed mapping $component as a component of $frame as it is already present.")
-			val extract = extractFor(this)
-			initExtracts = initExtracts.updated(cast, extract)
-			cast.extracts foreach { assoc => exportExtract(assoc) }
-			initComponents += this
-			initSubcomponents += this //don't export subcomponents as its done by DeepProxy
-			extract
+					s"Can't embed mapping $backer as a component of $frame as it is already present.")
+			initSubcomponents += this
+			initExtracts.getOrElse[frame.Extract, T](backer, extractFor(this))
 		}
 
-		protected override def adapt[X](component :backer.Component[X]) :Component[X] =
-			exportSubcomponent(component.asInstanceOf[Component[X]])
+		protected override def adapt[X](component :backer.Component[X]) :Component[X] = {
+			val selector = componentSelector andThen backer(component)
+			new EmbeddedComponent(component, selector, columnPrefix, renameColumn, buffsFor(component))
+		}
 
-		protected override def adapt[X](component :backer.Column[X]) :Column[X] =
-			exportColumn(component.asInstanceOf[Column[X]])
-
+		protected override def adapt[X](column :backer.Column[X]) :Column[X] = column match {
+			case _ :SimpleColumn[X, O] =>
+				val selector = componentSelector andThen backer(column)
+				new ColumnComponent(selector, renameColumn(column.name), buffsFor(column))(column.form)
+			case _ =>
+				val selector = componentSelector andThen backer(column)
+				new ExportColumn(column, selector, renameColumn(column.name), buffsFor(column))
+		}
 
 		override def toString :String = "{{" + backer + "}}"
-
 	}
 
 
@@ -576,7 +566,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		        (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => C[X]) =
 			this(selector, prefix + _, buffs)(factory, table, pk)
 
-		override val columnPrefix = "" //as ForeignKeyEntityMapping already handles renaming
+		override def columnPrefix = "" //as ForeignKeyEntityMapping already handles renaming
 	}
 
 	private class InverseFKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
@@ -593,6 +583,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				throw new IllegalArgumentException(
 					s"Mapping $key given as the local referenced key for a foreign key inverse is not a component of $frame.")
 		}
+		override def columnPrefix = ""
 	}
 
 
@@ -613,7 +604,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		protected[MappingFrame] override def extract :frame.ColumnExtract[T] =
 			super.extract.asInstanceOf[ColumnMappingExtract[S, T, O]]
 
-		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
+		protected[MappingFrame] override def init() :frame.ColumnExtract[T] = frame.synchronized {
 			includeColumn(this)
 			extractFor(this)
 		}
@@ -635,35 +626,49 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		protected[MappingFrame] override def init() :ColumnMappingExtract[S, T, O] = frame.synchronized {
 			initComponents += this
-			frame.includeColumn(this)
-			extractFor(this)
+			super.init()
 		}
 	}
+
+
+	private class ExportColumn[T](override val backer :Column[T], override val componentSelector :S =?> T,
+	                              name :String, buffs :Buffs[T])
+		extends ExportColumnProxy[T, O](backer, name, buffs) with FrameColumn[T]
+	{
+		override val columnPrefix = ""
+
+		protected[MappingFrame] override def init() = {
+			val res = super.init()
+			def export[X](entry :Assoc[Component, Extract, X]) :Unit =
+				if (entry._2.export == this) {
+					val fromFrame = entry._2 compose componentSelector
+					initExtracts = initExtracts.updated[frame.Extract, X](entry._1, fromFrame)
+				} else
+					exportExtract(entry)
+
+			extracts foreach { export(_) }
+			res
+		}
+	}
+
 
 
 	/** A lower-level column component which accepts values for all abstract fields and initializes them verbatim.
 	  * This column will ''not'' automatically inherit the enclosing mapping's `columnPrefix` or buffs.
 	  * It is not included on the direct components list of this mapping.
 	  */
-	private class ColumnComponent[T](override val componentSelector :S =?> T, name :String,
-	                                 override val buffs :Buffs[T])
-	                                (implicit sqlForm :ColumnForm[T])
+	private class ColumnComponent[T :ColumnForm](override val componentSelector :S =?> T, name :String,
+	                                             override val buffs :Buffs[T])
 		extends StandardColumn[T, O](name, buffs) with FrameColumn[T]
 	{
-		def this(selector :S =?> T, name :String, buffs :Seq[Buff[T]])(implicit form :ColumnForm[T]) =
+		def this(selector :S =?> T, name :String, buffs :Seq[Buff[T]]) =
 			this(selector, name, frame.buffs.unsafeCascade(selector).declare(buffs :_*))
 
-		def this(value :S => T, name :String, buffs :Buffs[T])(implicit form :ColumnForm[T]) =
+		def this(value :S => T, name :String, buffs :Buffs[T]) =
 			this(Extractor.req(value), name, buffs)
 
-		def this(pick :S => Option[T], surepick :Option[S => T], name :String, buffs :Buffs[T])
-		        (implicit form :ColumnForm[T]) =
+		def this(pick :S => Option[T], surepick :Option[S => T], name :String, buffs :Buffs[T]) =
 			this(surepick map Extractor.req[S, T] getOrElse Extractor(pick), name, buffs)
-
-		protected[MappingFrame] override def init() :ColumnMappingExtract[S, T, O] = frame.synchronized {
-			frame.includeColumn(this)
-			extractFor(this)
-		}
 	}
 
 
@@ -694,7 +699,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		protected[MappingFrame] override def init() :frame.ColumnExtract[R] = frame synchronized {
 			initComponents += this
-			initSubcomponents += this
+			includeColumn(this)
 			lazyKey.get //trigger construction and registration in the initQueue
 			extractFor(this)
 		}
@@ -723,244 +728,166 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 
-	/** Embeds any component, regardless of its `Origin` type, directly under this instance.
-	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
-	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
-	  * and should not be used directly, but only through its created export version and the export versions
-	  * of all its components and columns, exposed via the generic `Mapping` API.
-	  * This is the most generic variant of the method, accepting a function renaming all columns and a buff list of
-	  * the exported component. This allows to bypass their inheritance from the enclosing mapping and remove
-	  * any desired buffs from those already present on the component.
-	  * @param mapping any component mapping.
-	  * @param extractor an `Extractor` returning the value of the component from the enclosing mapping's subject.
-	  * @param rename a function returning the name for the exported column for the name of a `mapping`'s column.
-	  *               It should return full column names -
-	  *               [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
-	  *               will not be prepended to the result.
-	  * @param fullBuffs complete list of buffs of the exported component.
-	  * @tparam T the subject type of the embedded component.
-	  * @return The 'export' version of the adapted component, with its name prefix and buffs reset.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component
-	  */
-	protected def embed[T](mapping :MappingOf[T], extractor :S =?> T, fullBuffs :Buffs[T])(rename :String => String)
-			:Component[T] =
-		synchronized {
-			initPreceding() //not redundant because must precede the component's constructor
-			initPreceding(new CompositeComponent(mapping, extractor, rename, fullBuffs))
-		}
-
-	/** Embeds any component, regardless of its `Origin` type, directly under this instance.
-	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
-	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
-	  * and should not be used directly, but only through its created export version and the export versions
-	  * of all its components and columns, exposed via the generic `Mapping` API.
-	  * This is a generic variant of the method, accepting complete column name prefix and a buff list of
-	  * the exported component. This allows to bypass their inheritance from the enclosing mapping and remove
-	  * any desired buffs from those already present on the component.
-	  * @param mapping any component mapping.
-	  * @param extractor an `Extractor` returning the value of the component from the enclosing mapping's subject.
-	  * @param fullPrefix a string added as a prefix to all column names of the exported component.
-	  * @param fullBuffs complete list of buffs of the exported component.
-	  * @tparam T the subject type of the embedded component.
-	  * @return The 'export' version of the adapted component, with its name prefix and buffs reset.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component
-	  */
-	protected def embed[T](mapping :MappingOf[T], extractor :S =?> T, fullPrefix :String, fullBuffs :Buffs[T])
-			:Component[T] =
-		synchronized {
-			initPreceding() //not redundant because must precede the component's constructor
-			initPreceding(new CompositeComponent(mapping, extractor, fullPrefix, fullBuffs))
-		}
-
-	/** Embeds any component, regardless of its `Origin` type, directly under this instance.
-	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
-	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
-	  * and should not be used directly, but only through its created export version and the export versions
-	  * of all its components and columns, exposed via the generic `Mapping` API.
- 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param value a getter function returning the value of this component for a given subject value of this mapping.
-	  * @param rename a function returning the name for the exported column for the name of a `mapping`'s column.
-	  *               It should return full column names -
-	  *               [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
-	  *               will not be prepended to the result.
-	  * @param buffs buffs to attach to the created component. They will precede any buffs already present
-	  *              on the component and buffs inherited from the enclosing mapping will be appended at the end.
-	  * @tparam T the subject type of the embedded component.
-	  * @return the 'export' version of the given mapping, automatically registered on this mapping's `components` list.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component
-	  */ //in Scala 2 this signature is ambiguous with the following one
-	protected def embed[T](value :S => T, buffs :Buff[T]*)(rename :String => String)(implicit mapping :MappingOf[T])
-			:Component[T] =
-	{
-		val extractor = Extractor.req(value)
-		val allBuffs = (mapping.buffs +/: this.buffs.cascade(value)).declare(buffs :_*)
-		embed(mapping, extractor, allBuffs)(rename)
-	}
-
-	/** Embeds any component, regardless of its `Origin` type, directly under this instance.
-	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
-	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
-	  * and should not be used directly, but only through its created export version and the export versions
-	  * of all its components and columns, exposed via the generic `Mapping` API.
- 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param value a getter function returning the value of this component for a given subject value of this mapping.
-	  * @param columnPrefix a string prepended to all column names; this prefix is prepended with the value
-	  *                     of this mapping's `columnPrefix`.
-	  * @param buffs buffs to attach to the created component. They will precede any buffs already present
-	  *              on the component and buffs inherited from the enclosing mapping will be appended at the end.
-	  * @tparam T the subject type of the embedded component.
-	  * @return the 'export' version of the given mapping, automatically registered on this mapping's `components` list.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component
-	  */
-	protected def embed[T](columnPrefix :String, value :S => T, buffs :Buff[T]*)(implicit mapping :MappingOf[T])
-			:Component[T] =
-	{
-		val extractor = Extractor.req(value)
-		val allBuffs = (mapping.buffs +/: this.buffs.cascade(value)).declare(buffs :_*)
-		embed(mapping, extractor, verifiedPrefix + columnPrefix, allBuffs)
-	}
-
-	/** Embeds any component, regardless of its `Origin` type, directly under this instance.
-	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
-	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
-	  * and should not be used directly, but only through its created export version and the export versions
-	  * of all its components and columns, exposed via the generic `Mapping` API.
-	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param value a getter function returning the value of this component for a given subject value of this mapping.
-	  * @param buffs buffs to attach to the created component. They will precede any buffs already present
-	  *              on the component and buffs inherited from the enclosing mapping will be appended at the end.
-	  * @tparam T the subject type of the embedded component.
-	  * @return the 'export' version of the given mapping, automatically registered on this mapping's `components` list.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component
-	  */
-	protected def embed[T](value :S => T, buffs :Buff[T]*)(implicit mapping :MappingOf[T]) :Component[T] =
-		embed("", value, buffs :_*)
-
-	/** Embeds a read-only component directly under this instance, regardless of its `Origin` type.
-	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
-	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
-	  * and should not be used directly, but only through its created export version and the export versions
-	  * of all its components and columns, exposed via the generic `Mapping` API.
-	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param columnPrefix a string prepended to all column names; this prefix is prepended with the value
-	  *                     of this mapping's `columnPrefix`.
-	  * @param buffs buffs to attach to the created component. They will precede any buffs already present
-	  *              on the component and buffs inherited from the enclosing mapping will be appended at the end.
-	  *              `ReadOnly[T]` is automatically added to this list.
-	  * @tparam T the subject type of the embedded component.
-	  * @return the 'export' version of the given mapping, automatically registered on this mapping's `components` list.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component
-	  */
-	protected def embed[T](columnPrefix :String, buffs :Buff[T]*)(implicit mapping :MappingOf[T]) :Component[T] = {
-		val extractor = Extractor.none :S =?> T
-		val allBuffs = mapping.buffs.declare(ReadOnly[T] +: buffs :_*) //we don't cascade frame flags without a function
-		embed(mapping, extractor, verifiedPrefix + columnPrefix, allBuffs)
-	}
-
-	/** Embeds a read-only component directly under this instance, regardless of its `Origin` type.
-	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
-	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
-	  * and should not be used directly, but only through its created export version and the export versions
-	  * of all its components and columns, exposed via the generic `Mapping` API.
-	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param buffs buffs to attach to the created component. They will precede any buffs already present
-	  *              on the component and buffs inherited from the enclosing mapping will be appended at the end.
-	  *              `ReadOnly[T]` is automatically added to this list.
-	  * @tparam T the subject type of the embedded component.
-	  * @return the 'export' version of the given mapping, automatically registered on this mapping's `components` list.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component
-	  */
-	protected def embed[T](buffs :Buff[T]*)(implicit mapping :MappingOf[T]) :Component[T] =
-		embed("", buffs :_*)
-
-	/** Embeds a read-only component directly under this instance, regardless of its `Origin` type.
-	  * All its columns and subcomponents are similarly embedded after adapting and included in the `subcomponents`
-	  * list (and all appropriate column lists for columns). The embedded component is not exposed to this mapping
-	  * and should not be used directly, but only through its created export version and the export versions
-	  * of all its components and columns, exposed via the generic `Mapping` API.
-	  * A `ReadOnly[T]` buff will be automatically attached to the component.
-	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @tparam T the subject type of the embedded component.
-	  * @return the 'export' version of the given mapping, automatically registered on this mapping's `components` list.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component
-	  */
-	protected def embed[T](implicit mapping :MappingOf[T]) :Component[T] = embed[T]()
-
-
-
-	/** Embeds a mapping of type `T` as a component of this instance. The 'export' version of the component will
-	  * be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
-	  * receive export versions included on the `subcomponents` and appropriate columns list.
-	  * The export version will have exactly the buffs and columns will be renamed with the function specified here;
-	  * this allows bypassing their inheritance from this mapping as well as removing any buffs present on the component.
-	  * @param component a mapping embedded as a component in the enclosing mapping.
-	  * @param extractor an extractor returning the value of this component for a given subject value of this mapping.
-	  * @param rename a function returning the name for the exported column for the name of a `mapping`'s column.
-	  *               It should return full column names -
-	  *               [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
-	  *               will not be prepended to the result.
-	  * @param fullBuffs buffs to attach to the front of the created component's buff list.
-	  * @tparam T the value type of the embedded component.
-	  * @return the `component` argument.
-	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
-	  *                                  component.
-	  */
-	protected def component[M <: Component[T], T]
-	                       (component :M, extractor :S =?> T, fullBuffs :Buffs[T])(rename :String => String) :M =
+	private def embed[M <: Component[T], T]
+	                 (component :M, extractor :S =?> T, prefix :String, rename :String => String, buffs :Buffs[T]) :M =
 		synchronized {
 			initPreceding()
 			if (initExtracts contains component)
 				throw new IllegalArgumentException(s"Can't embed the component $component in $this for a second time.")
 
-			val export = new ExportComponent[T](component, extractor, rename, fullBuffs)
-			initComponents += export
+			val export = new EmbeddedComponent[T](component, extractor, prefix, rename, buffs)
 			initPreceding()
-			component
+			initComponents += export
+			initPreceding(component)
 		}
+
+	/** Embeds verbatim a mapping of type `T` as a component of this instance. The 'export' version of the component
+	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The export version will have exactly the buffs and columns will be renamed with the function specified here;
+	  * this allows bypassing their inheritance from this mapping as well as removing any buffs present on the component.
+	  * @param component a mapping embedded as a component in the enclosing mapping.
+	  *                  It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                  not as a component of any other mapping.
+	  * @param extractor an extractor returning the value of this component for a given subject value of this mapping.
+	  * @param rename    a function returning the name for the exported column for the name of a `mapping`'s column.
+	  *                  It should return full column names -
+	  *                  [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
+	  *                  will not be prepended to the result.
+	  * @param fullBuffs the full buff list of the component. Buffs of this mapping will not be appended  to it.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
+	  *                                  component.
+	  */
+	protected def embed[M <: Component[T], T]
+	                   (component :M, extractor :S =?> T, fullBuffs :Buffs[T])(rename :String => String) :M =
+		embed(component, extractor, "<unused>", rename, fullBuffs)
 
 	/** Embeds a mapping of type `T` as a component of this instance. The 'export' version of the component will
 	  * be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
 	  * receive export versions included on the `subcomponents` and appropriate columns list.
 	  * The export version will have exactly the buffs and column name prefix specified here; this allows
 	  * bypassing their inheritance from this mapping as well as removing any buffs present on the component.
-	  * @param component a mapping embedded as a component in the enclosing mapping.
-	  * @param extractor an extractor returning the value of this component for a given subject value of this mapping.
-	  * @param fullPrefix a string prepended to all column names
-	  * @param fullBuffs buffs to attach to the front of the created component's buff list.
+	  * @param component  a mapping embedded as a component in the enclosing mapping.
+	  *                   It must be a unique instance, appearing neither elsewhere as a component of this maping,
+	  *                   not as a component of any other mapping.
+	  * @param extractor  an extractor returning the value of this component for a given subject value of this mapping.
+	  * @param fullPrefix a string prepended to all column names.
+	  *                   `MappingFrame.`[[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
+	  *                   will ''not'' be prepended to it.
+	  * @param fullBuffs  the full buff list of the component. Buffs of this mapping will not be appended  to it.
 	  * @tparam T the value type of the embedded component.
 	  * @return the `component` argument.
 	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
 	  *                                  component.
 	  */
-	protected def component[M <: Component[T], T]
-	                       (component :M, extractor :S =?> T, fullPrefix :String, fullBuffs :Buffs[T]) :M =
-		synchronized {
-			initPreceding()
-			if (initExtracts contains component)
-				throw new IllegalArgumentException(s"Can't embed the component $component in $this for a second time.")
-
-			val export = new ExportComponent[T](component, extractor, fullPrefix, fullBuffs)
-			initComponents += export
-			initPreceding()
-			component
-		}
+	protected def embed[M <: Component[T], T]
+	                   (component :M, extractor :S =?> T, fullPrefix :String, fullBuffs :Buffs[T]) :M =
+		embed(component, extractor, fullPrefix, fullPrefix + _, fullBuffs)
 
 	/** Embeds a mapping of type `T` as a component of this instance. The 'export' version of the component will
 	  * be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
 	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param value a getter function returning the value of this component for a given subject value of this mapping.
-	  * @param rename a function returning the name for the exported column for the name of a `mapping`'s column.
-	  * @param buffs buffs to attach to the front of the created component's buff list.
-	  *              That list is further expanded with any buffs inherited from this mapping.
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                not as a component of any other mapping.
+	  * @param value   a getter function returning the value of this component for a given subject value of this mapping.
+	  * @param rename  a function returning the name for the exported column for the name of a `mapping`'s column.
+	  * @param buffs   buffs to attach to the front of the created component's buff list. The will be prepended
+	  *                to any buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
+	  *                                  component
+	  */
+	protected def component[M <: Component[T], T](mapping :M, value :S => T, buffs :Buff[T]*)
+	                                             (rename :String => String) :M =
+	{
+		val extractor = Extractor.req(value)
+		val oldBuffs = this.buffs.cascade(value) +/: mapping.buffs
+		val allBuffs = if (buffs.isEmpty) oldBuffs else oldBuffs.declare(buffs :_*)
+		embed(mapping, extractor, allBuffs)(rename)
+	}
+
+	/** Embeds a mapping of type `T` as a component of this instance. The 'export' version of the component will
+	  * be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * @param mapping      a mapping embedded as a component in the enclosing mapping.
+	  *                     It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                     not as a component of any other mapping.
+	  * @param value        a getter function returning the value of this component for a given subject value
+	  *                     of this mapping.
+	  * @param columnPrefix a string prepended to all column names; this prefix is appended with the value
+	  *                     of this mapping's `columnPrefix`.
+	  * @param buffs        buffs to attach to the front of the created component's buff list. They will be prepended
+	  *                     to buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
+	  *                                  component
+	  */
+	protected def component[M <: Component[T], T](mapping :M, columnPrefix :String, value :S => T, buffs :Buff[T]*) :M = {
+		val extractor = Extractor.req(value)
+		val oldBuffs = this.buffs.cascade(value) +/: mapping.buffs
+		val allBuffs = if (buffs.isEmpty) oldBuffs else oldBuffs.declare(buffs :_*)
+		embed(mapping, extractor, verifiedPrefix + columnPrefix, allBuffs)
+	}
+
+	/** Embeds a read-only mapping of type `T` as a component of this instance. The 'export' version of the component
+	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list. The component will
+	  * be automatically annotated with the `ReadOnly` buff.
+	  * @param mapping      a mapping embedded as a component in the enclosing mapping.
+	  *                     It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                     not as a component of any other mapping.
+	  * @param columnPrefix a string prepended to all column names; this prefix is prepended with the value
+	  *                     of this mapping's `columnPrefix`.
+	  * @param buffs        buffs to attach to the front of the created component's buff list.
+	  *                     That list is further expanded with any buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ReadOnly$ Buff.ReadOnly]]
+	  */
+	protected def component[M <: Component[T], T](mapping :M, columnPrefix :String, buffs :Buff[T]*) :M = {
+		val extractor = Extractor.none :S =?> T
+		val allBuffs = mapping.buffs.declare(ReadOnly[T] +: buffs :_*) //we don't cascade frame flags without a function
+		embed(mapping, extractor, verifiedPrefix + columnPrefix, allBuffs)
+	}
+
+	/** Embeds a read-only mapping of type `T` as a component of this instance. The 'export' version of the component
+	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list. The component will
+	  * be automatically annotated with the `ReadOnly` buff. It will be inherited by all its export columns and
+	  * they will have this mapping's [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
+	  * prepended to their names.
+	  * @param mapping a mapping embedded as a component in the enclosing mapping.
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                not as a component of any other mapping.
+	  * @param buffs   buffs to attach to the front of the created component's buff list.
+	  *                That list is further expanded with any buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ReadOnly$ Buff.ReadOnly]]
+	  */
+	protected def component[M <: Component[T], T](mapping :M, buffs :Buff[T]*) :M = component(mapping, buffs :_*)
+
+	/** Embeds a mapping of type `T` as a component of this instance. The 'export' version of the component will
+	  * be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * @param mapping a mapping embedded as a component in the enclosing mapping.
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this maping,
+	  *                not as a component of any other mapping.
+	  * @param value   a getter function returning the value of this component for a given subject value of this mapping.
+	  * @param rename  a function returning the name for the exported column for the name of a `mapping`'s column.
+	  * @param buffs   buffs to attach to the front of the created component's buff list.
+	  *                That list is further expanded with any buffs inherited from this mapping.
 	  * @tparam T the value type of the embedded component.
 	  * @return the `component` argument.
 	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
@@ -968,21 +895,22 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  */
 	protected def component[M <: Component[T], T](value :S => T, buffs :Buff[T]*)(rename :String => String)
 	                                             (implicit mapping :M) :M =
-	{
-		val extractor = Extractor.req(value)
-		val allBuffs = (mapping.buffs +/: this.buffs.cascade(value)).declare(buffs :_*)
-		component(mapping, extractor, allBuffs)(rename)
-	}
+		component[M, T](mapping, value, buffs:_*)(rename)
 
 	/** Embeds a mapping of type `T` as a component of this instance. The 'export' version of the component will
 	  * be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
 	  * receive export versions included on the `subcomponents` and appropriate columns list.
-	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param value a getter function returning the value of this component for a given subject value of this mapping.
-	  * @param columnPrefix a string prepended to all column names; this prefix is prepended with the value
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * @param mapping      a mapping embedded as a component in the enclosing mapping.
+	  *                     It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                     not as a component of any other mapping.
+	  * @param value        a getter function returning the value of this component for a given subject value
+	  *                     of this mapping.
+	  * @param columnPrefix a string prepended to all column names; this prefix is appended with the value
 	  *                     of this mapping's `columnPrefix`.
-	  * @param buffs buffs to attach to the front of the created component's buff list.
-	  *              That list is further expanded with any buffs inherited from this mapping.
+	  * @param buffs        buffs to attach to the front of the created component's buff list.
+	  *                     That list is further expanded with any buffs inherited from this mapping.
 	  * @tparam T the value type of the embedded component.
 	  * @return the `component` argument.
 	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
@@ -990,51 +918,54 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  */
 	protected def component[M <: Component[T], T](columnPrefix :String, value :S => T, buffs :Buff[T]*)
 	                                             (implicit mapping :M) :M =
-	{
-		val extractor = Extractor.req(value)
-		val allBuffs = mapping.buffs.declare(ReadOnly[T] +: buffs :_*) //we don't cascade frame flags without a function
-		component(mapping, extractor, verifiedPrefix + columnPrefix, allBuffs)
-	}
+		component[M, T](mapping, columnPrefix, value, buffs :_*)
 
 	/** Embeds a mapping of type `T` as a component of this instance. The 'export' version of the component will
 	  * be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
 	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param value a getter function returning the value of this component for a given subject value of this mapping.
-	  * @param buffs buffs to attach to the front of the created component's buff list.
-	  *              That list is further expanded with any buffs inherited from this mapping.
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                not as a component of any other mapping.
+	  * @param value   a getter function returning the value of this component for a given subject value of this mapping.
+	  * @param buffs   buffs to attach to the front of the created component's buff list.
+	  *                That list is further expanded with any buffs inherited from this mapping.
 	  * @tparam T the value type of the embedded component.
 	  * @return the `component` argument.
-	  */
-	protected def component[M <: Component[T], T](value :S => T, buffs :Buff[T]*)(implicit mapping :M) :M =
-		component("", value, buffs :_*)
+	  */ //todo: uncomment in Scala3
+//	protected def component[M <: Component[T], T](value :S => T, buffs :Buff[T]*)(implicit mapping :M) :M =
+//		component("", value, buffs :_*)
 
 	/** Embeds a read-only mapping of type `T` as a component of this instance. The 'export' version of the component
 	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
 	  * receive export versions included on the `subcomponents` and appropriate columns list. The component will
 	  * be automatically annotated with the `ReadOnly` buff.
-	  * @param mapping a mapping embedded as a component in the enclosing mapping.
+	  * @param mapping      a mapping embedded as a component in the enclosing mapping.
+	  *                     It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                     not as a component of any other mapping.
 	  * @param columnPrefix a string prepended to all column names; this prefix is prepended with the value
 	  *                     of this mapping's `columnPrefix`.
-	  * @param buffs buffs to attach to the front of the created component's buff list.
-	  *              That list is further expanded with any buffs inherited from this mapping.
+	  * @param buffs        buffs to attach to the front of the created component's buff list.
+	  *                     That list is further expanded with any buffs inherited from this mapping.
 	  * @tparam T the value type of the embedded component.
 	  * @return the `component` argument.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ReadOnly$ Buff.ReadOnly]]
 	  */
-	protected def component[M <: Component[T], T](columnPrefix :String, buffs :Buff[T]*)(implicit mapping :M) :M = {
-		val extractor = Extractor.none :S =?> T
-		val allBuffs = mapping.buffs.declare(ReadOnly[T] +: buffs :_*)
-		component(mapping, extractor, verifiedPrefix + columnPrefix, allBuffs)
-	}
+	protected def component[M <: Component[T], T](columnPrefix :String, buffs :Buff[T]*)(implicit mapping :M) :M =
+		component[M, T](mapping, columnPrefix, buffs :_*)
 
 	/** Embeds a read-only mapping of type `T` as a component of this instance. The 'export' version of the component
 	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
 	  * receive export versions included on the `subcomponents` and appropriate columns list. The component will
-	  * be automatically annotated with the `ReadOnly` buff.
+	  * be automatically annotated with the `ReadOnly` buff. It will be inherited by all its export columns and
+	  * they will have this mapping's [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
+	  * prepended to their names.
 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  * @param buffs buffs to attach to the front of the created component's buff list.
-	  *              That list is further expanded with any buffs inherited from this mapping.
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                not as a component of any other mapping.
+	  * @param buffs   buffs to attach to the front of the created component's buff list.
+	  *                That list is further expanded with any buffs inherited from this mapping.
 	  * @tparam T the value type of the embedded component.
 	  * @return the `component` argument.
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ReadOnly$ Buff.ReadOnly]]
@@ -1045,7 +976,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	/** Embeds a read-only mapping of type `T` as a component of this instance. The 'export' version of the component
 	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
 	  * receive export versions included on the `subcomponents` and appropriate columns list. The component will
-	  * be automatically annotated with the `ReadOnly` buff.
+	  * be automatically annotated with the `ReadOnly` buff. It will be inherited by all its export columns and
+	  * they will have this mapping's [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]]
+	  * prepended to their names.
 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
 	  * @tparam T the value type of the embedded component.
 	  * @return the `mapping` argument.
@@ -1053,6 +986,121 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  */
 	protected def component[T](implicit mapping :Component[T]) :mapping.type =
 		component[mapping.type, T]("")(mapping)
+
+	/** Embeds a mapping of type `T` as an optional component of this instance. The 'export' version of the component
+	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * @param mapping a mapping embedded as a component in the enclosing mapping.
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                not as a component of any other mapping.
+	  * @param value   a getter function returning the value of this component for a given subject value of this mapping.
+	  * @param rename  a function returning the name for the exported column for the name of a `mapping`'s column.
+	  * @param buffs   buffs to attach to the front of the created component's buff list. The will be prepended
+	  *                to any buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
+	  *                                  component
+	  */
+	protected def optcomponent[M <: Component[T], T](mapping :M, value :S => Option[T], buffs :Buff[T]*)
+	                                                (rename :String => String) :M =
+	{
+		val extractor = Extractor.opt(value) //consider: taking an OptionalExtractor parameter for no boxing
+		val oldBuffs = this.buffs.unsafeCascade(value) +/: mapping.buffs
+		val allBuffs = if (buffs.isEmpty) oldBuffs else oldBuffs.declare(buffs :_*)
+		embed(mapping, extractor, allBuffs)(rename)
+	}
+
+	/** Embeds a mapping of type `T` as an optional component of this instance. The 'export' version of the component
+	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * @param mapping      a mapping embedded as a component in the enclosing mapping.
+	  *                     It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                     not as a component of any other mapping.
+	  * @param value        a getter function returning the value of this component for a given subject value
+	  *                     of this mapping.
+	  * @param columnPrefix a string prepended to all column names; this prefix is appended with the value
+	  *                     of this mapping's `columnPrefix`.
+	  * @param buffs        buffs to attach to the front of the created component's buff list. They will be prepended
+	  *                     to buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
+	  *                                  component
+	  */
+	protected def optcomponent[M <: Component[T], T]
+	                          (mapping :M, columnPrefix :String, value :S => Option[T], buffs :Buff[T]*) :M =
+	{
+		val extractor = Extractor.opt(value) //consider: taking an OptionalExtractor parameter for no boxing
+		val oldBuffs = this.buffs.unsafeCascade(extractor) +/: mapping.buffs
+		val allBuffs = if (buffs.isEmpty) oldBuffs else oldBuffs.declare(buffs :_*)
+		embed(mapping, extractor, verifiedPrefix + columnPrefix, allBuffs)
+	}
+
+	/** Embeds a mapping of type `T` as an optional component of this instance. The 'export' version of the component
+	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * @param mapping a mapping embedded as a component in the enclosing mapping.
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this maping,
+	  *                not as a component of any other mapping.
+	  * @param value   a getter function returning the value of this component for a given subject value of this mapping.
+	  * @param rename  a function returning the name for the exported column for the name of a `mapping`'s column.
+	  * @param buffs   buffs to attach to the front of the created component's buff list.
+	  *                That list is further expanded with any buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
+	  *                                  component
+	  */
+	protected def optcomponent[M <: Component[T], T](value :S => Option[T], buffs :Buff[T]*)(rename :String => String)
+	                                                (implicit mapping :M) :M =
+		optcomponent[M, T](mapping, value, buffs :_*)(rename)
+
+	/** Embeds a mapping of type `T` as an optional component of this instance. The 'export' version of the component
+	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * @param mapping      a mapping embedded as a component in the enclosing mapping.
+	  *                     It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                     not as a component of any other mapping.
+	  * @param value        a getter function returning the value of this component for a given subject value
+	  *                     of this mapping.
+	  * @param columnPrefix a string prepended to all column names; this prefix is appended with the value
+	  *                     of this mapping's `columnPrefix`.
+	  * @param buffs        buffs to attach to the front of the created component's buff list.
+	  *                     That list is further expanded with any buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
+	  *                                  component
+	  */
+	protected def optcomponent[M <: Component[T], T](columnPrefix :String, value :S => Option[T], buffs :Buff[T]*)
+	                                                (implicit mapping :M) :M =
+		optcomponent[M, T](mapping, columnPrefix, value, buffs :_*)
+
+	/** Embeds a mapping of type `T` as an optional component of this instance. The 'export' version of the component
+	  * will be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
+	  * receive export versions included on the `subcomponents` and appropriate columns list.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
+	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * @param mapping a mapping embedded as a component in the enclosing mapping.
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this mapping,
+	  *                not as a component of any other mapping.
+	  * @param value   a getter function returning the value of this component for a given subject value of this mapping.
+	  * @param buffs   buffs to attach to the front of the created component's buff list.
+	  *                That list is further expanded with any buffs inherited from this mapping.
+	  * @tparam T the value type of the embedded component.
+	  * @return the `component` argument.
+	  */ //todo: uncomment in Scala3
+//	protected def optcomponent[M <: Component[T], T](value :S => Option[T], buffs :Buff[T]*)(implicit mapping :M) :M =
+//		optcomponent("", value, buffs :_*)
 
 
 
@@ -1211,8 +1259,24 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @tparam T the type of the value of this column as present on the mapped entity.
 	  * @return a new column, enlisted on all column lists of this mapping which aren't excluded by `buffs`.
 	  */
-	protected def column[T](value :S => T, buffs :Buff[T]*)(implicit form :ColumnForm[T], subject :TypeTag[S]) :Column[T] =
+	protected def column[T](value :S => T, buffs :Buff[T]*)
+	                       (implicit form :ColumnForm[T], subject :TypeTag[S]) :Column[T] =
 		column[T](PropertyPath.nameOf(value), value, buffs:_*)
+
+
+	/** Create a new column as a direct component of this instance, which value is never updated or inserted
+	  * by the application. The column will inherit any buffs declared on this mapping and its name will be the concatenation
+	  * of this mapping's [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]] and `name`.
+	  * @param name the name of the column (the complete name will include `this.columnPrefix`).
+	  * @param buffs the buffs to attach to the created column. This list will be prepended with `Buff.ReadOnly[T]`.
+	  * @return a new column, enlisted on the `components`, `subcomponents`, `columns`, `selectable`, `selectedByDefault`,
+	  *         `filterable`, `filteredByDefault` properties of this mapping, depending on the buffs given here
+	  *         and inherited from this mapping.
+	  * @see [[net.noresttherein.oldsql.schema.Buff.ReadOnly$ Buff.ReadOnly]]
+	  */
+	protected def column[T :ColumnForm](name :String, buffs :Buff[T]*) :Column[T] =
+		initPreceding(new DirectColumn[T](Extractor.none, name, ReadOnly[T] +: buffs))
+
 
 	/** Create a new column for an optional property of the mapped subject as a direct component of this mapping.
 	  * If the getter function returns `None`, the `nullValue` property of the form for this column will be used
@@ -1231,19 +1295,21 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	                          (implicit form :ColumnForm[T]) :Column[T] =
 		initPreceding(new DirectColumn[T](Extractor(value), name, buffs))
 
-
-	/** Create a new column as a direct component of this instance, which value is never updated or inserted
-	  * by the application. The column will inherit any buffs declared on this mapping and its name will be the concatenation
+	/** Create a new column for an optional property of the mapped subject as a direct component of this mapping.
+	  * If the getter function returns `None`, the `nullValue` property of the form for this column will be used
+	  * instead. The column will inherit any buffs declared on this mapping and its name will be the concatenation
 	  * of this mapping's [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix columnPrefix]] and `name`.
-	  * @param name the name of the column (the complete name will include `this.columnPrefix`).
-	  * @param buffs the buffs to attach to the created column. This list will be prepended with `Buff.ReadOnly[T]`.
-	  * @return a new column, enlisted on the `components`, `subcomponents`, `columns`, `selectable`, `selectedByDefault`,
-	  *         `filterable`, `filteredByDefault` properties of this mapping, depending on the buffs given here
-	  *         and inherited from this mapping.
-	  * @see [[net.noresttherein.oldsql.schema.Buff.ReadOnly$ Buff.ReadOnly]]
+	  * @param value the getter function returning the value for the column from an instance of the mapped subject.
+	  * @param buffs any buffs modifying how the column is used, in particular excluding it from some column lists
+	  *              of this mapping.
+	  * @param form an implicit form defining how the column value `T` is mapped to the underlying SQL type
+	  *             of the JDBC API.
+	  * @tparam T the type of the value of this column as present on the mapped entity.
+	  * @return a new column, enlisted on all column lists of this mapping which aren't excluded by `buffs`.
 	  */
-	protected def column[T :ColumnForm](name :String, buffs :Buff[T]*) :Column[T] =
-		initPreceding(new DirectColumn[T](Extractor.none, name, ReadOnly[T] +: buffs))
+	protected def optcolumn[T](value :S => Option[T], buffs :Buff[T]*)
+	                          (implicit form :ColumnForm[T], subject :TypeTag[S]) :Column[T] =
+		optcolumn(PropertyPath.nameOf(value), value, buffs :_*)
 
 
 	/** Create a new column as a direct component of this instance, which is not mapped to any property
@@ -1340,18 +1406,31 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 						s"Cannot rename column $column as it is not a part of mapping $this."
 				))
 		}
-		val export = current.export
-		val extractor = Extractor(current.optional, current.requisite) //don't retain the reference to export
+		val currentExport = current.export.asInstanceOf[FrameColumn[T]]
+//		val extractor = Extractor(current.optional, current.requisite) //don't retain the reference to export
 
 		val lists = initComponents::initSubcomponents::initColumns::
-			initSelectable::initFilterable:: initUpdatable::initInsertable::initAutoInsert::initAutoUpdate::
+			initSelectable::initFilterable::initUpdatable::initInsertable::initAutoInsert::initAutoUpdate::
 			initSelectedByDefault::initFilteredByDefault::initUpdatedByDefault::initInsertedByDefault::Nil
-		//todo: handle columns with custom assemble
-		val replacement = new ColumnComponent[T](extractor, name, export.buffs)(column.form) {
-			//we'll replace the export column with this manually
-			override val index = current.export.asInstanceOf[FrameColumn[T]].index
-			override def init() :ColumnMappingExtract[S, T, O] = extractFor(this)
+
+		val replacement = currentExport match {
+			case _ :SimpleColumn[_, _] =>
+				new ColumnComponent[T](currentExport.componentSelector, name, currentExport.buffs)(column.form) {
+					//we'll replace the export column with this manually
+					override val index = currentExport.index
+					override def init() :ColumnMappingExtract[S, T, O] = extractFor(this)
+				}
+			case export :ExportColumn[T] =>
+				new ExportColumn[T](export.backer, currentExport.componentSelector, name, currentExport.buffs) {
+					override val index = currentExport.index
+					override def init() :ColumnMappingExtract[S, T, O] = extractFor(this)
+				}
+			case _ =>
+				new ExportColumn[T](column, currentExport.componentSelector, name, currentExport.buffs) {
+					override val index = currentExport.index
+				}
 		}
+
 		//creating the above column increased automatically this count, but we've overriden the index to that of
 		//the current column
 		initColumnCount -= 1
@@ -1359,17 +1438,16 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		lists foreach { list => //swap the replaced component with the renamed version
 			val uninitialized = list.uninitialized
-			val i = uninitialized.indexOf(export)
+			val i = uninitialized.indexOf(currentExport)
 			if (i >= 0)
 				uninitialized(i) = replacement
 		}
 
-
 		//we now need to find all versions of the replaced component (as components of some subcomponent)
 		//and replace their mapping from export to replacement
-		val extract = extractFor(replacement)
+		val extract = replacement.extract
 		initExtracts = initExtracts map { lift =>
-			if (lift._2.export == export)
+			if (lift._2.export == currentExport)
 				Assoc[Column, ColumnExtract, T](lift._1.asInstanceOf[Column[T]], extract)
 			else lift
 		}
@@ -1947,4 +2025,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 }
+
+
+
+
+
 

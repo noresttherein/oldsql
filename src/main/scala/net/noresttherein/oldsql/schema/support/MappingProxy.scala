@@ -289,10 +289,10 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		originals.put(adaptedBacker, backer)
 
 		for (Assoc(comp, base) <- backer.extracts) {
-			val export = adaptExport(base.export)
 			val extract = adapters.get(base.export) match {
 				case Some(ex) => ex
 				case _ =>
+					val export = adaptExport(base.export)
 					val ex = MappingExtract(export)(base)
 					adapters.put(base.export, ex)         //unnecessary, but prevents duplicate extract instances
 					originals.put(export, base.export)

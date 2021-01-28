@@ -1646,7 +1646,6 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-
 	/** A thin wrapper over a component of some mapping `MappingAt[O]` which selects it to be included or
 	  * excluded from some database operation, depending on which of the two subclasses of this type is the class
 	  * of this object. Instances of this trait are typically created by calling either

@@ -214,9 +214,8 @@ trait SimpleMapping[S, O]
 		  * The column's name will be the concatenation of this mapping's
 		  * [[net.noresttherein.oldsql.schema.bases.SimpleMapping.columnPrefix columnPrefix]] and the name
 		  * of the property as appearing in scala and returned by `PropertyPath`. For example, passing `_.firstName`
-		  * as the `value` argument will set the column name to "firstName". Any buffs declared on this mapping
-		  * will be inherited by the created column. While not present on this component's column and component lists,
-		  * it will be nevertheless accepted within
+		  * as the `value` argument will set the column name to "firstName". While not present on this component's
+		  * column and component lists, it will be nevertheless accepted within
 		  * [[net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate.construct construct]] method
 		  * and will inherit buffs both of this component and the outer mapping.
 		  * @param property the getter function for the value of this column. Should represent a simple property of the
@@ -247,6 +246,27 @@ trait SimpleMapping[S, O]
 			val inherited = this.buffs.unsafeCascade(property)
 			borrow(new FlatColumn[X](columnPrefix + name, fullExtract, inherited, buffs), property)
 		}
+
+		/** Create a new column for an optional property of the subject of the outer
+		  * [[net.noresttherein.oldsql.schema.bases.SimpleMapping SimpleMapping]] as its direct column.
+		  * If the getter function returns `None`, the `nullValue` property of the form for this column will be used
+		  * instead. The column's name will be the concatenation of this mapping's
+		  * [[net.noresttherein.oldsql.schema.bases.SimpleMapping.columnPrefix columnPrefix]] and the name
+		  * of the property as appearing in scala and returned by `PropertyPath`. For example, passing `_.firstName`
+		  * as the `value` argument will set the column name to "firstName". Any buffs declared on this mapping
+		  * will be inherited by the created column. While not present on this component's column and component lists,
+		  * it will be nevertheless accepted within
+		  * [[net.noresttherein.oldsql.schema.bases.StaticMapping.StaticMappingTemplate.construct construct]] method
+		  * and will inherit buffs both of this component and the outer mapping.
+		  * @param property the getter function returning the value for the column from an instance of the mapped subject.
+		  * @param buffs any buffs modifying how the column is used, in particular excluding it from some column lists
+		  *              of this mapping.
+		  * @tparam X the type of the value of this column as present on the mapped entity.
+		  * @return a new column, enlisted on all column lists of this mapping which aren't excluded by `buffs`.
+		  */
+		protected def optcolumn[X](property :T => Option[X], buffs :Buff[X]*)
+		                          (implicit form :ColumnForm[X], subject :TypeTag[T]) :Column[X] =
+			optcolumn[X](PropertyPath.nameOf(property), property, buffs :_*)
 
 
 		protected override def fkimpl[M[A] <: RefinedMapping[E, A], K, E, X, R]
@@ -814,7 +834,7 @@ trait SimpleMapping[S, O]
 	  */
 	protected def column[T](property :S => T, buffs :Buff[T]*)
 	                       (implicit form :ColumnForm[T], tag :TypeTag[S]) :Column[T] =
-		column(PropertyPath.nameOf(property), property, buffs :_*)
+		column(verifiedPrefix + PropertyPath.nameOf(property), property, buffs :_*)
 
 	/** Create a new column for an optional property of the mapped subject as a direct component of this mapping.
 	  * If the getter function returns `None`, the `nullValue` property of the form for this column will be used
@@ -829,6 +849,22 @@ trait SimpleMapping[S, O]
 	  */
 	protected def optcolumn[T :ColumnForm](name :String, property :S => Option[T], buffs :Buff[T]*) :Column[T] =
 		new FlatColumn[T](verifiedPrefix + name, property, buffs)
+
+	/** Create a new column for an optional property of the mapped subject as a direct component of this mapping.
+	  * If the getter function returns `None`, the `nullValue` property of the form for this column will be used
+	  * instead. The column's name will be the concatenation of this mapping's `columnPrefix` and the name
+	  * of the property as appearing in scala and returned by `PropertyPath`. For example, passing `_.firstName`
+	  * as the `value` argument will set the column name to "firstName". Any buffs declared on this mapping
+	  * will be inherited by the created column.
+	  * @param property the getter function returning the value for the column from an instance of the mapped subject.
+	  * @param buffs any buffs modifying how the column is used, in particular excluding it from some column lists
+	  *              of this mapping.
+	  * @tparam T the type of the value of this column as present on the mapped entity.
+	  * @return a new column, enlisted on all column lists of this mapping which aren't excluded by `buffs`.
+	  */
+	protected def optcolumn[T](property :S => Option[T], buffs :Buff[T]*)
+	                          (implicit form :ColumnForm[T], tag :TypeTag[S]) :Column[T] =
+		optcolumn(PropertyPath.nameOf(property), property, buffs :_*)
 
 
 

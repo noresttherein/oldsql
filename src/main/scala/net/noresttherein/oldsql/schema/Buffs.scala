@@ -485,6 +485,8 @@ object Buffs extends ImplicitBuffs {
 			override def hashCode = mapping.hashCode
 			override def toString = "@" + source.get
 		}
+
+		def unapply(buffs :Buffs[_]) :Opt[Tag] = Got(buffs.tag)
 	}
 
 

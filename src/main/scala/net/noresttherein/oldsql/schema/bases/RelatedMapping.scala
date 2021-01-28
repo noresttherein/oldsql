@@ -460,7 +460,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			:ForeignKeyColumnMapping[M, K, R, O] =
 		optfkimpl[M, K, E, T, R](name, property, buffs :_*)(table, key(_), reference)
 
-	/*  Nullable single column foreign key with reflecated names, using an arbitrary RelatedEntityFactory            */
+	/*  Nullable single column foreign key with reflected names, using an arbitrary RelatedEntityFactory            */
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], K, E, T, R]
 	                   (property :S => R, buffs :Buff[R]*)
