@@ -314,10 +314,33 @@ object TableKin {
 
 
 
+	/** A factory of references to entities `E` from table `target` with a specific value of the provided `component`.
+	  * Returned factory creates instances of [[net.noresttherein.oldsql.model.Kin Kin]]`[E]`,
+	  * but the value type can be changed to any [[net.noresttherein.oldsql.model.ComposedOf composite]] of `E`
+	  * with its [[net.noresttherein.oldsql.model.GenericKinFactory.as as]] and
+	  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]] methods. Note that this factory is not simply
+	  * a supertype of the 'real' factory [[net.noresttherein.oldsql.schema.bits.TableKin.required required]],
+	  * as it is ''not required'' - its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]]
+	  * method returns [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]] kin instead of throwing
+	  * a `NonexistentEntityException` as the latter one.
+	  * @see [[net.noresttherein.oldsql.schema.bits.TableKin.required[K,E,O]* apply]]`(target, component)`.
+	  */
 	def apply[K, E, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O]) :KinFactory[K, E, E] =
 		new TableKinFactory[K, E, E, O](target, component)
 
-	def one[K, E, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O])
+	/** A factory of references to entities `E` from table `target` with a specific value of the provided `component`.
+	  * Returned factory creates instances of [[net.noresttherein.oldsql.model.Kin.One One]]`[E]`,
+	  * but the value type can be changed to any [[net.noresttherein.oldsql.model.ComposedOf composite]] of `E`
+	  * with its [[net.noresttherein.oldsql.model.GenericKinFactory.as as]] and
+	  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]] methods. As this factory,
+	  * and all obtained through it by adapting to other composite types, create only instances
+	  * of [[net.noresttherein.oldsql.model.Kin.Derived Derived]] kin, it is automatically
+	  * [[net.noresttherein.oldsql.model.RelatedEntityFactory.isRequired required]]:
+	  * its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]] method
+	  * throws a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]].
+	  * @see [[net.noresttherein.oldsql.schema.bits.TableKin.apply[K,E,O]* apply]]`(target, component)`.
+	  */
+	def required[K, E, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O])
 			:DerivedKinFactory[K, E, E] =
 		new DerivedTableKinFactory[K, E, E, O](target, component)
 
@@ -392,6 +415,9 @@ object TableKin {
 		}
 
 
+		override def notRequired :KinFactory[K, E, T] =
+			if (isRequired) new TableKinFactory[K, E, T, O](table, key) else this
+
 		override def equivalencyToken :Any = (table, key)
 
 		override def equals(that :Any) :Boolean = that match {
@@ -410,7 +436,6 @@ object TableKin {
 
 
 
-	//we might need/want a factory returning TableKin as Derived
 	private class TableKinFactory[K, E, T, O](override val table :Table[MappingOf[E]#Projection],
 	                                          override val key :RefinedMapping[K, O])
 	                                         (implicit override val result :T ComposedOf E)

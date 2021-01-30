@@ -521,7 +521,7 @@ object Kin {
 	/** Create a `Kin` in a three step process - the first stop (this one) accepts a definition of how to look for
 	  * the value(s) (for example, by a primary key) and returns a `KinFactory`. The second, optional step
 	  * defines the result type carried by the returned Kin, if it should be something else than the entity type `T`
-	  * itself. It is done with one of the methods of the factory which return new factories for derived type,
+	  * itself. It is done with one of the methods of the factory which return new factories for a composite type,
 	  * such as `Kin[Option[T]]` or `Kin[Set[T]]`; for example:
 	  * [[net.noresttherein.oldsql.model.GenericKinFactory.as as]]`Option[T]` or
 	  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]]`[Set]`.
@@ -595,8 +595,7 @@ object Kin {
 		  * @tparam T constrained type and the 'element' type of the finally constructed `Kin`.
 		  * @return a factory object accepting actual parameters needed to construct the `Kin`.
 		  */
-		def apply[K, T](restrainer :Restrainer[T, K]) :KinFactory[K, T, T] =
-			new RestrainedKinFactory[K, T, T](restrainer)
+		def apply[K, T](restrainer :Restrainer[T, K]) :KinFactory[K, T, T] = Restrained(restrainer)
 
 		/** Create a composer allowing to create `Kin` containing values of `T` - for example `Kin[T]`,
 		  * `Kin[Option[T]]`, `Kin[Seq[T]]` and so on.
@@ -657,7 +656,7 @@ object Kin {
 		  * [[net.noresttherein.oldsql.model.Kin.Derived Derived]] values.
 		  */
 		def apply[K, T](restrainer :Restrainer[T, K]) :DerivedKinFactory[K, T, C[T]] =
-			Restrained(restrainer).in[C]
+			Restrained.required(restrainer).in[C]
 
 		/** An absent (and [[net.noresttherein.oldsql.model.Kin.isMissing missing]]) `$Ref[T]`, specifying
 		  * a filtering expression on `T`, carried by `restraint`. Note that it is possible to create such references
@@ -1030,11 +1029,11 @@ object Kin {
 		override def property[X, U >: T](property :PropertyPath[U, X]) :Kin[X] = Present(property(get))
 
 		override def properties[E, X, C](prop :PropertyPath[E, X], as :ComposableFrom[C, X])
-		                                (implicit decomposition :DecomposableTo[T, E]) :Derived[E, C] =
-			new Derived[E, C] with Present[C] {
-				implicit override def composition = ComposableFrom.Properties(prop)(as)
-				override val items = Some(decomposition(outer.get))
-				override val get = as(items.get.map(prop.fun))
+		                                (implicit decomposition :DecomposableTo[T, E]) :Derived[X, C] =
+			new Derived[X, C] with Present[C] {
+				implicit override def composition = as //ComposableFrom.Properties(prop)(as)
+				override val items = Some(decomposition(outer.get).map(prop.fun))
+				override val get = as(items.get)
 				override lazy val hashCode = get.hashCode * 31 + composition.hashCode
 
 				override def ++[I, U >: C](items :Iterable[I])(implicit composition :U CollectionOf I) =
@@ -1043,7 +1042,7 @@ object Kin {
 				override def ++:[I, U >: C](items :Iterable[I])(implicit composition :U CollectionOf I) =
 					Derived.present((composition.composer.builder ++= items ++= composition.decomposer(get)).result())
 
-				override def property[Z, U >: C](property :PropertyPath[U, Z]) :Derived[U, Z] =
+				override def property[Z, U >: C](property :PropertyPath[U, Z]) :Derived[Z, Z] =
 					Property.one(this, property)
 			}
 
@@ -1121,9 +1120,9 @@ object Kin {
 		override def composition :Nothing ComposableFrom E =  ComposableFrom.Nothing()
 		override def items = None
 
-		override def property[X, U](property :PropertyPath[U, X]) :Derived[U, Nothing] = this()
+		override def property[X, U](property :PropertyPath[U, X]) :Derived[X, Nothing] = this()
 		override def properties[I, X, C](property :PropertyPath[I, X], as :ComposableFrom[C, X])
-		                                (implicit decomposition :DecomposableTo[Nothing, I]) :Derived[I, Nothing] =
+		                                (implicit decomposition :DecomposableTo[Nothing, I]) :Derived[X, Nothing] =
 			this()
 
 		private def readResolve() :Unknown = Unknown
@@ -1334,20 +1333,20 @@ object Kin {
 		}
 
 
-		override def property[X, U >: T](property :PropertyPath[U, X]) :Derived[U, X] =
+		override def property[X, U >: T](property :PropertyPath[U, X]) :Derived[X, X] =
 			Property.one(this, property)
 
 		override def properties[I, X, C[_]](property :PropertyPath[I, X], in :IterableFactory[C])
-		                                   (implicit decomposition :T DecomposableTo I) :Derived[I, C[X]] =
+		                                   (implicit decomposition :T DecomposableTo I) :Derived[X, C[X]] =
 			properties(property, ComposableFrom.Collection.of[X](in))
 
 		override def properties[I, X, C[_], Ev[_]](property :PropertyPath[I, X], in :EvidenceIterableFactory[C, Ev])
 		                                          (implicit decomposition :T DecomposableTo I, ev :Ev[X])
-				:Derived[I, C[X]] =
+				:Derived[X, C[X]] =
 			properties(property, ComposableFrom.Collection.of[X](in))
 
 		override def properties[I, X, C](property :PropertyPath[I, X], as :C ComposableFrom X)
-		                                (implicit decomposition :T DecomposableTo I) :Derived[I, C] =
+		                                (implicit decomposition :T DecomposableTo I) :Derived[X, C] =
 			if (decomposition compatibleWith composition)
 				Property(this.asInstanceOf[Derived[I, T]], property)(as)
 			else
@@ -1438,7 +1437,7 @@ object Kin {
 					this.asInstanceOf[Derived[I, U]]
 				else Derived.present((composition.composer.builder ++= items ++= composition.decomposer(get)).result())
 
-			override def property[X, U >: T](property :PropertyPath[U, X]) :Derived[U, X] =
+			override def property[X, U >: T](property :PropertyPath[U, X]) :Derived[X, X] =
 				Property.one(this, property)
 		}
 
@@ -1676,45 +1675,61 @@ object Kin {
 		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
 		def apply[E, X, P, T](owners :Kin[X], property :PropertyPath[E, P])
 		                     (implicit decomposition :X ComposedOf E, composition :T ComposableFrom P)
-				:Derived[E, T] =
-			apply(owners.recompose, property)
+				:Derived[P, T] =
+			if (owners.isUnknown)
+				throw new IllegalArgumentException(s"Cannot create a kin for property $property of Unknown.")
+			else
+				apply(owners.recompose, property)
 
 		/** Create a kin for a collection of values of property `property :P` of all individual elements `E`
 		  * comprising the composite type `X` from kin `owners`.
 		  */
 		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
 		def apply[E, X, P, T](owners :Derived[E, X], property :PropertyPath[E, P])
-		                     (implicit composition :T ComposableFrom P) :Derived[E, T] =
-			new Property[E, X, P, T](owners, property)
+		                     (implicit composition :T ComposableFrom P) :Derived[P, T] =
+			if (owners.isUnknown)
+				throw new IllegalArgumentException(s"Cannot create a kin for property $property of Unknown.")
+			else
+				new Property[E, X, P, T](owners, property)
+
+		/** Create a kin for a collection of values of property `property :P` of all individual elements `E`
+		  * comprising the composite type `X` from kin `owners`.
+		  */
+		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
+		def apply[E, X, P, T](owners :Derived[E, X], property :PropertyPath[E, P], value :Option[T])
+		                     (implicit composition :T ComposableFrom P) :Derived[P, T] =
+			if (owners.isUnknown)
+				throw new IllegalArgumentException(s"Cannot create a kin for property $property of Unknown.")
+			else
+				new Property[E, X, P, T](owners, property, value)
 
 		/** Create a kin for the value of property `property` of the value `E` of kin `owner`. */
-		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
-		def one[E, T](owner :Kin[E], property :PropertyPath[E, T]) :Derived[E, T] =
-			new SingularPropertyKin(owner.recompose[E, E], property)
+		@throws[IllegalArgumentException]("If `owner` is Unknown or Nonexistent.")
+		def one[E, T](owner :Kin[E], property :PropertyPath[E, T]) :One[T] =
+			apply(owner, property)
 
 		/** Create a lazy kin for a collection of values of property `property :P` of all individual elements `E`
 		  * comprising the composite type `X` from kin `owners`.
 		  */
 		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
 		def delay[E, X, P, T](owners :Derived[E, X], property :PropertyPath[E, P], value: => Option[T])
-		                     (implicit composition :T ComposableFrom P) :Derived[E, T] =
-			new Property(owners, property) {
-				override lazy val toOption = value orElse owner.items.map {
-					items => propertyComposition(items.view.map(property.fun))
+		                     (implicit composition :T ComposableFrom P) :Derived[P, T] =
+			if (owners.isUnknown)
+				throw new IllegalArgumentException(s"Cannot create a kin for property $property of Unknown.")
+			else
+				new Property[E, X, P, T](owners, property) {
+					override lazy val toOption = value orElse owner.items.map {
+						items => composition(items.view.map(property.fun))
+					}
 				}
-			}
 
 		/** Create a lazy kin for the value of property `property` of the value `E` of kin `owner`. */
 		@throws[IllegalArgumentException]("If `owners` is Unknown or Nonexistent.")
-		def delay[E, T](owner :Kin[E], property :PropertyPath[E, T], value: => Option[T]) :Derived[E, T] =
-			if (owner.isUnknown)
-				throw new IllegalArgumentException(s"Cannot create a kin for property $property of Unknown.")
+		def delay[E, T](owner :Kin[E], property :PropertyPath[E, T], value: => Option[T]) :Derived[T, T] =
+			if (owner.isNonexistent)
+				throw new IllegalArgumentException(s"Cannot create a kin for property $property of Nonexistent.")
 			else
-				new SingularPropertyKin[E, T](owner.recompose, property) {
-					override lazy val toOption = value orElse owner.items.map {
-						items => propertyComposition(items.view.map(property.fun))
-					}
-				}
+				delay[E, E, T, T](owner.recompose, property, value)
 
 		/** Matches kin instances created by this factory (or, indirectly,
 		  * by [[net.noresttherein.oldsql.model.Kin.property property]] and
@@ -1723,10 +1738,10 @@ object Kin {
 		  * for assembling the result type ''from the value(s) of the property'' (which is not the same as
 		  * [[net.noresttherein.oldsql.model.Kin.Derived.composition composition]] property of `Derived`).
 		  */
-		def unapply[E, T](kin :Derived[E, T])
-				:Opt[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P)] forSome { type X; type P } =
+		def unapply[P, T](kin :Derived[P, T])
+				:Opt[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P)] forSome { type E } =
 			kin match {
-				case prop :Property[E, x, p, T] => Got((prop.owner, prop.property, prop.propertyComposition))
+				case prop :Property[e, x, P, T] => Got((prop.owner, prop.property, prop.composition))
 				case _ => Lack
 			}
 
@@ -1740,128 +1755,139 @@ object Kin {
 		def unapply[T](kin :Kin[T])
 				:Opt[(Derived[E, _], PropertyPath[E, P], T ComposableFrom P) forSome { type E; type P }] =
 			kin match {
-				case prop :Property[e, x, p, T] => Got((prop.owner, prop.property, prop.propertyComposition))
+				case prop :Property[e, x, p, T] => Got((prop.owner, prop.property, prop.composition))
 				case _ => Lack
 			}
 
 
-		def apply[K, E :TypeTag, P, Y](factory :DerivedKinFactory[K, E, Y], property :E => P)
-		                              (implicit composition :Y ComposableFrom P)
-				:DerivedKinFactory[K, E, P] =
-			new PropertyKinFactory(factory, PropertyPath(property))
+		/** A factory of references to the value of property `property` of entity `E` referenced by `Kin` handled
+		  * by `factory`. Returned factory creates instances of [[net.noresttherein.oldsql.model.Kin Kin]]`[P]`,
+		  * but the value type can be changed to any [[net.noresttherein.oldsql.model.ComposedOf composite]] of `P`
+		  * with its [[net.noresttherein.oldsql.model.GenericKinFactory.as as]] and
+		  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]] methods. Note that this factory is not simply
+		  * a supertype of the 'real' factory [[net.noresttherein.oldsql.model.Kin.Property.required required]],
+		  * as it is ''not required'' - its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]]
+		  * method returns [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]] kin instead of throwing
+		  * a `NonexistentEntityException` as the latter one.
+		  * @see [[net.noresttherein.oldsql.model.Kin.Property.required[K,E:TypeTag,P,Y]* apply]]`(factory, property)`.
+		  */
+		def apply[K, E :TypeTag, P, Y](factory :DerivedKinFactory[K, E, Y], property :E => P) :KinFactory[K, P, P] =
+			new PropertyValuesKinFactory[K, E, Y, P, P](factory, PropertyPath(property))
+
+		/** A factory of references to the value of property `property` of entity `E` referenced by `Kin` handled
+		  * by `factory`. Returned factory creates instances of [[net.noresttherein.oldsql.model.Kin.One One]]`[P]`,
+		  * but the value type can be changed to any [[net.noresttherein.oldsql.model.ComposedOf composite]] of `P`
+		  * with its [[net.noresttherein.oldsql.model.GenericKinFactory.as as]] and
+		  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]] methods. As this factory,
+		  * and all obtained through it by adapting to other composite types, create only instances
+		  * of [[net.noresttherein.oldsql.model.Kin.Derived Derived]] kin, it is automatically
+		  * [[net.noresttherein.oldsql.model.RelatedEntityFactory.isRequired required]]:
+		  * its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]] method
+		  * throws a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]].
+		  * @see [[net.noresttherein.oldsql.model.Kin.Property.apply[K,E:TypeTag,P,Y]* apply]]`(factory, property)`.
+		  */
+		def required[K, E :TypeTag, P, Y](factory :DerivedKinFactory[K, E, Y], property :E => P)
+				:DerivedKinFactory[K, P, P] =
+			new PropertyValuesDerivedFactory[K, E, Y, P, P](factory, PropertyPath(property))
 
 
-		private class SingularPropertyKin[E, T](kin :Derived[E, E], prop :PropertyPath[E, T])
-			extends Property[E, E, T, T](kin, prop)
+
+		private class PropertyValuesKinFactory[K, E, X, P, T]
+		                                      (entities :DerivedKinFactory[K, E, X], property :PropertyPath[E, P])
+		                                      (implicit override val result :T ComposedOf P, entity :TypeTag[E])
+			extends BaseKinFactory[K, P, T]
 		{
-			override val composition = ComposableFrom.Property(property)
-			override lazy val toOption = kin.toOption.map(prop.fun)
-			override def toString = kin.toString + "." + prop
-		}
+			private val argType = typeOf[E]
 
-
-		private class PropertyKinFactory[K, E :TypeTag, X, P, T]
-		                                (entities :DerivedKinFactory[K, E, X], property :PropertyPath[E, P],
-		                                 implicit override val composition :T ComposableFrom E)
-		                                (implicit propertyComposer :T ComposableFrom P)
-			extends DerivedKinFactory[K, E, T] with RequiredKinFactory[K, E, T, Derived[E, T]]
-		{ factory =>
-			private final val argType = typeOf[E]
-
-			def this(entities :DerivedKinFactory[K, E, X], property :PropertyPath[E, P])
-			        (implicit propertyComposer :T ComposableFrom P) =
-				this(entities, property, ComposableFrom.Properties(property))
-
-			override def delay(key :K, value: => Option[T]) :Derived[E, T] =
+			override def delay(key :K, value : => Option[T]) :Derived[P, T] =
 				Property.delay(entities.absent(key), property, value)
 
-			//we use delay because toOption is a lazy val anyway
-			override def apply(key :K, value: Option[T]) :Derived[E, T] = delay(key, value)
+			override def apply(key :K, value :Option[T]) :Derived[P, T] =
+				Property(entities.absent(key), property, value)
 
-			override def present(value :T) =
-				new Present[T] with Derived[E, T] {//fixme: many places assume isPresent -> items.isDefined
-					implicit override val composition = factory.composition
-					override val get = value
-					override def items = Some(Iterable.empty)
-					override def property[Y, U >: T](property :PropertyPath[U, Y]) :Derived[U, Y] =
-						Property.one(this, property)
-				}
+			override def absent(key :K) :Derived[P, T] = Property(entities.absent(key), property)
+			override def missing(key :K) :Derived[P, T] = Property(entities.missing(key), property)
 
-
-			override def missing(key :K) = Property(entities.missing(key), property)
-
-			override def decompose(value :T) = Lack
-			override def itemsOf(kin :Kin[T]) :Opt[Iterable[E]] = Lack
-
-			override def keyFor(value :T) :Opt[K] = Lack
-			override def keyFrom(item :E) :Opt[K] = entities.keyFrom(item)
-			override def keyFrom(items :Iterable[E]) :Opt[K] = entities.keyFrom(items)
+			override def keyFrom(item :P) :Opt[K] = Lack
 
 			override def keyOf(kin :Kin[T]) :Opt[K] = kin match {
 				//owner.Element <:< prop.definedFor, so elements are safe to pass of as E even if owner is not (invariance)
 				case Property(owner :Derived[E @unchecked, _], prop, _) //unchecked type not necessarily true, but^
 					if prop.definedFor <:< argType && property == prop => owner.items match {
-						case Some(items) => keyFrom(items)
-						case _ => Lack
-					}
+					case Some(items) => entities.keyFrom(items)
+					case _ => Lack
+				}
 				case _ => Lack
 			}
 
-			override def as[Y](implicit composition :Y ComposedOf E) = entities.as[Y]
+			override def required :DerivedKinFactory[K, P, T] =
+				new PropertyValuesDerivedFactory(entities, property)
 
-			override def equivalencyToken :Any = (entities, property, propertyComposer)
+			override def notRequired :KinFactory[K, P, T] =
+				if (isRequired) new PropertyValuesKinFactory(entities, property) else this
+
+			override def as[Y](implicit composition :Y ComposedOf P) :DerivedKinFactory[K, P, Y] =
+				new PropertyValuesDerivedFactory[K, E, X, P, Y](entities, property)
+
+
+			override def equivalencyToken :Any = (entities, property, result)
 
 			final private def friendEntities = entities
 			final private def friendProperty = property
-			final private def friendPropertyComposer = propertyComposer
 
-			override def canEqual(that :Any) :Boolean = that.isInstanceOf[PropertyKinFactory[_, _, _, _, _]]
+			override def canEqual(that :Any) :Boolean = that.isInstanceOf[PropertyValuesKinFactory[_, _, _, _, _]]
 
 			override def equals(that :Any) :Boolean = that match {
 				case self :AnyRef if self eq this => true
-				case other :PropertyKinFactory[_, _, _, _, _] if other canEqual this =>
+				case other :PropertyValuesKinFactory[_, _, _, _, _] if canEqual(other) && (other canEqual this) =>
 					argType =:= other.argType && property == other.friendProperty &&
-						propertyComposer == other.friendPropertyComposer && entities == other.friendEntities
+						result == other.result && entities == other.friendEntities
 				case _ => false
 			}
 
-			override def hashCode :Int = (property.hashCode * 31 + propertyComposer.hashCode) * 31 + entities.hashCode
+			override def hashCode :Int = (entities.hashCode * 31 + property.hashCode) * 31 + result.hashCode
 
 			override def toString :String =
-				propertyComposer.toString + (if (isRequired) "(" else "?(") + entities + "." + property + ")"
+				result.toString + (if (isRequired) "(" else "?(") + entities + "." + property + ")"
 		}
+
+
+
+		private class PropertyValuesDerivedFactory[K, E, X, P, T]
+		                                          (entities :DerivedKinFactory[K, E, X], property :PropertyPath[E, P])
+		                                          (implicit override val result :T ComposedOf P, entity :TypeTag[E])
+			extends PropertyValuesKinFactory(entities, property) with BaseDerivedKinFactory[K, P, T]
+
 	}
 
 
 
 	/** A kin for a property `T` (possibly a chained one) of an entity `E` referenced by another kin. */
-	private class Property[E, X, P, +T](val owner :Derived[E, X], val property :PropertyPath[E, P])
-	                                   (implicit val propertyComposition :T ComposableFrom P)
-		extends Derived[E, T]
+	private class Property[E, X, P, +T](val owner :Derived[E, X], val property :PropertyPath[E, P],
+	                                    value :Option[T])
+	                                   (implicit val composition :T ComposableFrom P)
+		extends Derived[P, T]
 	{ //consider: having a TypeTag[E]
+		def this(owner :Derived[E, X], property :PropertyPath[E, P])(implicit composition :T ComposableFrom P) =
+			this(owner, property, owner.items.map { items => composition(items.view.map(property.fun)) })
+
 		override def isPresent :Boolean = owner.isPresent
 		override def isMissing :Boolean = owner.isMissing
-		override def isNonexistent :Boolean = owner.isNonexistent
-		override val composition :T ComposableFrom E = ComposableFrom.Properties(property)
-		override def parts :Iterable[Derived[E, _]] = owner.parts
-		override def items :Option[Iterable[E]] = owner.items
-
-		override lazy val toOption :Option[T] = owner.items.map {
-			items => propertyComposition(items.view.map(property.fun))
-		}
+		override def items :Option[Iterable[P]] = owner.items.map(_.map(property.fun))
+		override def toOption :Option[T] = value
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[Property[_, _, _, _]]
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
 			case prop :Property[_, _, _, _] if prop canEqual this =>
-				prop.propertyComposition == prop.propertyComposition && prop.property == property && prop.owner == owner
+				prop.composition == prop.composition && prop.property == property && prop.owner == owner
 			case _ => false
 		}
 
-		override lazy val hashCode :Int = (owner.hashCode * 31 + property.hashCode) * 31 + propertyComposition.hashCode
+		override lazy val hashCode :Int = (owner.hashCode * 31 + property.hashCode) * 31 + composition.hashCode
 
-		override def toString :String = owner.toString + ".properties[" + propertyComposition + "](_." + property + ")"
+		override def toString :String = owner.toString + ".properties[" + composition + "](_." + property + ")"
 	}
 
 
@@ -1873,7 +1899,7 @@ object Kin {
 	  * a given [[net.noresttherein.oldsql.model.Restraint Restraint]]`[E]`.
 	  * @author Marcin Mościcki
 	  */
-	private[oldsql] trait Restrained[E, +T] extends Derived[E, T] {
+	trait Restrained[E, +T] extends Derived[E, T] {
 		val where :Restraint[E]
 
 		override def get :T = toOption match {
@@ -1903,12 +1929,11 @@ object Kin {
 
 
 
-
-
-
 	/** Factory and matcher for Kin specifying the referenced values through reflected filter functions of `E`.
 	  * Each [[net.noresttherein.oldsql.model.Kin.Restrained Restrained]]`[E, T]`
-	  * carries a [[net.noresttherein.oldsql.model.Restraint Restraint]]`[E]`.
+	  * carries a [[net.noresttherein.oldsql.model.Restraint Restraint]]`[E]`. This object contains various
+	  * direct factory methods for creating all kinds of restrained kin, but applications may be better served
+	  * with the quasi-DSL of object [[net.noresttherein.oldsql.model.Kin.AllWhere AllWhere]].
 	  */
 	object Restrained {
 		type Of[E] = { type Kin[T] = Restrained[E, T] }
@@ -1918,33 +1943,97 @@ object Kin {
 			if (value.isDefined) new PresentRestrained[E, T](where, value)
 			else new AbsentRestrained(where)(as.composer)
 
+		/** A restrained kin using the given `Restraint` as the filter specifying the referenced values. */
 		def apply[E, T](where :Restraint[E])(implicit composition :T ComposableFrom E) :Restrained[E, T] =
 			new AbsentRestrained(where)
 
+		/** A ''present'' restrained carrying `value` kin using the given `Restraint` as the filter specifying
+		  * the referenced values. */
 		def present[E, T](where :Restraint[E], value :T)(implicit as :T ComposedOf E) :Restrained[E, T] =
 			new PresentRestrained[E, T](where, value)
 
+		/** A ''missing'' (an empty, but referencing values which are assumed to exist) restrained kin using
+		  * the given `Restraint` as the filter specifying the referenced values. This kin has a strictly narrower
+		  * meaning than [[net.noresttherein.oldsql.model.Kin.Restrained.absent Restrained.absent]].
+		  */
 		def missing[E, T](where :Restraint[E])(implicit composition :T ComposableFrom E) :Restrained[E, T] =
 			new AbsentRestrained[E, T](where)
 
+		/** An ''absent'' (empty) restrained kin using the given `Restraint` as the filter specifying
+		  * the referenced values.
+		  */
 		def absent[E, T](where :Restraint[E])(implicit composition :T ComposableFrom E) :Restrained[E, T] =
 			new AbsentRestrained[E, T](where, false)
 
+		/** A restrained kin using the given `Restraint` as the filter specifying the referenced values. Kin value
+		  * will be lazily computed by evaluating the given ''by-name'' expression `value`. */
 		def delay[E, T](where :Restraint[E], value: => Option[T])(implicit as :T ComposedOf E) :Restrained[E, T] =
 			new LazyRestrained(where, () => value)
 
+		/** Matches all instances of [[net.noresttherein.oldsql.model.Kin.Restrained Restrained]] kin,
+		  * created by this factory object, [[net.noresttherein.oldsql.model.Kin.AllWhere AllWhere]] or client code.
+		  */
 		def unapply[E, T](kin :Derived[E, T]) :Opt[(Restraint[E], T ComposableFrom E)] = kin match {
 			case restrained :Restrained[E, T] => Got((restrained.where, restrained.composition))
 			case _ => Lack
 		}
 
+		/** Matches all instances of [[net.noresttherein.oldsql.model.Kin.Restrained Restrained]] kin,
+		  * created by this factory object, [[net.noresttherein.oldsql.model.Kin.AllWhere AllWhere]] or client code.
+		  */
 		def unapply[T](kin :Kin[T]) :Opt[(Restraint[E], T ComposableFrom E) forSome { type E }] = kin match {
 			case restrained :Restrained[e, T] => Got((restrained.where, restrained.composition))
 			case _ => Lack
 		}
 
 
-		def apply[E, K](restrainer :Restrainer[E, K]) :DerivedKinFactory[K, E, E] =
+		/** A factory of [[net.noresttherein.oldsql.model.Kin.Restrained Restrained]] kin referencing all values
+		  * satisfying a given [[net.noresttherein.oldsql.model.Restraint Restraint]] (a domain model-level expression
+		  * serving as a filter on the entity type `E`). Returned factory creates instances of
+		  * [[net.noresttherein.oldsql.model.Kin Kin]]`[E]`, but the value type can be changed
+		  * to any [[net.noresttherein.oldsql.model.ComposedOf composite]] of `E`
+		  * with its [[net.noresttherein.oldsql.model.GenericKinFactory.as as]] and
+		  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]] methods. Note that this factory is not simply
+		  * a supertype of the 'real' factory [[net.noresttherein.oldsql.model.Kin.Restrained.required required]],
+		  * as it is ''not required'' - its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]]
+		  * method returns [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]] kin (which is ''not''
+		  * a `Restrained` instance) instead of throwing a `NonexistentEntityException` as the latter one.
+		  * @param restrainer a factory of instances of [[net.noresttherein.oldsql.model.Restraint Restraint]]`[E]`,
+		  *                   which can be obtained from factory objects in
+		  *                   [[net.noresttherein.oldsql.model.Restraint$ Restraint]] object, such as
+		  *                   [[net.noresttherein.oldsql.model.Restraint.Equal Equal]], or - if
+		  *                   `net.noresttherein.oldsql.model.implicits._` are imported - by calling one of the
+		  *                   factory methods in [[net.noresttherein.oldsql.model.Restrictive Restrictive]],
+		  *                   such as [[net.noresttherein.oldsql.model.Restrictive.?== ?==]] or
+		  *                   [[net.noresttherein.oldsql.model.Restrictive.?< ?<]] on a lambda expression of `E`.
+		  * @see [[net.noresttherein.oldsql.model.Kin.Restrained.required[E,K]* apply]]`(restrainer)`.
+		  */
+		def apply[E, K](restrainer :Restrainer[E, K]) :KinFactory[K, E, E] =
+			new RestrainedKinFactory[K, E, E](restrainer)
+
+		/** A factory of [[net.noresttherein.oldsql.model.Kin.Restrained Restrained]] kin referencing all values
+		  * satisfying a given [[net.noresttherein.oldsql.model.Restraint Restraint]] (a domain model-level expression
+		  * serving as a filter on the entity type `E`). Returned factory creates instances of
+		  * [[net.noresttherein.oldsql.model.Kin.One One]]`[E]`, but the value type can be changed
+		  * to any [[net.noresttherein.oldsql.model.ComposedOf composite]] of `E`
+		  * with its [[net.noresttherein.oldsql.model.GenericKinFactory.as as]] and
+		  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]] methods. As this factory,
+		  * and all obtained through it by adapting to other composite types, create only instances
+		  * of [[net.noresttherein.oldsql.model.Kin.Derived Derived]] kin, it is automatically
+		  * [[net.noresttherein.oldsql.model.RelatedEntityFactory.isRequired required]]:
+		  * its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]] method
+		  * throws a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]].
+		  * @param restrainer a factory of instances of [[net.noresttherein.oldsql.model.Restraint Restraint]]`[E]`,
+		  *                   which can be obtained from factory objects in
+		  *                   [[net.noresttherein.oldsql.model.Restraint$ Restraint]] object, such as
+		  *                   [[net.noresttherein.oldsql.model.Restraint.Equal Equal]], or - if
+		  *                   `net.noresttherein.oldsql.model.implicits._` are imported - by calling one of the
+		  *                   factory methods in [[net.noresttherein.oldsql.model.Restrictive Restrictive]],
+		  *                   such as [[net.noresttherein.oldsql.model.Restrictive.?== ?==]] or
+		  *                   [[net.noresttherein.oldsql.model.Restrictive.?< ?<]] on a lambda expression of `E`.
+		  * @see [[net.noresttherein.oldsql.model.Kin.Restrained.apply[K,E:TypeTag,P,Y]* apply]]`(factory, property)`.
+		  */
+		def required[E, K](restrainer :Restrainer[E, K]) :DerivedKinFactory[K, E, E] =
 			new RequiredRestrainedKinFactory[K, E, E](restrainer)
 
 
@@ -1971,8 +2060,8 @@ object Kin {
 
 
 
-		private[oldsql] class RestrainedKinFactory[K, E, X](private val restrainer :Restrainer[E, K])
-		                                                   (implicit val result :X ComposedOf E)
+		private class RestrainedKinFactory[K, E, X](private val restrainer :Restrainer[E, K])
+		                                           (implicit val result :X ComposedOf E)
 			extends BaseKinFactory[K, E, X]
 		{
 			override def delay(key :K, value: => Option[X]): Derived[E, X] =
@@ -2000,6 +2089,9 @@ object Kin {
 			override def required :KinFactory[K, E, X] =
 				if (isRequired) this else new RequiredRestrainedKinFactory(restrainer)
 
+			override def notRequired :KinFactory[K, E, X] =
+				if (isRequired) new RestrainedKinFactory(restrainer) else this
+
 			override def as[Y](implicit composition: Y ComposedOf E): KinFactory[K, E, Y] =
 				new RestrainedKinFactory[K, E, Y](restrainer)
 
@@ -2016,21 +2108,27 @@ object Kin {
 
 			override def hashCode :Int = restrainer.hashCode * 31 + result.hashCode
 
-			override def toString = result.toString + (if (isRequired) "" else "?") + "(" + restrainer + ")"
+			override def toString = result.toString + (if (isRequired) "" else "?") + "{" + restrainer + "}"
 		}
 
-	}
 
+		private class RequiredRestrainedKinFactory[K, E, X](restrainer :Restrainer[E, K])
+		                                                   (implicit result :X ComposedOf E)
+			extends RestrainedKinFactory[K, E, X](restrainer) with BaseDerivedKinFactory[K, E, X]
+		{
+			override def apply(key :K, value :Option[X]) = Restrained(restrainer(key), value)
+			override def present(value :X) :Restrained[E, X] = Restrained.present(Restraint.False, value)
 
-	private[oldsql] class RequiredRestrainedKinFactory[K, E, X](restrainer :Restrainer[E, K])
-	                                                           (implicit result :X ComposedOf E)
-		extends RestrainedKinFactory[K, E, X](restrainer) with BaseDerivedKinFactory[K, E, X]
-	{
-		override def apply(key :K, value :Option[X]) = Restrained(restrainer(key), value)
-		override def present(value :X) :Restrained[E, X] = Restrained.present(Restraint.False, value)
+			override def notRequired :KinFactory[K, E, X] = new RestrainedKinFactory(restrainer)
 
-		override def as[Y](implicit composition: Y ComposedOf E): DerivedKinFactory[K, E, Y] =
-			new RequiredRestrainedKinFactory[K, E, Y](restrainer)
+			override def notRequired(nonexistent :Kin[X]) :KinFactory[K, E, X] =
+				if (nonexistent == Nonexistent()) notRequired
+				else super.notRequired(nonexistent)
+
+			override def as[Y](implicit composition: Y ComposedOf E): DerivedKinFactory[K, E, Y] =
+				new RequiredRestrainedKinFactory[K, E, Y](restrainer)
+		}
+
 	}
 
 }

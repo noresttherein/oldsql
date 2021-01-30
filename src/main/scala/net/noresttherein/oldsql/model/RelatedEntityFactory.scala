@@ -4,8 +4,8 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{MismatchedKeyException, MissingKeyException, NonexistentEntityException}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
-import net.noresttherein.oldsql.model.RelatedEntityFactory.{OptionalKeyRelatedEntityFactory, OptionalRelatedEntityFactory, RequiredRelatedEntityFactory}
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional}
+import net.noresttherein.oldsql.model.RelatedEntityFactory.{NotRequiredRelatedEntityFactory, OptionalKeyRelatedEntityFactory, OptionalRelatedEntityFactory, RelatedEntityOptionFactory, RequiredRelatedEntityFactory}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, none, Optional}
 
 
 
@@ -175,6 +175,62 @@ trait RelatedEntityFactory[K, E, X, R] extends Serializable {
 	  */
 	def unapply(ref :R) :Opt[K] = keyOf(ref)
 
+	/** If true, every reference produced and accepted by this factory must carry either a key, or a value or both.
+	  * This implies that there is no [[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]]
+	  * reference and that method will always
+	  * throw a [[net.noresttherein.oldsql.exceptions.MissingKeyException MissingKeyException]]
+	  * or a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]].
+	  * @see [[net.noresttherein.oldsql.model.RelatedEntityFactory.required]]
+	  */
+	def isRequired :Boolean
+
+	/** A proxy to this factory which
+	  * throws a [[net.noresttherein.oldsql.exceptions.MissingKeyException MissingKeyException]]
+	  * or a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]]
+	  * from its [[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]] methods, essentially
+	  * enforcing non-null semantics on (foreign) keys. All absent references produced by the factory will contain a key
+	  * and will be [[net.noresttherein.oldsql.model.Kin.isMissing missing]].
+	  */
+	def required :RelatedEntityFactory[K, E, X, R] =
+		if (isRequired) this else new RequiredRelatedEntityFactory(this)
+
+	/** A proxy to this factory whose `isRequired` flag is false and which returns the same
+	  * [[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]] reference as this one.
+	  */
+	@throws[NonexistentEntityException]("if this factory's nonexistent method throws an exception.")
+	def notRequired :RelatedEntityFactory[K, E, X, R] =
+		if (isRequired) new NotRequiredRelatedEntityFactory(this, nonexistent) else this
+
+	/** A proxy to this factory with a defined
+	  * [[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]] reference value.
+	  * All methods delegate to this instance, except for `nonexistent`, which returns the argument provided here.
+	  */
+	def notRequired(nonexistent :R) :RelatedEntityFactory[K, E, X, R] =
+		try {
+			if (!isRequired && nonexistent == this.nonexistent) this
+			else new NotRequiredRelatedEntityFactory(this, nonexistent)
+		} catch {
+			case _ :NonexistentEntityException => new NotRequiredRelatedEntityFactory(this, nonexistent)
+		}
+
+	/** An adapter to this factory allowing nonexistent referenced entities. It is used in cases where the existence
+	  * of the referenced value can be determined based solely on local information (without resolving the reference),
+	  * as in nullable foreign keys. It is very similar to [[net.noresttherein.oldsql.model.RelatedEntityFactory.lift lift]],
+	  * except it uses the same key type `K` as this factory, rather than `Option[K]`. This does not mean that the key
+	  * is required, as handling of null keys can happen on the [[net.noresttherein.oldsql.schema.Mapping Mapping]]
+	  * level, taking advantage of the fact that any component can potentially produce no value and define a default
+	  * as a substitute using buff [[net.noresttherein.oldsql.schema.Buff.SelectDefault SelectDefault]] (and others).
+	  * The choice between the two boils down mainly to desired component structure, in particular the subject type
+	  * of the referenced component: when referencing not null keys (such as primary keys), this factory may be more
+	  * convenient; on the other hand, if the referenced key is mapped to an `Option[K]` by the referenced component,
+	  * `this.optional` will likely be the better choice. Similarly, there is no conceptual difference between
+	  * a foreign key using `this.optional`, and a foreign key using `this.required` put inside a component
+	  * explicitly mapping `Option[R]` such as [[net.noresttherein.oldsql.schema.bits.OptionMapping OptionMapping]]
+	  * with explicit use of `this.`[[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]]
+	  * (defined as [[None]]).
+	  */
+	def optional :RelatedEntityFactory[K, E, X, Option[R]] = new RelatedEntityOptionFactory[K, E, X, R](this)
+
 	/** An adapter to this factory handling relationships which might be missing, such as with nullable foreign keys.
 	  * Relies on this factory's [[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]]
 	  * method for the value associated with `None` key value. If this class throws an exception from the method,
@@ -194,26 +250,7 @@ trait RelatedEntityFactory[K, E, X, R] extends Serializable {
 	  * Maps `None` keys to a `None` reference value used as
 	  * the [[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]] value.
 	  */
-	def optional :RelatedEntityFactory[Option[K], E, X, Option[R]] = new OptionalRelatedEntityFactory(this)
-
-	/** A proxy to this factory which
-	  * throws a [[net.noresttherein.oldsql.exceptions.MissingKeyException MissingKeyException]]
-	  * or a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]]
-	  * from its [[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]] methods, essentially
-	  * enforcing non-null semantics on (foreign) keys. All absent references produced by the factory will contain a key
-	  * and will be [[net.noresttherein.oldsql.model.Kin.isMissing missing]].
-	  */
-	def required :RelatedEntityFactory[K, E, X, R] =
-		if (isRequired) this else new RequiredRelatedEntityFactory(this)
-
-	/** If true, every reference produced and accepted by this factory must carry either a key, or a value or both.
-	  * This implies that there is no [[net.noresttherein.oldsql.model.RelatedEntityFactory.nonexistent nonexistent]]
-	  * reference and that method will always
-	  * throw a [[net.noresttherein.oldsql.exceptions.MissingKeyException MissingKeyException]]
-	  * or a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]].
-	  * @see [[net.noresttherein.oldsql.model.RelatedEntityFactory.required]]
-	  */
-	def isRequired :Boolean
+	def lift :RelatedEntityFactory[Option[K], E, X, Option[R]] = new OptionalRelatedEntityFactory(this)
 
 	/** A weaker comparison than equals, which should be true if and only if absent references returned by both
 	  * factories have equal keys. Conceptually this represents factories always referring
@@ -336,6 +373,43 @@ object RelatedEntityFactory {
 
 
 
+	private[oldsql] class RelatedEntityOptionFactory[K, E, X, R](backing :RelatedEntityFactory[K, E, X, R])
+		extends RelatedEntityFactory[K, E, X, Option[R]]
+	{
+		implicit override def composition = backing.composition
+
+		override def delay(key :K, value: => Option[X]) :Option[R] = Some(backing.delay(key, value))
+		override def apply(key :K, value :Option[X]) :Option[R] = Some(backing(key, value))
+		override def present(key :K, value :X) :Option[R] = Some(backing.present(key, value))
+		override def present(value :X) :Option[R] = Some(backing.present(value))
+		override def absent(key :K) :Option[R] = Some(backing.absent(key))
+		override def missing(key :K) :Option[R] = Some(backing.missing(key))
+		override def nonexistent :Option[R] = None
+		override def unknown = throw new UnsupportedOperationException(toString + ".unknown")
+
+		override def decompose(value :X) = backing.decompose(value)
+		override def keyFrom(item :E) = backing.keyFrom(item)
+		override def keyOf(ref :Option[R]) = if (ref.isEmpty) Lack else backing.keyOf(ref.get)
+		override def valueOf(ref :Option[R]) = if (ref.isEmpty) Lack else backing.valueOf(ref.get)
+
+		override def isRequired = false
+
+		override def required :RelatedEntityFactory[K, E, X, Option[R]] =
+			new RelatedEntityOptionFactory[K, E, X, R](backing) {
+				override def isRequired = true
+				override def required = this
+			}
+
+		override def equivalencyToken :Any =
+			new EquivalencyTokenWrapper(backing.equivalencyToken) {
+				override def toString = token.toString + ".optional"
+			}
+
+		override def toString :String = "Option[" + backing + "]"
+	}
+
+
+
 	private[oldsql] case class OptionalKeyRelatedEntityFactory[K, E, X, R](backing :RelatedEntityFactory[K, E, X, R],
 	                                                                       override val nonexistent :R)
 		extends RelatedEntityFactory[Option[K], E, X, R]
@@ -389,7 +463,7 @@ object RelatedEntityFactory {
 				override def toString = token.toString + ".optionalKeys"
 			}
 
-		override def toString = "Option[" + backing.toString + "]"
+		override def toString = backing.toString + ".optionalKeys"
 	}
 
 
@@ -456,46 +530,77 @@ object RelatedEntityFactory {
 
 		override def equivalencyToken =
 			new EquivalencyTokenWrapper(backing.equivalencyToken) {
-				override def toString = token.toString + ".optional"
+				override def toString = token.toString + ".lift"
 			}
 
-		override def toString = backing.toString + ".optional"
+		override def toString = backing.toString + ".lift"
 	}
 
 
 
 
-	private[oldsql] case class RequiredRelatedEntityFactory[K, E, X, R](backing :RelatedEntityFactory[K, E, X, R])
-		extends RelatedEntityFactory[K, E, X, R]
+	private[oldsql] trait RelatedEntityFactoryProxy[K, E, X, R] extends RelatedEntityFactory[K, E, X, R] {
+		protected def target :RelatedEntityFactory[K, E, X, R]
+
+		implicit override def composition = target.composition
+
+		override def delay(key :K, value : => Option[X]) :R = target.delay(key, value)
+		override def apply(key :K, value :Option[X]) :R = target(key, value)
+		override def present(value :X) :R = target.present(value)
+		override def present(key :K, value :X) :R = target.present(key, value)
+		override def missing(key :K) :R = target.missing(key)
+		override def absent(key :K) :R = target.absent(key)
+		override def nonexistent(key :K) = target.nonexistent(key)
+		override def nonexistent = target.nonexistent
+		override def unknown :R = target.unknown
+
+		override def decompose(value :X) :Opt[Iterable[E]] = target.decompose(value)
+		override def itemsOf(ref :R) :Opt[Iterable[E]] = target.itemsOf(ref)
+
+		override def keyFor(value :X) :Opt[K] = target.keyFor(value)
+		override def keyFrom(items :Iterable[E]) :Opt[K] = target.keyFrom(items)
+		override def keyFrom(item :E) :Opt[K] = target.keyFrom(item)
+		override def keyOf(ref :R) :Opt[K] = target.keyOf(ref)
+		override def valueOf(ref :R) :Opt[X] = target.valueOf(ref)
+
+		override def isRequired :Boolean = target.isRequired
+		override def required :RelatedEntityFactory[K, E, X, R] = if (isRequired) this else target.required
+		override def notRequired :RelatedEntityFactory[K, E, X, R] = if (isRequired) target.notRequired else this
+		override def notRequired(nonexistent :R) :RelatedEntityFactory[K, E, X, R] = target.notRequired(nonexistent)
+
+		override def equivalencyToken :Any = target.equivalencyToken
+	}
+
+
+
+	private[oldsql] case class RequiredRelatedEntityFactory[K, E, X, R]
+	                           (protected override val target :RelatedEntityFactory[K, E, X, R])
+		extends RelatedEntityFactoryProxy[K, E, X, R]
 	{
-		implicit override def composition = backing.composition
-
-		override def delay(key :K, value : => Option[X]) :R = backing.delay(key, value)
-		override def apply(key :K, value :Option[X]) :R = backing(key, value)
-		override def present(value :X) :R = backing.present(value)
-		override def present(key :K, value :X) :R = backing.present(key, value)
-		override def missing(key :K) :R = backing.missing(key)
-		override def absent(key :K) :R = backing.absent(key)
-		override def nonexistent(key :K) = throw new NonexistentEntityException(s"No entity for $this key $key.")
-		override def nonexistent = throw new NonexistentEntityException(toString + ": no key found")
-		override def unknown :R = backing.unknown
-
-		override def decompose(value :X) :Opt[Iterable[E]] = backing.decompose(value)
-		override def itemsOf(ref :R) :Opt[Iterable[E]] = backing.itemsOf(ref)
-
-		override def keyFor(value :X) :Opt[K] = backing.keyFor(value)
-		override def keyFrom(items :Iterable[E]) :Opt[K] = backing.keyFrom(items)
-		override def keyFrom(item :E) :Opt[K] = backing.keyFrom(item)
-		override def keyOf(ref :R) :Opt[K] = backing.keyOf(ref)
-		override def valueOf(ref :R) :Opt[X] = backing.valueOf(ref)
-
-		override def required :RelatedEntityFactory[K, E, X, R] = this
-
+		override def nonexistent(key :K) :Nothing = throw new NonexistentEntityException(s"No entity for $this key $key.")
+		override def nonexistent :Nothing = throw new NonexistentEntityException(toString + ": no key found")
 		override def isRequired :Boolean = true
+		override def toString = target.toString + ".required"
+	}
 
-		override def equivalencyToken :Any = backing.equivalencyToken
 
-		override def toString = backing.toString + ".required"
+	private[oldsql] case class NotRequiredRelatedEntityFactory[K, E, X, R]
+	                           (protected override val target :RelatedEntityFactory[K, E, X, R],
+	                            override val nonexistent :R)
+		extends RelatedEntityFactoryProxy[K, E, X, R]
+	{
+		override def nonexistent(key :K) :R = nonexistent
+		override def isRequired = false
+
+		override def notRequired(nonexistent :R) :RelatedEntityFactory[K, E, X, R] =
+			try {
+				if (!isRequired && nonexistent == this.nonexistent) this
+				else target.notRequired(nonexistent)
+			} catch {
+				case _ :NonexistentEntityException => target.notRequired(nonexistent)
+			}
+
+		override def toString = target.toString + ".notRequired"
 	}
 
 

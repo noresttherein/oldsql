@@ -464,6 +464,11 @@ object Buff {
 	/** A flag signifying that mapped values can be null. */
 	case object Nullable extends FlagBuffType with NonCascading
 
+	/** A flag signifying that mapped values cannot be null. This is the default behaviour, so this buff will be
+	  * superfluous in most circumstances. It may be useful however to annul the `Nullable` buff.
+	  */
+	case object NotNull extends ComboFlag(false)(Nullable)
+
 
 
 	/** Marks that a column/component ''must'' be included as part of the ''where'' clause of any update statement. */

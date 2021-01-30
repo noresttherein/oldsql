@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{MissingKeyException, NonexistentEntityException}
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Derived, Nonexistent, Present}
-import net.noresttherein.oldsql.model.KinFactory.RequiredKinFactoryDecorator
+import net.noresttherein.oldsql.model.KinFactory.{DerivedKinFactory, NotRequiredKinFactoryDecorator, RequiredKinFactoryDecorator}
 import net.noresttherein.oldsql.morsels.Lazy
 
 
@@ -155,6 +155,24 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 	override def required :GenericKinFactory[K, E, X, R] =
 		if (isRequired) this else new RequiredKinFactoryDecorator(this)
 
+
+	/** A proxy to this factory whose [[net.noresttherein.oldsql.model.GenericKinFactory.isRequired isRequired]]
+	  * flag is `false` and which uses [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]] as
+	  * its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]] value. Note that this
+	  * is a departure from the contract of `RelatedEntityFactory` in which the `nonexistent` value was the same;
+	  * the result however is that this method never throws a `NonexistentEntityException`.
+	  */
+	override def notRequired :KinFactory[K, E, X] =
+		if (isRequired) new NotRequiredKinFactoryDecorator(this, Nonexistent()) else this
+
+	override def notRequired(nonexistent :Kin[X]) :KinFactory[K, E, X] = {
+		val same = try { nonexistent == this.nonexistent } catch { case _ :NonexistentEntityException => false }
+		if (!isRequired && same) this
+		else if (!isRequired && nonexistent == Nonexistent()) notRequired //because it is often overriden
+		else new NotRequiredKinFactoryDecorator(this, nonexistent)
+	}
+
+
 	//new methods
 	/** Attempts to convert a given `Kin` to the specific `Kin` type `R` produced by this factory.
 	  * Returned option is non-empty if the key can be retrieved from `kin`. The `Kin` itself inside the
@@ -163,6 +181,7 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 	def adapt(kin :Kin[X]) :Opt[R] =
 		unapply(kin) map { key => apply(key, kin.toOption) } orElse kin.opt.map(present)
 
+//	def derived :DerivedKinFactory[K, E, X]
 
 	/** Return a factory creating `Kin` for type `Y`, where `Y` is another composite type for the target entity `E`. */
 	def as[Y](implicit composition :Y ComposedOf E) :KinFactory[K, E, Y]
@@ -181,8 +200,8 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 
 
 
-/**
-  * @author Marcin Mościcki
+/** Namespace for general use implementations of [[net.noresttherein.oldsql.model.GenericKinFactory GenericKinFactory]]
+  * and base traits/classes for other implementations.
   */
 object KinFactory {
 
@@ -242,13 +261,15 @@ object KinFactory {
 		extends BaseKinFactory[K, E, X] with HigherKindKinFactory[K, E, X, Derived.Of[E]#Kin]
 		   with RequiredKinFactory[K, E, X, Derived[E, X]]
 	{
-		override def apply(key :K, value :Option[X]) :Derived[E, X] = delay(key, value)
-
 		override def present(value :X) :Derived[E, X] = Derived.present(value)
+//		override def derived :DerivedKinFactory[K, E, X] = this
 	}
 
 
 
+	/** A mixin trait which makes any [[net.noresttherein.oldsql.model.GenericKinFactory GenericKinFactory]]
+	  * not [[net.noresttherein.oldsql.model.RelatedEntityFactory.isRequired required]].
+	  */
 	trait RequiredKinFactory[K, E, X, +R <: Kin[X]] extends GenericKinFactory[K, E, X, R] {
 		override def absent(key :K) :R = missing(key)
 
@@ -294,7 +315,7 @@ object KinFactory {
 		override def optionalKeys(nonexistent :Kin[X]) :RelatedEntityFactory[Option[K], E, X, Kin[X]] =
 			target.optionalKeys(nonexistent)
 		override def optionalKeys :RelatedEntityFactory[Option[K], E, X, Kin[X]] = target.optionalKeys
-		override def optional :RelatedEntityFactory[Option[K], E, X, Option[Kin[X]]] = target.optional
+		override def lift :RelatedEntityFactory[Option[K], E, X, Option[Kin[X]]] = target.lift
 		override def required :GenericKinFactory[K, E, X, R] = target.required
 		override def isRequired :Boolean = target.isRequired
 
@@ -319,6 +340,9 @@ object KinFactory {
 	private[oldsql] class RequiredKinFactoryDecorator[K, E, X, +R <: Kin[X]]
 	                                                 (protected override val target :GenericKinFactory[K, E, X, R])
 		extends KinFactoryProxy[K, E, X, R] with RequiredKinFactory[K, E, X, R]
+	{
+		override def toString = target.toString + ".required"
+	}
 
 	private[oldsql] class HigherKindRequiredKinFactory[K, E, X, +R[T] <: Kin[T]]
 	                                                  (protected override val target :HigherKindKinFactory[K, E, X, R])
@@ -326,6 +350,17 @@ object KinFactory {
 		   with RequiredKinFactory[K, E, X, R[X]]
 	{
 		override def as[Y](implicit composition :Y ComposedOf E) :HigherKindKinFactory[K, E, Y, R] = target.as[Y]
+		override def toString = target.toString + ".required"
+	}
+
+
+	private[oldsql] class NotRequiredKinFactoryDecorator[K, E, X, +R <: Kin[X]]
+	                      (protected override val target :GenericKinFactory[K, E, X, R], override val nonexistent :R)
+		extends KinFactoryProxy[K, E, X, R]
+	{
+		override def nonexistent(key :K) :R = nonexistent
+		override def isRequired = false
+		override def toString = target.toString + ".notRequired"
 	}
 
 

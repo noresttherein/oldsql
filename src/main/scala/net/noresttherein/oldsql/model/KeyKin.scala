@@ -85,9 +85,42 @@ object KeyKin {
 		}
 
 
+	/** A factory of references to entity of type `E` by keys `K` in some unspecified manner, which must
+	  * be known to the client code from context. Returned factory creates instances
+	  * of [[net.noresttherein.oldsql.model.Kin Kin]]`[P]`, but the value type can be changed
+	  * to any [[net.noresttherein.oldsql.model.ComposedOf composite]] of `P`
+	  * with its [[net.noresttherein.oldsql.model.GenericKinFactory.as as]] and
+	  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]] methods. Note that this factory is not simply
+	  * a supertype of the 'real' factory [[net.noresttherein.oldsql.model.KeyKin.required required]],
+	  * as it is ''not required'' - its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]]
+	  * method returns [[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]] kin instead of throwing
+	  * a `NonexistentEntityException` as the latter one.
+	  * @param ensign a discriminator value embedded in every kin in order to distinguish between instances
+	  *               having different interpretations (different ways of interpreting the key `K`)
+	  * @param key    an extractor function for keys of referenced entities `E`.
+	  * @see [[net.noresttherein.oldsql.model.KeyKin.required[K,E]* apply]]`(ensign)(key)`.
+	  */
 	def apply[K, E](ensign :Ensign[K])(key :E => Option[K]) :KinFactory[K, E, E] =
 		new KeyKinFactory[K, E, E](key)(ensign, ComposedOf.itself)
 
+	/** A factory of references to entity of type `E` by keys `K` in some unspecified manner, which must
+	  * be known to the client code from context.
+	  * Returned factory creates instances of [[net.noresttherein.oldsql.model.Kin.One One]]`[E]`,
+	  * but the value type can be changed to any [[net.noresttherein.oldsql.model.ComposedOf composite]] of `E`
+	  * with its [[net.noresttherein.oldsql.model.GenericKinFactory.as as]] and
+	  * [[net.noresttherein.oldsql.model.GenericKinFactory.in in]] methods. As this factory,
+	  * and all obtained through it by adapting to other composite types, create only instances
+	  * of [[net.noresttherein.oldsql.model.Kin.Derived Derived]] kin, it is automatically
+	  * [[net.noresttherein.oldsql.model.RelatedEntityFactory.isRequired required]]:
+	  * its [[net.noresttherein.oldsql.model.GenericKinFactory.nonexistent nonexistent]] method
+	  * throws a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]].
+	  * @param ensign a discriminator value embedded in every kin in order to distinguish between instances
+	  *               having different interpretations (different ways of interpreting the key `K`)
+	  * @param key    an extractor function for keys of referenced entities `E`.
+	  * @see [[net.noresttherein.oldsql.model.KeyKin.apply[K,E]* apply]]`(ensign)(key)`.
+	  */
+	def required[K, E](ensign :Ensign[K])(key :E => Option[K]) :DerivedKinFactory[K, E, E] =
+		new DerivedKeyKinFactory[K, E, E](ensign, key)
 
 
 	/** An ensign manifesting the affiliation of a [[net.noresttherein.oldsql.model.KeyKin KeyKin]]: all
@@ -202,10 +235,10 @@ object KeyKin {
 		override type Key = K
 
 		override def properties[E, X, C](prop :PropertyPath[E, X], as :C ComposableFrom X)
-		                                (implicit decomposition :T DecomposableTo E) :Derived[E, C] =
-			new EagerKeyKin(ensign, key, toOption.map(t => as(decomposition(t).map(prop.fun)))) with Derived[E, C] {
-				override def composition = ComposableFrom.Properties(prop)(as)
-				override def items = outer.toOption.map(decomposition(_))
+		                                (implicit decomposition :T DecomposableTo E) :Derived[X, C] =
+			new EagerKeyKin(ensign, key, toOption.map(t => as(decomposition(t).map(prop.fun)))) with Derived[X, C] {
+				override def composition = as //ComposableFrom.Properties(prop)(as)
+				override def items = outer.toOption.map(decomposition(_).map(prop.fun))
 			}
 	}
 
@@ -216,7 +249,8 @@ object KeyKin {
 
 
 
-	class KeyKinFactory[K, E, T](key :E => Option[K])(implicit ensign :Ensign[K], override val result :T ComposedOf E)
+	private class KeyKinFactory[K, E, T](key :E => Option[K])
+	                                    (implicit ensign :Ensign[K], override val result :T ComposedOf E)
 		extends BaseKinFactory[K, E, T]
 	{
 		override def delay(key :K, value : => Option[T]) :Kin[T] = KeyKin.delay(ensign, key, value)
@@ -256,8 +290,8 @@ object KeyKin {
 
 
 
-	class DerivedKeyKinFactory[K, E, T](ensign :Ensign[K], key :E => Option[K])
-	                                   (implicit override val result :T ComposedOf E)
+	private class DerivedKeyKinFactory[K, E, T](ensign :Ensign[K], key :E => Option[K])
+	                                           (implicit override val result :T ComposedOf E)
 		extends BaseDerivedKinFactory[K, E, T]
 	{
 		override def delay(key :K, value : => Option[T]) :DerivedKeyKin[K, E, T] = ensign.delay(key, value)
@@ -272,6 +306,8 @@ object KeyKin {
 				case Got(x) => keyFor(x)
 				case _ => Lack
 			})
+
+		override def notRequired = new KeyKinFactory[K, E, T](key)(ensign, result)
 
 		override def as[Y](implicit composition :Y ComposedOf E) :DerivedKinFactory[K, E, Y] =
 			new DerivedKeyKinFactory[K, E, Y](ensign, key)

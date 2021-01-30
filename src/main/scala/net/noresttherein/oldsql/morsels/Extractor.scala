@@ -25,6 +25,7 @@ import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtra
 trait Extractor[-X, +Y] { self =>
 	def optional :X => Option[Y] = opt(_).toOption
 	def requisite :Opt[X => Y] = Lack
+	def force :X => Y = opt(_).get
 
 	def apply(x :X) :Y
 
@@ -112,7 +113,7 @@ object Extractor extends ImplicitExtractors {
 
 
 
-	def fromOpt[X] :Extractor[Option[X], X] = option.asInstanceOf[Extractor[Option[X], X]]
+	def fromOption[X] :Extractor[Option[X], X] = option.asInstanceOf[Extractor[Option[X], X]]
 
 	private[this] val option = new OptionExtractor[Any]
 
@@ -295,6 +296,7 @@ object Extractor extends ImplicitExtractors {
 		def getter :X => Y = apply
 		override def optional :X => Some[Y] = (x :X) => Some(apply(x))
 		override def requisite :Opt[X => Y] = Got(getter)
+		override def force :X => Y = getter
 
 		override def apply(x :X) :Y
 
@@ -447,7 +449,6 @@ object Extractor extends ImplicitExtractors {
 	/** An `Extractor` which never produces any value, always returning `None` from its `opt` method. */
 	trait EmptyExtractor[-X, +Y] extends Extractor[X, Y] {
 		override def optional :Any => Option[Nothing] = emptyOptional
-		override def requisite :Opt[Any => Nothing] = Lack
 
 		override def apply(x :X) :Y = throw new NoSuchElementException(toString + ".apply(" + x + ")")
 		override def opt(x :X) :Opt[Y] = Lack

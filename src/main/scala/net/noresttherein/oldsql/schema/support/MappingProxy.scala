@@ -486,8 +486,8 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 
 	/** A `ColumnMapping` which is a proxy to another column. All methods delegate to the corresponding methods
-	  * of `backer`, with the exception of component/column lists and extracts map, which retain the default `ColumnMapping`
-	  * implementation, declaring no components and this column as its only column.
+	  * of `backer`, with the exception of component/column lists and extracts map, which retain the default
+	  * `ColumnMapping` implementation, declaring no components and this column as its only column.
 	  * As with [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy DirectProxy]], the buffs of this
 	  * proxy are empty, but the buffs of the adapted column are used normally.
 	  * This instance must not be used as the export version of the adapted column, or infinite recursion will occur.

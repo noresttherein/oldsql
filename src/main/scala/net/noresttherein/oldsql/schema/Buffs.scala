@@ -278,23 +278,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  */
 	def unsafeCascade[S](f :T =?> S) :Buffs[S] = f.requisite match {
 		case Got(g) => cascade(g)
-		case _ => flatMap { buff =>
-			buff.cascade { subject =>
-				f.opt(subject) match {
-					case Got(g) => g
-					case _ =>
-						throw new BuffMappingFailureException(
-//							s"Failed cascading buff $buff from $tag: no value returned for $subject by $f."
-							tag.source match {
-								case Some(mapping) =>
-									s"Failed cascading buff $buff of $mapping: no value returned for $subject by $f."
-								case _ =>
-									s"Failed cascading buff $buff $tag: no value returned for $subject by $f."
-							}
-						)
-				}
-			}
-		}
+		case _ => flatMap { _.cascadeGuard(f) }
 	}
 
 

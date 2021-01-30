@@ -17,21 +17,21 @@ import net.noresttherein.oldsql.schema.ColumnMapping
 object OptionalMapping {
 	def apply[M <: RefinedMapping[Option[S], O], S, O]
 	         (body :M)(implicit nulls :NullValue[S] = NullValue.NotNull) :MappingAdapter[M, S, O] =
-		MappedMapping[M, Option[S], S, O](body, Extractor.fromOpt, Some(_:S))
+		MappedMapping[M, Option[S], S, O](body, Extractor.fromOption, Some(_:S))
 
 	def adapter[M <: RefinedMapping[T, O], T, S, O]
 	           (body :MappingAdapter[M, Option[S], O])(implicit nulls :NullValue[S] = NullValue.NotNull)
 			:MappingAdapter[M, S, O] =
-		MappedMapping.adapter[M, Option[S], S, O](body, Extractor.fromOpt, Some(_:S))
+		MappedMapping.adapter[M, Option[S], S, O](body, Extractor.fromOption, Some(_:S))
 
 	def column[M <: ColumnMapping[Option[S], O], S, O]
 	          (column :M)(implicit nulls :NullValue[S] = NullValue.NotNull) :ColumnAdapter[M, Option[S], S, O] =
-		MappedMapping.column[M, Option[S], S, O](column, Extractor.fromOpt, Some(_:S))
+		MappedMapping.column[M, Option[S], S, O](column, Extractor.fromOption, Some(_:S))
 
 	def columnAdapter[M <: ColumnMapping[T, O], T, S, O]
 	                 (column :ColumnAdapter[M, T, Option[S], O])(implicit nulls :NullValue[S] = NullValue.NotNull)
 			:ColumnAdapter[M, T, S, O] =
-		MappedMapping.columnAdapter[M, T, Option[S], S, O](column, Extractor.fromOpt, Some(_:S))
+		MappedMapping.columnAdapter[M, T, Option[S], S, O](column, Extractor.fromOption, Some(_:S))
 
 
 

@@ -4,14 +4,14 @@ import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath, RelatedEntityFactory, Restraint}
-import net.noresttherein.oldsql.model.Kin.One
+import net.noresttherein.oldsql.model.Kin.{Derived, One}
 import net.noresttherein.oldsql.model.KinFactory.DerivedKinFactory
 import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, PrimaryKeyOf}
 import net.noresttherein.oldsql.schema.Buff.{Nullable, SelectDefault}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.PrimaryKeyOf.PrimaryKeyColumnOf
 import net.noresttherein.oldsql.schema.Relation.RelVar
-import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, TableKin}
+import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityColumn, JoinedEntityComponent, JoinTableCollectionMapping, TableKin}
 
 
 
@@ -68,7 +68,7 @@ import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKey
   * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame]]
   * @see [[net.noresttherein.oldsql.schema.bases.SimpleMapping]]
   * @author Marcin Mościcki
-  */ //todo: inverse fk, optional Option[Kin] fk
+  */
 trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 
 	/** Default factory used in all foreign key and inverse foreign key mappings created by this mapping.
@@ -132,7 +132,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	  * [[net.noresttherein.oldsql.model.KinFactory.delay lazy]].
 	  */
 	protected def requiredKinFactory[M[A] <: RefinedMapping[E, A], K, E, T]
-	                                (table :RelVar[M], pk :M[_] => RefinedMapping[K, _]) 
+	                                (table :RelVar[M], pk :M[_] => RefinedMapping[K, _])
 	                                (implicit composition :T ComposedOf E, referenceType :TypeTag[E])
 			:DerivedKinFactory[K, E, T] =
 		requiredRestrainedKinFactory[M, K, E, T](table, pk)
@@ -145,8 +145,8 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			val key = pk(table.row).withOrigin[()]
 			val extract = table.row[()](key)
 			extract.requisite match {
-				case Got(property) => Kin.Restrained(Restraint.Property(property)).as[T]
-				case _ => Kin.Restrained(Restraint.Property(extract.optional).flatten).as[T]
+				case Got(property) => Kin.Restrained.required(Restraint.Property(property)).as[T]
+				case _ => Kin.Restrained.required(Restraint.Property(extract.optional).flatten).as[T]
 			}
 		}
 
@@ -154,7 +154,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                                     (table :RelVar[M], pk :M[_] => RefinedMapping[K, _])
 	                                     (implicit composition :T ComposedOf E, referenceType :TypeTag[E])
 			:DerivedKinFactory[K, E, T] =
-		KinFactory.delay { () => TableKin.one(table, pk(table.row)).as[T] }
+		KinFactory.delay { () => TableKin.required(table, pk(table.row)).as[T] }
 
 
 
@@ -163,7 +163,8 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	  * of this mapping are initialized - in practice before any column declarations.
 	  */
 	protected def columnPrefix = ""
-	
+
+	//consider: making all factory arguments lazy as in many, instead of creating lazy factories.
 	//use a differently named method so definitions in subclasses don't mess with overload rules
 	protected def fkimpl[M[A] <: RefinedMapping[E, A], K, E, X, R]
 	                    (name :String, property :S => R, buffs :Buff[R]*)
@@ -231,65 +232,65 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	/*  Not null single column foreign key as Kin[E]            */
 
 	protected def fk[M[A] <: RefinedMapping[E, A], K, E]
-	                (name :String, value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                (name :String, property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                (table :RelVar[M], key :M[_] => ColumnMapping[K, _])
 	                (implicit referencedType :TypeTag[E]) :ForeignKeyColumnMapping[M, K, Kin[E], O] =
-		fkimpl[M, K, E, E, Kin[E]](name, value, buffs :_*)(table, key, kinFactory[M, K, E, E](table, key).required)
+		fkimpl[M, K, E, E, Kin[E]](name, property, buffs :_*)(table, key, kinFactory[M, K, E, E](table, key).required)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], K, E]
-	                (name :String, value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                (name :String, property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                (key :M[_] => ColumnMapping[K, _])
 	                (implicit referencedType :TypeTag[E], table :RelVar[M]) :ForeignKeyColumnMapping[M, K, Kin[E], O] =
-		fkimpl[M, K, E, E, Kin[E]](name, value, buffs :_*)(table, key, kinFactory[M, K, E, E](table, key).required)
+		fkimpl[M, K, E, E, Kin[E]](name, property, buffs :_*)(table, key, kinFactory[M, K, E, E](table, key).required)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], E]
-	                (name :String, value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                (name :String, property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                (table :RelVar[M])
 	                (implicit referencedType :TypeTag[E], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, Kin[E], O] =
-		fkimpl[M, key.Key, E, E, Kin[E]](name, value, buffs :_*)(
+		fkimpl[M, key.Key, E, E, Kin[E]](name, property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_)).required
 		)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], E]
-	                (name :String, value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                (name :String, property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                (implicit referencedType :TypeTag[E], table :RelVar[M], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, Kin[E], O] =
-		fkimpl[M, key.Key, E, E, Kin[E]](name, value, buffs :_*)(
+		fkimpl[M, key.Key, E, E, Kin[E]](name, property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_)).required
 		)
 
 	/*  Not null single column foreign key with reflected names, as Kin[E]            */
 
 	protected def fk[M[A] <: RefinedMapping[E, A], K, E]
-	                (value :S => Kin[E], buffs :Buff[Kin[E]]*)(table :RelVar[M], key :M[_] => ColumnMapping[K, _])
+	                (property :S => Kin[E], buffs :Buff[Kin[E]]*)(table :RelVar[M], key :M[_] => ColumnMapping[K, _])
 	                (implicit entityType :TypeTag[S], referencedType :TypeTag[E])
 			:ForeignKeyColumnMapping[M, K, Kin[E], O] =
-		fkimpl[M, K, E, E, Kin[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		fkimpl[M, K, E, E, Kin[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key, kinFactory[M, K, E, E](table, key).required
 		)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], K, E]
-	                (value :S => Kin[E], buffs :Buff[Kin[E]]*)(key :M[_] => ColumnMapping[K, _])
+	                (property :S => Kin[E], buffs :Buff[Kin[E]]*)(key :M[_] => ColumnMapping[K, _])
 	                (implicit entityType :TypeTag[S], referencedType :TypeTag[E], table :RelVar[M])
 			:ForeignKeyColumnMapping[M, K, Kin[E], O] =
-		fkimpl[M, K, E, E, Kin[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		fkimpl[M, K, E, E, Kin[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key, kinFactory[M, K, E, E](table, key).required
 		)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], E]
-	                (value :S => Kin[E], buffs :Buff[Kin[E]]*)(table :RelVar[M])
+	                (property :S => Kin[E], buffs :Buff[Kin[E]]*)(table :RelVar[M])
 	                (implicit entityType :TypeTag[S], referencedType :TypeTag[E], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, Kin[E], O] =
-		fkimpl[M, key.Key, E, E, Kin[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		fkimpl[M, key.Key, E, E, Kin[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_)).required
 		)
 
 	protected def fk[M[A] <: RefinedMapping[E, A], E]
-	                (value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                (property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                (implicit entityType :TypeTag[S], referencedType :TypeTag[E],
 	                 table :RelVar[M], key :PrimaryKeyColumnOf[M]) :ForeignKeyColumnMapping[M, key.Key, Kin[E], O] =
-		fkimpl[M, key.Key, E, E, Kin[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		fkimpl[M, key.Key, E, E, Kin[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_)).required
 		)
 
@@ -427,10 +428,10 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 
 
 	protected def optfkimpl[M[A] <: RefinedMapping[E, A], K, E, T, R]
-	                       (name :String, value :S => R, buffs :Buff[R]*)
+	                       (name :String, property :S => R, buffs :Buff[R]*)
 	                       (table :RelVar[M], pk :M[_] => ColumnMapping[K, _], reference :RelatedEntityFactory[K, E, T, R])
-			:ForeignKeyColumnMapping[M, K, R, O] =
-		fkimpl[M, K, E, T, R](name, value, SelectDefault(reference.nonexistent) +: buffs :_*)(table, pk, reference) //todo: Nullable on the inner column
+			:ForeignKeyColumnMapping[M, K, R, O] =  //todo: Nullable on the inner column
+		fkimpl[M, K, E, T, R](name, property, SelectDefault(reference.nonexistent) +: buffs :_*)(table, pk, reference)
 
 	/*  Nullable single column foreign key, using an arbitrary RelatedEntityFactory            */
 
@@ -493,65 +494,65 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	/*  Nullable single column foreign key, as Kin[E]            */
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], K, E]
-	                   (name :String, value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                   (name :String, property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                   (table :RelVar[M], key :M[_] => ColumnMapping[K, _])
 	                   (implicit referencedType :TypeTag[E]) :ForeignKeyColumnMapping[M, K, Kin[E], O] =
-		optfkimpl[M, K, E, E, Kin[E]](name, value, buffs :_*)(table, key, kinFactory[M, K, E, E](table, key))
+		optfkimpl[M, K, E, E, Kin[E]](name, property, buffs :_*)(table, key, kinFactory[M, K, E, E](table, key))
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], K, E]
-	                   (name :String, value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                   (name :String, property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                   (key :M[_] => ColumnMapping[K, _])
 	                   (implicit referencedType :TypeTag[E], table :RelVar[M]) :ForeignKeyColumnMapping[M, K, Kin[E], O] =
-		optfkimpl[M, K, E, E, Kin[E]](name, value, buffs :_*)(table, key, kinFactory[M, K, E, E](table, key))
+		optfkimpl[M, K, E, E, Kin[E]](name, property, buffs :_*)(table, key, kinFactory[M, K, E, E](table, key))
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], E]
-	                   (name :String, value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                   (name :String, property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                   (table :RelVar[M])
 	                   (implicit referencedType :TypeTag[E], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, Kin[E], O] =
-		optfkimpl[M, key.Key, E, E, Kin[E]](name, value, buffs :_*)(
+		optfkimpl[M, key.Key, E, E, Kin[E]](name, property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_))
 		)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], E]
-	                   (name :String, value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                   (name :String, property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                   (implicit referencedType :TypeTag[E], table :RelVar[M], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, Kin[E], O] =
-		optfkimpl[M, key.Key, E, E, Kin[E]](name, value, buffs :_*)(
+		optfkimpl[M, key.Key, E, E, Kin[E]](name, property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_))
 		)
 
 	/*  Nullable single column foreign key with reflected names, as Kin[E]            */
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], K, E]
-	                   (value :S => Kin[E], buffs :Buff[Kin[E]]*)(table :RelVar[M], key :M[_] => ColumnMapping[K, _])
+	                   (property :S => Kin[E], buffs :Buff[Kin[E]]*)(table :RelVar[M], key :M[_] => ColumnMapping[K, _])
 	                   (implicit entityType :TypeTag[S], referencedType :TypeTag[E])
 			:ForeignKeyColumnMapping[M, K, Kin[E], O] =
-		optfkimpl[M, K, E, E, Kin[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		optfkimpl[M, K, E, E, Kin[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key, kinFactory[M, K, E, E](table, key)
 		)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], K, E]
-	                   (value :S => Kin[E], buffs :Buff[Kin[E]]*)(key :M[_] => ColumnMapping[K, _])
+	                   (property :S => Kin[E], buffs :Buff[Kin[E]]*)(key :M[_] => ColumnMapping[K, _])
 	                   (implicit entityType :TypeTag[S], referencedType :TypeTag[E], table :RelVar[M])
 			:ForeignKeyColumnMapping[M, K, Kin[E], O] =
-		optfkimpl[M, K, E, E, Kin[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		optfkimpl[M, K, E, E, Kin[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key, kinFactory[M, K, E, E](table, key)
 		)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], E]
-	                   (value :S => Kin[E], buffs :Buff[Kin[E]]*)(table :RelVar[M])
+	                   (property :S => Kin[E], buffs :Buff[Kin[E]]*)(table :RelVar[M])
 	                   (implicit entityType :TypeTag[S], referencedType :TypeTag[E], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, Kin[E], O] =
-		optfkimpl[M, key.Key, E, E, Kin[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		optfkimpl[M, key.Key, E, E, Kin[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_))
 		)
 
 	protected def optfk[M[A] <: RefinedMapping[E, A], E]
-	                   (value :S => Kin[E], buffs :Buff[Kin[E]]*)
+	                   (property :S => Kin[E], buffs :Buff[Kin[E]]*)
 	                   (implicit entityType :TypeTag[S], referencedType :TypeTag[E],
 	                    table :RelVar[M], key :PrimaryKeyColumnOf[M]) :ForeignKeyColumnMapping[M, key.Key, Kin[E], O] =
-		optfkimpl[M, key.Key, E, E, Kin[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		optfkimpl[M, key.Key, E, E, Kin[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key(_), kinFactory[M, key.Key, E, E](table, key(_))
 		)
 
@@ -692,65 +693,69 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	/*  Not null single column foreign key as One[E]                                                           */
 
 	protected def one[M[A] <: RefinedMapping[E, A], K, E]
-	                 (name :String, value :S => One[E], buffs :Buff[One[E]]*)
+	                 (name :String, property :S => One[E], buffs :Buff[One[E]]*)
 	                 (table :RelVar[M], key :M[_] => ColumnMapping[K, _])
 	                 (implicit referencedType :TypeTag[E]) :ForeignKeyColumnMapping[M, K, One[E], O] =
-		fkimpl[M, K, E, E, One[E]](name, value, buffs :_*)(table, key, requiredKinFactory[M, K, E, E](table, key).narrow)
+		fkimpl[M, K, E, E, One[E]](name, property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
+		)
 
 	protected def one[M[A] <: RefinedMapping[E, A], K, E]
-	                 (name :String, value :S => One[E], buffs :Buff[One[E]]*)
+	                 (name :String, property :S => One[E], buffs :Buff[One[E]]*)
 	                 (key :M[_] => ColumnMapping[K, _])
 	                 (implicit referencedType :TypeTag[E], table :RelVar[M]) :ForeignKeyColumnMapping[M, K, One[E], O] =
-		fkimpl[M, K, E, E, One[E]](name, value, buffs :_*)(table, key, requiredKinFactory[M, K, E, E](table, key).narrow)
+		fkimpl[M, K, E, E, One[E]](name, property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
+		)
 
 	protected def one[M[A] <: RefinedMapping[E, A], E]
-	                 (name :String, value :S => One[E], buffs :Buff[One[E]]*)
-	                 (table :RelVar[M])
+	                 (name :String, property :S => One[E], buffs :Buff[One[E]]*)(table :RelVar[M])
 	                 (implicit referencedType :TypeTag[E], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, One[E], O] =
-		fkimpl[M, key.Key, E, E, One[E]](name, value, buffs :_*)(
+		fkimpl[M, key.Key, E, E, One[E]](name, property, buffs :_*)(
 			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
 		)
 
 	protected def one[M[A] <: RefinedMapping[E, A], E]
-	                 (name :String, value :S => One[E], buffs :Buff[One[E]]*)
+	                 (name :String, property :S => One[E], buffs :Buff[One[E]]*)
 	                 (implicit referencedType :TypeTag[E], table :RelVar[M], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, One[E], O] =
-		fkimpl[M, key.Key, E, E, One[E]](name, value, buffs :_*)(
+		fkimpl[M, key.Key, E, E, One[E]](name, property, buffs :_*)(
 			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
 		)
 
 	/*  Not null single column foreign key with a reflected name, as One[E]            */
 
 	protected def one[M[A] <: RefinedMapping[E, A], K, E]
-	                 (value :S => One[E], buffs :Buff[One[E]]*)(table :RelVar[M], key :M[_] => ColumnMapping[K, _])
+	                 (property :S => One[E], buffs :Buff[One[E]]*)(table :RelVar[M], key :M[_] => ColumnMapping[K, _])
 	                 (implicit entityType :TypeTag[S], referencedType :TypeTag[E])
 			:ForeignKeyColumnMapping[M, K, One[E], O] =
-		fkimpl[M, K, E, E, One[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		fkimpl[M, K, E, E, One[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
 		)
 
 	protected def one[M[A] <: RefinedMapping[E, A], K, E]
-	                 (value :S => One[E], buffs :Buff[One[E]]*)(key :M[_] => ColumnMapping[K, _])
+	                 (property :S => One[E], buffs :Buff[One[E]]*)(key :M[_] => ColumnMapping[K, _])
 	                 (implicit entityType :TypeTag[S], referencedType :TypeTag[E], table :RelVar[M])
 			:ForeignKeyColumnMapping[M, K, One[E], O] =
-		fkimpl[M, K, E, E, One[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		fkimpl[M, K, E, E, One[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
 		)
 
 	protected def one[M[A] <: RefinedMapping[E, A], E]
-	                 (value :S => One[E], buffs :Buff[One[E]]*)(table :RelVar[M])
+	                 (property :S => One[E], buffs :Buff[One[E]]*)(table :RelVar[M])
 	                 (implicit entityType :TypeTag[S], referencedType :TypeTag[E], key :PrimaryKeyColumnOf[M])
 			:ForeignKeyColumnMapping[M, key.Key, One[E], O] =
-		fkimpl[M, key.Key, E, E, One[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+		fkimpl[M, key.Key, E, E, One[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
 		)
 
 	protected def one[M[A] <: RefinedMapping[E, A], E]
-	                 (value :S => One[E], buffs :Buff[One[E]]*)
+	                 (property :S => One[E], buffs :Buff[One[E]]*)
 	                 (implicit entityType :TypeTag[S], referencedType :TypeTag[E],
-	                  table :RelVar[M], key :PrimaryKeyColumnOf[M]) :ForeignKeyColumnMapping[M, key.Key, One[E], O] =
-		fkimpl[M, key.Key, E, E, One[E]](PropertyPath.nameOf(value), value, buffs :_*)(
+	                  table :RelVar[M], key :PrimaryKeyColumnOf[M])
+			:ForeignKeyColumnMapping[M, key.Key, One[E], O] =
+		fkimpl[M, key.Key, E, E, One[E]](PropertyPath.nameOf(property), property, buffs :_*)(
 			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
 		)
 
@@ -761,20 +766,23 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	protected def one[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
 	                 (property :S => One[E], buffs :Buff[One[E]]*)
 	                 (table :RelVar[M], key :M[_] => C[_])(rename :String => String)
-	                 (implicit referencedType :TypeTag[E]) :ForeignKeyMapping[M, C, K, One[E], O] =
+	                 (implicit referencedType :TypeTag[E])
+			:ForeignKeyMapping[M, C, K, One[E], O] =
 		fkimpl[M, C, K, E, E, One[E]](property, buffs :_*)(
 			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
 		)(rename)
 
 	protected def one[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
-	                 (property :S => One[E], buffs :Buff[One[E]]*)(key :M[_] => C[_])(rename :String => String)
+	                 (property :S => One[E], buffs :Buff[One[E]]*)
+	                 (key :M[_] => C[_])(rename :String => String)
 	                 (implicit referenceType :TypeTag[E], table :RelVar[M]) :ForeignKeyMapping[M, C, K, One[E], O] =
 		fkimpl[M, C, K, E, E, One[E]](property, buffs :_*)(
 			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
 		)(rename)
 
 	protected def one[M[A] <: RefinedMapping[E, A], E]
-	                 (property :S => One[E], buffs :Buff[One[E]]*)(table :RelVar[M])(rename :String => String)
+	                 (property :S => One[E], buffs :Buff[One[E]]*)
+	                 (table :RelVar[M])(rename :String => String)
 	                 (implicit referenceType :TypeTag[E], key :PrimaryKeyOf[M])
 			:ForeignKeyMapping[M, key.PKMapping, key.Key, One[E], O] =
 		fkimpl[M, key.PKMapping, key.Key, E, E, One[E]](property, buffs :_*)(
@@ -801,7 +809,8 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 
 	protected def one[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
 	                 (property :S => One[E], columnPrefix :String, buffs :Buff[One[E]]*)(key :M[_] => C[_])
-	                 (implicit referenceType :TypeTag[E], table :RelVar[M]) :ForeignKeyMapping[M, C, K, One[E], O] =
+	                 (implicit referenceType :TypeTag[E], table :RelVar[M])
+			:ForeignKeyMapping[M, C, K, One[E], O] =
 		fkimpl[M, C, K, E, E, One[E]](property, buffs :_*)(
 			table, key, requiredKinFactory[M, K, E, E](table, key).narrow
 		)(this.columnPrefix + columnPrefix + _)
@@ -820,6 +829,154 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 			:ForeignKeyMapping[M, key.PKMapping, key.Key, One[E], O] =
 		fkimpl[M, key.PKMapping, key.Key, E, E, One[E]](property, buffs :_*)(
 			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow
+		)(this.columnPrefix + columnPrefix + _)
+
+
+
+
+	/*  Not null single column foreign key as Option[One[E]]                                            */
+	//consider: renaming to optone
+	protected def optone[M[A] <: RefinedMapping[E, A], K, E]
+	                    (name :String, property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)
+	                    (table :RelVar[M], key :M[_] => ColumnMapping[K, _])
+	                    (implicit referencedType :TypeTag[E]) :ForeignKeyColumnMapping[M, K, Option[One[E]], O] =
+		optfkimpl[M, K, E, E, Option[One[E]]](name, property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow.optional
+		)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], K, E]
+	                    (name :String, property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)
+	                    (key :M[_] => ColumnMapping[K, _])
+	                    (implicit referencedType :TypeTag[E], table :RelVar[M])
+			:ForeignKeyColumnMapping[M, K, Option[One[E]], O] =
+		optfkimpl[M, K, E, E, Option[One[E]]](name, property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow.optional
+		)
+
+protected def optone[M[A] <: RefinedMapping[E, A], E]
+                (name :String, property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)(table :RelVar[M])
+	                    (implicit referencedType :TypeTag[E], key :PrimaryKeyColumnOf[M])
+			:ForeignKeyColumnMapping[M, key.Key, Option[One[E]], O] =
+		optfkimpl[M, key.Key, E, E, Option[One[E]]](name, property, buffs :_*)(
+			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow.optional
+		)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], E]
+	                    (name :String, property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)
+	                    (implicit referencedType :TypeTag[E], table :RelVar[M], key :PrimaryKeyColumnOf[M])
+			:ForeignKeyColumnMapping[M, key.Key, Option[One[E]], O] =
+		optfkimpl[M, key.Key, E, E, Option[One[E]]](name, property, buffs :_*)(
+			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow.optional
+		)
+
+	/*  Not null single column foreign key with a reflected name, as Option[One[E]]            */
+
+	protected def optone[M[A] <: RefinedMapping[E, A], K, E]
+	                    (property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)
+	                    (table :RelVar[M], key :M[_] => ColumnMapping[K, _])
+	                    (implicit entityType :TypeTag[S], referencedType :TypeTag[E])
+			:ForeignKeyColumnMapping[M, K, Option[One[E]], O] =
+		optfkimpl[M, K, E, E, Option[One[E]]](PropertyPath.nameOf(property), property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow.optional
+		)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], K, E]
+	                    (property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)(key :M[_] => ColumnMapping[K, _])
+	                    (implicit entityType :TypeTag[S], referencedType :TypeTag[E], table :RelVar[M])
+			:ForeignKeyColumnMapping[M, K, Option[One[E]], O] =
+		optfkimpl[M, K, E, E, Option[One[E]]](PropertyPath.nameOf(property), property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow.optional
+		)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], E]
+	                    (property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)(table :RelVar[M])
+	                    (implicit entityType :TypeTag[S], referencedType :TypeTag[E], key :PrimaryKeyColumnOf[M])
+			:ForeignKeyColumnMapping[M, key.Key, Option[One[E]], O] =
+		optfkimpl[M, key.Key, E, E, Option[One[E]]](PropertyPath.nameOf(property), property, buffs :_*)(
+			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow.optional
+		)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], E]
+	                    (property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)
+	                    (implicit entityType :TypeTag[S], referencedType :TypeTag[E],
+	                     table :RelVar[M], key :PrimaryKeyColumnOf[M])
+			:ForeignKeyColumnMapping[M, key.Key, Option[One[E]], O] =
+		optfkimpl[M, key.Key, E, E, Option[One[E]]](PropertyPath.nameOf(property), property, buffs :_*)(
+			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow.optional
+		)
+
+
+
+	/*  Not null multi column foreign key as Option[One[E]]            */
+
+	protected def optone[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
+	                    (property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)
+	                    (table :RelVar[M], key :M[_] => C[_])(rename :String => String)
+	                    (implicit referencedType :TypeTag[E]) :ForeignKeyMapping[M, C, K, Option[One[E]], O] =
+		optfkimpl[M, C, K, E, E, Option[One[E]]](property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow.optional
+		)(rename)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
+	                    (property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)
+	                    (key :M[_] => C[_])(rename :String => String)
+	                    (implicit referenceType :TypeTag[E], table :RelVar[M])
+			:ForeignKeyMapping[M, C, K, Option[One[E]], O] =
+		optfkimpl[M, C, K, E, E, Option[One[E]]](property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow.optional
+		)(rename)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], E]
+	                    (property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)
+	                    (table :RelVar[M])(rename :String => String)
+	                    (implicit referenceType :TypeTag[E], key :PrimaryKeyOf[M])
+			:ForeignKeyMapping[M, key.PKMapping, key.Key, Option[One[E]], O] =
+		optfkimpl[M, key.PKMapping, key.Key, E, E, Option[One[E]]](property, buffs :_*)(
+			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow.optional
+		)(rename)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], E]
+	                    (property :S => Option[One[E]], buffs :Buff[Option[One[E]]]*)(rename :String => String)
+	                    (implicit referenceType :TypeTag[E], table :RelVar[M], key :PrimaryKeyOf[M])
+			:ForeignKeyMapping[M, key.PKMapping, key.Key, Option[One[E]], O] =
+		optfkimpl[M, key.PKMapping, key.Key, E, E, Option[One[E]]](property, buffs :_*)(
+			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow.optional
+		)(rename)
+
+	/*  Not null multi column foreign key with a column prefix, as Option[One[E]]            */
+
+	protected def optone[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
+	                    (property :S => Option[One[E]], columnPrefix :String, buffs :Buff[Option[One[E]]]*)
+	                    (table :RelVar[M], key :M[_] => C[_])
+	                    (implicit referencedType :TypeTag[E]) :ForeignKeyMapping[M, C, K, Option[One[E]], O] =
+		optfkimpl[M, C, K, E, E, Option[One[E]]](property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow.optional
+		)(this.columnPrefix + columnPrefix + _)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E]
+	                    (property :S => Option[One[E]], columnPrefix :String, buffs :Buff[Option[One[E]]]*)
+	                    (key :M[_] => C[_])
+	                    (implicit referenceType :TypeTag[E], table :RelVar[M])
+				:ForeignKeyMapping[M, C, K, Option[One[E]], O] =
+		optfkimpl[M, C, K, E, E, Option[One[E]]](property, buffs :_*)(
+			table, key, requiredKinFactory[M, K, E, E](table, key).narrow.optional
+		)(this.columnPrefix + columnPrefix + _)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], E]
+	                    (property :S => Option[One[E]], columnPrefix :String, buffs :Buff[Option[One[E]]]*)
+	                    (table :RelVar[M])
+	                    (implicit referenceType :TypeTag[E], key :PrimaryKeyOf[M])
+			:ForeignKeyMapping[M, key.PKMapping, key.Key, Option[One[E]], O] =
+		optfkimpl[M, key.PKMapping, key.Key, E, E, Option[One[E]]](property, buffs :_*)(
+			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow.optional
+		)(this.columnPrefix + columnPrefix + _)
+
+	protected def optone[M[A] <: RefinedMapping[E, A], E]
+	                    (property :S => Option[One[E]], columnPrefix :String, buffs :Buff[Option[One[E]]]*)
+	                    (implicit referenceType :TypeTag[E], table :RelVar[M], key :PrimaryKeyOf[M])
+			:ForeignKeyMapping[M, key.PKMapping, key.Key, Option[One[E]], O] =
+		optfkimpl[M, key.PKMapping, key.Key, E, E, Option[One[E]]](property, buffs :_*)(
+			table, key(_), requiredKinFactory[M, key.Key, E, E](table, key(_)).narrow.optional
 		)(this.columnPrefix + columnPrefix + _)
 
 
@@ -967,13 +1124,13 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                           (property :S => R, key :ColumnMapping[K, O], reference :RelatedEntityFactory[K, E, X, R],
 	                            buffs :Buff[R]*)
 	                           (table :RelVar[M], fk :M[_] => ForeignKeyColumnMapping[MappingAt, K, _, _])
-			:ForeignKeyColumnMapping[M, K, R, O]
+			:JoinedEntityColumn[M, K, R, O]
 
 	protected def inverseFK[M[A] <: RefinedMapping[E, A], K, E, X, R]
 	                       (property :S => R, key :ColumnMapping[K, O], reference :RelatedEntityFactory[K, E, X, R],
 	                        buffs :Buff[R]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyColumnMapping[MappingAt, K, _, _])
-			:ForeignKeyColumnMapping[M, K, R, O] =
+			:JoinedEntityColumn[M, K, R, O] =
 		inverseFKImpl[M, K, E, X, R](property, key, reference, buffs :_*)(table, fk)
 
 	protected def inverseFK[T[A] <: RefinedMapping[S, A], M[A] <: RefinedMapping[E, A], K, E, X, R]
@@ -981,7 +1138,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyColumnMapping[T, K, _, _])
 	                       (implicit referencedType :TypeTag[E],
 	                        pk :PrimaryKeyOf[T] { type PKMapping[A] <: ColumnMapping[K, A] }, self :this.type <:< T[O])
-			:ForeignKeyColumnMapping[M, K, R, O] =
+			:JoinedEntityColumn[M, K, R, O] =
 		inverseFKImpl[M, K, E, X, R](property, pk(self(this)), reference, buffs :_*)(table, fk)
 */
 
@@ -1012,19 +1169,19 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	protected def inverseFKImpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, X, R]
 	                           (property :S => R, key :C[O], reference :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
 	                           (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
-			:ForeignKeyMapping[M, C, K, R, O]
+			:JoinedEntityComponent[M, C, K, R, O]
 
 	protected def inverseFK[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, X, R]
 	                       (property :S => R, key :C[O], reference :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
-			:ForeignKeyMapping[M, C, K, R, O] =
+			:JoinedEntityComponent[M, C, K, R, O] =
 		inverseFKImpl[M, C, K, E, X, R](property, key, reference, buffs :_*)(table, fk)
 
 	protected def inverseFK[T[A] <: MappingAt[A], M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, X, R]
 	                       (property :S => R, reference :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[T, C, K, _, _])
 	                       (implicit pk :PrimaryKeyOf[T] { type PKMapping[A] = C[A] }, self :this.type <:< T[O])
-			:ForeignKeyMapping[M, C, K, R, O] =
+			:JoinedEntityComponent[M, C, K, R, O] =
 		inverseFKImpl[M, C, K, E, X, R](property, pk(self(this)), reference, buffs :_*)(table, fk)
 
 	/* Target of a multi column foreign key, as Kin[X]                                     */
@@ -1033,7 +1190,7 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                       (property :S => Kin[X], key :C[O], buffs :Buff[Kin[X]]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
 	                       (implicit referencedType :TypeTag[E], composition :X ComposedOf E)
-			:ForeignKeyMapping[M, C, K, Kin[X], O] =
+			:JoinedEntityComponent[M, C, K, Kin[X], O] =
 		inverseFKImpl[M, C, K, E, X, Kin[X]](
 			property, key, kinFactory[M, K, E, X](table, fk(_).key), buffs :_*
 		)(table, fk)
@@ -1043,9 +1200,116 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[T, C, K, _, _])
 	                       (implicit referencedType :TypeTag[E], pk :PrimaryKeyOf[T] { type PKMapping[A] = C[A] },
 	                        self :this.type <:< T[O], composition :X ComposedOf E)
-			:ForeignKeyMapping[M, C, K, Kin[X], O] =
+			:JoinedEntityComponent[M, C, K, Kin[X], O] =
 		inverseFKImpl[M, C, K, E, X, Kin[X]](
 			property, pk(self(this)), kinFactory[M, K, E, X](table, fk(_).key), buffs :_*
 		)(table, fk)
 
+
+
+
+	/* Many to many as Kin[X] */
+
+	protected def kinimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		                  C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                     (property :S => Kin[X], joinTable :RelVar[J],
+	                      source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                      target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	                      linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
+	                      buffs :Buff[Kin[X]]*)
+	                     (implicit composite :X ComposedOf E, link :TypeTag[JE])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Kin[X], O]
+
+	protected def kin[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		              C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                 (property :S => Kin[X], joinTable :RelVar[J],
+	                  source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                  target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	                  linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
+	                  buffs :Buff[Kin[X]]*)
+	                 (implicit composite :X ComposedOf E, link :TypeTag[JE])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Kin[X], O] =
+		kinimpl(property, joinTable, source, target, linkKin, targetKin, buffs :_*)
+
+	protected def kin[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		              C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                 (property :S => Kin[X], joinTable :RelVar[J],
+	                  source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                  target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	                  targetKin: => KinFactory[TK, E, E], buffs :Buff[Kin[X]]*)
+	                 (implicit composite :X ComposedOf E, link :TypeTag[JE])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Kin[X], O] =
+	{
+		val linkKin = requiredKinFactory[J, K, JE, Iterable[JE]](joinTable, _ => source(joinTable[JO]).key)
+		kinimpl(property, joinTable, source, target, linkKin, targetKin, buffs :_*)
+	}
+
+	protected def kin[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		              C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                 (property :S => Kin[X], joinTable :RelVar[J],
+	                  source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                  target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO], buffs :Buff[Kin[X]]*)
+	                 (implicit composite :X ComposedOf E, linkTag :TypeTag[JE], targetTag :TypeTag[E])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Kin[X], O] =
+	{
+		val targetFK = target(joinTable[JO])
+		val linkKin = requiredKinFactory[J, K, JE, Iterable[JE]](joinTable, _ => source(joinTable[JO]).key)
+		val targetKin = requiredKinFactory[T, TK, E, E](targetFK.table, _ => targetFK.target)
+		kinimpl(property, joinTable, source, target, linkKin, targetKin, buffs :_*)
+	}
+
+
+
+	/* Many to many as Derived[E, X] */
+
+	protected def manyimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		                   C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                      (property :S => Derived[E, X], joinTable :RelVar[J],
+	                       source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                       target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	                       linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
+	                       buffs :Buff[Derived[E, X]]*)
+	                      (implicit composite :X ComposedOf E, link :TypeTag[JE])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Derived[E, X], O]
+
+	protected def many[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		               C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                  (property :S => Derived[E, X], joinTable :RelVar[J],
+	                   source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                   target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	                   linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
+	                   buffs :Buff[Derived[E, X]]*)
+	                  (implicit composite :X ComposedOf E, link :TypeTag[JE])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Derived[E, X], O] =
+		manyimpl(property, joinTable, source, target, linkKin, targetKin, buffs :_*)
+
+	protected def many[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		               C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                  (property :S => Derived[E, X], joinTable :RelVar[J],
+	                   source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                   target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	                   targetKin: => KinFactory[TK, E, E], buffs :Buff[Derived[E, X]]*)
+	                  (implicit composite :X ComposedOf E, link :TypeTag[JE])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Derived[E, X], O] =
+	{
+		val linkKin = requiredKinFactory[J, K, JE, Iterable[JE]](joinTable, _ => source(joinTable[JO]).key)
+		manyimpl(property, joinTable, source, target, linkKin, targetKin, buffs :_*)
+	}
+
+	protected def many[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		               C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                  (property :S => Derived[E, X], joinTable :RelVar[J],
+	                   source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                   target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO], buffs :Buff[Derived[E, X]]*)
+	                  (implicit composite :X ComposedOf E, linkTag :TypeTag[JE], targetTag :TypeTag[E])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Derived[E, X], O] =
+	{
+		val targetFK = target(joinTable[JO])
+		val linkKin = requiredKinFactory[J, K, JE, Iterable[JE]](joinTable, _ => source(joinTable[JO]).key)
+		val targetKin = requiredKinFactory[T, TK, E, E](targetFK.table, _ => targetFK.target)
+		manyimpl(property, joinTable, source, target, linkKin, targetKin, buffs :_*)
+	}
+
+
 }
+

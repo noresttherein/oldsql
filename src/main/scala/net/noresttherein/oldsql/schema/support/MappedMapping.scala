@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnMapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnExtract, ColumnForm, ColumnMapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -220,20 +220,23 @@ object MappedMapping {
 	}
 
 
-	private abstract class MappedColumnMapping[+M <: ColumnMapping[T, O], T, S, O]
-	                                          (protected override val backer :M, val map :T =?> S, val unmap :S =?> T)
-	                                          (implicit nulls :NullValue[S] = null)
+	abstract class MappedColumnMapping[+M <: ColumnMapping[T, O], T, S, O]
+	                                  (protected override val backer :M,
+	                                   protected val map :T =?> S, protected val unmap :S =?> T)
+	                                  (implicit nulls :NullValue[S] = null)
 		extends ShallowDelegate[S, O]
 	{ this :ColumnMapping[S, O] =>
-		override val name = backer.name
-		override val form = backer.form.as(map)(unmap)
+		override val name :String = backer.name
+		override val form :ColumnForm[S] = backer.form.as(map)(unmap)
+
 		private[this] val mappedExtracts :ColumnExtractMap =
 			schema.composeColumnExtracts(backer, unmap).updated[ColumnExtract, T](backer, ColumnExtract(backer)(unmap))
 				.updated[ColumnExtract, S](this, ColumnExtract.ident(this))
 
-		override def columnExtracts = mappedExtracts
+		override def columnExtracts :ColumnExtractMap = mappedExtracts
 		//this cast can possibly fail with custom NaturalMap implementations!
-		override def extracts = columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
+		override def extracts :NaturalMap[Component, ColumnExtract] =
+			columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
 	}
 
 

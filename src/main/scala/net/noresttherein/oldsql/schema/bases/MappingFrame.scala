@@ -14,7 +14,9 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.model.{PropertyPath, RelatedEntityFactory}
+import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath, RelatedEntityFactory}
+import net.noresttherein.oldsql.model.Kin.Derived
+import net.noresttherein.oldsql.model.KinFactory.DerivedKinFactory
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, OptionalExtractor, RequisiteExtractor}
@@ -25,10 +27,11 @@ import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColu
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
-import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{ForeignKeyEntityColumnMapping, ForeignKeyEntityMapping, InverseForeignKeyMapping}
+import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{InverseForeignKeyMapping, RelatedEntityForeignKey, RelatedEntityForeignKeyColumn}
 import net.noresttherein.oldsql.schema.support.MappingProxy.{DeepProxy, ExportColumnProxy, OpaqueColumnProxy}
 import net.noresttherein.oldsql.schema.Relation.RelVar
-import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping}
+import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityComponent, JoinTableCollectionMapping, RelationshipMapping}
+import net.noresttherein.oldsql.schema.bits.JoinTableCollectionMapping.{JoinTableKinMapping, JoinTableManyMapping}
 import net.noresttherein.oldsql.schema.support.{BuffedMapping, EffectivelyEmptyMapping, MappingDeclaredBuffs}
 
 //here be implicits
@@ -79,7 +82,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  *
 	  * There are two broad categories of instances: custom classes explicitly derived from it or one of its
 	  * subclasses, provided as base classes for that purpose, and wrappers of other mappings. The former are slightly
-	  * more efficient and are more concise to declare withing the enclosing mapping class, while the latter offers
+	  * more efficient and are more concise to declare within the enclosing mapping class, while the latter offers
 	  * more flexibility by allowing dynamic resolution of actual component implementations and their full reuse.
 	  * The best of both worlds can be achieved by simply mixing in this trait into a ready component class.
 	  *
@@ -558,7 +561,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	private class FKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
 	                         (override val componentSelector :S =?> R, rename :String => String, declared :Seq[Buff[R]])
 	                         (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => C[X])
-		extends ForeignKeyEntityMapping[M, C, K, E, T, R, X, O](
+		extends RelatedEntityForeignKey[M, C, K, E, T, R, X, O](
 				rename, factory, frame.buffs.unsafeCascade(componentSelector).declare(declared :_*))(table, pk)
            with LateInitComponent[R]
 	{
@@ -566,16 +569,11 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		        (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => C[X]) =
 			this(selector, prefix + _, buffs)(factory, table, pk)
 
-		override def columnPrefix = "" //as ForeignKeyEntityMapping already handles renaming
+		override def columnPrefix = "" //as RelatedEntityForeignKey already handles renaming
 	}
 
-	private class InverseFKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
-	                                (override val componentSelector :S =?> R, key :C[O], declared :Seq[Buff[R]])
-	                                (factory :RelatedEntityFactory[K, E, T, R],
-	                                 table :RelVar[M], fk :M[X] => ForeignKeyMapping[MappingAt, C, K, _, X])
-		extends InverseForeignKeyMapping[M, C, K, E, T, R, X, O](
-				key, factory, frame.buffs.unsafeCascade(componentSelector).declare(declared :_*))(table, fk)
-		   with FrameComponent[R] with EffectivelyEmptyMapping[R, O]
+	private trait InverseRelationshipValidation[+M[A] <: MappingAt[A], R]
+		extends RelationshipMapping[M, R, O] with FrameComponent[R]
 	{
 		key match {
 			case comp :MappingFrame[_, _]#FrameComponent[_] if comp belongsTo frame =>
@@ -585,6 +583,40 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		}
 		override def columnPrefix = ""
 	}
+
+	private class InverseFKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
+	                                (override val componentSelector :S =?> R, key :C[O], declared :Seq[Buff[R]])
+	                                (factory :RelatedEntityFactory[K, E, T, R],
+	                                 table :RelVar[M], fk :M[X] => ForeignKeyMapping[MappingAt, C, K, _, X])
+		extends InverseForeignKeyMapping[M, C, K, E, T, R, X, O](
+				key, factory, frame.buffs.unsafeCascade(componentSelector).declare(declared :_*))(table, fk)
+		   with EffectivelyEmptyMapping[R, O] with FrameComponent[R] with InverseRelationshipValidation[M, R]
+
+	private class ToManyDerivedComponent
+	              [J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	              (override val componentSelector :S =?> Derived[E, X], override val joinTable :RelVar[J],
+	               back :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	               forward :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	               linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
+	               override val buffs :Buffs[Derived[E, X]])
+	              (implicit composite :X ComposedOf E, link :TypeTag[JE])
+		extends JoinTableManyMapping[J, T, C, TC, K, TK, JE, E, X, TR, JO, O](
+			joinTable, back, forward, linkKin, targetKin, buffs
+		 ) with FrameComponent[Derived[E, X]] with InverseRelationshipValidation[T, Derived[E, X]]
+
+	private class ToManyKinComponent
+	              [J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	              (override val componentSelector :S =?> Kin[X], override val joinTable :RelVar[J],
+	               back :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	               forward :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	               linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
+	               override val buffs :Buffs[Kin[X]])
+	              (implicit composite :X ComposedOf E, link :TypeTag[JE])
+		extends JoinTableKinMapping[J, T, C, TC, K, TK, JE, E, X, TR, JO, O](
+			joinTable, back, forward, linkKin, targetKin, buffs
+		 ) with FrameComponent[Kin[X]] with InverseRelationshipValidation[T, Kin[X]]
 
 
 
@@ -675,7 +707,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	private class FKColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, X]
 	                      (override val componentSelector :S =?> R, suffix :String, declaredBuffs :Seq[Buff[R]])
 	                      (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => ColumnMapping[K, X])
-		extends ForeignKeyEntityColumnMapping[M, K, E, T, R, X, O](
+		extends RelatedEntityForeignKeyColumn[M, K, E, T, R, X, O](
 				                              verifiedPrefix + suffix, factory,
 		                                      frame.buffs.unsafeCascade(componentSelector).declare(declaredBuffs :_*)
 		                                     )(table, pk)
@@ -704,24 +736,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 			extractFor(this)
 		}
 	}
-
-//	private class InverseFKColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, X]
-//	                             (override val componentSelector :S =?> R, opts :Seq[Buff[R]])
-//	                             (key :ColumnMapping[K, O], factory :RelatedEntityFactory[K, E, T, R])
-//	                             (table :RelVar[M], fk :M[X] => ForeignKeyColumnMapping[MappingAt, K, _, X])
-//		extends InverseForeignKeyColumnMapping[M, K, E, T, R, X, O](key, factory, opts)(table, fk)
-//		   with FrameColumn[R]
-//	{
-//		key match {
-//			case col :MappingFrame[_, _]#FrameColumn[_] if col belongsTo frame =>
-//			case _ =>
-//				throw new IllegalArgumentException(
-//					s"Column $key given as the local referenced key for a foreign key inverse is not a component of $frame."
-//				)
-//
-//		}
-//		override val buffs = super.buffs
-//	}
 
 
 
@@ -855,7 +869,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  */
 	protected def component[M <: Component[T], T](mapping :M, columnPrefix :String, buffs :Buff[T]*) :M = {
 		val extractor = Extractor.none :S =?> T
-		val allBuffs = mapping.buffs.declare(ReadOnly[T] +: buffs :_*) //we don't cascade frame flags without a function
+		val oldBuffs = this.buffs.unsafeCascade(extractor) +/: mapping.buffs //this makes sense because FlagBuff doesn't use the cascade function
+		val allBuffs = if (buffs.isEmpty) oldBuffs else oldBuffs.declare(buffs :_*)
 		embed(mapping, extractor, verifiedPrefix + columnPrefix, allBuffs)
 	}
 
@@ -1113,10 +1128,45 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
 	                       (value :S => R, key :C[O], reference :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
-			:ForeignKeyMapping[M, C, K, R, O] =
+			:JoinedEntityComponent[M, C, K, R, O] =
 		initPreceding(new InverseFKComponent[M, C, K, E, T, R, ()](value, key, buffs)(
 			reference, table, fk.asInstanceOf[M[()] => ForeignKeyMapping[MappingAt, C, K, _, ()]]
 		))
+
+	protected override def kinimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		                           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                              (value :S => Kin[X], joinTable :RelVar[J],
+	                               source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                               target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	                               linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
+	                               buffs :Buff[Kin[X]]*)
+	                              (implicit composite :X ComposedOf E, link :TypeTag[JE])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Kin[X], O] =
+	{
+		val allBuffs = this.buffs.cascade(value).declare(buffs :_*)
+		initPreceding(new ToManyKinComponent[J, T, C, TC, K, TK, JE, E, X, TR, JO](
+			value, joinTable, source, target, linkKin, targetKin, allBuffs
+		))
+	}
+
+	protected override def manyimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+		                            C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
+	                               (value :S => Derived[E, X], joinTable :RelVar[J],
+	                                source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
+	                                target :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
+	                                linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
+	                                buffs :Buff[Derived[E, X]]*)
+	                               (implicit composite :X ComposedOf E, link :TypeTag[JE])
+			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Derived[E, X], O] =
+	{
+		val allBuffs = this.buffs.cascade(value).declare(buffs :_*)
+		initPreceding(new ToManyDerivedComponent[J, T, C, TC, K, TK, JE, E, X, TR, JO](
+			value, joinTable, source, target, linkKin, targetKin, allBuffs
+		))
+	}
+
+
+
 
 
 
@@ -1755,6 +1805,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	final override def updatedByDefault :Unique[Column[_]] = initUpdatedByDefault.items
 
 
+	private[this] val columnNames = Lazy { initialize(); columns.map { c => c.name -> c }.toMap }
+
+	override def columnNamed(name :String) :Column[_] = columnNames(name)
 
 	/** Prefix added to given names of all created instances of this.Column[_]. Defaults to "", subclasses may override.
 	  * Overrides with a `val` or `var` (or any used in their implementation) must happen ''before'' any components
