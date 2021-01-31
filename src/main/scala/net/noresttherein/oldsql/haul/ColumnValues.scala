@@ -205,7 +205,6 @@ object ColumnValues {
 	def empty[S, O](source : => String) :ColumnValues[S, O] = new EmptyValues[S, O](source)
 
 
-
 	/** Create `ColumnValues` with a value preset for a single column. This is different to the disassembling
 	  * values `ColumnValues(component, value)` in that it can be created for an arbitrary root subject type `R`,
 	  * and the presets for any mappings other than this column are always immediately stated as `Lack`. This makes
@@ -236,7 +235,6 @@ object ColumnValues {
 		else new PresetColumnValue(column, value)
 
 
-
 	/** Similar to `preset[S, O](mapping, value)`, but the value is not computed until actually needed. The expression
 	  * will be evaluated at most once. Note that no component aliasing takes place; the column provided
 	  * here must be the column which is going to be used as the argument, unless this instance is treated only
@@ -260,7 +258,6 @@ object ColumnValues {
 		new LazyColumnValue(column, () => value.toOption)
 
 
-
 	/** A proxy `ColumnValues` which delegates all assembly-related and '/' calls to the lazily computed
 	  * instance initialized with the by-name parameter.
 	  */
@@ -272,7 +269,6 @@ object ColumnValues {
 			override def ++(other :ColumnValues[S, O]) =
 				backing.asInstanceOf[ColumnValues[S, O]] ++ other
 		}
-
 
 
 	/** Creates a new builder assembling a `ColumnValues` instance from the provided values for individual columns. */
@@ -293,7 +289,6 @@ object ColumnValues {
 	  */
 	@inline def apply[S, O](mapping :RefinedMapping[S, O]) :ColumnValuesFactory[S, O] =
 		new ColumnValuesFactory[S, O](mapping)
-
 
 
 	/** Factory for `ColumnValues` instances associated with the given mapping.
@@ -319,7 +314,6 @@ object ColumnValues {
 			{
 				override val mapping = factory.mapping
 			}
-
 
 		/** Returns `ColumnValues` based on a predefined mapping result. If it is not empty, the values
 		  * for all columns will be obtained by disassembling (extracting) their value from the argument based on
@@ -375,8 +369,6 @@ object ColumnValues {
 					override val mapping = factory.mapping
 				}
 		}
-
-
 
 		/** Returns `ColumnValues` using the given function as the source of values for columns.
 		  * The return values of the function are used as the preset values yielded by the created instance,
@@ -434,7 +426,6 @@ object ColumnValues {
 			new EmptyValues[S, O](mapping.toString) with ColumnValuesAliasing[S, O] with MappingAliasing[S, O] {
 				override val mapping = factory.mapping
 			}
-
 
 
 		/** Creates a builder of a `ColumnValues` instance by collecting values for individual columns.
@@ -633,13 +624,12 @@ object ColumnValues {
 
 
 	private class PresetColumnValue[S, T, O](override val column :ColumnMapping[T, O], result :Opt[T])
-		extends ColumnValue[S, T, O] with ImmutableColumnValues[S, O]
+		extends ColumnValue[S, T, O] with ImmutableColumnValues[S, O] with Serializable
 	{
 		override def value = result
 
 		override def toString = "{" + column + ":=" + result.getOrElse("-") + "}"
 	}
-
 
 
 	private class LazyColumnValue[S, T, O](override val column :ColumnMapping[T, O], private var init: () => Option[T])
@@ -669,6 +659,8 @@ object ColumnValues {
 			if (value.isEmpty) empty
 			else new PresetColumnValue(column, value)
 
+		private def writeReplace = new PresetColumnValue(column, value)
+
 		override def toString = {
 			val res = result
 			if (res != null) {
@@ -678,7 +670,6 @@ object ColumnValues {
 				"{" + column + ":=?}"
 		}
 	}
-
 
 
 
@@ -707,7 +698,6 @@ object ColumnValues {
 	}
 
 
-
 	private class ColumnValuesMap[S, O](values :Map[ColumnMapping[_, O], Any])
 		extends ComponentValuesMap[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Any]])
 		   with ImmutableColumnValues[S, O] with GlobalColumnValues[S, O]
@@ -730,8 +720,6 @@ object ColumnValues {
 			case _ => super.++(other)
 		}
 	}
-
-
 
 
 
@@ -766,7 +754,6 @@ object ColumnValues {
 					this
 			case _ => super.++(other)
 		}
-
 
 		override def aliased(aliases :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValues[S, O] =
 			new DedicatedColumnValues[S, O](values, default aliased aliases)

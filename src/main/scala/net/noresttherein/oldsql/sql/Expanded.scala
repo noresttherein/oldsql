@@ -2,16 +2,20 @@ package net.noresttherein.oldsql.sql
 
 import scala.annotation.implicitNotFound
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.RowProduct.{As, RowComposition, RowDecomposition, ExpandedBy, ExpandingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, ExpandingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf, RowComposition, RowDecomposition}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 
 
 
@@ -194,6 +198,109 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 
 
+
+
+
+/** Base trait for companion objects of [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] types, serving as a factory
+  * and match pattern.
+  *
+  * @tparam J the type constructor of the `Adjoin` type, taking a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]
+  *           of  a specific type for its 'left' side and a [[net.noresttherein.oldsql.schema.Mapping Mapping]]
+  *           type constructor accepting its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type
+  *           as the right side.
+  * @tparam LU  the upper bound on the left side of this join type.
+  * @tparam RU  the upper bound on the right side of this join type.
+  * @tparam Rel the type of [[net.noresttherein.oldsql.schema.Relation Relation]] which is acceptable as the right
+  *             side of this join type.
+  * @define JoinClass
+  * @define joinType
+  * @define relType
+  * @define LeftBound
+  */
+trait AdjoinFactory[J[L <: LU, R[O] <: RU[O]] <: L Adjoin R, LU <: RowProduct, RU[O] <: MappingAt[O], Rel[M[O] <: RU[O]]] {
+
+	/** An existential upper bound of all $JoinClass instances that can be used in casting or pattern matching
+	  * without generating compiler warnings about erasure.
+	  */
+	type * = J[_ <: LU, T] forSome { type T[O] <: RU[O] }
+
+	/** A curried type constructor for $JoinClass type instances, accepting the left $LeftBound type parameter
+	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
+	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
+	  */
+	type WithLeft[L <: LU] = { type F[R[O] <: RU[O]] = L J R }
+
+	/** A curried type constructor for $JoinClass type instances, accepting the right mapping type parameter
+	  * and returning a type with a member type `F` accepting the left $LeftBound type.
+	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
+	  */
+	type WithRight[R[O] <: RU[O]] = { type F[L <: LU] = L J R }
+
+
+
+	/** Create an (inner) cross join between the given two relations `left` and `right`.
+	  * The ''where'' clause can be subsequently specified using
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]] or
+	  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method. It is an alternative to
+	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`,
+	  * which should be generally preferred.
+	  * @param left  the first relation of the ''from'' clause, using a `LA[O] <: BaseMapping[A, O]` `Mapping` type.
+	  * @param right the second relation of the ''from'' clause, using a `RB[O] <: BaseMapping[B, O]` `Mapping` type.
+	  * @param castL implicit witness providing proper type inference for the subject of the left relation
+	  *              and conversions of associated classes between instances parameterized with `L` and `LA`.
+	  * @param castR implicit witness providing proper type inference for the subject of the right relation
+	  *              and conversions of associated classes between instances parameterized with `R` and `RB`.
+	  * @tparam L  the type constructor for the mapping of the first relation, accepting the `Origin` type.
+	  * @tparam LA the same type as `L`, but with an upper bound of `BaseMapping`, separating the inference of types `L`
+	  *            and its subject type `A`.
+	  * @tparam R  the type constructor for the mapping of the second relation, accepting the `Origin` type.
+	  * @tparam RB the same type as `B`, but with an upper bound of `BaseMapping`, separating the inference of types `R`
+	  *            and its subject type `B`.
+	  * @return an unfiltered `From[L] InnerJoin R` clause joining the two relations.
+	  */
+//	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
+//	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
+//	         (left :Table[L], right :Table[R])
+//	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
+//	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
+//			:From[L] InnerJoin R =
+//		InnerJoin(left, right)
+
+	/** Create a $joinType between the `left` side, given as a non empty clause/list of relations,
+	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
+	  * The ''where'' clause can be subsequently specified using
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.on on]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.NonEmptyFromTemplate.whereLast whereLast]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] or
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method. It is a lower level method;
+	  * it is generally recommended to use
+	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
+	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
+	  * @param left  a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *              `Mapping` type.
+	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
+	  *               clause in the generated SQL.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @return an `L InnerJoin R`.
+	  */
+//	def apply[L <: LU, R[O] <: RU[O], T[O] <: BaseMapping[S, O], S]
+//	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized J R] = True)
+//	         (implicit cast :InferSubject[L, InnerJoin, R, T, S]) :L J R
+
+
+	/** Matches all `Join` instances, splitting them into their left (all relations but the last one)
+	  * and right (the last relation) sides.
+	  */
+	def unapply[L <: RowProduct, R[O] <: MappingAt[O]](from :L Adjoin R) :Opt[(L, Table[R])]
+
+	/** Matches all `Join` subclasses, extracting their `left` and `right` sides in the process. */
+	def unapply(from :RowProduct) :Opt[(LU, Relation.*)]
+
+}
 
 
 

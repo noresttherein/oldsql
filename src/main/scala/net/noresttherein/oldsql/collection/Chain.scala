@@ -36,7 +36,7 @@ import net.noresttherein.oldsql.morsels.LUB
   * @see [[net.noresttherein.oldsql.collection.Record]]
   * @author Marcin Mościcki
   */
-sealed trait Chain { //todo: Array based implementation; with macros/lazy implicits of scala 3 this would be a big improvement
+sealed trait Chain extends Serializable { //todo: Array based implementation; with macros/lazy implicits of scala 3 this would be a big improvement
 	def isEmpty :Boolean
 	def length :Int
 

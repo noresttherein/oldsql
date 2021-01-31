@@ -588,7 +588,6 @@ object ComponentValues {
 		case _ => new TypedValues[S, O](values)
 	}
 
-
 	/** Returns `ComponentValues` using the given function as the source of values for components.
 	  * The return values of the function are used as the preset values yielded by the created instance,
 	  * with `null` resulting in the value of the component being assembled from its subcomponents.
@@ -650,7 +649,6 @@ object ComponentValues {
 	def apply[S, O](mapping :RefinedMapping[S, O], value :S) :ComponentValues[S, O] =
 		new DisassembledValues(mapping, value)
 
-
 	/** Create `ComponentValues` for the given mapping and its subject. All values returned by this instance will use
 	  * the `MappingExtract` provided by their owning mapping to extract the value from the given argument.
 	  * Unlike `ComponentValues(mapping, value)`, only the components listed in the third argument
@@ -694,7 +692,6 @@ object ComponentValues {
 	  *               thrown exceptions
 	  */
 	def empty[S, O](source : => String) :ComponentValues[S, O] = ColumnValues.empty(source)
-
 
 
 	/** Create `ComponentValues` for the given mapping and its subject. All values returned by this instance will use
@@ -747,7 +744,6 @@ object ComponentValues {
 		new LazyDisassembledValues(mapping, () => value.toOption) //this will get boxed, but it's only one call.
 
 
-
 	/** A proxy `ComponentValues` which delegates all assembly-related and '/' calls to the lazily computed
 	  * instance initialized with the by-name parameter.
 	  */
@@ -773,7 +769,6 @@ object ComponentValues {
 	  */
 	@inline def apply[S, O](mapping :RefinedMapping[S, O]) :ComponentValuesFactory[S, O] =
 		new ComponentValuesFactory[S, O](mapping)
-
 
 
 	/** Factory for `ComponentValues` instances associated with the given mapping.
@@ -912,7 +907,6 @@ object ComponentValues {
 			}
 
 
-
 		/** Creates a builder of a `ComponentValues` instance by collecting values for individual components.
 		  * All the components passed to its `add` method are aliased to their export version by the mapping
 		  * specified earlier and the created `ComponentValues` will likewise perform component aliasing.
@@ -952,7 +946,6 @@ object ComponentValues {
 
 
 
-
 	private[haul] class ComponentValuesMapBuilder[S, O] extends ComponentValuesBuilder[S, O] {
 		private var map = Map.empty[RefinedMapping[_, O], Any]
 		private var columnsOnly = true
@@ -966,8 +959,8 @@ object ComponentValues {
 
 		override def result() = {
 			val res = map; map = null
-			if (columnsOnly) result(map.asInstanceOf[Map[ColumnMapping[_, O], Any]])
-			else result(map)
+			if (columnsOnly) result(res.asInstanceOf[Map[ColumnMapping[_, O], Any]])
+			else result(res)
 		}
 
 		protected def result(map :Map[RefinedMapping[_, O], Any]) :ComponentValues[S, O] =
@@ -1024,8 +1017,6 @@ object ComponentValues {
 			case _ => component.optionally(this.asComponentsOf[T])
 		}
 	}
-
-
 
 
 
@@ -1233,9 +1224,6 @@ object ComponentValues {
 
 
 
-
-
-
 	/** A decorator `ComponentValues` which substitutes every mapping passed as an argument, be it the associated
 	  * mapping for `S` or its component, with possibly another mapping instance provided by the given mapping
 	  * function. This is needed in order to always use the operative, ''export'' version of the component
@@ -1244,7 +1232,7 @@ object ComponentValues {
 	  */
 	private[haul] class AliasedComponentValues[S, O]
 	                    (values :ComponentValues[S, O], alias :MappingAt[O]#Component =#> RefinedMapping[_, O]#Component)
-		extends ComponentValues[S, O]
+		extends ComponentValues[S, O] with Serializable
 	{ outer =>
 		def this(values :ComponentValues[S, O],
 		         extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[_, O]#Extract]) =
@@ -1307,7 +1295,6 @@ object ComponentValues {
 				else new AliasedComponentValues[T, O](next, alias)
 		}
 
-
 		override def ++(other :ComponentValues[S, O]) :ComponentValues[S, O] = other match {
 			//we check only reference identity for speed; aliases will almost always be either one of the constants
 			//defined here or a NaturalMap - most likely a constant, too.
@@ -1344,15 +1331,13 @@ object ComponentValues {
 
 
 
-
-
 	/** Implementation of the `orElse` result, using a pair of `ComponentValues` instances, with the second one
 	  * being used if the first failed to provide a value for a component. Whenever `ComponentValues`
 	  * for a child component is requested, it returns the `orElse` result for the values corresponding to the component
 	  * obtained from the pair.
 	  */
 	private[haul] class FallbackValues[S, O](overrides :ComponentValues[S, O], fallback :ComponentValues[S, O])
-		extends ComponentValues[S, O]
+		extends ComponentValues[S, O] with Serializable
 	{
 		override def preset(root: RefinedMapping[S, O]): Opt[S] = overrides.preset(root)
 
@@ -1399,8 +1384,6 @@ object ComponentValues {
 
 
 
-
-
 	/** A `ComponentValues` implementation backed by a `NaturalMap` associating components with their preset
 	  * `ComponentValues`. This instance is conditionally global, meaning it simply returns itself
 	  * as the `ComponentValues` for all child components for which no instance has been preset.
@@ -1411,7 +1394,7 @@ object ComponentValues {
 	private[haul] class DedicatedComponentValues[S, O] private[haul]
 	                    (values :NaturalMap[MappingAt[O]#Component, WithOrigin[O]#T],
 	                     default :ComponentValues[S, O] = empty[S, O])
-		extends ComponentValues[S, O]
+		extends ComponentValues[S, O] with Serializable
 	{
 		def presets = values
 		def defaults = default
@@ -1486,8 +1469,6 @@ object ComponentValues {
 
 
 
-
-
 	private[haul] class LazyComponentValuesProxy[S, O](values: => ComponentValues[S, O]) extends ComponentValues[S, O] {
 		private[this] var init = () => values
 		@volatile private[this] var initialized :ComponentValues[S, O] = _
@@ -1526,16 +1507,17 @@ object ComponentValues {
 		override def orElse(values :ComponentValues[S, O]) :ComponentValues[S, O] = backing orElse values
 		override def ++(values :ComponentValues[S, O]) :ComponentValues[S, O] = backing ++ values
 
+
+		protected def writeReplace = backing
+
 		override def toString :String = backing.toString
 	}
 
 
 
 
-
-
 	private[haul] class DisassembledValues[R, S, O](root :RefinedMapping[R, O], subject :R)
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O]
+		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
 	{
 		private def mapping = root
 		private def value = subject
@@ -1557,6 +1539,7 @@ object ComponentValues {
 
 		override def toString = "DisassembledValues(" + subject + ")"
 	}
+
 
 
 	private[haul] class LazyDisassembledValues[R, S, O](root :RefinedMapping[R, O], private var init: () => Option[R])
@@ -1586,7 +1569,13 @@ object ComponentValues {
 			if (mapping eq root) subject.asInstanceOf[Opt[S]]
 			else root(mapping).opt(subject.get)
 
+
 		override def clone() :ComponentValues[S, O] = subject match {
+			case Got(value) => new DisassembledValues[R, S, O](root, value)
+			case _ => empty
+		}
+
+		private def writeReplace :ComponentValues[S, O] = subject match {
 			case Got(value) => new DisassembledValues[R, S, O](root, value)
 			case _ => empty
 		}
@@ -1609,7 +1598,7 @@ object ComponentValues {
 
 	private[haul] class ChosenDisassembledValues[R, S, O]
 	                    (root :RefinedMapping[R, O], value :R, components :Unique[MappingAt[O]])
-		extends DisassembledValues[R, S, O](root, value)
+		extends DisassembledValues[R, S, O](root, value) with Serializable
 	{
 		override def preset(mapping :RefinedMapping[S, O]) :Opt[S] =
 			if (mapping eq root) Got(value.asInstanceOf[S])
@@ -1625,7 +1614,7 @@ object ComponentValues {
 
 
 	private[haul] class TypedValues[S, O](values :MappingAt[O]#Component =#> Self)
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O]
+		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
 	{
 		override def preset(component :RefinedMapping[S, O]) :Opt[S] = Opt(values[S](component))
 		override def canEqual(that :Any) = that.getClass == getClass
@@ -1645,7 +1634,7 @@ object ComponentValues {
 
 
 	private[haul] class ComponentValuesNaturalMap[S, O](values :NaturalMap[MappingAt[O]#Component, Self])
-		extends TypedValues[S, O](values)
+		extends TypedValues[S, O](values) with Serializable
 	{
 		def map = values
 
@@ -1663,14 +1652,13 @@ object ComponentValues {
 		}
 	}
 
-	private[this] val NoValue = new GenericFun[MappingAt[Any]#Component, Self] {
+	private[this] val NoValue = new GenericFun[MappingAt[Any]#Component, Self] with Serializable {
 		override def apply[T](x :MappingAt[Any]#Component[T]) = null.asInstanceOf[T]
 	}
 
 
-
 	private[haul] class UntypedValues[S, O](values :RefinedMapping[_, O] => Any)
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O]
+		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
 	{
 		override def preset(component :RefinedMapping[S, O]) :Opt[S] =
 			Opt(values(component).asInstanceOf[S])
@@ -1689,9 +1677,8 @@ object ComponentValues {
 	}
 
 
-
 	private[haul] class ComponentValuesMap[S, O](values :Map[RefinedMapping[_, O], Any])
-		extends UntypedValues[S, O](values)
+		extends UntypedValues[S, O](values) with Serializable
 	{
 		def map = values
 
@@ -1713,7 +1700,7 @@ object ComponentValues {
 
 
 	private[haul] class IndexedValues[S, O](values :IndexedSeq[Any], index :MappingAt[O] => Int)
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O]
+		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
 	{
 		override def preset(component :RefinedMapping[S, O]) :Opt[S] = {
 			val i = index(component)

@@ -138,7 +138,7 @@ object ConditionSQL {
 			}
 
 
-		class ComparisonOperator private[ConditionSQL](val symbol :String) extends AnyVal {
+		class ComparisonOperator private[ConditionSQL](val symbol :String) extends AnyVal with Serializable {
 			def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, T :SQLOrdering]
 			         (left :SQLExpression[F, S, T], right :SQLExpression[F, S, T]) :ComparisonSQL[F, S, T] =
 				ComparisonSQL(left, this, right)

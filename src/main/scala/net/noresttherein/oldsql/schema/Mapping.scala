@@ -1403,7 +1403,7 @@ object Mapping extends LowPriorityMappingImplicits {
 	  */
 	@implicitNotFound("Cannot project mapping ${M} (of ${S}) to another Origin type: " +
 		              "no implicit OriginProjection[${M}, ${S}].")
-	sealed trait OriginProjection[-M <: Mapping, S] { self =>
+	sealed trait OriginProjection[-M <: Mapping, S] extends Serializable { self =>
 
 		/** A type such that `M <: WithOrigin[_]` which does not reference the origin type `O` in its signature
 		  * anywhere except as the type parameter. In other words, a conversion `WithOrigin[A] => WithOrigin[B]`

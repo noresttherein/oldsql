@@ -162,7 +162,7 @@ import net.noresttherein.oldsql.slang._
   *
   * @author Marcin Mościcki
   */
-trait RowProduct extends RowProductTemplate[RowProduct] { thisClause =>
+trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { thisClause =>
 
 	/** Type of the last `Mapping` in this join (the rightmost one) if not empty. `Dual` defines it as `Nothing`. */
 	type LastMapping[O] <: MappingAt[O]
@@ -2680,9 +2680,8 @@ object RowProduct {
 	/** A proof that the ''from'' clause `F` is a part of the ''from'' clause `E` and represents the 'same'
 	  * SQL ''select''. This holds if `F ExpandedBy E` and there is no `Subselect` join present
 	  * in the expansion. The implication is that `E` contains all the relations listed in `F`, with a possible addition
-	  * of extra relations appended to (by joining) it or 'prepended' to it (by substituting wildcard prefix type of `F`
-	  * with its subtype) while not being a subselect expression of `E`, but also all relations
-	  * from the ''explicit'' portion of `F` are included in the ''explicit'' portion of `E`.
+	  * of extra relations appended to (by joining) it or 'prepended' to it (by substituting a wildcard prefix type
+	  * of `F` with its subtype), while at the same time not being a subselect expression of `F`
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf]]
 	  */

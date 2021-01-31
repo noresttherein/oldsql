@@ -66,7 +66,7 @@ object ArithmeticSQL {
 			}
 
 
-		class UnaryOperation(val symbol :String) extends AnyVal {
+		class UnaryOperation(val symbol :String) extends AnyVal with Serializable {
 
 			def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, V :SQLNumber]
 			         (value :ColumnSQL[F, S, V]) :UnaryOperationSQL[F, S, V] =
@@ -144,7 +144,7 @@ object ArithmeticSQL {
 			}
 
 
-		class BinaryOperation(val symbol :String) extends AnyVal {
+		class BinaryOperation(val symbol :String) extends AnyVal with Serializable {
 
 			def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, V :SQLNumber]
 			         (left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :BinaryOperationSQL[F, S, V] =

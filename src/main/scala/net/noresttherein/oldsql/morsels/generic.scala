@@ -10,7 +10,7 @@ object generic {
 
 	type =#>[-X[A], +Y[A]] = GenericFun[X, Y]
 
-	trait GenericFun[-X[A], +Y[A]] { outer =>
+	trait GenericFun[-X[A], +Y[A]] extends Serializable { outer =>
 		def apply[T](x :X[T]) :Y[T]
 
 		def existential: X[_] => Y[_] = apply(_)

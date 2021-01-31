@@ -14,7 +14,7 @@ import java.time.{Clock, Instant, LocalDate, LocalDateTime, LocalTime, OffsetDat
   * timestamps instead of the jvm time.
   * @author Marcin Mościcki
   */
-final class Temporal[T](val now :()=>T)
+final class Temporal[T](val now :()=>T) extends Serializable
 
 
 

@@ -523,7 +523,6 @@ object UnboundParam {
 
 
 	object FromParam {
-
 		def apply[P :SQLForm, O] :FromParam[P, O] = new FromParam
 
 		def apply[P :SQLForm, O](name :String) :FromParam[P, O] =
@@ -533,13 +532,10 @@ object UnboundParam {
 	}
 
 
-
 	class LabeledFromParam[N <: Label, X :SQLForm, O](override val name :N)
 		extends FromParam[X, O](name) with LabeledMapping[N, X, O]
 
-
 	object LabeledFromParam {
-
 		def apply[P :SQLForm, N <: Label, O](name :N) :FromParam[P, O] = new LabeledFromParam(name)
 
 		type Projection[N <: Label, S] = { type WithOrigin[O] = LabeledFromParam[N, S, O] }

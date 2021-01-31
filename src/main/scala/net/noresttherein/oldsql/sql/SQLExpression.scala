@@ -48,7 +48,9 @@ import slang._
   * @tparam V result type of the expression; may not necessarily be an SQL type, but a result type of some mapping.
   * @see [[net.noresttherein.oldsql.sql.ColumnSQL]]
   */
-trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends implicitSQLLiterals {
+trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
+	extends Serializable with implicitSQLLiterals
+{
 	import net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL
 
 	/** A form which will be used to read the values of this expression from an SQL [[java.sql.ResultSet ResultSet]]
@@ -847,7 +849,7 @@ object SQLExpression  {
 	  */
 	@implicitNotFound("Types ${L} and ${R} are not interoperable in SQL (as type ${T}). " +
 	                  "Missing implicit SQLTypeUnification[${L}, ${R}, ${T}] (required Lift[${L}, ${R}] or Lift[${R}, ${L}]).")
-	class SQLTypeUnification[L, R, U](val left :Lift[L, U], val right :Lift[R, U]) {
+	class SQLTypeUnification[L, R, U](val left :Lift[L, U], val right :Lift[R, U]) extends Serializable {
 		def swapped :SQLTypeUnification[R, L, U] = new SQLTypeUnification(right, left)
 		override def toString = s"$left =~= $right"
 
@@ -884,12 +886,12 @@ object SQLExpression  {
 
 
 
-
+	
 	/** An implicit witness vouching that type `X` is a subtype of `Y` or can be automatically promoted to type `Y`.
 	  * It is used to conflate more strict scala types having the same, more loose SQL representation.
 	  */
 	@implicitNotFound("Type ${X} cannot be used in place of type ${Y} in SQL. Missing implicit Lift[${X}, ${Y}].")
-	abstract class Lift[X, Y] {
+	abstract class Lift[X, Y] extends Serializable {
 		def apply(value :X) :Y
 		def inverse(value :Y) :Option[X] //todo: we need it for SetComponent, but it may fail or lose precision
 
@@ -914,7 +916,7 @@ object SQLExpression  {
 
 
 
-	object Lift { //todo: java type promotion
+	object Lift {
 		implicit def self[T] :Lift[T, T] = ident.asInstanceOf[Lift[T, T]]
 		implicit def option[T] :Lift[T, Option[T]] = opt.asInstanceOf[Lift[T, Option[T]]]
 		//implicit def some[T] :Lift[Some[T], Option[T]] = new Supertype[Some[T], Option[T]]
@@ -929,10 +931,74 @@ object SQLExpression  {
 		}
 
 
+		implicit object Byte2Short extends Lift[Byte, Short] {
+			override def apply(value :Byte) :Short = value
+			override def inverse(value :Short) :Option[Byte] = Some(value.toByte)
+			override protected def applyString(arg :String) :String = arg + ".toShort"
+		}
+		implicit object Byte2Int extends Lift[Byte, Int] {
+			override def apply(value :Byte) :Int = value
+			override def inverse(value :Int) :Option[Byte] = Some(value.toByte)
+			override protected def applyString(arg :String) :String = arg + ".toInt"
+		}
+		implicit object Byte2Long extends Lift[Byte, Long] {
+			override def apply(value :Byte) :Long = value
+			override def inverse(value :Long) :Option[Byte] = Some(value.toByte)
+			override protected def applyString(arg :String) :String = arg + ".toLong"
+		}
+		implicit object Byte2Float extends Lift[Byte, Float] {
+			override def apply(value :Byte) :Float = value
+			override def inverse(value :Float) :Option[Byte] = Some(value.toByte)
+			override protected def applyString(arg :String) :String = arg + ".toFloat"
+		}
+		implicit object Byte2Double extends Lift[Byte, Double] {
+			override def apply(value :Byte) :Double = value
+			override def inverse(value :Double) :Option[Byte] = Some(value.toByte)
+			override protected def applyString(arg :String) :String = arg + ".toDouble"
+		}
+
+		implicit object Short2Int extends Lift[Short, Int] {
+			override def apply(value :Short) :Int = value
+			override def inverse(value :Int) :Option[Short] = Some(value.toShort)
+			override protected def applyString(arg :String) :String = arg + ".toInt"
+		}
+		implicit object Short2Long extends Lift[Short, Long] {
+			override def apply(value :Short) :Long = value
+			override def inverse(value :Long) :Option[Short] = Some(value.toShort)
+			override protected def applyString(arg :String) :String = arg + ".toLong"
+		}
+		implicit object Short2Float extends Lift[Short, Float] {
+			override def apply(value :Short) :Float = value
+			override def inverse(value :Float) :Option[Short] = Some(value.toShort)
+			override protected def applyString(arg :String) :String = arg + ".toFloat"
+		}
+		implicit object Short2Double extends Lift[Short, Double] {
+			override def apply(value :Short) :Double = value
+			override def inverse(value :Double) :Option[Short] = Some(value.toShort)
+			override protected def applyString(arg :String) :String = arg + ".toDouble"
+		}
+		
+		implicit object Int2Long extends Lift[Int, Long] {
+			override def apply(value :Int) :Long = value
+			override def inverse(value :Long) :Option[Int] = Some(value.toInt)
+			override protected def applyString(arg :String) :String = arg + ".toLong"
+		}
+		implicit object Int2Double extends Lift[Int, Double] {
+			override def apply(value :Int) :Double = value
+			override def inverse(value :Double) :Option[Int] = Some(value.toInt)
+			override protected def applyString(arg :String) :String = arg + ".toDouble"
+		}
+
+		implicit object Char2Int extends Lift[Char, Int] {
+			override def apply(value :Char) :Int = value
+			override def inverse(value :Int) :Option[Char] = Some(value.toChar)
+			override protected def applyString(arg :String) :String = arg + ".toInt"
+		}
+
+
+
 		class ComposedLift[X, Y, Z](prev :Lift[X, Y], next :Lift[Y, Z]) extends Lift[X, Z] {
-
 			override def apply(value: X): Z = next(prev(value))
-
 			override def inverse(value: Z): Option[X] = next.inverse(value).flatMap(prev.inverse)
 
 			override def apply[F <: RowProduct, S >: LocalScope <: GlobalScope]
@@ -960,9 +1026,7 @@ object SQLExpression  {
 		}
 
 		private[this] val opt = new Lift[Any, Option[Any]] {
-
 			override def apply(value: Any): Option[Any] = Option(value)
-
 			override def inverse(value: Option[Any]): Option[Any] = value
 
 			override def apply[F <: RowProduct, S >: LocalScope <: GlobalScope]

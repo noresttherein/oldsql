@@ -487,7 +487,7 @@ object Buffs extends ImplicitBuffs {
 	  * polymorphism of `IterableOnce` interface) may lead to inconsistencies or surprising results due to this duality.
 	  */
 	class DeclaredBuffs[T](val all :Buffs[T])
-		extends AnyVal with IterableOnce[Buff[T]] with IterableOps[Buff[T], Iterable, Buffs[T]]
+		extends AnyVal with IterableOnce[Buff[T]] with IterableOps[Buff[T], Iterable, Buffs[T]] with Serializable
 	{
 		import all.front
 
@@ -556,7 +556,9 @@ object Buffs extends ImplicitBuffs {
 	  * [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]] of `Buffs` to move deeper down the stack
 	  * (right in the notation) and keeping internally a stack of 'skipped' prefix of the buffs collection.
 	  */
-	final class BuffsZipper[T] private (private val prefix :Opt[BuffsZipper[T]], val stack :Buffs[T]) {
+	final class BuffsZipper[T] private (private val prefix :Opt[BuffsZipper[T]], val stack :Buffs[T])
+		extends Serializable
+	{
 		def this(buffs :Buffs[T]) = this(Lack, buffs)
 
 		/** Is the underlying `Buffs` instance empty? */

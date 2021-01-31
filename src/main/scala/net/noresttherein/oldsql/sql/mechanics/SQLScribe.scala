@@ -403,7 +403,7 @@ object SQLScribe {
 
 
 
-
+	//unused
 	def replaceRelation[T[X] <: BaseMapping[E, X], E, N[X] <: BaseMapping[V, X], V, F <: RowProduct, G <: RowProduct]
 	                   (oldClause :F, newClause :G,
 	                    relation :RelationSQL[F, T, E, _ >: F <: RowProduct],
@@ -439,10 +439,10 @@ object SQLScribe {
 
 
 
-	/** Replaces an unbound parameter, together with all its 'components', with one given as the relation `param`
+	/** Replaces an unbound parameter, together with all its 'components', with one given as the relation `newParam`
 	  * (with the same offset/position). The value of the new parameter must be derivable from the old one.
 	  * This scribe is used when aliasing a JoinParam with the `as` method.
-	  */
+	  */  //currently unused
 	private[sql] def replaceParam[F <: RowProduct, T[A] <: FromParam[P, A], P,
 	                              G <: RowProduct, M[A] <: FromParam[X, A], X, O >: G <: RowProduct]
 	                             (oldClause :F, newClause :G,
@@ -687,9 +687,9 @@ object SQLScribe {
 
 
 	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
-	  * some its expansion clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.expand expand]]
+	  * some its expansion clause `E`. It relies on the [[net.noresttherein.oldsql.sql.SQLExpression.basedOn basedOn]]
 	  * method of `SQLExpression` and recursively applies itself to parts of composite expressions and subselects of `F`.
-	  */
+	  */ //unused
 	def rebase[F <: RowProduct, E <: RowProduct](clause :E)(implicit expansion :F PartOf E) :SQLScribe[F, E] =
 		new RebaseExpression[F, E](clause)
 

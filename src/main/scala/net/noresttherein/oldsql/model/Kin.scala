@@ -646,9 +646,10 @@ object Kin {
 		protected implicit def composition[T] :C[T] ComposedOf T
 		@inline protected implicit final def decomposer[T] :C[T] DecomposableTo T = composition[T].decomposer
 
+		/** The type of `Kin` produced by this factory */
 		type Ref[T] = Derived[T, C[T]]
 
-		/** A factory creating present and absent `$Ref[T]` kin in several configurations and providing some operations
+		/** A factory creating present and absent $Ref`[T]` kin in several configurations and providing some operations
 		  * on them, using [[net.noresttherein.oldsql.model.Restraint Restraint]]`[T]` as a hidden filter to identify
 		  * the referenced value. All absent instances created by this factory are automatically
 		  * [[net.noresttherein.oldsql.model.Kin.isMissing missing]], as there is no support for
@@ -658,7 +659,7 @@ object Kin {
 		def apply[K, T](restrainer :Restrainer[T, K]) :DerivedKinFactory[K, T, C[T]] =
 			Restrained.required(restrainer).in[C]
 
-		/** An absent (and [[net.noresttherein.oldsql.model.Kin.isMissing missing]]) `$Ref[T]`, specifying
+		/** An absent (and [[net.noresttherein.oldsql.model.Kin.isMissing missing]]) $Ref`[T]`, specifying
 		  * a filtering expression on `T`, carried by `restraint`. Note that it is possible to create such references
 		  * for any type, including those not mapped and completely unrelated to the domain model;
 		  * if the type information included is insufficient for unique identification of a data source for `T`
@@ -666,7 +667,7 @@ object Kin {
 		  */
 		def apply[T](restraint :Restraint[T]) :Ref[T] = Restrained.missing[T, C[T]](restraint)(composition.composer)
 
-		/** A present `$Ref[T]` without any specific, external information about its key(s) or identifier(s).
+		/** A present $Ref`[T]` without any specific, external information about its key(s) or identifier(s).
 		  * The appropriate data must be carried by the contents of `value`; whether they are treated jointly,
 		  * having a common key, or individually, depends on the mapping of the component it is used for.
 		  * Maintaining data integrity of all objects in the reachable graph is the responsibility of the application;
@@ -677,7 +678,7 @@ object Kin {
 		  */
 		def apply[T](value :C[T]) :Ref[T] = Derived.present[T, C[T]](value)
 
-		/** A present `$Ref[T]` carrying both the `$Val` value and a filter expression `restraint` which
+		/** A present $Ref`[T]` carrying both the $Val value and a filter expression `restraint` which
 		  * specifies the restrictions that all returned values of `T` must satisfy in order to be selected.
 		  * This constructor is more often used by the framework than the client code, after loading a value
 		  * from the database and thus having both the entity and the specification provided in order to fetch it,
@@ -687,7 +688,7 @@ object Kin {
 		  */
 		def apply[T](restraint :Restraint[T], value :C[T]) :Ref[T] = Restrained(restraint, Some(value))
 
-		/** A composite `$Ref[T]` carrying a filter condition `restraint` serving as a specification of
+		/** A composite $Ref`[T]` carrying a filter condition `restraint` serving as a specification of
 		  * referenced values or their source. The value of the created kin is given as a by-name initializing
 		  * expression which will be invoked at most once: after first access to
 		  * [[net.noresttherein.oldsql.model.Kin.toOption toOption]],
@@ -742,8 +743,8 @@ object Kin {
 	  * and can be matched with other extractors defined in [[net.noresttherein.oldsql.model.Kin$ Kin]] object.
 	  * This match pattern is not however considered exhaustive for the `One[T]` type, as other (in particular
 	  * lower level) implementations of `Derived` exist.
-	  * @define Ref One
-	  * @define Val T
+	  * @define Ref `One`
+	  * @define Val `T`
 	  */
 	object One extends SpecificKinType[Self] {
 		override protected implicit def composition[T] :T ComposedOf T = ComposedOf.self
@@ -777,8 +778,8 @@ object Kin {
 	  * and can be matched with other extractors defined in [[net.noresttherein.oldsql.model.Kin$ Kin]] object.
 	  * Other implementations - in particular lower level ones, using more specific information - exist and will
 	  * be matched by neither this object nor the kin factories it creates.
-	  * @define Ref Supposed
-	  * @define Val Option[T]
+	  * @define Ref `Supposed`
+	  * @define Val `Option[T]`
 	  */
 	object Supposed extends SpecificKinType[Option] {
 		implicit protected override def composition[T] :Option[T] ComposedOf T = ComposedOf.option
@@ -828,8 +829,8 @@ object Kin {
 	  * uniquely identifies underlying storage through the defined mapping schema.
 	  * Other implementations - in particular lower level ones, using more specific information - exist and will
 	  * be matched by neither this object nor the kin factories it creates.
-	  * @define Ref Many
-	  * @define Val Iterable[T]
+	  * @define Ref `Many`
+	  * @define Val `Iterable[T]`
 	  */
 	object Many extends SpecificKinType[Iterable] {
 		implicit protected override def composition[T] :Iterable[T] ComposedOf T =
@@ -887,6 +888,8 @@ object Kin {
 	  * being thrown when discovered, or in unexpected behaviour. Note that a kin for an empty collection is still
 	  * considered ''present'' according to the established semantics, as it is the whole `Seq[T]`
 	  * which is the value type of the `KinSeq` kin, not the individual elements.
+	  * @define Ref `KinSeq`
+	  * @define Val `Seq[T]`
 	  */
 	object KinSeq extends SpecificKinType[Seq] {
 		implicit protected override def composition[T] :Seq[T] ComposedOf T = cmp.asInstanceOf[Seq[T] ComposedOf T]
@@ -946,6 +949,8 @@ object Kin {
 	  * being thrown when discovered, or in unexpected behaviour. Note that a kin for an empty collection is still
 	  * considered ''present'' according to the established semantics, as it is the whole `Set[T]`
 	  * which is the value type of the `KinSet` kin, not the individual elements.
+	  * @define Ref `KinSet`
+	  * @define Val `Set[T]`
 	  */
 	object KinSet extends SpecificKinType[Set] {
 		implicit protected override def composition[T] :Set[T] ComposedOf T = cmp.asInstanceOf[Set[T] ComposedOf T]

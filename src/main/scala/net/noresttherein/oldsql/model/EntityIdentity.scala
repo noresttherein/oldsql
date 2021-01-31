@@ -3,12 +3,12 @@ package net.noresttherein.oldsql.model
 import net.noresttherein.oldsql.model.EntityIdentity.NoPrimaryKeyException
 
 
-trait Entity[T, K <: PK[T]] { this :T =>
+trait Entity[T, K <: PK[T]] extends Serializable { this :T =>
 	val pk :K
 }
 
 
-trait EntityIdentity[T, PK] extends (T => PK) {
+trait EntityIdentity[T, PK] extends (T => PK) with Serializable {
 	def apply(entity :T) :PK
 
 	def transient :PK

@@ -21,7 +21,10 @@ import scala.reflect.ClassTag
   * present (in terms of `equals`) in this collection
   * @tparam T element type.
   */
-trait Unique[+T] extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with IterableFactoryDefaults[T, Unique] { unique =>
+trait Unique[+T]
+	extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with IterableFactoryDefaults[T, Unique]
+	   with Serializable
+{ unique =>
 
 	override def knownSize :Int = size
 

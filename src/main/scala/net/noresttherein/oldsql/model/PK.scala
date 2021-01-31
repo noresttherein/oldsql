@@ -34,7 +34,7 @@ import net.noresttherein.oldsql.schema.SQLForm.NullValue
   * @see [[net.noresttherein.oldsql.model.PK.AssignedPK, AssignedPK]]
   * @author Marcin Mościcki
   */
-trait PK[T] extends Any {
+trait PK[T] extends Any with Serializable {
 	@inline final def isPersistent :Boolean = !isTransient
 	def isTransient :Boolean = false
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[PK[_]]
@@ -99,7 +99,8 @@ object PK {
 
 	/** A base class for transient primary keys. Keys of this class are assigned to entities created
 	  * by the application before persisting them. This instances of this class itself don't equal any other instances,
-	  * although subclasses can change this behaviour.
+	  * although subclasses can change this behaviour. Note that while transient keys are serializable, they do not
+	  * preserve identity after deserialization and a deserialized object will not equal itself from before serialization.
 	  * @see [[net.noresttherein.oldsql.model.PK.AssignedPK AssignedPK]]
 	  */
 	class TransientPK[T] extends PK[T] {

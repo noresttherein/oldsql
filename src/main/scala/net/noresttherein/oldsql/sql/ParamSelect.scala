@@ -25,6 +25,10 @@ import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 
 
+/** Base trait with the public inteface of classes representing SQL ''selects''. This includes
+  * [[net.noresttherein.oldsql.sql.ParamSelect parameterized]] ''selects'' and standard
+  * SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]].
+  */ //todo: unnecessary, we need to mix in SelectTemplate anyway.
 trait SelectAPI[-F <: RowProduct, V] extends SelectTemplate[V, ({ type S[X] = SelectAPI[F, X] })#S]
 
 
@@ -36,7 +40,7 @@ object SelectAPI {
 	  * predefined operators provided by some database engines have also their definition in the enclosing
 	  * [[net.noresttherein.oldsql.sql.ParamQuery$ ParamQuery]] object.
 	  */
-	class SetOperator(val name :String) extends AnyVal {
+	class SetOperator(val name :String) extends AnyVal with Serializable {
 		def NAME :String = name.toUpperCase
 
 		def apply[P, V](left :ParamQuery[P, V], right :ParamQuery[P, V]) :ParamQuery[P, V] =
@@ -94,6 +98,15 @@ object SelectAPI {
 
 
 
+	/** A template for classes representing generalized ''selects'' - both standard ''select'' queries and
+	  * compound ''selects'' combining several individual ''selects'' with set operators.
+	  * It is inherited by both [[net.noresttherein.oldsql.sql.ast.QuerySQL QuerySQL]] and
+	  * [[net.noresttherein.oldsql.sql.ParamQuery ParaamQuery]].
+	  * @tparam V value type representing the whole ''select'' clause, used as its return type and
+	  *           [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] value type.
+	  * @tparam S the self type of this interface, that is the whole public type of the ''select'' parameterized
+	  *           with its value type `V`.
+	  */
 	trait QueryTemplate[V, +S[_]] {
 		type ResultMapping[O] <: MappingAt[O]
 
@@ -114,6 +127,14 @@ object SelectAPI {
 
 
 
+	/** A template for classes representing SQL ''selects'' - both standard SQL
+	  * [[net.noresttherein.oldsql.sql.ast.SelectSQL expressions]] and
+	  * [[net.noresttherein.oldsql.sql.ParamSelect parameterized]] ''selects''.
+	  * @tparam V value type representing the whole ''select'' clause, used as its return type and
+	  *           [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] value type.
+	  * @tparam S the self type of this interface, that is the whole public type of the ''select'' parameterized
+	  *           with its value type `V`.
+	  */
 	trait SelectTemplate[V, +S[_]] extends QueryTemplate[V, S] {
 
 		/** The from clause of this select. */

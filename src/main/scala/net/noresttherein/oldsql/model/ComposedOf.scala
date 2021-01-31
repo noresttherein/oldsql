@@ -42,7 +42,7 @@ object -> {
   * It is generally written in the code using infix notation for clarity: `C ComposedOf E`.
   * @see [[net.noresttherein.oldsql.model.ComposedOf.CollectionOf CollectionOf]]
   */
-trait ComposedOf[C, E] {
+trait ComposedOf[C, E] extends Serializable {
 	def arity :Arity = composer.arity
 //		if (composition.arity == decomposition.arity) composition.arity
 //		else throw new UnsupportedOperationException(s"ComposedOf.arity: composition arity (${composition.arity}) is different than decomposition arity (${decomposition.arity}) in $this. Most probabaly a bug.")
@@ -273,7 +273,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 	  * @see [[net.noresttherein.oldsql.model.ComposedOf.DecomposableTo DecomposableTo]]
 	  * @see [[net.noresttherein.oldsql.model.ComposedOf ComposedOf]]
 	  */
-	trait ComposableFrom[+C, -E] { composition =>
+	trait ComposableFrom[+C, -E] extends Serializable { composition =>
 		def arity :Arity
 
 		def empty :C = apply(Seq())
@@ -916,7 +916,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 	/** A way to obtain `Iterable[E]` from `C`. */
-	trait DecomposableTo[-C, +E]  { decomposition =>
+	trait DecomposableTo[-C, +E] extends Serializable { decomposition =>
 		def arity :Arity
 
 		def apply(composite :C) :Iterable[E]

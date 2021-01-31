@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtra
   * @see [[net.noresttherein.oldsql.morsels.Extractor.RequisiteExtractor RequisiteExtractor]]
   * @author Marcin Mościcki
   */ //consider: implementing PartialFunction. Would be great if Function extended PartialFunction (or vice versa).
-trait Extractor[-X, +Y] { self =>
+trait Extractor[-X, +Y] extends Serializable { self =>
 	def optional :X => Option[Y] = opt(_).toOption
 	def requisite :Opt[X => Y] = Lack
 	def force :X => Y = opt(_).get

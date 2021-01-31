@@ -32,7 +32,7 @@ import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
   * @see [[net.noresttherein.oldsql.schema.bits.LabelPath.Label]]
   * @see [[net.noresttherein.oldsql.schema.bits.LabelPath./]]
   */
-sealed trait LabelPath[P] extends Any {
+sealed trait LabelPath[P] extends Any with Serializable {
 
 	/** The last label in this path. */
 	def label :Label

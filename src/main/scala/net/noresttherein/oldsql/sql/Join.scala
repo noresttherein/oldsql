@@ -194,14 +194,14 @@ object JoinLike {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
 	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L InnerJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -408,14 +408,14 @@ object Join {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
 	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L InnerJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -597,14 +597,14 @@ object InnerJoin {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
 	  * @param filter an optional join condition narrowing the cross join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L InnerJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -623,12 +623,12 @@ object InnerJoin {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
+	  * @param left  a ''from'' clause containing the list of relations preceding `right`.
 	  * @param right the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
 	  *              `Mapping` type.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast  an implicit witness providing proper type inference for the mapping of the last relation
+	  *              and conversions of associated classes between instances parameterized with the more generic `R`
+	  *              and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L InnerJoin R As N`.
 	  */
 	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -784,14 +784,14 @@ object OuterJoin {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.outerJoin outerJoin]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
 	  * @param filter an optional join condition narrowing the join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L InnerJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -810,12 +810,12 @@ object OuterJoin {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L OuterJoin R As N`.
 	  */
 	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -975,14 +975,14 @@ object LeftJoin {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.leftJoin leftJoin]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
 	  * @param filter an optional join condition narrowing the join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L LeftJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -1001,12 +1001,12 @@ object LeftJoin {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L LeftJoin R As N`.
 	  */
 	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -1165,14 +1165,14 @@ object RightJoin {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.rightJoin rightJoin]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last relation of the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
 	  * @param filter an optional join condition narrowing the join; can be used as either the ''on'' or ''where''
 	  *               clause in the generated SQL.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L RightJoin R`.
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -1191,12 +1191,12 @@ object RightJoin {
 	  * it is generally recommended to use
 	  * `left` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.join join]] `right`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `filter` DSL instead.
-	  * @param left a ''from'' clause containing the list of relations preceding `right`.
-	  * @param right the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
-	  *              `Mapping` type.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param left   a ''from'' clause containing the list of relations preceding `right`.
+	  * @param right  the last table in the created ''from'' clause, using the `T[O] <: BaseMapping[S, O]`
+	  *               `Mapping` type.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L RightJoin R As N`.
 	  */
 	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -1462,13 +1462,13 @@ object Subselect {
 	  * it is generally recommended to use
 	  * `outer` [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]] `first`
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] `fullFilter` DSL instead.
-	  * @param outer a ''from'' clause containing the list of relations preceding `first`.
-	  * @param first the first (and currently only) relation of the actual ''from'' clause of the created subselect,
-	  *              using the `T[O] <: BaseMapping[S, O]` `Mapping` type.
+	  * @param outer  a ''from'' clause containing the list of relations preceding `first`.
+	  * @param first  the first (and currently only) relation of the actual ''from'' clause of the created subselect,
+	  *               using the `T[O] <: BaseMapping[S, O]` `Mapping` type.
 	  * @param filter an optional join condition linking the subselect with the outer clause.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast   an implicit witness providing proper type inference for the mapping of the last relation
+	  *               and conversions of associated classes between instances parameterized with the more generic `R`
+	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L Subselect R`.
 	  */
 	def apply[L <: NonEmptyFrom, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
@@ -1495,9 +1495,9 @@ object Subselect {
 	  * @param outer a ''from'' clause containing the list of relations preceding `first`.
 	  * @param first the first (and currently only) relation of the actual ''from'' clause of the created subselect,
 	  *              using the `T[O] <: BaseMapping[S, O]` `Mapping` type.
-	  * @param cast an implicit witness providing proper type inference for the mapping of the last relation
-	  *             and conversions of associated classes between instances parameterized with the more generic `R`
-	  *             and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
+	  * @param cast  an implicit witness providing proper type inference for the mapping of the last relation
+	  *              and conversions of associated classes between instances parameterized with the more generic `R`
+	  *              and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L Subselect R As N`.
 	  */
 	def apply[L <: NonEmptyFrom, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
